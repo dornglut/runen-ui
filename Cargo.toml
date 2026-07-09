@@ -2,4 +2,25 @@
 resolver = "3"
 members = []
 
+[workspace.package]
+version = "1.0.0"
+authors = ["Crystonix"]
+description = "A small rust-native UI lib"
+readme = "Readme.md"
+repository = "https://github.com/Crystonix/RunenUI"
+license = ""
+edition = "2024"
+rust-version = "1.93.0"
+
 [workspace.dependencies]
+
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
