@@ -1,4 +1,30 @@
+# OS files
 .DS_Store
+Thumbs.db
+
+# Editors
 .idea/
-/target
-*.txt
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Generated context exports
+*-content.txt
+*.repo-context.txt
+*.repo-context.md
+/.context/
+/context-exports/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
