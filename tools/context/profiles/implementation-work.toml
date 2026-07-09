@@ -1,23 +1,26 @@
-description = "Generic implementation context. Add exact crate or module paths with --include."
+description = "Generic RunenUI implementation context. Add exact crate, module, test, or example paths with --include."
 
 include = [
+  "README.md",
+  "Cargo.toml",
   "AGENTS.md",
   "ARCHITECTURE.md",
   "DEPENDENCY_RULES.md",
   "DOMAIN_MAP.md",
   "CRATES.md",
   "TESTING.md",
-  "docs-site/src/content/docs/workspace/start-here.md",
-  "docs-site/src/content/docs/workspace/routines/implementation-routine.md",
-  "docs-site/src/content/docs/workspace/authority-model.md",
-  "docs-site/src/content/docs/guidelines/programming-principles.md",
-  "docs-site/src/content/docs/workspace/planning/active-work.md",
-  "docs-site/src/content/docs/workspace/planning/roadmap.md",
-  "docs-site/src/content/docs/workspace/planning/production-tracks.md",
-  "docs-site/src/content/docs/design/active/**",
+  "GLOSSARY.md",
+  "docs/**",
+  "design/**",
+  "architecture/**",
+  "src/**",
+  "crates/**",
+  "examples/**",
+  "tests/**",
+  "benches/**",
 ]
 
 exclude = [
-  "docs-site/src/content/docs/reports/**",
-  "docs-site/src/content/docs/design/superseded/**",
+  "legacy/**",
+  "context/**",
 ]

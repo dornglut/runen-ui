@@ -13,11 +13,14 @@ Thumbs.db
 **/*.rs.bk
 
 # Generated context exports
-*-content.txt
-*.repo-context.txt
-*.repo-context.md
+/context/*
+!/context/.gitkeep
 /.context/
 /context-exports/
+*-content.txt
+*-context.txt
+*.repo-context.txt
+*.repo-context.md
 
 # Local environment files
 .env

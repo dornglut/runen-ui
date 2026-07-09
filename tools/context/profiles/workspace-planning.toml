@@ -1,20 +1,22 @@
-description = "Workspace planning and routine context without implementation crates."
+description = "RunenUI planning and documentation context without implementation-heavy legacy audit."
 
 include = [
-  "AGENTS.md",
   "README.md",
+  "Cargo.toml",
+  "AGENTS.md",
+  "ARCHITECTURE.md",
+  "DEPENDENCY_RULES.md",
   "DOMAIN_MAP.md",
   "CRATES.md",
-  "docs-site/src/content/docs/workspace/start-here.md",
-  "docs-site/src/content/docs/workspace/authority-model.md",
-  "docs-site/src/content/docs/workspace/documentation-structure.md",
-  "docs-site/src/content/docs/workspace/operating-model.md",
-  "docs-site/src/content/docs/workspace/routines/**",
-  "docs-site/src/content/docs/workspace/planning/**",
-  "docs-site/src/content/docs/guidelines/programming-principles.md",
+  "TESTING.md",
+  "GLOSSARY.md",
+  "docs/**",
+  "design/**",
+  "architecture/**",
+  "tools/context/**",
 ]
 
 exclude = [
-  "docs-site/src/content/docs/reports/**",
-  "docs-site/src/content/docs/design/superseded/**",
+  "legacy/**",
+  "context/**",
 ]

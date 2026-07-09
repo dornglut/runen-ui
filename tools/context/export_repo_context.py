@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_PROFILE = "ai-core"
+DEFAULT_CONTEXT_DIR = "context"
 DEFAULT_EXTENSIONS = {
     ".rs",
     ".toml",
@@ -41,7 +42,14 @@ DEFAULT_EXCLUDE_GLOBS = (
     "**/build/**",
     ".astro/**",
     "**/.astro/**",
+    ".context/**",
+    "**/.context/**",
+    "context/**",
+    "context-exports/**",
     "**/*-content.txt",
+    "**/*-context.txt",
+    "*.repo-context.txt",
+    "*.repo-context.md",
     "Cargo.lock",
 )
 
@@ -160,12 +168,26 @@ def list_profiles(profiles_dir: Path) -> list[str]:
     return sorted(path.stem for path in profiles_dir.glob("*.toml"))
 
 
-def iter_context_files(root: Path, profile: ContextProfile) -> list[Path]:
+def is_same_file(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return False
+
+
+def iter_context_files(
+    root: Path,
+    profile: ContextProfile,
+    output: Path | None = None,
+) -> list[Path]:
     files: list[Path] = []
     exclude_patterns = DEFAULT_EXCLUDE_GLOBS + profile.exclude
 
     for path in root.rglob("*"):
         if not path.is_file():
+            continue
+
+        if output is not None and is_same_file(path, output):
             continue
 
         relative = path.relative_to(root)
@@ -253,6 +275,8 @@ def write_context_file(
     warnings: tuple[str, ...],
 ) -> ExportStats:
     total_bytes = sum(file_size(root, relative) for relative in files)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
     with output.open("w", encoding="utf-8") as out:
         write_manifest(
             out=out,
@@ -278,6 +302,21 @@ def write_context_file(
     return ExportStats(total_bytes=total_bytes, warnings=warnings)
 
 
+def default_output_path(root: Path, profile_name: str) -> Path:
+    return root / DEFAULT_CONTEXT_DIR / f"{root.name}-{profile_name}-context.txt"
+
+
+def resolve_output_path(root: Path, output_arg: str | None, profile_name: str) -> Path:
+    if output_arg is None:
+        return default_output_path(root=root, profile_name=profile_name)
+
+    output = Path(output_arg)
+    if output.is_absolute():
+        return output
+
+    return root / output
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Export repository source/docs into a line-numbered context file."
@@ -290,7 +329,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         default=None,
-        help="Output file. Defaults to ./<repo-folder-name>-content.txt.",
+        help=(
+            "Output file. Defaults to "
+            f"./{DEFAULT_CONTEXT_DIR}/<repo-folder-name>-<profile>-context.txt."
+        ),
     )
     parser.add_argument(
         "--profile",
@@ -385,9 +427,13 @@ def main() -> None:
         extra_extensions=tuple(normalize_extension(extension) for extension in args.extension),
         extra_include_filenames=tuple(args.include_filename),
     )
-    output = Path(args.output) if args.output else root / f"{root.name}-content.txt"
+    output = resolve_output_path(
+        root=root,
+        output_arg=args.output,
+        profile_name=profile.name,
+    )
 
-    files = iter_context_files(root=root, profile=profile)
+    files = iter_context_files(root=root, profile=profile, output=output)
     warnings = build_budget_warnings(
         root=root,
         files=files,

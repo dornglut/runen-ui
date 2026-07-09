@@ -11,6 +11,12 @@ exclude = [
   "dist/**",
   "build/**",
   ".astro/**",
+  ".context/**",
+  "context/**",
+  "context-exports/**",
   "**/*-content.txt",
+  "**/*-context.txt",
+  "*.repo-context.txt",
+  "*.repo-context.md",
   "Cargo.lock",
 ]

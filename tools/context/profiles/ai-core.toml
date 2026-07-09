@@ -1,24 +1,18 @@
-description = "Small current authority context for most AI work."
+description = "Small RunenUI authority context for normal AI startup."
 
 include = [
-  "AGENTS.md",
   "README.md",
-  "ARCHITECTURE.md",
-  "DEPENDENCY_RULES.md",
-  "DOMAIN_MAP.md",
-  "CRATES.md",
-  "TESTING.md",
-  "GLOSSARY.md",
-  "docs-site/src/content/docs/workspace/start-here.md",
-  "docs-site/src/content/docs/workspace/authority-model.md",
-  "docs-site/src/content/docs/guidelines/programming-principles.md",
-  "docs-site/src/content/docs/workspace/planning/active-work.md",
-  "docs-site/src/content/docs/workspace/planning/roadmap.md",
-  "docs-site/src/content/docs/workspace/planning/production-tracks.md",
+  "Cargo.toml",
+  ".gitignore",
+  "tools/context/README.md",
+  "tools/context/export_repo_context.py",
+  "tools/context/profiles/*.toml",
+  "docs/**",
+  "design/**",
+  "architecture/**",
 ]
 
 exclude = [
-  "docs-site/src/content/docs/reports/**",
-  "docs-site/src/content/docs/design/accepted/**",
-  "docs-site/src/content/docs/design/superseded/**",
+  "legacy/**",
+  "context/**",
 ]
