@@ -5,19 +5,14 @@
 
 #![forbid(unsafe_code)]
 
+mod element_id;
+mod layout;
 pub mod prelude;
+mod tree;
 
-/// Marker type for the future typed UI description tree.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Element<Action> {
-    _action: core::marker::PhantomData<fn() -> Action>,
-}
-
-impl<Action> Element<Action> {
-    #[must_use]
-    pub const fn marker() -> Self {
-        Self {
-            _action: core::marker::PhantomData,
-        }
-    }
-}
+pub use element_id::ElementId;
+pub use layout::{Axis, LayoutStyle, Px};
+pub use tree::{
+    ButtonElement, ContainerElement, Element, ElementKind, IntoElements, TextElement, button,
+    column, row, text,
+};
