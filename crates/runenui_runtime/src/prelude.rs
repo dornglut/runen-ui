@@ -1,3 +1,3 @@
 //! Common imports for `RunenUI` runtime users.
 
-pub use crate::{Runtime, RuntimeEvent, Trace};
+pub use crate::{AppRuntime, Runtime, RuntimeEvent, Trace, UiApp};

@@ -5,7 +5,7 @@
 //! trace recording.
 
 use runenui_core::{Element, button, column, row, text};
-use runenui_runtime::Runtime;
+use runenui_runtime::{AppRuntime, UiApp};
 
 const WIN_COUNT: i32 = 10;
 
@@ -29,6 +29,21 @@ enum CounterAction {
     Decrement,
     Increment,
     Reset,
+}
+
+struct CounterApp;
+
+impl UiApp for CounterApp {
+    type State = Counter;
+    type Action = CounterAction;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        root(state)
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        update(state, action);
+    }
 }
 
 struct CounterScreen;
@@ -81,10 +96,10 @@ const fn update(counter: &mut Counter, action: CounterAction) {
 }
 
 fn main() {
-    let mut runtime = Runtime::mount(Counter::new(), root);
+    let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
 
     for _ in 0..WIN_COUNT {
-        runtime.dispatch(CounterAction::Increment, update, root);
+        runtime.dispatch(CounterAction::Increment);
     }
 
     let count = runtime.state().count;
@@ -95,9 +110,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{Counter, CounterAction, root, update};
+    use super::{AppRuntime, Counter, CounterAction, CounterApp, root};
     use runenui_core::ElementKind;
-    use runenui_runtime::Runtime;
 
     fn root_text(counter: &Counter) -> Result<String, &'static str> {
         let root = root(counter);
@@ -147,9 +161,9 @@ mod tests {
 
     #[test]
     fn reset_returns_to_counter_screen() -> Result<(), &'static str> {
-        let mut runtime = Runtime::mount(Counter { count: 10 }, root);
+        let mut runtime = AppRuntime::<CounterApp>::mount(Counter { count: 10 });
 
-        runtime.dispatch(CounterAction::Reset, update, root);
+        runtime.dispatch(CounterAction::Reset);
 
         assert_eq!(runtime.state(), &Counter { count: 0 });
         assert_eq!(root_text(runtime.state())?, "Counter");
