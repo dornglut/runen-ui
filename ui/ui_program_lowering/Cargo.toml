@@ -1,0 +1,13 @@
+[package]
+name = "ui_program_lowering"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ui_definition.workspace = true
+ui_controls.workspace = true
+ui_program.workspace = true
+ui_schema.workspace = true
+
+[dev-dependencies]
+ron = "0.8.1"

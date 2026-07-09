@@ -1,0 +1,10 @@
+[package]
+name = "ui_accessibility"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+ui_artifacts.workspace = true
+ui_program.workspace = true

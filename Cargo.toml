@@ -1,0 +1,39 @@
+[workspace]
+resolver = "3"
+members = []
+
+[workspace.dependencies]
+ui_math = { path = "ui/ui_math" }
+ui_input = { path = "ui/ui_input" }
+ui_layout = { path = "ui/ui_layout" }
+ui_text = { path = "ui/ui_text" }
+ui_theme = { path = "ui/ui_theme" }
+ui_render_data = { path = "ui/ui_render_data" }
+ui_composition = { path = "ui/ui_composition" }
+ui_adaptive_composition = { path = "ui/ui_adaptive_composition" }
+ui_surface = { path = "ui/ui_surface" }
+ui_graph_editor = { path = "ui/ui_graph_editor" }
+ui_definition = { path = "ui/ui_definition" }
+ui_schema = { path = "ui/ui_schema" }
+ui_program = { path = "ui/ui_program" }
+ui_controls = { path = "ui/ui_controls" }
+ui_artifacts = { path = "ui/ui_artifacts" }
+ui_runtime_view = { path = "ui/ui_runtime_view" }
+ui_render_primitives = { path = "ui/ui_render_primitives" }
+ui_headless_render = { path = "ui/ui_headless_render" }
+ui_headless_render_data = { path = "ui/ui_headless_render_data" }
+ui_static_mount = { path = "ui/ui_static_mount" }
+ui_compiler = { path = "ui/ui_compiler" }
+ui_evaluator = { path = "ui/ui_evaluator" }
+ui_state = { path = "ui/ui_state" }
+ui_binding = { path = "ui/ui_binding" }
+ui_hosts = { path = "ui/ui_hosts" }
+ui_testing = { path = "ui/ui_testing" }
+ui_accessibility = { path = "ui/ui_accessibility" }
+ui_geometry = { path = "ui/ui_geometry" }
+ui_tree = { path = "ui/ui_tree" }
+ui_runtime = { path = "ui/ui_runtime" }
+ui_widgets = { path = "ui/ui_widgets" }
+ui_program_lowering = { path = "ui/ui_program_lowering" }
+ui_story = { path = "ui/ui_story" }
+ui_app_integration = { path = "ui/ui_app_integration" }

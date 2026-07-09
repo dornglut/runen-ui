@@ -1,0 +1,21 @@
+[package]
+name = "ui_render_primitives"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+ui_math.workspace = true
+ui_render_data.workspace = true
+ui_runtime_view.workspace = true
+ui_text.workspace = true
+ui_theme.workspace = true
+
+[dev-dependencies]
+ron = "0.8.1"
+ui_artifacts.workspace = true
+ui_compiler.workspace = true
+ui_controls.workspace = true
+ui_definition.workspace = true
+ui_program_lowering.workspace = true

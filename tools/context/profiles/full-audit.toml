@@ -1,0 +1,16 @@
+description = "Full repository audit context. Large by design."
+
+include = [
+  "**/*",
+]
+
+exclude = [
+  ".git/**",
+  "target/**",
+  "node_modules/**",
+  "dist/**",
+  "build/**",
+  ".astro/**",
+  "**/*-content.txt",
+  "Cargo.lock",
+]

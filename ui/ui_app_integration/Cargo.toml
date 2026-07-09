@@ -1,0 +1,23 @@
+[package]
+name = "ui_app_integration"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+ecs.workspace = true
+ui_binding.workspace = true
+ui_controls.workspace = true
+ui_definition.workspace = true
+ui_hosts.workspace = true
+ui_program.workspace = true
+ui_program_lowering.workspace = true
+ui_schema.workspace = true
+
+[dev-dependencies]
+ui_testing.workspace = true
+ui_story.workspace = true
+ui_evaluator.workspace = true
+ui_compiler.workspace = true
+ui_artifacts.workspace = true

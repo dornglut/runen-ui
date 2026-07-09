@@ -1,0 +1,12 @@
+[package]
+name = "ui_controls"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+ui_layout.workspace = true
+ui_program.workspace = true
+ui_render_data.workspace = true
+ui_schema.workspace = true

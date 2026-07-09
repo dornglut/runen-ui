@@ -1,0 +1,22 @@
+[package]
+name = "ui_testing"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+ui_accessibility.workspace = true
+ui_adaptive_composition.workspace = true
+ui_artifacts.workspace = true
+ui_binding.workspace = true
+ui_compiler.workspace = true
+ui_composition.workspace = true
+ui_evaluator.workspace = true
+ui_geometry.workspace = true
+ui_hosts.workspace = true
+ui_input.workspace = true
+ui_math.workspace = true
+ui_program.workspace = true
+ui_schema.workspace = true
+ui_state.workspace = true

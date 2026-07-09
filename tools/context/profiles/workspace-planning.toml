@@ -1,0 +1,20 @@
+description = "Workspace planning and routine context without implementation crates."
+
+include = [
+  "AGENTS.md",
+  "README.md",
+  "DOMAIN_MAP.md",
+  "CRATES.md",
+  "docs-site/src/content/docs/workspace/start-here.md",
+  "docs-site/src/content/docs/workspace/authority-model.md",
+  "docs-site/src/content/docs/workspace/documentation-structure.md",
+  "docs-site/src/content/docs/workspace/operating-model.md",
+  "docs-site/src/content/docs/workspace/routines/**",
+  "docs-site/src/content/docs/workspace/planning/**",
+  "docs-site/src/content/docs/guidelines/programming-principles.md",
+]
+
+exclude = [
+  "docs-site/src/content/docs/reports/**",
+  "docs-site/src/content/docs/design/superseded/**",
+]
