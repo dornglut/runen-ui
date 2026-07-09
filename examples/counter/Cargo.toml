@@ -1,0 +1,17 @@
+[package]
+name = "counter"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+readme.workspace = true
+repository.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+runenui_core = { path = "../../crates/runenui_core" }
+runenui_runtime = { path = "../../crates/runenui_runtime" }
+
+[lints]
+workspace = true

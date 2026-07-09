@@ -21,7 +21,7 @@ The goal is to support application UI, game UI, tools, editors, live preview, an
 
 RunenUI prioritizes explicit Rust APIs, readable element authoring, deterministic state flow, accessibility-aware UI data, and renderer-neutral output.
 
-The primary authoring shape is `element!`, a small Rust UI DSL for nested element trees. The macro is intended to expand into regular `Element` builder calls so the underlying API remains explicit and testable.
+The intended public authoring surface is `element!`. The builder API is the semantic foundation underneath it, so the core model remains explicit, testable, and usable without macros.
 
 ## Target API Preview
 
@@ -42,12 +42,40 @@ fn counter_screen(counter: &Counter) -> Element<CounterAction> {
 }
 ```
 
+## Builder Foundation
+
+The target syntax expands to ordinary builder calls:
+
+```rust
+fn counter_screen(counter: &Counter) -> Element<CounterAction> {
+    column((
+        text("Counter"),
+        text(counter.count.to_string()).id("counter.value"),
+        row((
+            button("-").on_press(CounterAction::Decrement),
+            button("+").on_press(CounterAction::Increment),
+            button("Reset").on_press(CounterAction::Reset),
+        ))
+        .gap(8),
+    ))
+    .gap(8)
+}
+```
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Target API](docs/target-api.md)
 - [Influences](docs/influences.md)
 - [Vocabulary](docs/vocabulary.md)
+
+## Project Maps
+
+- [Crate Map](docs/crate-map.md)
+- [Dependency Map](docs/dependency-map.md)
+- [Status Map](docs/status-map.md)
+- [Cutover Plan](docs/cutover-plan.md)
+- [Legacy Audit](docs/legacy-audit.md)
 
 ## Context Export
 

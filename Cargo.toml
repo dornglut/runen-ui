@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = []
+
+members = [
+    "crates/runenui_core",
+    "crates/runenui_runtime",
+
+    "examples/counter",
+]
 
 [workspace.package]
 version = "1.0.0"
@@ -13,7 +19,6 @@ edition = "2024"
 rust-version = "1.93.0"
 
 [workspace.dependencies]
-
 
 [workspace.lints.clippy]
 all = "warn"
