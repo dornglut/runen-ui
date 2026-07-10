@@ -9,6 +9,7 @@ mod element;
 mod identity;
 mod layout;
 pub mod prelude;
+mod style;
 
 include!("element_macros.rs");
 
@@ -18,3 +19,4 @@ pub use element::{
 };
 pub use identity::{ElementId, ElementKey};
 pub use layout::{Axis, LayoutStyle, Px};
+pub use style::{Color, EdgeInsets, Length, Radius, Spacing};
