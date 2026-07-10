@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+mod computed_style;
 mod element;
 mod identity;
 mod layout;
@@ -13,6 +14,7 @@ mod style;
 
 include!("element_macros.rs");
 
+pub use computed_style::ComputedStyle;
 pub use element::{
     ButtonArgs, ButtonElement, ContainerArgs, ContainerElement, Element, ElementKind, IntoElements,
     TextArgs, TextElement, button, button_with, column, container_with, row, text, text_with,

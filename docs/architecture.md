@@ -103,6 +103,8 @@ Token references and token-backed style values are documented in [Token Referenc
 
 Current token authoring ergonomics are documented in [Token Authoring Ergonomics](architecture/token-authoring-ergonomics.md). The current decision is to use typed Rust expressions through the builder API and `element!` expression attributes before adding shorthand syntax.
 
+The resolved style data model is documented in [Computed Style Model](architecture/computed-style-model.md).
+
 ## Layout
 
 Layout is a distinct runtime phase. Elements express layout intent through properties such as direction, gap, padding, sizing, alignment, and constraints. The runtime computes a `LayoutBox` tree from those inputs.

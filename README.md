@@ -71,6 +71,7 @@ fn counter_screen(counter: &Counter) -> Element<CounterAction> {
 - [Styling Target Architecture](docs/architecture/styling-target.md)
 - [Token Reference Target](docs/architecture/token-reference-target.md)
 - [Token Authoring Ergonomics](docs/architecture/token-authoring-ergonomics.md)
+- [Computed Style Model](docs/architecture/computed-style-model.md)
 
 ## Project Maps
 
