@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod debug;
 mod focus;
 mod input;
 mod node;
@@ -19,6 +20,7 @@ pub use app::{
     ActivationResult, AppRuntime, InputEventResult, KeyboardActivationResult, KeyboardFocusResult,
     PointerActivationResult, PointerFocusResult, UiApp,
 };
+pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
 pub use focus::FocusState;
 pub use input::{
     InputEvent, InputIntent, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint,

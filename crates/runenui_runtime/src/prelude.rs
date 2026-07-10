@@ -1,13 +1,14 @@
 //! Common imports for `RunenUI` runtime users.
 
 pub use crate::{
-    ActivationResult, AppRuntime, FocusState, InputEvent, InputEventResult, InputIntent, Key,
-    KeyModifiers, KeyPhase, KeyboardActivationResult, KeyboardEvent, KeyboardFocusResult,
-    LogicalPoint, LogicalRect, LogicalSize, PointerActivationResult, PointerButton, PointerEvent,
-    PointerFocusResult, PointerPhase, Runtime, RuntimeEvent, RuntimeNodeId, RuntimeNodeRef,
-    RuntimeTreeIndex, SurfaceFrame, SurfaceLayoutMetrics, SurfaceNode, SurfaceNodeKind, Trace,
-    TraceRecord, TraceTarget, UiApp, layout_surface, layout_surface_with_metrics,
-    resolve_pointer_event_target, resolve_pointer_input_event_target,
+    ActivationResult, AppRuntime, DebugSurfaceRenderer, FocusState, InputEvent, InputEventResult,
+    InputIntent, Key, KeyModifiers, KeyPhase, KeyboardActivationResult, KeyboardEvent,
+    KeyboardFocusResult, LogicalPoint, LogicalRect, LogicalSize, PointerActivationResult,
+    PointerButton, PointerEvent, PointerFocusResult, PointerPhase, Runtime, RuntimeEvent,
+    RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, SurfaceFrame, SurfaceLayoutMetrics,
+    SurfaceNode, SurfaceNodeKind, Trace, TraceRecord, TraceTarget, UiApp, layout_surface,
+    layout_surface_with_metrics, render_debug_surface_frame, resolve_pointer_event_target,
+    resolve_pointer_input_event_target,
 };
 
 /// Resolves already-targeted raw input into runtime intents.
