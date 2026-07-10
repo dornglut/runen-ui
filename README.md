@@ -77,6 +77,30 @@ fn counter_screen(counter: &Counter) -> Element<CounterAction> {
 - [Cutover Plan](docs/cutover-plan.md)
 - [Legacy Audit](docs/legacy-audit.md)
 
+## Validation
+
+Format the workspace with:
+
+```powershell
+cargo format
+```
+
+Run the repository baseline with one command:
+
+```powershell
+cargo validate
+```
+
+This runs:
+
+```powershell
+cargo fmt --all --check
+cargo test --workspace
+cargo clippy --workspace --all-targets --locked -- -D warnings
+```
+
+Validation is read-only. It does not apply formatting changes.
+
 ## Context Export
 
 Generated context exports are written to `context/`.

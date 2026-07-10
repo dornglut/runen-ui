@@ -6,6 +6,8 @@ members = [
     "crates/runenui_runtime",
 
     "examples/counter",
+
+    "xtask",
 ]
 
 [workspace.package]
