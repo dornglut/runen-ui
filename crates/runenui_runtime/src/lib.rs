@@ -69,6 +69,36 @@ impl RuntimeNodeId {
     }
 }
 
+/// Trace target for runtime events caused by a specific element.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TraceTarget {
+    runtime_node_id: RuntimeNodeId,
+    authored_id: Option<ElementId>,
+}
+
+impl TraceTarget {
+    /// Creates a trace target from generated runtime identity and optional authored identity.
+    #[must_use]
+    pub const fn new(runtime_node_id: RuntimeNodeId, authored_id: Option<ElementId>) -> Self {
+        Self {
+            runtime_node_id,
+            authored_id,
+        }
+    }
+
+    /// Returns the generated runtime node ID for this target.
+    #[must_use]
+    pub const fn runtime_node_id(&self) -> RuntimeNodeId {
+        self.runtime_node_id
+    }
+
+    /// Returns the optional authored element ID for this target.
+    #[must_use]
+    pub const fn authored_id(&self) -> Option<&ElementId> {
+        self.authored_id.as_ref()
+    }
+}
+
 /// Borrowed runtime node view into the current element tree.
 pub struct RuntimeNodeRef<'a, Action> {
     id: RuntimeNodeId,
@@ -111,6 +141,10 @@ impl<'a, Action> RuntimeNodeRef<'a, Action> {
     #[must_use]
     pub const fn authored_id(&self) -> Option<&'a ElementId> {
         self.element.element_id()
+    }
+
+    fn trace_target(&self) -> TraceTarget {
+        TraceTarget::new(self.id, self.authored_id().cloned())
     }
 }
 
@@ -262,14 +296,15 @@ where
     pub fn activate_node(&mut self, id: RuntimeNodeId) -> ActivationResult {
         let lookup = {
             let index = self.index();
-            index.node(id).map_or(ActivationLookup::NotFound, |node| {
-                activation_lookup(node.element())
-            })
+            index
+                .node(id)
+                .map_or(ActivationLookup::NotFound, |node| activation_lookup(node))
         };
 
         match lookup {
-            ActivationLookup::Action(action) => {
-                self.dispatch(action);
+            ActivationLookup::Action { action, target } => {
+                self.runtime
+                    .dispatch_with_target(action, App::update, App::root, Some(target));
                 ActivationResult::Dispatched
             }
             ActivationLookup::NotFound => ActivationResult::NotFound,
@@ -280,22 +315,27 @@ where
 }
 
 enum ActivationLookup<Action> {
-    Action(Action),
+    Action { action: Action, target: TraceTarget },
     NotFound,
     NotActivatable,
     NoAction,
 }
 
-fn activation_lookup<Action>(element: &Element<Action>) -> ActivationLookup<Action>
+fn activation_lookup<Action>(node: &RuntimeNodeRef<'_, Action>) -> ActivationLookup<Action>
 where
     Action: Clone,
 {
-    match element.kind() {
-        ElementKind::Button(button) => button
-            .on_press()
-            .map_or(ActivationLookup::NoAction, |action| {
-                ActivationLookup::Action(action.clone())
-            }),
+    match node.element().kind() {
+        ElementKind::Button(button) => {
+            button
+                .on_press()
+                .map_or(ActivationLookup::NoAction, |action| {
+                    ActivationLookup::Action {
+                        action: action.clone(),
+                        target: node.trace_target(),
+                    }
+                })
+        }
         ElementKind::Text(_) | ElementKind::Container(_) => ActivationLookup::NotActivatable,
     }
 }
@@ -313,28 +353,69 @@ pub enum RuntimeEvent {
     RootRebuilt,
 }
 
+/// One runtime trace record, with optional element target details.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TraceRecord {
+    event: RuntimeEvent,
+    target: Option<TraceTarget>,
+}
+
+impl TraceRecord {
+    const fn new(event: RuntimeEvent, target: Option<TraceTarget>) -> Self {
+        Self { event, target }
+    }
+
+    /// Returns the coarse runtime event.
+    #[must_use]
+    pub const fn event(&self) -> RuntimeEvent {
+        self.event
+    }
+
+    /// Returns target details for events caused by a specific element.
+    #[must_use]
+    pub const fn target(&self) -> Option<&TraceTarget> {
+        self.target.as_ref()
+    }
+}
+
 /// Ordered runtime trace log.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Trace {
     events: Vec<RuntimeEvent>,
+    records: Vec<TraceRecord>,
 }
 
 impl Trace {
     /// Creates an empty trace log.
     #[must_use]
     pub const fn new() -> Self {
-        Self { events: Vec::new() }
+        Self {
+            events: Vec::new(),
+            records: Vec::new(),
+        }
     }
 
-    /// Appends one runtime event.
+    /// Appends one untargeted runtime event.
     pub fn record(&mut self, event: RuntimeEvent) {
-        self.events.push(event);
+        self.record_with_target(event, None);
     }
 
-    /// Returns the recorded event sequence.
+    /// Appends one runtime event with optional target details.
+    pub fn record_with_target(&mut self, event: RuntimeEvent, target: Option<TraceTarget>) {
+        self.events.push(event);
+        self.records.push(TraceRecord::new(event, target));
+    }
+
+    /// Returns the recorded coarse event sequence.
     #[must_use]
     pub const fn events(&self) -> &[RuntimeEvent] {
         self.events.as_slice()
+    }
+
+    /// Returns the recorded event sequence with target details.
+    #[must_use]
+    pub const fn records(&self) -> &[TraceRecord] {
+        self.records.as_slice()
     }
 }
 
@@ -363,11 +444,24 @@ impl<State, Action> Runtime<State, Action> {
         update: impl FnOnce(&mut State, Action),
         root: impl FnOnce(&State) -> Element<Action>,
     ) {
-        self.trace.record(RuntimeEvent::ActionDispatched);
+        self.dispatch_with_target(action, update, root, None);
+    }
+
+    fn dispatch_with_target(
+        &mut self,
+        action: Action,
+        update: impl FnOnce(&mut State, Action),
+        root: impl FnOnce(&State) -> Element<Action>,
+        target: Option<TraceTarget>,
+    ) {
+        self.trace
+            .record_with_target(RuntimeEvent::ActionDispatched, target.clone());
         update(&mut self.state, action);
-        self.trace.record(RuntimeEvent::StateUpdated);
+        self.trace
+            .record_with_target(RuntimeEvent::StateUpdated, target.clone());
         self.root = root(&self.state);
-        self.trace.record(RuntimeEvent::RootRebuilt);
+        self.trace
+            .record_with_target(RuntimeEvent::RootRebuilt, target);
     }
 
     /// Returns the current application state.

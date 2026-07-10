@@ -2,5 +2,5 @@
 
 pub use crate::{
     ActivationResult, AppRuntime, Runtime, RuntimeEvent, RuntimeNodeId, RuntimeNodeRef,
-    RuntimeTreeIndex, Trace, UiApp,
+    RuntimeTreeIndex, Trace, TraceRecord, TraceTarget, UiApp,
 };
