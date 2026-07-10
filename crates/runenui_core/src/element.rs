@@ -1,6 +1,8 @@
 //! Typed host-neutral UI element tree.
 
-use crate::{Axis, Color, EdgeInsets, ElementId, ElementKey, LayoutStyle, Radius, StyleIntent};
+use crate::{
+    Axis, ColorValue, ElementId, ElementKey, LayoutStyle, RadiusValue, SpacingValue, StyleIntent,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Element<Action> {
@@ -83,31 +85,31 @@ impl<Action> Element<Action> {
     }
 
     #[must_use]
-    pub const fn with_visual_style(mut self, visual_style: StyleIntent) -> Self {
+    pub fn with_visual_style(mut self, visual_style: StyleIntent) -> Self {
         self.visual_style = visual_style;
         self
     }
 
     #[must_use]
-    pub const fn foreground(mut self, foreground: Color) -> Self {
+    pub fn foreground(mut self, foreground: impl Into<ColorValue>) -> Self {
         self.visual_style = self.visual_style.with_foreground(foreground);
         self
     }
 
     #[must_use]
-    pub const fn background(mut self, background: Color) -> Self {
+    pub fn background(mut self, background: impl Into<ColorValue>) -> Self {
         self.visual_style = self.visual_style.with_background(background);
         self
     }
 
     #[must_use]
-    pub fn padding(mut self, padding: impl Into<EdgeInsets>) -> Self {
+    pub fn padding(mut self, padding: impl Into<SpacingValue>) -> Self {
         self.visual_style = self.visual_style.with_padding(padding);
         self
     }
 
     #[must_use]
-    pub fn radius(mut self, radius: impl Into<Radius>) -> Self {
+    pub fn radius(mut self, radius: impl Into<RadiusValue>) -> Self {
         self.visual_style = self.visual_style.with_radius(radius);
         self
     }
@@ -556,7 +558,10 @@ pub fn row<Action>(children: impl IntoElements<Action>) -> Element<Action> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Color, EdgeInsets, Length, Radius, StyleIntent, button};
+    use crate::{
+        Color, ColorValue, EdgeInsets, Length, Radius, RadiusValue, SpacingValue, StyleIntent,
+        button,
+    };
 
     #[test]
     fn elements_default_to_empty_visual_style() {
@@ -574,9 +579,21 @@ mod tests {
             .padding(padding)
             .radius(radius);
 
-        assert_eq!(element.visual_style().foreground(), Some(Color::WHITE));
-        assert_eq!(element.visual_style().background(), Some(Color::BLACK));
-        assert_eq!(element.visual_style().padding(), Some(padding));
-        assert_eq!(element.visual_style().radius(), Some(radius));
+        assert_eq!(
+            element.visual_style().foreground(),
+            Some(&ColorValue::literal(Color::WHITE))
+        );
+        assert_eq!(
+            element.visual_style().background(),
+            Some(&ColorValue::literal(Color::BLACK))
+        );
+        assert_eq!(
+            element.visual_style().padding(),
+            Some(&SpacingValue::literal(padding))
+        );
+        assert_eq!(
+            element.visual_style().radius(),
+            Some(&RadiusValue::literal(radius))
+        );
     }
 }

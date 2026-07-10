@@ -534,12 +534,12 @@ impl From<RadiusToken> for RadiusValue {
 }
 
 /// Authored local visual style intent attached to an element.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleIntent {
-    foreground: Option<Color>,
-    background: Option<Color>,
-    padding: Option<EdgeInsets>,
-    radius: Option<Radius>,
+    foreground: Option<ColorValue>,
+    background: Option<ColorValue>,
+    padding: Option<SpacingValue>,
+    radius: Option<RadiusValue>,
 }
 
 impl StyleIntent {
@@ -553,7 +553,7 @@ impl StyleIntent {
 
     /// Returns whether this style intent contains no local visual values.
     #[must_use]
-    pub const fn is_empty(self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.foreground.is_none()
             && self.background.is_none()
             && self.padding.is_none()
@@ -562,54 +562,66 @@ impl StyleIntent {
 
     /// Sets local foreground color intent.
     #[must_use]
-    pub const fn with_foreground(mut self, foreground: Color) -> Self {
-        self.foreground = Some(foreground);
+    pub fn with_foreground(mut self, foreground: impl Into<ColorValue>) -> Self {
+        self.foreground = Some(foreground.into());
         self
     }
 
     /// Sets local background color intent.
     #[must_use]
-    pub const fn with_background(mut self, background: Color) -> Self {
-        self.background = Some(background);
+    pub fn with_background(mut self, background: impl Into<ColorValue>) -> Self {
+        self.background = Some(background.into());
         self
     }
 
     /// Sets local padding intent.
     #[must_use]
-    pub fn with_padding(mut self, padding: impl Into<EdgeInsets>) -> Self {
+    pub fn with_padding(mut self, padding: impl Into<SpacingValue>) -> Self {
         self.padding = Some(padding.into());
         self
     }
 
     /// Sets local corner radius intent.
     #[must_use]
-    pub fn with_radius(mut self, radius: impl Into<Radius>) -> Self {
+    pub fn with_radius(mut self, radius: impl Into<RadiusValue>) -> Self {
         self.radius = Some(radius.into());
         self
     }
 
     /// Returns local foreground color intent, if present.
     #[must_use]
-    pub const fn foreground(self) -> Option<Color> {
-        self.foreground
+    pub const fn foreground(&self) -> Option<&ColorValue> {
+        match &self.foreground {
+            Some(value) => Some(value),
+            None => None,
+        }
     }
 
     /// Returns local background color intent, if present.
     #[must_use]
-    pub const fn background(self) -> Option<Color> {
-        self.background
+    pub const fn background(&self) -> Option<&ColorValue> {
+        match &self.background {
+            Some(value) => Some(value),
+            None => None,
+        }
     }
 
     /// Returns local padding intent, if present.
     #[must_use]
-    pub const fn padding(self) -> Option<EdgeInsets> {
-        self.padding
+    pub const fn padding(&self) -> Option<&SpacingValue> {
+        match &self.padding {
+            Some(value) => Some(value),
+            None => None,
+        }
     }
 
     /// Returns local corner radius intent, if present.
     #[must_use]
-    pub const fn radius(self) -> Option<Radius> {
-        self.radius
+    pub const fn radius(&self) -> Option<&RadiusValue> {
+        match &self.radius {
+            Some(value) => Some(value),
+            None => None,
+        }
     }
 }
 
@@ -767,16 +779,43 @@ mod tests {
 
     #[test]
     fn style_intent_stores_unresolved_local_visual_values() {
+        let padding = SpacingValue::literal(EdgeInsets::all(Length::px(8.0)));
+        let radius = RadiusValue::literal(Radius::all(Length::px(4.0)));
         let intent = StyleIntent::EMPTY
             .with_foreground(Color::WHITE)
             .with_background(Color::BLACK)
-            .with_padding(EdgeInsets::all(Length::px(8.0)))
-            .with_radius(Radius::all(Length::px(4.0)));
+            .with_padding(padding.clone())
+            .with_radius(radius.clone());
 
         assert!(!intent.is_empty());
-        assert_eq!(intent.foreground(), Some(Color::WHITE));
-        assert_eq!(intent.background(), Some(Color::BLACK));
-        assert_eq!(intent.padding(), Some(EdgeInsets::all(Length::px(8.0))));
-        assert_eq!(intent.radius(), Some(Radius::all(Length::px(4.0))));
+        assert_eq!(
+            intent.foreground(),
+            Some(&ColorValue::literal(Color::WHITE))
+        );
+        assert_eq!(
+            intent.background(),
+            Some(&ColorValue::literal(Color::BLACK))
+        );
+        assert_eq!(intent.padding(), Some(&padding));
+        assert_eq!(intent.radius(), Some(&radius));
+    }
+
+    #[test]
+    fn style_intent_accepts_token_backed_values() {
+        let foreground = ColorValue::token("color.text.primary");
+        let background = ColorValue::token("color.surface");
+        let padding = SpacingValue::token("space.2");
+        let radius = RadiusValue::token("radius.control");
+
+        let intent = StyleIntent::EMPTY
+            .with_foreground(foreground.clone())
+            .with_background(background.clone())
+            .with_padding(padding.clone())
+            .with_radius(radius.clone());
+
+        assert_eq!(intent.foreground(), Some(&foreground));
+        assert_eq!(intent.background(), Some(&background));
+        assert_eq!(intent.padding(), Some(&padding));
+        assert_eq!(intent.radius(), Some(&radius));
     }
 }

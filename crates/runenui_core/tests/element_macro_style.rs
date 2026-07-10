@@ -1,4 +1,7 @@
-use runenui_core::{Color, EdgeInsets, Element, ElementKind, Length, Radius, element};
+use runenui_core::{
+    Color, ColorValue, EdgeInsets, Element, ElementKind, Length, Radius, RadiusValue, SpacingValue,
+    element,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Action {
@@ -15,15 +18,24 @@ fn brace_text_style_attributes_attach_visual_style() {
             radius = { Radius::all(Length::px(2.0)) }
     };
 
-    let visual_style = *element.visual_style();
+    let visual_style = element.visual_style();
 
-    assert_eq!(visual_style.foreground(), Some(Color::WHITE));
-    assert_eq!(visual_style.background(), Some(Color::BLACK));
+    assert_eq!(
+        visual_style.foreground(),
+        Some(&ColorValue::literal(Color::WHITE))
+    );
+    assert_eq!(
+        visual_style.background(),
+        Some(&ColorValue::literal(Color::BLACK))
+    );
     assert_eq!(
         visual_style.padding(),
-        Some(EdgeInsets::all(Length::px(4.0)))
+        Some(&SpacingValue::literal(EdgeInsets::all(Length::px(4.0))))
     );
-    assert_eq!(visual_style.radius(), Some(Radius::all(Length::px(2.0))));
+    assert_eq!(
+        visual_style.radius(),
+        Some(&RadiusValue::literal(Radius::all(Length::px(2.0))))
+    );
 }
 
 #[test]
@@ -48,14 +60,20 @@ fn brace_button_style_attributes_work_inside_container() {
     assert_eq!(children.len(), 2);
 
     let save_button = &children[0];
-    assert_eq!(save_button.visual_style().background(), Some(Color::BLACK));
+    assert_eq!(
+        save_button.visual_style().background(),
+        Some(&ColorValue::literal(Color::BLACK))
+    );
     assert_eq!(
         save_button.visual_style().radius(),
-        Some(Radius::all(Length::px(3.0)))
+        Some(&RadiusValue::literal(Radius::all(Length::px(3.0))))
     );
 
     let status_text = &children[1];
-    assert_eq!(status_text.visual_style().foreground(), Some(Color::WHITE));
+    assert_eq!(
+        status_text.visual_style().foreground(),
+        Some(&ColorValue::literal(Color::WHITE))
+    );
 }
 
 #[test]
@@ -68,13 +86,16 @@ fn function_style_macro_accepts_style_expressions() {
         radius = Radius::all(Length::px(3.0)),
     ));
 
-    assert_eq!(element.visual_style().background(), Some(Color::BLACK));
+    assert_eq!(
+        element.visual_style().background(),
+        Some(&ColorValue::literal(Color::BLACK))
+    );
     assert_eq!(
         element.visual_style().padding(),
-        Some(EdgeInsets::all(Length::px(6.0)))
+        Some(&SpacingValue::literal(EdgeInsets::all(Length::px(6.0))))
     );
     assert_eq!(
         element.visual_style().radius(),
-        Some(Radius::all(Length::px(3.0)))
+        Some(&RadiusValue::literal(Radius::all(Length::px(3.0))))
     );
 }
