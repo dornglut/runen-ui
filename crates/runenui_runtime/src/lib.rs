@@ -12,6 +12,7 @@ mod input;
 mod node;
 pub mod prelude;
 mod runtime;
+mod surface;
 mod trace;
 
 pub use app::{
@@ -25,4 +26,5 @@ pub use input::{
 };
 pub use node::{RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex};
 pub use runtime::Runtime;
+pub use surface::{LogicalRect, LogicalSize, SurfaceFrame, SurfaceNode, SurfaceNodeKind};
 pub use trace::{RuntimeEvent, Trace, TraceRecord, TraceTarget};
