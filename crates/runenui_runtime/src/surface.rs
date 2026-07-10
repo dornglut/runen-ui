@@ -1,8 +1,9 @@
 //! Renderer-facing surface-frame data model.
 //!
 //! Surface frames are host-neutral snapshots that later layout and renderer
-//! stages can consume. This module defines the surface vocabulary and a small
-//! row/column layout pass. It does not perform hit testing or render pixels.
+//! stages can consume. This module defines the surface vocabulary, a small
+//! row/column layout pass, and bounds hit testing. It does not translate host
+//! input or render pixels.
 
 use runenui_core::{Axis, Element, ElementId, ElementKind};
 
@@ -89,6 +90,28 @@ impl LogicalRect {
     #[must_use]
     pub const fn height(&self) -> f32 {
         self.size.height()
+    }
+
+    /// Returns the right edge.
+    #[must_use]
+    pub fn max_x(&self) -> f32 {
+        self.x() + self.width()
+    }
+
+    /// Returns the bottom edge.
+    #[must_use]
+    pub fn max_y(&self) -> f32 {
+        self.y() + self.height()
+    }
+
+    /// Returns whether the point is inside this rectangle.
+    ///
+    /// Containment is left/top inclusive and right/bottom exclusive. This makes
+    /// adjacent bounds deterministic during hit testing.
+    #[must_use]
+    pub fn contains(&self, point: LogicalPoint) -> bool {
+        (self.x()..self.max_x()).contains(&point.x())
+            && (self.y()..self.max_y()).contains(&point.y())
     }
 }
 
@@ -239,6 +262,24 @@ impl SurfaceFrame {
     #[must_use]
     pub fn root(&self) -> Option<&SurfaceNode> {
         self.node(RuntimeNodeId::ROOT)
+    }
+
+    /// Returns the topmost surface node containing the provided point.
+    ///
+    /// Nodes are checked in reverse surface order so later/deeper nodes win over
+    /// parent containers whose bounds also contain the point.
+    #[must_use]
+    pub fn hit_test(&self, point: LogicalPoint) -> Option<&SurfaceNode> {
+        self.nodes
+            .iter()
+            .rev()
+            .find(|node| node.bounds().contains(point))
+    }
+
+    /// Returns the runtime node ID for the topmost node containing the point.
+    #[must_use]
+    pub fn hit_test_id(&self, point: LogicalPoint) -> Option<RuntimeNodeId> {
+        self.hit_test(point).map(SurfaceNode::id)
     }
 }
 
