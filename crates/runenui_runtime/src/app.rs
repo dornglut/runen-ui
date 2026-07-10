@@ -80,6 +80,17 @@ pub enum PointerFocusResult {
     Ignored,
 }
 
+/// Result of applying pointer activation policy to a pointer event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PointerActivationResult {
+    /// A targeted runtime node was activated and produced the provided activation result.
+    Handled(ActivationResult),
+    /// The event requested activation, but did not carry a resolved target.
+    NoTarget,
+    /// The event is not handled by pointer activation policy.
+    Ignored,
+}
+
 /// Runtime wrapper that binds an app's root and update functions once.
 pub struct AppRuntime<App>
 where
@@ -348,6 +359,23 @@ where
         };
 
         KeyboardActivationResult::Handled(self.activate_node(node_id))
+    }
+
+    /// Applies pointer activation policy to one already-targeted pointer event.
+    ///
+    /// Pressed primary pointer events activate the resolved target. Other pointer
+    /// events are ignored.
+    pub fn handle_pointer_activation(&mut self, event: &PointerEvent) -> PointerActivationResult {
+        if event.phase() != PointerPhase::Pressed || event.button() != Some(PointerButton::Primary)
+        {
+            return PointerActivationResult::Ignored;
+        }
+
+        let Some(node_id) = event.target() else {
+            return PointerActivationResult::NoTarget;
+        };
+
+        PointerActivationResult::Handled(self.activate_node(node_id))
     }
 }
 

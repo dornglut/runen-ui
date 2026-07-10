@@ -2,9 +2,10 @@
 
 pub use crate::{
     ActivationResult, AppRuntime, FocusState, InputEvent, InputIntent, Key, KeyModifiers, KeyPhase,
-    KeyboardActivationResult, KeyboardEvent, KeyboardFocusResult, LogicalPoint, PointerButton,
-    PointerEvent, PointerFocusResult, PointerPhase, Runtime, RuntimeEvent, RuntimeNodeId,
-    RuntimeNodeRef, RuntimeTreeIndex, Trace, TraceRecord, TraceTarget, UiApp,
+    KeyboardActivationResult, KeyboardEvent, KeyboardFocusResult, LogicalPoint,
+    PointerActivationResult, PointerButton, PointerEvent, PointerFocusResult, PointerPhase,
+    Runtime, RuntimeEvent, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, Trace, TraceRecord,
+    TraceTarget, UiApp,
 };
 
 /// Resolves already-targeted raw input into runtime intents.
