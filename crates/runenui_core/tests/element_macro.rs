@@ -15,8 +15,37 @@ fn assert_gap(element: &Element<Action>, expected: f32) {
     );
 }
 
+fn function_counter_tree() -> Element<Action> {
+    element! {
+        column(gap = 8_u16, [
+            text("Counter"),
+            text("0", id = "counter.value"),
+            row(gap = 8_u16, [
+                button("-", id = "counter.decrement", action = Action::Decrement),
+                button("+", id = "counter.increment", action = Action::Increment),
+                button("Reset", id = "counter.reset", action = Action::Reset),
+            ]),
+        ])
+    }
+}
+
+fn brace_counter_tree() -> Element<Action> {
+    element! {
+        column gap=8_u16 {
+            text "Counter"
+            text "0" id="counter.value"
+
+            row gap=8_u16 {
+                button "-" id="counter.decrement" action=Action::Decrement
+                button "+" id="counter.increment" action=Action::Increment
+                button "Reset" id="counter.reset" action=Action::Reset
+            }
+        }
+    }
+}
+
 #[test]
-fn element_macro_builds_text_with_identity() -> Result<(), &'static str> {
+fn element_macro_builds_function_text_with_identity() -> Result<(), &'static str> {
     let element: Element<Action> =
         element! { text("Counter", id = "counter.title", key = "title-key") };
 
@@ -38,7 +67,29 @@ fn element_macro_builds_text_with_identity() -> Result<(), &'static str> {
 }
 
 #[test]
-fn element_macro_builds_button_with_action_and_enabled_state() -> Result<(), &'static str> {
+fn element_macro_builds_brace_text_with_identity() -> Result<(), &'static str> {
+    let element: Element<Action> = element! { text "Counter" id="counter.title" key="title-key" };
+
+    assert_eq!(
+        element.element_id().map(runenui_core::ElementId::as_str),
+        Some("counter.title"),
+    );
+    assert_eq!(
+        element.element_key().map(runenui_core::ElementKey::as_str),
+        Some("title-key"),
+    );
+
+    let ElementKind::Text(text) = element.kind() else {
+        return Err("expected text element");
+    };
+
+    assert_eq!(text.content(), "Counter");
+    Ok(())
+}
+
+#[test]
+fn element_macro_builds_function_button_with_action_and_enabled_state() -> Result<(), &'static str>
+{
     let element = element! {
         button(
             "+",
@@ -69,18 +120,33 @@ fn element_macro_builds_button_with_action_and_enabled_state() -> Result<(), &'s
 }
 
 #[test]
-fn element_macro_builds_nested_counter_tree() -> Result<(), &'static str> {
+fn element_macro_builds_brace_button_with_action_and_enabled_state() -> Result<(), &'static str> {
     let element = element! {
-        column(gap = 8_u16, [
-            text("Counter"),
-            text("0", id = "counter.value"),
-            row(gap = 8_u16, [
-                button("-", id = "counter.decrement", action = Action::Decrement),
-                button("+", id = "counter.increment", action = Action::Increment),
-                button("Reset", id = "counter.reset", action = Action::Reset),
-            ]),
-        ])
+        button "+" id="counter.increment" key="increment-key" enabled=false action=Action::Increment
     };
+
+    let ElementKind::Button(button) = element.kind() else {
+        return Err("expected button element");
+    };
+
+    assert_eq!(button.label(), "+");
+    assert!(!button.enabled());
+    assert_eq!(button.on_press(), Some(&Action::Increment));
+    assert_eq!(
+        element.element_id().map(runenui_core::ElementId::as_str),
+        Some("counter.increment"),
+    );
+    assert_eq!(
+        element.element_key().map(runenui_core::ElementKey::as_str),
+        Some("increment-key"),
+    );
+
+    Ok(())
+}
+
+#[test]
+fn element_macro_builds_nested_counter_tree() -> Result<(), &'static str> {
+    let element = brace_counter_tree();
 
     assert_gap(&element, 8.0);
 
@@ -100,4 +166,9 @@ fn element_macro_builds_nested_counter_tree() -> Result<(), &'static str> {
     assert_gap(&root.children()[2], 8.0);
 
     Ok(())
+}
+
+#[test]
+fn brace_and_function_syntax_build_equivalent_counter_trees() {
+    assert_eq!(brace_counter_tree(), function_counter_tree());
 }
