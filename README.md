@@ -68,6 +68,9 @@ fn counter_screen(counter: &Counter) -> Element<CounterAction> {
 - [Target API](docs/target-api.md)
 - [Influences](docs/influences.md)
 - [Vocabulary](docs/vocabulary.md)
+- [Styling Target Architecture](docs/architecture/styling-target.md)
+- [Token Reference Target](docs/architecture/token-reference-target.md)
+- [Token Authoring Ergonomics](docs/architecture/token-authoring-ergonomics.md)
 
 ## Project Maps
 

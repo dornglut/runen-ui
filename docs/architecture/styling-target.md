@@ -20,7 +20,7 @@ Element tree
 
 The final styling system should not be a renderer API, a CSS clone, or a windowing concern.
 
-For the token-reference target that follows this document, see [Token Reference Target](token-reference-target.md).
+For the token-reference target that follows this document, see [Token Reference Target](token-reference-target.md). For the current token authoring decision, see [Token Authoring Ergonomics](token-authoring-ergonomics.md).
 
 ## Goals
 
@@ -131,13 +131,14 @@ Token references should be typed where possible. A color token should not be acc
 Target shape:
 
 ```rust
-ColorValue::Color(Color::rgba(...))
+ColorValue::literal(Color::rgba(...))
+ColorValue::token("color.text.primary")
 ColorValue::Token(ColorToken::new("color.text.primary"))
 ```
 
 or an equivalent typed design that preserves the same constraints.
 
-Detailed token-reference decisions are tracked in [Token Reference Target](token-reference-target.md).
+Detailed token-reference decisions are tracked in [Token Reference Target](token-reference-target.md). Current authoring ergonomics are tracked in [Token Authoring Ergonomics](token-authoring-ergonomics.md).
 
 ### 3. Element-local style intent
 
@@ -250,12 +251,23 @@ button("Save")
     .on_press(AppAction::Save)
 ```
 
-Direct style overrides should remain possible:
+Direct style overrides should remain possible. Current token-backed authoring uses typed values rather than string shorthand:
 
 ```rust
 button("Save")
-    .background("color.action.primary")
-    .radius("radius.control")
+    .background(ColorToken::new("color.action.primary"))
+    .radius(RadiusToken::new("radius.control"))
+```
+
+The same model can be authored through `element!` expression attributes:
+
+```rust
+element! {
+    button "Save"
+        action=AppAction::Save
+        background = { ColorToken::new("color.action.primary") }
+        radius = { RadiusToken::new("radius.control") }
+}
 ```
 
 The exact API names are not fixed by this document. The target is the separation of concerns:

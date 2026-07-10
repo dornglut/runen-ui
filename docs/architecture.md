@@ -99,6 +99,10 @@ Styling is a distinct data pipeline between element authoring and layout/render 
 
 The target styling architecture is documented in [Styling Target Architecture](architecture/styling-target.md).
 
+Token references and token-backed style values are documented in [Token Reference Target](architecture/token-reference-target.md).
+
+Current token authoring ergonomics are documented in [Token Authoring Ergonomics](architecture/token-authoring-ergonomics.md). The current decision is to use typed Rust expressions through the builder API and `element!` expression attributes before adding shorthand syntax.
+
 ## Layout
 
 Layout is a distinct runtime phase. Elements express layout intent through properties such as direction, gap, padding, sizing, alignment, and constraints. The runtime computes a `LayoutBox` tree from those inputs.
