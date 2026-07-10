@@ -8,6 +8,10 @@ use crate::{
     FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, LogicalSize, PointerButton, PointerEvent,
     PointerPhase, Runtime, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, SurfaceFrame,
     SurfaceLayoutMetrics, Trace, TraceTarget, layout_surface, layout_surface_with_metrics,
+    policy::{
+        InputEventResult, KeyboardActivationResult, KeyboardFocusResult, PointerActivationResult,
+        PointerFocusResult,
+    },
 };
 
 /// Application contract used by [`AppRuntime`].
@@ -42,72 +46,6 @@ pub enum ActivationResult {
     Disabled,
     /// The requested element exists on a button, but the button has no action.
     NoAction,
-}
-
-/// Result of applying keyboard focus policy to a keyboard event.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum KeyboardFocusResult {
-    /// Focus moved to the provided runtime node ID.
-    Moved(RuntimeNodeId),
-    /// The event requested focus movement, but the current tree has no focusable node.
-    NoFocusableNode,
-    /// The event is not handled by keyboard focus policy.
-    Ignored,
-}
-
-/// Result of applying keyboard activation policy to a keyboard event.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum KeyboardActivationResult {
-    /// A focused runtime node was activated and produced the provided activation result.
-    Handled(ActivationResult),
-    /// The event requested activation, but no runtime node is focused.
-    NoFocusedNode,
-    /// The event is not handled by keyboard activation policy.
-    Ignored,
-}
-
-/// Result of applying pointer focus policy to a pointer event.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PointerFocusResult {
-    /// Focus moved to the provided runtime node ID.
-    Moved(RuntimeNodeId),
-    /// The event requested focus movement, but did not carry a resolved target.
-    NoTarget,
-    /// The resolved target is not present in the current tree.
-    NotFound,
-    /// The resolved target exists, but is not focusable.
-    NotFocusable,
-    /// The event is not handled by pointer focus policy.
-    Ignored,
-}
-
-/// Result of applying pointer activation policy to a pointer event.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PointerActivationResult {
-    /// A targeted runtime node was activated and produced the provided activation result.
-    Handled(ActivationResult),
-    /// The event requested activation, but did not carry a resolved target.
-    NoTarget,
-    /// The event is not handled by pointer activation policy.
-    Ignored,
-}
-
-/// Result of applying runtime input policy to one input event.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InputEventResult {
-    /// Pointer policy ran focus handling first, then activation handling.
-    Pointer {
-        /// Result of pointer focus policy.
-        focus: PointerFocusResult,
-        /// Result of pointer activation policy.
-        activation: PointerActivationResult,
-    },
-    /// Keyboard focus policy handled the event.
-    KeyboardFocus(KeyboardFocusResult),
-    /// Keyboard activation policy handled the event.
-    KeyboardActivation(KeyboardActivationResult),
-    /// No runtime input policy handled the event.
-    Ignored,
 }
 
 /// Runtime wrapper that binds an app's root and update functions once.

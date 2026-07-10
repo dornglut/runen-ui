@@ -11,15 +11,13 @@ mod debug;
 mod focus;
 mod input;
 mod node;
+mod policy;
 pub mod prelude;
 mod runtime;
 mod surface;
 mod trace;
 
-pub use app::{
-    ActivationResult, AppRuntime, InputEventResult, KeyboardActivationResult, KeyboardFocusResult,
-    PointerActivationResult, PointerFocusResult, UiApp,
-};
+pub use app::{ActivationResult, AppRuntime, UiApp};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
 pub use focus::FocusState;
 pub use input::{
@@ -28,6 +26,10 @@ pub use input::{
     resolve_pointer_input_event_target,
 };
 pub use node::{RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex};
+pub use policy::{
+    InputEventResult, KeyboardActivationResult, KeyboardFocusResult, PointerActivationResult,
+    PointerFocusResult,
+};
 pub use runtime::Runtime;
 pub use surface::{
     LogicalRect, LogicalSize, SurfaceFrame, SurfaceLayoutMetrics, SurfaceNode, SurfaceNodeKind,
