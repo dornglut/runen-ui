@@ -1,6 +1,6 @@
 //! Runtime input vocabulary.
 
-use crate::RuntimeNodeId;
+use crate::{RuntimeNodeId, SurfaceFrame};
 
 /// Logical position in UI coordinate space.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -179,6 +179,13 @@ impl PointerEvent {
         }
     }
 
+    /// Returns this pointer event with a replaced runtime target.
+    #[must_use]
+    pub const fn with_target(mut self, target: Option<RuntimeNodeId>) -> Self {
+        self.target = target;
+        self
+    }
+
     /// Returns the pointer phase.
     #[must_use]
     pub const fn phase(&self) -> PointerPhase {
@@ -309,4 +316,16 @@ impl InputIntent {
     pub const fn activate_node(id: RuntimeNodeId) -> Self {
         Self::ActivateNode(id)
     }
+}
+
+/// Returns a pointer event targeted by hit testing its position against a surface frame.
+#[must_use]
+pub fn resolve_pointer_event_target(frame: &SurfaceFrame, event: PointerEvent) -> PointerEvent {
+    event.with_target(frame.hit_test_id(event.position()))
+}
+
+/// Returns a pointer input event targeted by hit testing its position against a surface frame.
+#[must_use]
+pub fn resolve_pointer_input_event_target(frame: &SurfaceFrame, event: PointerEvent) -> InputEvent {
+    InputEvent::Pointer(resolve_pointer_event_target(frame, event))
 }

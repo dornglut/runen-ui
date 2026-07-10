@@ -1,8 +1,8 @@
 //! Headless runtime for `RunenUI`.
 //!
-//! This crate owns typed action delivery, update calls, root rebuilding, and
-//! trace recording. Input dispatch, accessibility extraction, and runtime
-//! surface-frame publication remain future runtime slices.
+//! This crate owns typed action delivery, update calls, root rebuilding, input
+//! policy, trace recording, and renderer-facing surface-frame publication.
+//! Accessibility extraction remains a future runtime slice.
 
 #![forbid(unsafe_code)]
 
@@ -22,7 +22,8 @@ pub use app::{
 pub use focus::FocusState;
 pub use input::{
     InputEvent, InputIntent, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint,
-    PointerButton, PointerEvent, PointerPhase,
+    PointerButton, PointerEvent, PointerPhase, resolve_pointer_event_target,
+    resolve_pointer_input_event_target,
 };
 pub use node::{RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex};
 pub use runtime::Runtime;

@@ -7,6 +7,7 @@ pub use crate::{
     PointerFocusResult, PointerPhase, Runtime, RuntimeEvent, RuntimeNodeId, RuntimeNodeRef,
     RuntimeTreeIndex, SurfaceFrame, SurfaceLayoutMetrics, SurfaceNode, SurfaceNodeKind, Trace,
     TraceRecord, TraceTarget, UiApp, layout_surface, layout_surface_with_metrics,
+    resolve_pointer_event_target, resolve_pointer_input_event_target,
 };
 
 /// Resolves already-targeted raw input into runtime intents.
