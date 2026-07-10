@@ -5,99 +5,13 @@
 //! activation, trace recording, surface-frame publication, and debug surface
 //! rendering.
 
-use runenui_core::{Element, element};
-use runenui_runtime::{AppRuntime, LogicalSize, UiApp, render_debug_surface_frame};
+mod app;
+mod ui;
 
-const WIN_COUNT: i32 = 10;
+use app::{Counter, CounterApp, WIN_COUNT};
+use runenui_runtime::{AppRuntime, LogicalSize, render_debug_surface_frame};
+
 const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(240.0, 160.0);
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct Counter {
-    count: i32,
-}
-
-impl Counter {
-    const fn new() -> Self {
-        Self { count: 0 }
-    }
-
-    const fn has_won(&self) -> bool {
-        self.count >= WIN_COUNT
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CounterAction {
-    Decrement,
-    Increment,
-    Reset,
-}
-
-struct CounterApp;
-
-impl UiApp for CounterApp {
-    type State = Counter;
-    type Action = CounterAction;
-
-    fn root(state: &Self::State) -> Element<Self::Action> {
-        root(state)
-    }
-
-    fn update(state: &mut Self::State, action: Self::Action) {
-        update(state, action);
-    }
-}
-
-struct CounterScreen;
-
-impl CounterScreen {
-    fn root(counter: &Counter) -> Element<CounterAction> {
-        element! {
-            column gap=8_u16 {
-                text "Counter" id="counter.title"
-                text { counter.count.to_string() } id="counter.value"
-
-                row gap=8_u16 {
-                    button "-" id="counter.decrement" action=CounterAction::Decrement
-                    button "+" id="counter.increment" action=CounterAction::Increment
-                    button "Reset" id="counter.reset" action=CounterAction::Reset
-                }
-            }
-        }
-    }
-}
-
-struct WinScreen;
-
-impl WinScreen {
-    fn root(counter: &Counter) -> Element<CounterAction> {
-        let count = counter.count;
-
-        element! {
-            column gap=8_u16 {
-                text "You win" id="counter.win.title"
-                text { format!("Count: {count}") } id="counter.value"
-                button "Reset" id="counter.reset" action=CounterAction::Reset
-            }
-        }
-    }
-}
-
-fn root(counter: &Counter) -> Element<CounterAction> {
-    if counter.has_won() {
-        WinScreen::root(counter)
-    } else {
-        CounterScreen::root(counter)
-    }
-}
-
-const fn update(counter: &mut Counter, action: CounterAction) {
-    match action {
-        CounterAction::Decrement => counter.count -= 1,
-        CounterAction::Increment => counter.count += 1,
-        CounterAction::Reset => counter.count = 0,
-    }
-}
 
 fn debug_surface(runtime: &AppRuntime<CounterApp>) -> String {
     let frame = runtime.surface_frame(EXAMPLE_SURFACE_SIZE);
@@ -132,9 +46,12 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppRuntime, Counter, CounterAction, CounterApp, WIN_COUNT, debug_surface, root};
     use runenui_core::ElementKind;
-    use runenui_runtime::ActivationResult;
+    use runenui_runtime::{ActivationResult, AppRuntime};
+
+    use crate::app::{Counter, CounterAction, CounterApp, WIN_COUNT};
+    use crate::debug_surface;
+    use crate::ui::root;
 
     fn root_text(counter: &Counter) -> Result<String, &'static str> {
         let root = root(counter);
