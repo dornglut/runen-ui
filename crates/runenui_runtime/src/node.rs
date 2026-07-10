@@ -1,6 +1,6 @@
 //! Runtime node identity and indexing.
 
-use runenui_core::{Element, ElementId, ElementKind};
+use runenui_core::{Element, ElementId, ElementKey, ElementKind};
 
 use crate::TraceTarget;
 
@@ -71,6 +71,12 @@ impl<'a, Action> RuntimeNodeRef<'a, Action> {
     #[must_use]
     pub const fn authored_id(&self) -> Option<&'a ElementId> {
         self.element.element_id()
+    }
+
+    /// Returns the optional authored element key.
+    #[must_use]
+    pub const fn element_key(&self) -> Option<&'a ElementKey> {
+        self.element.element_key()
     }
 
     /// Returns whether this node can receive focus in the current tree.

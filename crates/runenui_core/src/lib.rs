@@ -6,11 +6,13 @@
 #![forbid(unsafe_code)]
 
 mod element_id;
+mod element_key;
 mod layout;
 pub mod prelude;
 mod tree;
 
 pub use element_id::ElementId;
+pub use element_key::ElementKey;
 pub use layout::{Axis, LayoutStyle, Px};
 pub use tree::{
     ButtonElement, ContainerElement, Element, ElementKind, IntoElements, TextElement, button,

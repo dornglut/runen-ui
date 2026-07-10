@@ -1,10 +1,11 @@
 //! Typed host-neutral UI element tree.
 
-use crate::{Axis, ElementId, LayoutStyle};
+use crate::{Axis, ElementId, ElementKey, LayoutStyle};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Element<Action> {
     id: Option<ElementId>,
+    key: Option<ElementKey>,
     style: LayoutStyle,
     kind: ElementKind<Action>,
 }
@@ -14,6 +15,7 @@ impl<Action> Element<Action> {
     pub fn text(content: impl Into<String>) -> Self {
         Self {
             id: None,
+            key: None,
             style: LayoutStyle::default(),
             kind: ElementKind::Text(TextElement::new(content)),
         }
@@ -23,6 +25,7 @@ impl<Action> Element<Action> {
     pub fn button(label: impl Into<String>) -> Self {
         Self {
             id: None,
+            key: None,
             style: LayoutStyle::default(),
             kind: ElementKind::Button(ButtonElement::new(label)),
         }
@@ -32,6 +35,7 @@ impl<Action> Element<Action> {
     pub fn container(axis: Axis, children: impl IntoElements<Action>) -> Self {
         Self {
             id: None,
+            key: None,
             style: LayoutStyle::default(),
             kind: ElementKind::Container(ContainerElement::new(axis, children)),
         }
@@ -40,6 +44,12 @@ impl<Action> Element<Action> {
     #[must_use]
     pub fn id(mut self, id: impl Into<ElementId>) -> Self {
         self.id = Some(id.into());
+        self
+    }
+
+    #[must_use]
+    pub fn key(mut self, key: impl Into<ElementKey>) -> Self {
+        self.key = Some(key.into());
         self
     }
 
@@ -73,6 +83,11 @@ impl<Action> Element<Action> {
     #[must_use]
     pub const fn element_id(&self) -> Option<&ElementId> {
         self.id.as_ref()
+    }
+
+    #[must_use]
+    pub const fn element_key(&self) -> Option<&ElementKey> {
+        self.key.as_ref()
     }
 
     #[must_use]
