@@ -15,6 +15,6 @@ pub use element_id::ElementId;
 pub use element_key::ElementKey;
 pub use layout::{Axis, LayoutStyle, Px};
 pub use tree::{
-    ButtonElement, ContainerElement, Element, ElementKind, IntoElements, TextElement, button,
-    column, row, text,
+    ButtonArgs, ButtonElement, ContainerArgs, ContainerElement, Element, ElementKind, IntoElements,
+    TextArgs, TextElement, button, button_with, column, container_with, row, text, text_with,
 };
