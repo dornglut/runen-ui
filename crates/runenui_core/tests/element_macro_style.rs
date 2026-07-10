@@ -1,6 +1,6 @@
 use runenui_core::{
-    Color, ColorValue, EdgeInsets, Element, ElementKind, Length, Radius, RadiusValue, SpacingValue,
-    element,
+    Color, ColorToken, ColorValue, EdgeInsets, Element, ElementKind, Length, Radius, RadiusToken,
+    RadiusValue, SpacingToken, SpacingValue, button, element,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -97,5 +97,83 @@ fn function_style_macro_accepts_style_expressions() {
     assert_eq!(
         element.visual_style().radius(),
         Some(&RadiusValue::literal(Radius::all(Length::px(3.0))))
+    );
+}
+
+#[test]
+fn builder_style_methods_accept_token_backed_values() {
+    let element = button::<Action>("Save")
+        .foreground(ColorToken::new("color.text.primary"))
+        .background(ColorValue::token("color.surface"))
+        .padding(SpacingToken::new("space.2"))
+        .radius(RadiusToken::new("radius.control"));
+
+    assert_eq!(
+        element.visual_style().foreground(),
+        Some(&ColorValue::token("color.text.primary"))
+    );
+    assert_eq!(
+        element.visual_style().background(),
+        Some(&ColorValue::token("color.surface"))
+    );
+    assert_eq!(
+        element.visual_style().padding(),
+        Some(&SpacingValue::token("space.2"))
+    );
+    assert_eq!(
+        element.visual_style().radius(),
+        Some(&RadiusValue::token("radius.control"))
+    );
+}
+
+#[test]
+fn brace_macro_accepts_token_backed_style_expressions() {
+    let element: Element<()> = element! {
+        text "Token label"
+            foreground = { ColorToken::new("color.text.primary") }
+            background = { ColorValue::token("color.surface") }
+            padding = { SpacingToken::new("space.2") }
+            radius = { RadiusToken::new("radius.control") }
+    };
+
+    assert_eq!(
+        element.visual_style().foreground(),
+        Some(&ColorValue::token("color.text.primary"))
+    );
+    assert_eq!(
+        element.visual_style().background(),
+        Some(&ColorValue::token("color.surface"))
+    );
+    assert_eq!(
+        element.visual_style().padding(),
+        Some(&SpacingValue::token("space.2"))
+    );
+    assert_eq!(
+        element.visual_style().radius(),
+        Some(&RadiusValue::token("radius.control"))
+    );
+}
+
+#[test]
+fn function_style_macro_accepts_token_backed_style_expressions() {
+    let element: Element<Action> = element!(button(
+        "Save",
+        action = Action::Save,
+        background = ColorToken::new("color.surface"),
+        padding = SpacingToken::new("space.2"),
+        radius = RadiusToken::new("radius.control"),
+    ));
+
+    assert_eq!(
+        element.visual_style().background(),
+        Some(&ColorValue::token("color.surface"))
+    );
+    assert_eq!(
+        element.visual_style().padding(),
+        Some(&SpacingValue::token("space.2"))
+    );
+    assert_eq!(
+        element.visual_style().radius(),
+        Some(&RadiusValue::token("radius.control"))
     );
 }
