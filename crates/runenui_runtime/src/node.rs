@@ -73,6 +73,15 @@ impl<'a, Action> RuntimeNodeRef<'a, Action> {
         self.element.element_id()
     }
 
+    /// Returns whether this node can receive focus in the current tree.
+    #[must_use]
+    pub const fn is_focusable(&self) -> bool {
+        match self.element.kind() {
+            ElementKind::Button(button) => button.enabled(),
+            ElementKind::Text(_) | ElementKind::Container(_) => false,
+        }
+    }
+
     pub(crate) fn trace_target(&self) -> TraceTarget {
         TraceTarget::new(self.id, self.authored_id().cloned())
     }
@@ -113,6 +122,41 @@ impl<'a, Action> RuntimeTreeIndex<'a, Action> {
     #[must_use]
     pub const fn nodes(&self) -> &[RuntimeNodeRef<'a, Action>] {
         self.nodes.as_slice()
+    }
+
+    /// Returns all focusable runtime nodes in traversal order.
+    pub fn focusable_nodes(&self) -> impl Iterator<Item = &RuntimeNodeRef<'a, Action>> {
+        self.nodes.iter().filter(|node| node.is_focusable())
+    }
+
+    /// Returns the first focusable node in traversal order.
+    #[must_use]
+    pub fn first_focusable_node(&self) -> Option<&RuntimeNodeRef<'a, Action>> {
+        self.focusable_nodes().next()
+    }
+
+    /// Returns the last focusable node in traversal order.
+    #[must_use]
+    pub fn last_focusable_node(&self) -> Option<&RuntimeNodeRef<'a, Action>> {
+        self.focusable_nodes().last()
+    }
+
+    /// Returns the next focusable node after the provided runtime node ID.
+    #[must_use]
+    pub fn next_focusable_after(&self, id: RuntimeNodeId) -> Option<&RuntimeNodeRef<'a, Action>> {
+        self.focusable_nodes()
+            .find(|node| node.id().as_usize() > id.as_usize())
+    }
+
+    /// Returns the previous focusable node before the provided runtime node ID.
+    #[must_use]
+    pub fn previous_focusable_before(
+        &self,
+        id: RuntimeNodeId,
+    ) -> Option<&RuntimeNodeRef<'a, Action>> {
+        self.focusable_nodes()
+            .take_while(|node| node.id().as_usize() < id.as_usize())
+            .last()
     }
 
     /// Returns the node with the generated runtime node ID.

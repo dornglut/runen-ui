@@ -75,15 +75,80 @@ where
         RuntimeTreeIndex::new(self.root())
     }
 
-    /// Sets focus to an existing runtime node in the current tree.
+    /// Sets focus to a focusable runtime node in the current tree.
     ///
-    /// Returns `false` when the node ID is not present in the current tree.
+    /// Returns `false` when the node ID is not present or is not focusable.
     pub fn set_focus(&mut self, id: RuntimeNodeId) -> bool {
-        if self.index().node(id).is_some() {
+        if matches!(self.index().node(id), Some(node) if node.is_focusable()) {
             self.runtime.set_focus(id);
             true
         } else {
             false
+        }
+    }
+
+    /// Focuses the first focusable runtime node in traversal order.
+    pub fn focus_first(&mut self) -> Option<RuntimeNodeId> {
+        let node_id = self.index().first_focusable_node().map(RuntimeNodeRef::id);
+        self.apply_focus_result(node_id)
+    }
+
+    /// Focuses the last focusable runtime node in traversal order.
+    pub fn focus_last(&mut self) -> Option<RuntimeNodeId> {
+        let node_id = self.index().last_focusable_node().map(RuntimeNodeRef::id);
+        self.apply_focus_result(node_id)
+    }
+
+    /// Focuses the next focusable runtime node, wrapping to the first node.
+    ///
+    /// If there is no focused node, this focuses the first focusable node.
+    pub fn focus_next(&mut self) -> Option<RuntimeNodeId> {
+        let node_id = {
+            let index = self.index();
+            self.focus().focused_node().map_or_else(
+                || index.first_focusable_node().map(RuntimeNodeRef::id),
+                |current| {
+                    index
+                        .next_focusable_after(current)
+                        .or_else(|| index.first_focusable_node())
+                        .map(RuntimeNodeRef::id)
+                },
+            )
+        };
+
+        self.apply_focus_result(node_id)
+    }
+
+    /// Focuses the previous focusable runtime node, wrapping to the last node.
+    ///
+    /// If there is no focused node, this focuses the last focusable node.
+    pub fn focus_previous(&mut self) -> Option<RuntimeNodeId> {
+        let node_id = {
+            let index = self.index();
+            self.focus().focused_node().map_or_else(
+                || index.last_focusable_node().map(RuntimeNodeRef::id),
+                |current| {
+                    index
+                        .previous_focusable_before(current)
+                        .or_else(|| index.last_focusable_node())
+                        .map(RuntimeNodeRef::id)
+                },
+            )
+        };
+
+        self.apply_focus_result(node_id)
+    }
+
+    const fn apply_focus_result(
+        &mut self,
+        node_id: Option<RuntimeNodeId>,
+    ) -> Option<RuntimeNodeId> {
+        if let Some(node_id) = node_id {
+            self.runtime.set_focus(node_id);
+            Some(node_id)
+        } else {
+            self.runtime.clear_focus();
+            None
         }
     }
 
