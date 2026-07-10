@@ -15,7 +15,7 @@ mod runtime;
 mod trace;
 
 pub use app::{
-    ActivationResult, AppRuntime, KeyboardActivationResult, KeyboardFocusResult,
+    ActivationResult, AppRuntime, InputEventResult, KeyboardActivationResult, KeyboardFocusResult,
     PointerActivationResult, PointerFocusResult, UiApp,
 };
 pub use focus::FocusState;

@@ -5,8 +5,8 @@ use core::marker::PhantomData;
 use runenui_core::{Element, ElementKind};
 
 use crate::{
-    FocusState, Key, KeyPhase, KeyboardEvent, PointerButton, PointerEvent, PointerPhase, Runtime,
-    RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, Trace, TraceTarget,
+    FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, PointerButton, PointerEvent,
+    PointerPhase, Runtime, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, Trace, TraceTarget,
 };
 
 /// Application contract used by [`AppRuntime`].
@@ -88,6 +88,24 @@ pub enum PointerActivationResult {
     /// The event requested activation, but did not carry a resolved target.
     NoTarget,
     /// The event is not handled by pointer activation policy.
+    Ignored,
+}
+
+/// Result of applying runtime input policy to one input event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InputEventResult {
+    /// Pointer policy ran focus handling first, then activation handling.
+    Pointer {
+        /// Result of pointer focus policy.
+        focus: PointerFocusResult,
+        /// Result of pointer activation policy.
+        activation: PointerActivationResult,
+    },
+    /// Keyboard focus policy handled the event.
+    KeyboardFocus(KeyboardFocusResult),
+    /// Keyboard activation policy handled the event.
+    KeyboardActivation(KeyboardActivationResult),
+    /// No runtime input policy handled the event.
     Ignored,
 }
 
@@ -376,6 +394,41 @@ where
         };
 
         PointerActivationResult::Handled(self.activate_node(node_id))
+    }
+
+    /// Applies the default runtime policy for one already-targeted input event.
+    ///
+    /// Pointer events run focus policy first and activation policy second.
+    /// Keyboard events route Tab to focus policy and Enter/Space to activation
+    /// policy. Other input events are ignored.
+    pub fn handle_input_event(&mut self, event: &InputEvent) -> InputEventResult {
+        match event {
+            InputEvent::Pointer(event) => {
+                let focus = self.handle_pointer_focus(event);
+                let activation = self.handle_pointer_activation(event);
+
+                if focus == PointerFocusResult::Ignored
+                    && activation == PointerActivationResult::Ignored
+                {
+                    InputEventResult::Ignored
+                } else {
+                    InputEventResult::Pointer { focus, activation }
+                }
+            }
+            InputEvent::Keyboard(event) => {
+                let focus = self.handle_keyboard_focus(event);
+                if focus != KeyboardFocusResult::Ignored {
+                    return InputEventResult::KeyboardFocus(focus);
+                }
+
+                let activation = self.handle_keyboard_activation(event);
+                if activation == KeyboardActivationResult::Ignored {
+                    InputEventResult::Ignored
+                } else {
+                    InputEventResult::KeyboardActivation(activation)
+                }
+            }
+        }
     }
 }
 
