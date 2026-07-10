@@ -36,11 +36,11 @@ pub trait UiApp {
 pub enum ActivationResult {
     /// A matching button action was dispatched.
     Dispatched,
-    /// No element with the requested authored ID exists in the current tree.
+    /// No element with the requested authored or runtime ID exists in the current tree.
     NotFound,
-    /// The requested authored ID exists, but the element is not activatable.
+    /// The requested element exists, but the element is not activatable.
     NotActivatable,
-    /// The requested authored ID exists on a button, but the button has no action.
+    /// The requested element exists on a button, but the button has no action.
     NoAction,
 }
 
@@ -240,15 +240,31 @@ where
     ///
     /// This is a semantic headless activation path for tests, tools, and host
     /// automation. Renderer hit testing should eventually resolve to internal
-    /// runtime node identity and can reuse the same dispatch path.
+    /// runtime node identity and call [`Self::activate_node`].
     pub fn activate(&mut self, id: impl AsRef<str>) -> ActivationResult {
-        let lookup = {
+        let node_id = {
             let index = self.index();
             index
                 .node_by_authored_id(id.as_ref())
-                .map_or(ActivationLookup::NotFound, |node| {
-                    activation_lookup(node.element())
-                })
+                .map(RuntimeNodeRef::id)
+        };
+
+        node_id.map_or(ActivationResult::NotFound, |node_id| {
+            self.activate_node(node_id)
+        })
+    }
+
+    /// Activates the element with the matching generated runtime node ID.
+    ///
+    /// This is the renderer-facing activation seam: future hit testing can
+    /// resolve pointer/focus targets to [`RuntimeNodeId`] and call this method
+    /// without requiring authored element IDs.
+    pub fn activate_node(&mut self, id: RuntimeNodeId) -> ActivationResult {
+        let lookup = {
+            let index = self.index();
+            index.node(id).map_or(ActivationLookup::NotFound, |node| {
+                activation_lookup(node.element())
+            })
         };
 
         match lookup {
