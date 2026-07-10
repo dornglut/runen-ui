@@ -1,6 +1,6 @@
 # Architecture
 
-RunenUI separates application state, element authoring, runtime evaluation, layout, accessibility, and renderer output.
+RunenUI separates application state, element authoring, runtime evaluation, layout, styling, accessibility, and renderer output.
 
 The runtime is the central owner of UI evaluation. Hosts feed input into the runtime. Renderers consume published surface frames. Applications own their state and actions.
 
@@ -23,6 +23,7 @@ InputEvent
   -> Action
   -> update(State, Action)
   -> root(State) -> Element<Action>
+  -> Style resolution
   -> LayoutBox tree
   -> Accessibility tree
   -> Primitive output
@@ -41,7 +42,7 @@ The runtime is also the natural owner for tracing, inspection, accessibility tre
 
 Elements are UI descriptions. They are derived from application state and can emit application actions.
 
-Elements describe structure, control intent, layout properties, accessibility data, and event bindings. They are not renderer objects.
+Elements describe structure, control intent, layout properties, style intent, accessibility data, and event bindings. They are not renderer objects.
 
 The primary authoring surface is `element!`:
 
@@ -92,6 +93,12 @@ fn update(counter: &mut Counter, action: CounterAction) {
 }
 ```
 
+## Styling
+
+Styling is a distinct data pipeline between element authoring and layout/render output.
+
+The target styling architecture is documented in [Styling Target Architecture](architecture/styling-target.md).
+
 ## Layout
 
 Layout is a distinct runtime phase. Elements express layout intent through properties such as direction, gap, padding, sizing, alignment, and constraints. The runtime computes a `LayoutBox` tree from those inputs.
@@ -100,7 +107,7 @@ The `LayoutBox` tree is inspectable data. It gives hosts, renderers, tests, and 
 
 ## Accessibility
 
-Accessibility is structured UI data derived from elements, identity, roles, labels, state, actions, and layout.
+Accessibility is structured UI data derived from elements, identity, roles, labels, state, actions, style, and layout.
 
 The accessibility tree is part of the runtime model. This lets hosts expose semantic UI information even when the final renderer is custom, game-oriented, or non-DOM.
 
@@ -108,10 +115,10 @@ The accessibility tree is part of the runtime model. This lets hosts expose sema
 
 A `Surface` is a named UI output target.
 
-A `SurfaceFrame` is the runtime's published output for a surface. It contains the data needed by a host or renderer for the current UI frame, including computed layout, accessibility data, action bindings, and renderer-neutral primitives.
+A `SurfaceFrame` is the runtime's published output for a surface. It contains the data needed by a host or renderer for the current UI frame, including computed style, computed layout, accessibility data, action bindings, and renderer-neutral primitives.
 
 ## Hosts and Renderers
 
 A host embeds RunenUI into an application, engine, editor, or tool. It feeds input into the runtime and receives published surface frames.
 
-A renderer consumes primitive output and draws it. Renderer backends can target different graphics systems while sharing the same element, state, action, layout, and accessibility model.
+A renderer consumes primitive output and draws it. Renderer backends can target different graphics systems while sharing the same element, state, action, style, layout, and accessibility model.
