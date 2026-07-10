@@ -40,6 +40,8 @@ pub enum ActivationResult {
     NotFound,
     /// The requested element exists, but the element is not activatable.
     NotActivatable,
+    /// The requested element exists, but it is intentionally disabled.
+    Disabled,
     /// The requested element exists on a button, but the button has no action.
     NoAction,
 }
@@ -618,6 +620,7 @@ where
             }
             ActivationLookup::NotFound => ActivationResult::NotFound,
             ActivationLookup::NotActivatable => ActivationResult::NotActivatable,
+            ActivationLookup::Disabled => ActivationResult::Disabled,
             ActivationLookup::NoAction => ActivationResult::NoAction,
         }
     }
@@ -627,6 +630,7 @@ enum ActivationLookup<Action> {
     Action { action: Action, target: TraceTarget },
     NotFound,
     NotActivatable,
+    Disabled,
     NoAction,
 }
 
@@ -636,6 +640,10 @@ where
 {
     match node.element().kind() {
         ElementKind::Button(button) => {
+            if !button.enabled() {
+                return ActivationLookup::Disabled;
+            }
+
             button
                 .on_press()
                 .map_or(ActivationLookup::NoAction, |action| {

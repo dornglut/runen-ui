@@ -58,6 +58,19 @@ impl<Action> Element<Action> {
     }
 
     #[must_use]
+    pub const fn enabled(mut self, enabled: bool) -> Self {
+        if let ElementKind::Button(button) = &mut self.kind {
+            button.enabled = enabled;
+        }
+        self
+    }
+
+    #[must_use]
+    pub const fn disabled(self) -> Self {
+        self.enabled(false)
+    }
+
+    #[must_use]
     pub const fn element_id(&self) -> Option<&ElementId> {
         self.id.as_ref()
     }
@@ -101,6 +114,7 @@ impl TextElement {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ButtonElement<Action> {
     label: String,
+    enabled: bool,
     on_press: Option<Action>,
 }
 
@@ -108,6 +122,7 @@ impl<Action> ButtonElement<Action> {
     fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
+            enabled: true,
             on_press: None,
         }
     }
@@ -115,6 +130,11 @@ impl<Action> ButtonElement<Action> {
     #[must_use]
     pub const fn label(&self) -> &str {
         self.label.as_str()
+    }
+
+    #[must_use]
+    pub const fn enabled(&self) -> bool {
+        self.enabled
     }
 
     #[must_use]
