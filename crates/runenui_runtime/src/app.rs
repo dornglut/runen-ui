@@ -5,8 +5,9 @@ use core::marker::PhantomData;
 use runenui_core::{Element, ElementKind};
 
 use crate::{
-    FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, PointerButton, PointerEvent,
-    PointerPhase, Runtime, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, Trace, TraceTarget,
+    FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, LogicalSize, PointerButton, PointerEvent,
+    PointerPhase, Runtime, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, SurfaceFrame,
+    SurfaceLayoutMetrics, Trace, TraceTarget, layout_surface, layout_surface_with_metrics,
 };
 
 /// Application contract used by [`AppRuntime`].
@@ -290,6 +291,22 @@ where
     #[must_use]
     pub const fn root(&self) -> &Element<App::Action> {
         self.runtime.root()
+    }
+
+    /// Builds a renderer-facing surface frame from the current root tree.
+    #[must_use]
+    pub fn surface_frame(&self, size: LogicalSize) -> SurfaceFrame {
+        layout_surface(self.root(), size)
+    }
+
+    /// Builds a renderer-facing surface frame from the current root tree with explicit layout metrics.
+    #[must_use]
+    pub fn surface_frame_with_metrics(
+        &self,
+        size: LogicalSize,
+        metrics: SurfaceLayoutMetrics,
+    ) -> SurfaceFrame {
+        layout_surface_with_metrics(self.root(), size, metrics)
     }
 
     /// Returns the runtime trace.
