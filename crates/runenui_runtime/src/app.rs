@@ -54,6 +54,17 @@ pub enum KeyboardFocusResult {
     Ignored,
 }
 
+/// Result of applying keyboard activation policy to a keyboard event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KeyboardActivationResult {
+    /// A focused runtime node was activated and produced the provided activation result.
+    Handled(ActivationResult),
+    /// The event requested activation, but no runtime node is focused.
+    NoFocusedNode,
+    /// The event is not handled by keyboard activation policy.
+    Ignored,
+}
+
 /// Runtime wrapper that binds an app's root and update functions once.
 pub struct AppRuntime<App>
 where
@@ -274,6 +285,25 @@ where
             ActivationLookup::Disabled => ActivationResult::Disabled,
             ActivationLookup::NoAction => ActivationResult::NoAction,
         }
+    }
+
+    /// Applies keyboard activation policy to one keyboard event.
+    ///
+    /// Pressed Enter or Space activates the currently focused runtime node.
+    /// Other keyboard events are ignored.
+    pub fn handle_keyboard_activation(
+        &mut self,
+        event: &KeyboardEvent,
+    ) -> KeyboardActivationResult {
+        if event.phase() != KeyPhase::Pressed || !matches!(event.key(), Key::Enter | Key::Space) {
+            return KeyboardActivationResult::Ignored;
+        }
+
+        let Some(node_id) = self.focus().focused_node() else {
+            return KeyboardActivationResult::NoFocusedNode;
+        };
+
+        KeyboardActivationResult::Handled(self.activate_node(node_id))
     }
 }
 
