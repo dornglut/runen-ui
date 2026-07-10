@@ -1,8 +1,8 @@
 //! Core host-neutral style value vocabulary.
 //!
-//! This module owns primitive style values, token references, and authored style
-//! intent only. It does not resolve themes, recipes, selectors, renderer
-//! materials, or computed styles.
+//! This module owns primitive style values, token references, token-backed value
+//! unions, and authored style intent only. It does not resolve themes, recipes,
+//! selectors, renderer materials, or computed styles.
 
 use crate::Px;
 
@@ -148,6 +148,57 @@ impl Color {
     }
 }
 
+/// Color style value that may be literal or token-backed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ColorValue {
+    Literal(Color),
+    Token(ColorToken),
+}
+
+impl ColorValue {
+    /// Creates a literal color value.
+    #[must_use]
+    pub const fn literal(value: Color) -> Self {
+        Self::Literal(value)
+    }
+
+    /// Creates a token-backed color value.
+    #[must_use]
+    pub fn token(token: impl Into<ColorToken>) -> Self {
+        Self::Token(token.into())
+    }
+
+    /// Returns the literal color value, if this value is literal.
+    #[must_use]
+    pub const fn as_literal(&self) -> Option<&Color> {
+        match self {
+            Self::Literal(value) => Some(value),
+            Self::Token(_) => None,
+        }
+    }
+
+    /// Returns the color token reference, if this value is token-backed.
+    #[must_use]
+    pub const fn as_token(&self) -> Option<&ColorToken> {
+        match self {
+            Self::Literal(_) => None,
+            Self::Token(token) => Some(token),
+        }
+    }
+}
+
+impl From<Color> for ColorValue {
+    fn from(value: Color) -> Self {
+        Self::literal(value)
+    }
+}
+
+impl From<ColorToken> for ColorValue {
+    fn from(token: ColorToken) -> Self {
+        Self::Token(token)
+    }
+}
+
 /// Host-neutral logical length used by visual style values.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Length(f32);
@@ -190,6 +241,57 @@ impl From<Px> for Length {
 impl From<Length> for Px {
     fn from(value: Length) -> Self {
         Self::new(value.value())
+    }
+}
+
+/// Length style value that may be literal or token-backed.
+#[derive(Clone, Debug, PartialEq)]
+pub enum LengthValue {
+    Literal(Length),
+    Token(LengthToken),
+}
+
+impl LengthValue {
+    /// Creates a literal length value.
+    #[must_use]
+    pub const fn literal(value: Length) -> Self {
+        Self::Literal(value)
+    }
+
+    /// Creates a token-backed length value.
+    #[must_use]
+    pub fn token(token: impl Into<LengthToken>) -> Self {
+        Self::Token(token.into())
+    }
+
+    /// Returns the literal length value, if this value is literal.
+    #[must_use]
+    pub const fn as_literal(&self) -> Option<&Length> {
+        match self {
+            Self::Literal(value) => Some(value),
+            Self::Token(_) => None,
+        }
+    }
+
+    /// Returns the length token reference, if this value is token-backed.
+    #[must_use]
+    pub const fn as_token(&self) -> Option<&LengthToken> {
+        match self {
+            Self::Literal(_) => None,
+            Self::Token(token) => Some(token),
+        }
+    }
+}
+
+impl From<Length> for LengthValue {
+    fn from(value: Length) -> Self {
+        Self::literal(value)
+    }
+}
+
+impl From<LengthToken> for LengthValue {
+    fn from(token: LengthToken) -> Self {
+        Self::Token(token)
     }
 }
 
@@ -263,6 +365,57 @@ impl From<Length> for EdgeInsets {
 /// Alias used when a style API describes spacing rather than physical edge insets.
 pub type Spacing = EdgeInsets;
 
+/// Spacing style value that may be literal or token-backed.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SpacingValue {
+    Literal(EdgeInsets),
+    Token(SpacingToken),
+}
+
+impl SpacingValue {
+    /// Creates a literal spacing value.
+    #[must_use]
+    pub const fn literal(value: EdgeInsets) -> Self {
+        Self::Literal(value)
+    }
+
+    /// Creates a token-backed spacing value.
+    #[must_use]
+    pub fn token(token: impl Into<SpacingToken>) -> Self {
+        Self::Token(token.into())
+    }
+
+    /// Returns the literal spacing value, if this value is literal.
+    #[must_use]
+    pub const fn as_literal(&self) -> Option<&EdgeInsets> {
+        match self {
+            Self::Literal(value) => Some(value),
+            Self::Token(_) => None,
+        }
+    }
+
+    /// Returns the spacing token reference, if this value is token-backed.
+    #[must_use]
+    pub const fn as_token(&self) -> Option<&SpacingToken> {
+        match self {
+            Self::Literal(_) => None,
+            Self::Token(token) => Some(token),
+        }
+    }
+}
+
+impl From<EdgeInsets> for SpacingValue {
+    fn from(value: EdgeInsets) -> Self {
+        Self::literal(value)
+    }
+}
+
+impl From<SpacingToken> for SpacingValue {
+    fn from(token: SpacingToken) -> Self {
+        Self::Token(token)
+    }
+}
+
 /// Corner radius style value.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Radius {
@@ -326,6 +479,57 @@ impl Radius {
 impl From<Length> for Radius {
     fn from(value: Length) -> Self {
         Self::all(value)
+    }
+}
+
+/// Radius style value that may be literal or token-backed.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RadiusValue {
+    Literal(Radius),
+    Token(RadiusToken),
+}
+
+impl RadiusValue {
+    /// Creates a literal radius value.
+    #[must_use]
+    pub const fn literal(value: Radius) -> Self {
+        Self::Literal(value)
+    }
+
+    /// Creates a token-backed radius value.
+    #[must_use]
+    pub fn token(token: impl Into<RadiusToken>) -> Self {
+        Self::Token(token.into())
+    }
+
+    /// Returns the literal radius value, if this value is literal.
+    #[must_use]
+    pub const fn as_literal(&self) -> Option<&Radius> {
+        match self {
+            Self::Literal(value) => Some(value),
+            Self::Token(_) => None,
+        }
+    }
+
+    /// Returns the radius token reference, if this value is token-backed.
+    #[must_use]
+    pub const fn as_token(&self) -> Option<&RadiusToken> {
+        match self {
+            Self::Literal(_) => None,
+            Self::Token(token) => Some(token),
+        }
+    }
+}
+
+impl From<Radius> for RadiusValue {
+    fn from(value: Radius) -> Self {
+        Self::literal(value)
+    }
+}
+
+impl From<RadiusToken> for RadiusValue {
+    fn from(token: RadiusToken) -> Self {
+        Self::Token(token)
     }
 }
 
@@ -412,8 +616,8 @@ impl StyleIntent {
 #[cfg(test)]
 mod tests {
     use super::{
-        Color, ColorToken, EdgeInsets, Length, LengthToken, Radius, RadiusToken, Spacing,
-        SpacingToken, StyleIntent, TokenId,
+        Color, ColorToken, ColorValue, EdgeInsets, Length, LengthToken, LengthValue, Radius,
+        RadiusToken, RadiusValue, Spacing, SpacingToken, SpacingValue, StyleIntent, TokenId,
     };
     use crate::Px;
 
@@ -447,6 +651,58 @@ mod tests {
 
         assert_eq!(color, other_color);
         assert_eq!(spacing.as_str(), color.as_str());
+    }
+
+    #[test]
+    fn color_value_preserves_literal_and_token_forms() {
+        let literal = ColorValue::literal(Color::WHITE);
+        let token = ColorValue::token("color.text.primary");
+
+        assert_eq!(literal.as_literal(), Some(&Color::WHITE));
+        assert_eq!(literal.as_token(), None);
+        assert_eq!(token.as_literal(), None);
+        assert_eq!(
+            token.as_token(),
+            Some(&ColorToken::new("color.text.primary"))
+        );
+    }
+
+    #[test]
+    fn length_value_preserves_literal_and_token_forms() {
+        let literal = LengthValue::literal(Length::px(24.0));
+        let token = LengthValue::token("length.control.height");
+
+        assert_eq!(literal.as_literal(), Some(&Length::px(24.0)));
+        assert_eq!(literal.as_token(), None);
+        assert_eq!(token.as_literal(), None);
+        assert_eq!(
+            token.as_token(),
+            Some(&LengthToken::new("length.control.height"))
+        );
+    }
+
+    #[test]
+    fn spacing_value_preserves_literal_and_token_forms() {
+        let spacing = EdgeInsets::all(Length::px(8.0));
+        let literal = SpacingValue::literal(spacing);
+        let token = SpacingValue::token("space.2");
+
+        assert_eq!(literal.as_literal(), Some(&spacing));
+        assert_eq!(literal.as_token(), None);
+        assert_eq!(token.as_literal(), None);
+        assert_eq!(token.as_token(), Some(&SpacingToken::new("space.2")));
+    }
+
+    #[test]
+    fn radius_value_preserves_literal_and_token_forms() {
+        let radius = Radius::all(Length::px(4.0));
+        let literal = RadiusValue::literal(radius);
+        let token = RadiusValue::token("radius.control");
+
+        assert_eq!(literal.as_literal(), Some(&radius));
+        assert_eq!(literal.as_token(), None);
+        assert_eq!(token.as_literal(), None);
+        assert_eq!(token.as_token(), Some(&RadiusToken::new("radius.control")));
     }
 
     #[test]
