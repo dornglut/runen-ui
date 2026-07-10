@@ -5,8 +5,8 @@ use core::marker::PhantomData;
 use runenui_core::{Element, ElementKind};
 
 use crate::{
-    FocusState, Key, KeyPhase, KeyboardEvent, Runtime, RuntimeNodeId, RuntimeNodeRef,
-    RuntimeTreeIndex, Trace, TraceTarget,
+    FocusState, Key, KeyPhase, KeyboardEvent, PointerButton, PointerEvent, PointerPhase, Runtime,
+    RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, Trace, TraceTarget,
 };
 
 /// Application contract used by [`AppRuntime`].
@@ -62,6 +62,21 @@ pub enum KeyboardActivationResult {
     /// The event requested activation, but no runtime node is focused.
     NoFocusedNode,
     /// The event is not handled by keyboard activation policy.
+    Ignored,
+}
+
+/// Result of applying pointer focus policy to a pointer event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PointerFocusResult {
+    /// Focus moved to the provided runtime node ID.
+    Moved(RuntimeNodeId),
+    /// The event requested focus movement, but did not carry a resolved target.
+    NoTarget,
+    /// The resolved target is not present in the current tree.
+    NotFound,
+    /// The resolved target exists, but is not focusable.
+    NotFocusable,
+    /// The event is not handled by pointer focus policy.
     Ignored,
 }
 
@@ -181,6 +196,35 @@ where
             KeyboardFocusResult::NoFocusableNode,
             KeyboardFocusResult::Moved,
         )
+    }
+
+    /// Applies pointer focus policy to one already-targeted pointer event.
+    ///
+    /// Pressed primary pointer events focus the resolved target when that target
+    /// is present and focusable. Other pointer events are ignored.
+    pub fn handle_pointer_focus(&mut self, event: &PointerEvent) -> PointerFocusResult {
+        if event.phase() != PointerPhase::Pressed || event.button() != Some(PointerButton::Primary)
+        {
+            return PointerFocusResult::Ignored;
+        }
+
+        let Some(node_id) = event.target() else {
+            return PointerFocusResult::NoTarget;
+        };
+
+        let focusable = {
+            let index = self.index();
+            index.node(node_id).map(RuntimeNodeRef::is_focusable)
+        };
+
+        match focusable {
+            Some(true) => {
+                self.runtime.set_focus(node_id);
+                PointerFocusResult::Moved(node_id)
+            }
+            Some(false) => PointerFocusResult::NotFocusable,
+            None => PointerFocusResult::NotFound,
+        }
     }
 
     const fn apply_focus_result(
