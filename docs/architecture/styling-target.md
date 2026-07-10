@@ -20,6 +20,8 @@ Element tree
 
 The final styling system should not be a renderer API, a CSS clone, or a windowing concern.
 
+For the token-reference target that follows this document, see [Token Reference Target](token-reference-target.md).
+
 ## Goals
 
 - Keep styling explicit, inspectable, and deterministic.
@@ -134,6 +136,8 @@ ColorValue::Token(ColorToken::new("color.text.primary"))
 ```
 
 or an equivalent typed design that preserves the same constraints.
+
+Detailed token-reference decisions are tracked in [Token Reference Target](token-reference-target.md).
 
 ### 3. Element-local style intent
 
