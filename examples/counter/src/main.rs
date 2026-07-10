@@ -2,12 +2,14 @@
 //!
 //! The example owns its state, actions, update function, and screens. The
 //! runtime owns typed action dispatch, update execution, root rebuilds, semantic
-//! activation, and trace recording.
+//! activation, trace recording, surface-frame publication, and debug surface
+//! rendering.
 
 use runenui_core::{Element, button, column, row, text};
-use runenui_runtime::{AppRuntime, UiApp};
+use runenui_runtime::{AppRuntime, LogicalSize, UiApp, render_debug_surface_frame};
 
 const WIN_COUNT: i32 = 10;
+const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(240.0, 160.0);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Counter {
@@ -103,14 +105,30 @@ const fn update(counter: &mut Counter, action: CounterAction) {
     }
 }
 
+fn debug_surface(runtime: &AppRuntime<CounterApp>) -> String {
+    let frame = runtime.surface_frame(EXAMPLE_SURFACE_SIZE);
+    render_debug_surface_frame(&frame)
+}
+
+fn print_debug_surface(label: &str, runtime: &AppRuntime<CounterApp>) {
+    let surface = debug_surface(runtime);
+    println!("{label}\n{surface}");
+}
+
 fn main() {
     let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+
+    print_debug_surface("counter.surface.initial", &runtime);
 
     for _ in 0..WIN_COUNT {
         runtime.activate("counter.increment");
     }
 
+    print_debug_surface("counter.surface.win", &runtime);
+
     runtime.activate("counter.reset");
+
+    print_debug_surface("counter.surface.reset", &runtime);
 
     let count = runtime.state().count;
     let trace_events = runtime.trace().events().len();
@@ -120,7 +138,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppRuntime, Counter, CounterAction, CounterApp, WIN_COUNT, root};
+    use super::{AppRuntime, Counter, CounterAction, CounterApp, WIN_COUNT, debug_surface, root};
     use runenui_core::ElementKind;
     use runenui_runtime::ActivationResult;
 
@@ -207,5 +225,32 @@ mod tests {
         runtime.dispatch(CounterAction::Increment);
 
         assert_eq!(runtime.state(), &Counter { count: 1 });
+    }
+
+    #[test]
+    fn debug_surface_output_exposes_counter_screen() {
+        let runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+        let surface = debug_surface(&runtime);
+
+        assert!(surface.contains("surface size=(240.0,160.0) nodes=7"));
+        assert!(surface.contains("kind=text \"Counter\""));
+        assert!(surface.contains("authored=counter.increment"));
+        assert!(surface.contains("kind=button \"+\" enabled=true"));
+    }
+
+    #[test]
+    fn debug_surface_output_exposes_win_screen_after_rebuild() {
+        let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+
+        for _ in 0..WIN_COUNT {
+            runtime.dispatch(CounterAction::Increment);
+        }
+
+        let surface = debug_surface(&runtime);
+
+        assert!(surface.contains("surface size=(240.0,160.0) nodes=4"));
+        assert!(surface.contains("kind=text \"You win\""));
+        assert!(surface.contains("kind=text \"Count: 10\""));
+        assert!(surface.contains("authored=counter.reset"));
     }
 }
