@@ -278,7 +278,6 @@ impl<Action> ButtonArgs<Action> {
     }
 }
 
-/// Explicit construction arguments for a container element.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContainerArgs<Action> {
     axis: Axis,
