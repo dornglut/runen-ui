@@ -8,7 +8,7 @@
 
 use core::marker::PhantomData;
 
-use runenui_core::Element;
+use runenui_core::{Element, ElementKind};
 
 pub mod prelude;
 
@@ -29,6 +29,19 @@ pub trait UiApp {
 
     /// Applies one typed action to application state.
     fn update(state: &mut Self::State, action: Self::Action);
+}
+
+/// Result of semantic headless activation by authored element ID.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActivationResult {
+    /// A matching button action was dispatched.
+    Dispatched,
+    /// No element with the requested authored ID exists in the current tree.
+    NotFound,
+    /// The requested authored ID exists, but the element is not activatable.
+    NotActivatable,
+    /// The requested authored ID exists on a button, but the button has no action.
+    NoAction,
 }
 
 /// Runtime wrapper that binds an app's root and update functions once.
@@ -87,6 +100,63 @@ where
     pub fn into_state(self) -> App::State {
         self.runtime.into_state()
     }
+}
+
+impl<App> AppRuntime<App>
+where
+    App: UiApp,
+    App::Action: Clone,
+{
+    /// Activates the element with the matching authored ID in the current tree.
+    ///
+    /// This is a semantic headless activation path for tests, tools, and host
+    /// automation. Renderer hit testing should eventually resolve to internal
+    /// runtime node identity and can reuse the same dispatch path.
+    pub fn activate(&mut self, id: impl AsRef<str>) -> ActivationResult {
+        match activation_lookup(self.root(), id.as_ref()) {
+            ActivationLookup::Action(action) => {
+                let action = action.clone();
+                self.dispatch(action);
+                ActivationResult::Dispatched
+            }
+            ActivationLookup::NotFound => ActivationResult::NotFound,
+            ActivationLookup::NotActivatable => ActivationResult::NotActivatable,
+            ActivationLookup::NoAction => ActivationResult::NoAction,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ActivationLookup<'a, Action> {
+    Action(&'a Action),
+    NotFound,
+    NotActivatable,
+    NoAction,
+}
+
+fn activation_lookup<'a, Action>(
+    element: &'a Element<Action>,
+    id: &str,
+) -> ActivationLookup<'a, Action> {
+    if matches!(element.element_id(), Some(element_id) if element_id.as_str() == id) {
+        return match element.kind() {
+            ElementKind::Button(button) => button
+                .on_press()
+                .map_or(ActivationLookup::NoAction, ActivationLookup::Action),
+            ElementKind::Text(_) | ElementKind::Container(_) => ActivationLookup::NotActivatable,
+        };
+    }
+
+    if let ElementKind::Container(container) = element.kind() {
+        for child in container.children() {
+            let lookup = activation_lookup(child, id);
+            if !matches!(lookup, ActivationLookup::NotFound) {
+                return lookup;
+            }
+        }
+    }
+
+    ActivationLookup::NotFound
 }
 
 /// Coarse runtime trace events emitted by the headless loop.

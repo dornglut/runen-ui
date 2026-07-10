@@ -1,8 +1,8 @@
 //! Headless counter proof for `RunenUI`.
 //!
 //! The example owns its state, actions, update function, and screens. The
-//! runtime owns typed action dispatch, update execution, root rebuilds, and
-//! trace recording.
+//! runtime owns typed action dispatch, update execution, root rebuilds, semantic
+//! activation, and trace recording.
 
 use runenui_core::{Element, button, column, row, text};
 use runenui_runtime::{AppRuntime, UiApp};
@@ -54,9 +54,15 @@ impl CounterScreen {
             text("Counter"),
             text(counter.count.to_string()).id("counter.value"),
             row((
-                button("-").on_press(CounterAction::Decrement),
-                button("+").on_press(CounterAction::Increment),
-                button("Reset").on_press(CounterAction::Reset),
+                button("-")
+                    .id("counter.decrement")
+                    .on_press(CounterAction::Decrement),
+                button("+")
+                    .id("counter.increment")
+                    .on_press(CounterAction::Increment),
+                button("Reset")
+                    .id("counter.reset")
+                    .on_press(CounterAction::Reset),
             ))
             .gap(8_u16),
         ))
@@ -73,7 +79,9 @@ impl WinScreen {
         column((
             text("You win"),
             text(format!("Count: {count}")).id("counter.value"),
-            button("Reset").on_press(CounterAction::Reset),
+            button("Reset")
+                .id("counter.reset")
+                .on_press(CounterAction::Reset),
         ))
         .gap(8_u16)
     }
@@ -99,8 +107,10 @@ fn main() {
     let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
 
     for _ in 0..WIN_COUNT {
-        runtime.dispatch(CounterAction::Increment);
+        runtime.activate("counter.increment");
     }
+
+    runtime.activate("counter.reset");
 
     let count = runtime.state().count;
     let trace_events = runtime.trace().events().len();
@@ -110,8 +120,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppRuntime, Counter, CounterAction, CounterApp, root};
+    use super::{AppRuntime, Counter, CounterAction, CounterApp, WIN_COUNT, root};
     use runenui_core::ElementKind;
+    use runenui_runtime::ActivationResult;
 
     fn root_text(counter: &Counter) -> Result<String, &'static str> {
         let root = root(counter);
@@ -163,10 +174,38 @@ mod tests {
     fn reset_returns_to_counter_screen() -> Result<(), &'static str> {
         let mut runtime = AppRuntime::<CounterApp>::mount(Counter { count: 10 });
 
-        runtime.dispatch(CounterAction::Reset);
+        assert_eq!(
+            runtime.activate("counter.reset"),
+            ActivationResult::Dispatched
+        );
 
         assert_eq!(runtime.state(), &Counter { count: 0 });
         assert_eq!(root_text(runtime.state())?, "Counter");
         Ok(())
+    }
+
+    #[test]
+    fn semantic_increment_activation_reaches_win_screen() -> Result<(), &'static str> {
+        let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+
+        for _ in 0..WIN_COUNT {
+            assert_eq!(
+                runtime.activate("counter.increment"),
+                ActivationResult::Dispatched
+            );
+        }
+
+        assert_eq!(runtime.state(), &Counter { count: 10 });
+        assert_eq!(root_text(runtime.state())?, "You win");
+        Ok(())
+    }
+
+    #[test]
+    fn direct_dispatch_still_works_without_authored_ids() {
+        let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+
+        runtime.dispatch(CounterAction::Increment);
+
+        assert_eq!(runtime.state(), &Counter { count: 1 });
     }
 }
