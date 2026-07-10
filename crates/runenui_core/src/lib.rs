@@ -11,6 +11,8 @@ mod layout;
 pub mod prelude;
 mod tree;
 
+include!("element_macro.rs");
+
 pub use element_id::ElementId;
 pub use element_key::ElementKey;
 pub use layout::{Axis, LayoutStyle, Px};
