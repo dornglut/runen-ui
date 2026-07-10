@@ -71,6 +71,50 @@ impl RuntimeNodeId {
     }
 }
 
+/// Runtime focus state for one built tree.
+///
+/// Focus stores generated runtime node identity. Runtime node IDs are tree-local,
+/// so the runtime clears focus whenever a dispatch rebuilds the root tree.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct FocusState {
+    focused_node_id: Option<RuntimeNodeId>,
+}
+
+impl FocusState {
+    /// Creates an empty focus state.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            focused_node_id: None,
+        }
+    }
+
+    /// Returns the currently focused runtime node ID, if any.
+    #[must_use]
+    pub const fn focused_node(&self) -> Option<RuntimeNodeId> {
+        self.focused_node_id
+    }
+
+    /// Returns whether the provided runtime node ID is focused.
+    #[must_use]
+    pub const fn is_focused(&self, id: RuntimeNodeId) -> bool {
+        match self.focused_node_id {
+            Some(focused) => focused.as_usize() == id.as_usize(),
+            None => false,
+        }
+    }
+
+    /// Sets focus to the provided runtime node ID.
+    pub const fn set(&mut self, id: RuntimeNodeId) {
+        self.focused_node_id = Some(id);
+    }
+
+    /// Clears the focused runtime node ID.
+    pub const fn clear(&mut self) {
+        self.focused_node_id = None;
+    }
+}
+
 /// Logical position in UI coordinate space.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LogicalPoint {
@@ -545,6 +589,29 @@ where
         RuntimeTreeIndex::new(self.root())
     }
 
+    /// Sets focus to an existing runtime node in the current tree.
+    ///
+    /// Returns `false` when the node ID is not present in the current tree.
+    pub fn set_focus(&mut self, id: RuntimeNodeId) -> bool {
+        if self.index().node(id).is_some() {
+            self.runtime.set_focus(id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Clears the current focus target.
+    pub const fn clear_focus(&mut self) {
+        self.runtime.clear_focus();
+    }
+
+    /// Returns the current runtime focus state.
+    #[must_use]
+    pub const fn focus(&self) -> &FocusState {
+        self.runtime.focus()
+    }
+
     /// Returns the current application state.
     #[must_use]
     pub const fn state(&self) -> &App::State {
@@ -741,6 +808,7 @@ pub struct Runtime<State, Action> {
     state: State,
     root: Element<Action>,
     trace: Trace,
+    focus: FocusState,
 }
 
 impl<State, Action> Runtime<State, Action> {
@@ -751,7 +819,12 @@ impl<State, Action> Runtime<State, Action> {
         let mut trace = Trace::new();
         trace.record(RuntimeEvent::Mounted);
 
-        Self { state, root, trace }
+        Self {
+            state,
+            root,
+            trace,
+            focus: FocusState::new(),
+        }
     }
 
     /// Dispatches one typed action, runs update, and rebuilds the root tree.
@@ -777,6 +850,7 @@ impl<State, Action> Runtime<State, Action> {
         self.trace
             .record_with_target(RuntimeEvent::StateUpdated, target.clone());
         self.root = root(&self.state);
+        self.focus.clear();
         self.trace
             .record_with_target(RuntimeEvent::RootRebuilt, target);
     }
@@ -797,6 +871,22 @@ impl<State, Action> Runtime<State, Action> {
     #[must_use]
     pub const fn trace(&self) -> &Trace {
         &self.trace
+    }
+
+    /// Returns the runtime focus state.
+    #[must_use]
+    pub const fn focus(&self) -> &FocusState {
+        &self.focus
+    }
+
+    /// Sets focus to the provided runtime node ID without validating the ID.
+    pub const fn set_focus(&mut self, id: RuntimeNodeId) {
+        self.focus.set(id);
+    }
+
+    /// Clears the current focus target.
+    pub const fn clear_focus(&mut self) {
+        self.focus.clear();
     }
 
     /// Consumes the runtime and returns the final application state.
