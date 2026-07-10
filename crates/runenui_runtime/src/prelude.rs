@@ -5,8 +5,8 @@ pub use crate::{
     KeyModifiers, KeyPhase, KeyboardActivationResult, KeyboardEvent, KeyboardFocusResult,
     LogicalPoint, LogicalRect, LogicalSize, PointerActivationResult, PointerButton, PointerEvent,
     PointerFocusResult, PointerPhase, Runtime, RuntimeEvent, RuntimeNodeId, RuntimeNodeRef,
-    RuntimeTreeIndex, SurfaceFrame, SurfaceNode, SurfaceNodeKind, Trace, TraceRecord, TraceTarget,
-    UiApp,
+    RuntimeTreeIndex, SurfaceFrame, SurfaceLayoutMetrics, SurfaceNode, SurfaceNodeKind, Trace,
+    TraceRecord, TraceTarget, UiApp, layout_surface, layout_surface_with_metrics,
 };
 
 /// Resolves already-targeted raw input into runtime intents.

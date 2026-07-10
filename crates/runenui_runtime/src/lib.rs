@@ -1,7 +1,7 @@
 //! Headless runtime for `RunenUI`.
 //!
 //! This crate owns typed action delivery, update calls, root rebuilding, and
-//! trace recording. Input dispatch, layout, accessibility extraction, and
+//! trace recording. Input dispatch, accessibility extraction, and runtime
 //! surface-frame publication remain future runtime slices.
 
 #![forbid(unsafe_code)]
@@ -26,5 +26,8 @@ pub use input::{
 };
 pub use node::{RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex};
 pub use runtime::Runtime;
-pub use surface::{LogicalRect, LogicalSize, SurfaceFrame, SurfaceNode, SurfaceNodeKind};
+pub use surface::{
+    LogicalRect, LogicalSize, SurfaceFrame, SurfaceLayoutMetrics, SurfaceNode, SurfaceNodeKind,
+    layout_surface, layout_surface_with_metrics,
+};
 pub use trace::{RuntimeEvent, Trace, TraceRecord, TraceTarget};
