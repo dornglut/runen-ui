@@ -5,7 +5,10 @@
 //! activation, trace recording, surface-frame publication, and debug surface
 //! rendering.
 
-use runenui_core::{Element, button, column, row, text};
+use runenui_core::{
+    Axis, ButtonArgs, ContainerArgs, Element, IntoElements, TextArgs, button_with, container_with,
+    text_with,
+};
 use runenui_runtime::{AppRuntime, LogicalSize, UiApp, render_debug_surface_frame};
 
 const WIN_COUNT: i32 = 10;
@@ -52,23 +55,7 @@ struct CounterScreen;
 
 impl CounterScreen {
     fn root(counter: &Counter) -> Element<CounterAction> {
-        column((
-            text("Counter"),
-            text(counter.count.to_string()).id("counter.value"),
-            row((
-                button("-")
-                    .id("counter.decrement")
-                    .on_press(CounterAction::Decrement),
-                button("+")
-                    .id("counter.increment")
-                    .on_press(CounterAction::Increment),
-                button("Reset")
-                    .id("counter.reset")
-                    .on_press(CounterAction::Reset),
-            ))
-            .gap(8_u16),
-        ))
-        .gap(8_u16)
+        screen_column((counter_title(), counter_value(counter), counter_controls()))
     }
 }
 
@@ -76,17 +63,57 @@ struct WinScreen;
 
 impl WinScreen {
     fn root(counter: &Counter) -> Element<CounterAction> {
-        let count = counter.count;
-
-        column((
-            text("You win"),
-            text(format!("Count: {count}")).id("counter.value"),
-            button("Reset")
-                .id("counter.reset")
-                .on_press(CounterAction::Reset),
-        ))
-        .gap(8_u16)
+        screen_column((win_title(), win_value(counter), reset_button()))
     }
+}
+
+fn screen_column(children: impl IntoElements<CounterAction>) -> Element<CounterAction> {
+    container_with(ContainerArgs::new(Axis::Vertical, children).gap(8_u16))
+}
+
+fn counter_title() -> Element<CounterAction> {
+    text_with(TextArgs::new("Counter").id("counter.title"))
+}
+
+fn counter_value(counter: &Counter) -> Element<CounterAction> {
+    text_with(TextArgs::new(counter.count.to_string()).id("counter.value"))
+}
+
+fn win_title() -> Element<CounterAction> {
+    text_with(TextArgs::new("You win").id("counter.win.title"))
+}
+
+fn win_value(counter: &Counter) -> Element<CounterAction> {
+    let count = counter.count;
+
+    text_with(TextArgs::new(format!("Count: {count}")).id("counter.value"))
+}
+
+fn counter_controls() -> Element<CounterAction> {
+    container_with(
+        ContainerArgs::new(
+            Axis::Horizontal,
+            (
+                counter_button("counter.decrement", "-", CounterAction::Decrement),
+                counter_button("counter.increment", "+", CounterAction::Increment),
+                reset_button(),
+            ),
+        )
+        .id("counter.controls")
+        .gap(8_u16),
+    )
+}
+
+fn counter_button(
+    id: &'static str,
+    label: &'static str,
+    action: CounterAction,
+) -> Element<CounterAction> {
+    button_with(ButtonArgs::new(label).id(id).on_press(action))
+}
+
+fn reset_button() -> Element<CounterAction> {
+    counter_button("counter.reset", "Reset", CounterAction::Reset)
 }
 
 fn root(counter: &Counter) -> Element<CounterAction> {
@@ -138,7 +165,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppRuntime, Counter, CounterAction, CounterApp, WIN_COUNT, debug_surface, root};
+    use super::{
+        AppRuntime, Counter, CounterAction, CounterApp, WIN_COUNT, counter_button,
+        counter_controls, debug_surface, reset_button, root,
+    };
     use runenui_core::ElementKind;
     use runenui_runtime::ActivationResult;
 
@@ -252,5 +282,37 @@ mod tests {
         assert!(surface.contains("kind=text \"You win\""));
         assert!(surface.contains("kind=text \"Count: 10\""));
         assert!(surface.contains("authored=counter.reset"));
+    }
+
+    #[test]
+    fn button_component_sets_id_label_and_action() -> Result<(), &'static str> {
+        let button = counter_button("counter.increment", "+", CounterAction::Increment);
+
+        assert_eq!(
+            button.element_id().map(runenui_core::ElementId::as_str),
+            Some("counter.increment")
+        );
+
+        let ElementKind::Button(button) = button.kind() else {
+            return Err("expected button element");
+        };
+
+        assert_eq!(button.label(), "+");
+        assert_eq!(button.on_press(), Some(&CounterAction::Increment));
+        Ok(())
+    }
+
+    #[test]
+    fn controls_component_reuses_reset_button() -> Result<(), &'static str> {
+        let controls = counter_controls();
+        let reset = reset_button();
+
+        let ElementKind::Container(container) = controls.kind() else {
+            return Err("expected controls container");
+        };
+
+        assert_eq!(container.children().len(), 3);
+        assert_eq!(container.children()[2], reset);
+        Ok(())
     }
 }
