@@ -19,4 +19,4 @@ pub use element::{
 };
 pub use identity::{ElementId, ElementKey};
 pub use layout::{Axis, LayoutStyle, Px};
-pub use style::{Color, EdgeInsets, Length, Radius, Spacing};
+pub use style::{Color, EdgeInsets, Length, Radius, Spacing, StyleIntent};

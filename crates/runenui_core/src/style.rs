@@ -1,7 +1,7 @@
 //! Core host-neutral style value vocabulary.
 //!
-//! This module owns primitive style values only. It does not resolve themes,
-//! recipes, selectors, renderer materials, or computed styles.
+//! This module owns primitive style values and authored style intent only. It does
+//! not resolve themes, recipes, selectors, renderer materials, or computed styles.
 
 use crate::Px;
 
@@ -247,9 +247,89 @@ impl From<Length> for Radius {
     }
 }
 
+/// Authored local visual style intent attached to an element.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct StyleIntent {
+    foreground: Option<Color>,
+    background: Option<Color>,
+    padding: Option<EdgeInsets>,
+    radius: Option<Radius>,
+}
+
+impl StyleIntent {
+    /// Empty style intent.
+    pub const EMPTY: Self = Self {
+        foreground: None,
+        background: None,
+        padding: None,
+        radius: None,
+    };
+
+    /// Returns whether this style intent contains no local visual values.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.foreground.is_none()
+            && self.background.is_none()
+            && self.padding.is_none()
+            && self.radius.is_none()
+    }
+
+    /// Sets local foreground color intent.
+    #[must_use]
+    pub const fn with_foreground(mut self, foreground: Color) -> Self {
+        self.foreground = Some(foreground);
+        self
+    }
+
+    /// Sets local background color intent.
+    #[must_use]
+    pub const fn with_background(mut self, background: Color) -> Self {
+        self.background = Some(background);
+        self
+    }
+
+    /// Sets local padding intent.
+    #[must_use]
+    pub fn with_padding(mut self, padding: impl Into<EdgeInsets>) -> Self {
+        self.padding = Some(padding.into());
+        self
+    }
+
+    /// Sets local corner radius intent.
+    #[must_use]
+    pub fn with_radius(mut self, radius: impl Into<Radius>) -> Self {
+        self.radius = Some(radius.into());
+        self
+    }
+
+    /// Returns local foreground color intent, if present.
+    #[must_use]
+    pub const fn foreground(self) -> Option<Color> {
+        self.foreground
+    }
+
+    /// Returns local background color intent, if present.
+    #[must_use]
+    pub const fn background(self) -> Option<Color> {
+        self.background
+    }
+
+    /// Returns local padding intent, if present.
+    #[must_use]
+    pub const fn padding(self) -> Option<EdgeInsets> {
+        self.padding
+    }
+
+    /// Returns local corner radius intent, if present.
+    #[must_use]
+    pub const fn radius(self) -> Option<Radius> {
+        self.radius
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Color, EdgeInsets, Length, Radius, Spacing};
+    use super::{Color, EdgeInsets, Length, Radius, Spacing, StyleIntent};
     use crate::Px;
 
     #[test]
@@ -310,5 +390,20 @@ mod tests {
         assert_eq!(corners.top_right(), Length::px(2.0));
         assert_eq!(corners.bottom_right(), Length::px(3.0));
         assert_eq!(corners.bottom_left(), Length::px(4.0));
+    }
+
+    #[test]
+    fn style_intent_stores_unresolved_local_visual_values() {
+        let intent = StyleIntent::EMPTY
+            .with_foreground(Color::WHITE)
+            .with_background(Color::BLACK)
+            .with_padding(EdgeInsets::all(Length::px(8.0)))
+            .with_radius(Radius::all(Length::px(4.0)));
+
+        assert!(!intent.is_empty());
+        assert_eq!(intent.foreground(), Some(Color::WHITE));
+        assert_eq!(intent.background(), Some(Color::BLACK));
+        assert_eq!(intent.padding(), Some(EdgeInsets::all(Length::px(8.0))));
+        assert_eq!(intent.radius(), Some(Radius::all(Length::px(4.0))));
     }
 }

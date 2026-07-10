@@ -1,12 +1,13 @@
 //! Typed host-neutral UI element tree.
 
-use crate::{Axis, ElementId, ElementKey, LayoutStyle};
+use crate::{Axis, Color, EdgeInsets, ElementId, ElementKey, LayoutStyle, Radius, StyleIntent};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Element<Action> {
     id: Option<ElementId>,
     key: Option<ElementKey>,
     style: LayoutStyle,
+    visual_style: StyleIntent,
     kind: ElementKind<Action>,
 }
 
@@ -22,6 +23,7 @@ impl<Action> Element<Action> {
             id: args.id,
             key: args.key,
             style: LayoutStyle::default(),
+            visual_style: StyleIntent::EMPTY,
             kind: ElementKind::Text(TextElement::new(args.content)),
         }
     }
@@ -41,6 +43,7 @@ impl<Action> Element<Action> {
             id: args.id,
             key: args.key,
             style: LayoutStyle::default(),
+            visual_style: StyleIntent::EMPTY,
             kind: ElementKind::Button(button),
         }
     }
@@ -56,6 +59,7 @@ impl<Action> Element<Action> {
             id: args.id,
             key: args.key,
             style: args.style,
+            visual_style: StyleIntent::EMPTY,
             kind: ElementKind::Container(ContainerElement::new(args.axis, args.children)),
         }
     }
@@ -75,6 +79,36 @@ impl<Action> Element<Action> {
     #[must_use]
     pub fn gap(mut self, gap: impl Into<crate::Px>) -> Self {
         self.style = self.style.with_gap(gap);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_visual_style(mut self, visual_style: StyleIntent) -> Self {
+        self.visual_style = visual_style;
+        self
+    }
+
+    #[must_use]
+    pub const fn foreground(mut self, foreground: Color) -> Self {
+        self.visual_style = self.visual_style.with_foreground(foreground);
+        self
+    }
+
+    #[must_use]
+    pub const fn background(mut self, background: Color) -> Self {
+        self.visual_style = self.visual_style.with_background(background);
+        self
+    }
+
+    #[must_use]
+    pub fn padding(mut self, padding: impl Into<EdgeInsets>) -> Self {
+        self.visual_style = self.visual_style.with_padding(padding);
+        self
+    }
+
+    #[must_use]
+    pub fn radius(mut self, radius: impl Into<Radius>) -> Self {
+        self.visual_style = self.visual_style.with_radius(radius);
         self
     }
 
@@ -112,6 +146,11 @@ impl<Action> Element<Action> {
     #[must_use]
     pub const fn style(&self) -> &LayoutStyle {
         &self.style
+    }
+
+    #[must_use]
+    pub const fn visual_style(&self) -> &StyleIntent {
+        &self.visual_style
     }
 
     #[must_use]
@@ -513,4 +552,31 @@ pub fn column<Action>(children: impl IntoElements<Action>) -> Element<Action> {
 #[must_use]
 pub fn row<Action>(children: impl IntoElements<Action>) -> Element<Action> {
     Element::container(Axis::Horizontal, children)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Color, EdgeInsets, Length, Radius, StyleIntent, button};
+
+    #[test]
+    fn elements_default_to_empty_visual_style() {
+        let element = button::<()>("Save");
+        assert_eq!(element.visual_style(), &StyleIntent::EMPTY);
+    }
+
+    #[test]
+    fn element_builders_store_local_visual_style_intent() {
+        let padding = EdgeInsets::all(Length::px(8.0));
+        let radius = Radius::all(Length::px(4.0));
+        let element = button::<()>("Save")
+            .foreground(Color::WHITE)
+            .background(Color::BLACK)
+            .padding(padding)
+            .radius(radius);
+
+        assert_eq!(element.visual_style().foreground(), Some(Color::WHITE));
+        assert_eq!(element.visual_style().background(), Some(Color::BLACK));
+        assert_eq!(element.visual_style().padding(), Some(padding));
+        assert_eq!(element.visual_style().radius(), Some(radius));
+    }
 }
