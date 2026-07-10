@@ -1,9 +1,91 @@
 //! Core host-neutral style value vocabulary.
 //!
-//! This module owns primitive style values and authored style intent only. It does
-//! not resolve themes, recipes, selectors, renderer materials, or computed styles.
+//! This module owns primitive style values, token references, and authored style
+//! intent only. It does not resolve themes, recipes, selectors, renderer
+//! materials, or computed styles.
 
 use crate::Px;
+
+/// Stable identifier for a named design token.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TokenId(String);
+
+impl TokenId {
+    /// Creates a token identifier.
+    #[must_use]
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// Returns the token identifier string.
+    #[must_use]
+    pub const fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl From<&str> for TokenId {
+    fn from(id: &str) -> Self {
+        Self::new(id)
+    }
+}
+
+impl From<String> for TokenId {
+    fn from(id: String) -> Self {
+        Self::new(id)
+    }
+}
+
+macro_rules! define_token_ref {
+    ($name:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        pub struct $name(TokenId);
+
+        impl $name {
+            /// Creates a typed token reference.
+            #[must_use]
+            pub fn new(id: impl Into<TokenId>) -> Self {
+                Self(id.into())
+            }
+
+            /// Returns the untyped token identifier.
+            #[must_use]
+            pub const fn id(&self) -> &TokenId {
+                &self.0
+            }
+
+            /// Returns the token identifier string.
+            #[must_use]
+            pub const fn as_str(&self) -> &str {
+                self.0.as_str()
+            }
+        }
+
+        impl From<TokenId> for $name {
+            fn from(id: TokenId) -> Self {
+                Self::new(id)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(id: &str) -> Self {
+                Self::new(id)
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(id: String) -> Self {
+                Self::new(id)
+            }
+        }
+    };
+}
+
+define_token_ref!(ColorToken, "Typed reference to a color design token.");
+define_token_ref!(LengthToken, "Typed reference to a length design token.");
+define_token_ref!(SpacingToken, "Typed reference to a spacing design token.");
+define_token_ref!(RadiusToken, "Typed reference to a radius design token.");
 
 /// Host-neutral sRGB color with straight alpha.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -329,8 +411,43 @@ impl StyleIntent {
 
 #[cfg(test)]
 mod tests {
-    use super::{Color, EdgeInsets, Length, Radius, Spacing, StyleIntent};
+    use super::{
+        Color, ColorToken, EdgeInsets, Length, LengthToken, Radius, RadiusToken, Spacing,
+        SpacingToken, StyleIntent, TokenId,
+    };
     use crate::Px;
+
+    #[test]
+    fn token_id_preserves_identifier_text() {
+        let id = TokenId::new("color.text.primary");
+
+        assert_eq!(id.as_str(), "color.text.primary");
+        assert_eq!(TokenId::from("color.text.primary"), id);
+    }
+
+    #[test]
+    fn typed_token_references_preserve_token_ids() {
+        let color = ColorToken::new("color.text.primary");
+        let length = LengthToken::new("length.control.height");
+        let spacing = SpacingToken::new("space.2");
+        let radius = RadiusToken::new("radius.control");
+
+        assert_eq!(color.as_str(), "color.text.primary");
+        assert_eq!(length.as_str(), "length.control.height");
+        assert_eq!(spacing.as_str(), "space.2");
+        assert_eq!(radius.as_str(), "radius.control");
+        assert_eq!(color.id(), &TokenId::new("color.text.primary"));
+    }
+
+    #[test]
+    fn typed_tokens_do_not_compare_across_token_families() {
+        let color = ColorToken::new("color.surface");
+        let other_color = ColorToken::new("color.surface");
+        let spacing = SpacingToken::new("color.surface");
+
+        assert_eq!(color, other_color);
+        assert_eq!(spacing.as_str(), color.as_str());
+    }
 
     #[test]
     fn color_builders_preserve_channels() {
