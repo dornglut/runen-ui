@@ -5,7 +5,8 @@ use core::marker::PhantomData;
 use runenui_core::{Element, ElementKind};
 
 use crate::{
-    FocusState, Runtime, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, Trace, TraceTarget,
+    FocusState, Key, KeyPhase, KeyboardEvent, Runtime, RuntimeNodeId, RuntimeNodeRef,
+    RuntimeTreeIndex, Trace, TraceTarget,
 };
 
 /// Application contract used by [`AppRuntime`].
@@ -40,6 +41,17 @@ pub enum ActivationResult {
     Disabled,
     /// The requested element exists on a button, but the button has no action.
     NoAction,
+}
+
+/// Result of applying keyboard focus policy to a keyboard event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KeyboardFocusResult {
+    /// Focus moved to the provided runtime node ID.
+    Moved(RuntimeNodeId),
+    /// The event requested focus movement, but the current tree has no focusable node.
+    NoFocusableNode,
+    /// The event is not handled by keyboard focus policy.
+    Ignored,
 }
 
 /// Runtime wrapper that binds an app's root and update functions once.
@@ -137,6 +149,27 @@ where
         };
 
         self.apply_focus_result(node_id)
+    }
+
+    /// Applies keyboard focus policy to one keyboard event.
+    ///
+    /// Pressed Tab moves to the next focusable node. Pressed Shift+Tab moves to
+    /// the previous focusable node. Other keyboard events are ignored.
+    pub fn handle_keyboard_focus(&mut self, event: &KeyboardEvent) -> KeyboardFocusResult {
+        if event.phase() != KeyPhase::Pressed || !matches!(event.key(), Key::Tab) {
+            return KeyboardFocusResult::Ignored;
+        }
+
+        let node_id = if event.modifiers().shift() {
+            self.focus_previous()
+        } else {
+            self.focus_next()
+        };
+
+        node_id.map_or(
+            KeyboardFocusResult::NoFocusableNode,
+            KeyboardFocusResult::Moved,
+        )
     }
 
     const fn apply_focus_result(

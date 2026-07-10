@@ -14,7 +14,7 @@ pub mod prelude;
 mod runtime;
 mod trace;
 
-pub use app::{ActivationResult, AppRuntime, UiApp};
+pub use app::{ActivationResult, AppRuntime, KeyboardFocusResult, UiApp};
 pub use focus::FocusState;
 pub use input::{
     InputEvent, InputIntent, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint,
