@@ -1,5 +1,7 @@
 # Validation
 
+> **Category: Guide**
+
 Run the repository baseline with one command:
 
 ```powershell

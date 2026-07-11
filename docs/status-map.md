@@ -41,8 +41,8 @@ No framework subsystem is currently `stable`.
 | Trace and observability | `proof` | Coarse mount/action/update/rebuild records and debug rendering | Duplicated unbounded storage; no sequence/generation/effect/layout/paint events, sink, export, redaction, or replay | M4–M5 |
 | Source formats and devtools | `deferred` | Context-export tooling only; no UI source system | No parser, source mapping, inspector, hot reload, live preview, or visual authoring | M12 |
 | Advanced editor/game systems | `deferred` | Product direction only | No virtualization, advanced data controls, animation, overlays, docking, workspaces, or advanced multi-surface systems | M12 |
-| Legacy archive | `archived` | Recoverable repository history and a planned archival tag | Historical tree currently pollutes active checkout and full-audit context until M0B removal | M0B |
+| Legacy archive | `archived` | Git history and annotated tag `legacy-runenwerk-ui-archive-2026-07-11` preserve the audited tree | Removed from active content; salvage remains opt-in and must follow current architecture | M0B complete |
 
 ## Current milestone
 
-M0 is active. M0 establishes truthful authority, removes obsolete and legacy material from the active branch, and creates the package, licensing, governance, toolchain, and validation baseline. No M1 implementation belongs in M0.
+M0 is active. M0A authority documentation and M0B archival/removal are complete on the program branch. M0C package, licensing, governance, toolchain, and validation alignment remains. No M1 implementation belongs in M0.

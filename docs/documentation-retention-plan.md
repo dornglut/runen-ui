@@ -2,7 +2,7 @@
 
 > **Category: Current contract**
 
-This inventory assigns one authority category and one disposition to every documentation file active at the M0 baseline. M0A records decisions only. M0B performs the listed consolidations/removals after legacy history is protected; M0C adds governance and release-policy documents.
+This inventory assigns one authority category and one disposition to every documentation file active at the M0 baseline. M0B consolidations/removals are now complete on the program branch after protecting legacy history. M0C adds governance and release-policy documents.
 
 Allowed categories are **Current contract**, **Target architecture**, **ADR**, **Guide**, **Historical record**, and **Obsolete**.
 
@@ -53,16 +53,16 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `examples/counter/README.md` | Guide | Describes implemented behavior as future target | Rewrite | Same path | M0B/M0C update | Clearly label it a headless proof, not renderer/backend proof |
 | `tools/context/README.md` | Guide | Accurate operation; full-audit profile still includes legacy and default types omit audit-relevant files | Update | Same path | M0B | Document comprehensive audit coverage and historical exclusion |
 
-## M0B documents to add
+## M0B retained documents
 
 | Destination | Category | Purpose |
 |---|---|---|
-| `docs/architecture/styling.md` | Target architecture | One current/target styling contract replacing five incremental documents |
-| `docs/architecture/layout.md` | Target architecture | One current/target layout contract replacing the incremental constraint plan |
+| `docs/architecture/styling.md` | Target architecture | Current/target styling contract replacing five incremental documents |
+| `docs/architecture/layout.md` | Target architecture | Current/target layout contract replacing the incremental constraint plan |
 | `docs/architecture/events-effects-and-scheduling.md` | Target architecture | Accepted event/effect direction migrated from fake target API and charter |
-| `docs/adr/0001-typed-token-authoring.md` | ADR | Preserve typed-expression token authoring decision |
-| `docs/adr/0002-keep-layout-in-runtime.md` | ADR | Preserve reviewed no-extraction decision and revisit triggers |
-| `docs/history/legacy-archive.md` | Historical record | Record archival tag, removal, salvage rules, and recovery instructions |
+| `docs/adr/0001-typed-token-authoring.md` | ADR | Preserves typed-expression token authoring decision |
+| `docs/adr/0002-keep-layout-in-runtime.md` | ADR | Preserves reviewed no-extraction decision and revisit triggers |
+| `docs/history/legacy-archive.md` | Historical record | Records archival tag, removal, salvage rules, and recovery instructions |
 
 ## M0C documents to add
 

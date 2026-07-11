@@ -1,4 +1,4 @@
-description = "Full repository audit context. Large by design."
+description = "Comprehensive active-repository audit context. Historical legacy content is excluded."
 
 include = [
   "**/*",
@@ -18,5 +18,27 @@ exclude = [
   "**/*-context.txt",
   "*.repo-context.txt",
   "*.repo-context.md",
+  "legacy/**",
+]
+
+extensions = [
+  "json",
+  "md",
+  "mdx",
+  "py",
+  "ron",
+  "rs",
+  "toml",
+  "wgsl",
+  "yaml",
+  "yml",
+]
+
+include_filenames = [
+  "AGENTS.md",
   "Cargo.lock",
+  "Cargo.toml",
+  "LICENSE",
+  "LICENSE-APACHE",
+  "LICENSE-MIT",
 ]
