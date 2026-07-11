@@ -35,7 +35,7 @@ The deterministic measurement provider is explicitly a test/headless proof. Char
 
 ## Current limitations
 
-There is no complete sizing/min/max/fill/shrink vocabulary, flex/grid, main/cross alignment, baseline use, wrapping, stack/absolute/overlay layout, margin/border box, aspect ratio, clipping, scrolling, transforms, virtualization, retained cache, or incremental invalidation. Current public float constructors also need M1 invariants.
+There is no complete sizing/min/max/fill/shrink vocabulary, flex/grid, main/cross alignment, baseline use, wrapping, stack/absolute/overlay layout, margin/border box, aspect ratio, clipping, scrolling, transforms, virtualization, retained cache, or incremental invalidation. M1 now enforces finite non-negative `LogicalLength`/`LogicalSize` values, fallible finite signed points, normalized constraints, saturating current-layout arithmetic, and validated baselines; broader sizing behavior remains M7 work.
 
 ## Production contract
 

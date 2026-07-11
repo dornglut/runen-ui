@@ -20,20 +20,20 @@ Support labels:
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Immutable UI descriptions | `supported` | `Element<Action>` trees derived from application state | Current descriptor model is closed and transient | M2–M3 |
-| Builder authoring | `supported` | `text`, `button`, `row`, `column`, and typed argument builders | Generic setters can silently no-op for the wrong element kind | M1–M2 |
-| `element!` authoring | `proof` | Nested text/button/row/column syntax with tests | Duplicated grammar, implemented binding is `action=`, tuple child limit, no general component expression | M1–M2 |
+| Builder authoring | `supported` | Typed `Text`, `Button<Action>`, and `Container<Action>` builders with `IntoElement` erasure | Built-in element vocabulary remains closed | M2 |
+| `element!` authoring | `proof` | One ordinary builder expression lowered through `IntoElement` | No general component expression | M2 |
 | Composite function components | `partial` | Rust functions can return `Element<Action>` | Child action type must already be the parent action type | M2 |
 | Component action mapping | `unsupported` | None | No `map`-equivalent contract | M2 |
 | External custom widgets | `unsupported` | None | `ElementKind` is closed to core-defined variants | M2 |
-| Typed control-specific builders | `partial` | `ButtonArgs`, `TextArgs`, `ContainerArgs` | Flat `Element` methods still allow invalid configuration | M1–M2 |
-| Arbitrary child counts | `partial` | `Vec`, arrays, and tuples through arity eight | `element!` tuple construction fails beyond the fixed arity | M1 |
+| Typed control-specific builders | `supported` | Kind-specific builders; shared identity/style only where behavior is shared | Broader control vocabulary waits for M2/M9 | M2, M9 |
+| Arbitrary child counts | `supported` | Iterator/collection `IntoElements` plus arity-free heterogeneous `children!` | None within the current built-in proof vocabulary | M2 |
 
 ## 2. Application model
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Application-owned state | `supported` | `UiApp::State` and Counter | No granular runtime invalidation | M3–M4 |
-| Typed application actions | `supported` | `UiApp::Action`; typed button actions | Interactive dispatch currently requires cloned stored actions | M1–M4 |
+| Typed application actions | `supported` | `UiApp::Action`; typed button actions; non-`Clone` mount/direct-dispatch proof | Activation alone clones the action retained by the immutable authored tree | M2–M4 |
 | Explicit update | `supported` | `UiApp::update(&mut State, Action)` | Synchronous only; no effect result | M4 |
 | Conditional root composition | `supported` | Counter/win screen switch | Full transient rebuild clears focus | M3 |
 | Batched/reentrant action processing | `unsupported` | None | No queue or ordering contract | M4 |
@@ -44,8 +44,8 @@ Support labels:
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Per-build runtime indexing | `proof` | Preorder `RuntimeNodeId`/`RuntimeTreeIndex` | ID can identify a different node after rebuild | M3 |
-| Authored element IDs | `partial` | `ElementId` lookup and trace association | Empty/duplicate IDs accepted; first duplicate wins | M1–M3 |
-| Stored element keys | `proof` | `ElementKey` preserved on descriptors/index | Keys do not participate in reconciliation | M3 |
+| Authored element IDs | `partial` | Validated IDs, invalid-authoring diagnostics, deterministic duplicate paths, ambiguity-safe activation | IDs remain transient handles rather than persistent identity | M3 |
+| Stored element keys | `proof` | Validated keys with deterministic sibling-duplicate diagnostics | Keys do not participate in reconciliation | M3 |
 | Persistent generational IDs | `unsupported` | None | No mounted arena or generation validation | M3 |
 | Keyed reconciliation | `unsupported` | None | Full root replacement after dispatch | M3 |
 | Mount/update/unmount lifecycle | `unsupported` | None | No mounted widget protocol | M2–M3 |
@@ -92,7 +92,7 @@ Support labels:
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Literal color/padding/radius | `supported` | `StyleIntent` and `ComputedStyle` | Very small property surface | M7 |
-| Typed token references | `supported` | Color/spacing/radius token families | IDs are not validated; length token vocabulary is unused | M1, M7 |
+| Typed token references | `supported` | Validated color/spacing/radius token families and non-overwriting definitions | Theme loading/fallback remain absent | M7 |
 | Token resolution | `supported` | `StyleTokens` and pure resolver | In-memory values only; no fallback or theme loading | M7 |
 | Provenance and missing-token diagnostics | `supported` | `StyleResolution`/`SurfaceStyleReport` | Limited to current fields and one publication | M7 |
 | Computed padding geometry | `proof` | Padding affects measurement, placement, and hit bounds | Incomplete box model | M7 |
@@ -106,7 +106,7 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Finite/unbounded constraints | `supported` | Normalized `LayoutConstraints` | Public geometry constructors still accept invalid floats | M1, M7 |
+| Finite/unbounded constraints | `supported` | Validated `LogicalLength`, `LogicalSize`, finite points, normalized `LayoutConstraints`, checked baselines | Broader sizing vocabulary remains absent | M7 |
 | Renderer-neutral measurement seam | `supported` | Borrowed `MeasurementProvider` | Text-only synchronous contract; no resource or typography input | M8 |
 | Deterministic headless measurement | `proof` | Unicode-scalar count with fixed metrics | Not production text geometry | M8 |
 | One measurement per node/publication | `proof` | Publication-local measured result and tests | No retained cache or invalidation | M7, M11 |
@@ -136,7 +136,7 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Unified surface publication | `proof` | Frame/style/layout products from one preparation pass | Transient identity and public generated-product constructors | M1, M3, M6 |
+| Unified surface publication | `proof` | Read-only frame/style/layout products from one preparation pass | Transient identity; no generation or neutral paint scene | M3, M6 |
 | Logical bounds inspection | `proof` | `SurfaceNode` rectangles and debug renderer | Bounds are not a standalone layout result | M6–M7 |
 | Rectangle hit testing | `proof` | Reverse frame order | No hit scene, stacking, clips, transforms, visibility, or pointer policy | M6 |
 | Renderer-neutral paint scene | `unsupported` | None | Semantic `Container`/`Text`/`Button` are not paint primitives | M6 |

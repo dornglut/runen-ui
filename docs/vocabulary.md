@@ -12,9 +12,12 @@ This vocabulary marks current and target terms explicitly. Target terms do not i
 | Action | Application-owned typed intent passed to `update`. |
 | `update` | Application function that mutates state in response to one action. |
 | `Element<Action>` | Immutable transient UI description derived from state. |
-| `element!` | Optional macro sugar for the current built-in element grammar. |
-| `ElementId` | Optional authored debug/test/automation handle; uniqueness is not yet validated. |
-| `ElementKey` | Stored authored key intended for future reconciliation; currently does not preserve identity. |
+| `Text`, `Button<Action>`, `Container<Action>` | Typed built-in builders; only kind-valid configuration is available. |
+| `IntoElement` / `Element<Action>` | Explicit erasure into the immutable transient built-in description consumed by the current runtime. |
+| `element!` / `children!` | Thin builder-expression erasure and arity-free heterogeneous child collection; no parallel property grammar. |
+| `LogicalLength` | Finite, non-negative device-independent distance; host scale factors later map logical to physical pixels. |
+| `ElementId` | Validated optional authored debug/test/automation handle; tree-wide duplicates are diagnosed. |
+| `ElementKey` | Validated authored sibling key with duplicate diagnostics; it does not yet preserve mounted identity. |
 | `UiApp` / `AppRuntime` | Current headless application contract and bound runtime wrapper. |
 | `RuntimeNodeId` | Preorder index valid for one built tree; not persistent identity. |
 | `LayoutConstraints` | Normalized finite/unbounded measurement limits. |
@@ -23,7 +26,8 @@ This vocabulary marks current and target terms explicitly. Target terms do not i
 | `SurfaceFrame` | Current semantic/bounds/style proof product; not a mature paint protocol. |
 | Trace | Current coarse headless record of mount/action/update/rebuild events. |
 
-The implemented button binding is `action=` in `element!`; builder calls use `on_press`. There is no current `on_change` binding.
+`on_press` is the only current button-action term. `element!` accepts the same
+builder expression as direct authoring and introduces no separate binding names.
 
 ## Accepted target terms
 

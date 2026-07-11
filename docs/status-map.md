@@ -23,10 +23,10 @@ No framework subsystem is currently `stable`.
 
 | Area | Current maturity | What exists | Decisive limitation | Target milestone |
 |---|---|---|---|---|
-| Authoring and composition | `partial` | Immutable `Element<Action>` trees; builders; `element!`; text, button, row, and column descriptors | Closed `ElementKind`; no component action mapping or external widget protocol; macro and tuple composition do not scale | M1–M2 |
+| Authoring and composition | `partial` | Immutable `Element<Action>` trees; typed builders; builder-expression `element!`; arity-free iterator/collection and `children!` composition | Closed `ElementKind`; no component action mapping or external widget protocol | M2 |
 | Application model | `usable` | Application-owned state/actions; `UiApp`; explicit synchronous `update`; deterministic dispatch | No action queue, effects, tasks, subscriptions, cancellation, or reentrancy contract | M4 |
-| Transient runtime indexing | `proof` | Per-build preorder `RuntimeNodeId` and borrowed `RuntimeTreeIndex` are deterministic and tested | IDs are valid for one built tree and may identify different elements after rebuild | M3 |
-| Stored element keys | `proof` | `ElementKey` is retained on descriptors and visible through the transient index | Keys do not participate in matching or preserve runtime identity | M3 |
+| Transient runtime indexing | `proof` | Per-build opaque `RuntimeNodeId`, borrowed `RuntimeTreeIndex`, validated authored IDs, and deterministic duplicate diagnostics | IDs are valid for one built tree and may identify different elements after rebuild | M3 |
+| Stored element keys | `proof` | Validated `ElementKey` values are retained and sibling duplicates are diagnosed deterministically | Keys do not participate in matching or preserve runtime identity | M3 |
 | Persistent mounted identity and lifecycle | `absent` | None | No mounted tree, reconciliation, generational IDs, lifecycle, local state, or invalidation | M3 |
 | Events and interaction | `proof` | Typed pointer/keyboard vocabulary; hit targeting; traversal focus; press activation; overlapping input-intent helpers | No routing phases, pointer identity/capture, release-based activation, focus scopes, text/IME separation, or stale-target protection | M4 |
 | Normalized UI navigation commands | `absent` | None; keyboard Tab/Enter/Space policies are device-specific proofs | No abstract next/previous/directional/activate/cancel/menu/context commands or modality tracking | M4 |
@@ -36,7 +36,7 @@ No framework subsystem is currently `stable`.
 | Layout and measurement | `proof` | Explicit normalized constraints; borrowed measurement provider; computed padding; one measurement per node; row/column arrangement; overflow diagnostics | Narrow algorithm; no sizing vocabulary, alignment, flex/grid, wrapping, overlays, clipping, scrolling, baselines, or incremental layout | M7–M8 |
 | Focusability facts | `proof` | Enabled built-in buttons are identified as focusable and covered by traversal tests | Hardcoded to built-in element kinds; not an extensible semantic model | M5 |
 | Semantic/accessibility tree | `absent` | None | No stable semantic IDs, roles/states/actions, AccessKit adapter, or accessibility tests | M5, M10 |
-| Surface publication | `proof` | Aligned `SurfaceFrame`, `SurfaceStyleReport`, and `SurfaceLayoutReport` products | Products use transient IDs and public constructors; no surface generation or multi-surface lifecycle | M1, M3, M6, M10 |
+| Surface publication | `proof` | Aligned read-only `SurfaceFrame`, `SurfaceStyleReport`, and `SurfaceLayoutReport` products | Products use transient IDs; no surface generation or multi-surface lifecycle | M3, M6, M10 |
 | Hit testing | `proof` | Reverse-order rectangle hit testing over frame bounds | No explicit hit scene, stacking contract, clips, transforms, visibility/inertness, pointer policy, or stable generation | M6 |
 | Debug/semantic frame consumption | `proof` | Deterministic text rendering of semantic `SurfaceFrame` nodes is tested | Debug output is not a paint-scene or backend proof | M6 |
 | Renderer-neutral paint scene | `absent` | None | `SurfaceFrame` still carries semantic control kinds rather than primitives/resources | M6 |
@@ -56,4 +56,4 @@ No framework subsystem is currently `stable`.
 
 ## Current milestone
 
-M0 is complete at this revision. M1 remains queued and has not started.
+M0 and M1 are complete at this revision. M2 is queued; M3 remains blocked by M2.

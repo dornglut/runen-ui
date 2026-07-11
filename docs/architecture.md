@@ -55,6 +55,12 @@ Current `RuntimeNodeId` values are preorder indexes for one built tree. `Element
 
 The current layout and styling implementation is credible and retained: typed style values and token resolution, concrete computed style, provenance, explicit constraints, a borrowed measurement provider, one measured result per node per publication, constrained cross-axis row/column behavior, computed padding, and aligned overflow diagnostics.
 
+M1 repaired the proof surface around this implementation: logical distances and
+sizes are validated, typed builders prevent incompatible configuration, child
+composition has no arity ceiling, identity/token duplicates are deterministic,
+and generated products are read-only. The closed `ElementKind` remains deliberate
+until M2 replaces the extension gate. See the [M1 public API contract](architecture/public-api.md).
+
 ## Ownership rules
 
 - Durable application meaning belongs to application state.

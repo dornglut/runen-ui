@@ -18,7 +18,7 @@
 
 Missing tokens are non-fatal: the computed field is absent, provenance records the missing token, diagnostics retain it, and render/layout consumers do not invent a fallback.
 
-This proof does not include typography, borders, shadows, opacity, transforms, themes, recipes, variants, interaction-state layers, inheritance, external theme loading, or renderer materials. `LengthToken`/`LengthValue` are unused public vocabulary and are owned by M1 review.
+This proof does not include typography, borders, shadows, opacity, transforms, themes, recipes, variants, interaction-state layers, inheritance, external theme loading, or renderer materials. M1 removed the unused `LengthToken`/`LengthValue` family, unified geometry on validated `LogicalLength`, validated token IDs, and made duplicate token definitions explicit non-overwriting errors.
 
 ## Target pipeline
 
@@ -45,9 +45,9 @@ Typed Rust expressions remain the accepted token authoring form:
 
 ```rust
 button("Save")
-    .background(ColorToken::new("color.action.primary"))
-    .padding(SpacingToken::new("space.2"))
-    .radius(RadiusToken::new("radius.control"))
+    .background(color_token!("color.action.primary"))
+    .padding(spacing_token!("space.2"))
+    .radius(radius_token!("radius.control"))
 ```
 
 `element!` uses the same typed expressions. Token-specific string shorthand remains deferred until real usage or external-source pressure justifies macro grammar expansion. See [ADR 0001](../adr/0001-typed-token-authoring.md).
