@@ -3,8 +3,8 @@
 use core::fmt::{self, Write as _};
 
 use runenui_core::{
-    ComputedStyle, Element, ElementId, ElementKind, StyleTokens, UnresolvedStyleToken,
-    resolve_style,
+    ComputedStyle, Element, ElementId, ElementKind, StyleProvenance, StyleResolution, StyleTokens,
+    UnresolvedStyleToken, resolve_style,
 };
 
 use crate::{RuntimeNodeId, SurfaceFrame};
@@ -40,8 +40,7 @@ impl SurfaceStyleReport {
 pub struct SurfaceStyleNode {
     id: RuntimeNodeId,
     authored_id: Option<ElementId>,
-    computed_style: ComputedStyle,
-    unresolved_tokens: Vec<UnresolvedStyleToken>,
+    resolution: StyleResolution,
 }
 
 impl SurfaceStyleNode {
@@ -49,14 +48,12 @@ impl SurfaceStyleNode {
     pub const fn new(
         id: RuntimeNodeId,
         authored_id: Option<ElementId>,
-        computed_style: ComputedStyle,
-        unresolved_tokens: Vec<UnresolvedStyleToken>,
+        resolution: StyleResolution,
     ) -> Self {
         Self {
             id,
             authored_id,
-            computed_style,
-            unresolved_tokens,
+            resolution,
         }
     }
 
@@ -70,19 +67,31 @@ impl SurfaceStyleNode {
         self.authored_id.as_ref()
     }
 
+    /// Returns the complete core style-resolution product for this node.
+    #[must_use]
+    pub const fn resolution(&self) -> &StyleResolution {
+        &self.resolution
+    }
+
     #[must_use]
     pub const fn computed_style(&self) -> ComputedStyle {
-        self.computed_style
+        self.resolution.computed_style()
+    }
+
+    /// Returns per-field style-resolution provenance.
+    #[must_use]
+    pub const fn provenance(&self) -> &StyleProvenance {
+        self.resolution.provenance()
     }
 
     #[must_use]
     pub const fn unresolved_tokens(&self) -> &[UnresolvedStyleToken] {
-        self.unresolved_tokens.as_slice()
+        self.resolution.unresolved_tokens()
     }
 
     #[must_use]
     pub const fn is_fully_resolved(&self) -> bool {
-        self.unresolved_tokens.is_empty()
+        self.resolution.is_fully_resolved()
     }
 }
 
@@ -103,8 +112,7 @@ pub fn resolve_surface_style_report<Action>(
             SurfaceStyleNode::new(
                 surface_node.id(),
                 surface_node.authored_id().cloned(),
-                resolution.computed_style(),
-                resolution.unresolved_tokens().to_vec(),
+                resolution,
             )
         })
         .collect();
@@ -131,7 +139,7 @@ pub fn render_debug_surface_style_report(report: &SurfaceStyleReport) -> String 
 fn collect_style_resolutions<Action>(
     element: &Element<Action>,
     tokens: &StyleTokens,
-    resolutions: &mut Vec<runenui_core::StyleResolution>,
+    resolutions: &mut Vec<StyleResolution>,
 ) {
     resolutions.push(resolve_style(element.visual_style(), tokens));
 
@@ -150,10 +158,11 @@ impl fmt::Display for DebugSurfaceStyleNode<'_> {
 
         write!(
             formatter,
-            "style id={} authored={} computed={:?} unresolved={:?}",
+            "style id={} authored={} computed={:?} provenance={:?} unresolved={:?}",
             node.id().as_usize(),
             format_authored_id(node),
             node.computed_style(),
+            node.provenance(),
             node.unresolved_tokens()
         )
     }

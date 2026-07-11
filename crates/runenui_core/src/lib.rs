@@ -28,6 +28,7 @@ pub use style::{
     RadiusToken, RadiusValue, Spacing, SpacingToken, SpacingValue, StyleIntent, TokenId,
 };
 pub use style_resolution::{
-    StyleResolution, UnresolvedStyleToken, resolve_literal_style, resolve_style,
+    StyleFieldProvenance, StyleProvenance, StyleResolution, UnresolvedStyleToken,
+    resolve_literal_style, resolve_style,
 };
 pub use style_tokens::StyleTokens;

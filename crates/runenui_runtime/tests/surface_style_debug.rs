@@ -1,6 +1,7 @@
 use runenui_core::{
     Color, ColorToken, ComputedStyle, EdgeInsets, Element, ElementId, Length, Radius, RadiusToken,
-    SpacingToken, StyleTokens, UnresolvedStyleToken, button, column, text,
+    SpacingToken, StyleFieldProvenance, StyleProvenance, StyleTokens, UnresolvedStyleToken, button,
+    column, text,
 };
 use runenui_runtime::{
     LogicalSize, RuntimeNodeId, SurfaceStyleNode, layout_surface,
@@ -13,7 +14,7 @@ enum Action {
 }
 
 #[test]
-fn surface_style_report_exposes_resolved_style_by_runtime_node() {
+fn surface_style_report_exposes_resolution_and_provenance_by_runtime_node() {
     let padding = EdgeInsets::all(Length::px(8.0));
     let radius = Radius::all(Length::px(4.0));
     let root = column((
@@ -22,6 +23,7 @@ fn surface_style_report_exposes_resolved_style_by_runtime_node() {
             .foreground(ColorToken::new("color.text.primary")),
         button("Save")
             .id("save")
+            .foreground(Color::WHITE)
             .background(ColorToken::new("color.action.primary"))
             .padding(SpacingToken::new("space.2"))
             .radius(RadiusToken::new("radius.control"))
@@ -49,6 +51,14 @@ fn surface_style_report_exposes_resolved_style_by_runtime_node() {
         title.map(SurfaceStyleNode::computed_style),
         Some(ComputedStyle::EMPTY.with_foreground(Color::WHITE))
     );
+    assert_eq!(
+        title
+            .map(SurfaceStyleNode::provenance)
+            .map(StyleProvenance::foreground),
+        Some(&StyleFieldProvenance::ResolvedToken(ColorToken::new(
+            "color.text.primary"
+        )))
+    );
     assert_eq!(title.map(SurfaceStyleNode::is_fully_resolved), Some(true));
 
     assert_eq!(
@@ -60,16 +70,43 @@ fn surface_style_report_exposes_resolved_style_by_runtime_node() {
         save.map(SurfaceStyleNode::computed_style),
         Some(
             ComputedStyle::EMPTY
+                .with_foreground(Color::WHITE)
                 .with_background(Color::BLACK)
                 .with_padding(padding)
                 .with_radius(radius),
         )
     );
+    assert_eq!(
+        save.map(SurfaceStyleNode::provenance)
+            .map(StyleProvenance::foreground),
+        Some(&StyleFieldProvenance::Literal)
+    );
+    assert_eq!(
+        save.map(SurfaceStyleNode::provenance)
+            .map(StyleProvenance::background),
+        Some(&StyleFieldProvenance::ResolvedToken(ColorToken::new(
+            "color.action.primary"
+        )))
+    );
+    assert_eq!(
+        save.map(SurfaceStyleNode::provenance)
+            .map(StyleProvenance::padding),
+        Some(&StyleFieldProvenance::ResolvedToken(SpacingToken::new(
+            "space.2"
+        )))
+    );
+    assert_eq!(
+        save.map(SurfaceStyleNode::provenance)
+            .map(StyleProvenance::radius),
+        Some(&StyleFieldProvenance::ResolvedToken(RadiusToken::new(
+            "radius.control"
+        )))
+    );
     assert_eq!(save.map(SurfaceStyleNode::is_fully_resolved), Some(true));
 }
 
 #[test]
-fn surface_style_report_preserves_missing_token_diagnostics() {
+fn surface_style_report_preserves_missing_token_provenance_and_diagnostics() {
     let root = column((button("Save")
         .id("save")
         .background(ColorToken::new("color.action.primary"))
@@ -89,6 +126,20 @@ fn surface_style_report_preserves_missing_token_diagnostics() {
         Some(ComputedStyle::EMPTY.with_background(Color::BLACK))
     );
     assert_eq!(
+        save.map(SurfaceStyleNode::provenance)
+            .map(StyleProvenance::background),
+        Some(&StyleFieldProvenance::ResolvedToken(ColorToken::new(
+            "color.action.primary"
+        )))
+    );
+    assert_eq!(
+        save.map(SurfaceStyleNode::provenance)
+            .map(StyleProvenance::radius),
+        Some(&StyleFieldProvenance::MissingToken(RadiusToken::new(
+            "radius.control"
+        )))
+    );
+    assert_eq!(
         save.map(SurfaceStyleNode::unresolved_tokens),
         Some(expected_unresolved.as_slice())
     );
@@ -105,9 +156,14 @@ fn debug_surface_style_report_is_deterministic_text() {
 
     let report = resolve_surface_style_report(&root, &frame, &tokens);
     let output = render_debug_surface_style_report(&report);
+    let expected = concat!(
+        "surface styles nodes=2\n",
+        "style id=0 authored=- computed=ComputedStyle { foreground: None, background: None, padding: None, radius: None } ",
+        "provenance=StyleProvenance { foreground: Absent, background: Absent, padding: Absent, radius: Absent } unresolved=[]\n",
+        "style id=1 authored=title computed=ComputedStyle { foreground: Some(Color { red: 255, green: 255, blue: 255, alpha: 255 }), background: None, padding: None, radius: None } ",
+        "provenance=StyleProvenance { foreground: ResolvedToken(ColorToken(TokenId(\"color.text.primary\"))), background: Absent, padding: Absent, radius: Absent } unresolved=[]\n",
+    );
 
-    assert!(output.contains("surface styles nodes=2"));
-    assert!(output.contains("style id=1 authored=title"));
-    assert!(output.contains("computed=ComputedStyle"));
-    assert!(output.contains("unresolved=[]"));
+    assert_eq!(output, expected);
+    assert_eq!(render_debug_surface_style_report(&report), expected);
 }
