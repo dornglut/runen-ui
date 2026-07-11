@@ -109,6 +109,8 @@ The resolved style data model is documented in [Computed Style Model](architectu
 
 Layout is a distinct runtime phase. Elements express layout intent through properties such as direction, gap, padding, sizing, alignment, and constraints. The runtime computes a `LayoutBox` tree from those inputs.
 
+The next layout boundary is documented in [Layout Constraints and Measurement Contract](architecture/layout-constraints-measurement-contract.md). It defines explicit constraints, a renderer-neutral intrinsic-measurement seam, deterministic fallback measurement, and the staged cutover for constrained row/column layout.
+
 The `LayoutBox` tree is inspectable data. It gives hosts, renderers, tests, and tools a stable representation of computed geometry.
 
 ## Accessibility
