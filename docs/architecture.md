@@ -103,7 +103,7 @@ Token references and token-backed style values are documented in [Token Referenc
 
 Current token authoring ergonomics are documented in [Token Authoring Ergonomics](architecture/token-authoring-ergonomics.md). The current decision is to use typed Rust expressions through the builder API and `element!` expression attributes before adding shorthand syntax.
 
-The resolved style data model is documented in [Computed Style Model](architecture/computed-style-model.md).
+The resolved style data model is documented in [Computed Style Model](architecture/computed-style-model.md). The runtime cutover that makes one style-resolution product feed layout, surface output, and diagnostics is documented in [Computed Style Runtime Integration](architecture/computed-style-runtime-integration.md).
 
 ## Layout
 
@@ -121,7 +121,7 @@ The accessibility tree is part of the runtime model. This lets hosts expose sema
 
 A `Surface` is a named UI output target.
 
-A `SurfaceFrame` is the runtime's published output for a surface. It contains the data needed by a host or renderer for the current UI frame, including computed style, computed layout, accessibility data, action bindings, and renderer-neutral primitives.
+A `SurfaceFrame` is the runtime's published renderer-facing output for a surface. The target model contains computed style, computed layout, accessibility data, action bindings, and renderer-neutral primitives. The current implementation still publishes bounds and node kinds separately from style diagnostics; the computed-style runtime integration defines the next cutover that places concrete `ComputedStyle` on each surface node without placing token or provenance data in the frame.
 
 ## Hosts and Renderers
 

@@ -2,7 +2,7 @@
 
 This document defines the intended end product for styling in RunenUI.
 
-It is a target architecture, not permission to create all styling crates or systems immediately. The purpose is to keep the first token/style implementation slice aligned with the long-term model.
+It is a target architecture, not permission to create all styling crates or systems immediately. The purpose is to keep each implementation slice aligned with the long-term model.
 
 ## Decision
 
@@ -41,7 +41,7 @@ The styling target does not require these immediately:
 - DOM-style global cascade.
 - browser layout compatibility.
 - runtime stylesheet parsing.
-- hot reload in the first implementation slice.
+- hot reload in the current runtime-integration slice.
 - a separate `runenui_style` or `runenui_theme` crate before the model has enough pressure.
 - renderer-specific material/shader APIs in the style layer.
 
@@ -49,42 +49,46 @@ The styling target does not require these immediately:
 
 ### `runenui_core`
 
-Owns the smallest stable style vocabulary:
+Owns the stable, host-neutral pure style model:
 
 - primitive value types
-- optional token references
-- element-local style intent
-- semantic style slots only when they are independent of a control implementation
+- typed token references
+- element-local `StyleIntent`
+- in-memory `StyleTokens`
+- `ComputedStyle`
+- pure style resolution
+- provenance and missing-token diagnostics
 
-Core must not own theme loading, renderer materials, platform color APIs, stylesheet parsing, or control recipes.
+Core must not own mounted-tree orchestration, theme loading, renderer materials, platform color APIs, stylesheet parsing, or control recipes.
 
 ### `runenui_runtime`
 
-Eventually owns or orchestrates style resolution for a mounted tree:
+Owns orchestration of the pure core resolver for a mounted or published tree:
 
-- current theme selection
-- interaction state inputs
-- computed style production
+- explicit token context for surface publication
+- one style-resolution result per runtime node
+- computed-style delivery to layout and renderer-neutral output
 - trace/debug visibility for style resolution
-- invalidation when style-affecting state changes
+- future invalidation when style-affecting state changes
+- future interaction-state and theme-selection inputs when those models exist
 
-Runtime must not draw pixels and must not embed a concrete renderer.
+Runtime must not draw pixels, resolve renderer materials, or embed a concrete renderer. The current integration contract is documented in [Computed Style Runtime Integration](computed-style-runtime-integration.md).
 
 ### future `runenui_style` or `runenui_theme`
 
 A dedicated crate becomes justified only after style resolution needs independent API and tests.
 
-It would own:
+It could own independently reusable policy and data that outgrows the core/runtime modules:
 
-- token maps
-- theme definitions
+- external theme definitions and loading
 - component recipes
 - variant resolution
 - state-layer rules
-- computed style types
-- style diagnostics
+- fallback and inheritance policy
+- serialized theme validation
+- reusable style conformance tests
 
-Do not extract this crate while styling is only a few primitive types and direct element fields.
+Do not extract this crate merely to move the current token map, pure resolver, or computed-style types. Extraction must enforce a boundary that has become independently valuable.
 
 ### future `runenui_render`
 
@@ -113,7 +117,7 @@ FontWeight
 
 They are not theme-aware by themselves.
 
-The first implementation should start with the minimum primitives required by real element fields. Do not add broad value types before a caller exists.
+The implemented vocabulary should remain limited to primitives required by real element fields. Do not add broad value types before a caller exists.
 
 ### 2. Token references
 
@@ -347,42 +351,40 @@ selected node
 
 This is why the style pipeline should be explicit and data-driven.
 
-## First implementation slice after this design
+## Current implementation status
 
-After this document is accepted, the first code slice should not implement a theme engine.
+The primitive vocabulary, typed token references, element-local `StyleIntent`, in-memory token resolution, `ComputedStyle`, provenance, and runtime style-debug report now exist.
 
-It should add only the minimum core vocabulary needed for future style intent:
+The remaining architectural split is that layout and surface publication do not consume the same resolved-style product as diagnostics. The next implementation sequence is defined in [Computed Style Runtime Integration](computed-style-runtime-integration.md):
 
 ```text
-Color
-Length
-Spacing or EdgeInsets
-Radius
+unified surface publication
+  -> computed style on SurfaceNode
+  -> computed padding affects layout
+  -> layout boundary review
 ```
 
-Optionally add typed token references only if the resulting API remains small.
-
-The first code slice should include tests for value construction and preserve current counter behavior.
+Recipes, variants, interaction-state layers, external themes, and renderer backends remain deferred.
 
 ## Extraction criteria
 
-Create a dedicated style/theme crate only after at least two of these are true:
+Create a dedicated style/theme crate only when the current core/runtime split can no longer express the policy boundary cleanly and at least two of these are true:
 
-- multiple controls need shared visual recipes
-- token resolution exists and needs independent tests
-- computed style becomes a public data product
-- renderer output needs resolved visual values from more than one source
-- live inspector/debug output needs style provenance
-- theme data needs serialization or external loading
+- external theme definitions or loaders need independent ownership;
+- component recipes, variants, and interaction-state rules form a reusable subsystem;
+- fallback, inheritance, or precedence policy requires substantial independent tests;
+- serialized theme validation or migration exists;
+- more than one runtime or tool needs the style-policy subsystem without depending on `runenui_runtime`;
+- moving the subsystem would enforce a dependency rule that Cargo should protect.
 
-Until then, keep styling as modules in `runenui_core` and `runenui_runtime`.
+Existing token maps, pure resolution, `ComputedStyle`, and provenance are not sufficient reasons by themselves. Until policy pressure exists, keep styling as modules in `runenui_core` and `runenui_runtime`.
 
 ## Open questions
 
-These should not block the first token vocabulary slice:
+These should not block the current runtime-integration and padding slices:
 
-- Should token IDs be interned, strongly typed newtypes, or simple strings initially?
 - Should recipes be Rust-authored only at first?
 - Should external theme files be RON, TOML, or a custom source format later?
 - How much selector-like behavior is needed before it becomes harmful complexity?
-- Which computed style facts belong in `SurfaceFrame` versus a separate render model?
+- Which future computed style facts belong in `SurfaceFrame` versus a richer render protocol?
+- When should active theme selection become retained runtime state rather than explicit publication input?

@@ -116,23 +116,13 @@ A future layout crate can still use runtime node identity, but that contract sho
 
 Until that seam exists, a layout crate would mostly encode temporary measurements as public API.
 
-### 5. Style does not exist yet
+### 5. Computed style is not integrated yet
 
-Real layout will need style input:
+The core style model now includes typed token values, `StyleIntent`, `StyleTokens`, `ComputedStyle`, provenance, and missing-token diagnostics. The runtime can produce a separate `SurfaceStyleReport`.
 
-```text
-padding
-margin
-border
-width/height
-min/max sizes
-alignment
-positioning
-overflow
-display/layout mode
-```
+The remaining boundary problem is that layout still walks `Element<Action>` directly and does not consume the same `StyleResolution` product as diagnostics. Padding is the first implemented computed field that should materially affect layout.
 
-Those are not in the current style model. Extracting layout before style risks creating the wrong API shape.
+Extracting layout before that integration would still freeze the wrong API shape. The accepted cutover is documented in [Computed Style Runtime Integration](computed-style-runtime-integration.md).
 
 ## Future `runenui_layout` ownership
 
@@ -224,45 +214,49 @@ Create `runenui_render` only when at least three of these are true:
 
 Do not extract crates next.
 
-The next implementation slice should introduce a small style token vocabulary in the existing crates, then route those style values into surface-frame publication. That will expose the real pressure between core, runtime, layout, and render.
-
-Recommended next PR:
+The next code slice should implement the first stage of [Computed Style Runtime Integration](computed-style-runtime-integration.md):
 
 ```text
-PR #43: Add initial style token vocabulary
+Element tree + StyleTokens + layout metrics
+  -> one runtime-owned resolved surface tree
+  -> SurfaceFrame with ComputedStyle
+  -> SurfaceStyleReport from the same resolution product
 ```
 
-Initial scope:
+Required scope:
 
 ```text
-- add explicit style/property vocabulary without CSS cascade
-- keep it host- and renderer-neutral
-- attach style intent to elements or element arguments
-- keep layout behavior mostly unchanged
-- add tests proving style metadata survives element construction
+- explicit surface build context
+- one style resolution per node per publication
+- shared runtime node identity for frame and diagnostics
+- ComputedStyle carried by SurfaceNode
+- old parallel public layout/style-report paths removed or internalized
+- no geometry change yet
 ```
 
-Non-goals:
+The following slice should make computed padding affect text, button, container, and root content geometry.
+
+Non-goals remain:
 
 ```text
-- no CSS parser
-- no theme system yet
-- no layout extraction
-- no render extraction
-- no backend work
-- no accessibility extraction
+- no component recipes or variants
+- no interaction-state styling
+- no external theme format
+- no renderer backend
+- no layout or render crate extraction
 ```
 
 ## Review cadence
 
-Revisit this boundary after style tokens and at least one more layout-affecting feature exist.
+Revisit this boundary after unified surface publication and computed padding are implemented.
 
-The expected progression is:
+The completed and expected progression is:
 
 ```text
 style token vocabulary
-  -> computed style shape
-  -> layout-affecting style fields
+  -> computed style and provenance
+  -> unified runtime surface publication
+  -> computed padding affects layout
   -> layout boundary review update
   -> possible runenui_layout extraction
   -> render protocol boundary review
