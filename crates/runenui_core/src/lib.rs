@@ -11,6 +11,7 @@ mod identity;
 mod layout;
 pub mod prelude;
 mod style;
+mod style_resolution;
 
 include!("element_macros.rs");
 
@@ -25,3 +26,4 @@ pub use style::{
     Color, ColorToken, ColorValue, EdgeInsets, Length, LengthToken, LengthValue, Radius,
     RadiusToken, RadiusValue, Spacing, SpacingToken, SpacingValue, StyleIntent, TokenId,
 };
+pub use style_resolution::{StyleResolution, UnresolvedStyleToken, resolve_literal_style};
