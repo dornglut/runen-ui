@@ -2,7 +2,7 @@
 
 > **Category: Current contract**
 
-This inventory assigns one authority category and one disposition to every documentation file active at the M0 baseline. M0B consolidations/removals are now complete on the program branch after protecting legacy history. M0C adds governance and release-policy documents.
+This inventory assigns one authority category and one disposition to every documentation file from the M0 baseline and records the retained M0 authority set. M0B consolidation/removal and M0C governance/release-policy work are complete on the program branch.
 
 Allowed categories are **Current contract**, **Target architecture**, **ADR**, **Guide**, **Historical record**, and **Obsolete**.
 
@@ -64,19 +64,22 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `docs/adr/0002-keep-layout-in-runtime.md` | ADR | Preserves reviewed no-extraction decision and revisit triggers |
 | `docs/history/legacy-archive.md` | Historical record | Records archival tag, removal, salvage rules, and recovery instructions |
 
-## M0C documents to add
+## M0C retained documents
 
 | Destination | Category | Purpose |
 |---|---|---|
-| `AGENTS.md` | Current contract | Repository authority, scope, preflight, validation, architecture and workflow rules |
-| `CONTRIBUTING.md` | Guide | Supported contributor workflow, changes, tests, commits, and review |
-| `SECURITY.md` | Current contract | Private vulnerability reporting and support scope |
+| `AGENTS.md` | Current contract | Repository authority, scope, preflight, validation, architecture, and workflow rules |
+| `CONTRIBUTING.md` | Guide | Contributor workflow, changes, tests, commits, and review |
+| `SECURITY.md` | Current contract | Private vulnerability reporting and current support scope |
 | `CODE_OF_CONDUCT.md` | Current contract | Contributor conduct and enforcement baseline |
-| `CHANGELOG.md` | Current contract | Pre-release change record and Keep-a-Changelog policy |
+| `CHANGELOG.md` | Current contract | Pre-release change record and Keep a Changelog policy |
 | `docs/release-policy.md` | Current contract | Pre-1.0 versioning, publication gate, release checklist, and `1.0.0` criteria |
 | `docs/api-stability.md` | Current contract | 0.x compatibility and public API stability guidance |
 | `docs/toolchain-policy.md` | Current contract | Stable/MSRV definitions, update policy, and local/CI requirements |
-| `LICENSE-*` or `LICENSE` | Current contract | Owner-selected legal license text and Cargo metadata |
+| `docs/dependency-policy.md` | Current contract | Dependency adoption, licensing, MSRV, and review baseline |
+| `docs/unsafe-code-policy.md` | Current contract | Safe-Rust default and future unsafe boundary review |
+| `LICENSE-MIT`, `LICENSE-APACHE` | Current contract | Owner-convention dual MIT/Apache-2.0 license texts |
+| `xtask/README.md` | Guide | Shared validation task ownership and usage |
 
 ## M0B deletion gate
 

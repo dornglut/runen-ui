@@ -56,6 +56,10 @@ This target is documented architecture, not a claim about the current implementa
 - [Architecture](docs/architecture.md)
 - [Documentation retention and disposition](docs/documentation-retention-plan.md)
 - [Validation](docs/tooling/validation.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [API stability](docs/api-stability.md)
+- [Release policy](docs/release-policy.md)
 
 When sources disagree, the current status, support matrix, roadmap, architecture, and accepted ADRs take precedence over older incremental design documents. Historical material is not implementation authority.
 
@@ -87,15 +91,10 @@ This example reflects the implemented API. It does not imply component action ma
 The repository baseline is:
 
 ```powershell
-cargo fmt --all --check
-cargo test --workspace --locked
-cargo clippy --workspace --all-targets --locked -- -D warnings
-rustup run 1.93.0 cargo test --workspace --locked
-git diff --check
 cargo validate
 ```
 
-`cargo validate` is the canonical local entry point. See [Validation](docs/tooling/validation.md) for its current implementation and policy.
+`cargo validate` is the shared local/CI implementation. It runs stable formatting, locked tests, Clippy with denied warnings, Rust 1.93.0 MSRV tests, and relative Markdown link validation. Also run `git diff --check` and slice-specific checks. See [Validation](docs/tooling/validation.md).
 
 Generated context exports are written to the ignored `context/` directory:
 
@@ -107,4 +106,6 @@ Normal profiles exclude historical legacy material. See [Context Export](tools/c
 
 ## Release status
 
-RunenUI has not reached a stable public API or production release. Package publication remains disabled until release infrastructure and milestone gates exist. `1.0.0` is reserved for completion of the required production profiles and the M11 hardening gate.
+RunenUI has not reached a stable public API or production release. All workspace packages are `0.1.0` and publication is disabled until release infrastructure and milestone gates exist. `1.0.0` is reserved for completion of the required production profiles and the M11 hardening gate.
+
+RunenUI is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

@@ -27,7 +27,7 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 ## M0 — Repository authority and governance reset
 
-**Status:** `active`
+**Status:** `complete` on the program branch.
 
 **Goal:** Make repository documentation, active content, metadata, governance, and validation truthful for a pre-1.0 production-readiness program.
 
@@ -37,7 +37,7 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 - **M0A — production authority documentation (`complete` on program branch):** README, architecture framing, status map, feature/support matrix, M0–M12 roadmap, and documentation disposition.
 - **M0B — archival/removal (`complete` on program branch):** annotated legacy tag; remove `legacy/`, obsolete maps/plans, fake target API, completed incremental documents, and migrated audit backlog; add concise history/ADR records; keep normal context profiles free of legacy material.
-- **M0C — release/governance baseline (`active`):** reset packages to `0.1.0`, disable publishing, add accurate metadata and license files, pin contributor toolchain/MSRV policy, add contribution/security/conduct/changelog/agent/release/API-stability guidance, and align local validation with CI.
+- **M0C — release/governance baseline (`complete` on program branch):** reset packages to `0.1.0`, disable publishing, add accurate metadata and license files, pin contributor toolchain/MSRV policy, add contribution/security/conduct/changelog/agent/release/API-stability guidance, and align local validation with CI.
 
 **Explicit non-goals:** Any M1 API repair; mounted runtime; controls; renderer protocol/backend; layout expansion; production text; host implementation.
 

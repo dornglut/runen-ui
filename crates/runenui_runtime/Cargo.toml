@@ -2,15 +2,16 @@
 name = "runenui_runtime"
 version.workspace = true
 authors.workspace = true
-description.workspace = true
-readme.workspace = true
+description = "Deterministic headless runtime and diagnostic publication proof for RunenUI"
+readme = "README.md"
 repository.workspace = true
 license.workspace = true
+publish.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-runenui_core = { path = "../runenui_core" }
+runenui_core = { path = "../runenui_core", version = "0.1.0" }
 
 [lints]
 workspace = true

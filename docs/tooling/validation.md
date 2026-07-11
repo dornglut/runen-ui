@@ -2,48 +2,36 @@
 
 > **Category: Guide**
 
-Run the repository baseline with one command:
+Run the complete repository baseline with one command:
 
 ```powershell
 cargo validate
 ```
 
-`cargo validate` is a Cargo alias for:
+This Cargo alias executes `cargo run --package xtask -- validate`. The task is the single implementation used locally and by CI. It runs, in order:
 
 ```powershell
-cargo run --package xtask -- validate
+cargo +stable fmt --all --check
+cargo +stable test --workspace --locked
+cargo +stable clippy --workspace --all-targets --locked -- -D warnings
+cargo +1.93.0 test --workspace --locked
+# repository-local relative Markdown link check
 ```
 
-The validate task runs these checks in order and stops on the first failure:
+Validation stops on the first failure and never rewrites source. CI installs both required toolchains and calls `cargo validate`; it does not duplicate or mutate the implementation.
 
-```powershell
-cargo fmt --all --check
-cargo test --workspace
-cargo clippy --workspace --all-targets --locked -- -D warnings
-```
+Install the channels locally through `rustup`. The pinned `rust-toolchain.toml` supplies Rust 1.93.0 with rustfmt/Clippy for reproducible default commands; `cargo validate` also requires latest stable with those components. See the [toolchain policy](../toolchain-policy.md).
 
-Validation is read-only. It does not apply formatting changes.
-
-## Formatting
-
-Format the workspace with:
+Format intentionally before validation with:
 
 ```powershell
 cargo format
 ```
 
-`cargo format` is a Cargo alias for:
+Check only documentation links when editing docs:
 
 ```powershell
-cargo fmt --all
+cargo xtask check-links
 ```
 
-Run formatting first when `cargo validate` fails at the fmt-check step, then rerun validation.
-
-## Debugging
-
-Use the explicit xtask form when debugging the task runner itself:
-
-```powershell
-cargo xtask validate
-```
+Also run `git diff --check` and any slice-specific conformance, documentation, context-export, metadata, platform, benchmark, or release checks required by the roadmap. The M11 production matrix will expand beyond the current Ubuntu proof baseline; it must continue to reuse this entry point or a reviewed successor rather than duplicate commands.

@@ -45,4 +45,4 @@ No framework subsystem is currently `stable`.
 
 ## Current milestone
 
-M0 is active. M0A authority documentation and M0B archival/removal are complete on the program branch. M0C package, licensing, governance, toolchain, and validation alignment remains. No M1 implementation belongs in M0.
+M0 is complete on the program branch: authority documentation, archival/removal, package metadata, dual licensing, governance, toolchain policy, and shared local/CI validation satisfy the milestone gate. M1 is queued but has not started.

@@ -17,71 +17,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  fmt:
-    name: Rustfmt
+  validate:
+    name: Repository baseline
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Rust toolchain
+      - name: Install latest stable Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: clippy, rustfmt
 
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Cache cargo data
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-
-  test-stable:
-    name: Test stable
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo data
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run tests
-        run: cargo test --workspace --locked
-
-  test-msrv:
-    name: Test MSRV 1.93.0
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Rust toolchain
+      - name: Install MSRV Rust 1.93.0
         uses: dtolnay/rust-toolchain@1.93.0
 
-      - name: Cache cargo data
+      - name: Cache Cargo data
         uses: Swatinem/rust-cache@v2
 
-      - name: Run tests
-        run: cargo test --workspace --locked
+      - name: Run shared validation baseline
+        run: cargo validate

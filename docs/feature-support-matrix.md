@@ -191,7 +191,7 @@ Support labels:
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Workspace unit/integration tests | `supported` | Substantial deterministic proof suite | Mostly private/proof APIs and Ubuntu CI | M5, M11 |
-| Strict formatting and linting | `supported` | rustfmt and Clippy `-D warnings` | Local/CI baseline still needs unification in M0C | M0C |
+| Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Aligned reports and debug output | No stable codes, severity, strict mode, or generation | M3–M5 |
 | Runtime trace | `partial` | Coarse event records | Duplicate unbounded storage; no structured export/replay | M4–M5 |
 | Public headless test harness | `planned` | Current tests prove demand | No `runenui_testing` public boundary | M5 |
