@@ -21,6 +21,7 @@ include = [
 ]
 
 exclude = [
+  "Cargo.lock",
   "legacy/**",
   "context/**",
 ]

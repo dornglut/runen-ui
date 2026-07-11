@@ -91,10 +91,11 @@ This example reflects the implemented API. It does not imply component action ma
 The repository baseline is:
 
 ```powershell
+cargo +stable fmt --all
 cargo validate
 ```
 
-`cargo validate` is the shared local/CI implementation. It runs stable formatting, locked tests, Clippy with denied warnings, Rust 1.93.0 MSRV tests, and relative Markdown link validation. Also run `git diff --check` and slice-specific checks. See [Validation](docs/tooling/validation.md).
+Format intentional changes with latest stable rustfmt, matching CI. `cargo validate` is the locked, read-only shared local/CI implementation. It runs stable formatting checks, locked tests, Clippy with denied warnings, Rust 1.93.0 MSRV tests, repository metadata checks, and repository-relative Markdown link validation from the resolved workspace root. Also run `git diff --check` and slice-specific checks. See [Validation](docs/tooling/validation.md).
 
 Generated context exports are written to the ignored `context/` directory:
 

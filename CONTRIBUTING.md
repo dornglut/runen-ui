@@ -11,12 +11,12 @@ RunenUI is an experimental pre-1.0 framework undergoing foundational architectur
 3. Read all affected code, tests, and authority documents; verify current behavior rather than trusting older summaries.
 4. Implement one coherent slice completely, remove superseded paths, and add behavioral/conformance tests.
 5. Update status, support, roadmap, architecture/ADR, public guides, and retention records when their facts change.
-6. Run `cargo validate`, slice-specific checks, and `git diff --check`.
+6. Format intentional Rust changes with `cargo +stable fmt --all`, then run `cargo validate`, slice-specific checks, and `git diff --check`.
 7. Open a draft pull request with the problem, target contract, scope, decisions, migrations/removals, tests, validation, non-goals, documentation changes, and next task.
 
 ## Toolchains
 
-The repository pins the MSRV for reproducible local commands and also validates the latest stable Rust. Install/update both with `rustup`; see the [toolchain policy](docs/toolchain-policy.md).
+The repository pins the MSRV for reproducible default commands and also validates the latest stable Rust. Install/update both with `rustup`. Always use `cargo +stable fmt --all` for intentional formatting so local output matches the stable rustfmt enforced by validation; see the [toolchain policy](docs/toolchain-policy.md).
 
 ## Change quality
 

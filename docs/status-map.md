@@ -25,18 +25,29 @@ No framework subsystem is currently `stable`.
 |---|---|---|---|---|
 | Authoring and composition | `partial` | Immutable `Element<Action>` trees; builders; `element!`; text, button, row, and column descriptors | Closed `ElementKind`; no component action mapping or external widget protocol; macro and tuple composition do not scale | M1–M2 |
 | Application model | `usable` | Application-owned state/actions; `UiApp`; explicit synchronous `update`; deterministic dispatch | No action queue, effects, tasks, subscriptions, cancellation, or reentrancy contract | M4 |
-| Runtime identity and lifecycle | `absent` | Per-build preorder `RuntimeNodeId` and borrowed `RuntimeTreeIndex` proof | No persistent mounted tree, reconciliation, generational IDs, lifecycle, local state, or invalidation; keys are unused | M3 |
+| Transient runtime indexing | `proof` | Per-build preorder `RuntimeNodeId` and borrowed `RuntimeTreeIndex` are deterministic and tested | IDs are valid for one built tree and may identify different elements after rebuild | M3 |
+| Stored element keys | `proof` | `ElementKey` is retained on descriptors and visible through the transient index | Keys do not participate in matching or preserve runtime identity | M3 |
+| Persistent mounted identity and lifecycle | `absent` | None | No mounted tree, reconciliation, generational IDs, lifecycle, local state, or invalidation | M3 |
 | Events and interaction | `proof` | Typed pointer/keyboard vocabulary; hit targeting; traversal focus; press activation; overlapping input-intent helpers | No routing phases, pointer identity/capture, release-based activation, focus scopes, text/IME separation, or stale-target protection | M4 |
+| Normalized UI navigation commands | `absent` | None; keyboard Tab/Enter/Space policies are device-specific proofs | No abstract next/previous/directional/activate/cancel/menu/context commands or modality tracking | M4 |
+| Directional/spatial focus navigation | `absent` | None | Current focus movement is linear traversal only | M4 |
 | Effects and scheduling | `absent` | Synchronous dispatch only | No effects, queue, task executor, timers, subscriptions, cancellation, wakeups, or shutdown model | M4 |
 | Styling | `partial` | Colors, padding, radius, typed tokens, computed style, provenance, missing-token diagnostics | No themes, recipes, variants, interaction states, typography, borders, fallback, or preferences | M7–M8 |
 | Layout and measurement | `proof` | Explicit normalized constraints; borrowed measurement provider; computed padding; one measurement per node; row/column arrangement; overflow diagnostics | Narrow algorithm; no sizing vocabulary, alignment, flex/grid, wrapping, overlays, clipping, scrolling, baselines, or incremental layout | M7–M8 |
-| Semantic/accessibility data | `absent` | Focusability is inferred from built-in element kind | No semantic tree, stable semantic IDs, roles/states/actions, AccessKit adapter, or accessibility tests | M5, M10 |
+| Focusability facts | `proof` | Enabled built-in buttons are identified as focusable and covered by traversal tests | Hardcoded to built-in element kinds; not an extensible semantic model | M5 |
+| Semantic/accessibility tree | `absent` | None | No stable semantic IDs, roles/states/actions, AccessKit adapter, or accessibility tests | M5, M10 |
 | Surface publication | `proof` | Aligned `SurfaceFrame`, `SurfaceStyleReport`, and `SurfaceLayoutReport` products | Products use transient IDs and public constructors; no surface generation or multi-surface lifecycle | M1, M3, M6, M10 |
 | Hit testing | `proof` | Reverse-order rectangle hit testing over frame bounds | No explicit hit scene, stacking contract, clips, transforms, visibility/inertness, pointer policy, or stable generation | M6 |
-| Rendering | `absent` | Deterministic debug text consumer of `SurfaceFrame` | `SurfaceFrame` carries semantic control kinds; no paint primitives, resources, conventional backend, or SDF consumer | M6, M10, M12 |
-| Text | `proof` | Provider seam and deterministic Unicode-scalar-count measurement for headless proofs | No production provider, font database, shaping, fallback, bidi, wrapping, baselines, editing, selection, clipboard, or IME | M8 |
-| Controls | `proof` | Text and button primitive proofs; enabled state and typed activation | No mounted behavior, complete semantics, keyboard/accessibility contract, style states, or standard control library | M9 |
-| Host/platform integration | `absent` | Host-neutral input and measurement vocabulary only | No host contract, native event loop/window, DPI, clipboard, cursor, IME, drag/drop, accessibility bridge, or multi-window support | M10 |
+| Debug/semantic frame consumption | `proof` | Deterministic text rendering of semantic `SurfaceFrame` nodes is tested | Debug output is not a paint-scene or backend proof | M6 |
+| Renderer-neutral paint scene | `absent` | None | `SurfaceFrame` still carries semantic control kinds rather than primitives/resources | M6 |
+| Production renderer backend | `absent` | None | No conventional or SDF backend; the neutral scene must be accepted first | M10, M12 |
+| Deterministic text measurement | `proof` | Provider seam and Unicode-scalar-count measurements support headless tests | Fixed metrics are not font, shaping, grapheme, bidi, wrapping, or baseline layout | M8 |
+| Production text subsystem | `absent` | None | No font discovery, shaping, fallback, bidi, wrapping, editing, selection, clipboard, or IME | M8 |
+| Button behavior | `proof` | Label, enabled state, typed action, press activation, and focused Enter/Space behavior are tested | No mounted pressed state, pointer capture, release-inside activation, semantics, recipes, or accessibility contract | M4, M9 |
+| Standard control library | `absent` | None beyond text/button proofs | No complete lifecycle/event/semantic/style/layout/keyboard/accessibility contracts | M9 |
+| Host neutrality | `usable` | Active core/runtime have no native window, GPU, ECS, platform-controller, or legacy dependencies | Neutrality alone is not a host integration contract | M10 |
+| Host/platform integration | `absent` | None | No host contract, native event loop/window, DPI, clipboard, cursor, IME, drag/drop, accessibility bridge, or multi-window support | M10 |
+| Raw controller/gamepad platform input | `absent` | None | No device connection/identity, raw button/axis translation, normalization/dead zones, or embedded-host mapping | M10 |
 | Testing and diagnostics | `partial` | Substantial proof-level integration tests; deterministic output; style/layout reports; strict lints | No public harness, semantics queries, deterministic clock/tasks, replay, snapshots, fuzzing, property tests, benchmarks, or platform tests | M5, M11 |
 | Trace and observability | `proof` | Coarse mount/action/update/rebuild records and debug rendering | Duplicated unbounded storage; no sequence/generation/effect/layout/paint events, sink, export, redaction, or replay | M4–M5 |
 | Source formats and devtools | `deferred` | Context-export tooling only; no UI source system | No parser, source mapping, inspector, hot reload, live preview, or visual authoring | M12 |
@@ -45,4 +56,4 @@ No framework subsystem is currently `stable`.
 
 ## Current milestone
 
-M0 is complete on the program branch: authority documentation, archival/removal, package metadata, dual licensing, governance, toolchain policy, and shared local/CI validation satisfy the milestone gate. M1 is queued but has not started.
+M0 corrective review is active on the program branch. M1 remains queued and has not started. M0 returns to complete only after every critical review correction and the required root, nested-directory, worktree-cleanliness, context-profile, and CI checks pass.

@@ -8,6 +8,8 @@ use std::{
     process::{Command, ExitCode},
 };
 
+const EXPECTED_LICENSE_EXPRESSION: &str = "license = \"MIT OR Apache-2.0\"";
+const EXPECTED_MIT_NOTICE: &str = "Copyright (c) 2026 Crystonix";
 const VALIDATE_STEPS: &[(&str, &[&str])] = &[
     ("stable", &["fmt", "--all", "--check"]),
     ("stable", &["test", "--workspace", "--locked"]),
@@ -45,30 +47,45 @@ fn main() -> ExitCode {
 }
 
 fn validate() -> ExitCode {
+    let root = match workspace_root() {
+        Ok(root) => root,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
     for (toolchain, arguments) in VALIDATE_STEPS {
-        if let Err(error) = run_cargo_step(toolchain, arguments) {
+        if let Err(error) = run_cargo_step(&root, toolchain, arguments) {
             eprintln!("{error}");
             return ExitCode::FAILURE;
         }
     }
 
-    check_links()
+    if let Err(error) = check_repository_links(&root) {
+        eprintln!("{error}");
+        return ExitCode::FAILURE;
+    }
+
+    if let Err(error) = validate_repository_metadata(&root) {
+        eprintln!("{error}");
+        return ExitCode::FAILURE;
+    }
+
+    ExitCode::SUCCESS
 }
 
 fn check_links() -> ExitCode {
-    let root = match env::current_dir() {
+    let root = match workspace_root() {
         Ok(root) => root,
         Err(error) => {
-            eprintln!("failed to determine repository root: {error}");
+            eprintln!("{error}");
             return ExitCode::FAILURE;
         }
     };
 
-    match validate_markdown_links(&root) {
-        Ok(file_count) => {
-            eprintln!("> checked relative Markdown links in {file_count} files");
-            ExitCode::SUCCESS
-        }
+    match check_repository_links(&root) {
+        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error}");
             ExitCode::FAILURE
@@ -76,13 +93,33 @@ fn check_links() -> ExitCode {
     }
 }
 
-fn run_cargo_step(toolchain: &str, arguments: &[&str]) -> Result<(), String> {
+fn workspace_root() -> Result<PathBuf, String> {
+    let manifest_directory = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest_directory.parent().ok_or_else(|| {
+        format!(
+            "xtask manifest directory has no workspace parent: {}",
+            manifest_directory.display()
+        )
+    })?;
+
+    if root.join("Cargo.toml").is_file() {
+        Ok(root.to_path_buf())
+    } else {
+        Err(format!(
+            "resolved workspace root does not contain Cargo.toml: {}",
+            root.display()
+        ))
+    }
+}
+
+fn run_cargo_step(root: &Path, toolchain: &str, arguments: &[&str]) -> Result<(), String> {
     let command = arguments.join(" ");
     eprintln!("> cargo +{toolchain} {command}");
 
     let status = Command::new("rustup")
         .args(["run", toolchain, "cargo"])
         .args(arguments)
+        .current_dir(root)
         .status()
         .map_err(|error| format!("failed to run cargo +{toolchain} {command}: {error}"))?;
 
@@ -95,7 +132,17 @@ fn run_cargo_step(toolchain: &str, arguments: &[&str]) -> Result<(), String> {
     }
 }
 
-fn validate_markdown_links(root: &Path) -> Result<usize, String> {
+fn check_repository_links(root: &Path) -> Result<(), String> {
+    let files = validate_markdown_links(root)?;
+    eprintln!(
+        "> checked relative Markdown links in {} files from {}",
+        files.len(),
+        root.display()
+    );
+    Ok(())
+}
+
+fn validate_markdown_links(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
     collect_markdown_files(root, root, &mut files)?;
     files.sort();
@@ -121,7 +168,7 @@ fn validate_markdown_links(root: &Path) -> Result<usize, String> {
     }
 
     if failures.is_empty() {
-        Ok(files.len())
+        Ok(files)
     } else {
         Err(format!(
             "broken relative Markdown links:\n{}",
@@ -165,7 +212,17 @@ fn collect_markdown_files(
 fn is_ignored_directory(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(OsStr::to_str),
-        Some(".git" | "target" | "context" | ".context" | "context-exports")
+        Some(
+            ".git"
+                | "target"
+                | "node_modules"
+                | "dist"
+                | "build"
+                | ".astro"
+                | "context"
+                | ".context"
+                | "context-exports"
+        )
     )
 }
 
@@ -203,6 +260,45 @@ fn local_link_path(target: &str) -> Option<&str> {
     (!path.is_empty()).then_some(path)
 }
 
+fn validate_repository_metadata(root: &Path) -> Result<(), String> {
+    let mit_path = root.join("LICENSE-MIT");
+    let mit = fs::read_to_string(&mit_path)
+        .map_err(|error| format!("failed to read {}: {error}", mit_path.display()))?;
+    let notices = mit
+        .lines()
+        .filter(|line| line.starts_with("Copyright"))
+        .collect::<Vec<_>>();
+
+    if notices != [EXPECTED_MIT_NOTICE] {
+        return Err(format!(
+            "LICENSE-MIT must contain only the RunenUI notice: {EXPECTED_MIT_NOTICE}"
+        ));
+    }
+
+    if !mit.contains("Permission is hereby granted, free of charge")
+        || !mit.contains("THE SOFTWARE IS PROVIDED \"AS IS\"")
+    {
+        return Err("LICENSE-MIT does not contain the standard MIT grant and disclaimer".into());
+    }
+
+    let manifest_path = root.join("Cargo.toml");
+    let manifest = fs::read_to_string(&manifest_path)
+        .map_err(|error| format!("failed to read {}: {error}", manifest_path.display()))?;
+
+    if !manifest.contains(EXPECTED_LICENSE_EXPRESSION) {
+        return Err(format!(
+            "workspace metadata must contain {EXPECTED_LICENSE_EXPRESSION}"
+        ));
+    }
+
+    if !manifest.contains("publish = false") {
+        return Err("workspace package publication must remain disabled".into());
+    }
+
+    eprintln!("> verified MIT ownership, dual-license metadata, and publish policy");
+    Ok(())
+}
+
 fn print_usage() {
     eprintln!("usage: cargo validate");
     eprintln!("       cargo xtask check-links");
@@ -210,7 +306,144 @@ fn print_usage() {
 
 #[cfg(test)]
 mod tests {
-    use super::{local_link_path, markdown_targets};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        process::{self, Command},
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+
+    use super::{
+        local_link_path, markdown_targets, validate_markdown_links, validate_repository_metadata,
+        workspace_root,
+    };
+
+    static NEXT_TEMP_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
+
+    struct TestDirectory {
+        path: PathBuf,
+    }
+
+    impl TestDirectory {
+        fn new(label: &str) -> Result<Self, String> {
+            let sequence = NEXT_TEMP_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "runenui-xtask-{label}-{}-{sequence}",
+                process::id()
+            ));
+            fs::create_dir_all(&path)
+                .map_err(|error| format!("failed to create {}: {error}", path.display()))?;
+            Ok(Self { path })
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+
+        fn write(&self, relative: &str, contents: &str) -> Result<(), String> {
+            let path = self.path.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+            }
+            fs::write(&path, contents)
+                .map_err(|error| format!("failed to write {}: {error}", path.display()))
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn resolved_workspace_root_contains_root_manifest() -> Result<(), String> {
+        let root = workspace_root()?;
+        assert!(root.join("Cargo.toml").is_file());
+        Ok(())
+    }
+
+    #[test]
+    fn repository_scan_includes_root_level_documents() -> Result<(), String> {
+        let root = workspace_root()?;
+        let files = validate_markdown_links(&root)?;
+        assert!(files.contains(&PathBuf::from("README.md")));
+        assert!(files.contains(&PathBuf::from("docs/status-map.md")));
+        Ok(())
+    }
+
+    #[test]
+    fn nested_invocation_scans_the_repository_root() -> Result<(), String> {
+        let root = workspace_root()?;
+        if std::env::var_os("RUNENUI_NESTED_INVOCATION_TEST").is_some() {
+            assert_eq!(
+                std::env::current_dir().map_err(|error| error.to_string())?,
+                root.join("crates/runenui_core")
+            );
+            let files = validate_markdown_links(&workspace_root()?)?;
+            assert!(files.contains(&PathBuf::from("README.md")));
+            assert!(files.contains(&PathBuf::from("docs/status-map.md")));
+            return Ok(());
+        }
+
+        let output = Command::new(std::env::current_exe().map_err(|error| error.to_string())?)
+            .args([
+                "--exact",
+                "tests::nested_invocation_scans_the_repository_root",
+                "--nocapture",
+            ])
+            .env("RUNENUI_NESTED_INVOCATION_TEST", "1")
+            .current_dir(root.join("crates/runenui_core"))
+            .output()
+            .map_err(|error| format!("failed to run nested validation test: {error}"))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "nested validation test failed:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn generated_and_build_directories_are_excluded() -> Result<(), String> {
+        let directory = TestDirectory::new("ignored-directories")?;
+        directory.write("README.md", "# Valid\n")?;
+        for ignored in ["target", "build", "context", "node_modules", "dist"] {
+            directory.write(&format!("{ignored}/broken.md"), "[broken](missing.md)\n")?;
+        }
+
+        let files = validate_markdown_links(directory.path())?;
+        assert_eq!(files, [PathBuf::from("README.md")]);
+        Ok(())
+    }
+
+    #[test]
+    fn broken_repository_relative_link_fails_validation() -> Result<(), String> {
+        let directory = TestDirectory::new("broken-link")?;
+        directory.write("README.md", "[broken](missing.md)\n")?;
+
+        let error = validate_markdown_links(directory.path());
+        assert!(error.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn nested_document_links_resolve_from_the_document_directory() -> Result<(), String> {
+        let directory = TestDirectory::new("nested-link")?;
+        directory.write("README.md", "# Root\n")?;
+        directory.write("docs/guide.md", "[root](../README.md)\n")?;
+
+        let files = validate_markdown_links(directory.path())?;
+        assert_eq!(
+            files,
+            [PathBuf::from("README.md"), PathBuf::from("docs/guide.md")]
+        );
+        Ok(())
+    }
 
     #[test]
     fn markdown_target_parser_finds_inline_links() {
@@ -228,5 +461,10 @@ mod tests {
             local_link_path("docs/status-map.md#current"),
             Some("docs/status-map.md")
         );
+    }
+
+    #[test]
+    fn repository_metadata_matches_owner_approved_license() -> Result<(), String> {
+        validate_repository_metadata(&workspace_root()?)
     }
 }

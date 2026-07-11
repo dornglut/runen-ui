@@ -68,6 +68,11 @@ Support labels:
 | Touch/pen behavior | `unsupported` | Generic pointer vocabulary only | No device identity or device-specific facts | M4 |
 | Text input and IME events | `unsupported` | Character key variant is not text input | No composition/commit/range stream | M4, M8 |
 | Accessibility/programmatic activation | `unsupported` | Direct test activation exists only as a runtime helper | No semantic action convergence | M5 |
+| Controller/gamepad input vocabulary | `unsupported` | None; keyboard vocabulary does not imply controller support | No normalized controller-facing command or device event model | M4, M10 |
+| Abstract UI navigation commands | `unsupported` | None | No device-independent next/previous/directional/activate/cancel/menu/context commands | M4 |
+| Directional/spatial focus navigation | `unsupported` | None | Current traversal supports only linear next/previous keyboard focus | M4 |
+| Controller activation/cancel/menu commands | `unsupported` | None | Controller input cannot converge on semantic control commands | M4 |
+| Input modality tracking | `unsupported` | None | Runtime does not track pointer, keyboard, controller, accessibility, or automation modality | M4 |
 
 ## 5. Effects and scheduling
 
@@ -138,7 +143,8 @@ Support labels:
 | Paint primitives/resources | `unsupported` | None | No shapes, strokes, glyph/image handles, clips, layers, or damage | M6 |
 | Surface/frame generation | `unsupported` | None | Stale targets cannot be validated | M3, M6 |
 | Multi-surface publication | `unsupported` | None | No independent surface lifecycle or scale | M10 |
-| Deterministic scene consumer | `planned` | Debug text output is only a frame proof | Needs accepted paint/hit protocols | M6 |
+| Debug semantic-frame consumer | `proof` | `DebugSurfaceRenderer` deterministically formats current semantic frame nodes | It is not a paint-scene consumer or renderer backend | M6 |
+| Deterministic paint-scene consumer | `planned` | None | Needs accepted paint/hit protocols | M6 |
 | Conventional renderer backend | `unsupported` | None | Protocol must stabilize first | M10 |
 | Embedded/SDF renderer consumer | `deferred` | None | Follows neutral protocol and conventional proof | M10 or M12 |
 
@@ -185,6 +191,9 @@ Support labels:
 | IME | `unsupported` | None | Event/text/platform contracts absent | M8–M10 |
 | Multi-window | `unsupported` | None | Runtime surface ownership absent | M10 |
 | Embedded external-host proof | `unsupported` | None | Host and scene protocols absent | M10 |
+| Controller connection/disconnection | `unsupported` | None | No host device lifecycle or stable controller identity | M10 |
+| Axis normalization and dead-zone policy | `unsupported` | None | No host-owned raw axis translation or reviewed normalization policy | M10 |
+| Embedded-host controller mapping | `unsupported` | None | No contract mapping host devices to normalized UI commands | M10 |
 
 ## 13. Testing and diagnostics
 
@@ -201,6 +210,7 @@ Support labels:
 | Property/fuzz testing | `unsupported` | None | Production hardening work | M11 |
 | Benchmarks and budgets | `unsupported` | None | No performance gates | M11 |
 | Cross-platform CI | `unsupported` | Ubuntu-only CI | Windows/macOS jobs absent | M11 |
+| Controller-only application operation | `unsupported` | None | No normalized commands, applicable control conformance, or game-oriented reference proof | M11 |
 
 ## 14. Source formats and devtools
 
@@ -222,3 +232,9 @@ Support labels:
 | Docking/workspaces | `deferred` | None | Requires drag/capture, overlays, persistence, and multi-surface behavior | M12 |
 | Advanced editor/game controls | `deferred` | None | Builds on the production control and host foundations | M12 |
 | Mobile/web profiles | `deferred` | None | Outside the first production release | Post-v1 |
+
+## 16. Repository authority and history
+
+| Capability | Current support | Current proof or API | Known limitation | Target milestone |
+|---|---|---|---|---|
+| Legacy archival and recovery | `supported` | Annotated tag `legacy-runenwerk-ui-archive-2026-07-11` preserves audited baseline `141f005`; `legacy/` is absent from active content and context profiles | Historical material is opt-in reference only and cannot be treated as current implementation | M0 |

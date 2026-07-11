@@ -35,6 +35,6 @@ Historical tags and removed legacy material are never active implementation auth
 
 ## Validation and delivery
 
-Run `cargo validate` before every commit and again before handoff. It is the shared local/CI baseline and includes stable formatting, locked tests, Clippy with denied warnings, MSRV tests, and Markdown relative-link checks. Also run slice-specific checks and `git diff --check`.
+Format intentional Rust changes with `cargo +stable fmt --all`. Run `cargo validate` before every commit and again before handoff. It is the locked, read-only shared local/CI baseline and includes stable formatting checks, locked tests, Clippy with denied warnings, MSRV tests, repository metadata checks, and workspace-root Markdown relative-link checks. Also run slice-specific checks and `git diff --check`.
 
 Critically review the complete diff for stale references, broken links, false support claims, accidental scope, and missing migrations. Commit coherent slices separately. Open draft PRs unless the owner explicitly requests ready-for-review, and never merge them yourself.

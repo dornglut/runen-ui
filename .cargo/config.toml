@@ -1,4 +1,4 @@
 [alias]
 format = "fmt --all"
-validate = "run --package xtask -- validate"
-xtask = "run --package xtask --"
+validate = "run --locked --package xtask -- validate"
+xtask = "run --locked --package xtask --"

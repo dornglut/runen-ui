@@ -8,6 +8,6 @@ Expected behavior includes constructive feedback, clear evidence, respect for di
 
 Maintainers may edit or remove contributions and restrict participation when behavior violates this policy. Enforcement decisions should consider context, impact, recurrence, and safety, and should be handled privately where possible.
 
-Report conduct concerns privately to the repository owner through their GitHub profile. Do not include sensitive details in a public issue. Good-faith reporters and participants in an investigation must not be retaliated against.
+Conduct concerns may be reported privately to 128308156+Crystonix@users.noreply.github.com. Do not include sensitive details in a public issue. Good-faith reporters and participants in an investigation must not be retaliated against.
 
 This policy applies in repository discussions, pull requests, issues, project communication, and public representation of the project.

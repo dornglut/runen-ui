@@ -27,7 +27,7 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 ## M0 — Repository authority and governance reset
 
-**Status:** `complete` on the program branch.
+**Status:** `active` corrective review on the program branch; M1 has not started.
 
 **Goal:** Make repository documentation, active content, metadata, governance, and validation truthful for a pre-1.0 production-readiness program.
 
@@ -117,13 +117,13 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 **Why now:** Controls, accessibility actions, text input, scrolling, hosts, and testing require consistent routing, commands, queues, effects, time, and observation.
 
-**Included work:** Host-event normalization; capture/target/bubble; handled/default-action policy; pointer IDs/device kind/capture/cancellation; release-inside activation; focus scopes; keyboard commands; separate text/IME streams; action queue; effects/tasks/timers/subscriptions/host commands; cancellation; wake/redraw scheduling; deterministic executor; bounded structured trace and replay foundation.
+**Included work:** Host-event normalization; capture/target/bubble; handled/default-action policy; pointer IDs/device kind/capture/cancellation; release-inside activation; focus scopes; keyboard commands; abstract next/previous and directional navigation; activate, cancel/back, menu, and context commands; input-modality tracking; controller activation converging on semantic control commands; separate text/IME streams; action queue; effects/tasks/timers/subscriptions/host commands; cancellation; wake/redraw scheduling; deterministic executor; bounded structured trace and replay foundation.
 
 **Explicit non-goals:** Platform-specific host implementation, full semantics adapter, production text editing, or renderer backend.
 
 **Dependencies:** Mounted identity/lifecycle; accepted event and effects ADRs.
 
-**Required proofs/tests:** Pointer, keyboard, accessibility-stub, automation, and programmatic activation converge on the same semantic command; capture/cancel/release cases; deterministic task/timer/subscription ordering and cancellation; bounded trace reconstructs event/action/effect/reconcile/publication order.
+**Required proofs/tests:** Pointer, keyboard, normalized controller/navigation, accessibility-stub, automation, and programmatic activation converge on the same semantic command; deterministic next/previous and directional focus movement; activate/cancel/menu/context and modality transitions; capture/cancel/release cases; deterministic task/timer/subscription ordering and cancellation; bounded trace reconstructs event/action/effect/reconcile/publication order.
 
 **Exit criteria:** One canonical event path remains; overlapping input-intent paths are removed; correct button activation passes; effects and scheduling are deterministic and lifecycle-bound; trace has sequence/generation/target facts and bounded retention.
 
@@ -137,13 +137,13 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 **Why now:** Every production control must ship with semantics, keyboard/accessibility behavior, and stable public tests rather than retrofit them later.
 
-**Included work:** Semantic tree with stable IDs, roles, names, descriptions, values, states, relationships, actions, bounds, and text-range extensions; incremental semantic updates; AccessKit-neutral adapter foundation; public headless harness; synthetic input/actions; deterministic clock/tasks; semantic/layout/hit/paint assertions; replay foundation.
+**Included work:** Semantic tree with stable IDs, roles, names, descriptions, values, states, relationships, actions, bounds, and text-range extensions; incremental semantic updates; AccessKit-neutral adapter foundation; public headless harness; synthetic input/actions including normalized navigation/controller commands; deterministic clock/tasks; semantic/layout/hit/paint assertions; replay foundation.
 
 **Explicit non-goals:** Native platform accessibility bridge, production text ranges, full control library, renderer backend.
 
 **Dependencies:** Mounted identity and canonical commands/effects.
 
-**Required proofs/tests:** Counter and custom-widget proofs operate via semantic queries/actions; keyboard-only and accessibility-action tests; stable IDs across compatible updates; disabled/hidden/inert behavior; tests use public harness rather than private runtime internals.
+**Required proofs/tests:** Counter and custom-widget proofs operate via semantic queries/actions; keyboard-only, semantic navigation/activation, accessibility-action, and controller-only deterministic headless interaction tests that require no platform device translation; stable IDs across compatible updates; disabled/hidden/inert behavior; tests use public harness rather than private runtime internals.
 
 **Exit criteria:** Semantic output is independent of rendering; public deterministic tests can drive and inspect the framework; AccessKit mapping seams are coherent; accessibility requirements are mandatory in later control gates.
 
@@ -217,13 +217,13 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 **Why now:** Only after identity, events, semantics, scenes, layout/style, text, and testing exist can controls be complete rather than hardcoded primitive variants.
 
-**Included work:** Label/text, button, checkbox, radio, toggle, slider, progress, text field, scroll container, list, menu, popover, tooltip, dialog, and tabs. Every control includes lifecycle state, canonical events/commands, semantics, style states, layout, keyboard operation, accessibility actions, and deterministic tests.
+**Included work:** Label/text, button, checkbox, radio, toggle, slider, progress, text field, scroll container, list, menu, popover, tooltip, dialog, and tabs. Every control includes lifecycle state, canonical events/commands, semantics, style states, layout, keyboard operation, normalized controller/navigation operation where applicable, accessibility actions, and deterministic tests. Controller applicability is defined per control and application profile; editable text is not required to expose every editing operation through a controller.
 
 **Explicit non-goals:** Advanced tree/data-grid/editor controls, docking, or product-specific navigation frameworks.
 
 **Dependencies:** M2–M8 gates.
 
-**Required proofs/tests:** Complete control gallery; keyboard-only operation; semantic query/action coverage; pointer capture/cancellation; focus scopes and overlays; text-field IME/editing; themes/variants; third-party custom-control parity.
+**Required proofs/tests:** Complete control gallery; keyboard-only and applicable normalized controller/navigation operation; semantic query/action coverage; pointer capture/cancellation; focus scopes and overlays; text-field IME/editing; themes/variants; third-party custom-control parity.
 
 **Exit criteria:** No control-specific behavior remains embedded in generic tree indexing/layout; every required control passes interaction, semantic, accessibility, layout, style, and deterministic conformance.
 
@@ -237,13 +237,13 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 **Why now:** Native integration and backends should prove stable framework protocols, not dictate them.
 
-**Included work:** Host contract; reference desktop adapter; one conventional renderer backend; platform accessibility bridges; clipboard, IME, cursor, drag/drop; DPI/resize/safe areas; multi-window/surface lifecycle; resource providers; shutdown/device-loss behavior; external embedded-host adapter proof; optional SDF profile only after neutral/conventional proof.
+**Included work:** Host contract; reference desktop adapter; one conventional renderer backend; platform accessibility bridges; clipboard, IME, cursor, drag/drop; DPI/resize/safe areas; multi-window/surface lifecycle; resource providers; shutdown/device-loss behavior; host-owned gamepad connection/disconnection, device identity, raw button/axis translation, dead-zone and normalization policy, and mapping into normalized UI commands; external embedded-host adapter and controller-mapping proof; optional SDF profile only after neutral/conventional proof. RunenUI core/runtime consume normalized commands rather than platform controller APIs.
 
 **Explicit non-goals:** Mobile/web, simultaneous competing production backends, or Runenwerk/ECS assumptions in RunenUI.
 
 **Dependencies:** Effects/event/semantic/scene/layout/text/control contracts; reviewed conventional-renderer and unsafe-code ADRs.
 
-**Required proofs/tests:** Reference apps on Windows/macOS/Linux; DPI/resize/input/IME/accessibility/device-loss/shutdown smoke tests; multi-window lifecycle; packaging examples; embedded host owns window/frame loop and consumes the neutral protocol.
+**Required proofs/tests:** Reference apps on Windows/macOS/Linux; DPI/resize/pointer/keyboard/controller/IME/accessibility/device-loss/shutdown smoke tests; controller connect/disconnect, identity, button/axis normalization, and dead-zone cases on relevant platforms/devices; multi-window lifecycle; packaging examples; embedded host owns window/frame loop, maps controllers, and consumes the neutral protocol.
 
 **Exit criteria:** Required desktop services and accessibility work across all three platforms; one supported conventional renderer exists; external embedding works without framework ownership leakage.
 
@@ -263,7 +263,7 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 **Dependencies:** All required production profiles and M0–M10 exit criteria.
 
-**Required proofs/tests:** Release-candidate runs of control gallery, settings/form, large list, text editor, overlays/dialogs, multi-window, embedded host, and keyboard/accessibility apps; documented budgets; cross-platform matrix; semver and supply-chain checks.
+**Required proofs/tests:** Release-candidate runs of control gallery, settings/form, large list, text editor, overlays/dialogs, multi-window, embedded host, keyboard/accessibility apps, and at least one controller-only game-oriented UI reference proof; relevant cross-platform/device controller tests; documented budgets; cross-platform matrix; semver and supply-chain checks.
 
 **Exit criteria:** No unresolved P0/P1 correctness defects; production profile/support matrix passes; performance budgets and compatibility policy are enforced; release checklist and artifacts pass; public API review approves `1.0.0`.
 
@@ -300,15 +300,17 @@ Every production capability has one primary owner even when it depends on earlie
 | Authoring/component/custom-widget protocol | M2 |
 | Persistent identity, lifecycle, local state, invalidation | M3 |
 | Events, effects, queues, scheduling, trace | M4 |
+| Normalized navigation/controller commands and modality tracking | M4 |
 | Semantics, accessibility model, public deterministic testing | M5 |
 | Paint/hit scenes and renderer-neutral protocol | M6 |
 | Production layout, scrolling, themes, recipes, state styling | M7 |
 | International and editable text | M8 |
 | Standard controls | M9 |
 | Native hosts, platform bridges, conventional backend, embedded proof | M10 |
+| Raw controller device lifecycle, translation, and normalization | M10 |
 | Cross-platform hardening, budgets, release, `1.0.0` | M11 |
 | Advanced editor/game/authoring systems | M12 |
 
 ## Definition of roadmap completion
 
-The roadmap reaches its first stable completion only when RunenUI has deterministic mounted headless execution, real applications on Windows/macOS/Linux, an external embedded-host proof, correct pointer/keyboard/text/IME/clipboard/accessibility behavior, production text and responsive layout, standard controls, one conventional backend, a neutral protocol suitable for SDF/engine consumption, public deterministic replay/testing, documented performance budgets, cross-platform validation, no unresolved P0/P1 architecture defects, and a reviewed `1.0.0` release.
+The roadmap reaches its first stable completion only when RunenUI has deterministic mounted headless execution, real applications on Windows/macOS/Linux, an external embedded-host proof, correct pointer/keyboard/controller-gamepad/text/IME/clipboard/accessibility behavior for applicable controls and application profiles, production text and responsive layout, standard controls, one conventional backend, a neutral protocol suitable for SDF/engine consumption, public deterministic replay/testing, documented performance budgets, cross-platform validation, no unresolved P0/P1 architecture defects, and a reviewed `1.0.0` release. Controller applicability does not require every text-editing action to be practical through a controller.

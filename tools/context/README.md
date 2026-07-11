@@ -70,6 +70,8 @@ full-audit
   license files, and other repository metadata; excludes historical legacy content.
 ```
 
+`Cargo.lock` is included only by `full-audit` (or an explicit command-line override). Normal AI, current-work, planning, domain, and implementation profiles explicitly exclude it to keep routine exports focused. Every active profile excludes `legacy/`.
+
 ## Task-specific overrides
 
 Profiles should stay generic. Add task-specific paths at the command line instead of creating hardcoded profiles for one feature area.
@@ -159,3 +161,9 @@ material removed from the active branch remains available through the archival
 tag documented in `docs/history/legacy-archive.md`.
 
 Do not add feature-specific profiles for every roadmap item. Use `--include` and `--exclude` for task-specific scope.
+
+Profile inclusion/exclusion behavior is covered by repository tests:
+
+```bash
+python3 -m unittest discover -s tools/context/tests -v
+```

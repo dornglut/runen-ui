@@ -2,36 +2,41 @@
 
 > **Category: Guide**
 
-Run the complete repository baseline with one command:
+Format intentional Rust changes with the formatter enforced by CI:
+
+```powershell
+cargo +stable fmt --all
+```
+
+Run the complete repository baseline with:
 
 ```powershell
 cargo validate
 ```
 
-This Cargo alias executes `cargo run --package xtask -- validate`. The task is the single implementation used locally and by CI. It runs, in order:
+The Cargo alias executes `cargo run --locked --package xtask -- validate`. The locked outer invocation and every nested Cargo check use `--locked`; validation must not update `Cargo.lock`, manifests, formatting, or source. The task is the single implementation used locally and by CI.
+
+`xtask` derives the RunenUI workspace root from its compile-time `CARGO_MANIFEST_DIR`, verifies the root `Cargo.toml`, runs Cargo subprocesses from that root, and scans repository documentation from that root. Calling `cargo validate` within a workspace package therefore cannot reduce validation to that package subtree.
+
+The baseline runs, in order:
 
 ```powershell
 cargo +stable fmt --all --check
 cargo +stable test --workspace --locked
 cargo +stable clippy --workspace --all-targets --locked -- -D warnings
 cargo +1.93.0 test --workspace --locked
-# repository-local relative Markdown link check
+# repository-relative Markdown links from the resolved workspace root
+# MIT ownership, workspace license expression, and publish=false metadata
 ```
 
-Validation stops on the first failure and never rewrites source. CI installs both required toolchains and calls `cargo validate`; it does not duplicate or mutate the implementation.
+The Markdown checker deliberately validates inline Markdown links to repository files. Targets resolve relative to the document containing the link. It does not fetch external URLs or validate same-document anchors, reference-style links, URL-encoded paths, or unusual Markdown constructs that are not covered by tests. It is not a complete Markdown specification parser.
 
-Install the channels locally through `rustup`. The pinned `rust-toolchain.toml` supplies Rust 1.93.0 with rustfmt/Clippy for reproducible default commands; `cargo validate` also requires latest stable with those components. See the [toolchain policy](../toolchain-policy.md).
+Install both Rust channels through `rustup`. The pinned `rust-toolchain.toml` supplies Rust 1.93.0 for reproducible defaults; latest stable with rustfmt and Clippy is also required. See the [toolchain policy](../toolchain-policy.md).
 
-Format intentionally before validation with:
-
-```powershell
-cargo format
-```
-
-Check only documentation links when editing docs:
+Check only documentation links with the locked alias:
 
 ```powershell
 cargo xtask check-links
 ```
 
-Also run `git diff --check` and any slice-specific conformance, documentation, context-export, metadata, platform, benchmark, or release checks required by the roadmap. The M11 production matrix will expand beyond the current Ubuntu proof baseline; it must continue to reuse this entry point or a reviewed successor rather than duplicate commands.
+To verify read-only behavior after committing a slice, run `git status --short`, `cargo validate`, then `git status --short` again. Both status outputs must be empty. Also run `git diff --check` and any slice-specific context, metadata, platform, benchmark, or release checks required by the roadmap.

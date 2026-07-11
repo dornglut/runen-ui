@@ -8,9 +8,9 @@ RunenUI has no production-supported release. The `0.x` workspace is experimental
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a suspected vulnerability. Use the repository’s private **Security → Report a vulnerability** flow on GitHub. Include affected revision/version, impact, reproduction, prerequisites, and any proposed mitigation.
+Do not post vulnerability details publicly. Use the repository’s private **Security → Report a vulnerability** flow on GitHub when available. Include affected revision/version, impact, reproduction, prerequisites, and any proposed mitigation.
 
-If private vulnerability reporting is unavailable, contact the repository owner privately through their GitHub profile and request a secure reporting channel without disclosing exploit details.
+Security reports may be sent privately to 128308156+Crystonix@users.noreply.github.com when GitHub private vulnerability reporting is unavailable.
 
 The project will acknowledge a usable report, assess scope and severity, coordinate a fix and disclosure when appropriate, and credit reporters who want attribution. No response or remediation deadline is promised before a supported release policy exists.
 

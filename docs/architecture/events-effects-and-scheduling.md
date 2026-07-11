@@ -22,9 +22,11 @@ Host event
   -> effects and invalidation
 ```
 
-Pointer, keyboard, accessibility, automation, and programmatic activation converge on semantic control commands. Default pointer button activation presses, captures the pointer, updates mounted pressed state, then activates on a still-valid release. Cancellation or release outside prevents activation.
+Pointer, keyboard, normalized controller/navigation, accessibility, automation, and programmatic activation converge on semantic control commands. Device-independent commands include next/previous and directional focus movement plus activate, cancel/back, menu, and context actions. The runtime tracks the active input modality without making device-specific vocabulary the semantic control contract. Default pointer button activation presses, captures the pointer, updates mounted pressed state, then activates on a still-valid release. Cancellation or release outside prevents activation.
 
-Pointer input needs stable pointer identity and device kind, capture ownership, cancellation, movement, buttons, wheel/scroll, coordinates, and only device facts required by real consumers. Keyboard commands are distinct from text commit and IME composition events. Focus includes scopes and deterministic transition reasons.
+Pointer input needs stable pointer identity and device kind, capture ownership, cancellation, movement, buttons, wheel/scroll, coordinates, and only device facts required by real consumers. Keyboard commands are distinct from text commit and IME composition events. Focus includes scopes, linear and directional/spatial navigation, and deterministic transition reasons.
+
+Platform hosts own controller connection/disconnection, device identity, raw button/axis events, dead-zone and normalization policy, and mapping into the normalized command vocabulary. Embedded hosts provide the equivalent mapping. RunenUI core/runtime do not own platform gamepad APIs.
 
 ## Application update and effects
 
