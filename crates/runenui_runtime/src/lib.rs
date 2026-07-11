@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod constraints;
 mod debug;
 mod focus;
 mod input;
@@ -19,6 +20,7 @@ mod surface;
 mod trace;
 
 pub use app::{ActivationResult, AppRuntime, UiApp};
+pub use constraints::{AxisConstraints, AxisLimit, LayoutConstraints};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
 pub use focus::FocusState;
 pub use input::{
