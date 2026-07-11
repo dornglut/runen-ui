@@ -123,7 +123,7 @@ fn app_runtime_surface_frame_reflects_rebuilt_root_after_dispatch() -> Result<()
 #[test]
 fn app_runtime_surface_frame_accepts_explicit_metrics() -> Result<(), &'static str> {
     let runtime = AppRuntime::<CounterApp>::mount(State::default());
-    let metrics = SurfaceLayoutMetrics::new(10.0, 18.0, 9.0, 5.0, 22.0, 30.0);
+    let metrics = SurfaceLayoutMetrics::new(10.0, 18.0, 9.0, 22.0, 30.0);
 
     let frame = surface_frame_with_metrics(&runtime, LogicalSize::new(200.0, 100.0), metrics);
     let value = frame

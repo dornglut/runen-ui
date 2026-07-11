@@ -119,11 +119,11 @@ A future layout crate can still use runtime node identity, but that contract sho
 
 Until that seam exists, a layout crate would mostly encode temporary measurements as public API.
 
-### 5. Computed style is integrated, but does not affect geometry yet
+### 5. Computed style now affects geometry
 
 The runtime now prepares one resolved surface tree. `SurfaceFrame` receives concrete `ComputedStyle`, while `SurfaceStyleReport` receives provenance and unresolved-token diagnostics from the same per-node `StyleResolution`.
 
-The remaining boundary pressure is behavioral: the current layout algorithm carries computed padding but does not yet apply it to measurement or child placement. Extracting layout before that first style-driven geometry rule would still freeze a premature API. The accepted box-model contract is documented in [Computed Style Runtime Integration](computed-style-runtime-integration.md).
+Computed padding now affects measurement, container content origins, root child placement, outer bounds, and hit testing. This is the first style-driven geometry rule. The implementation remains small and tightly coupled to runtime identity and surface publication, so it does not by itself justify crate extraction. The accepted box-model contract is documented in [Computed Style Runtime Integration](computed-style-runtime-integration.md).
 
 ## Future `runenui_layout` ownership
 
@@ -217,7 +217,7 @@ Create `runenui_render` only when at least three of these are true:
 
 Do not extract crates next.
 
-Unified surface publication is implemented. The next code slice should apply the padding box model from [Computed Style Runtime Integration](computed-style-runtime-integration.md):
+Unified surface publication and computed padding geometry are implemented. The next step is the scheduled boundary review based on the resulting code, not an automatic crate extraction:
 
 ```text
 resolved ComputedStyle::padding
@@ -249,7 +249,7 @@ Non-goals remain:
 
 ## Review cadence
 
-Revisit this boundary after computed padding is implemented.
+Revisit this boundary now that computed padding is implemented.
 
 The completed and expected progression is:
 

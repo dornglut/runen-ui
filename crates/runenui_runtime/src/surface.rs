@@ -1,12 +1,11 @@
 //! Renderer-facing surface-frame data model.
 //!
-//! Surface frames are host-neutral snapshots that later layout and renderer
-//! stages can consume. This module defines the surface vocabulary, a small
-//! row/column layout pass, and bounds hit testing. It does not translate host
-//! input or render pixels.
+//! Surface frames are host-neutral snapshots that later renderer stages can
+//! consume. This module owns explicit surface build inputs, a small row/column
+//! layout pass, concrete computed-style delivery, and bounds hit testing.
 
 use runenui_core::{
-    Axis, ComputedStyle, Element, ElementId, ElementKind, StyleResolution, StyleTokens,
+    Axis, ComputedStyle, EdgeInsets, Element, ElementId, ElementKind, StyleResolution, StyleTokens,
     resolve_style,
 };
 
@@ -205,7 +204,7 @@ impl SurfaceNode {
         self.authored_id.as_ref()
     }
 
-    /// Returns the resolved logical bounds.
+    /// Returns the resolved logical outer bounds.
     #[must_use]
     pub const fn bounds(&self) -> LogicalRect {
         self.bounds
@@ -302,14 +301,13 @@ pub struct SurfaceLayoutMetrics {
     text_char_width: f32,
     text_height: f32,
     button_char_width: f32,
-    button_horizontal_padding: f32,
     button_height: f32,
     min_button_width: f32,
 }
 
 impl Default for SurfaceLayoutMetrics {
     fn default() -> Self {
-        Self::new(8.0, 20.0, 8.0, 12.0, 32.0, 64.0)
+        Self::new(8.0, 20.0, 8.0, 32.0, 64.0)
     }
 }
 
@@ -320,7 +318,6 @@ impl SurfaceLayoutMetrics {
         text_char_width: f32,
         text_height: f32,
         button_char_width: f32,
-        button_horizontal_padding: f32,
         button_height: f32,
         min_button_width: f32,
     ) -> Self {
@@ -328,7 +325,6 @@ impl SurfaceLayoutMetrics {
             text_char_width,
             text_height,
             button_char_width,
-            button_horizontal_padding,
             button_height,
             min_button_width,
         }
@@ -352,19 +348,13 @@ impl SurfaceLayoutMetrics {
         self.button_char_width
     }
 
-    /// Returns the horizontal padding applied to each side of a button.
-    #[must_use]
-    pub const fn button_horizontal_padding(&self) -> f32 {
-        self.button_horizontal_padding
-    }
-
-    /// Returns the fixed intrinsic button height.
+    /// Returns the minimum outer button height.
     #[must_use]
     pub const fn button_height(&self) -> f32 {
         self.button_height
     }
 
-    /// Returns the minimum intrinsic button width.
+    /// Returns the minimum outer button width.
     #[must_use]
     pub const fn min_button_width(&self) -> f32 {
         self.min_button_width
@@ -444,9 +434,8 @@ impl SurfacePublication {
 
 /// Resolves style once per node and publishes aligned frame and diagnostic products.
 ///
-/// Geometry remains the current placeholder row/column layout. Computed padding
-/// is carried on each surface node but does not affect bounds until the next
-/// implementation slice.
+/// The row/column layout consumes concrete computed padding for intrinsic outer
+/// sizing, container content origins, root child placement, and hit testing.
 #[must_use]
 pub fn publish_surface<Action>(
     root: &Element<Action>,
@@ -621,8 +610,9 @@ impl SurfaceLayoutBuilder {
         children: &[RuntimeNodeId],
     ) {
         let gap = container_node.element().style().gap().value();
-        let mut cursor_x = parent_bounds.x();
-        let mut cursor_y = parent_bounds.y();
+        let padding = resolved_padding(container_node);
+        let mut cursor_x = parent_bounds.x() + padding.left().value();
+        let mut cursor_y = parent_bounds.y() + padding.top().value();
 
         for child_id in children {
             let Some(child) = resolved_tree.node(*child_id) else {
@@ -645,26 +635,32 @@ impl SurfaceLayoutBuilder {
         resolved_tree: &ResolvedSurfaceTree<'_, Action>,
         node: &ResolvedSurfaceNode<'_, Action>,
     ) -> LogicalSize {
+        let padding = resolved_padding(node);
+
         match node.element().kind() {
-            ElementKind::Text(text) => LogicalSize::new(
-                char_count_as_f32(text.content()) * self.metrics.text_char_width(),
-                self.metrics.text_height(),
+            ElementKind::Text(text) => expand_size_by_padding(
+                LogicalSize::new(
+                    char_count_as_f32(text.content()) * self.metrics.text_char_width(),
+                    self.metrics.text_height(),
+                ),
+                padding,
             ),
             ElementKind::Button(button) => {
                 let label_width =
                     char_count_as_f32(button.label()) * self.metrics.button_char_width();
-                let padded_width = self
-                    .metrics
-                    .button_horizontal_padding()
-                    .mul_add(2.0, label_width);
+                let desired = expand_size_by_padding(
+                    LogicalSize::new(label_width, self.metrics.text_height()),
+                    padding,
+                );
                 LogicalSize::new(
-                    padded_width.max(self.metrics.min_button_width()),
-                    self.metrics.button_height(),
+                    desired.width().max(self.metrics.min_button_width()),
+                    desired.height().max(self.metrics.button_height()),
                 )
             }
-            ElementKind::Container(container) => {
-                self.measure_container(resolved_tree, node, container.axis(), node.children())
-            }
+            ElementKind::Container(container) => expand_size_by_padding(
+                self.measure_container(resolved_tree, node, container.axis(), node.children()),
+                padding,
+            ),
         }
     }
 
@@ -708,6 +704,20 @@ impl SurfaceLayoutBuilder {
 
         LogicalSize::new(width, height)
     }
+}
+
+fn resolved_padding<Action>(node: &ResolvedSurfaceNode<'_, Action>) -> EdgeInsets {
+    node.resolution()
+        .computed_style()
+        .padding()
+        .unwrap_or(EdgeInsets::ZERO)
+}
+
+fn expand_size_by_padding(size: LogicalSize, padding: EdgeInsets) -> LogicalSize {
+    LogicalSize::new(
+        size.width() + padding.left().value() + padding.right().value(),
+        size.height() + padding.top().value() + padding.bottom().value(),
+    )
 }
 
 fn char_count_as_f32(value: &str) -> f32 {

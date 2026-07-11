@@ -8,7 +8,7 @@ It is the implementation contract that follows the computed-style, token-resolut
 
 Slice 1 is implemented. `SurfaceBuildContext`, `SurfacePublication`, and `publish_surface` now provide the single public publication path. One prepared runtime tree supplies runtime identity, per-node `StyleResolution`, frame `ComputedStyle`, and style diagnostics. The former public `layout_surface`, `layout_surface_with_metrics`, `resolve_surface_style_report`, `AppRuntime::surface_frame`, and `AppRuntime::surface_frame_with_metrics` paths have been removed.
 
-Slice 2 remains next: computed padding must affect measurement and child placement.
+Slice 2 is implemented. Computed padding now affects intrinsic measurement, container and root child placement, outer bounds, and hit testing. The conflicting hidden button padding metric has been removed.
 
 ## Problem
 
@@ -397,9 +397,9 @@ Required outcomes:
 - deterministic frame and report tests
 ```
 
-### Slice 2: computed padding affects layout
+### Slice 2: computed padding affects layout — implemented
 
-Apply the padding box model and clean up conflicting button metrics.
+The padding box model is implemented and the conflicting hidden button metric is removed.
 
 Required tests:
 
