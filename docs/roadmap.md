@@ -27,27 +27,29 @@ Implemented:
 - finite row/column content-box constraints propagated on the cross axis without stretch;
 - intrinsic unbounded main-axis child measurement with deterministic overflow diagnostics;
 - exactly one provider call per text or button label during each publication;
-- runtime-node-aligned layout diagnostics published with frame and style products.
+- runtime-node-aligned layout diagnostics published with frame and style products;
+- completed [formal layout boundary review](architecture/layout-boundary-review.md) against the implemented dependency graph and conformance coverage.
 
 ## Current boundary decision
 
-Keep layout, measurement orchestration, and surface publication in `runenui_runtime`.
+Keep layout, measurement orchestration, layout diagnostics, arrangement, and surface publication in `runenui_runtime`.
 
-The neutral contracts and their first conformance suite now exist, but extraction still is not justified. The implementation still has:
+The formal review found that the layout contracts are now useful but not independently owned. The implementation still has:
 
 - one intentionally small row/column algorithm;
+- layout inputs and outputs coupled to `RuntimeNodeId` and runtime surface preparation;
+- layout arrangement producing `SurfaceFrame` directly;
 - no independent layout consumer;
-- no Cargo-enforced dependency boundary;
-- no completed formal boundary review against the implemented result.
+- no meaningful Cargo-enforced dependency or optionality boundary;
+- no independent layout conformance harness outside runtime tests.
 
-Reconsider extraction only when the criteria in [Layout Boundary Review](architecture/layout-boundary-review.md) are materially satisfied.
+Contract maturity alone is not sufficient for crate extraction. Reconsider `runenui_layout` only when the prerequisite and hard-boundary gates in [Layout Boundary Review](architecture/layout-boundary-review.md) are materially satisfied.
 
 ## Next implementation sequence
 
-1. Perform the formal layout boundary review using the implemented constraints, measurement, measured result, child propagation, diagnostics, and conformance tests. Do not automatically extract `runenui_layout`.
-2. Define the renderer-neutral primitive/frame protocol before implementing WGPU or SDF backends.
-3. Add accessibility-tree extraction and a dedicated deterministic testing surface before broad control expansion.
-4. Add reusable controls, then a real host contract and first adapter/backend pair.
+1. Define the renderer-neutral primitive/frame protocol before implementing WGPU or SDF backends. Keep layout policy in `runenui_runtime` during this work.
+2. Add accessibility-tree extraction and a dedicated deterministic testing surface before broad control expansion.
+3. Add reusable controls, then a real host contract and first adapter/backend pair.
 
 ## Deferred
 

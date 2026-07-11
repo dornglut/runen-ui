@@ -1,281 +1,309 @@
 # Layout Boundary Review
 
-This document reviews whether the current layout and surface-frame code should be extracted from `runenui_runtime` into a dedicated `runenui_layout` crate.
+## Review status
+
+Formal review completed on 2026-07-11 against `master` commit `633ad932cb2478bbe1c54bf136c86f5b022d2da9`, after the constraints, measurement-provider, measured-result, child-propagation, and overflow-diagnostic work was merged.
 
 ## Decision
 
 Do not extract `runenui_layout` yet.
 
-The current layout code is still a small runtime publication pass. It is useful and should stay explicit, but it is not yet an independently valuable crate boundary. Extracting it now would mostly move names around without improving dependency enforcement, optionality, or testability.
+The implemented layout contracts are materially better than the earlier placeholder pass, but they still form one runtime-owned surface-publication pipeline rather than an independently valuable crate boundary.
 
-Keep the implementation in `runenui_runtime` until layout becomes more than simple row/column surface-frame construction.
+Extraction now would require one of three undesirable outcomes:
 
-## Current implementation
+1. make a layout crate depend on runtime identity, which reverses the intended dependency direction;
+2. move or genericize runtime identity, geometry, style-preparation, and surface-output contracts before another consumer requires that work; or
+3. extract only low-level vocabulary while leaving the actual layout orchestration in runtime, producing a nominal crate with little independent value.
 
-The current surface module owns five responsibilities:
+Keep layout, measurement orchestration, layout diagnostics, arrangement, and surface publication in `runenui_runtime`.
 
-1. explicit surface build inputs and unified publication;
-2. one per-node style-resolution preparation for frame and diagnostics;
-3. one publication-local measured result and simple row/column arrangement;
-4. runtime-node-aligned layout diagnostics;
-5. bounds-based hit testing on the published frame.
+The next implementation task is the renderer-neutral primitive/frame protocol. That work may clarify geometry, hit-testing, and surface-output ownership, but it must not extract `runenui_layout` as a side effect.
 
-Current public surface vocabulary:
+## Why the previous numeric rule is insufficient
 
-```text
-LogicalSize
-LogicalRect
-SurfaceNodeKind
-SurfaceNode
-SurfaceFrame
-LayoutOverflow
-SurfaceLayoutNode
-SurfaceLayoutReport
-LayoutConstraints
-MeasurementProvider
-TextMeasurementRequest
-TextMeasurement
-SurfaceBuildContext
-SurfacePublication
-publish_surface
-```
+The earlier review said to create `runenui_layout` when at least three listed criteria were true. That counting rule is retired.
 
-`SurfaceFrame` is not a renderer backend. It is an ordered, host-neutral frame snapshot containing runtime node identity, optional authored IDs, logical bounds, renderer-facing node kinds, and concrete `ComputedStyle`. `SurfacePublication` carries the frame together with aligned style and layout diagnostics.
+RunenUI now has explicit constraints, a measurement-provider contract, computed style affecting geometry, and layout diagnostics. A simple count would therefore suggest extraction even though the actual ownership boundary is still absent.
 
-The current layout pass is intentionally simple:
+Crate extraction requires both:
+
+1. sufficiently mature contracts; and
+2. hard boundary pressure that a crate would enforce or serve.
+
+Contract maturity without independent ownership pressure is not enough.
+
+## Implemented baseline
+
+The current publication pipeline is:
 
 ```text
-Element<Action> + StyleTokens + root constraints + MeasurementProvider
-  -> resolved runtime surface tree
-  -> one measured result indexed by RuntimeNodeId
-  -> measurement-free arrangement
-  -> SurfaceFrame + SurfaceStyleReport + SurfaceLayoutReport
+Element<Action>
+  + StyleTokens
+  + root LayoutConstraints
+  + MeasurementProvider
+  -> RuntimeTreeIndex and RuntimeNodeId-aligned resolved surface tree
+  -> one publication-local measured result
+  -> measurement-free row/column arrangement
+  -> SurfaceFrame
+  + SurfaceStyleReport
+  + SurfaceLayoutReport
   -> SurfacePublication
 ```
 
-It assigns bounds to containers, text, and buttons using the provider-backed measurement contract. It understands only row/column stacking, authored gap, provider-measured standalone text, provider-measured button labels, computed padding, root constraints, cross-axis child maxima, diagnostic overflow, and a private button minimum-size policy. Each text or button label is measured once per publication.
+The implementation provides:
 
-## Current ownership
+- normalized finite and unbounded constraints;
+- renderer-neutral synchronous text measurement requests and results;
+- a borrowed measurement-provider seam;
+- deterministic headless measurement;
+- computed padding in measurement and placement;
+- loose finite cross-axis child constraints without implicit stretch;
+- intrinsic unbounded main-axis sizing;
+- deterministic diagnostic-only overflow;
+- exactly one text or button-label measurement per publication;
+- runtime-node-aligned frame, style, and layout products;
+- behavioral tests for constraints, measurement, placement, overflow, padding, hit testing, and invalid-provider sanitization.
 
-### `runenui_core`
+These are real prerequisites for a future layout boundary. They do not yet establish an independent owner.
 
-Owns the neutral authored UI model:
+## Current ownership and coupling
+
+### Authored model
+
+`runenui_core` owns the authored UI model:
 
 ```text
 Element<Action>
 ElementKind<Action>
-LayoutStyle
 Axis
-Px
-ElementId
+LayoutStyle
+StyleIntent
+ComputedStyle
+StyleTokens
 ```
 
-Core should continue to own authored layout intent such as axis and gap while those concepts are part of element description.
+The current layout pass directly matches `ElementKind` and consumes resolved computed padding. There is no neutral layout-tree input independent of the authored/runtime surface preparation.
 
-### `runenui_runtime`
+### Runtime identity
 
-Currently owns surface publication because it already owns:
+`runenui_runtime` owns:
 
 ```text
-AppRuntime<App>
-Runtime<State, Action>
 RuntimeNodeId
 RuntimeTreeIndex
+AppRuntime
 input targeting
-focus policy
-activation policy
+focus
+activation
 trace targets
 ```
 
-`AppRuntime::publish_surface` is the current publication seam. It accepts an explicit `SurfaceBuildContext`, then produces one aligned `SurfacePublication`.
+Layout measurement requests may carry `RuntimeNodeId`, and `SurfaceLayoutNode` is keyed by `RuntimeNodeId`. The measured result is therefore an observation of the runtime tree, not an identity-independent layout product.
 
-### Debug rendering
+Moving these APIs into `runenui_layout` now would either create a dependency from layout back to runtime or require premature identity genericization.
 
-`debug.rs` consumes `SurfaceFrame` and renders deterministic text for tests and diagnostics. It is not a pixel renderer and does not define a renderer backend abstraction.
+### Surface output
 
-## Why extraction is premature
-
-### 1. The algorithm is still a placeholder
-
-The current layout algorithm now has cross-axis child constraint propagation and diagnostic overflow, but it does not have flex, grid, stack, text shaping, wrapping, alignment, percentage units, clipping, scrolling, or broad style-driven layout.
-
-A crate boundary would imply a stable layout API before there is enough layout behavior to justify that stability.
-
-### 2. Surface-frame data and layout are still coupled
-
-`surface.rs` currently combines:
+`surface.rs` currently owns:
 
 ```text
-geometry types
-surface-frame node data
-hit testing
-simple layout
-surface kind extraction
-```
-
-This is acceptable as a module. It is not yet clean enough to split into `runenui_layout` and `runenui_render` without deciding which crate owns `LogicalRect`, `SurfaceFrame`, and hit testing.
-
-### 3. Runtime node identity is part of layout output
-
-Surface nodes carry `RuntimeNodeId` and parent runtime IDs. That makes the current layout pass tightly coupled to runtime tree indexing and input targeting.
-
-A future layout crate can still use runtime node identity, but that contract should be made explicit only after the runtime/render/input relationship is more stable.
-
-### 4. Text measurement is intentionally minimal
-
-The runtime now has a measurement seam for text and button labels, with a deterministic fallback provider for headless tests and examples. A real layout crate still needs richer text inputs, font metrics, text runs, wrapping, and possibly host/backend-provided measurement conformance.
-
-Until those behaviors exist, a layout crate would mostly encode a still-small runtime publication algorithm as public API.
-
-### 5. Computed style now affects geometry
-
-The runtime now prepares one resolved surface tree. `SurfaceFrame` receives concrete `ComputedStyle`, while `SurfaceStyleReport` receives provenance and unresolved-token diagnostics from the same per-node `StyleResolution`.
-
-Computed padding now affects measurement, container content origins, root child placement, outer bounds, and hit testing. This is the first style-driven geometry rule. The implementation remains small and tightly coupled to runtime identity and surface publication, so it does not by itself justify crate extraction. The accepted box-model contract is documented in [Computed Style Runtime Integration](computed-style-runtime-integration.md).
-
-## Future `runenui_layout` ownership
-
-A dedicated layout crate should own layout behavior once the boundary is real:
-
-```text
-constraints
-measurement requests
-measurement responses
-intrinsic sizing
-row/column/flex/grid/stack algorithms
-computed layout boxes
-layout diagnostics
-layout tests/conformance cases
-```
-
-It should not own app state, action dispatch, focus, activation, concrete renderers, native windows, or product UI.
-
-## Future `runenui_render` ownership
-
-A render protocol crate should own renderer-neutral output once the frame protocol is larger than the current surface snapshot:
-
-```text
-surface frames
-paint primitives
-clips
-transforms
-z-order
-text runs
-image references
-resource handles
-frame metadata
-```
-
-Backends such as WGPU, SDF, or Runenwerk adapters would consume this protocol. They must not own UI behavior.
-
-## What should stay in runtime for now
-
-Keep these in `runenui_runtime` for now:
-
-```text
-LogicalSize
-LogicalRect
+LogicalSize and LogicalRect
 SurfaceNodeKind
 SurfaceNode
 SurfaceFrame
-LayoutOverflow
-SurfaceLayoutNode
-SurfaceLayoutReport
-LayoutConstraints
-MeasurementProvider
-TextMeasurementRequest
-TextMeasurement
 SurfaceBuildContext
 SurfacePublication
-publish_surface
-hit testing on SurfaceFrame
+layout measurement and arrangement
+SurfaceLayoutReport
+bounds hit testing
+```
+
+Arrangement produces `SurfaceFrame` directly, and hit testing consumes that frame. Layout output and renderer-facing surface output do not yet have separate ownership contracts.
+
+### Measurement
+
+`MeasurementProvider` is renderer-neutral, but `TextMeasurementRequest` uses runtime-owned `LogicalSize`, `LayoutConstraints`, and optional `RuntimeNodeId` observation identity.
+
+The seam is sufficient for current runtime publication. It is not yet proof that measurement belongs in a separate crate.
+
+### Tests and consumers
+
+The conformance coverage is valuable, but it remains runtime coverage:
+
+- layout implementation is in `runenui_runtime`;
+- layout behavior tests are in `runenui_runtime` tests;
+- the Counter consumes the public runtime publication API;
+- the debug renderer consumes `SurfaceFrame`, not an independent layout subsystem;
+- no backend, host adapter, testing crate, or external repository consumes layout output independently.
+
+There is therefore no second consumer whose dependency needs Cargo enforcement.
+
+## Dependency review
+
+The current Cargo graph is intentionally simple:
+
+```text
+runenui_core
+  <- runenui_runtime
+  <- examples/counter
+```
+
+`runenui_runtime` has one framework dependency: `runenui_core`.
+
+A useful future direction could be:
+
+```text
+runenui_core
+  <- runenui_layout
+  <- runenui_runtime
+```
+
+That direction is not implementable cleanly with the current contracts because layout currently references runtime identity and directly produces runtime-owned surface products.
+
+No current dependency cycle, optional feature boundary, build-time isolation requirement, or external consumer would be improved by adding the crate now.
+
+## Formal extraction evaluation
+
+### Contract prerequisites
+
+| Requirement | Current status | Review result |
+|---|---|---|
+| Explicit finite/unbounded constraints | Implemented | Satisfied |
+| Abstract measurement service | Implemented for text and button labels | Satisfied for the current algorithm |
+| Measured result separate from arrangement | Implemented within one publication | Satisfied |
+| Computed style affects layout | Padding is implemented | Satisfied but narrow |
+| Deterministic layout diagnostics | Implemented and runtime-node aligned | Satisfied |
+| Behavioral conformance coverage | Implemented in runtime tests | Satisfied locally |
+
+### Boundary-pressure requirements
+
+| Requirement | Current status | Review result |
+|---|---|---|
+| Multiple meaningful layout algorithms | Only one small row/column stacking policy | Not satisfied |
+| Identity-independent layout input/output | Contracts use `RuntimeNodeId` and runtime surface preparation | Not satisfied |
+| Independent layout consumer | None | Not satisfied |
+| Cargo-enforced dependency need | None demonstrated | Not satisfied |
+| Meaningful optionality or feature isolation | None | Not satisfied |
+| Independent conformance harness | Tests remain runtime-owned | Not satisfied |
+| Stable separation from render/hit-test output | Layout directly produces `SurfaceFrame` | Not satisfied |
+
+The prerequisite column is mature enough to continue development. The boundary-pressure column is not.
+
+## Extraction gate
+
+Create `runenui_layout` only when all of the following are true.
+
+### Required contract conditions
+
+1. Layout input and output have ownership independent of `SurfacePublication` internals.
+2. Geometry ownership is explicit for `LogicalSize`, `LogicalRect`, constraints, and computed layout boxes.
+3. Runtime observation identity is either removed from the core layout contract or represented through a deliberate neutral/generic identity contract.
+4. Measurement requests have the typography and resource inputs required by real layout behavior.
+5. Layout conformance cases can run without constructing the full application runtime pipeline.
+
+### Required boundary pressure
+
+At least one hard boundary reason must also exist:
+
+1. a renderer, host integration, testing crate, or external repository consumes layout independently;
+2. Cargo must prevent a real forbidden dependency direction or isolate optional dependencies;
+3. multiple substantial layout algorithms need an independently owned implementation and conformance surface;
+4. layout has meaningful build, feature, or release optionality separate from runtime.
+
+Do not create a crate solely because several vocabulary types now exist.
+
+Do not genericize node identity, relocate geometry, or split the publication pipeline only to satisfy this gate artificially.
+
+## What remains in `runenui_runtime`
+
+Keep these together for now:
+
+```text
+LayoutConstraints
+AxisConstraints and AxisLimit
+MeasurementProvider
+TextMeasurementRequest and TextMeasurement
+DeterministicMeasurementProvider
+LogicalSize and LogicalRect
+publication-local measured layout result
+row/column measurement and arrangement
+LayoutOverflow
+SurfaceLayoutNode and SurfaceLayoutReport
+SurfaceNode and SurfaceFrame
+SurfaceBuildContext and SurfacePublication
+SurfaceFrame hit testing
 AppRuntime::publish_surface
-SurfaceStyleReport
-DebugSurfaceRenderer
 ```
 
-This keeps the current interaction pipeline simple:
+Internal module cleanup may be justified later if `surface.rs` becomes difficult to maintain, but an internal module split is not evidence for a new crate.
+
+## Future `runenui_layout` ownership
+
+Once the extraction gate is met, a dedicated layout crate should own:
 
 ```text
-AppRuntime
-  -> current root Element tree + SurfaceBuildContext
-  -> one resolved surface tree
-  -> SurfacePublication
-  -> frame -> debug renderer / future backend
-  -> hit test
-  -> target RuntimeNodeId
-  -> input policy / activation
+constraints
+measurement inputs and outputs
+intrinsic sizing
+layout-tree or layout-adapter contract
+row, column, flex, grid, stack, and absolute algorithms
+computed layout boxes
+layout diagnostics
+layout conformance cases
 ```
 
-## Extraction criteria
-
-Create `runenui_layout` only when at least three of these are true:
-
-1. Layout has multiple algorithms beyond row/column stacking.
-2. Layout accepts explicit constraints instead of only a root frame size.
-3. Measurement is abstracted behind a real text/control measurement contract.
-4. Style or computed style materially affects layout.
-5. Layout diagnostics or conformance tests are valuable outside runtime tests.
-6. A renderer, host adapter, or Runenwerk integration needs to consume layout output independently.
-7. Moving layout to a crate enforces a dependency boundary Cargo should protect.
-
-Create `runenui_render` only when at least three of these are true:
-
-1. `SurfaceFrame` grows into a richer renderer-neutral frame protocol.
-2. There are paint primitives beyond text/button/container node descriptions.
-3. At least two backends or debug renderers consume the same protocol.
-4. Render resources, clips, transforms, z-order, or text runs need stable ownership.
-5. Runtime publication and backend consumption need a Cargo-enforced boundary.
-
-## Recommended next task
-
-Do not extract crates next.
-
-Unified surface publication, computed padding geometry, root constraints, provider-backed text measurement, one measured result, child content-box constraint propagation, and overflow diagnostics are implemented. The next step is the formal layout boundary review using the actual dependency pressure and conformance tests, not an automatic crate extraction:
+It must not own:
 
 ```text
-resolved ComputedStyle::padding
-  -> provider-measured text and button label content
-  -> RuntimeNodeId-aligned measured result
-  -> measurement-free arrangement
-  -> aligned frame, style report, and layout report
+application state or actions
+runtime focus and activation
+native windows or host event loops
+renderer backends
+surface resource management
+product UI
 ```
 
-Review inputs:
+## Future `runenui_render` relationship
+
+The next renderer-neutral primitive/frame protocol review should decide ownership for:
 
 ```text
-- implemented finite/unbounded constraint semantics
-- measurement provider ownership and call-count proofs
-- measured-result and arrangement dependencies
-- layout diagnostics and conformance tests
-- independent-consumer and Cargo-boundary evidence
+frame metadata
+paint primitives
+text runs
+clips
+transforms
+z-order
+image and resource references
+hit-test-relevant geometry
 ```
 
-Non-goals remain:
+That protocol may consume arranged logical boxes, but it must not own layout policy.
+
+Do not move `SurfaceFrame` or geometry types merely to make the long-term diagram look complete. Move them only when the protocol has an actual independent consumer and stable responsibility.
+
+## Revisit triggers
+
+Reopen this review when one or more of these events occur:
+
+1. a second meaningful layout algorithm is implemented;
+2. text shaping, wrapping, baselines, alignment, min/max sizing, or intrinsic negotiation materially expands the layout contract;
+3. the renderer-neutral primitive protocol establishes a separate arranged-box consumer;
+4. `runenui_testing` needs reusable layout conformance without the application runtime;
+5. Runenwerk or another host/backend needs layout output independently;
+6. runtime identity is decoupled from layout input/output;
+7. Cargo can enforce a demonstrated dependency or optionality boundary.
+
+Until then, keep the boundary explicit in modules and tests rather than manufacturing a crate split.
+
+## Final verdict
+
+The formal review confirms the existing direction:
 
 ```text
-- no component recipes or variants
-- no interaction-state styling
-- no external theme format
-- no renderer backend
-- no layout or render crate extraction
-```
-
-## Review cadence
-
-Revisit this boundary formally now that constraints, provider-backed measurement, the measured result, child propagation, overflow diagnostics, and conformance tests are implemented.
-
-The completed and expected progression is:
-
-```text
-style token vocabulary
-  -> computed style and provenance
-  -> unified runtime surface publication
-  -> computed padding affects layout
-  -> root constraints and provider-backed measurement
-  -> measured layout result and child constraints
-  -> layout boundary review update
-  -> possible runenui_layout extraction
-  -> render protocol boundary review
-  -> possible runenui_render extraction
+keep layout in runenui_runtime
+continue using the measured-result and diagnostic contracts
+perform renderer-neutral primitive/frame protocol design next
+do not extract runenui_layout yet
 ```
