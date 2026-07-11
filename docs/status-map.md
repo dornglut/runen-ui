@@ -56,4 +56,4 @@ No framework subsystem is currently `stable`.
 
 ## Current milestone
 
-M0 is complete on the program branch after every critical review correction and the required root, nested-directory, worktree-cleanliness, context-profile, and CI checks passed. M1 remains queued and has not started.
+M0 is complete at this revision. M1 remains queued and has not started.
