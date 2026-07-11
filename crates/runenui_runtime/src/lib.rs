@@ -14,6 +14,7 @@ mod node;
 mod policy;
 pub mod prelude;
 mod runtime;
+mod style_debug;
 mod surface;
 mod trace;
 
@@ -31,6 +32,10 @@ pub use policy::{
     PointerFocusResult,
 };
 pub use runtime::Runtime;
+pub use style_debug::{
+    SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report,
+    resolve_surface_style_report,
+};
 pub use surface::{
     LogicalRect, LogicalSize, SurfaceFrame, SurfaceLayoutMetrics, SurfaceNode, SurfaceNodeKind,
     layout_surface, layout_surface_with_metrics,
