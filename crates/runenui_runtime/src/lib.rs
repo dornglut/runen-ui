@@ -41,7 +41,7 @@ pub use policy::{
 pub use runtime::Runtime;
 pub use style_debug::{SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report};
 pub use surface::{
-    LogicalRect, LogicalSize, SurfaceBuildContext, SurfaceFrame, SurfaceNode, SurfaceNodeKind,
-    SurfacePublication, publish_surface,
+    LayoutOverflow, LogicalRect, LogicalSize, SurfaceBuildContext, SurfaceFrame, SurfaceLayoutNode,
+    SurfaceLayoutReport, SurfaceNode, SurfaceNodeKind, SurfacePublication, publish_surface,
 };
 pub use trace::{RuntimeEvent, Trace, TraceRecord, TraceTarget};

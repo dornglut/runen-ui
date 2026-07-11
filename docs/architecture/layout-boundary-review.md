@@ -12,12 +12,13 @@ Keep the implementation in `runenui_runtime` until layout becomes more than simp
 
 ## Current implementation
 
-The current surface module owns four responsibilities:
+The current surface module owns five responsibilities:
 
 1. explicit surface build inputs and unified publication;
 2. one per-node style-resolution preparation for frame and diagnostics;
-3. simple row/column layout into `SurfaceFrame`;
-4. bounds-based hit testing on the published frame.
+3. one publication-local measured result and simple row/column arrangement;
+4. runtime-node-aligned layout diagnostics;
+5. bounds-based hit testing on the published frame.
 
 Current public surface vocabulary:
 
@@ -27,6 +28,9 @@ LogicalRect
 SurfaceNodeKind
 SurfaceNode
 SurfaceFrame
+LayoutOverflow
+SurfaceLayoutNode
+SurfaceLayoutReport
 LayoutConstraints
 MeasurementProvider
 TextMeasurementRequest
@@ -36,19 +40,20 @@ SurfacePublication
 publish_surface
 ```
 
-`SurfaceFrame` is not a renderer backend. It is an ordered, host-neutral frame snapshot containing runtime node identity, optional authored IDs, logical bounds, renderer-facing node kinds, and concrete `ComputedStyle`. `SurfacePublication` carries the frame together with aligned style diagnostics.
+`SurfaceFrame` is not a renderer backend. It is an ordered, host-neutral frame snapshot containing runtime node identity, optional authored IDs, logical bounds, renderer-facing node kinds, and concrete `ComputedStyle`. `SurfacePublication` carries the frame together with aligned style and layout diagnostics.
 
 The current layout pass is intentionally simple:
 
 ```text
 Element<Action> + StyleTokens + root constraints + MeasurementProvider
   -> resolved runtime surface tree
-  -> SurfaceLayoutBuilder
-  -> SurfaceFrame + SurfaceStyleReport
+  -> one measured result indexed by RuntimeNodeId
+  -> measurement-free arrangement
+  -> SurfaceFrame + SurfaceStyleReport + SurfaceLayoutReport
   -> SurfacePublication
 ```
 
-It assigns bounds to containers, text, and buttons using the provider-backed measurement contract. It understands only row/column stacking, authored gap, provider-measured standalone text, provider-measured button labels, computed padding, root constraints, and a private button minimum-size policy.
+It assigns bounds to containers, text, and buttons using the provider-backed measurement contract. It understands only row/column stacking, authored gap, provider-measured standalone text, provider-measured button labels, computed padding, root constraints, cross-axis child maxima, diagnostic overflow, and a private button minimum-size policy. Each text or button label is measured once per publication.
 
 ## Current ownership
 
@@ -92,7 +97,7 @@ trace targets
 
 ### 1. The algorithm is still a placeholder
 
-The current layout algorithm does not yet have child constraint propagation, flex, grid, stack, text shaping, wrapping, alignment, percentage units, overflow diagnostics, clipping, or broad style-driven layout.
+The current layout algorithm now has cross-axis child constraint propagation and diagnostic overflow, but it does not have flex, grid, stack, text shaping, wrapping, alignment, percentage units, clipping, scrolling, or broad style-driven layout.
 
 A crate boundary would imply a stable layout API before there is enough layout behavior to justify that stability.
 
@@ -173,6 +178,9 @@ LogicalRect
 SurfaceNodeKind
 SurfaceNode
 SurfaceFrame
+LayoutOverflow
+SurfaceLayoutNode
+SurfaceLayoutReport
 LayoutConstraints
 MeasurementProvider
 TextMeasurementRequest
@@ -219,27 +227,28 @@ Create `runenui_render` only when at least three of these are true:
 4. Render resources, clips, transforms, z-order, or text runs need stable ownership.
 5. Runtime publication and backend consumption need a Cargo-enforced boundary.
 
-## Recommended next implementation slice
+## Recommended next task
 
 Do not extract crates next.
 
-Unified surface publication, computed padding geometry, root constraints, and provider-backed text measurement are implemented. The next step is a measured layout result plus child content-box constraint propagation and overflow diagnostics, not an automatic crate extraction:
+Unified surface publication, computed padding geometry, root constraints, provider-backed text measurement, one measured result, child content-box constraint propagation, and overflow diagnostics are implemented. The next step is the formal layout boundary review using the actual dependency pressure and conformance tests, not an automatic crate extraction:
 
 ```text
 resolved ComputedStyle::padding
   -> provider-measured text and button label content
-  -> container outer size and child content origin
-  -> constrained root outer size
-  -> hit testing over padded outer bounds
+  -> RuntimeNodeId-aligned measured result
+  -> measurement-free arrangement
+  -> aligned frame, style report, and layout report
 ```
 
-Required scope:
+Review inputs:
 
 ```text
-- one measured result shared by measurement and placement
-- content-box child constraints
-- deterministic overflow diagnostics
-- no additional style fields or layout algorithms
+- implemented finite/unbounded constraint semantics
+- measurement provider ownership and call-count proofs
+- measured-result and arrangement dependencies
+- layout diagnostics and conformance tests
+- independent-consumer and Cargo-boundary evidence
 ```
 
 Non-goals remain:
@@ -254,7 +263,7 @@ Non-goals remain:
 
 ## Review cadence
 
-Revisit this boundary now that computed padding is implemented.
+Revisit this boundary formally now that constraints, provider-backed measurement, the measured result, child propagation, overflow diagnostics, and conformance tests are implemented.
 
 The completed and expected progression is:
 

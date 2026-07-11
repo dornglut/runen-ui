@@ -36,11 +36,10 @@ Conceptual pipeline:
 resolved surface tree
   + root LayoutConstraints
   + MeasurementProvider
-  + placeholder layout policy
-  -> measured intrinsic sizes
-  -> constrained row/column layout
-  -> SurfaceFrame bounds
-  -> layout diagnostics
+  + small row/column layout policy
+  -> one RuntimeNodeId-aligned measured layout result
+  -> measurement-free row/column arrangement
+  -> aligned SurfaceFrame + SurfaceLayoutReport
 ```
 
 The runtime continues to own orchestration and runtime-node alignment. Measurement is supplied through a narrow borrowed interface for one publication call.
@@ -121,7 +120,7 @@ let publication = runtime.publish_surface(&context);
 
 For fixed-size surfaces, `SurfaceBuildContext::tight(&tokens, size)` constructs tight constraints and delegates to the same publication path. There is no parallel fixed-size layout algorithm.
 
-The renderer-facing `SurfaceFrame::size()` should be the constrained root outer size selected by layout.
+The renderer-facing `SurfaceFrame::size()` is the constrained root outer size selected by layout.
 
 ## Measurement contract
 
@@ -242,7 +241,7 @@ For a tight outer constraint smaller than total padding, content constraints col
 
 For the root container, root outer constraints determine the frame size. Root padding reduces the content area available to children.
 
-Full child constraint propagation from container content boxes remains the next layout slice.
+Row and column containers now derive child constraints from their content boxes after subtracting computed padding. Only the cross-axis finite maximum propagates; the child cross-axis minimum is zero and the main axis remains unbounded.
 
 ## Row and column behavior
 
@@ -250,45 +249,53 @@ The first constrained algorithm remains intentionally small.
 
 ### Column
 
-A column currently:
+A column:
 
-- measure children in order;
-- account for gaps only between successfully measured children;
-- accumulate child outer heights plus gaps;
-- use the maximum child outer width;
-- add container padding;
-- constrain the final outer size.
+- gives every child a loose horizontal maximum from the column content box;
+- leaves every child vertically unbounded;
+- does not propagate the horizontal minimum or stretch children;
+- measures children in order exactly once;
+- accounts for gaps only between successfully measured children;
+- accumulates child outer heights plus gaps;
+- uses the maximum child outer width;
+- adds container padding;
+- constrains the final outer size.
 
 ### Row
 
-A row currently:
+A row:
 
-- measure children in order;
-- account for gaps only between successfully measured children;
-- accumulate child outer widths plus gaps;
-- use the maximum child outer height;
-- add container padding;
-- constrain the final outer size.
+- leaves every child horizontally unbounded;
+- gives every child a loose vertical maximum from the row content box;
+- does not propagate the vertical minimum or stretch children;
+- measures children in order exactly once;
+- accounts for gaps only between successfully measured children;
+- accumulates child outer widths plus gaps;
+- uses the maximum child outer height;
+- adds container padding;
+- constrains the final outer size.
 
-The implementation does not yet propagate available content-box constraints to children, distribute remaining space, flex children, align cross-axis content, wrap rows, or clip overflow.
+The implementation does not distribute remaining space, flex children, align cross-axis content, wrap rows, clip overflow, or scroll.
 
 ## Overflow
 
-Constraints may produce children whose accumulated desired size exceeds the available content box.
+Constraints may produce children whose accumulated desired main-axis size exceeds the available content box. Providers, padding, and button minimum policy may also exceed finite maxima.
 
-The next slice should preserve deterministic bounds and record overflow pressure rather than inventing clipping or scrolling policy.
+The runtime preserves deterministic bounds and records overflow pressure without clipping or scrolling.
 
-Target diagnostic facts:
+`SurfaceLayoutReport` publishes one aligned `SurfaceLayoutNode` per frame node with:
 
 ```text
-node ID
-available content size
+RuntimeNodeId
+outer constraints
+content constraints
 desired content size
+desired outer size
 constrained outer size
 overflowed width/height flags
 ```
 
-A public diagnostics type is optional for that slice. At minimum, tests must make overflow behavior explicit.
+For each axis, `LayoutOverflow` is true when desired content exceeds a finite content maximum or desired outer size exceeds a finite outer maximum. Unbounded maxima do not overflow, and minimum constraints growing a node are not overflow. Diagnostics are observational only.
 
 ## Surface build context
 
@@ -385,17 +392,17 @@ Apply:
 - constrained container measurement;
 - root frame size derived from root constraints.
 
-### Slice 4: measured layout result, child constraints, and overflow
+### Slice 4: measured layout result, child constraints, and overflow — implemented
 
-Apply:
+Implemented:
 
 - one measured layout result shared by measurement and placement;
 - content-box child constraint propagation;
 - explicit overflow behavior and diagnostics.
 
-### Slice 5: boundary review
+### Slice 5: boundary review — next
 
-Re-evaluate `runenui_layout` extraction using the implemented contracts, dependency graph, tests, and prospective independent consumers.
+Perform the formal layout boundary review using the implemented contracts, dependency graph, diagnostics, conformance tests, and prospective independent consumers. Do not automatically extract `runenui_layout`.
 
 ## Required tests
 

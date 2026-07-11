@@ -44,7 +44,8 @@ fn surface_frame(
 ) -> runenui_runtime::SurfaceFrame {
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::tight(&tokens, size);
-    runtime.publish_surface(&context).into_parts().0
+    let (frame, _style_report, _layout_report) = runtime.publish_surface(&context).into_parts();
+    frame
 }
 
 fn surface_frame_with_provider(
@@ -54,7 +55,8 @@ fn surface_frame_with_provider(
 ) -> runenui_runtime::SurfaceFrame {
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::tight(&tokens, size).with_measurement_provider(provider);
-    runtime.publish_surface(&context).into_parts().0
+    let (frame, _style_report, _layout_report) = runtime.publish_surface(&context).into_parts();
+    frame
 }
 
 #[derive(Clone, Copy, Debug)]

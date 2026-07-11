@@ -232,7 +232,7 @@ where
         self.runtime.root()
     }
 
-    /// Publishes aligned renderer-facing and style-diagnostic surface products.
+    /// Publishes aligned renderer-facing, style, and layout-diagnostic products.
     #[must_use]
     pub fn publish_surface(&self, context: &SurfaceBuildContext<'_>) -> SurfacePublication {
         publish_surface(self.root(), context)

@@ -299,6 +299,149 @@ impl SurfaceFrame {
     }
 }
 
+/// Per-axis overflow pressure recorded during surface layout.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LayoutOverflow {
+    width: bool,
+    height: bool,
+}
+
+impl LayoutOverflow {
+    const fn new(width: bool, height: bool) -> Self {
+        Self { width, height }
+    }
+
+    /// Returns whether horizontal layout pressure exceeded a finite maximum.
+    #[must_use]
+    pub const fn width(&self) -> bool {
+        self.width
+    }
+
+    /// Returns whether vertical layout pressure exceeded a finite maximum.
+    #[must_use]
+    pub const fn height(&self) -> bool {
+        self.height
+    }
+
+    /// Returns whether either axis overflowed.
+    #[must_use]
+    pub const fn any(&self) -> bool {
+        self.width || self.height
+    }
+}
+
+/// One runtime-node-aligned diagnostic result from surface measurement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SurfaceLayoutNode {
+    id: RuntimeNodeId,
+    outer_constraints: LayoutConstraints,
+    content_constraints: LayoutConstraints,
+    desired_content_size: LogicalSize,
+    desired_outer_size: LogicalSize,
+    constrained_outer_size: LogicalSize,
+    overflow: LayoutOverflow,
+}
+
+impl SurfaceLayoutNode {
+    const fn new(
+        id: RuntimeNodeId,
+        outer_constraints: LayoutConstraints,
+        content_constraints: LayoutConstraints,
+        desired_content_size: LogicalSize,
+        desired_outer_size: LogicalSize,
+        constrained_outer_size: LogicalSize,
+        overflow: LayoutOverflow,
+    ) -> Self {
+        Self {
+            id,
+            outer_constraints,
+            content_constraints,
+            desired_content_size,
+            desired_outer_size,
+            constrained_outer_size,
+            overflow,
+        }
+    }
+
+    /// Returns the generated runtime node ID.
+    #[must_use]
+    pub const fn id(&self) -> RuntimeNodeId {
+        self.id
+    }
+
+    /// Returns the outer constraints supplied to this node.
+    #[must_use]
+    pub const fn outer_constraints(&self) -> LayoutConstraints {
+        self.outer_constraints
+    }
+
+    /// Returns this node's padding-adjusted content-box constraints.
+    #[must_use]
+    pub const fn content_constraints(&self) -> LayoutConstraints {
+        self.content_constraints
+    }
+
+    /// Returns the sanitized content size desired before content constraints.
+    #[must_use]
+    pub const fn desired_content_size(&self) -> LogicalSize {
+        self.desired_content_size
+    }
+
+    /// Returns the desired outer size after content constraints and box policy.
+    #[must_use]
+    pub const fn desired_outer_size(&self) -> LogicalSize {
+        self.desired_outer_size
+    }
+
+    /// Returns the final outer size used by arrangement.
+    #[must_use]
+    pub const fn constrained_outer_size(&self) -> LogicalSize {
+        self.constrained_outer_size
+    }
+
+    /// Returns deterministic overflow pressure for this node.
+    #[must_use]
+    pub const fn overflow(&self) -> LayoutOverflow {
+        self.overflow
+    }
+}
+
+/// Runtime-node-aligned layout diagnostics from one surface publication.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SurfaceLayoutReport {
+    nodes: Vec<SurfaceLayoutNode>,
+}
+
+impl SurfaceLayoutReport {
+    const fn new(nodes: Vec<SurfaceLayoutNode>) -> Self {
+        Self { nodes }
+    }
+
+    /// Returns measured nodes in the same order as the surface frame.
+    #[must_use]
+    pub const fn nodes(&self) -> &[SurfaceLayoutNode] {
+        self.nodes.as_slice()
+    }
+
+    /// Returns whether this report contains no layout nodes.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    /// Returns the layout node for the provided runtime node ID.
+    #[must_use]
+    pub fn node(&self, id: RuntimeNodeId) -> Option<&SurfaceLayoutNode> {
+        self.nodes.iter().find(|node| node.id() == id)
+    }
+
+    /// Returns the root layout node, when present.
+    #[must_use]
+    pub fn root(&self) -> Option<&SurfaceLayoutNode> {
+        self.node(RuntimeNodeId::ROOT)
+    }
+}
+
 static DEFAULT_MEASUREMENT_PROVIDER: DeterministicMeasurementProvider =
     DeterministicMeasurementProvider::DEFAULT;
 
@@ -369,13 +512,19 @@ impl<'a> SurfaceBuildContext<'a> {
 pub struct SurfacePublication {
     frame: SurfaceFrame,
     style_report: SurfaceStyleReport,
+    layout_report: SurfaceLayoutReport,
 }
 
 impl SurfacePublication {
-    const fn new(frame: SurfaceFrame, style_report: SurfaceStyleReport) -> Self {
+    const fn new(
+        frame: SurfaceFrame,
+        style_report: SurfaceStyleReport,
+        layout_report: SurfaceLayoutReport,
+    ) -> Self {
         Self {
             frame,
             style_report,
+            layout_report,
         }
     }
 
@@ -391,10 +540,16 @@ impl SurfacePublication {
         &self.style_report
     }
 
+    /// Returns layout diagnostics aligned to the frame nodes.
+    #[must_use]
+    pub const fn layout_report(&self) -> &SurfaceLayoutReport {
+        &self.layout_report
+    }
+
     /// Consumes the publication and returns its aligned products.
     #[must_use]
-    pub fn into_parts(self) -> (SurfaceFrame, SurfaceStyleReport) {
-        (self.frame, self.style_report)
+    pub fn into_parts(self) -> (SurfaceFrame, SurfaceStyleReport, SurfaceLayoutReport) {
+        (self.frame, self.style_report, self.layout_report)
     }
 }
 
@@ -408,14 +563,14 @@ pub fn publish_surface<Action>(
     context: &SurfaceBuildContext<'_>,
 ) -> SurfacePublication {
     let resolved_tree = ResolvedSurfaceTree::new(root, context.style_tokens());
-    let frame = layout_resolved_surface(
+    let (frame, layout_report) = layout_resolved_surface(
         &resolved_tree,
         context.root_constraints(),
         context.measurement_provider(),
     );
     let style_report = build_surface_style_report(&resolved_tree);
 
-    SurfacePublication::new(frame, style_report)
+    SurfacePublication::new(frame, style_report, layout_report)
 }
 
 struct ResolvedSurfaceTree<'a, Action> {
@@ -513,33 +668,215 @@ fn layout_resolved_surface<Action>(
     resolved_tree: &ResolvedSurfaceTree<'_, Action>,
     root_constraints: LayoutConstraints,
     measurement_provider: &dyn MeasurementProvider,
-) -> SurfaceFrame {
-    let mut builder = SurfaceLayoutBuilder::new(measurement_provider);
+) -> (SurfaceFrame, SurfaceLayoutReport) {
+    let mut measured_layout = MeasuredSurfaceLayout::new(resolved_tree.nodes().len());
     let mut frame_size = root_constraints.constrain(LogicalSize::new(0.0, 0.0));
 
     if let Some(root) = resolved_tree.node(RuntimeNodeId::ROOT) {
-        frame_size = builder.measure(resolved_tree, root, root_constraints);
-        builder.push_node(
-            resolved_tree,
-            root,
-            LogicalRect::new(LogicalPoint::new(0.0, 0.0), frame_size),
-        );
+        let measurer = SurfaceMeasurer::new(measurement_provider);
+        if let Some(size) =
+            measurer.measure_node(resolved_tree, &mut measured_layout, root, root_constraints)
+        {
+            frame_size = size;
+        }
     }
 
-    SurfaceFrame::new(frame_size, builder.into_nodes())
+    let frame_nodes = {
+        let mut arranger = SurfaceArrangementBuilder::new(&measured_layout);
+        if let Some(root) = resolved_tree.node(RuntimeNodeId::ROOT) {
+            arranger.push_node(resolved_tree, root, LogicalPoint::new(0.0, 0.0));
+        }
+        arranger.into_nodes()
+    };
+    let frame = SurfaceFrame::new(frame_size, frame_nodes);
+
+    (frame, measured_layout.into_report())
 }
 
-struct SurfaceLayoutBuilder<'a> {
+struct MeasuredSurfaceLayout {
+    nodes: Vec<Option<SurfaceLayoutNode>>,
+}
+
+impl MeasuredSurfaceLayout {
+    fn new(node_count: usize) -> Self {
+        Self {
+            nodes: vec![None; node_count],
+        }
+    }
+
+    fn node(&self, id: RuntimeNodeId) -> Option<&SurfaceLayoutNode> {
+        self.nodes.get(id.as_usize()).and_then(Option::as_ref)
+    }
+
+    fn record(&mut self, node: SurfaceLayoutNode) -> Option<LogicalSize> {
+        let slot = self.nodes.get_mut(node.id().as_usize())?;
+        let result = slot.get_or_insert(node);
+        Some(result.constrained_outer_size())
+    }
+
+    fn into_report(self) -> SurfaceLayoutReport {
+        SurfaceLayoutReport::new(self.nodes.into_iter().flatten().collect())
+    }
+}
+
+struct SurfaceMeasurer<'a> {
     measurement_provider: &'a dyn MeasurementProvider,
     button_policy: ButtonLayoutPolicy,
-    nodes: Vec<SurfaceNode>,
 }
 
-impl<'a> SurfaceLayoutBuilder<'a> {
+impl<'a> SurfaceMeasurer<'a> {
     fn new(measurement_provider: &'a dyn MeasurementProvider) -> Self {
         Self {
             measurement_provider,
             button_policy: ButtonLayoutPolicy::default(),
+        }
+    }
+
+    fn measure_node<Action>(
+        &self,
+        resolved_tree: &ResolvedSurfaceTree<'_, Action>,
+        measured_layout: &mut MeasuredSurfaceLayout,
+        node: &ResolvedSurfaceNode<'_, Action>,
+        outer_constraints: LayoutConstraints,
+    ) -> Option<LogicalSize> {
+        if let Some(measured) = measured_layout.node(node.id()) {
+            return Some(measured.constrained_outer_size());
+        }
+
+        let padding = resolved_padding(node);
+        let content_constraints = content_constraints(outer_constraints, padding);
+
+        let (desired_content_size, desired_outer_size) = match node.element().kind() {
+            ElementKind::Text(text) => {
+                let desired_content_size = self.measure_text_content(
+                    node,
+                    text.content(),
+                    TextMeasurementKind::Text,
+                    content_constraints,
+                );
+                let constrained_content_size = content_constraints.constrain(desired_content_size);
+                (
+                    desired_content_size,
+                    expand_size_by_padding(constrained_content_size, padding),
+                )
+            }
+            ElementKind::Button(button) => {
+                let desired_content_size = self.measure_text_content(
+                    node,
+                    button.label(),
+                    TextMeasurementKind::ButtonLabel,
+                    content_constraints,
+                );
+                let constrained_content_size = content_constraints.constrain(desired_content_size);
+                let padded_outer = expand_size_by_padding(constrained_content_size, padding);
+                (
+                    desired_content_size,
+                    self.button_policy.apply_minimum(padded_outer),
+                )
+            }
+            ElementKind::Container(container) => {
+                let desired_content_size = self.measure_container_content(
+                    resolved_tree,
+                    measured_layout,
+                    node,
+                    container.axis(),
+                    content_constraints,
+                );
+                let constrained_content_size = content_constraints.constrain(desired_content_size);
+                (
+                    desired_content_size,
+                    expand_size_by_padding(constrained_content_size, padding),
+                )
+            }
+        };
+        let constrained_outer_size = outer_constraints.constrain(desired_outer_size);
+        let overflow = layout_overflow(
+            desired_content_size,
+            content_constraints,
+            desired_outer_size,
+            outer_constraints,
+        );
+        let measured = SurfaceLayoutNode::new(
+            node.id(),
+            outer_constraints,
+            content_constraints,
+            desired_content_size,
+            desired_outer_size,
+            constrained_outer_size,
+            overflow,
+        );
+
+        measured_layout.record(measured)
+    }
+
+    fn measure_text_content<Action>(
+        &self,
+        node: &ResolvedSurfaceNode<'_, Action>,
+        content: &str,
+        kind: TextMeasurementKind,
+        content_constraints: LayoutConstraints,
+    ) -> LogicalSize {
+        let request =
+            TextMeasurementRequest::new(content, content_constraints, kind).with_node_id(node.id());
+        sanitize_size(self.measurement_provider.measure_text(&request).size())
+    }
+
+    fn measure_container_content<Action>(
+        &self,
+        resolved_tree: &ResolvedSurfaceTree<'_, Action>,
+        measured_layout: &mut MeasuredSurfaceLayout,
+        node: &ResolvedSurfaceNode<'_, Action>,
+        axis: Axis,
+        content_constraints: LayoutConstraints,
+    ) -> LogicalSize {
+        let child_constraints = child_constraints(axis, content_constraints);
+        let gap = valid_extent(node.element().style().gap().value());
+        let mut width: f32 = 0.0;
+        let mut height: f32 = 0.0;
+        let mut measured_child_count = 0_usize;
+
+        for child_id in node.children() {
+            let Some(child) = resolved_tree.node(*child_id) else {
+                continue;
+            };
+            let Some(child_size) =
+                self.measure_node(resolved_tree, measured_layout, child, child_constraints)
+            else {
+                continue;
+            };
+
+            if measured_child_count > 0 {
+                match axis {
+                    Axis::Vertical => height = finite_sum(height, gap),
+                    Axis::Horizontal => width = finite_sum(width, gap),
+                }
+            }
+            match axis {
+                Axis::Vertical => {
+                    width = width.max(child_size.width());
+                    height = finite_sum(height, child_size.height());
+                }
+                Axis::Horizontal => {
+                    width = finite_sum(width, child_size.width());
+                    height = height.max(child_size.height());
+                }
+            }
+            measured_child_count += 1;
+        }
+
+        LogicalSize::new(width, height)
+    }
+}
+
+struct SurfaceArrangementBuilder<'a> {
+    measured_layout: &'a MeasuredSurfaceLayout,
+    nodes: Vec<SurfaceNode>,
+}
+
+impl<'a> SurfaceArrangementBuilder<'a> {
+    const fn new(measured_layout: &'a MeasuredSurfaceLayout) -> Self {
+        Self {
+            measured_layout,
             nodes: Vec::new(),
         }
     }
@@ -552,8 +889,12 @@ impl<'a> SurfaceLayoutBuilder<'a> {
         &mut self,
         resolved_tree: &ResolvedSurfaceTree<'_, Action>,
         node: &ResolvedSurfaceNode<'_, Action>,
-        bounds: LogicalRect,
+        origin: LogicalPoint,
     ) {
+        let Some(measured) = self.measured_layout.node(node.id()) else {
+            return;
+        };
+        let bounds = LogicalRect::new(origin, measured.constrained_outer_size());
         self.nodes.push(SurfaceNode::new(
             node.id(),
             node.parent(),
@@ -564,13 +905,7 @@ impl<'a> SurfaceLayoutBuilder<'a> {
         ));
 
         if let ElementKind::Container(container) = node.element().kind() {
-            self.push_container_children(
-                resolved_tree,
-                node,
-                bounds,
-                container.axis(),
-                node.children(),
-            );
+            self.push_container_children(resolved_tree, node, bounds, container.axis());
         }
     }
 
@@ -580,148 +915,37 @@ impl<'a> SurfaceLayoutBuilder<'a> {
         container_node: &ResolvedSurfaceNode<'_, Action>,
         parent_bounds: LogicalRect,
         axis: Axis,
-        children: &[RuntimeNodeId],
     ) {
         let gap = valid_extent(container_node.element().style().gap().value());
         let padding = resolved_padding(container_node);
         let mut cursor_x = finite_sum(parent_bounds.x(), valid_extent(padding.left().value()));
         let mut cursor_y = finite_sum(parent_bounds.y(), valid_extent(padding.top().value()));
+        let mut arranged_child_count = 0_usize;
 
-        for child_id in children {
+        for child_id in container_node.children() {
             let Some(child) = resolved_tree.node(*child_id) else {
                 continue;
             };
-            let child_size = self.measure(resolved_tree, child, LayoutConstraints::unbounded());
-            let child_bounds =
-                LogicalRect::from_xywh(cursor_x, cursor_y, child_size.width(), child_size.height());
-            self.push_node(resolved_tree, child, child_bounds);
-
-            match axis {
-                Axis::Vertical => {
-                    cursor_y = finite_sum(cursor_y, finite_sum(child_size.height(), gap));
-                }
-                Axis::Horizontal => {
-                    cursor_x = finite_sum(cursor_x, finite_sum(child_size.width(), gap));
-                }
-            }
-        }
-    }
-
-    fn measure<Action>(
-        &self,
-        resolved_tree: &ResolvedSurfaceTree<'_, Action>,
-        node: &ResolvedSurfaceNode<'_, Action>,
-        outer_constraints: LayoutConstraints,
-    ) -> LogicalSize {
-        let padding = resolved_padding(node);
-
-        match node.element().kind() {
-            ElementKind::Text(text) => self.measure_text(
-                node,
-                text.content(),
-                TextMeasurementKind::Text,
-                outer_constraints,
-                padding,
-            ),
-            ElementKind::Button(button) => {
-                self.measure_button(node, button.label(), outer_constraints, padding)
-            }
-            ElementKind::Container(container) => self.measure_container(
-                resolved_tree,
-                node,
-                container.axis(),
-                node.children(),
-                outer_constraints,
-                padding,
-            ),
-        }
-    }
-
-    fn measure_text<Action>(
-        &self,
-        node: &ResolvedSurfaceNode<'_, Action>,
-        content: &str,
-        kind: TextMeasurementKind,
-        outer_constraints: LayoutConstraints,
-        padding: EdgeInsets,
-    ) -> LogicalSize {
-        let content_constraints = content_constraints(outer_constraints, padding);
-        let request =
-            TextMeasurementRequest::new(content, content_constraints, kind).with_node_id(node.id());
-        let measured = self.measurement_provider.measure_text(&request).size();
-        let content_size = content_constraints.constrain(measured);
-        let desired_outer = expand_size_by_padding(content_size, padding);
-
-        outer_constraints.constrain(desired_outer)
-    }
-
-    fn measure_button<Action>(
-        &self,
-        node: &ResolvedSurfaceNode<'_, Action>,
-        label: &str,
-        outer_constraints: LayoutConstraints,
-        padding: EdgeInsets,
-    ) -> LogicalSize {
-        let content_constraints = content_constraints(outer_constraints, padding);
-        let request = TextMeasurementRequest::new(
-            label,
-            content_constraints,
-            TextMeasurementKind::ButtonLabel,
-        )
-        .with_node_id(node.id());
-        let measured = self.measurement_provider.measure_text(&request).size();
-        let content_size = content_constraints.constrain(measured);
-        let padded_outer = expand_size_by_padding(content_size, padding);
-        let desired_outer = self.button_policy.apply_minimum(padded_outer);
-
-        outer_constraints.constrain(desired_outer)
-    }
-
-    fn measure_container<Action>(
-        &self,
-        resolved_tree: &ResolvedSurfaceTree<'_, Action>,
-        node: &ResolvedSurfaceNode<'_, Action>,
-        axis: Axis,
-        children: &[RuntimeNodeId],
-        outer_constraints: LayoutConstraints,
-        padding: EdgeInsets,
-    ) -> LogicalSize {
-        let gap = valid_extent(node.element().style().gap().value());
-        let mut width: f32 = 0.0;
-        let mut height: f32 = 0.0;
-        let mut child_count = 0_usize;
-
-        for child_id in children {
-            let Some(child) = resolved_tree.node(*child_id) else {
+            let Some(measured_child) = self.measured_layout.node(*child_id) else {
                 continue;
             };
-            child_count += 1;
-            let child_size = self.measure(resolved_tree, child, LayoutConstraints::unbounded());
-            match axis {
-                Axis::Vertical => {
-                    width = width.max(child_size.width());
-                    height = finite_sum(height, child_size.height());
-                }
-                Axis::Horizontal => {
-                    width = finite_sum(width, child_size.width());
-                    height = height.max(child_size.height());
+            let child_size = measured_child.constrained_outer_size();
+
+            if arranged_child_count > 0 {
+                match axis {
+                    Axis::Vertical => cursor_y = finite_sum(cursor_y, gap),
+                    Axis::Horizontal => cursor_x = finite_sum(cursor_x, gap),
                 }
             }
-        }
 
-        if child_count > 1 {
-            let total_gap = finite_product(gap, count_as_f32(child_count - 1));
+            self.push_node(resolved_tree, child, LogicalPoint::new(cursor_x, cursor_y));
+
             match axis {
-                Axis::Vertical => height = finite_sum(height, total_gap),
-                Axis::Horizontal => width = finite_sum(width, total_gap),
+                Axis::Vertical => cursor_y = finite_sum(cursor_y, child_size.height()),
+                Axis::Horizontal => cursor_x = finite_sum(cursor_x, child_size.width()),
             }
+            arranged_child_count += 1;
         }
-
-        let content_size = content_constraints(outer_constraints, padding)
-            .constrain(LogicalSize::new(width, height));
-        let desired_outer = expand_size_by_padding(content_size, padding);
-
-        outer_constraints.constrain(desired_outer)
     }
 }
 
@@ -770,6 +994,26 @@ fn content_constraints(
     )
 }
 
+fn child_constraints(axis: Axis, content_constraints: LayoutConstraints) -> LayoutConstraints {
+    match axis {
+        Axis::Vertical => LayoutConstraints::new(
+            loose_axis(content_constraints.horizontal()),
+            AxisConstraints::unbounded(),
+        ),
+        Axis::Horizontal => LayoutConstraints::new(
+            AxisConstraints::unbounded(),
+            loose_axis(content_constraints.vertical()),
+        ),
+    }
+}
+
+fn loose_axis(axis: AxisConstraints) -> AxisConstraints {
+    match axis.max() {
+        AxisLimit::Finite(max) => AxisConstraints::loose(max),
+        AxisLimit::Unbounded => AxisConstraints::unbounded(),
+    }
+}
+
 fn content_axis_constraints(axis: AxisConstraints, padding: f32) -> AxisConstraints {
     let max = match axis.max() {
         AxisLimit::Finite(max) => AxisLimit::Finite(subtract_extent(max, padding)),
@@ -784,6 +1028,46 @@ fn expand_size_by_padding(size: LogicalSize, padding: EdgeInsets) -> LogicalSize
         finite_sum(size.width(), horizontal_padding(padding)),
         finite_sum(size.height(), vertical_padding(padding)),
     )
+}
+
+fn sanitize_size(size: LogicalSize) -> LogicalSize {
+    LogicalSize::new(valid_extent(size.width()), valid_extent(size.height()))
+}
+
+fn layout_overflow(
+    desired_content_size: LogicalSize,
+    content_constraints: LayoutConstraints,
+    desired_outer_size: LogicalSize,
+    outer_constraints: LayoutConstraints,
+) -> LayoutOverflow {
+    LayoutOverflow::new(
+        axis_overflow(
+            desired_content_size.width(),
+            content_constraints.horizontal(),
+            desired_outer_size.width(),
+            outer_constraints.horizontal(),
+        ),
+        axis_overflow(
+            desired_content_size.height(),
+            content_constraints.vertical(),
+            desired_outer_size.height(),
+            outer_constraints.vertical(),
+        ),
+    )
+}
+
+fn axis_overflow(
+    desired_content: f32,
+    content_constraints: AxisConstraints,
+    desired_outer: f32,
+    outer_constraints: AxisConstraints,
+) -> bool {
+    exceeds_finite_max(desired_content, content_constraints.max())
+        || exceeds_finite_max(desired_outer, outer_constraints.max())
+}
+
+fn exceeds_finite_max(desired: f32, maximum: AxisLimit) -> bool {
+    matches!(maximum, AxisLimit::Finite(max) if desired > max)
 }
 
 fn horizontal_padding(padding: EdgeInsets) -> f32 {
@@ -809,25 +1093,12 @@ fn finite_sum(left: f32, right: f32) -> f32 {
     if sum.is_finite() { sum } else { f32::MAX }
 }
 
-fn finite_product(left: f32, right: f32) -> f32 {
-    let product = valid_extent(left) * valid_extent(right);
-    if product.is_finite() {
-        product
-    } else {
-        f32::MAX
-    }
-}
-
 fn valid_extent(value: f32) -> f32 {
     if value.is_finite() && value > 0.0 {
         value
     } else {
         0.0
     }
-}
-
-fn count_as_f32(count: usize) -> f32 {
-    f32::from(u16::try_from(count).unwrap_or(u16::MAX))
 }
 
 fn surface_kind<Action>(kind: &ElementKind<Action>) -> SurfaceNodeKind {

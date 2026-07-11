@@ -12,6 +12,8 @@ Slice 2 is implemented. Computed padding now affects intrinsic measurement, cont
 
 Slice 3 is implemented. Surface publication now carries explicit root `LayoutConstraints` and a borrowed `MeasurementProvider`. The root frame size is selected by constraining the measured root outer size, and standalone text plus button labels use the provider contract.
 
+Slice 4 is implemented. One publication-local measured result is indexed by `RuntimeNodeId` and shared by measurement and arrangement. Row and column containers propagate finite content-box maxima on the cross axis, arrangement never remeasures, and `SurfaceLayoutReport` publishes aligned diagnostic overflow without clipping or scrolling.
+
 ## Problem
 
 The current implementation has two independent paths over the same element tree:
@@ -49,6 +51,8 @@ Element<Action>
        borrowed element facts
        one StyleResolution per node
   -> layout
+       one measured result per RuntimeNodeId
+       intrinsic main axis, constrained cross axis
   -> SurfaceFrame
        bounds
        renderer-facing kind
@@ -56,6 +60,10 @@ Element<Action>
   -> SurfaceStyleReport
        StyleProvenance
        unresolved-token diagnostics
+  -> SurfaceLayoutReport
+       constraints
+       desired and constrained sizes
+       overflow diagnostics
 ```
 
 Style resolution remains a pure `runenui_core` operation. `runenui_runtime` owns orchestration for a mounted tree and guarantees that every downstream product uses the same resolution result.
@@ -156,6 +164,7 @@ let publication = runtime.publish_surface(&context);
 
 let frame = publication.frame();
 let style_report = publication.style_report();
+let layout_report = publication.layout_report();
 ```
 
 The exact constructors may change during implementation, but the following decisions are fixed:
@@ -163,10 +172,10 @@ The exact constructors may change during implementation, but the following decis
 - style tokens are explicit input;
 - root constraints are explicit build context, not a separate size argument;
 - measurement is supplied through a borrowed provider with a deterministic headless default;
-- one call produces the frame and its aligned style diagnostics;
+- one call produces the frame and its aligned style and layout diagnostics;
 - the runtime resolves each node style once per publication;
 - normal renderer consumers read `SurfaceFrame`;
-- inspectors and tests may additionally read `SurfaceStyleReport`.
+- inspectors and tests may additionally read `SurfaceStyleReport` and `SurfaceLayoutReport`.
 
 The target context shape is:
 
@@ -183,7 +192,10 @@ The target output shape is:
 SurfacePublication
   SurfaceFrame
   SurfaceStyleReport
+  SurfaceLayoutReport
 ```
+
+Consuming callers use `into_parts()` to receive those same three aligned products; there is no retained two-product compatibility method.
 
 `SurfaceBuildContext::tight(&tokens, size)` is a convenience constructor for tight root constraints. Custom measurement uses the same path through `with_measurement_provider`.
 
@@ -227,6 +239,7 @@ runtime tree lookup
 surface preparation
 SurfaceFrame
 SurfaceStyleReport
+SurfaceLayoutReport
 hit testing
 focus and activation targets
 trace targets
@@ -367,6 +380,7 @@ layout consumption of ComputedStyle
 SurfacePublication
 SurfaceFrame
 SurfaceStyleReport
+SurfaceLayoutReport
 ```
 
 Runtime does not draw pixels and does not resolve renderer-specific materials.
@@ -428,13 +442,30 @@ Required tests:
 - padding diagnostics and hit testing remain aligned
 ```
 
-### Slice 4: boundary review
+### Slice 4: measured layout result, child propagation, and overflow — implemented
 
-After child constraint propagation and overflow diagnostics are integrated:
+The publication-local measured result and aligned layout report are implemented.
+
+Required outcomes:
+
+```text
+- each text or button label is measured once per publication
+- arrangement reads only measured constrained outer sizes
+- column children receive loose finite content widths and unbounded heights
+- row children receive unbounded widths and loose finite content heights
+- accumulated main-axis pressure remains intrinsic and is reported as overflow
+- SurfaceFrame, SurfaceStyleReport, and SurfaceLayoutReport remain RuntimeNodeId-aligned
+- overflow diagnostics do not imply clipping or scrolling
+```
+
+### Slice 5: formal boundary review — next
+
+Using the implemented contracts and conformance tests:
 
 - update the layout extraction review with actual dependency pressure;
 - decide whether the current runtime module remains sufficient;
-- do not extract a crate unless the documented extraction criteria are met.
+- do not extract a crate unless the documented extraction criteria are met;
+- do not automatically extract `runenui_layout`.
 
 ## Non-goals
 
@@ -460,9 +491,11 @@ The design is implemented when all of these are true:
 
 1. Surface publication has one public runtime path.
 2. Every node is style-resolved once per publication.
-3. `SurfaceFrame` and `SurfaceStyleReport` share runtime node identity and resolution source.
+3. `SurfaceFrame`, `SurfaceStyleReport`, and `SurfaceLayoutReport` share runtime node identity and preparation source.
 4. `SurfaceNode` exposes concrete `ComputedStyle` without token or provenance data.
 5. Layout receives computed style through runtime preparation.
 6. Computed padding affects measurement and child placement according to the documented box model.
 7. Missing tokens remain diagnosable and non-fatal.
 8. No renderer, recipe, theme, interaction-state, or new-crate scope is introduced.
+9. Every text or button label is measured exactly once per publication, and arrangement does not measure.
+10. Cross-axis child constraints and diagnostic-only overflow follow the documented row/column policy.

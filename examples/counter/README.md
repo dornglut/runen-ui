@@ -19,6 +19,8 @@ The example will eventually prove:
 * headless runtime execution
 * inspectable trace output
 * published surface-frame data from tight root constraints and deterministic measurement
+* aligned style and layout diagnostics from the same publication
+* exactly one deterministic measurement per text or button label
 
 ## Intended shape
 
@@ -65,6 +67,8 @@ This example must not introduce:
 * legacy crate imports
 
 The first implementation should run headlessly and prove the runtime contract before any renderer backend is added.
+
+The current Counter uses the small row/column contract: finite cross-axis constraints propagate through content boxes, the main axis remains intrinsic, and overflow is diagnostic only. The example does not clip or scroll.
 
 For workspace-wide dependency rules, see [dependency-map](../../docs/dependency-map.md).
 
