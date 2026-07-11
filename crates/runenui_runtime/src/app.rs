@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use runenui_core::{Element, ElementKind};
 
 use crate::{
-    FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, LogicalSize, PointerButton, PointerEvent,
+    FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, PointerButton, PointerEvent,
     PointerPhase, Runtime, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, SurfaceBuildContext,
     SurfacePublication, Trace, TraceTarget,
     policy::{
@@ -234,12 +234,8 @@ where
 
     /// Publishes aligned renderer-facing and style-diagnostic surface products.
     #[must_use]
-    pub fn publish_surface(
-        &self,
-        size: LogicalSize,
-        context: &SurfaceBuildContext<'_>,
-    ) -> SurfacePublication {
-        publish_surface(self.root(), size, context)
+    pub fn publish_surface(&self, context: &SurfaceBuildContext<'_>) -> SurfacePublication {
+        publish_surface(self.root(), context)
     }
 
     /// Returns the runtime trace.

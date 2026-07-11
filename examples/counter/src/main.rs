@@ -16,8 +16,8 @@ const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(240.0, 160.0);
 
 fn debug_surface(runtime: &AppRuntime<CounterApp>) -> String {
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens);
-    let publication = runtime.publish_surface(EXAMPLE_SURFACE_SIZE, &context);
+    let context = SurfaceBuildContext::tight(&tokens, EXAMPLE_SURFACE_SIZE);
+    let publication = runtime.publish_surface(&context);
     render_debug_surface_frame(publication.frame())
 }
 

@@ -1,7 +1,7 @@
 use runenui_core::prelude::{StyleTokens, button, column, text};
 use runenui_runtime::prelude::{
-    AppRuntime, LogicalRect, LogicalSize, RuntimeNodeId, SurfaceBuildContext, SurfaceLayoutMetrics,
-    SurfaceNodeKind, UiApp,
+    AppRuntime, LogicalRect, LogicalSize, MeasurementProvider, RuntimeNodeId, SurfaceBuildContext,
+    SurfaceNodeKind, TextMeasurement, TextMeasurementKind, TextMeasurementRequest, UiApp,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,18 +43,32 @@ fn surface_frame(
     size: LogicalSize,
 ) -> runenui_runtime::SurfaceFrame {
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens);
-    runtime.publish_surface(size, &context).into_parts().0
+    let context = SurfaceBuildContext::tight(&tokens, size);
+    runtime.publish_surface(&context).into_parts().0
 }
 
-fn surface_frame_with_metrics(
+fn surface_frame_with_provider(
     runtime: &AppRuntime<CounterApp>,
     size: LogicalSize,
-    metrics: SurfaceLayoutMetrics,
+    provider: &dyn MeasurementProvider,
 ) -> runenui_runtime::SurfaceFrame {
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens).with_layout_metrics(metrics);
-    runtime.publish_surface(size, &context).into_parts().0
+    let context = SurfaceBuildContext::tight(&tokens, size).with_measurement_provider(provider);
+    runtime.publish_surface(&context).into_parts().0
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AppMeasurementProvider;
+
+impl MeasurementProvider for AppMeasurementProvider {
+    fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement {
+        let size = match request.kind() {
+            TextMeasurementKind::Text => LogicalSize::new(80.0, 18.0),
+            TextMeasurementKind::ButtonLabel => LogicalSize::new(30.0, 12.0),
+        };
+
+        TextMeasurement::new(request.constraints().constrain(size))
+    }
 }
 
 fn assert_f32_eq(actual: f32, expected: f32) {
@@ -121,11 +135,14 @@ fn app_runtime_surface_frame_reflects_rebuilt_root_after_dispatch() -> Result<()
 }
 
 #[test]
-fn app_runtime_surface_frame_accepts_explicit_metrics() -> Result<(), &'static str> {
+fn app_runtime_surface_frame_accepts_explicit_measurement_provider() -> Result<(), &'static str> {
     let runtime = AppRuntime::<CounterApp>::mount(State::default());
-    let metrics = SurfaceLayoutMetrics::new(10.0, 18.0, 9.0, 22.0, 30.0);
 
-    let frame = surface_frame_with_metrics(&runtime, LogicalSize::new(200.0, 100.0), metrics);
+    let frame = surface_frame_with_provider(
+        &runtime,
+        LogicalSize::new(200.0, 100.0),
+        &AppMeasurementProvider,
+    );
     let value = frame
         .node(RuntimeNodeId::from_index(1))
         .ok_or("expected value surface node")?;
@@ -136,7 +153,7 @@ fn app_runtime_surface_frame_accepts_explicit_metrics() -> Result<(), &'static s
     assert_rect_eq(value.bounds(), LogicalRect::from_xywh(0.0, 0.0, 80.0, 18.0));
     assert_rect_eq(
         increment.bounds(),
-        LogicalRect::from_xywh(0.0, 22.0, 30.0, 22.0),
+        LogicalRect::from_xywh(0.0, 22.0, 64.0, 32.0),
     );
 
     Ok(())

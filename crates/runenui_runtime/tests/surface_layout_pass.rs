@@ -2,9 +2,11 @@ use runenui_core::prelude::{
     EdgeInsets, Length, SpacingToken, StyleTokens, UnresolvedStyleToken, button, column, row, text,
 };
 use runenui_runtime::prelude::{
-    LogicalRect, LogicalSize, RuntimeNodeId, SurfaceBuildContext, SurfaceFrame,
-    SurfaceLayoutMetrics, SurfaceNode, SurfaceNodeKind, publish_surface,
+    LayoutConstraints, LogicalRect, LogicalSize, MeasurementProvider, RuntimeNodeId,
+    SurfaceBuildContext, SurfaceFrame, SurfaceNode, SurfaceNodeKind, TextMeasurement,
+    TextMeasurementKind, TextMeasurementRequest, publish_surface,
 };
+use std::cell::RefCell;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Action {
@@ -13,18 +15,96 @@ enum Action {
 
 fn surface_frame<Action>(root: &runenui_core::Element<Action>, size: LogicalSize) -> SurfaceFrame {
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens);
-    publish_surface(root, size, &context).into_parts().0
+    let context = SurfaceBuildContext::tight(&tokens, size);
+    publish_surface(root, &context).into_parts().0
 }
 
-fn surface_frame_with_metrics<Action>(
+fn surface_frame_with_provider<Action>(
     root: &runenui_core::Element<Action>,
-    size: LogicalSize,
-    metrics: SurfaceLayoutMetrics,
+    root_constraints: LayoutConstraints,
+    provider: &dyn MeasurementProvider,
 ) -> SurfaceFrame {
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens).with_layout_metrics(metrics);
-    publish_surface(root, size, &context).into_parts().0
+    let context =
+        SurfaceBuildContext::new(&tokens, root_constraints).with_measurement_provider(provider);
+    publish_surface(root, &context).into_parts().0
+}
+
+#[derive(Clone, Copy, Debug)]
+struct KindSizedProvider {
+    text: LogicalSize,
+    button_label: LogicalSize,
+}
+
+impl KindSizedProvider {
+    const fn new(text: LogicalSize, button_label: LogicalSize) -> Self {
+        Self { text, button_label }
+    }
+}
+
+impl MeasurementProvider for KindSizedProvider {
+    fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement {
+        let size = match request.kind() {
+            TextMeasurementKind::Text => self.text,
+            TextMeasurementKind::ButtonLabel => self.button_label,
+        };
+
+        TextMeasurement::new(request.constraints().constrain(size))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct RecordedTextRequest {
+    content: String,
+    constraints: LayoutConstraints,
+    node_id: Option<RuntimeNodeId>,
+    kind: TextMeasurementKind,
+}
+
+#[derive(Debug)]
+struct RecordingProvider {
+    requests: RefCell<Vec<RecordedTextRequest>>,
+    size: LogicalSize,
+}
+
+impl RecordingProvider {
+    const fn new(size: LogicalSize) -> Self {
+        Self {
+            requests: RefCell::new(Vec::new()),
+            size,
+        }
+    }
+
+    fn requests(&self) -> Vec<RecordedTextRequest> {
+        self.requests.borrow().clone()
+    }
+}
+
+impl MeasurementProvider for RecordingProvider {
+    fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement {
+        self.requests.borrow_mut().push(RecordedTextRequest {
+            content: request.content().to_owned(),
+            constraints: request.constraints(),
+            node_id: request.node_id(),
+            kind: request.kind(),
+        });
+
+        TextMeasurement::new(request.constraints().constrain(self.size))
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct InvalidProvider;
+
+impl MeasurementProvider for InvalidProvider {
+    fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement {
+        let size = match request.kind() {
+            TextMeasurementKind::Text => LogicalSize::new(f32::NAN, f32::INFINITY),
+            TextMeasurementKind::ButtonLabel => LogicalSize::new(-20.0, f32::NEG_INFINITY),
+        };
+
+        TextMeasurement::new(size)
+    }
 }
 
 fn assert_f32_eq(actual: f32, expected: f32) {
@@ -80,6 +160,55 @@ fn vertical_column_lays_out_children_by_gap_and_intrinsic_size() -> Result<(), &
         Some("counter.title")
     );
     assert_eq!(increment.kind(), &SurfaceNodeKind::button("+", true));
+
+    Ok(())
+}
+
+#[test]
+fn tight_constraints_preserve_fixed_size_root_behavior() -> Result<(), &'static str> {
+    let ui = column((text::<Action>("A"), button::<Action>("B"))).gap(8.0);
+
+    let frame = surface_frame(&ui, LogicalSize::new(200.0, 100.0));
+    let root = root_node(&frame)?;
+
+    assert_eq!(frame.size(), LogicalSize::new(200.0, 100.0));
+    assert_rect_eq(
+        root.bounds(),
+        LogicalRect::from_xywh(0.0, 0.0, 200.0, 100.0),
+    );
+
+    Ok(())
+}
+
+#[test]
+fn loose_constraints_allow_intrinsic_root_shrink_to_fit() -> Result<(), &'static str> {
+    let ui = column((text::<Action>("A"), button::<Action>("B"))).gap(8.0);
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(
+        &tokens,
+        LayoutConstraints::loose(LogicalSize::new(200.0, 100.0)),
+    );
+
+    let frame = publish_surface(&ui, &context).into_parts().0;
+    let root = root_node(&frame)?;
+
+    assert_eq!(frame.size(), LogicalSize::new(64.0, 60.0));
+    assert_rect_eq(root.bounds(), LogicalRect::from_xywh(0.0, 0.0, 64.0, 60.0));
+
+    Ok(())
+}
+
+#[test]
+fn unbounded_constraints_preserve_intrinsic_root_size() -> Result<(), &'static str> {
+    let ui = row((text::<Action>("AB"), button::<Action>("OK"))).gap(4.0);
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+
+    let frame = publish_surface(&ui, &context).into_parts().0;
+    let root = root_node(&frame)?;
+
+    assert_eq!(frame.size(), LogicalSize::new(84.0, 32.0));
+    assert_rect_eq(root.bounds(), LogicalRect::from_xywh(0.0, 0.0, 84.0, 32.0));
 
     Ok(())
 }
@@ -154,18 +283,121 @@ fn disabled_button_surface_kind_preserves_enabled_state() -> Result<(), &'static
 }
 
 #[test]
-fn explicit_metrics_control_intrinsic_text_and_button_sizes() -> Result<(), &'static str> {
-    let metrics = SurfaceLayoutMetrics::new(10.0, 18.0, 9.0, 22.0, 30.0);
+fn custom_provider_changes_standalone_text_geometry() -> Result<(), &'static str> {
+    let provider =
+        KindSizedProvider::new(LogicalSize::new(42.0, 16.0), LogicalSize::new(8.0, 20.0));
+    let ui = column((text::<Action>("ABC"),));
+
+    let frame = surface_frame_with_provider(
+        &ui,
+        LayoutConstraints::tight(LogicalSize::new(100.0, 100.0)),
+        &provider,
+    );
+    let text = surface_node(&frame, RuntimeNodeId::from_index(1))?;
+
+    assert_rect_eq(text.bounds(), LogicalRect::from_xywh(0.0, 0.0, 42.0, 16.0));
+
+    Ok(())
+}
+
+#[test]
+fn custom_provider_changes_button_label_geometry() -> Result<(), &'static str> {
+    let provider =
+        KindSizedProvider::new(LogicalSize::new(8.0, 20.0), LogicalSize::new(72.0, 18.0));
+    let ui = column((button::<Action>("ABCD"),));
+
+    let frame = surface_frame_with_provider(
+        &ui,
+        LayoutConstraints::tight(LogicalSize::new(100.0, 100.0)),
+        &provider,
+    );
+    let button = surface_node(&frame, RuntimeNodeId::from_index(1))?;
+
+    assert_rect_eq(
+        button.bounds(),
+        LogicalRect::from_xywh(0.0, 0.0, 72.0, 32.0),
+    );
+
+    Ok(())
+}
+
+#[test]
+fn text_and_button_requests_include_runtime_id_kind_and_constraints() {
+    let provider = RecordingProvider::new(LogicalSize::new(10.0, 10.0));
     let ui = column((text::<Action>("ABC"), button::<Action>("ABCD"))).gap(2.0);
 
-    let frame = surface_frame_with_metrics(&ui, LogicalSize::new(100.0, 100.0), metrics);
+    let _frame = surface_frame_with_provider(
+        &ui,
+        LayoutConstraints::tight(LogicalSize::new(100.0, 100.0)),
+        &provider,
+    );
+    let requests = provider.requests();
+
+    assert!(requests.iter().any(|request| {
+        request.content == "ABC"
+            && request.node_id == Some(RuntimeNodeId::from_index(1))
+            && request.kind == TextMeasurementKind::Text
+            && request.constraints == LayoutConstraints::unbounded()
+    }));
+    assert!(requests.iter().any(|request| {
+        request.content == "ABCD"
+            && request.node_id == Some(RuntimeNodeId::from_index(2))
+            && request.kind == TextMeasurementKind::ButtonLabel
+            && request.constraints == LayoutConstraints::unbounded()
+    }));
+}
+
+#[test]
+fn button_size_composes_label_measurement_padding_and_minimum_policy() -> Result<(), &'static str> {
+    let provider =
+        KindSizedProvider::new(LogicalSize::new(8.0, 20.0), LogicalSize::new(70.0, 20.0));
+    let ui =
+        column((button::<Action>("ABCD")
+            .padding(EdgeInsets::symmetric(Length::px(5.0), Length::px(7.0))),));
+
+    let frame = surface_frame_with_provider(
+        &ui,
+        LayoutConstraints::tight(LogicalSize::new(120.0, 120.0)),
+        &provider,
+    );
+    let button = surface_node(&frame, RuntimeNodeId::from_index(1))?;
+
+    assert_rect_eq(
+        button.bounds(),
+        LogicalRect::from_xywh(0.0, 0.0, 80.0, 34.0),
+    );
+
+    Ok(())
+}
+
+#[test]
+fn provider_output_is_sanitized_before_frame_geometry() {
+    let ui = row((text::<Action>("Bad"), button::<Action>("Bad"))).gap(4.0);
+
+    let frame = surface_frame_with_provider(&ui, LayoutConstraints::unbounded(), &InvalidProvider);
+
+    for node in frame.nodes() {
+        let bounds = node.bounds();
+        assert!(bounds.x().is_finite() && bounds.x() >= 0.0);
+        assert!(bounds.y().is_finite() && bounds.y() >= 0.0);
+        assert!(bounds.width().is_finite() && bounds.width() >= 0.0);
+        assert!(bounds.height().is_finite() && bounds.height() >= 0.0);
+    }
+}
+
+#[test]
+fn default_provider_preserves_deterministic_intrinsic_text_and_button_sizes()
+-> Result<(), &'static str> {
+    let ui = column((text::<Action>("ABC"), button::<Action>("ABCD"))).gap(2.0);
+
+    let frame = surface_frame(&ui, LogicalSize::new(100.0, 100.0));
     let text = surface_node(&frame, RuntimeNodeId::from_index(1))?;
     let button = surface_node(&frame, RuntimeNodeId::from_index(2))?;
 
-    assert_rect_eq(text.bounds(), LogicalRect::from_xywh(0.0, 0.0, 30.0, 18.0));
+    assert_rect_eq(text.bounds(), LogicalRect::from_xywh(0.0, 0.0, 24.0, 20.0));
     assert_rect_eq(
         button.bounds(),
-        LogicalRect::from_xywh(0.0, 20.0, 36.0, 22.0),
+        LogicalRect::from_xywh(0.0, 22.0, 64.0, 32.0),
     );
 
     Ok(())
@@ -264,14 +496,10 @@ fn token_resolved_padding_matches_literal_geometry() {
     let literal = column((text::<Action>("Token").padding(padding),));
     let token = column((text::<Action>("Token").padding(SpacingToken::new("space.test")),));
     let tokens = StyleTokens::new().with_spacing("space.test", padding);
-    let context = SurfaceBuildContext::new(&tokens);
+    let context = SurfaceBuildContext::tight(&tokens, LogicalSize::new(200.0, 100.0));
 
-    let literal_frame = publish_surface(&literal, LogicalSize::new(200.0, 100.0), &context)
-        .into_parts()
-        .0;
-    let token_frame = publish_surface(&token, LogicalSize::new(200.0, 100.0), &context)
-        .into_parts()
-        .0;
+    let literal_frame = publish_surface(&literal, &context).into_parts().0;
+    let token_frame = publish_surface(&token, &context).into_parts().0;
 
     assert_eq!(
         literal_frame
@@ -292,8 +520,8 @@ fn missing_padding_token_uses_zero_insets_and_preserves_diagnostics() -> Result<
     let missing = SpacingToken::new("space.missing");
     let ui = column((button::<Action>("A").padding(missing.clone()),));
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens);
-    let publication = publish_surface(&ui, LogicalSize::new(200.0, 100.0), &context);
+    let context = SurfaceBuildContext::tight(&tokens, LogicalSize::new(200.0, 100.0));
+    let publication = publish_surface(&ui, &context);
     let button = publication
         .frame()
         .node(RuntimeNodeId::from_index(1))

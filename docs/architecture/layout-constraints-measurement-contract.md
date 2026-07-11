@@ -1,12 +1,12 @@
 # Layout Constraints and Measurement Contract
 
-This document defines the next layout boundary for RunenUI after computed padding became real geometry.
+This document defines the active layout boundary for RunenUI after computed padding became real geometry.
 
 It introduces no new crate and no renderer backend. It specifies the neutral inputs and outputs required to replace root-size-only layout and character-count measurement without prematurely stabilizing a full layout engine.
 
 ## Problem
 
-The current surface layout pass accepts one root `LogicalSize` and uses fixed placeholder metrics:
+Before this cutover, the surface layout pass accepted one root `LogicalSize` and used fixed placeholder metrics:
 
 ```text
 surface size
@@ -24,7 +24,7 @@ This is sufficient for deterministic framework proofs, but it cannot represent:
 - controls whose content measurement is not a character-count approximation;
 - diagnostics explaining why a node received a particular size.
 
-The next implementation must introduce these concepts without choosing WGPU, SDF, Winit, a font library, or a dedicated layout crate.
+The implementation introduces root constraints and a borrowed measurement provider without choosing WGPU, SDF, Winit, a font library, or a dedicated layout crate.
 
 ## Decision
 
@@ -108,19 +108,18 @@ This policy keeps publication non-panicking while preserving stable geometry. Di
 
 ## Root contract
 
-`publish_surface` currently receives a fixed `LogicalSize`. The constraint cutover should replace that root-only assumption with explicit root constraints.
+`publish_surface` no longer receives a separate fixed `LogicalSize`. Root sizing is represented by explicit root constraints carried by `SurfaceBuildContext`.
 
-Target conceptual API:
+Implemented API:
 
 ```rust
 let constraints = LayoutConstraints::tight(LogicalSize::new(800.0, 600.0));
-let context = SurfaceBuildContext::new(&tokens)
-    .with_constraints(constraints)
+let context = SurfaceBuildContext::new(&tokens, constraints)
     .with_measurement_provider(&measurement);
 let publication = runtime.publish_surface(&context);
 ```
 
-An intermediate API may keep `size` as a convenience constructor for tight constraints, but there must be one internal constraint path. Do not maintain separate constrained and unconstrained layout algorithms.
+For fixed-size surfaces, `SurfaceBuildContext::tight(&tokens, size)` constructs tight constraints and delegates to the same publication path. There is no parallel fixed-size layout algorithm.
 
 The renderer-facing `SurfaceFrame::size()` should be the constrained root outer size selected by layout.
 
@@ -128,7 +127,7 @@ The renderer-facing `SurfaceFrame::size()` should be the constrained root outer 
 
 Measurement must be renderer-neutral and synchronous for the initial headless runtime.
 
-Target conceptual trait:
+Implemented trait:
 
 ```rust
 pub trait MeasurementProvider {
@@ -136,15 +135,10 @@ pub trait MeasurementProvider {
         &self,
         request: &TextMeasurementRequest<'_>,
     ) -> TextMeasurement;
-
-    fn measure_control(
-        &self,
-        request: &ControlMeasurementRequest<'_>,
-    ) -> Option<ControlMeasurement>;
 }
 ```
 
-The exact split between text and control methods may change. The fixed decisions are:
+The fixed decisions are:
 
 - layout requests measurement; it does not inspect renderer internals;
 - requests include constraints relevant to the content box;
@@ -212,16 +206,7 @@ A separate control request becomes justified only when a real second control req
 
 RunenUI must retain a deterministic provider for headless tests and examples.
 
-The current character-count metrics should become an explicit fallback implementation rather than hidden layout behavior:
-
-```text
-DeterministicMeasurementProvider
-  text_char_width
-  text_height
-  button_char_width, only if button labels intentionally differ
-```
-
-Prefer one text measurement path for text and button labels unless a documented reason requires separate metrics.
+The deterministic provider is the explicit fallback implementation rather than hidden layout behavior. It uses one text measurement path for standalone text and button labels.
 
 The fallback provider is not a renderer and must not become the default truth for production typography.
 
@@ -257,7 +242,7 @@ For a tight outer constraint smaller than total padding, content constraints col
 
 For the root container, root outer constraints determine the frame size. Root padding reduces the content area available to children.
 
-For nested containers, child constraints are derived from the container content box and the active row/column algorithm.
+Full child constraint propagation from container content boxes remains the next layout slice.
 
 ## Row and column behavior
 
@@ -265,11 +250,10 @@ The first constrained algorithm remains intentionally small.
 
 ### Column
 
-A column should:
+A column currently:
 
 - measure children in order;
 - account for gaps only between successfully measured children;
-- provide each child the available content width;
 - accumulate child outer heights plus gaps;
 - use the maximum child outer width;
 - add container padding;
@@ -277,23 +261,22 @@ A column should:
 
 ### Row
 
-A row should:
+A row currently:
 
 - measure children in order;
 - account for gaps only between successfully measured children;
-- provide each child the available content height;
 - accumulate child outer widths plus gaps;
 - use the maximum child outer height;
 - add container padding;
 - constrain the final outer size.
 
-The first implementation does not distribute remaining space, flex children, align cross-axis content, wrap rows, or clip overflow.
+The implementation does not yet propagate available content-box constraints to children, distribute remaining space, flex children, align cross-axis content, wrap rows, or clip overflow.
 
 ## Overflow
 
 Constraints may produce children whose accumulated desired size exceeds the available content box.
 
-The first slice should preserve deterministic bounds and record overflow pressure rather than inventing clipping or scrolling policy.
+The next slice should preserve deterministic bounds and record overflow pressure rather than inventing clipping or scrolling policy.
 
 Target diagnostic facts:
 
@@ -305,7 +288,7 @@ constrained outer size
 overflowed width/height flags
 ```
 
-A public diagnostics type is optional for the first code slice. At minimum, tests must make overflow behavior explicit.
+A public diagnostics type is optional for that slice. At minimum, tests must make overflow behavior explicit.
 
 ## Surface build context
 
@@ -313,24 +296,19 @@ A public diagnostics type is optional for the first code slice. At minimum, test
 
 ```text
 StyleTokens
-SurfaceLayoutMetrics
+fixed-size publication input
+hidden placeholder measurement
 ```
 
-toward:
+to the implemented shape:
 
 ```text
 StyleTokens
 LayoutConstraints
 MeasurementProvider
-fallback measurement policy
 ```
 
-`SurfaceLayoutMetrics` should either:
-
-1. become the configuration of `DeterministicMeasurementProvider`; or
-2. be retired after all callers use the provider.
-
-Do not keep metrics both in layout and in the provider. That would preserve two measurement sources.
+The deterministic provider is the fallback measurement policy. The old placeholder surface metrics are retired so layout has one measurement source.
 
 ## Ownership
 
@@ -377,7 +355,7 @@ No cache should be introduced before those inputs are explicit.
 
 ## Implementation sequence
 
-### Slice 1: constraint vocabulary
+### Slice 1: constraint vocabulary — implemented
 
 Add and test:
 
@@ -388,7 +366,7 @@ Add and test:
 
 Do not change text measurement yet beyond routing current behavior through constraints.
 
-### Slice 2: measurement provider
+### Slice 2: measurement provider — implemented
 
 Add and test:
 
@@ -398,17 +376,24 @@ Add and test:
 - migration of text and button label measurement out of layout internals;
 - one authoritative measurement path.
 
-### Slice 3: constrained row/column layout
+### Slice 3: root constrained surface integration — implemented
 
 Apply:
 
 - content-box constraint derivation after padding;
 - constrained text and button sizing;
 - constrained container measurement;
-- explicit overflow behavior;
 - root frame size derived from root constraints.
 
-### Slice 4: boundary review
+### Slice 4: measured layout result, child constraints, and overflow
+
+Apply:
+
+- one measured layout result shared by measurement and placement;
+- content-box child constraint propagation;
+- explicit overflow behavior and diagnostics.
+
+### Slice 5: boundary review
 
 Re-evaluate `runenui_layout` extraction using the implemented contracts, dependency graph, tests, and prospective independent consumers.
 

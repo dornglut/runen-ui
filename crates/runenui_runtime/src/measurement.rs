@@ -135,11 +135,17 @@ pub struct DeterministicMeasurementProvider {
 
 impl Default for DeterministicMeasurementProvider {
     fn default() -> Self {
-        Self::new(8.0, 20.0)
+        Self::DEFAULT
     }
 }
 
 impl DeterministicMeasurementProvider {
+    /// Default deterministic metrics for headless publication.
+    pub const DEFAULT: Self = Self {
+        char_width: 8.0,
+        line_height: 20.0,
+    };
+
     /// Creates a deterministic provider from normalized logical metrics.
     #[must_use]
     pub fn new(char_width: f32, line_height: f32) -> Self {

@@ -27,7 +27,10 @@ LogicalRect
 SurfaceNodeKind
 SurfaceNode
 SurfaceFrame
-SurfaceLayoutMetrics
+LayoutConstraints
+MeasurementProvider
+TextMeasurementRequest
+TextMeasurement
 SurfaceBuildContext
 SurfacePublication
 publish_surface
@@ -38,14 +41,14 @@ publish_surface
 The current layout pass is intentionally simple:
 
 ```text
-Element<Action> + StyleTokens + layout metrics
+Element<Action> + StyleTokens + root constraints + MeasurementProvider
   -> resolved runtime surface tree
   -> SurfaceLayoutBuilder
   -> SurfaceFrame + SurfaceStyleReport
   -> SurfacePublication
 ```
 
-It assigns bounds to containers, text, and buttons using placeholder intrinsic metrics. It understands only row/column stacking, authored gap, text length approximation, button label approximation, and button minimum size.
+It assigns bounds to containers, text, and buttons using the provider-backed measurement contract. It understands only row/column stacking, authored gap, provider-measured standalone text, provider-measured button labels, computed padding, root constraints, and a private button minimum-size policy.
 
 ## Current ownership
 
@@ -79,7 +82,7 @@ activation policy
 trace targets
 ```
 
-`AppRuntime::publish_surface` is the current publication seam. It accepts a surface size and explicit `SurfaceBuildContext`, then produces one aligned `SurfacePublication`.
+`AppRuntime::publish_surface` is the current publication seam. It accepts an explicit `SurfaceBuildContext`, then produces one aligned `SurfacePublication`.
 
 ### Debug rendering
 
@@ -89,7 +92,7 @@ trace targets
 
 ### 1. The algorithm is still a placeholder
 
-The current layout algorithm does not yet have constraints, flex, grid, stack, text shaping, wrapping, min/max sizes, alignment, percentage units, intrinsic measurement contracts, overflow, clipping, or style-driven layout.
+The current layout algorithm does not yet have child constraint propagation, flex, grid, stack, text shaping, wrapping, alignment, percentage units, overflow diagnostics, clipping, or broad style-driven layout.
 
 A crate boundary would imply a stable layout API before there is enough layout behavior to justify that stability.
 
@@ -113,11 +116,11 @@ Surface nodes carry `RuntimeNodeId` and parent runtime IDs. That makes the curre
 
 A future layout crate can still use runtime node identity, but that contract should be made explicit only after the runtime/render/input relationship is more stable.
 
-### 4. Text measurement is fake
+### 4. Text measurement is intentionally minimal
 
-`SurfaceLayoutMetrics` currently approximates text and button sizes from character counts. A real layout crate needs a measurement seam for text, font metrics, text runs, wrapping, and possibly host/backend-provided measurement.
+The runtime now has a measurement seam for text and button labels, with a deterministic fallback provider for headless tests and examples. A real layout crate still needs richer text inputs, font metrics, text runs, wrapping, and possibly host/backend-provided measurement conformance.
 
-Until that seam exists, a layout crate would mostly encode temporary measurements as public API.
+Until those behaviors exist, a layout crate would mostly encode a still-small runtime publication algorithm as public API.
 
 ### 5. Computed style now affects geometry
 
@@ -170,7 +173,10 @@ LogicalRect
 SurfaceNodeKind
 SurfaceNode
 SurfaceFrame
-SurfaceLayoutMetrics
+LayoutConstraints
+MeasurementProvider
+TextMeasurementRequest
+TextMeasurement
 SurfaceBuildContext
 SurfacePublication
 publish_surface
@@ -217,23 +223,22 @@ Create `runenui_render` only when at least three of these are true:
 
 Do not extract crates next.
 
-Unified surface publication and computed padding geometry are implemented. The next step is the scheduled boundary review based on the resulting code, not an automatic crate extraction:
+Unified surface publication, computed padding geometry, root constraints, and provider-backed text measurement are implemented. The next step is a measured layout result plus child content-box constraint propagation and overflow diagnostics, not an automatic crate extraction:
 
 ```text
 resolved ComputedStyle::padding
-  -> text and button intrinsic outer size
+  -> provider-measured text and button label content
   -> container outer size and child content origin
-  -> root child content origin
+  -> constrained root outer size
   -> hit testing over padded outer bounds
 ```
 
 Required scope:
 
 ```text
-- literal and token-resolved padding produce identical geometry
-- asymmetric padding is preserved
-- missing padding tokens produce zero insets plus diagnostics
-- button_horizontal_padding is removed as a conflicting hidden source
+- one measured result shared by measurement and placement
+- content-box child constraints
+- deterministic overflow diagnostics
 - no additional style fields or layout algorithms
 ```
 
@@ -258,6 +263,8 @@ style token vocabulary
   -> computed style and provenance
   -> unified runtime surface publication
   -> computed padding affects layout
+  -> root constraints and provider-backed measurement
+  -> measured layout result and child constraints
   -> layout boundary review update
   -> possible runenui_layout extraction
   -> render protocol boundary review

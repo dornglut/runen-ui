@@ -18,7 +18,7 @@ This crate turns application state and typed UI descriptions into runtime behavi
 * accessibility tree extraction
 * primitive extraction
 * runtime tracing
-* unified surface publication from explicit style tokens and layout metrics
+* unified surface publication from explicit style tokens, root constraints, and measurement providers
 * deterministic headless execution for tests
 
 ## Non-responsibilities

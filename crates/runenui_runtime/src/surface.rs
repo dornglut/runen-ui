@@ -10,7 +10,11 @@ use runenui_core::{
 };
 
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
-use crate::{LogicalPoint, RuntimeNodeId, RuntimeTreeIndex};
+use crate::{
+    AxisConstraints, AxisLimit, DeterministicMeasurementProvider, LayoutConstraints, LogicalPoint,
+    MeasurementProvider, RuntimeNodeId, RuntimeTreeIndex, TextMeasurementKind,
+    TextMeasurementRequest,
+};
 
 /// Logical size in UI coordinate space.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -295,93 +299,49 @@ impl SurfaceFrame {
     }
 }
 
-/// Intrinsic metrics used by the simple row/column surface layout pass.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SurfaceLayoutMetrics {
-    text_char_width: f32,
-    text_height: f32,
-    button_char_width: f32,
-    button_height: f32,
-    min_button_width: f32,
-}
-
-impl Default for SurfaceLayoutMetrics {
-    fn default() -> Self {
-        Self::new(8.0, 20.0, 8.0, 32.0, 64.0)
-    }
-}
-
-impl SurfaceLayoutMetrics {
-    /// Creates intrinsic metrics for the simple surface layout pass.
-    #[must_use]
-    pub const fn new(
-        text_char_width: f32,
-        text_height: f32,
-        button_char_width: f32,
-        button_height: f32,
-        min_button_width: f32,
-    ) -> Self {
-        Self {
-            text_char_width,
-            text_height,
-            button_char_width,
-            button_height,
-            min_button_width,
-        }
-    }
-
-    /// Returns the approximate width used for one text character.
-    #[must_use]
-    pub const fn text_char_width(&self) -> f32 {
-        self.text_char_width
-    }
-
-    /// Returns the fixed intrinsic text height.
-    #[must_use]
-    pub const fn text_height(&self) -> f32 {
-        self.text_height
-    }
-
-    /// Returns the approximate width used for one button label character.
-    #[must_use]
-    pub const fn button_char_width(&self) -> f32 {
-        self.button_char_width
-    }
-
-    /// Returns the minimum outer button height.
-    #[must_use]
-    pub const fn button_height(&self) -> f32 {
-        self.button_height
-    }
-
-    /// Returns the minimum outer button width.
-    #[must_use]
-    pub const fn min_button_width(&self) -> f32 {
-        self.min_button_width
-    }
-}
+static DEFAULT_MEASUREMENT_PROVIDER: DeterministicMeasurementProvider =
+    DeterministicMeasurementProvider::DEFAULT;
 
 /// Explicit inputs used to publish one surface snapshot.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy)]
 pub struct SurfaceBuildContext<'a> {
     style_tokens: &'a StyleTokens,
-    layout_metrics: SurfaceLayoutMetrics,
+    root_constraints: LayoutConstraints,
+    measurement_provider: &'a dyn MeasurementProvider,
 }
 
 impl<'a> SurfaceBuildContext<'a> {
-    /// Creates a build context with default placeholder layout metrics.
+    /// Creates a build context with explicit root constraints and the
+    /// deterministic headless measurement provider.
     #[must_use]
-    pub fn new(style_tokens: &'a StyleTokens) -> Self {
+    pub fn new(style_tokens: &'a StyleTokens, root_constraints: LayoutConstraints) -> Self {
         Self {
             style_tokens,
-            layout_metrics: SurfaceLayoutMetrics::default(),
+            root_constraints,
+            measurement_provider: &DEFAULT_MEASUREMENT_PROVIDER,
         }
     }
 
-    /// Replaces the placeholder layout metrics for this publication.
+    /// Creates a build context with tight root constraints.
     #[must_use]
-    pub const fn with_layout_metrics(mut self, layout_metrics: SurfaceLayoutMetrics) -> Self {
-        self.layout_metrics = layout_metrics;
+    pub fn tight(style_tokens: &'a StyleTokens, size: LogicalSize) -> Self {
+        Self::new(style_tokens, LayoutConstraints::tight(size))
+    }
+
+    /// Replaces the root constraints for this publication.
+    #[must_use]
+    pub const fn with_root_constraints(mut self, root_constraints: LayoutConstraints) -> Self {
+        self.root_constraints = root_constraints;
+        self
+    }
+
+    /// Replaces the measurement provider for this publication.
+    #[must_use]
+    pub fn with_measurement_provider(
+        mut self,
+        measurement_provider: &'a dyn MeasurementProvider,
+    ) -> Self {
+        self.measurement_provider = measurement_provider;
         self
     }
 
@@ -391,10 +351,16 @@ impl<'a> SurfaceBuildContext<'a> {
         self.style_tokens
     }
 
-    /// Returns the explicit layout metrics input.
+    /// Returns the explicit root layout constraints.
     #[must_use]
-    pub const fn layout_metrics(&self) -> SurfaceLayoutMetrics {
-        self.layout_metrics
+    pub const fn root_constraints(&self) -> LayoutConstraints {
+        self.root_constraints
+    }
+
+    /// Returns the borrowed measurement provider for this publication.
+    #[must_use]
+    pub const fn measurement_provider(&self) -> &'a dyn MeasurementProvider {
+        self.measurement_provider
     }
 }
 
@@ -439,11 +405,14 @@ impl SurfacePublication {
 #[must_use]
 pub fn publish_surface<Action>(
     root: &Element<Action>,
-    size: LogicalSize,
     context: &SurfaceBuildContext<'_>,
 ) -> SurfacePublication {
     let resolved_tree = ResolvedSurfaceTree::new(root, context.style_tokens());
-    let frame = layout_resolved_surface(&resolved_tree, size, context.layout_metrics());
+    let frame = layout_resolved_surface(
+        &resolved_tree,
+        context.root_constraints(),
+        context.measurement_provider(),
+    );
     let style_report = build_surface_style_report(&resolved_tree);
 
     SurfacePublication::new(frame, style_report)
@@ -542,31 +511,35 @@ fn build_surface_style_report<Action>(
 
 fn layout_resolved_surface<Action>(
     resolved_tree: &ResolvedSurfaceTree<'_, Action>,
-    size: LogicalSize,
-    metrics: SurfaceLayoutMetrics,
+    root_constraints: LayoutConstraints,
+    measurement_provider: &dyn MeasurementProvider,
 ) -> SurfaceFrame {
-    let mut builder = SurfaceLayoutBuilder::new(metrics);
+    let mut builder = SurfaceLayoutBuilder::new(measurement_provider);
+    let mut frame_size = root_constraints.constrain(LogicalSize::new(0.0, 0.0));
 
     if let Some(root) = resolved_tree.node(RuntimeNodeId::ROOT) {
+        frame_size = builder.measure(resolved_tree, root, root_constraints);
         builder.push_node(
             resolved_tree,
             root,
-            LogicalRect::new(LogicalPoint::new(0.0, 0.0), size),
+            LogicalRect::new(LogicalPoint::new(0.0, 0.0), frame_size),
         );
     }
 
-    SurfaceFrame::new(size, builder.into_nodes())
+    SurfaceFrame::new(frame_size, builder.into_nodes())
 }
 
-struct SurfaceLayoutBuilder {
-    metrics: SurfaceLayoutMetrics,
+struct SurfaceLayoutBuilder<'a> {
+    measurement_provider: &'a dyn MeasurementProvider,
+    button_policy: ButtonLayoutPolicy,
     nodes: Vec<SurfaceNode>,
 }
 
-impl SurfaceLayoutBuilder {
-    const fn new(metrics: SurfaceLayoutMetrics) -> Self {
+impl<'a> SurfaceLayoutBuilder<'a> {
+    fn new(measurement_provider: &'a dyn MeasurementProvider) -> Self {
         Self {
-            metrics,
+            measurement_provider,
+            button_policy: ButtonLayoutPolicy::default(),
             nodes: Vec::new(),
         }
     }
@@ -609,23 +582,27 @@ impl SurfaceLayoutBuilder {
         axis: Axis,
         children: &[RuntimeNodeId],
     ) {
-        let gap = container_node.element().style().gap().value();
+        let gap = valid_extent(container_node.element().style().gap().value());
         let padding = resolved_padding(container_node);
-        let mut cursor_x = parent_bounds.x() + padding.left().value();
-        let mut cursor_y = parent_bounds.y() + padding.top().value();
+        let mut cursor_x = finite_sum(parent_bounds.x(), valid_extent(padding.left().value()));
+        let mut cursor_y = finite_sum(parent_bounds.y(), valid_extent(padding.top().value()));
 
         for child_id in children {
             let Some(child) = resolved_tree.node(*child_id) else {
                 continue;
             };
-            let child_size = self.measure(resolved_tree, child);
+            let child_size = self.measure(resolved_tree, child, LayoutConstraints::unbounded());
             let child_bounds =
                 LogicalRect::from_xywh(cursor_x, cursor_y, child_size.width(), child_size.height());
             self.push_node(resolved_tree, child, child_bounds);
 
             match axis {
-                Axis::Vertical => cursor_y += child_size.height() + gap,
-                Axis::Horizontal => cursor_x += child_size.width() + gap,
+                Axis::Vertical => {
+                    cursor_y = finite_sum(cursor_y, finite_sum(child_size.height(), gap));
+                }
+                Axis::Horizontal => {
+                    cursor_x = finite_sum(cursor_x, finite_sum(child_size.width(), gap));
+                }
             }
         }
     }
@@ -634,34 +611,70 @@ impl SurfaceLayoutBuilder {
         &self,
         resolved_tree: &ResolvedSurfaceTree<'_, Action>,
         node: &ResolvedSurfaceNode<'_, Action>,
+        outer_constraints: LayoutConstraints,
     ) -> LogicalSize {
         let padding = resolved_padding(node);
 
         match node.element().kind() {
-            ElementKind::Text(text) => expand_size_by_padding(
-                LogicalSize::new(
-                    char_count_as_f32(text.content()) * self.metrics.text_char_width(),
-                    self.metrics.text_height(),
-                ),
+            ElementKind::Text(text) => self.measure_text(
+                node,
+                text.content(),
+                TextMeasurementKind::Text,
+                outer_constraints,
                 padding,
             ),
             ElementKind::Button(button) => {
-                let label_width =
-                    char_count_as_f32(button.label()) * self.metrics.button_char_width();
-                let desired = expand_size_by_padding(
-                    LogicalSize::new(label_width, self.metrics.text_height()),
-                    padding,
-                );
-                LogicalSize::new(
-                    desired.width().max(self.metrics.min_button_width()),
-                    desired.height().max(self.metrics.button_height()),
-                )
+                self.measure_button(node, button.label(), outer_constraints, padding)
             }
-            ElementKind::Container(container) => expand_size_by_padding(
-                self.measure_container(resolved_tree, node, container.axis(), node.children()),
+            ElementKind::Container(container) => self.measure_container(
+                resolved_tree,
+                node,
+                container.axis(),
+                node.children(),
+                outer_constraints,
                 padding,
             ),
         }
+    }
+
+    fn measure_text<Action>(
+        &self,
+        node: &ResolvedSurfaceNode<'_, Action>,
+        content: &str,
+        kind: TextMeasurementKind,
+        outer_constraints: LayoutConstraints,
+        padding: EdgeInsets,
+    ) -> LogicalSize {
+        let content_constraints = content_constraints(outer_constraints, padding);
+        let request =
+            TextMeasurementRequest::new(content, content_constraints, kind).with_node_id(node.id());
+        let measured = self.measurement_provider.measure_text(&request).size();
+        let content_size = content_constraints.constrain(measured);
+        let desired_outer = expand_size_by_padding(content_size, padding);
+
+        outer_constraints.constrain(desired_outer)
+    }
+
+    fn measure_button<Action>(
+        &self,
+        node: &ResolvedSurfaceNode<'_, Action>,
+        label: &str,
+        outer_constraints: LayoutConstraints,
+        padding: EdgeInsets,
+    ) -> LogicalSize {
+        let content_constraints = content_constraints(outer_constraints, padding);
+        let request = TextMeasurementRequest::new(
+            label,
+            content_constraints,
+            TextMeasurementKind::ButtonLabel,
+        )
+        .with_node_id(node.id());
+        let measured = self.measurement_provider.measure_text(&request).size();
+        let content_size = content_constraints.constrain(measured);
+        let padded_outer = expand_size_by_padding(content_size, padding);
+        let desired_outer = self.button_policy.apply_minimum(padded_outer);
+
+        outer_constraints.constrain(desired_outer)
     }
 
     fn measure_container<Action>(
@@ -670,8 +683,10 @@ impl SurfaceLayoutBuilder {
         node: &ResolvedSurfaceNode<'_, Action>,
         axis: Axis,
         children: &[RuntimeNodeId],
+        outer_constraints: LayoutConstraints,
+        padding: EdgeInsets,
     ) -> LogicalSize {
-        let gap = node.element().style().gap().value();
+        let gap = valid_extent(node.element().style().gap().value());
         let mut width: f32 = 0.0;
         let mut height: f32 = 0.0;
         let mut child_count = 0_usize;
@@ -681,29 +696,61 @@ impl SurfaceLayoutBuilder {
                 continue;
             };
             child_count += 1;
-            let child_size = self.measure(resolved_tree, child);
+            let child_size = self.measure(resolved_tree, child, LayoutConstraints::unbounded());
             match axis {
                 Axis::Vertical => {
                     width = width.max(child_size.width());
-                    height += child_size.height();
+                    height = finite_sum(height, child_size.height());
                 }
                 Axis::Horizontal => {
-                    width += child_size.width();
+                    width = finite_sum(width, child_size.width());
                     height = height.max(child_size.height());
                 }
             }
         }
 
         if child_count > 1 {
-            let total_gap = gap * count_as_f32(child_count - 1);
+            let total_gap = finite_product(gap, count_as_f32(child_count - 1));
             match axis {
-                Axis::Vertical => height += total_gap,
-                Axis::Horizontal => width += total_gap,
+                Axis::Vertical => height = finite_sum(height, total_gap),
+                Axis::Horizontal => width = finite_sum(width, total_gap),
             }
         }
 
-        LogicalSize::new(width, height)
+        let content_size = content_constraints(outer_constraints, padding)
+            .constrain(LogicalSize::new(width, height));
+        let desired_outer = expand_size_by_padding(content_size, padding);
+
+        outer_constraints.constrain(desired_outer)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ButtonLayoutPolicy {
+    min_width: f32,
+    min_height: f32,
+}
+
+impl Default for ButtonLayoutPolicy {
+    fn default() -> Self {
+        Self {
+            min_width: 64.0,
+            min_height: 32.0,
+        }
+    }
+}
+
+impl ButtonLayoutPolicy {
+    const fn apply_minimum(self, size: LogicalSize) -> LogicalSize {
+        LogicalSize::new(
+            max_extent(size.width(), self.min_width),
+            max_extent(size.height(), self.min_height),
+        )
+    }
+}
+
+const fn max_extent(left: f32, right: f32) -> f32 {
+    if left > right { left } else { right }
 }
 
 fn resolved_padding<Action>(node: &ResolvedSurfaceNode<'_, Action>) -> EdgeInsets {
@@ -713,15 +760,70 @@ fn resolved_padding<Action>(node: &ResolvedSurfaceNode<'_, Action>) -> EdgeInset
         .unwrap_or(EdgeInsets::ZERO)
 }
 
-fn expand_size_by_padding(size: LogicalSize, padding: EdgeInsets) -> LogicalSize {
-    LogicalSize::new(
-        size.width() + padding.left().value() + padding.right().value(),
-        size.height() + padding.top().value() + padding.bottom().value(),
+fn content_constraints(
+    outer_constraints: LayoutConstraints,
+    padding: EdgeInsets,
+) -> LayoutConstraints {
+    LayoutConstraints::new(
+        content_axis_constraints(outer_constraints.horizontal(), horizontal_padding(padding)),
+        content_axis_constraints(outer_constraints.vertical(), vertical_padding(padding)),
     )
 }
 
-fn char_count_as_f32(value: &str) -> f32 {
-    count_as_f32(value.chars().count())
+fn content_axis_constraints(axis: AxisConstraints, padding: f32) -> AxisConstraints {
+    let max = match axis.max() {
+        AxisLimit::Finite(max) => AxisLimit::Finite(subtract_extent(max, padding)),
+        AxisLimit::Unbounded => AxisLimit::Unbounded,
+    };
+
+    AxisConstraints::new(subtract_extent(axis.min(), padding), max)
+}
+
+fn expand_size_by_padding(size: LogicalSize, padding: EdgeInsets) -> LogicalSize {
+    LogicalSize::new(
+        finite_sum(size.width(), horizontal_padding(padding)),
+        finite_sum(size.height(), vertical_padding(padding)),
+    )
+}
+
+fn horizontal_padding(padding: EdgeInsets) -> f32 {
+    finite_sum(
+        valid_extent(padding.left().value()),
+        valid_extent(padding.right().value()),
+    )
+}
+
+fn vertical_padding(padding: EdgeInsets) -> f32 {
+    finite_sum(
+        valid_extent(padding.top().value()),
+        valid_extent(padding.bottom().value()),
+    )
+}
+
+fn subtract_extent(value: f32, amount: f32) -> f32 {
+    valid_extent(value - amount)
+}
+
+fn finite_sum(left: f32, right: f32) -> f32 {
+    let sum = valid_extent(left) + valid_extent(right);
+    if sum.is_finite() { sum } else { f32::MAX }
+}
+
+fn finite_product(left: f32, right: f32) -> f32 {
+    let product = valid_extent(left) * valid_extent(right);
+    if product.is_finite() {
+        product
+    } else {
+        f32::MAX
+    }
+}
+
+fn valid_extent(value: f32) -> f32 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        0.0
+    }
 }
 
 fn count_as_f32(count: usize) -> f32 {

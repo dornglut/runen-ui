@@ -35,8 +35,8 @@ fn surface_style_report_exposes_resolution_and_provenance_by_runtime_node() {
         .with_spacing("space.2", padding)
         .with_radius("radius.control", radius);
 
-    let context = SurfaceBuildContext::new(&tokens);
-    let publication = publish_surface(&root, LogicalSize::new(320.0, 200.0), &context);
+    let context = SurfaceBuildContext::tight(&tokens, LogicalSize::new(320.0, 200.0));
+    let publication = publish_surface(&root, &context);
     let frame = publication.frame();
     let report = publication.style_report();
     let title = report.node(RuntimeNodeId::from_index(1));
@@ -128,8 +128,8 @@ fn surface_style_report_preserves_missing_token_provenance_and_diagnostics() {
         .on_press(Action::Save),));
     let tokens = StyleTokens::new().with_color("color.action.primary", Color::BLACK);
 
-    let context = SurfaceBuildContext::new(&tokens);
-    let publication = publish_surface(&root, LogicalSize::new(320.0, 200.0), &context);
+    let context = SurfaceBuildContext::tight(&tokens, LogicalSize::new(320.0, 200.0));
+    let publication = publish_surface(&root, &context);
     let frame = publication.frame();
     let report = publication.style_report();
     let save = report.node(RuntimeNodeId::from_index(1));
@@ -175,8 +175,8 @@ fn debug_surface_style_report_is_deterministic_text() {
         .foreground(ColorToken::new("color.text.primary")),));
     let tokens = StyleTokens::new().with_color("color.text.primary", Color::WHITE);
 
-    let context = SurfaceBuildContext::new(&tokens);
-    let publication = publish_surface(&root, LogicalSize::new(320.0, 200.0), &context);
+    let context = SurfaceBuildContext::tight(&tokens, LogicalSize::new(320.0, 200.0));
+    let publication = publish_surface(&root, &context);
     let frame = publication.frame();
     let report = publication.style_report();
     let output = render_debug_surface_style_report(report);

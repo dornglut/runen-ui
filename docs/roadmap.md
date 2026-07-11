@@ -14,11 +14,15 @@ Implemented:
 - unified `SurfacePublication` producing an aligned `SurfaceFrame` and `SurfaceStyleReport` from one style-resolution pass;
 - computed padding applied to text, button, container, and root geometry;
 - padded outer bounds used for hit testing;
-- removal of the hidden `button_horizontal_padding` metric;
+- removal of the hidden button padding metric;
 - accepted [Layout Constraints and Measurement Contract](architecture/layout-constraints-measurement-contract.md);
 - normalized finite/unbounded `LayoutConstraints` vocabulary;
 - renderer-neutral text measurement requests, results, and provider contract;
-- deterministic constraints-aware measurement provider for tests and headless examples.
+- deterministic constraints-aware measurement provider for tests and headless examples;
+- authoritative surface publication from explicit root constraints and a borrowed measurement provider;
+- provider-backed standalone text and button-label measurement;
+- root frame size derived from constrained intrinsic outer size;
+- obsolete placeholder surface metrics and duplicate character-count measurement removed.
 
 ## Current boundary decision
 
@@ -27,8 +31,9 @@ Keep layout, measurement orchestration, and surface publication in `runenui_runt
 The neutral contracts now exist, but extraction still is not justified. The implementation still has:
 
 - one placeholder row/column algorithm;
-- a fixed-size public surface entry point;
-- duplicate character-count measurement inside surface layout;
+- no single measured layout result shared between measurement and placement;
+- no content-box child constraint propagation;
+- no overflow diagnostics;
 - no independent layout consumer;
 - no independent layout diagnostics or conformance suite.
 
@@ -36,14 +41,12 @@ Reconsider extraction only when the criteria in [Layout Boundary Review](archite
 
 ## Next implementation sequence
 
-1. Integrate `LayoutConstraints` and a borrowed `MeasurementProvider` into surface publication.
-2. Migrate text and button-label measurement out of `surface.rs` so the provider is authoritative.
-3. Retire duplicate `SurfaceLayoutMetrics` measurement fields while retaining explicit button minimum-size policy.
-4. Apply content-box constraints to row/column layout and make overflow behavior explicit.
-5. Review the layout boundary again using the resulting dependencies and tests.
-6. Define the renderer-neutral primitive/frame protocol before implementing WGPU or SDF backends.
-7. Add accessibility-tree extraction and a dedicated deterministic testing surface before broad control expansion.
-8. Add reusable controls, then a real host contract and first adapter/backend pair.
+1. Introduce a single measured layout result shared by measurement and placement.
+2. Apply content-box child constraints to row/column layout and make overflow behavior explicit.
+3. Review the layout boundary again using the resulting dependencies and tests.
+4. Define the renderer-neutral primitive/frame protocol before implementing WGPU or SDF backends.
+5. Add accessibility-tree extraction and a dedicated deterministic testing surface before broad control expansion.
+6. Add reusable controls, then a real host contract and first adapter/backend pair.
 
 ## Deferred
 

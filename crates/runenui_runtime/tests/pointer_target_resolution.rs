@@ -42,11 +42,8 @@ impl UiApp for CounterApp {
 
 fn surface_frame(runtime: &AppRuntime<CounterApp>) -> runenui_runtime::SurfaceFrame {
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens);
-    runtime
-        .publish_surface(LogicalSize::new(200.0, 100.0), &context)
-        .into_parts()
-        .0
+    let context = SurfaceBuildContext::tight(&tokens, LogicalSize::new(200.0, 100.0));
+    runtime.publish_surface(&context).into_parts().0
 }
 
 const fn pointer_event(position: LogicalPoint, target: Option<RuntimeNodeId>) -> PointerEvent {

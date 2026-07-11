@@ -6,9 +6,11 @@ It is the implementation contract that follows the computed-style, token-resolut
 
 ## Implementation status
 
-Slice 1 is implemented. `SurfaceBuildContext`, `SurfacePublication`, and `publish_surface` now provide the single public publication path. One prepared runtime tree supplies runtime identity, per-node `StyleResolution`, frame `ComputedStyle`, and style diagnostics. The former public `layout_surface`, `layout_surface_with_metrics`, `resolve_surface_style_report`, `AppRuntime::surface_frame`, and `AppRuntime::surface_frame_with_metrics` paths have been removed.
+Slice 1 is implemented. `SurfaceBuildContext`, `SurfacePublication`, and `publish_surface` now provide the single public publication path. One prepared runtime tree supplies runtime identity, per-node `StyleResolution`, frame `ComputedStyle`, and style diagnostics. The former parallel layout/style publication paths have been removed.
 
 Slice 2 is implemented. Computed padding now affects intrinsic measurement, container and root child placement, outer bounds, and hit testing. The conflicting hidden button padding metric has been removed.
+
+Slice 3 is implemented. Surface publication now carries explicit root `LayoutConstraints` and a borrowed `MeasurementProvider`. The root frame size is selected by constraining the measured root outer size, and standalone text plus button labels use the provider contract.
 
 ## Problem
 
@@ -149,8 +151,8 @@ Target conceptual API:
 
 ```rust
 let tokens = StyleTokens::new();
-let context = SurfaceBuildContext::new(&tokens);
-let publication = runtime.publish_surface(size, &context);
+let context = SurfaceBuildContext::tight(&tokens, LogicalSize::new(800.0, 600.0));
+let publication = runtime.publish_surface(&context);
 
 let frame = publication.frame();
 let style_report = publication.style_report();
@@ -159,7 +161,8 @@ let style_report = publication.style_report();
 The exact constructors may change during implementation, but the following decisions are fixed:
 
 - style tokens are explicit input;
-- layout metrics are explicit build context, not global state;
+- root constraints are explicit build context, not a separate size argument;
+- measurement is supplied through a borrowed provider with a deterministic headless default;
 - one call produces the frame and its aligned style diagnostics;
 - the runtime resolves each node style once per publication;
 - normal renderer consumers read `SurfaceFrame`;
@@ -170,7 +173,8 @@ The target context shape is:
 ```text
 SurfaceBuildContext<'a>
   &'a StyleTokens
-  SurfaceLayoutMetrics
+  LayoutConstraints
+  &'a dyn MeasurementProvider
 ```
 
 The target output shape is:
@@ -181,7 +185,7 @@ SurfacePublication
   SurfaceStyleReport
 ```
 
-`SurfaceBuildContext::new(&tokens)` should use default placeholder layout metrics. A separate constructor or builder may accept explicit metrics.
+`SurfaceBuildContext::tight(&tokens, size)` is a convenience constructor for tight root constraints. Custom measurement uses the same path through `with_measurement_provider`.
 
 Do not introduce a process-global token registry. Do not store an implicit mutable theme in `Element`. Runtime-owned theme selection may be added later when a real theme model exists.
 
@@ -267,7 +271,7 @@ outer bounds
 
 Required behavior:
 
-1. The root receives the requested surface size as its outer bounds.
+1. The root receives the constrained root outer size as its outer bounds.
 2. Root children are positioned inside the root content bounds.
 3. Text intrinsic content size is measured first; padding expands its outer size.
 4. Button label content is measured first; padding expands its desired outer size.
@@ -281,22 +285,20 @@ When `ComputedStyle::padding()` is `None`, layout uses zero insets.
 
 When a padding token is missing, `ComputedStyle::padding()` remains `None`, layout therefore uses zero insets, and the missing token remains visible in provenance and unresolved-token diagnostics. This is deterministic absence handling, not a token fallback.
 
-## Placeholder metric cleanup
+## Placeholder Measurement Cleanup
 
-`SurfaceLayoutMetrics::button_horizontal_padding` conflicts with computed padding because it embeds hidden control chrome into intrinsic measurement.
+The former hidden button padding metric conflicted with computed padding because it embedded control chrome into intrinsic measurement.
 
 When computed padding begins affecting layout, button measurement should use this model:
 
 ```text
-label intrinsic width/height
+label content measurement
   + computed padding
   -> desired outer size
-  constrained by min_button_width and button_height
+  constrained by explicit button minimum outer-size policy
 ```
 
-`button_horizontal_padding` should therefore be removed or retired in the padding implementation slice. Keeping both as additive padding would make authored style dependent on an undocumented second padding source.
-
-The remaining placeholder metrics are still temporary until a text measurement seam exists.
+The old placeholder surface metrics are retired. The deterministic measurement provider now owns the headless fallback behavior, and button minimum outer size remains a small private layout policy until standard control recipes exist.
 
 ## Missing values and errors
 
@@ -330,7 +332,7 @@ StyleIntent
 active token values
 interaction state
 surface constraints
-layout metrics
+measurement provider behavior
 ```
 
 No cache should be introduced before those invalidation inputs are represented explicitly. Correct single-source publication comes before optimization.
@@ -392,7 +394,7 @@ Required outcomes:
 - one runtime node identity assignment for publication products
 - ComputedStyle carried by SurfaceNode
 - SurfaceStyleReport derived from the same resolution product
-- explicit StyleTokens and layout metrics input
+- explicit style-token input
 - old parallel public functions removed or internalized
 - deterministic frame and report tests
 ```
@@ -412,9 +414,23 @@ Required tests:
 - hit testing uses padded outer bounds
 ```
 
-### Slice 3: boundary review
+### Slice 3: authoritative surface measurement — implemented
 
-After padding is integrated:
+Root constraints and provider-backed text measurement are integrated into the same publication path.
+
+Required tests:
+
+```text
+- tight, loose, and unbounded root constraints select the expected frame size
+- custom providers change standalone text and button-label geometry
+- text requests carry runtime node ID, kind, and content-box constraints
+- invalid provider output cannot produce negative or non-finite frame bounds
+- padding diagnostics and hit testing remain aligned
+```
+
+### Slice 4: boundary review
+
+After child constraint propagation and overflow diagnostics are integrated:
 
 - update the layout extraction review with actual dependency pressure;
 - decide whether the current runtime module remains sufficient;

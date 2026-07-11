@@ -6,8 +6,8 @@ use runenui_runtime::prelude::{
 
 fn surface_frame<Action>(root: &runenui_core::Element<Action>, size: LogicalSize) -> SurfaceFrame {
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens);
-    publish_surface(root, size, &context).into_parts().0
+    let context = SurfaceBuildContext::tight(&tokens, size);
+    publish_surface(root, &context).into_parts().0
 }
 
 enum Action {}

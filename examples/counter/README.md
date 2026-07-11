@@ -18,7 +18,7 @@ The example will eventually prove:
 * reset back to the counter screen
 * headless runtime execution
 * inspectable trace output
-* published surface-frame data
+* published surface-frame data from tight root constraints and deterministic measurement
 
 ## Intended shape
 
