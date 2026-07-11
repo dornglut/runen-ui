@@ -18,8 +18,11 @@ from pathlib import Path
 DEFAULT_PROFILE = "ai-core"
 DEFAULT_CONTEXT_DIR = "context"
 DEFAULT_EXTENSIONS = {
+    ".json",
     ".rs",
     ".toml",
+    ".yaml",
+    ".yml",
     ".md",
     ".mdx",
     ".py",
@@ -50,7 +53,6 @@ DEFAULT_EXCLUDE_GLOBS = (
     "**/*-context.txt",
     "*.repo-context.txt",
     "*.repo-context.md",
-    "Cargo.lock",
 )
 
 

@@ -1,130 +1,112 @@
 # RunenUI
 
-RunenUI is a Rust-native UI framework project focused on explicit, inspectable, host-neutral user interface architecture.
+> **Category: Current contract**
 
-Applications own state and actions. Elements emit actions. The runtime calls `update`, computes layout, and publishes renderer-neutral primitive output for a surface.
+RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a stable, extensible UI kernel for deterministic headless testing, standalone desktop applications on Windows, macOS, and Linux, and embedding in engine- or editor-owned hosts.
 
-## Vision
+Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-RunenUI is designed around a simple separation:
+## What exists today
 
-- application state belongs to the application
-- UI structure is described as `Element` trees
-- user interaction emits application `Action`s
-- layout produces inspectable geometry
-- rendering consumes neutral `Primitive` output
-- hosts and renderers integrate through explicit boundaries
+The active workspace proves:
 
-The goal is to support application UI, game UI, tools, editors, live preview, and engine integration without making any single host or renderer the source of truth.
+- application-owned state and typed actions with explicit `update`;
+- immutable `Element<Action>` description trees and builder/`element!` authoring;
+- deterministic headless dispatch, basic focus, press activation, and tracing;
+- typed style values, tokens, computed style, provenance, and diagnostics;
+- explicit layout constraints and a renderer-neutral measurement-provider seam;
+- constrained row/column measurement and arrangement with aligned frame, style, and layout diagnostics;
+- a Counter application exercising the current public crates.
 
-## Design Direction
+Important limitations remain: runtime identity is rebuilt from preorder position, keys are not reconciled, focus is cleared after dispatch, input behavior is proof-level, text measurement is deterministic character counting, `SurfaceFrame` contains semantic control kinds rather than paint primitives, and mounted lifecycle, effects, semantics/accessibility, production text, native hosts, renderer backends, and production controls are absent.
 
-RunenUI prioritizes explicit Rust APIs, readable element authoring, deterministic state flow, accessibility-aware UI data, and renderer-neutral output.
+## Production profiles
 
-The intended public authoring surface is `element!`. The builder API is the semantic foundation underneath it, so the core model remains explicit, testable, and usable without macros.
+RunenUI targets three required profiles:
 
-## Target API Preview
+1. **Headless/test:** deterministic mounted execution, synthetic input and time, deterministic effects/tasks, semantic/layout/hit/paint inspection, and replayable traces without a native window or GPU.
+2. **Standalone desktop:** Windows, macOS, and Linux with DPI and multi-window support, clipboard, cursor, IME, drag/drop, accessibility, a production event loop, and one conventional renderer backend.
+3. **Embedded host:** a host-owned window and frame loop with host-provided input, resources, timing, clipboard, text, and wakeups, consuming the same renderer-neutral scene protocol without ECS, Runenwerk, or renderer assumptions in RunenUI.
 
-```rust
-fn counter_screen(counter: &Counter) -> Element<CounterAction> {
-    element! {
-        column gap=8 {
-            text "Counter"
-            text { counter.count.to_string() } id="counter.value"
+Mobile, web, external UI source formats, docking, visual editing, and advanced devtools are later targets and do not block the first production release.
 
-            row gap=8 {
-                button "-" on_press=CounterAction::Decrement
-                button "+" on_press=CounterAction::Increment
-                button "Reset" on_press=CounterAction::Reset
-            }
-        }
-    }
-}
+## Architecture direction
+
+The accepted runtime direction is hybrid:
+
+```text
+Application state
+    -> transient immutable View/Element tree
+    -> keyed reconciliation
+    -> persistent mounted runtime tree
+    -> computed style and layout
+    -> semantic tree + hit-test scene + paint scene
+    -> host accessibility/event integration + renderer backend
 ```
 
-## Builder Foundation
+The transient authored tree is not persistent runtime state. The mounted tree will retain generational identity, lifecycle, widget-local interaction state, focus/capture, dirty state, semantic identity, and task/subscription ownership. Renderers will consume paint primitives and resources, not semantic widget kinds.
 
-The target syntax expands to ordinary builder calls:
+This target is documented architecture, not a claim about the current implementation.
+
+## Canonical project documents
+
+- [Current status](docs/status-map.md)
+- [Feature and support matrix](docs/feature-support-matrix.md)
+- [Production roadmap](docs/roadmap.md)
+- [Architecture](docs/architecture.md)
+- [Documentation retention and disposition](docs/documentation-retention-plan.md)
+- [Validation](docs/tooling/validation.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [API stability](docs/api-stability.md)
+- [Release policy](docs/release-policy.md)
+
+When sources disagree, the current status, support matrix, roadmap, architecture, and accepted ADRs take precedence over older incremental design documents. Historical material is not implementation authority.
+
+## Current API proof
+
+The Builder API is the semantic foundation; `element!` is optional sugar over the same closed proof vocabulary:
 
 ```rust
-fn counter_screen(counter: &Counter) -> Element<CounterAction> {
+use runenui_core::{Element, button, column, text};
+
+#[derive(Clone, Copy)]
+enum CounterAction {
+    Increment,
+}
+
+fn counter_screen(value: i32) -> Element<CounterAction> {
     column((
-        text("Counter"),
-        text(counter.count.to_string()).id("counter.value"),
-        row((
-            button("-").on_press(CounterAction::Decrement),
-            button("+").on_press(CounterAction::Increment),
-            button("Reset").on_press(CounterAction::Reset),
-        ))
-        .gap(8),
+        text(format!("Count: {value}")),
+        button("+").on_press(CounterAction::Increment),
     ))
     .gap(8)
 }
 ```
 
-## Documentation
-
-- [Architecture](docs/architecture.md)
-- [Target API](docs/target-api.md)
-- [Influences](docs/influences.md)
-- [Vocabulary](docs/vocabulary.md)
-- [Styling Target Architecture](docs/architecture/styling-target.md)
-- [Token Reference Target](docs/architecture/token-reference-target.md)
-- [Token Authoring Ergonomics](docs/architecture/token-authoring-ergonomics.md)
-- [Computed Style Model](docs/architecture/computed-style-model.md)
-
-## Project Maps
-
-- [Crate Map](docs/crate-map.md)
-- [Dependency Map](docs/dependency-map.md)
-- [Status Map](docs/status-map.md)
-- [Cutover Plan](docs/cutover-plan.md)
-- [Legacy Audit](docs/legacy-audit.md)
+This example reflects the implemented API. It does not imply component action mapping, external custom widgets, mounted reconciliation, correct release-based activation, production controls, or native rendering.
 
 ## Validation
 
-Format the workspace with:
+The repository baseline is:
 
 ```powershell
-cargo format
-```
-
-Run the repository baseline with one command:
-
-```powershell
+cargo +stable fmt --all
 cargo validate
 ```
 
-This runs:
+Format intentional changes with latest stable rustfmt, matching CI. `cargo validate` is the locked, read-only shared local/CI implementation. It runs stable formatting checks, locked tests, Clippy with denied warnings, Rust 1.93.0 MSRV tests, repository metadata checks, and repository-relative Markdown link validation from the resolved workspace root. Also run `git diff --check` and slice-specific checks. See [Validation](docs/tooling/validation.md).
 
-```powershell
-cargo fmt --all --check
-cargo test --workspace
-cargo clippy --workspace --all-targets --locked -- -D warnings
-```
-
-Validation is read-only. It does not apply formatting changes.
-
-## Context Export
-
-Generated context exports are written to `context/`.
+Generated context exports are written to the ignored `context/` directory:
 
 ```powershell
 py tools/context/export_repo_context.py
 ```
 
-Default output:
+Normal profiles exclude historical legacy material. See [Context Export](tools/context/README.md).
 
-```text
-context/RunenUI-ai-core-context.txt
-```
+## Release status
 
-For broader current-work context:
+RunenUI has not reached a stable public API or production release. All workspace packages are `0.1.0` and publication is disabled until release infrastructure and milestone gates exist. `1.0.0` is reserved for completion of the required production profiles and the M11 hardening gate.
 
-```powershell
-py tools/context/export_repo_context.py --profile current-work
-```
-
-## Status
-
-RunenUI is in early design and implementation formation. The examples in these docs describe the intended public shape while the crate layout and APIs are established.
+RunenUI is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

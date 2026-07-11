@@ -1,36 +1,20 @@
-# runenui_core
+# `runenui_core`
 
-`runenui_core` owns the host-neutral typed UI description model for RunenUI.
+> **Category: Current contract**
 
-This crate is the foundation for authoring UI as data. It will define the public `Element<Action>` tree, stable element identity, typed event bindings, layout intent, semantic roles, and core geometry types.
+`runenui_core` is the host- and renderer-neutral authored-data crate in the current RunenUI headless proof.
 
-## Responsibilities
+It currently owns `Element<Action>` and the closed text/button/container descriptors, authored IDs and stored keys, row/column layout intent, style values and typed token references, in-memory token resolution, concrete computed style, provenance, diagnostics, and builder/`element!` authoring.
 
-`runenui_core` may define:
+Important limitations:
 
-* typed `Element<Action>` UI descriptions
-* element identity and keying primitives
-* semantic roles and accessibility-relevant element facts
-* layout intent types such as gap, padding, sizing, and alignment
-* typed event bindings such as press/change intent
-* renderer-neutral geometry types
+- `ElementKind` is closed; external widgets do not yet have a supported protocol.
+- keys are stored but do not preserve runtime identity.
+- IDs/token IDs accept empty values and duplicates are not diagnosed.
+- generic element methods can silently no-op for the wrong kind.
+- tuple child conversion stops at eight entries.
+- numeric invariants and public API stability are not complete.
 
-## Non-responsibilities
+The crate does not own mounted runtime state, input routing, effects, layout execution, semantics, paint scenes, renderer backends, native hosts, application state, ECS, or legacy dependencies.
 
-`runenui_core` must not own:
-
-* runtime state
-* input dispatch
-* hit testing
-* focus management
-* app update execution
-* layout solving
-* rendering backends
-* host integration
-* ECS integration
-* compiler/program/artifact pipelines
-* legacy crate dependencies
-
-For workspace-wide dependency rules, see [dependency-map](../../docs/dependency-map.md).
-
-For implementation maturity, see [status-map](../../docs/status-map.md).
+See the workspace [status](../../docs/status-map.md), [support matrix](../../docs/feature-support-matrix.md), and [roadmap](../../docs/roadmap.md).

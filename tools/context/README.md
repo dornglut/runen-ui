@@ -1,5 +1,7 @@
 # Context Export
 
+> **Category: Guide**
+
 `export_repo_context.py` exports selected repository files into one line-numbered text file for AI or manual review.
 
 The default export writes into the repository-local `context/` folder:
@@ -64,8 +66,11 @@ implementation-work
   Generic implementation context. Add exact crate, module, test, or example paths with --include.
 
 full-audit
-  Large full-repository audit context. Includes legacy files unless excluded.
+  Comprehensive active-repository audit context. Includes CI YAML, Cargo.lock,
+  license files, and other repository metadata; excludes historical legacy content.
 ```
+
+`Cargo.lock` is included only by `full-audit` (or an explicit command-line override). Normal AI, current-work, planning, domain, and implementation profiles explicitly exclude it to keep routine exports focused. Every active profile excludes `legacy/`.
 
 ## Task-specific overrides
 
@@ -82,7 +87,6 @@ Other override options:
 
 ```bash
 python3 tools/context/export_repo_context.py --profile current-work --include 'apps/**'
-python3 tools/context/export_repo_context.py --profile domain-work --exclude 'legacy/**'
 python3 tools/context/export_repo_context.py --profile implementation-work --extension json
 python3 tools/context/export_repo_context.py --profile implementation-work --include-filename AGENTS.md
 ```
@@ -152,6 +156,14 @@ This makes it clear whether a new AI thread is seeing a small authority context,
 
 Use the smallest profile that can answer the task.
 
-Do not use `full-audit` as the default. It is intentionally large and may include historical or legacy files that are not current authority.
+Do not use `full-audit` as the default. It is intentionally large. Historical
+material removed from the active branch remains available through the archival
+tag documented in `docs/history/legacy-archive.md`.
 
 Do not add feature-specific profiles for every roadmap item. Use `--include` and `--exclude` for task-specific scope.
+
+Profile inclusion/exclusion behavior is covered by repository tests:
+
+```bash
+python3 -m unittest discover -s tools/context/tests -v
+```

@@ -1,43 +1,22 @@
-# runenui_runtime
+# `runenui_runtime`
 
-`runenui_runtime` owns the headless UI runtime for RunenUI.
+> **Category: Current contract**
 
-This crate turns application state and typed UI descriptions into runtime behavior and published surface products. Applications own their state and actions. Elements emit actions. The runtime dispatches input, resolves interaction, calls the application update function, rebuilds the root element, resolves per-node style, measures each surface node once, arranges from that publication-local result, and publishes aligned `SurfaceFrame`, `SurfaceStyleReport`, and `SurfaceLayoutReport` products.
+`runenui_runtime` owns deterministic headless execution and surface-publication proofs for RunenUI.
 
-## Responsibilities
+It currently binds application state/action/update/root through `UiApp` and `AppRuntime`, assigns preorder IDs for each transient tree, provides basic focus and press-activation policies, resolves style, applies constraints and provider-backed intrinsic measurement, arranges a small row/column layout, and publishes aligned `SurfaceFrame`, `SurfaceStyleReport`, and `SurfaceLayoutReport` products.
 
-`runenui_runtime` may own:
+The layout contract has explicit finite/unbounded constraints, computed padding, one text/button-label measurement per node per publication, intrinsic main-axis sizing, finite cross-axis limits, and diagnostic-only overflow. The deterministic provider is for tests/headless examples, not production typography.
 
-* input event normalization
-* hit testing
-* focus and pointer capture
-* typed action dispatch
-* calling `update(&mut State, Action)`
-* rebuilding `root(&State) -> Element<Action>`
-* layout orchestration
-* cross-axis row/column child constraints with intrinsic main-axis sizing
-* runtime-node-aligned, diagnostic-only overflow reporting
-* accessibility tree extraction
-* primitive extraction
-* runtime tracing
-* unified surface publication from explicit style tokens, root constraints, and measurement providers
-* deterministic headless execution for tests
+Important limitations:
 
-The current layout contract does not stretch, wrap, clip, scroll, or distribute remaining space. Finite content-box maxima constrain only the row/column cross axis; main-axis overflow remains intrinsic and is reported through `SurfaceLayoutReport`.
+- there is no persistent mounted tree, reconciliation, generational identity, lifecycle, local widget state, or granular invalidation;
+- dispatch rebuilds the root and clears focus;
+- pointer activation occurs on press and there is no pointer capture or event routing;
+- input-intent and direct event paths overlap;
+- effects, scheduling, semantics/accessibility, production text, native hosts, and renderer backends are absent;
+- `SurfaceFrame` contains semantic control kinds and is not the production paint protocol.
 
-## Non-responsibilities
+The crate must remain independent of application domain state, native window implementations, concrete renderers, ECS ownership, and legacy dependencies.
 
-`runenui_runtime` must not own:
-
-* application state definitions
-* application action enums
-* renderer backend implementation
-* windowing or platform event loops
-* ECS host ownership
-* visual editor document formats
-* compiler/program/artifact pipelines as the mandatory runtime path
-* legacy crate dependencies
-
-For workspace-wide dependency rules, see [dependency-map](../../docs/dependency-map.md).
-
-For implementation maturity, see [status-map](../../docs/status-map.md).
+See the workspace [status](../../docs/status-map.md), [support matrix](../../docs/feature-support-matrix.md), and [roadmap](../../docs/roadmap.md).
