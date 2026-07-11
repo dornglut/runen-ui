@@ -1,6 +1,6 @@
 # Computed Style Model
 
-This document defines the first `ComputedStyle` data model and literal-only resolution proof in RunenUI.
+This document defines the first `ComputedStyle` data model and style-resolution proofs in RunenUI.
 
 It is not a theme registry, recipe system, runtime integration, surface-frame change, or renderer integration.
 
@@ -33,52 +33,47 @@ radius: Option<Radius>
 
 `resolve_literal_style` converts literal `StyleIntent` values into `ComputedStyle` and reports token-backed values as unresolved.
 
+Token-backed values are not guessed or replaced with placeholders.
+
+## In-memory token resolver
+
+`StyleTokens` is a small typed in-memory token container.
+
+It resolves:
+
 ```text
-StyleIntent
-  -> StyleResolution
-       computed_style: ComputedStyle
-       unresolved_tokens: Vec<UnresolvedStyleToken>
+ColorToken   -> Color
+SpacingToken -> EdgeInsets
+RadiusToken  -> Radius
 ```
 
-Token-backed values are not guessed or replaced with placeholders.
+`resolve_style` accepts `StyleIntent` and `StyleTokens`. Literal values copy into `ComputedStyle`. Token-backed values look up through `StyleTokens`. Missing tokens remain in `UnresolvedStyleToken` diagnostics.
 
 ## Ownership
 
-`runenui_core` owns this proof because it is pure host-neutral data conversion.
+`runenui_core` owns these proofs because they are pure host-neutral data conversion.
 
-It does not depend on runtime, renderer, host, ECS, theme loading, or external files.
-
-A later token-aware resolver may move into `runenui_runtime` or a future style/theme crate after enough pressure exists.
+They do not depend on runtime, renderer, host, ECS, external theme files, or shader/material APIs.
 
 ## Non-goals
 
-This slice does not add:
+This stage does not add:
 
-- token resolution,
-- theme maps,
+- external theme files,
 - component recipes,
 - variant resolution,
 - interaction-state style layers,
-- computed layout behavior,
 - surface-frame changes,
 - renderer output changes.
 
 ## Boundary
 
-`StyleIntent` is authored input. It preserves whether a value was literal or token-backed.
+`StyleIntent` is authored input.
 
-`ComputedStyle` is resolved output. Renderers and layout code should eventually consume it without resolving tokens or inspecting recipes.
+`ComputedStyle` is resolved output.
 
 `StyleResolution` is the bridge product for this stage. It carries concrete computed output plus unresolved-token diagnostics.
 
 ## Next step
 
-The next code slice should add an in-memory token map:
-
-```text
-StyleIntent with token-backed values
-  -> token lookup
-  -> ComputedStyle
-```
-
-That should remain host-neutral and should not introduce renderer behavior.
+The next styling slice should connect computed style to an observable surface or debug path, still without committing to a final renderer model.
