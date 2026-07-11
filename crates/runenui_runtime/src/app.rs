@@ -2,17 +2,18 @@
 
 use core::marker::PhantomData;
 
-use runenui_core::{Element, ElementKind};
+use runenui_core::{Element, ElementId, ElementKind};
 
 use crate::{
     FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, PointerButton, PointerEvent,
-    PointerPhase, Runtime, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, SurfaceBuildContext,
+    PointerPhase, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, SurfaceBuildContext,
     SurfacePublication, Trace, TraceTarget,
     policy::{
         InputEventResult, KeyboardActivationResult, KeyboardFocusResult, PointerActivationResult,
         PointerFocusResult,
     },
     publish_surface,
+    runtime::Runtime,
 };
 
 /// Application contract used by [`AppRuntime`].
@@ -35,6 +36,7 @@ pub trait UiApp {
 }
 
 /// Result of semantic headless activation by authored element ID.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActivationResult {
     /// A matching button action was dispatched.
@@ -47,6 +49,10 @@ pub enum ActivationResult {
     Disabled,
     /// The requested element exists on a button, but the button has no action.
     NoAction,
+    /// More than one element has the requested authored ID.
+    AmbiguousId,
+    /// The requested authored ID was invalid.
+    InvalidId,
 }
 
 /// Runtime wrapper that binds an app's root and update functions once.
@@ -244,12 +250,6 @@ where
         self.runtime.trace()
     }
 
-    /// Consumes this app runtime and returns the lower-level runtime.
-    #[must_use]
-    pub fn into_runtime(self) -> Runtime<App::State, App::Action> {
-        self.runtime
-    }
-
     /// Consumes this app runtime and returns the final application state.
     #[must_use]
     pub fn into_state(self) -> App::State {
@@ -262,17 +262,28 @@ where
     App: UiApp,
     App::Action: Clone,
 {
+    // Activation observes an action through the immutable authored tree and
+    // then rebuilds that tree after dispatch. The narrow Clone bound is the
+    // current proof's explicit cost for duplicating that stored action; mount
+    // and direct dispatch do not require it.
     /// Activates the element with the matching authored ID in the current tree.
     ///
     /// This is a semantic headless activation path for tests, tools, and host
     /// automation. Renderer hit testing should eventually resolve to internal
     /// runtime node identity and call [`Self::activate_node`].
     pub fn activate(&mut self, id: impl AsRef<str>) -> ActivationResult {
+        let Ok(id) = ElementId::new(id.as_ref()) else {
+            return ActivationResult::InvalidId;
+        };
         let node_id = {
             let index = self.index();
-            index
-                .node_by_authored_id(id.as_ref())
-                .map(RuntimeNodeRef::id)
+            if index.diagnostics().iter().any(|diagnostic| {
+                diagnostic.kind() == crate::DuplicateIdentityKind::ElementId
+                    && diagnostic.value() == id.as_str()
+            }) {
+                return ActivationResult::AmbiguousId;
+            }
+            index.node_by_authored_id(&id).map(RuntimeNodeRef::id)
         };
 
         node_id.map_or(ActivationResult::NotFound, |node_id| {

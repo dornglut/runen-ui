@@ -14,7 +14,10 @@ pub struct TraceTarget {
 impl TraceTarget {
     /// Creates a trace target from generated runtime identity and optional authored identity.
     #[must_use]
-    pub const fn new(runtime_node_id: RuntimeNodeId, authored_id: Option<ElementId>) -> Self {
+    pub(crate) const fn new(
+        runtime_node_id: RuntimeNodeId,
+        authored_id: Option<ElementId>,
+    ) -> Self {
         Self {
             runtime_node_id,
             authored_id,
@@ -35,6 +38,7 @@ impl TraceTarget {
 }
 
 /// Coarse runtime trace events emitted by the headless loop.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeEvent {
     /// The runtime was mounted with initial state and root UI.
@@ -82,7 +86,7 @@ pub struct Trace {
 impl Trace {
     /// Creates an empty trace log.
     #[must_use]
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             events: Vec::new(),
             records: Vec::new(),
@@ -90,12 +94,12 @@ impl Trace {
     }
 
     /// Appends one untargeted runtime event.
-    pub fn record(&mut self, event: RuntimeEvent) {
+    pub(crate) fn record(&mut self, event: RuntimeEvent) {
         self.record_with_target(event, None);
     }
 
     /// Appends one runtime event with optional target details.
-    pub fn record_with_target(&mut self, event: RuntimeEvent, target: Option<TraceTarget>) {
+    pub(crate) fn record_with_target(&mut self, event: RuntimeEvent, target: Option<TraceTarget>) {
         self.events.push(event);
         self.records.push(TraceRecord::new(event, target));
     }

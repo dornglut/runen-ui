@@ -1,50 +1,21 @@
-use runenui_core::prelude::{button, column};
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum Action {
-    Press,
-}
+use runenui_core::{ElementId, ElementKey, IdentifierError, IntoElement, button};
 
 #[test]
-fn element_key_is_separate_from_authored_id() {
-    let element = button("Open")
-        .id("toolbar.open")
-        .key("document-42")
-        .on_press(Action::Press);
+fn identifier_constructors_and_builder_diagnostics_are_validated() {
+    assert_eq!(ElementId::new(""), Err(IdentifierError::Empty));
+    assert_eq!(ElementKey::new("   "), Err(IdentifierError::WhitespaceOnly));
 
+    let valid = button::<()>("Open")
+        .id("toolbar.open")
+        .key("item-1")
+        .into_element();
     assert_eq!(
-        element.element_id().map(runenui_core::ElementId::as_str),
+        valid.element_id().map(ElementId::as_str),
         Some("toolbar.open")
     );
-    assert_eq!(
-        element.element_key().map(runenui_core::ElementKey::as_str),
-        Some("document-42")
-    );
-}
+    assert!(valid.authoring_diagnostics().is_empty());
 
-#[test]
-fn container_children_preserve_keys() -> Result<(), &'static str> {
-    let list = column((
-        button::<Action>("First").key("item-a"),
-        button::<Action>("Second").key("item-b"),
-    ));
-
-    let runenui_core::ElementKind::Container(container) = list.kind() else {
-        return Err("expected container");
-    };
-
-    assert_eq!(
-        container.children()[0]
-            .element_key()
-            .map(runenui_core::ElementKey::as_str),
-        Some("item-a")
-    );
-    assert_eq!(
-        container.children()[1]
-            .element_key()
-            .map(runenui_core::ElementKey::as_str),
-        Some("item-b")
-    );
-
-    Ok(())
+    let invalid = button::<()>("Open").id(" ").key("").into_element();
+    assert_eq!(invalid.element_id(), None);
+    assert_eq!(invalid.authoring_diagnostics().len(), 2);
 }

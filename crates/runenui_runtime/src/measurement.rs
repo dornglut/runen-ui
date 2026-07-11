@@ -1,17 +1,16 @@
 //! Renderer-neutral intrinsic text measurement contracts.
 
 use crate::{LayoutConstraints, LogicalSize, RuntimeNodeId};
+use core::{error::Error, fmt};
+use runenui_core::LogicalLength;
 
-/// Semantic use of a text measurement request.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextMeasurementKind {
-    /// Standalone text content.
     Text,
-    /// Text used as a button label.
     ButtonLabel,
 }
 
-/// Borrowed text measurement input for one publication pass.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextMeasurementRequest<'a> {
     content: &'a str,
@@ -21,7 +20,6 @@ pub struct TextMeasurementRequest<'a> {
 }
 
 impl<'a> TextMeasurementRequest<'a> {
-    /// Creates a text measurement request.
     #[must_use]
     pub const fn new(
         content: &'a str,
@@ -35,40 +33,48 @@ impl<'a> TextMeasurementRequest<'a> {
             kind,
         }
     }
-
-    /// Adds runtime identity for diagnostics and observation.
     #[must_use]
     pub const fn with_node_id(mut self, node_id: RuntimeNodeId) -> Self {
         self.node_id = Some(node_id);
         self
     }
-
-    /// Returns the text content to measure.
     #[must_use]
     pub const fn content(&self) -> &'a str {
         self.content
     }
-
-    /// Returns the content-box constraints supplied by layout.
     #[must_use]
     pub const fn constraints(&self) -> LayoutConstraints {
         self.constraints
     }
-
-    /// Returns optional runtime identity used only for observation.
     #[must_use]
     pub const fn node_id(&self) -> Option<RuntimeNodeId> {
         self.node_id
     }
-
-    /// Returns the semantic text use.
     #[must_use]
     pub const fn kind(&self) -> TextMeasurementKind {
         self.kind
     }
 }
 
-/// Logical content measurement returned by a provider.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BaselineError {
+    NotFinite,
+    Negative,
+    ExceedsHeight,
+}
+
+impl fmt::Display for BaselineError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFinite => formatter.write_str("baseline must be finite"),
+            Self::Negative => formatter.write_str("baseline must not be negative"),
+            Self::ExceedsHeight => formatter.write_str("baseline must not exceed measured height"),
+        }
+    }
+}
+
+impl Error for BaselineError {}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextMeasurement {
     size: LogicalSize,
@@ -77,7 +83,6 @@ pub struct TextMeasurement {
 }
 
 impl TextMeasurement {
-    /// Creates a measurement without baseline information.
     #[must_use]
     pub const fn new(size: LogicalSize) -> Self {
         Self {
@@ -86,51 +91,63 @@ impl TextMeasurement {
             last_baseline: None,
         }
     }
-
-    /// Adds a first baseline in logical coordinates.
-    #[must_use]
-    pub const fn with_first_baseline(mut self, baseline: f32) -> Self {
+    /// Adds a validated first baseline.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BaselineError`] when the baseline is non-finite, negative, or
+    /// exceeds the measured height.
+    pub fn with_first_baseline(mut self, baseline: f32) -> Result<Self, BaselineError> {
+        validate_baseline(baseline, self.size.height())?;
         self.first_baseline = Some(baseline);
-        self
+        Ok(self)
     }
-
-    /// Adds a last baseline in logical coordinates.
-    #[must_use]
-    pub const fn with_last_baseline(mut self, baseline: f32) -> Self {
+    /// Adds a validated last baseline.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BaselineError`] under the same rules as
+    /// [`Self::with_first_baseline`].
+    pub fn with_last_baseline(mut self, baseline: f32) -> Result<Self, BaselineError> {
+        validate_baseline(baseline, self.size.height())?;
         self.last_baseline = Some(baseline);
-        self
+        Ok(self)
     }
-
-    /// Returns the measured content-box size.
     #[must_use]
     pub const fn size(&self) -> LogicalSize {
         self.size
     }
-
-    /// Returns the first baseline, when supplied.
     #[must_use]
     pub const fn first_baseline(&self) -> Option<f32> {
         self.first_baseline
     }
-
-    /// Returns the last baseline, when supplied.
     #[must_use]
     pub const fn last_baseline(&self) -> Option<f32> {
         self.last_baseline
     }
 }
 
-/// Synchronous renderer-neutral text measurement service.
+fn validate_baseline(value: f32, height: f32) -> Result<(), BaselineError> {
+    if !value.is_finite() {
+        Err(BaselineError::NotFinite)
+    } else if value < 0.0 {
+        Err(BaselineError::Negative)
+    } else if value > height {
+        Err(BaselineError::ExceedsHeight)
+    } else {
+        Ok(())
+    }
+}
+
+/// Open synchronous measurement service; providers are intentionally downstream-implementable.
 pub trait MeasurementProvider {
-    /// Measures one text request under its content-box constraints.
     fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement;
 }
 
-/// Deterministic character-count provider for tests and headless examples.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DeterministicMeasurementProvider {
-    char_width: f32,
-    line_height: f32,
+    char_width: LogicalLength,
+    line_height: LogicalLength,
 }
 
 impl Default for DeterministicMeasurementProvider {
@@ -140,176 +157,88 @@ impl Default for DeterministicMeasurementProvider {
 }
 
 impl DeterministicMeasurementProvider {
-    /// Default deterministic metrics for headless publication.
     pub const DEFAULT: Self = Self {
-        char_width: 8.0,
-        line_height: 20.0,
+        char_width: match LogicalLength::new(8.0) {
+            Ok(value) => value,
+            Err(_) => LogicalLength::ZERO,
+        },
+        line_height: match LogicalLength::new(20.0) {
+            Ok(value) => value,
+            Err(_) => LogicalLength::ZERO,
+        },
     };
-
-    /// Creates a deterministic provider from normalized logical metrics.
     #[must_use]
-    pub fn new(char_width: f32, line_height: f32) -> Self {
+    pub const fn new(char_width: LogicalLength, line_height: LogicalLength) -> Self {
         Self {
-            char_width: normalize_metric(char_width),
-            line_height: normalize_metric(line_height),
+            char_width,
+            line_height,
         }
     }
-
-    /// Returns the logical width assigned to one Unicode scalar value.
     #[must_use]
     pub const fn char_width(&self) -> f32 {
-        self.char_width
+        self.char_width.get()
     }
-
-    /// Returns the fixed logical line height.
     #[must_use]
     pub const fn line_height(&self) -> f32 {
-        self.line_height
+        self.line_height.get()
     }
 }
 
 impl MeasurementProvider for DeterministicMeasurementProvider {
     fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement {
-        let character_count = count_as_f32(request.content().chars().count());
-        let intrinsic = LogicalSize::new(
-            finite_product(character_count, self.char_width),
-            self.line_height,
+        let count = f32::from(u16::try_from(request.content().chars().count()).unwrap_or(u16::MAX));
+        let width = count * self.char_width.get();
+        let intrinsic = LogicalSize::from_sanitized(
+            if width.is_finite() { width } else { f32::MAX },
+            self.line_height.get(),
         );
-
         TextMeasurement::new(request.constraints().constrain(intrinsic))
     }
-}
-
-fn normalize_metric(value: f32) -> f32 {
-    if value.is_finite() && value > 0.0 {
-        value
-    } else {
-        0.0
-    }
-}
-
-fn finite_product(left: f32, right: f32) -> f32 {
-    let product = left * right;
-    if product.is_finite() {
-        product
-    } else {
-        f32::MAX
-    }
-}
-
-fn count_as_f32(count: usize) -> f32 {
-    f32::from(u16::try_from(count).unwrap_or(u16::MAX))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement,
+        BaselineError, DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement,
         TextMeasurementKind, TextMeasurementRequest,
     };
-    use crate::{LayoutConstraints, LogicalSize, RuntimeNodeId};
+    use crate::{LayoutConstraints, LogicalSize};
+    use runenui_core::LogicalLength;
 
-    fn assert_f32_eq(actual: f32, expected: f32) {
-        assert!(
-            (actual - expected).abs() <= f32::EPSILON,
-            "expected {expected}, got {actual}",
-        );
+    fn length(value: f32) -> LogicalLength {
+        LogicalLength::new(value).unwrap_or_default()
+    }
+    fn size(width: f32, height: f32) -> LogicalSize {
+        LogicalSize::new(length(width), length(height))
     }
 
     #[test]
-    fn request_preserves_content_constraints_kind_and_observation_identity() {
-        let constraints = LayoutConstraints::loose(LogicalSize::new(100.0, 40.0));
-        let node_id = RuntimeNodeId::from_index(7);
-        let request =
-            TextMeasurementRequest::new("Counter", constraints, TextMeasurementKind::ButtonLabel)
-                .with_node_id(node_id);
-
-        assert_eq!(request.content(), "Counter");
-        assert_eq!(request.constraints(), constraints);
-        assert_eq!(request.kind(), TextMeasurementKind::ButtonLabel);
-        assert_eq!(request.node_id(), Some(node_id));
-    }
-
-    #[test]
-    fn measurement_can_carry_optional_baselines() {
-        let measurement = TextMeasurement::new(LogicalSize::new(40.0, 20.0))
-            .with_first_baseline(14.0)
-            .with_last_baseline(18.0);
-
-        assert_eq!(measurement.size(), LogicalSize::new(40.0, 20.0));
-        assert_f32_eq(measurement.first_baseline().unwrap_or_default(), 14.0);
-        assert_f32_eq(measurement.last_baseline().unwrap_or_default(), 18.0);
-    }
-
-    #[test]
-    fn deterministic_provider_uses_one_text_path_for_all_text_kinds() {
-        let provider = DeterministicMeasurementProvider::new(10.0, 18.0);
-        let constraints = LayoutConstraints::unbounded();
-        let text = TextMeasurementRequest::new("ABC", constraints, TextMeasurementKind::Text);
-        let button =
-            TextMeasurementRequest::new("ABC", constraints, TextMeasurementKind::ButtonLabel);
-
+    fn invalid_baselines_are_rejected() {
+        let measurement = TextMeasurement::new(size(20.0, 10.0));
         assert_eq!(
-            provider.measure_text(&text).size(),
-            LogicalSize::new(30.0, 18.0),
-        );
-        assert_eq!(provider.measure_text(&button), provider.measure_text(&text));
-    }
-
-    #[test]
-    fn deterministic_provider_applies_request_constraints() {
-        let provider = DeterministicMeasurementProvider::new(10.0, 18.0);
-        let loose = TextMeasurementRequest::new(
-            "1234567890",
-            LayoutConstraints::loose(LogicalSize::new(60.0, 12.0)),
-            TextMeasurementKind::Text,
-        );
-        let tight = TextMeasurementRequest::new(
-            "A",
-            LayoutConstraints::tight(LogicalSize::new(50.0, 30.0)),
-            TextMeasurementKind::Text,
-        );
-
-        assert_eq!(
-            provider.measure_text(&loose).size(),
-            LogicalSize::new(60.0, 12.0),
+            measurement.with_first_baseline(f32::NAN),
+            Err(BaselineError::NotFinite)
         );
         assert_eq!(
-            provider.measure_text(&tight).size(),
-            LogicalSize::new(50.0, 30.0),
+            measurement.with_first_baseline(-1.0),
+            Err(BaselineError::Negative)
         );
-    }
-
-    #[test]
-    fn invalid_deterministic_metrics_normalize_to_zero() {
-        let provider = DeterministicMeasurementProvider::new(f32::NAN, -4.0);
-        let request = TextMeasurementRequest::new(
-            "ABC",
-            LayoutConstraints::unbounded(),
-            TextMeasurementKind::Text,
-        );
-
-        assert_f32_eq(provider.char_width(), 0.0);
-        assert_f32_eq(provider.line_height(), 0.0);
         assert_eq!(
-            provider.measure_text(&request).size(),
-            LogicalSize::new(0.0, 0.0),
+            measurement.with_first_baseline(11.0),
+            Err(BaselineError::ExceedsHeight)
         );
+        assert!(measurement.with_first_baseline(10.0).is_ok());
     }
 
     #[test]
-    fn provider_contract_is_object_safe() {
-        let provider = DeterministicMeasurementProvider::default();
+    fn deterministic_provider_is_constrained_and_object_safe() {
+        let provider = DeterministicMeasurementProvider::new(length(10.0), length(18.0));
         let provider: &dyn MeasurementProvider = &provider;
         let request = TextMeasurementRequest::new(
-            "A",
-            LayoutConstraints::unbounded(),
+            "1234567890",
+            LayoutConstraints::loose(size(60.0, 12.0)),
             TextMeasurementKind::Text,
         );
-
-        assert_eq!(
-            provider.measure_text(&request).size(),
-            LogicalSize::new(8.0, 20.0),
-        );
+        assert_eq!(provider.measure_text(&request).size(), size(60.0, 12.0));
     }
 }

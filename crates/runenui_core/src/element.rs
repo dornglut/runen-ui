@@ -1,140 +1,45 @@
-//! Typed host-neutral UI element tree.
+//! Typed host-neutral UI element tree and builders.
 
 use crate::{
-    Axis, ColorValue, ElementId, ElementKey, LayoutStyle, RadiusValue, SpacingValue, StyleIntent,
+    Axis, ColorValue, ElementId, ElementKey, IdentifierError, LayoutStyle, LogicalLength,
+    RadiusValue, SpacingValue, StyleIntent,
 };
 
+/// Type-erased built-in element description consumed by the current runtime.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Element<Action> {
     id: Option<ElementId>,
     key: Option<ElementKey>,
-    style: LayoutStyle,
-    visual_style: StyleIntent,
+    layout: LayoutStyle,
+    style: StyleIntent,
     kind: ElementKind<Action>,
+    authoring_diagnostics: Vec<AuthoringDiagnostic>,
+}
+
+/// Invalid authored configuration retained for deterministic runtime reporting.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthoringDiagnostic {
+    field: &'static str,
+    value: String,
+    error: IdentifierError,
+}
+
+impl AuthoringDiagnostic {
+    #[must_use]
+    pub const fn field(&self) -> &'static str {
+        self.field
+    }
+    #[must_use]
+    pub const fn value(&self) -> &str {
+        self.value.as_str()
+    }
+    #[must_use]
+    pub const fn error(&self) -> IdentifierError {
+        self.error
+    }
 }
 
 impl<Action> Element<Action> {
-    #[must_use]
-    pub fn text(content: impl Into<String>) -> Self {
-        Self::text_with(TextArgs::new(content))
-    }
-
-    #[must_use]
-    pub fn text_with(args: TextArgs) -> Self {
-        Self {
-            id: args.id,
-            key: args.key,
-            style: LayoutStyle::default(),
-            visual_style: StyleIntent::EMPTY,
-            kind: ElementKind::Text(TextElement::new(args.content)),
-        }
-    }
-
-    #[must_use]
-    pub fn button(label: impl Into<String>) -> Self {
-        Self::button_with(ButtonArgs::new(label))
-    }
-
-    #[must_use]
-    pub fn button_with(args: ButtonArgs<Action>) -> Self {
-        let mut button = ButtonElement::new(args.label);
-        button.enabled = args.enabled;
-        button.on_press = args.on_press;
-
-        Self {
-            id: args.id,
-            key: args.key,
-            style: LayoutStyle::default(),
-            visual_style: StyleIntent::EMPTY,
-            kind: ElementKind::Button(button),
-        }
-    }
-
-    #[must_use]
-    pub fn container(axis: Axis, children: impl IntoElements<Action>) -> Self {
-        Self::container_with(ContainerArgs::new(axis, children))
-    }
-
-    #[must_use]
-    pub fn container_with(args: ContainerArgs<Action>) -> Self {
-        Self {
-            id: args.id,
-            key: args.key,
-            style: args.style,
-            visual_style: StyleIntent::EMPTY,
-            kind: ElementKind::Container(ContainerElement::new(args.axis, args.children)),
-        }
-    }
-
-    #[must_use]
-    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-        self.id = Some(id.into());
-        self
-    }
-
-    #[must_use]
-    pub fn key(mut self, key: impl Into<ElementKey>) -> Self {
-        self.key = Some(key.into());
-        self
-    }
-
-    #[must_use]
-    pub fn gap(mut self, gap: impl Into<crate::Px>) -> Self {
-        self.style = self.style.with_gap(gap);
-        self
-    }
-
-    #[must_use]
-    pub fn with_visual_style(mut self, visual_style: StyleIntent) -> Self {
-        self.visual_style = visual_style;
-        self
-    }
-
-    #[must_use]
-    pub fn foreground(mut self, foreground: impl Into<ColorValue>) -> Self {
-        self.visual_style = self.visual_style.with_foreground(foreground);
-        self
-    }
-
-    #[must_use]
-    pub fn background(mut self, background: impl Into<ColorValue>) -> Self {
-        self.visual_style = self.visual_style.with_background(background);
-        self
-    }
-
-    #[must_use]
-    pub fn padding(mut self, padding: impl Into<SpacingValue>) -> Self {
-        self.visual_style = self.visual_style.with_padding(padding);
-        self
-    }
-
-    #[must_use]
-    pub fn radius(mut self, radius: impl Into<RadiusValue>) -> Self {
-        self.visual_style = self.visual_style.with_radius(radius);
-        self
-    }
-
-    #[must_use]
-    pub fn on_press(mut self, action: Action) -> Self {
-        if let ElementKind::Button(button) = &mut self.kind {
-            button.on_press = Some(action);
-        }
-        self
-    }
-
-    #[must_use]
-    pub const fn enabled(mut self, enabled: bool) -> Self {
-        if let ElementKind::Button(button) = &mut self.kind {
-            button.enabled = enabled;
-        }
-        self
-    }
-
-    #[must_use]
-    pub const fn disabled(self) -> Self {
-        self.enabled(false)
-    }
-
     #[must_use]
     pub const fn element_id(&self) -> Option<&ElementId> {
         self.id.as_ref()
@@ -146,103 +51,129 @@ impl<Action> Element<Action> {
     }
 
     #[must_use]
-    pub const fn style(&self) -> &LayoutStyle {
-        &self.style
+    pub const fn layout(&self) -> &LayoutStyle {
+        &self.layout
     }
 
     #[must_use]
-    pub const fn visual_style(&self) -> &StyleIntent {
-        &self.visual_style
+    pub const fn style(&self) -> &StyleIntent {
+        &self.style
     }
 
     #[must_use]
     pub const fn kind(&self) -> &ElementKind<Action> {
         &self.kind
     }
-}
 
-impl<Action> From<TextArgs> for Element<Action> {
-    fn from(args: TextArgs) -> Self {
-        Self::text_with(args)
+    #[must_use]
+    pub const fn authoring_diagnostics(&self) -> &[AuthoringDiagnostic] {
+        self.authoring_diagnostics.as_slice()
     }
 }
 
-impl<Action> From<ButtonArgs<Action>> for Element<Action> {
-    fn from(args: ButtonArgs<Action>) -> Self {
-        Self::button_with(args)
+/// Converts a typed builder or existing erased element into [`Element`].
+pub trait IntoElement<Action> {
+    fn into_element(self) -> Element<Action>;
+}
+
+impl<Action> IntoElement<Action> for Element<Action> {
+    fn into_element(self) -> Self {
+        self
     }
 }
 
-impl<Action> From<ContainerArgs<Action>> for Element<Action> {
-    fn from(args: ContainerArgs<Action>) -> Self {
-        Self::container_with(args)
-    }
-}
-
-/// Explicit construction arguments for a text element.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TextArgs {
+/// Typed text-element builder.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Text {
     content: String,
     id: Option<ElementId>,
     key: Option<ElementKey>,
+    style: StyleIntent,
+    diagnostics: Vec<AuthoringDiagnostic>,
 }
 
-impl TextArgs {
-    /// Creates text arguments from text content.
+impl Text {
     #[must_use]
     pub fn new(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
             id: None,
             key: None,
+            style: StyleIntent::EMPTY,
+            diagnostics: Vec::new(),
         }
     }
 
-    /// Adds an authored element ID.
     #[must_use]
-    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-        self.id = Some(id.into());
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        assign_id(&mut self.id, &mut self.diagnostics, id.into());
         self
     }
 
-    /// Adds a stable data key.
     #[must_use]
-    pub fn key(mut self, key: impl Into<ElementKey>) -> Self {
-        self.key = Some(key.into());
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        assign_key(&mut self.key, &mut self.diagnostics, key.into());
         self
     }
 
-    /// Returns the text content.
+    #[must_use]
+    pub fn foreground(mut self, value: impl Into<ColorValue>) -> Self {
+        self.style = self.style.with_foreground(value);
+        self
+    }
+
+    #[must_use]
+    pub fn background(mut self, value: impl Into<ColorValue>) -> Self {
+        self.style = self.style.with_background(value);
+        self
+    }
+
+    #[must_use]
+    pub fn padding(mut self, value: impl Into<SpacingValue>) -> Self {
+        self.style = self.style.with_padding(value);
+        self
+    }
+
+    #[must_use]
+    pub fn radius(mut self, value: impl Into<RadiusValue>) -> Self {
+        self.style = self.style.with_radius(value);
+        self
+    }
+
     #[must_use]
     pub const fn content(&self) -> &str {
         self.content.as_str()
     }
+}
 
-    /// Returns the authored element ID, if present.
-    #[must_use]
-    pub const fn element_id(&self) -> Option<&ElementId> {
-        self.id.as_ref()
-    }
-
-    /// Returns the stable data key, if present.
-    #[must_use]
-    pub const fn element_key(&self) -> Option<&ElementKey> {
-        self.key.as_ref()
+impl<Action> IntoElement<Action> for Text {
+    fn into_element(self) -> Element<Action> {
+        Element {
+            id: self.id,
+            key: self.key,
+            layout: LayoutStyle::default(),
+            style: self.style,
+            kind: ElementKind::Text(TextElement {
+                content: self.content,
+            }),
+            authoring_diagnostics: self.diagnostics,
+        }
     }
 }
 
-/// Explicit construction arguments for a button element.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ButtonArgs<Action> {
+/// Typed button-element builder.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Button<Action> {
     label: String,
     id: Option<ElementId>,
     key: Option<ElementKey>,
     enabled: bool,
     on_press: Option<Action>,
+    style: StyleIntent,
+    diagnostics: Vec<AuthoringDiagnostic>,
 }
 
-impl<Action> ButtonArgs<Action> {
-    /// Creates button arguments from a button label.
+impl<Action> Button<Action> {
     #[must_use]
     pub fn new(label: impl Into<String>) -> Self {
         Self {
@@ -251,85 +182,95 @@ impl<Action> ButtonArgs<Action> {
             key: None,
             enabled: true,
             on_press: None,
+            style: StyleIntent::EMPTY,
+            diagnostics: Vec::new(),
         }
     }
 
-    /// Adds an authored element ID.
     #[must_use]
-    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-        self.id = Some(id.into());
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        assign_id(&mut self.id, &mut self.diagnostics, id.into());
         self
     }
 
-    /// Adds a stable data key.
     #[must_use]
-    pub fn key(mut self, key: impl Into<ElementKey>) -> Self {
-        self.key = Some(key.into());
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        assign_key(&mut self.key, &mut self.diagnostics, key.into());
         self
     }
 
-    /// Sets whether the button is enabled.
     #[must_use]
     pub const fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self
     }
 
-    /// Disables the button.
     #[must_use]
     pub const fn disabled(self) -> Self {
         self.enabled(false)
     }
 
-    /// Sets the action dispatched when the button is pressed.
     #[must_use]
     pub fn on_press(mut self, action: Action) -> Self {
         self.on_press = Some(action);
         self
     }
 
-    /// Returns the button label.
     #[must_use]
-    pub const fn label(&self) -> &str {
-        self.label.as_str()
+    pub fn foreground(mut self, value: impl Into<ColorValue>) -> Self {
+        self.style = self.style.with_foreground(value);
+        self
     }
 
-    /// Returns the authored element ID, if present.
     #[must_use]
-    pub const fn element_id(&self) -> Option<&ElementId> {
-        self.id.as_ref()
+    pub fn background(mut self, value: impl Into<ColorValue>) -> Self {
+        self.style = self.style.with_background(value);
+        self
     }
 
-    /// Returns the stable data key, if present.
     #[must_use]
-    pub const fn element_key(&self) -> Option<&ElementKey> {
-        self.key.as_ref()
+    pub fn padding(mut self, value: impl Into<SpacingValue>) -> Self {
+        self.style = self.style.with_padding(value);
+        self
     }
 
-    /// Returns whether the button is enabled.
     #[must_use]
-    pub const fn is_enabled(&self) -> bool {
-        self.enabled
-    }
-
-    /// Returns the action dispatched on press, if present.
-    #[must_use]
-    pub const fn on_press_action(&self) -> Option<&Action> {
-        self.on_press.as_ref()
+    pub fn radius(mut self, value: impl Into<RadiusValue>) -> Self {
+        self.style = self.style.with_radius(value);
+        self
     }
 }
 
+impl<Action> IntoElement<Action> for Button<Action> {
+    fn into_element(self) -> Element<Action> {
+        Element {
+            id: self.id,
+            key: self.key,
+            layout: LayoutStyle::default(),
+            style: self.style,
+            kind: ElementKind::Button(ButtonElement {
+                label: self.label,
+                enabled: self.enabled,
+                on_press: self.on_press,
+            }),
+            authoring_diagnostics: self.diagnostics,
+        }
+    }
+}
+
+/// Typed row/column container builder.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ContainerArgs<Action> {
+pub struct Container<Action> {
     axis: Axis,
     children: Vec<Element<Action>>,
     id: Option<ElementId>,
     key: Option<ElementKey>,
-    style: LayoutStyle,
+    layout: LayoutStyle,
+    style: StyleIntent,
+    diagnostics: Vec<AuthoringDiagnostic>,
 }
 
-impl<Action> ContainerArgs<Action> {
-    /// Creates container arguments from an axis and children.
+impl<Action> Container<Action> {
     #[must_use]
     pub fn new(axis: Axis, children: impl IntoElements<Action>) -> Self {
         Self {
@@ -337,62 +278,72 @@ impl<Action> ContainerArgs<Action> {
             children: children.into_elements(),
             id: None,
             key: None,
-            style: LayoutStyle::default(),
+            layout: LayoutStyle::default(),
+            style: StyleIntent::EMPTY,
+            diagnostics: Vec::new(),
         }
     }
 
-    /// Adds an authored element ID.
     #[must_use]
-    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-        self.id = Some(id.into());
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        assign_id(&mut self.id, &mut self.diagnostics, id.into());
         self
     }
 
-    /// Adds a stable data key.
     #[must_use]
-    pub fn key(mut self, key: impl Into<ElementKey>) -> Self {
-        self.key = Some(key.into());
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        assign_key(&mut self.key, &mut self.diagnostics, key.into());
         self
     }
 
-    /// Sets the container gap.
     #[must_use]
-    pub fn gap(mut self, gap: impl Into<crate::Px>) -> Self {
-        self.style = self.style.with_gap(gap);
+    pub fn gap(mut self, gap: impl Into<LogicalLength>) -> Self {
+        self.layout = self.layout.with_gap(gap);
         self
     }
 
-    /// Returns the container axis.
     #[must_use]
-    pub const fn axis(&self) -> Axis {
-        self.axis
+    pub fn foreground(mut self, value: impl Into<ColorValue>) -> Self {
+        self.style = self.style.with_foreground(value);
+        self
     }
 
-    /// Returns the container children.
     #[must_use]
-    pub const fn children(&self) -> &[Element<Action>] {
-        self.children.as_slice()
+    pub fn background(mut self, value: impl Into<ColorValue>) -> Self {
+        self.style = self.style.with_background(value);
+        self
     }
 
-    /// Returns the authored element ID, if present.
     #[must_use]
-    pub const fn element_id(&self) -> Option<&ElementId> {
-        self.id.as_ref()
+    pub fn padding(mut self, value: impl Into<SpacingValue>) -> Self {
+        self.style = self.style.with_padding(value);
+        self
     }
 
-    /// Returns the stable data key, if present.
     #[must_use]
-    pub const fn element_key(&self) -> Option<&ElementKey> {
-        self.key.as_ref()
-    }
-
-    /// Returns the layout style.
-    #[must_use]
-    pub const fn style(&self) -> &LayoutStyle {
-        &self.style
+    pub fn radius(mut self, value: impl Into<RadiusValue>) -> Self {
+        self.style = self.style.with_radius(value);
+        self
     }
 }
 
+impl<Action> IntoElement<Action> for Container<Action> {
+    fn into_element(self) -> Element<Action> {
+        Element {
+            id: self.id,
+            key: self.key,
+            layout: self.layout,
+            style: self.style,
+            kind: ElementKind::Container(ContainerElement {
+                axis: self.axis,
+                children: self.children,
+            }),
+            authoring_diagnostics: self.diagnostics,
+        }
+    }
+}
+
+/// Closed built-in proof vocabulary. M2 owns replacement with an open widget protocol.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ElementKind<Action> {
     Text(TextElement),
@@ -406,12 +357,6 @@ pub struct TextElement {
 }
 
 impl TextElement {
-    fn new(content: impl Into<String>) -> Self {
-        Self {
-            content: content.into(),
-        }
-    }
-
     #[must_use]
     pub const fn content(&self) -> &str {
         self.content.as_str()
@@ -426,24 +371,14 @@ pub struct ButtonElement<Action> {
 }
 
 impl<Action> ButtonElement<Action> {
-    fn new(label: impl Into<String>) -> Self {
-        Self {
-            label: label.into(),
-            enabled: true,
-            on_press: None,
-        }
-    }
-
     #[must_use]
     pub const fn label(&self) -> &str {
         self.label.as_str()
     }
-
     #[must_use]
     pub const fn enabled(&self) -> bool {
         self.enabled
     }
-
     #[must_use]
     pub const fn on_press(&self) -> Option<&Action> {
         self.on_press.as_ref()
@@ -457,143 +392,77 @@ pub struct ContainerElement<Action> {
 }
 
 impl<Action> ContainerElement<Action> {
-    fn new(axis: Axis, children: impl IntoElements<Action>) -> Self {
-        Self {
-            axis,
-            children: children.into_elements(),
-        }
-    }
-
     #[must_use]
     pub const fn axis(&self) -> Axis {
         self.axis
     }
-
     #[must_use]
     pub const fn children(&self) -> &[Element<Action>] {
         self.children.as_slice()
     }
 }
 
+/// Converts an arbitrary iterator or collection of typed builders into children.
 pub trait IntoElements<Action> {
     fn into_elements(self) -> Vec<Element<Action>>;
 }
 
-impl<Action> IntoElements<Action> for Vec<Element<Action>> {
-    fn into_elements(self) -> Self {
-        self
-    }
-}
-
-impl<Action> IntoElements<Action> for Element<Action> {
-    fn into_elements(self) -> Vec<Self> {
-        vec![self]
-    }
-}
-
-impl<Action, const N: usize> IntoElements<Action> for [Element<Action>; N] {
+impl<Action, Items, Item> IntoElements<Action> for Items
+where
+    Items: IntoIterator<Item = Item>,
+    Item: IntoElement<Action>,
+{
     fn into_elements(self) -> Vec<Element<Action>> {
-        Vec::from(self)
+        self.into_iter().map(IntoElement::into_element).collect()
     }
 }
 
-macro_rules! impl_into_elements_tuple {
-    ($($name:ident),+ $(,)?) => {
-        impl<Action, $($name),+> IntoElements<Action> for ($($name,)+)
-        where
-            $($name: Into<Element<Action>>,)+
-        {
-            fn into_elements(self) -> Vec<Element<Action>> {
-                #[allow(non_snake_case)]
-                let ($($name,)+) = self;
-                vec![$($name.into(),)+]
-            }
-        }
-    };
-}
-
-impl_into_elements_tuple!(A);
-impl_into_elements_tuple!(A, B);
-impl_into_elements_tuple!(A, B, C);
-impl_into_elements_tuple!(A, B, C, D);
-impl_into_elements_tuple!(A, B, C, D, E);
-impl_into_elements_tuple!(A, B, C, D, E, F);
-impl_into_elements_tuple!(A, B, C, D, E, F, G);
-impl_into_elements_tuple!(A, B, C, D, E, F, G, H);
-
 #[must_use]
-pub fn text<Action>(content: impl Into<String>) -> Element<Action> {
-    Element::text(content)
+pub fn text(content: impl Into<String>) -> Text {
+    Text::new(content)
 }
 
 #[must_use]
-pub fn text_with<Action>(args: TextArgs) -> Element<Action> {
-    Element::text_with(args)
+pub fn button<Action>(label: impl Into<String>) -> Button<Action> {
+    Button::new(label)
 }
 
 #[must_use]
-pub fn button<Action>(label: impl Into<String>) -> Element<Action> {
-    Element::button(label)
+pub fn column<Action>(children: impl IntoElements<Action>) -> Container<Action> {
+    Container::new(Axis::Vertical, children)
 }
 
 #[must_use]
-pub fn button_with<Action>(args: ButtonArgs<Action>) -> Element<Action> {
-    Element::button_with(args)
+pub fn row<Action>(children: impl IntoElements<Action>) -> Container<Action> {
+    Container::new(Axis::Horizontal, children)
 }
 
-#[must_use]
-pub fn container_with<Action>(args: ContainerArgs<Action>) -> Element<Action> {
-    Element::container_with(args)
-}
-
-#[must_use]
-pub fn column<Action>(children: impl IntoElements<Action>) -> Element<Action> {
-    Element::container(Axis::Vertical, children)
-}
-
-#[must_use]
-pub fn row<Action>(children: impl IntoElements<Action>) -> Element<Action> {
-    Element::container(Axis::Horizontal, children)
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        Color, ColorValue, EdgeInsets, Length, Radius, RadiusValue, SpacingValue, StyleIntent,
-        button,
-    };
-
-    #[test]
-    fn elements_default_to_empty_visual_style() {
-        let element = button::<()>("Save");
-        assert_eq!(element.visual_style(), &StyleIntent::EMPTY);
+fn assign_id(
+    slot: &mut Option<ElementId>,
+    diagnostics: &mut Vec<AuthoringDiagnostic>,
+    value: String,
+) {
+    match ElementId::new(value.clone()) {
+        Ok(id) => *slot = Some(id),
+        Err(error) => diagnostics.push(AuthoringDiagnostic {
+            field: "id",
+            value,
+            error,
+        }),
     }
+}
 
-    #[test]
-    fn element_builders_store_local_visual_style_intent() {
-        let padding = EdgeInsets::all(Length::px(8.0));
-        let radius = Radius::all(Length::px(4.0));
-        let element = button::<()>("Save")
-            .foreground(Color::WHITE)
-            .background(Color::BLACK)
-            .padding(padding)
-            .radius(radius);
-
-        assert_eq!(
-            element.visual_style().foreground(),
-            Some(&ColorValue::literal(Color::WHITE))
-        );
-        assert_eq!(
-            element.visual_style().background(),
-            Some(&ColorValue::literal(Color::BLACK))
-        );
-        assert_eq!(
-            element.visual_style().padding(),
-            Some(&SpacingValue::literal(padding))
-        );
-        assert_eq!(
-            element.visual_style().radius(),
-            Some(&RadiusValue::literal(radius))
-        );
+fn assign_key(
+    slot: &mut Option<ElementKey>,
+    diagnostics: &mut Vec<AuthoringDiagnostic>,
+    value: String,
+) {
+    match ElementKey::new(value.clone()) {
+        Ok(key) => *slot = Some(key),
+        Err(error) => diagnostics.push(AuthoringDiagnostic {
+            field: "key",
+            value,
+            error,
+        }),
     }
 }

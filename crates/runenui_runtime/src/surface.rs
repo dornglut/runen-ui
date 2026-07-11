@@ -5,8 +5,8 @@
 //! layout pass, concrete computed-style delivery, and bounds hit testing.
 
 use runenui_core::{
-    Axis, ComputedStyle, EdgeInsets, Element, ElementId, ElementKind, StyleResolution, StyleTokens,
-    resolve_style,
+    Axis, ComputedStyle, EdgeInsets, Element, ElementId, ElementKind, LogicalLength,
+    StyleResolution, StyleTokens, resolve_style,
 };
 
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
@@ -19,26 +19,50 @@ use crate::{
 /// Logical size in UI coordinate space.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LogicalSize {
-    width: f32,
-    height: f32,
+    width: LogicalLength,
+    height: LogicalLength,
 }
 
 impl LogicalSize {
     /// Creates a logical size.
     #[must_use]
-    pub const fn new(width: f32, height: f32) -> Self {
+    pub const fn new(width: LogicalLength, height: LogicalLength) -> Self {
         Self { width, height }
+    }
+
+    /// Validates scalar width and height values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`runenui_core::LogicalLengthError`] if either extent is
+    /// non-finite or negative.
+    pub fn try_new(width: f32, height: f32) -> Result<Self, runenui_core::LogicalLengthError> {
+        Ok(Self::new(
+            LogicalLength::new(width)?,
+            LogicalLength::new(height)?,
+        ))
+    }
+
+    pub(crate) fn from_sanitized(width: f32, height: f32) -> Self {
+        Self::new(logical_extent(width), logical_extent(height))
     }
 
     /// Returns the horizontal extent.
     #[must_use]
     pub const fn width(&self) -> f32 {
-        self.width
+        self.width.get()
     }
 
     /// Returns the vertical extent.
     #[must_use]
     pub const fn height(&self) -> f32 {
+        self.height.get()
+    }
+
+    pub(crate) const fn width_length(self) -> LogicalLength {
+        self.width
+    }
+    pub(crate) const fn height_length(self) -> LogicalLength {
         self.height
     }
 }
@@ -53,18 +77,13 @@ pub struct LogicalRect {
 impl LogicalRect {
     /// Creates a logical rectangle from an origin and size.
     #[must_use]
-    pub const fn new(origin: LogicalPoint, size: LogicalSize) -> Self {
+    pub(crate) const fn new(origin: LogicalPoint, size: LogicalSize) -> Self {
         Self { origin, size }
     }
 
     /// Creates a logical rectangle from scalar components.
     #[must_use]
-    pub const fn from_xywh(x: f32, y: f32, width: f32, height: f32) -> Self {
-        Self::new(LogicalPoint::new(x, y), LogicalSize::new(width, height))
-    }
-
     /// Returns the top-left origin.
-    #[must_use]
     pub const fn origin(&self) -> LogicalPoint {
         self.origin
     }
@@ -123,6 +142,7 @@ impl LogicalRect {
 }
 
 /// Renderer-facing node kind carried by a surface frame.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SurfaceNodeKind {
     /// Non-visual grouping node.
@@ -136,13 +156,13 @@ pub enum SurfaceNodeKind {
 impl SurfaceNodeKind {
     /// Creates a container surface node kind.
     #[must_use]
-    pub const fn container() -> Self {
+    const fn container() -> Self {
         Self::Container
     }
 
     /// Creates a text surface node kind.
     #[must_use]
-    pub fn text(content: impl Into<String>) -> Self {
+    fn text(content: impl Into<String>) -> Self {
         Self::Text {
             content: content.into(),
         }
@@ -150,7 +170,7 @@ impl SurfaceNodeKind {
 
     /// Creates a button surface node kind.
     #[must_use]
-    pub fn button(label: impl Into<String>, enabled: bool) -> Self {
+    fn button(label: impl Into<String>, enabled: bool) -> Self {
         Self::Button {
             label: label.into(),
             enabled,
@@ -172,7 +192,7 @@ pub struct SurfaceNode {
 impl SurfaceNode {
     /// Creates a surface node.
     #[must_use]
-    pub const fn new(
+    pub(crate) const fn new(
         id: RuntimeNodeId,
         parent: Option<RuntimeNodeId>,
         authored_id: Option<ElementId>,
@@ -237,17 +257,8 @@ pub struct SurfaceFrame {
 impl SurfaceFrame {
     /// Creates a surface frame from a frame size and ordered nodes.
     #[must_use]
-    pub const fn new(size: LogicalSize, nodes: Vec<SurfaceNode>) -> Self {
+    pub(crate) const fn new(size: LogicalSize, nodes: Vec<SurfaceNode>) -> Self {
         Self { size, nodes }
-    }
-
-    /// Creates an empty surface frame with no nodes.
-    #[must_use]
-    pub const fn empty(size: LogicalSize) -> Self {
-        Self {
-            size,
-            nodes: Vec::new(),
-        }
     }
 
     /// Returns the logical frame size.
@@ -600,7 +611,7 @@ impl<'a, Action> ResolvedSurfaceTree<'a, Action> {
                 parent: node.parent(),
                 element: node.element(),
                 children,
-                resolution: resolve_style(node.element().visual_style(), tokens),
+                resolution: resolve_style(node.element().style(), tokens),
             })
             .collect();
 
@@ -670,7 +681,8 @@ fn layout_resolved_surface<Action>(
     measurement_provider: &dyn MeasurementProvider,
 ) -> (SurfaceFrame, SurfaceLayoutReport) {
     let mut measured_layout = MeasuredSurfaceLayout::new(resolved_tree.nodes().len());
-    let mut frame_size = root_constraints.constrain(LogicalSize::new(0.0, 0.0));
+    let mut frame_size =
+        root_constraints.constrain(LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO));
 
     if let Some(root) = resolved_tree.node(RuntimeNodeId::ROOT) {
         let measurer = SurfaceMeasurer::new(measurement_provider);
@@ -684,7 +696,7 @@ fn layout_resolved_surface<Action>(
     let frame_nodes = {
         let mut arranger = SurfaceArrangementBuilder::new(&measured_layout);
         if let Some(root) = resolved_tree.node(RuntimeNodeId::ROOT) {
-            arranger.push_node(resolved_tree, root, LogicalPoint::new(0.0, 0.0));
+            arranger.push_node(resolved_tree, root, LogicalPoint::from_finite(0.0, 0.0));
         }
         arranger.into_nodes()
     };
@@ -830,7 +842,7 @@ impl<'a> SurfaceMeasurer<'a> {
         content_constraints: LayoutConstraints,
     ) -> LogicalSize {
         let child_constraints = child_constraints(axis, content_constraints);
-        let gap = valid_extent(node.element().style().gap().value());
+        let gap = node.element().layout().gap().get();
         let mut width: f32 = 0.0;
         let mut height: f32 = 0.0;
         let mut measured_child_count = 0_usize;
@@ -864,7 +876,7 @@ impl<'a> SurfaceMeasurer<'a> {
             measured_child_count += 1;
         }
 
-        LogicalSize::new(width, height)
+        LogicalSize::from_sanitized(width, height)
     }
 }
 
@@ -916,10 +928,10 @@ impl<'a> SurfaceArrangementBuilder<'a> {
         parent_bounds: LogicalRect,
         axis: Axis,
     ) {
-        let gap = valid_extent(container_node.element().style().gap().value());
+        let gap = container_node.element().layout().gap().get();
         let padding = resolved_padding(container_node);
-        let mut cursor_x = finite_sum(parent_bounds.x(), valid_extent(padding.left().value()));
-        let mut cursor_y = finite_sum(parent_bounds.y(), valid_extent(padding.top().value()));
+        let mut cursor_x = finite_sum(parent_bounds.x(), padding.left().get());
+        let mut cursor_y = finite_sum(parent_bounds.y(), padding.top().get());
         let mut arranged_child_count = 0_usize;
 
         for child_id in container_node.children() {
@@ -938,7 +950,11 @@ impl<'a> SurfaceArrangementBuilder<'a> {
                 }
             }
 
-            self.push_node(resolved_tree, child, LogicalPoint::new(cursor_x, cursor_y));
+            self.push_node(
+                resolved_tree,
+                child,
+                LogicalPoint::from_finite(cursor_x, cursor_y),
+            );
 
             match axis {
                 Axis::Vertical => cursor_y = finite_sum(cursor_y, child_size.height()),
@@ -965,8 +981,8 @@ impl Default for ButtonLayoutPolicy {
 }
 
 impl ButtonLayoutPolicy {
-    const fn apply_minimum(self, size: LogicalSize) -> LogicalSize {
-        LogicalSize::new(
+    fn apply_minimum(self, size: LogicalSize) -> LogicalSize {
+        LogicalSize::from_sanitized(
             max_extent(size.width(), self.min_width),
             max_extent(size.height(), self.min_height),
         )
@@ -1016,22 +1032,27 @@ fn loose_axis(axis: AxisConstraints) -> AxisConstraints {
 
 fn content_axis_constraints(axis: AxisConstraints, padding: f32) -> AxisConstraints {
     let max = match axis.max() {
-        AxisLimit::Finite(max) => AxisLimit::Finite(subtract_extent(max, padding)),
+        AxisLimit::Finite(max) => {
+            AxisLimit::Finite(logical_extent(subtract_extent(max.get(), padding)))
+        }
         AxisLimit::Unbounded => AxisLimit::Unbounded,
     };
 
-    AxisConstraints::new(subtract_extent(axis.min(), padding), max)
+    AxisConstraints::new(
+        logical_extent(subtract_extent(axis.min().get(), padding)),
+        max,
+    )
 }
 
 fn expand_size_by_padding(size: LogicalSize, padding: EdgeInsets) -> LogicalSize {
-    LogicalSize::new(
+    LogicalSize::from_sanitized(
         finite_sum(size.width(), horizontal_padding(padding)),
         finite_sum(size.height(), vertical_padding(padding)),
     )
 }
 
-fn sanitize_size(size: LogicalSize) -> LogicalSize {
-    LogicalSize::new(valid_extent(size.width()), valid_extent(size.height()))
+const fn sanitize_size(size: LogicalSize) -> LogicalSize {
+    size
 }
 
 fn layout_overflow(
@@ -1067,21 +1088,15 @@ fn axis_overflow(
 }
 
 fn exceeds_finite_max(desired: f32, maximum: AxisLimit) -> bool {
-    matches!(maximum, AxisLimit::Finite(max) if desired > max)
+    matches!(maximum, AxisLimit::Finite(max) if desired > max.get())
 }
 
 fn horizontal_padding(padding: EdgeInsets) -> f32 {
-    finite_sum(
-        valid_extent(padding.left().value()),
-        valid_extent(padding.right().value()),
-    )
+    finite_sum(padding.left().get(), padding.right().get())
 }
 
 fn vertical_padding(padding: EdgeInsets) -> f32 {
-    finite_sum(
-        valid_extent(padding.top().value()),
-        valid_extent(padding.bottom().value()),
-    )
+    finite_sum(padding.top().get(), padding.bottom().get())
 }
 
 fn subtract_extent(value: f32, amount: f32) -> f32 {
@@ -1099,6 +1114,10 @@ fn valid_extent(value: f32) -> f32 {
     } else {
         0.0
     }
+}
+
+fn logical_extent(value: f32) -> LogicalLength {
+    LogicalLength::new(valid_extent(value)).unwrap_or_default()
 }
 
 fn surface_kind<Action>(kind: &ElementKind<Action>) -> SurfaceNodeKind {
