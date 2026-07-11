@@ -1,132 +1,135 @@
 # Architecture
 
-RunenUI separates application state, element authoring, runtime evaluation, layout, styling, accessibility, and renderer output.
+> **Category: Target architecture**
+>
+> Current implementation facts are explicitly identified below. Unqualified pipeline descriptions are accepted targets, not implemented APIs.
 
-The runtime is the central owner of UI evaluation. Hosts feed input into the runtime. Renderers consume published surface frames. Applications own their state and actions.
+RunenUI separates application state, transient authoring, persistent runtime identity, interaction, style, layout, semantics, hit testing, paint extraction, host integration, and rendering.
 
-## Overview
-
-RunenUI is organized around a small set of concepts:
-
-- `State` is application-owned data.
-- `Action` is application-owned intent emitted by elements.
-- `update` changes state in response to an action.
-- `Element` is the UI description derived from state.
-- `Runtime` evaluates input, dispatches actions, computes layout, and publishes frames.
-- `SurfaceFrame` is renderer-neutral output for a named surface.
-
-## Core Loop
+## Accepted target pipeline
 
 ```text
-InputEvent
-  -> Runtime
-  -> Action
-  -> update(State, Action)
-  -> root(State) -> Element<Action>
-  -> Style resolution
-  -> LayoutBox tree
-  -> Accessibility tree
-  -> Primitive output
-  -> SurfaceFrame
+Application state
+  -> root/view
+Transient immutable View/Element tree
+  -> keyed reconciliation
+Persistent mounted runtime tree
+  -> computed style
+  -> layout
+  -> semantic tree + hit-test scene + paint scene
+  -> host accessibility/event integration + renderer backend
 ```
 
-The application provides state, an `update` function, and a root element function. The runtime owns the rest of the UI pipeline.
+The mounted tree is the runtime authority. It retains generational node identity, parent/child structure, widget-local state, lifecycle, invalidation, focus, hover, pressed state, pointer capture, scrolling state, semantic identity, and task/subscription ownership. The authored tree remains cheap, declarative, and transient.
 
-## Runtime
+The output products are deliberately distinct:
 
-The runtime receives input events from a host, resolves focus and hit testing, dispatches element actions, calls the application `update` function, rebuilds the root element, computes layout, and publishes a surface frame.
-
-The runtime is also the natural owner for tracing, inspection, accessibility tree production, and deterministic replay.
-
-## Elements
-
-Elements are UI descriptions. They are derived from application state and can emit application actions.
-
-Elements describe structure, control intent, layout properties, style intent, accessibility data, and event bindings. They are not renderer objects.
-
-The primary authoring surface is `element!`:
-
-```rust
-element! {
-    column gap=8 {
-        text "Counter"
-        button "+" on_press=CounterAction::Increment
-    }
-}
+```text
+Mounted tree
+Semantic tree
+Layout result
+Hit-test scene
+Paint/primitive scene
+Diagnostics
 ```
 
-The same model can be expressed through builder calls:
+A renderer consumes paint primitives and resources. It does not interpret semantic widget kinds such as `Button`. Hit testing consumes explicit hit-test data and remains independent of the renderer.
 
-```rust
-column((
-    text("Counter"),
-    button("+").on_press(CounterAction::Increment),
-))
-.gap(8)
+## Current implementation
+
+The current implementation is a deterministic headless proof with this narrower shape:
+
+```text
+Application-owned State + Action
+  -> UiApp::root(State) -> Element<Action>
+  -> transient preorder RuntimeTreeIndex
+  -> synchronous input/focus/activation policies
+  -> UiApp::update(State, Action)
+  -> full root rebuild and focus clear
+  -> per-publication style resolution
+  -> provider-backed row/column measurement and arrangement
+  -> SurfaceFrame + SurfaceStyleReport + SurfaceLayoutReport
 ```
 
-## State and Actions
+Current `RuntimeNodeId` values are preorder indexes for one built tree. `ElementKey` is stored but is not used for reconciliation. `ElementKind` is closed to text, button, and container. `SurfaceFrame` carries semantic `SurfaceNodeKind` values and is an inspectable proof product, not the accepted renderer-neutral paint protocol.
 
-Applications own state and actions.
+The current layout and styling implementation is credible and retained: typed style values and token resolution, concrete computed style, provenance, explicit constraints, a borrowed measurement provider, one measured result per node per publication, constrained cross-axis row/column behavior, computed padding, and aligned overflow diagnostics.
 
-```rust
-struct Counter {
-    count: i32,
-}
+## Ownership rules
 
-enum CounterAction {
-    Increment,
-    Decrement,
-    Reset,
-}
+- Durable application meaning belongs to application state.
+- Ephemeral interaction mechanics belong to mounted widget state.
+- Native resources and platform state belong to the host.
+- Renderer resources belong to the renderer/resource layer.
+- Components compose views and map local actions; widgets are mounted lifecycle participants.
+- Mounted runtime mutation occurs on one logical UI thread.
+
+External crates must eventually be able to define widgets through public reconciliation, lifecycle, event, layout, paint, semantic, diagnostic, and deterministic-test contracts without modifying `runenui_core`.
+
+## Application and effect model
+
+The primary application model remains:
+
+```text
+state -> view -> action -> update -> state
 ```
 
-Actions are emitted by elements and passed to `update`:
+Simple applications retain a synchronous update form. Production applications gain an explicit effects result or collector. Effects request tasks, timers, subscriptions, cancellation, host commands, wakeups, and completion actions; execution remains owned by the runtime/host and deterministic in tests.
 
-```rust
-fn update(counter: &mut Counter, action: CounterAction) {
-    match action {
-        CounterAction::Increment => counter.count += 1,
-        CounterAction::Decrement => counter.count -= 1,
-        CounterAction::Reset => counter.count = 0,
-    }
-}
+## Event model
+
+The accepted canonical path is:
+
+```text
+Host event
+  -> normalization
+  -> capture phase
+  -> target phase
+  -> bubble phase
+  -> semantic default behavior
+  -> application action
+  -> update
+  -> effects and invalidation
 ```
 
-## Styling
+Pointer, keyboard, accessibility, automation, and programmatic activation converge on semantic control commands. Default pointer button activation is press, capture, pressed-state update, release, then activation only if release remains valid. Keyboard commands and text/IME input are separate event streams.
 
-Styling is a distinct data pipeline between element authoring and layout/render output.
+## Layout and styling
 
-The target styling architecture is documented in [Styling Target Architecture](architecture/styling-target.md).
+RunenUI owns public layout semantics, constraints, results, diagnostics, and custom-layout extension points. A mature layout algorithm may be adopted behind an adapter only after an adopt-versus-build ADR; dependency vocabulary must not leak into RunenUI’s public contract.
 
-Token references and token-backed style values are documented in [Token Reference Target](architecture/token-reference-target.md).
+Style resolution follows this conceptual order:
 
-Current token authoring ergonomics are documented in [Token Authoring Ergonomics](architecture/token-authoring-ergonomics.md). The current decision is to use typed Rust expressions through the builder API and `element!` expression attributes before adding shorthand syntax.
+```text
+platform and user preferences
+  -> theme tokens
+  -> control recipe
+  -> variant
+  -> interaction state
+  -> local override
+  -> computed style
+```
 
-The resolved style data model is documented in [Computed Style Model](architecture/computed-style-model.md). The runtime cutover that makes one style-resolution product feed layout, surface output, and diagnostics is documented in [Computed Style Runtime Integration](architecture/computed-style-runtime-integration.md).
+Interaction-state recipes wait for mounted hover, pressed, focus, and disabled state. Layout-affecting style values must not form a disconnected parallel configuration model.
 
-## Layout
+## Text and accessibility
 
-Layout is a distinct runtime phase. Elements express layout intent through properties such as direction, gap, padding, sizing, alignment, and constraints. The runtime computes a `LayoutBox` tree from those inputs.
+RunenUI will use a mature text stack behind RunenUI-owned contracts; it will not implement Unicode shaping from scratch. Production text includes fallback, shaping, bidi, line breaking, wrapping, baselines, editing, selection, caret, clipboard, IME, and accessible text ranges.
 
-The next layout boundary is documented in [Layout Constraints and Measurement Contract](architecture/layout-constraints-measurement-contract.md). It defines explicit constraints, a renderer-neutral intrinsic-measurement seam, deterministic fallback measurement, and the staged cutover for constrained row/column layout.
+Accessibility is mandatory for production controls. Semantics are renderer-independent and include stable identity, role, name, state, values, relationships, actions, bounds, and text ranges. Desktop platform bridges consume this semantic product.
 
-The `LayoutBox` tree is inspectable data. It gives hosts, renderers, tests, and tools a stable representation of computed geometry.
+## Hosts, surfaces, and renderers
 
-## Accessibility
+One application runtime may own multiple logical surfaces that share application state and resources while retaining independent scale, layout roots, focus scopes, publication generations, and host lifecycle.
 
-Accessibility is structured UI data derived from elements, identity, roles, labels, state, actions, style, and layout.
+The required profiles are headless/test, standalone desktop, and embedded host. The renderer-neutral scene protocol is stabilized first, then proven by deterministic consumers, one conventional desktop backend, and only afterward an embedded/SDF consumer.
 
-The accessibility tree is part of the runtime model. This lets hosts expose semantic UI information even when the final renderer is custom, game-oriented, or non-DOM.
+## Current workspace boundary
 
-## Surface Frames
+The active workspace intentionally contains `runenui_core`, `runenui_runtime`, the Counter example, and `xtask`. New crates require real ownership, dependency, optionality, independent-consumer, or conformance pressure. A target crate diagram is not permission to create empty crates, and the facade crate is deferred until lower-level APIs warrant a stable public surface.
 
-A `Surface` is a named UI output target.
+## Required ADRs before implementation choices
 
-A `SurfaceFrame` is the runtime's published renderer-facing output for a surface. The current frame carries runtime identity, bounds, renderer-facing node kinds, and concrete `ComputedStyle`. `SurfacePublication` produces that frame together with an aligned `SurfaceStyleReport` from one runtime-owned style-resolution pass. Token references, provenance, and unresolved-token diagnostics remain outside the renderer-facing frame.
+The following decisions require dedicated analysis and review: public View/Widget/type-erasure protocol; reconciliation storage and identity; event API; effects API; standard layout algorithm; production text stack; conventional renderer; crate extraction points; unsafe policy for host/backend crates; animation/time; and semver strategy for extensible enums and traits.
 
-## Hosts and Renderers
-
-A host embeds RunenUI into an application, engine, editor, or tool. It feeds input into the runtime and receives published surface frames.
-
-A renderer consumes primitive output and draws it. Renderer backends can target different graphics systems while sharing the same element, state, action, style, layout, and accessibility model.
+See the [roadmap](roadmap.md) for dependency gates and the [feature/support matrix](feature-support-matrix.md) for current coverage.
