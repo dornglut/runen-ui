@@ -5,9 +5,13 @@
 //! row/column layout pass, and bounds hit testing. It does not translate host
 //! input or render pixels.
 
-use runenui_core::{Axis, Element, ElementId, ElementKind};
+use runenui_core::{
+    Axis, ComputedStyle, Element, ElementId, ElementKind, StyleResolution, StyleTokens,
+    resolve_style,
+};
 
-use crate::{LogicalPoint, RuntimeNodeId};
+use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
+use crate::{LogicalPoint, RuntimeNodeId, RuntimeTreeIndex};
 
 /// Logical size in UI coordinate space.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -159,6 +163,7 @@ pub struct SurfaceNode {
     authored_id: Option<ElementId>,
     bounds: LogicalRect,
     kind: SurfaceNodeKind,
+    computed_style: ComputedStyle,
 }
 
 impl SurfaceNode {
@@ -170,6 +175,7 @@ impl SurfaceNode {
         authored_id: Option<ElementId>,
         bounds: LogicalRect,
         kind: SurfaceNodeKind,
+        computed_style: ComputedStyle,
     ) -> Self {
         Self {
             id,
@@ -177,6 +183,7 @@ impl SurfaceNode {
             authored_id,
             bounds,
             kind,
+            computed_style,
         }
     }
 
@@ -208,6 +215,12 @@ impl SurfaceNode {
     #[must_use]
     pub const fn kind(&self) -> &SurfaceNodeKind {
         &self.kind
+    }
+
+    /// Returns the concrete resolved style consumed by layout and renderers.
+    #[must_use]
+    pub const fn computed_style(&self) -> ComputedStyle {
+        self.computed_style
     }
 }
 
@@ -358,29 +371,201 @@ impl SurfaceLayoutMetrics {
     }
 }
 
-/// Lays out an element tree into a surface frame using default intrinsic metrics.
-///
-/// The root element receives the provided frame size. Row and column containers
-/// stack children by axis using their authored gap. Text and button bounds are
-/// intrinsic placeholders until the text/layout systems become real.
-#[must_use]
-pub fn layout_surface<Action>(root: &Element<Action>, size: LogicalSize) -> SurfaceFrame {
-    layout_surface_with_metrics(root, size, SurfaceLayoutMetrics::default())
+/// Explicit inputs used to publish one surface snapshot.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SurfaceBuildContext<'a> {
+    style_tokens: &'a StyleTokens,
+    layout_metrics: SurfaceLayoutMetrics,
 }
 
-/// Lays out an element tree into a surface frame using explicit intrinsic metrics.
+impl<'a> SurfaceBuildContext<'a> {
+    /// Creates a build context with default placeholder layout metrics.
+    #[must_use]
+    pub fn new(style_tokens: &'a StyleTokens) -> Self {
+        Self {
+            style_tokens,
+            layout_metrics: SurfaceLayoutMetrics::default(),
+        }
+    }
+
+    /// Replaces the placeholder layout metrics for this publication.
+    #[must_use]
+    pub const fn with_layout_metrics(mut self, layout_metrics: SurfaceLayoutMetrics) -> Self {
+        self.layout_metrics = layout_metrics;
+        self
+    }
+
+    /// Returns the explicit style-token input.
+    #[must_use]
+    pub const fn style_tokens(&self) -> &'a StyleTokens {
+        self.style_tokens
+    }
+
+    /// Returns the explicit layout metrics input.
+    #[must_use]
+    pub const fn layout_metrics(&self) -> SurfaceLayoutMetrics {
+        self.layout_metrics
+    }
+}
+
+/// Aligned renderer-facing and diagnostic products from one surface preparation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SurfacePublication {
+    frame: SurfaceFrame,
+    style_report: SurfaceStyleReport,
+}
+
+impl SurfacePublication {
+    const fn new(frame: SurfaceFrame, style_report: SurfaceStyleReport) -> Self {
+        Self {
+            frame,
+            style_report,
+        }
+    }
+
+    /// Returns the renderer-facing surface frame.
+    #[must_use]
+    pub const fn frame(&self) -> &SurfaceFrame {
+        &self.frame
+    }
+
+    /// Returns style provenance and diagnostics aligned to the frame nodes.
+    #[must_use]
+    pub const fn style_report(&self) -> &SurfaceStyleReport {
+        &self.style_report
+    }
+
+    /// Consumes the publication and returns its aligned products.
+    #[must_use]
+    pub fn into_parts(self) -> (SurfaceFrame, SurfaceStyleReport) {
+        (self.frame, self.style_report)
+    }
+}
+
+/// Resolves style once per node and publishes aligned frame and diagnostic products.
+///
+/// Geometry remains the current placeholder row/column layout. Computed padding
+/// is carried on each surface node but does not affect bounds until the next
+/// implementation slice.
 #[must_use]
-pub fn layout_surface_with_metrics<Action>(
+pub fn publish_surface<Action>(
     root: &Element<Action>,
+    size: LogicalSize,
+    context: &SurfaceBuildContext<'_>,
+) -> SurfacePublication {
+    let resolved_tree = ResolvedSurfaceTree::new(root, context.style_tokens());
+    let frame = layout_resolved_surface(&resolved_tree, size, context.layout_metrics());
+    let style_report = build_surface_style_report(&resolved_tree);
+
+    SurfacePublication::new(frame, style_report)
+}
+
+struct ResolvedSurfaceTree<'a, Action> {
+    nodes: Vec<ResolvedSurfaceNode<'a, Action>>,
+}
+
+impl<'a, Action> ResolvedSurfaceTree<'a, Action> {
+    fn new(root: &'a Element<Action>, tokens: &StyleTokens) -> Self {
+        let index = RuntimeTreeIndex::new(root);
+        let mut children_by_parent: Vec<Vec<RuntimeNodeId>> =
+            (0..index.nodes().len()).map(|_| Vec::new()).collect();
+
+        for node in index.nodes() {
+            if let Some(parent) = node.parent()
+                && let Some(children) = children_by_parent.get_mut(parent.as_usize())
+            {
+                children.push(node.id());
+            }
+        }
+
+        let nodes = index
+            .nodes()
+            .iter()
+            .zip(children_by_parent)
+            .map(|(node, children)| ResolvedSurfaceNode {
+                id: node.id(),
+                parent: node.parent(),
+                element: node.element(),
+                children,
+                resolution: resolve_style(node.element().visual_style(), tokens),
+            })
+            .collect();
+
+        Self { nodes }
+    }
+
+    const fn nodes(&self) -> &[ResolvedSurfaceNode<'a, Action>] {
+        self.nodes.as_slice()
+    }
+
+    fn node(&self, id: RuntimeNodeId) -> Option<&ResolvedSurfaceNode<'a, Action>> {
+        self.nodes.get(id.as_usize())
+    }
+}
+
+struct ResolvedSurfaceNode<'a, Action> {
+    id: RuntimeNodeId,
+    parent: Option<RuntimeNodeId>,
+    element: &'a Element<Action>,
+    children: Vec<RuntimeNodeId>,
+    resolution: StyleResolution,
+}
+
+impl<Action> ResolvedSurfaceNode<'_, Action> {
+    const fn id(&self) -> RuntimeNodeId {
+        self.id
+    }
+
+    const fn parent(&self) -> Option<RuntimeNodeId> {
+        self.parent
+    }
+
+    const fn element(&self) -> &Element<Action> {
+        self.element
+    }
+
+    const fn children(&self) -> &[RuntimeNodeId] {
+        self.children.as_slice()
+    }
+
+    const fn resolution(&self) -> &StyleResolution {
+        &self.resolution
+    }
+}
+
+fn build_surface_style_report<Action>(
+    resolved_tree: &ResolvedSurfaceTree<'_, Action>,
+) -> SurfaceStyleReport {
+    let nodes = resolved_tree
+        .nodes()
+        .iter()
+        .map(|node| {
+            SurfaceStyleNode::new(
+                node.id(),
+                node.element().element_id().cloned(),
+                node.resolution().clone(),
+            )
+        })
+        .collect();
+
+    SurfaceStyleReport::new(nodes)
+}
+
+fn layout_resolved_surface<Action>(
+    resolved_tree: &ResolvedSurfaceTree<'_, Action>,
     size: LogicalSize,
     metrics: SurfaceLayoutMetrics,
 ) -> SurfaceFrame {
     let mut builder = SurfaceLayoutBuilder::new(metrics);
-    builder.push_node(
-        None,
-        root,
-        LogicalRect::new(LogicalPoint::new(0.0, 0.0), size),
-    );
+
+    if let Some(root) = resolved_tree.node(RuntimeNodeId::ROOT) {
+        builder.push_node(
+            resolved_tree,
+            root,
+            LogicalRect::new(LogicalPoint::new(0.0, 0.0), size),
+        );
+    }
+
     SurfaceFrame::new(size, builder.into_nodes())
 }
 
@@ -403,49 +588,50 @@ impl SurfaceLayoutBuilder {
 
     fn push_node<Action>(
         &mut self,
-        parent: Option<RuntimeNodeId>,
-        element: &Element<Action>,
+        resolved_tree: &ResolvedSurfaceTree<'_, Action>,
+        node: &ResolvedSurfaceNode<'_, Action>,
         bounds: LogicalRect,
-    ) -> RuntimeNodeId {
-        let id = RuntimeNodeId::from_index(self.nodes.len());
+    ) {
         self.nodes.push(SurfaceNode::new(
-            id,
-            parent,
-            element.element_id().cloned(),
+            node.id(),
+            node.parent(),
+            node.element().element_id().cloned(),
             bounds,
-            surface_kind(element.kind()),
+            surface_kind(node.element().kind()),
+            node.resolution().computed_style(),
         ));
 
-        if let ElementKind::Container(container) = element.kind() {
+        if let ElementKind::Container(container) = node.element().kind() {
             self.push_container_children(
-                id,
+                resolved_tree,
+                node,
                 bounds,
                 container.axis(),
-                container.children(),
-                element,
+                node.children(),
             );
         }
-
-        id
     }
 
     fn push_container_children<Action>(
         &mut self,
-        parent: RuntimeNodeId,
+        resolved_tree: &ResolvedSurfaceTree<'_, Action>,
+        container_node: &ResolvedSurfaceNode<'_, Action>,
         parent_bounds: LogicalRect,
         axis: Axis,
-        children: &[Element<Action>],
-        container_element: &Element<Action>,
+        children: &[RuntimeNodeId],
     ) {
-        let gap = container_element.style().gap().value();
+        let gap = container_node.element().style().gap().value();
         let mut cursor_x = parent_bounds.x();
         let mut cursor_y = parent_bounds.y();
 
-        for child in children {
-            let child_size = self.measure(child);
+        for child_id in children {
+            let Some(child) = resolved_tree.node(*child_id) else {
+                continue;
+            };
+            let child_size = self.measure(resolved_tree, child);
             let child_bounds =
                 LogicalRect::from_xywh(cursor_x, cursor_y, child_size.width(), child_size.height());
-            self.push_node(Some(parent), child, child_bounds);
+            self.push_node(resolved_tree, child, child_bounds);
 
             match axis {
                 Axis::Vertical => cursor_y += child_size.height() + gap,
@@ -454,8 +640,12 @@ impl SurfaceLayoutBuilder {
         }
     }
 
-    fn measure<Action>(&self, element: &Element<Action>) -> LogicalSize {
-        match element.kind() {
+    fn measure<Action>(
+        &self,
+        resolved_tree: &ResolvedSurfaceTree<'_, Action>,
+        node: &ResolvedSurfaceNode<'_, Action>,
+    ) -> LogicalSize {
+        match node.element().kind() {
             ElementKind::Text(text) => LogicalSize::new(
                 char_count_as_f32(text.content()) * self.metrics.text_char_width(),
                 self.metrics.text_height(),
@@ -473,23 +663,29 @@ impl SurfaceLayoutBuilder {
                 )
             }
             ElementKind::Container(container) => {
-                self.measure_container(element, container.axis(), container.children())
+                self.measure_container(resolved_tree, node, container.axis(), node.children())
             }
         }
     }
 
     fn measure_container<Action>(
         &self,
-        element: &Element<Action>,
+        resolved_tree: &ResolvedSurfaceTree<'_, Action>,
+        node: &ResolvedSurfaceNode<'_, Action>,
         axis: Axis,
-        children: &[Element<Action>],
+        children: &[RuntimeNodeId],
     ) -> LogicalSize {
-        let gap = element.style().gap().value();
+        let gap = node.element().style().gap().value();
         let mut width: f32 = 0.0;
         let mut height: f32 = 0.0;
+        let mut child_count = 0_usize;
 
-        for child in children {
-            let child_size = self.measure(child);
+        for child_id in children {
+            let Some(child) = resolved_tree.node(*child_id) else {
+                continue;
+            };
+            child_count += 1;
+            let child_size = self.measure(resolved_tree, child);
             match axis {
                 Axis::Vertical => {
                     width = width.max(child_size.width());
@@ -502,8 +698,8 @@ impl SurfaceLayoutBuilder {
             }
         }
 
-        if children.len() > 1 {
-            let total_gap = gap * count_as_f32(children.len() - 1);
+        if child_count > 1 {
+            let total_gap = gap * count_as_f32(child_count - 1);
             match axis {
                 Axis::Vertical => height += total_gap,
                 Axis::Horizontal => width += total_gap,

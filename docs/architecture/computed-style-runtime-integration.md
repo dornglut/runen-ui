@@ -4,6 +4,12 @@ This document defines how RunenUI turns authored style intent into one runtime-o
 
 It is the implementation contract that follows the computed-style, token-resolution, provenance, and surface-style debug proofs. It does not introduce component recipes, interaction-state styling, external themes, renderer backends, accessibility output, or new crates.
 
+## Implementation status
+
+Slice 1 is implemented. `SurfaceBuildContext`, `SurfacePublication`, and `publish_surface` now provide the single public publication path. One prepared runtime tree supplies runtime identity, per-node `StyleResolution`, frame `ComputedStyle`, and style diagnostics. The former public `layout_surface`, `layout_surface_with_metrics`, `resolve_surface_style_report`, `AppRuntime::surface_frame`, and `AppRuntime::surface_frame_with_metrics` paths have been removed.
+
+Slice 2 remains next: computed padding must affect measurement and child placement.
+
 ## Problem
 
 The current implementation has two independent paths over the same element tree:
@@ -375,9 +381,9 @@ The integration creates real pressure at those boundaries, but the current imple
 
 ## Implementation sequence
 
-### Slice 1: unified surface publication
+### Slice 1: unified surface publication — implemented
 
-Implement the shared runtime preparation and publication seam without changing layout geometry yet.
+The shared runtime preparation and publication seam is implemented without changing layout geometry.
 
 Required outcomes:
 

@@ -1,8 +1,14 @@
-use runenui_core::prelude::{button, column, row, text};
+use runenui_core::prelude::{ComputedStyle, StyleTokens, button, column, row, text};
 use runenui_runtime::prelude::{
-    LogicalPoint, LogicalRect, LogicalSize, RuntimeNodeId, SurfaceFrame, SurfaceNode,
-    SurfaceNodeKind, layout_surface,
+    LogicalPoint, LogicalRect, LogicalSize, RuntimeNodeId, SurfaceBuildContext, SurfaceFrame,
+    SurfaceNode, SurfaceNodeKind, publish_surface,
 };
+
+fn surface_frame<Action>(root: &runenui_core::Element<Action>, size: LogicalSize) -> SurfaceFrame {
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(&tokens);
+    publish_surface(root, size, &context).into_parts().0
+}
 
 enum Action {}
 
@@ -38,6 +44,7 @@ fn hit_test_prefers_later_nodes_when_bounds_overlap() -> Result<(), &'static str
         None,
         LogicalRect::from_xywh(0.0, 0.0, 50.0, 50.0),
         SurfaceNodeKind::button("First", true),
+        ComputedStyle::EMPTY,
     );
     let second = SurfaceNode::new(
         RuntimeNodeId::from_index(2),
@@ -45,6 +52,7 @@ fn hit_test_prefers_later_nodes_when_bounds_overlap() -> Result<(), &'static str
         None,
         LogicalRect::from_xywh(10.0, 10.0, 50.0, 50.0),
         SurfaceNodeKind::button("Second", true),
+        ComputedStyle::EMPTY,
     );
     let frame = SurfaceFrame::new(
         LogicalSize::new(100.0, 100.0),
@@ -55,6 +63,7 @@ fn hit_test_prefers_later_nodes_when_bounds_overlap() -> Result<(), &'static str
                 None,
                 LogicalRect::from_xywh(0.0, 0.0, 100.0, 100.0),
                 SurfaceNodeKind::container(),
+                ComputedStyle::EMPTY,
             ),
             first,
             second,
@@ -74,8 +83,8 @@ fn hit_test_prefers_later_nodes_when_bounds_overlap() -> Result<(), &'static str
 }
 
 #[test]
-fn layout_surface_hit_test_returns_child_nodes_before_parent_containers() -> Result<(), &'static str>
-{
+fn published_surface_hit_test_returns_child_nodes_before_parent_containers()
+-> Result<(), &'static str> {
     let ui = column((
         row((button::<Action>("A"), button::<Action>("B")))
             .id("button.row")
@@ -84,7 +93,7 @@ fn layout_surface_hit_test_returns_child_nodes_before_parent_containers() -> Res
     ))
     .id("root")
     .gap(8.0);
-    let frame = layout_surface(&ui, LogicalSize::new(300.0, 200.0));
+    let frame = surface_frame(&ui, LogicalSize::new(300.0, 200.0));
 
     assert_eq!(
         hit_id(&frame, LogicalPoint::new(1.0, 1.0))?,
@@ -114,7 +123,7 @@ fn layout_surface_hit_test_returns_child_nodes_before_parent_containers() -> Res
 #[test]
 fn hit_test_reports_disabled_button_node() -> Result<(), &'static str> {
     let ui = column(button::<Action>("Disabled").disabled());
-    let frame = layout_surface(&ui, LogicalSize::new(200.0, 100.0));
+    let frame = surface_frame(&ui, LogicalSize::new(200.0, 100.0));
 
     assert_eq!(
         hit_id(&frame, LogicalPoint::new(1.0, 1.0))?,

@@ -114,7 +114,7 @@ Each `SurfaceStyleNode` owns the complete `StyleResolution` for its correspondin
 
 This is a debug and inspection seam. It is not the final renderer model and does not make renderers responsible for token resolution.
 
-The current `resolve_surface_style_report(root, frame, tokens)` function is a transitional proof. It resolves the tree separately from layout and aligns results by traversal order. The accepted runtime cutover replaces that split with one preparation and publication pipeline; see [Computed Style Runtime Integration](computed-style-runtime-integration.md).
+The transitional `resolve_surface_style_report(root, frame, tokens)` path has been removed. `publish_surface` now prepares one resolved runtime tree and derives both `SurfaceFrame` and `SurfaceStyleReport` from it; see [Computed Style Runtime Integration](computed-style-runtime-integration.md).
 
 ## Ownership
 
@@ -146,7 +146,7 @@ This stage does not add:
 
 `StyleResolution` is the core bridge product that keeps concrete output, provenance, and unresolved-token diagnostics together.
 
-`SurfaceStyleReport` is the runtime debug product that aligns complete style-resolution facts with surface node IDs. The next runtime integration makes it a diagnostic projection of the same resolution product used by layout and `SurfaceFrame`, rather than an independently resolved side path.
+`SurfaceStyleReport` is the runtime debug product that aligns complete style-resolution facts with surface node IDs. It is a diagnostic projection of the same per-node `StyleResolution` product used to place concrete `ComputedStyle` on `SurfaceFrame`.
 
 ## Deferred extensions
 

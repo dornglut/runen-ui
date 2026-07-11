@@ -6,12 +6,13 @@ use runenui_core::{Element, ElementKind};
 
 use crate::{
     FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, LogicalSize, PointerButton, PointerEvent,
-    PointerPhase, Runtime, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, SurfaceFrame,
-    SurfaceLayoutMetrics, Trace, TraceTarget, layout_surface, layout_surface_with_metrics,
+    PointerPhase, Runtime, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, SurfaceBuildContext,
+    SurfacePublication, Trace, TraceTarget,
     policy::{
         InputEventResult, KeyboardActivationResult, KeyboardFocusResult, PointerActivationResult,
         PointerFocusResult,
     },
+    publish_surface,
 };
 
 /// Application contract used by [`AppRuntime`].
@@ -231,20 +232,14 @@ where
         self.runtime.root()
     }
 
-    /// Builds a renderer-facing surface frame from the current root tree.
+    /// Publishes aligned renderer-facing and style-diagnostic surface products.
     #[must_use]
-    pub fn surface_frame(&self, size: LogicalSize) -> SurfaceFrame {
-        layout_surface(self.root(), size)
-    }
-
-    /// Builds a renderer-facing surface frame from the current root tree with explicit layout metrics.
-    #[must_use]
-    pub fn surface_frame_with_metrics(
+    pub fn publish_surface(
         &self,
         size: LogicalSize,
-        metrics: SurfaceLayoutMetrics,
-    ) -> SurfaceFrame {
-        layout_surface_with_metrics(self.root(), size, metrics)
+        context: &SurfaceBuildContext<'_>,
+    ) -> SurfacePublication {
+        publish_surface(self.root(), size, context)
     }
 
     /// Returns the runtime trace.

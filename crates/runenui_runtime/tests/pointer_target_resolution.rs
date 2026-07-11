@@ -1,8 +1,8 @@
-use runenui_core::prelude::{button, column, text};
+use runenui_core::prelude::{StyleTokens, button, column, text};
 use runenui_runtime::prelude::{
     ActivationResult, AppRuntime, InputEvent, InputEventResult, KeyModifiers, LogicalPoint,
     LogicalSize, PointerActivationResult, PointerButton, PointerEvent, PointerFocusResult,
-    PointerPhase, RuntimeNodeId, UiApp, resolve_pointer_event_target,
+    PointerPhase, RuntimeNodeId, SurfaceBuildContext, UiApp, resolve_pointer_event_target,
     resolve_pointer_input_event_target,
 };
 
@@ -40,6 +40,15 @@ impl UiApp for CounterApp {
     }
 }
 
+fn surface_frame(runtime: &AppRuntime<CounterApp>) -> runenui_runtime::SurfaceFrame {
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(&tokens);
+    runtime
+        .publish_surface(LogicalSize::new(200.0, 100.0), &context)
+        .into_parts()
+        .0
+}
+
 const fn pointer_event(position: LogicalPoint, target: Option<RuntimeNodeId>) -> PointerEvent {
     PointerEvent::new(
         PointerPhase::Pressed,
@@ -61,7 +70,7 @@ fn pointer_event_with_target_replaces_target() {
 #[test]
 fn resolve_pointer_event_target_sets_hit_tested_node() {
     let runtime = AppRuntime::<CounterApp>::mount(Counter { count: 0 });
-    let frame = runtime.surface_frame(LogicalSize::new(200.0, 100.0));
+    let frame = surface_frame(&runtime);
     let event = pointer_event(LogicalPoint::new(1.0, 29.0), None);
 
     let targeted = resolve_pointer_event_target(&frame, event);
@@ -72,7 +81,7 @@ fn resolve_pointer_event_target_sets_hit_tested_node() {
 #[test]
 fn resolve_pointer_event_target_clears_stale_target_on_miss() {
     let runtime = AppRuntime::<CounterApp>::mount(Counter { count: 0 });
-    let frame = runtime.surface_frame(LogicalSize::new(200.0, 100.0));
+    let frame = surface_frame(&runtime);
     let event = pointer_event(
         LogicalPoint::new(400.0, 400.0),
         Some(RuntimeNodeId::from_index(2)),
@@ -86,7 +95,7 @@ fn resolve_pointer_event_target_clears_stale_target_on_miss() {
 #[test]
 fn resolve_pointer_input_event_target_wraps_targeted_pointer_event() -> Result<(), &'static str> {
     let runtime = AppRuntime::<CounterApp>::mount(Counter { count: 0 });
-    let frame = runtime.surface_frame(LogicalSize::new(200.0, 100.0));
+    let frame = surface_frame(&runtime);
     let event = pointer_event(LogicalPoint::new(1.0, 29.0), None);
 
     let input = resolve_pointer_input_event_target(&frame, event);
@@ -103,7 +112,7 @@ fn resolve_pointer_input_event_target_wraps_targeted_pointer_event() -> Result<(
 #[test]
 fn resolved_pointer_input_event_drives_runtime_input_facade() {
     let mut runtime = AppRuntime::<CounterApp>::mount(Counter { count: 0 });
-    let frame = runtime.surface_frame(LogicalSize::new(200.0, 100.0));
+    let frame = surface_frame(&runtime);
     let event = pointer_event(LogicalPoint::new(1.0, 29.0), None);
     let input = resolve_pointer_input_event_target(&frame, event);
 

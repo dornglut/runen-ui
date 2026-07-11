@@ -1,12 +1,28 @@
-use runenui_core::prelude::{button, column, row, text};
+use runenui_core::prelude::{StyleTokens, button, column, row, text};
 use runenui_runtime::prelude::{
-    LogicalRect, LogicalSize, RuntimeNodeId, SurfaceFrame, SurfaceLayoutMetrics, SurfaceNode,
-    SurfaceNodeKind, layout_surface, layout_surface_with_metrics,
+    LogicalRect, LogicalSize, RuntimeNodeId, SurfaceBuildContext, SurfaceFrame,
+    SurfaceLayoutMetrics, SurfaceNode, SurfaceNodeKind, publish_surface,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Action {
     Press,
+}
+
+fn surface_frame<Action>(root: &runenui_core::Element<Action>, size: LogicalSize) -> SurfaceFrame {
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(&tokens);
+    publish_surface(root, size, &context).into_parts().0
+}
+
+fn surface_frame_with_metrics<Action>(
+    root: &runenui_core::Element<Action>,
+    size: LogicalSize,
+    metrics: SurfaceLayoutMetrics,
+) -> SurfaceFrame {
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(&tokens).with_layout_metrics(metrics);
+    publish_surface(root, size, &context).into_parts().0
 }
 
 fn assert_f32_eq(actual: f32, expected: f32) {
@@ -40,7 +56,7 @@ fn vertical_column_lays_out_children_by_gap_and_intrinsic_size() -> Result<(), &
     .id("counter.root")
     .gap(8.0);
 
-    let frame = layout_surface(&ui, LogicalSize::new(200.0, 100.0));
+    let frame = surface_frame(&ui, LogicalSize::new(200.0, 100.0));
     let root = root_node(&frame)?;
     let title = surface_node(&frame, RuntimeNodeId::from_index(1))?;
     let increment = surface_node(&frame, RuntimeNodeId::from_index(2))?;
@@ -72,7 +88,7 @@ fn horizontal_row_lays_out_children_on_x_axis() -> Result<(), &'static str> {
         .id("row.root")
         .gap(4.0);
 
-    let frame = layout_surface(&ui, LogicalSize::new(120.0, 40.0));
+    let frame = surface_frame(&ui, LogicalSize::new(120.0, 40.0));
     let label = surface_node(&frame, RuntimeNodeId::from_index(1))?;
     let button = surface_node(&frame, RuntimeNodeId::from_index(2))?;
 
@@ -96,7 +112,7 @@ fn nested_containers_keep_preorder_runtime_ids_and_parent_ids() -> Result<(), &'
     .id("root")
     .gap(5.0);
 
-    let frame = layout_surface(&ui, LogicalSize::new(300.0, 200.0));
+    let frame = surface_frame(&ui, LogicalSize::new(300.0, 200.0));
     let row_node = surface_node(&frame, RuntimeNodeId::from_index(1))?;
     let first_button = surface_node(&frame, RuntimeNodeId::from_index(2))?;
     let second_button = surface_node(&frame, RuntimeNodeId::from_index(3))?;
@@ -127,7 +143,7 @@ fn nested_containers_keep_preorder_runtime_ids_and_parent_ids() -> Result<(), &'
 fn disabled_button_surface_kind_preserves_enabled_state() -> Result<(), &'static str> {
     let ui = column(button::<Action>("Disabled").disabled());
 
-    let frame = layout_surface(&ui, LogicalSize::new(100.0, 40.0));
+    let frame = surface_frame(&ui, LogicalSize::new(100.0, 40.0));
     let disabled = surface_node(&frame, RuntimeNodeId::from_index(1))?;
 
     assert_eq!(disabled.kind(), &SurfaceNodeKind::button("Disabled", false));
@@ -140,7 +156,7 @@ fn explicit_metrics_control_intrinsic_text_and_button_sizes() -> Result<(), &'st
     let metrics = SurfaceLayoutMetrics::new(10.0, 18.0, 9.0, 5.0, 22.0, 30.0);
     let ui = column((text::<Action>("ABC"), button::<Action>("ABCD"))).gap(2.0);
 
-    let frame = layout_surface_with_metrics(&ui, LogicalSize::new(100.0, 100.0), metrics);
+    let frame = surface_frame_with_metrics(&ui, LogicalSize::new(100.0, 100.0), metrics);
     let text = surface_node(&frame, RuntimeNodeId::from_index(1))?;
     let button = surface_node(&frame, RuntimeNodeId::from_index(2))?;
 
@@ -157,7 +173,7 @@ fn explicit_metrics_control_intrinsic_text_and_button_sizes() -> Result<(), &'st
 fn empty_container_produces_only_root_surface_node() -> Result<(), &'static str> {
     let ui = column::<Action>(Vec::new()).id("empty.root");
 
-    let frame = layout_surface(&ui, LogicalSize::new(640.0, 480.0));
+    let frame = surface_frame(&ui, LogicalSize::new(640.0, 480.0));
 
     assert_eq!(frame.nodes().len(), 1);
     let root = root_node(&frame)?;

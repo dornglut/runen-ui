@@ -1,7 +1,14 @@
-use runenui_core::prelude::{button, column, text};
+use runenui_core::prelude::{StyleTokens, button, column, text};
 use runenui_runtime::prelude::{
-    DebugSurfaceRenderer, LogicalSize, SurfaceFrame, layout_surface, render_debug_surface_frame,
+    DebugSurfaceRenderer, LogicalSize, SurfaceBuildContext, SurfaceFrame, publish_surface,
+    render_debug_surface_frame,
 };
+
+fn surface_frame<Action>(root: &runenui_core::Element<Action>, size: LogicalSize) -> SurfaceFrame {
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(&tokens);
+    publish_surface(root, size, &context).into_parts().0
+}
 
 enum Action {}
 
@@ -23,7 +30,7 @@ fn debug_renderer_renders_layout_nodes() {
     ))
     .id("counter.root")
     .gap(8.0);
-    let frame = layout_surface(&ui, LogicalSize::new(200.0, 100.0));
+    let frame = surface_frame(&ui, LogicalSize::new(200.0, 100.0));
 
     let rendered = DebugSurfaceRenderer::new().render(&frame);
 

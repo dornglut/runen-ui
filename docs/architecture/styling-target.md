@@ -353,14 +353,12 @@ This is why the style pipeline should be explicit and data-driven.
 
 ## Current implementation status
 
-The primitive vocabulary, typed token references, element-local `StyleIntent`, in-memory token resolution, `ComputedStyle`, provenance, and runtime style-debug report now exist.
+The primitive vocabulary, typed token references, element-local `StyleIntent`, in-memory token resolution, `ComputedStyle`, provenance, and runtime style diagnostics now exist. Unified surface publication also exists: one runtime preparation pass resolves each node once, places concrete `ComputedStyle` on `SurfaceNode`, and produces an aligned `SurfaceStyleReport`.
 
-The remaining architectural split is that layout and surface publication do not consume the same resolved-style product as diagnostics. The next implementation sequence is defined in [Computed Style Runtime Integration](computed-style-runtime-integration.md):
+The next implementation sequence is defined in [Computed Style Runtime Integration](computed-style-runtime-integration.md):
 
 ```text
-unified surface publication
-  -> computed style on SurfaceNode
-  -> computed padding affects layout
+computed padding affects layout
   -> layout boundary review
 ```
 

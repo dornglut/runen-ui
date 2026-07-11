@@ -3,11 +3,10 @@
 use core::fmt::{self, Write as _};
 
 use runenui_core::{
-    ComputedStyle, Element, ElementId, ElementKind, StyleProvenance, StyleResolution, StyleTokens,
-    UnresolvedStyleToken, resolve_style,
+    ComputedStyle, ElementId, StyleProvenance, StyleResolution, UnresolvedStyleToken,
 };
 
-use crate::{RuntimeNodeId, SurfaceFrame};
+use crate::RuntimeNodeId;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SurfaceStyleReport {
@@ -96,31 +95,6 @@ impl SurfaceStyleNode {
 }
 
 #[must_use]
-pub fn resolve_surface_style_report<Action>(
-    root: &Element<Action>,
-    frame: &SurfaceFrame,
-    tokens: &StyleTokens,
-) -> SurfaceStyleReport {
-    let mut resolutions = Vec::new();
-    collect_style_resolutions(root, tokens, &mut resolutions);
-
-    let nodes = frame
-        .nodes()
-        .iter()
-        .zip(resolutions)
-        .map(|(surface_node, resolution)| {
-            SurfaceStyleNode::new(
-                surface_node.id(),
-                surface_node.authored_id().cloned(),
-                resolution,
-            )
-        })
-        .collect();
-
-    SurfaceStyleReport::new(nodes)
-}
-
-#[must_use]
 pub fn render_debug_surface_style_report(report: &SurfaceStyleReport) -> String {
     let mut output = String::new();
 
@@ -134,20 +108,6 @@ pub fn render_debug_surface_style_report(report: &SurfaceStyleReport) -> String 
     }
 
     output
-}
-
-fn collect_style_resolutions<Action>(
-    element: &Element<Action>,
-    tokens: &StyleTokens,
-    resolutions: &mut Vec<StyleResolution>,
-) {
-    resolutions.push(resolve_style(element.visual_style(), tokens));
-
-    if let ElementKind::Container(container) = element.kind() {
-        for child in container.children() {
-            collect_style_resolutions(child, tokens, resolutions);
-        }
-    }
 }
 
 struct DebugSurfaceStyleNode<'a>(&'a SurfaceStyleNode);

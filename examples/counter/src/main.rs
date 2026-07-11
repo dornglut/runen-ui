@@ -9,13 +9,16 @@ mod app;
 mod ui;
 
 use app::{Counter, CounterApp, WIN_COUNT};
-use runenui_runtime::{AppRuntime, LogicalSize, render_debug_surface_frame};
+use runenui_core::StyleTokens;
+use runenui_runtime::{AppRuntime, LogicalSize, SurfaceBuildContext, render_debug_surface_frame};
 
 const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(240.0, 160.0);
 
 fn debug_surface(runtime: &AppRuntime<CounterApp>) -> String {
-    let frame = runtime.surface_frame(EXAMPLE_SURFACE_SIZE);
-    render_debug_surface_frame(&frame)
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(&tokens);
+    let publication = runtime.publish_surface(EXAMPLE_SURFACE_SIZE, &context);
+    render_debug_surface_frame(publication.frame())
 }
 
 fn print_debug_surface(label: &str, runtime: &AppRuntime<CounterApp>) {

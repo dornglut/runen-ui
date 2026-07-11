@@ -2,7 +2,7 @@
 
 `runenui_runtime` owns the headless UI runtime for RunenUI.
 
-This crate turns application state and typed UI descriptions into runtime behavior and published surface frames. Applications own their state and actions. Elements emit actions. The runtime dispatches input, resolves interaction, calls the application update function, rebuilds the root element, computes runtime output, and publishes inspectable frame data.
+This crate turns application state and typed UI descriptions into runtime behavior and published surface products. Applications own their state and actions. Elements emit actions. The runtime dispatches input, resolves interaction, calls the application update function, rebuilds the root element, resolves per-node style, computes layout, and publishes an aligned renderer-facing `SurfaceFrame` and diagnostic `SurfaceStyleReport`.
 
 ## Responsibilities
 
@@ -18,7 +18,7 @@ This crate turns application state and typed UI descriptions into runtime behavi
 * accessibility tree extraction
 * primitive extraction
 * runtime tracing
-* surface-frame publication
+* unified surface publication from explicit style tokens and layout metrics
 * deterministic headless execution for tests
 
 ## Non-responsibilities

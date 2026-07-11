@@ -12,11 +12,12 @@ Keep the implementation in `runenui_runtime` until layout becomes more than simp
 
 ## Current implementation
 
-The current surface module owns three responsibilities:
+The current surface module owns four responsibilities:
 
-1. renderer-facing surface-frame data types;
-2. simple row/column layout from `Element<Action>` into `SurfaceFrame`;
-3. bounds-based hit testing on the published frame.
+1. explicit surface build inputs and unified publication;
+2. one per-node style-resolution preparation for frame and diagnostics;
+3. simple row/column layout into `SurfaceFrame`;
+4. bounds-based hit testing on the published frame.
 
 Current public surface vocabulary:
 
@@ -27,19 +28,21 @@ SurfaceNodeKind
 SurfaceNode
 SurfaceFrame
 SurfaceLayoutMetrics
-layout_surface
-layout_surface_with_metrics
+SurfaceBuildContext
+SurfacePublication
+publish_surface
 ```
 
-`SurfaceFrame` is not a renderer backend. It is an ordered, host-neutral frame snapshot containing runtime node identity, optional authored IDs, logical bounds, and renderer-facing node kinds.
+`SurfaceFrame` is not a renderer backend. It is an ordered, host-neutral frame snapshot containing runtime node identity, optional authored IDs, logical bounds, renderer-facing node kinds, and concrete `ComputedStyle`. `SurfacePublication` carries the frame together with aligned style diagnostics.
 
 The current layout pass is intentionally simple:
 
 ```text
-Element<Action>
+Element<Action> + StyleTokens + layout metrics
+  -> resolved runtime surface tree
   -> SurfaceLayoutBuilder
-  -> Vec<SurfaceNode>
-  -> SurfaceFrame
+  -> SurfaceFrame + SurfaceStyleReport
+  -> SurfacePublication
 ```
 
 It assigns bounds to containers, text, and buttons using placeholder intrinsic metrics. It understands only row/column stacking, authored gap, text length approximation, button label approximation, and button minimum size.
@@ -76,7 +79,7 @@ activation policy
 trace targets
 ```
 
-`AppRuntime::surface_frame` is the current publication seam. It builds a renderer-facing frame from the current root tree and a surface size.
+`AppRuntime::publish_surface` is the current publication seam. It accepts a surface size and explicit `SurfaceBuildContext`, then produces one aligned `SurfacePublication`.
 
 ### Debug rendering
 
@@ -116,13 +119,11 @@ A future layout crate can still use runtime node identity, but that contract sho
 
 Until that seam exists, a layout crate would mostly encode temporary measurements as public API.
 
-### 5. Computed style is not integrated yet
+### 5. Computed style is integrated, but does not affect geometry yet
 
-The core style model now includes typed token values, `StyleIntent`, `StyleTokens`, `ComputedStyle`, provenance, and missing-token diagnostics. The runtime can produce a separate `SurfaceStyleReport`.
+The runtime now prepares one resolved surface tree. `SurfaceFrame` receives concrete `ComputedStyle`, while `SurfaceStyleReport` receives provenance and unresolved-token diagnostics from the same per-node `StyleResolution`.
 
-The remaining boundary problem is that layout still walks `Element<Action>` directly and does not consume the same `StyleResolution` product as diagnostics. Padding is the first implemented computed field that should materially affect layout.
-
-Extracting layout before that integration would still freeze the wrong API shape. The accepted cutover is documented in [Computed Style Runtime Integration](computed-style-runtime-integration.md).
+The remaining boundary pressure is behavioral: the current layout algorithm carries computed padding but does not yet apply it to measurement or child placement. Extracting layout before that first style-driven geometry rule would still freeze a premature API. The accepted box-model contract is documented in [Computed Style Runtime Integration](computed-style-runtime-integration.md).
 
 ## Future `runenui_layout` ownership
 
@@ -170,11 +171,12 @@ SurfaceNodeKind
 SurfaceNode
 SurfaceFrame
 SurfaceLayoutMetrics
-layout_surface
-layout_surface_with_metrics
+SurfaceBuildContext
+SurfacePublication
+publish_surface
 hit testing on SurfaceFrame
-AppRuntime::surface_frame
-AppRuntime::surface_frame_with_metrics
+AppRuntime::publish_surface
+SurfaceStyleReport
 DebugSurfaceRenderer
 ```
 
@@ -182,9 +184,10 @@ This keeps the current interaction pipeline simple:
 
 ```text
 AppRuntime
-  -> current root Element tree
-  -> surface frame
-  -> debug renderer / future backend
+  -> current root Element tree + SurfaceBuildContext
+  -> one resolved surface tree
+  -> SurfacePublication
+  -> frame -> debug renderer / future backend
   -> hit test
   -> target RuntimeNodeId
   -> input policy / activation
@@ -214,27 +217,25 @@ Create `runenui_render` only when at least three of these are true:
 
 Do not extract crates next.
 
-The next code slice should implement the first stage of [Computed Style Runtime Integration](computed-style-runtime-integration.md):
+Unified surface publication is implemented. The next code slice should apply the padding box model from [Computed Style Runtime Integration](computed-style-runtime-integration.md):
 
 ```text
-Element tree + StyleTokens + layout metrics
-  -> one runtime-owned resolved surface tree
-  -> SurfaceFrame with ComputedStyle
-  -> SurfaceStyleReport from the same resolution product
+resolved ComputedStyle::padding
+  -> text and button intrinsic outer size
+  -> container outer size and child content origin
+  -> root child content origin
+  -> hit testing over padded outer bounds
 ```
 
 Required scope:
 
 ```text
-- explicit surface build context
-- one style resolution per node per publication
-- shared runtime node identity for frame and diagnostics
-- ComputedStyle carried by SurfaceNode
-- old parallel public layout/style-report paths removed or internalized
-- no geometry change yet
+- literal and token-resolved padding produce identical geometry
+- asymmetric padding is preserved
+- missing padding tokens produce zero insets plus diagnostics
+- button_horizontal_padding is removed as a conflicting hidden source
+- no additional style fields or layout algorithms
 ```
-
-The following slice should make computed padding affect text, button, container, and root content geometry.
 
 Non-goals remain:
 
@@ -248,7 +249,7 @@ Non-goals remain:
 
 ## Review cadence
 
-Revisit this boundary after unified surface publication and computed padding are implemented.
+Revisit this boundary after computed padding is implemented.
 
 The completed and expected progression is:
 

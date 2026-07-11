@@ -4,8 +4,8 @@ use runenui_core::{
     column, text,
 };
 use runenui_runtime::{
-    LogicalSize, RuntimeNodeId, SurfaceStyleNode, layout_surface,
-    render_debug_surface_style_report, resolve_surface_style_report,
+    LogicalSize, RuntimeNodeId, SurfaceBuildContext, SurfaceNode, SurfaceStyleNode,
+    publish_surface, render_debug_surface_style_report,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -29,18 +29,32 @@ fn surface_style_report_exposes_resolution_and_provenance_by_runtime_node() {
             .radius(RadiusToken::new("radius.control"))
             .on_press(Action::Save),
     ));
-    let frame = layout_surface(&root, LogicalSize::new(320.0, 200.0));
     let tokens = StyleTokens::new()
         .with_color("color.text.primary", Color::WHITE)
         .with_color("color.action.primary", Color::BLACK)
         .with_spacing("space.2", padding)
         .with_radius("radius.control", radius);
 
-    let report = resolve_surface_style_report(&root, &frame, &tokens);
+    let context = SurfaceBuildContext::new(&tokens);
+    let publication = publish_surface(&root, LogicalSize::new(320.0, 200.0), &context);
+    let frame = publication.frame();
+    let report = publication.style_report();
     let title = report.node(RuntimeNodeId::from_index(1));
     let save = report.node(RuntimeNodeId::from_index(2));
 
     assert_eq!(report.nodes().len(), frame.nodes().len());
+    assert_eq!(
+        frame
+            .node(RuntimeNodeId::from_index(1))
+            .map(SurfaceNode::computed_style),
+        title.map(SurfaceStyleNode::computed_style)
+    );
+    assert_eq!(
+        frame
+            .node(RuntimeNodeId::from_index(2))
+            .map(SurfaceNode::computed_style),
+        save.map(SurfaceStyleNode::computed_style)
+    );
     assert_eq!(
         title
             .and_then(SurfaceStyleNode::authored_id)
@@ -112,15 +126,23 @@ fn surface_style_report_preserves_missing_token_provenance_and_diagnostics() {
         .background(ColorToken::new("color.action.primary"))
         .radius(RadiusToken::new("radius.control"))
         .on_press(Action::Save),));
-    let frame = layout_surface(&root, LogicalSize::new(320.0, 200.0));
     let tokens = StyleTokens::new().with_color("color.action.primary", Color::BLACK);
 
-    let report = resolve_surface_style_report(&root, &frame, &tokens);
+    let context = SurfaceBuildContext::new(&tokens);
+    let publication = publish_surface(&root, LogicalSize::new(320.0, 200.0), &context);
+    let frame = publication.frame();
+    let report = publication.style_report();
     let save = report.node(RuntimeNodeId::from_index(1));
     let expected_unresolved = [UnresolvedStyleToken::Radius(RadiusToken::new(
         "radius.control",
     ))];
 
+    assert_eq!(
+        frame
+            .node(RuntimeNodeId::from_index(1))
+            .map(SurfaceNode::computed_style),
+        save.map(SurfaceStyleNode::computed_style)
+    );
     assert_eq!(
         save.map(SurfaceStyleNode::computed_style),
         Some(ComputedStyle::EMPTY.with_background(Color::BLACK))
@@ -151,11 +173,13 @@ fn debug_surface_style_report_is_deterministic_text() {
     let root: Element<Action> = column((text("Title")
         .id("title")
         .foreground(ColorToken::new("color.text.primary")),));
-    let frame = layout_surface(&root, LogicalSize::new(320.0, 200.0));
     let tokens = StyleTokens::new().with_color("color.text.primary", Color::WHITE);
 
-    let report = resolve_surface_style_report(&root, &frame, &tokens);
-    let output = render_debug_surface_style_report(&report);
+    let context = SurfaceBuildContext::new(&tokens);
+    let publication = publish_surface(&root, LogicalSize::new(320.0, 200.0), &context);
+    let frame = publication.frame();
+    let report = publication.style_report();
+    let output = render_debug_surface_style_report(report);
     let expected = concat!(
         "surface styles nodes=2\n",
         "style id=0 authored=- computed=ComputedStyle { foreground: None, background: None, padding: None, radius: None } ",
@@ -164,6 +188,18 @@ fn debug_surface_style_report_is_deterministic_text() {
         "provenance=StyleProvenance { foreground: ResolvedToken(ColorToken(TokenId(\"color.text.primary\"))), background: Absent, padding: Absent, radius: Absent } unresolved=[]\n",
     );
 
+    assert_eq!(
+        frame
+            .nodes()
+            .iter()
+            .map(SurfaceNode::id)
+            .collect::<Vec<_>>(),
+        report
+            .nodes()
+            .iter()
+            .map(SurfaceStyleNode::id)
+            .collect::<Vec<_>>()
+    );
     assert_eq!(output, expected);
-    assert_eq!(render_debug_surface_style_report(&report), expected);
+    assert_eq!(render_debug_surface_style_report(report), expected);
 }

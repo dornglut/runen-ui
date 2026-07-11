@@ -1,4 +1,4 @@
-use runenui_core::ElementId;
+use runenui_core::{ComputedStyle, ElementId};
 use runenui_runtime::prelude::{
     LogicalPoint, LogicalRect, LogicalSize, RuntimeNodeId, SurfaceFrame, SurfaceNode,
     SurfaceNodeKind,
@@ -57,6 +57,7 @@ fn surface_node_carries_runtime_identity_authored_identity_bounds_and_kind() {
         Some(ElementId::new("counter.increment")),
         LogicalRect::from_xywh(10.0, 20.0, 80.0, 24.0),
         SurfaceNodeKind::button("+", true),
+        ComputedStyle::EMPTY,
     );
 
     assert_eq!(node.id(), RuntimeNodeId::from_index(2));
@@ -76,6 +77,7 @@ fn surface_node_carries_runtime_identity_authored_identity_bounds_and_kind() {
             enabled: true,
         }
     );
+    assert_eq!(node.computed_style(), ComputedStyle::EMPTY);
 }
 
 #[test]
@@ -86,6 +88,7 @@ fn surface_frame_exposes_size_ordered_nodes_root_and_lookup() {
         Some(ElementId::new("counter.root")),
         LogicalRect::from_xywh(0.0, 0.0, 320.0, 240.0),
         SurfaceNodeKind::container(),
+        ComputedStyle::EMPTY,
     );
     let label = SurfaceNode::new(
         RuntimeNodeId::from_index(1),
@@ -93,6 +96,7 @@ fn surface_frame_exposes_size_ordered_nodes_root_and_lookup() {
         Some(ElementId::new("counter.value")),
         LogicalRect::from_xywh(8.0, 8.0, 120.0, 24.0),
         SurfaceNodeKind::text("0"),
+        ComputedStyle::EMPTY,
     );
     let button = SurfaceNode::new(
         RuntimeNodeId::from_index(2),
@@ -100,6 +104,7 @@ fn surface_frame_exposes_size_ordered_nodes_root_and_lookup() {
         Some(ElementId::new("counter.increment")),
         LogicalRect::from_xywh(8.0, 40.0, 80.0, 24.0),
         SurfaceNodeKind::button("+", true),
+        ComputedStyle::EMPTY,
     );
     let frame = SurfaceFrame::new(
         LogicalSize::new(320.0, 240.0),

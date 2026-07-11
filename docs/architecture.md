@@ -121,7 +121,7 @@ The accessibility tree is part of the runtime model. This lets hosts expose sema
 
 A `Surface` is a named UI output target.
 
-A `SurfaceFrame` is the runtime's published renderer-facing output for a surface. The target model contains computed style, computed layout, accessibility data, action bindings, and renderer-neutral primitives. The current implementation still publishes bounds and node kinds separately from style diagnostics; the computed-style runtime integration defines the next cutover that places concrete `ComputedStyle` on each surface node without placing token or provenance data in the frame.
+A `SurfaceFrame` is the runtime's published renderer-facing output for a surface. The current frame carries runtime identity, bounds, renderer-facing node kinds, and concrete `ComputedStyle`. `SurfacePublication` produces that frame together with an aligned `SurfaceStyleReport` from one runtime-owned style-resolution pass. Token references, provenance, and unresolved-token diagnostics remain outside the renderer-facing frame.
 
 ## Hosts and Renderers
 

@@ -1,7 +1,7 @@
-use runenui_core::prelude::{button, column, text};
+use runenui_core::prelude::{StyleTokens, button, column, text};
 use runenui_runtime::prelude::{
-    AppRuntime, LogicalRect, LogicalSize, RuntimeNodeId, SurfaceLayoutMetrics, SurfaceNodeKind,
-    UiApp,
+    AppRuntime, LogicalRect, LogicalSize, RuntimeNodeId, SurfaceBuildContext, SurfaceLayoutMetrics,
+    SurfaceNodeKind, UiApp,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -38,6 +38,25 @@ impl UiApp for CounterApp {
     }
 }
 
+fn surface_frame(
+    runtime: &AppRuntime<CounterApp>,
+    size: LogicalSize,
+) -> runenui_runtime::SurfaceFrame {
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(&tokens);
+    runtime.publish_surface(size, &context).into_parts().0
+}
+
+fn surface_frame_with_metrics(
+    runtime: &AppRuntime<CounterApp>,
+    size: LogicalSize,
+    metrics: SurfaceLayoutMetrics,
+) -> runenui_runtime::SurfaceFrame {
+    let tokens = StyleTokens::new();
+    let context = SurfaceBuildContext::new(&tokens).with_layout_metrics(metrics);
+    runtime.publish_surface(size, &context).into_parts().0
+}
+
 fn assert_f32_eq(actual: f32, expected: f32) {
     assert!(
         (actual - expected).abs() <= f32::EPSILON,
@@ -56,7 +75,7 @@ fn assert_rect_eq(actual: LogicalRect, expected: LogicalRect) {
 fn app_runtime_surface_frame_lays_out_current_root() -> Result<(), &'static str> {
     let runtime = AppRuntime::<CounterApp>::mount(State::default());
 
-    let frame = runtime.surface_frame(LogicalSize::new(200.0, 100.0));
+    let frame = surface_frame(&runtime, LogicalSize::new(200.0, 100.0));
     let root = frame.root().ok_or("expected root surface node")?;
     let value = frame
         .node(RuntimeNodeId::from_index(1))
@@ -90,7 +109,7 @@ fn app_runtime_surface_frame_reflects_rebuilt_root_after_dispatch() -> Result<()
     let mut runtime = AppRuntime::<CounterApp>::mount(State::default());
 
     runtime.dispatch(Action::Increment);
-    let frame = runtime.surface_frame(LogicalSize::new(200.0, 100.0));
+    let frame = surface_frame(&runtime, LogicalSize::new(200.0, 100.0));
     let value = frame
         .node(RuntimeNodeId::from_index(1))
         .ok_or("expected value surface node")?;
@@ -106,7 +125,7 @@ fn app_runtime_surface_frame_accepts_explicit_metrics() -> Result<(), &'static s
     let runtime = AppRuntime::<CounterApp>::mount(State::default());
     let metrics = SurfaceLayoutMetrics::new(10.0, 18.0, 9.0, 5.0, 22.0, 30.0);
 
-    let frame = runtime.surface_frame_with_metrics(LogicalSize::new(200.0, 100.0), metrics);
+    let frame = surface_frame_with_metrics(&runtime, LogicalSize::new(200.0, 100.0), metrics);
     let value = frame
         .node(RuntimeNodeId::from_index(1))
         .ok_or("expected value surface node")?;
