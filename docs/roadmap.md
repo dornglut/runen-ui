@@ -27,7 +27,7 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 ## M0 — Repository authority and governance reset
 
-**Status:** `active` corrective review on the program branch; M1 has not started.
+**Status:** `complete` on the program branch after the corrective review; M1 has not started.
 
 **Goal:** Make repository documentation, active content, metadata, governance, and validation truthful for a pre-1.0 production-readiness program.
 
