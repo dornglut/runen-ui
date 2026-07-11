@@ -15,17 +15,20 @@ Implemented:
 - computed padding applied to text, button, container, and root geometry;
 - padded outer bounds used for hit testing;
 - removal of the hidden `button_horizontal_padding` metric;
-- accepted [Layout Constraints and Measurement Contract](architecture/layout-constraints-measurement-contract.md).
+- accepted [Layout Constraints and Measurement Contract](architecture/layout-constraints-measurement-contract.md);
+- normalized finite/unbounded `LayoutConstraints` vocabulary;
+- renderer-neutral text measurement requests, results, and provider contract;
+- deterministic constraints-aware measurement provider for tests and headless examples.
 
 ## Current boundary decision
 
-Keep layout and surface publication in `runenui_runtime`.
+Keep layout, measurement orchestration, and surface publication in `runenui_runtime`.
 
-Computed padding is the first style-driven geometry rule, but it does not yet justify `runenui_layout`. The implementation still has:
+The neutral contracts now exist, but extraction still is not justified. The implementation still has:
 
 - one placeholder row/column algorithm;
-- only root-size input rather than explicit constraints;
-- character-count text measurement;
+- a fixed-size public surface entry point;
+- duplicate character-count measurement inside surface layout;
 - no independent layout consumer;
 - no independent layout diagnostics or conformance suite.
 
@@ -33,15 +36,14 @@ Reconsider extraction only when the criteria in [Layout Boundary Review](archite
 
 ## Next implementation sequence
 
-1. Implement normalized `LayoutConstraints` and finite/unbounded axis bounds.
-2. Route the existing tight root-size path through the constraint vocabulary without adding a parallel layout algorithm.
-3. Introduce a renderer-neutral text measurement request/response seam and deterministic fallback provider.
-4. Migrate text and button label measurement out of layout internals.
-5. Apply content-box constraints to row/column layout and make overflow behavior explicit.
-6. Review the layout boundary again using the resulting dependencies and tests.
-7. Define the renderer-neutral primitive/frame protocol before implementing WGPU or SDF backends.
-8. Add accessibility-tree extraction and a dedicated deterministic testing surface before broad control expansion.
-9. Add reusable controls, then a real host contract and first adapter/backend pair.
+1. Integrate `LayoutConstraints` and a borrowed `MeasurementProvider` into surface publication.
+2. Migrate text and button-label measurement out of `surface.rs` so the provider is authoritative.
+3. Retire duplicate `SurfaceLayoutMetrics` measurement fields while retaining explicit button minimum-size policy.
+4. Apply content-box constraints to row/column layout and make overflow behavior explicit.
+5. Review the layout boundary again using the resulting dependencies and tests.
+6. Define the renderer-neutral primitive/frame protocol before implementing WGPU or SDF backends.
+7. Add accessibility-tree extraction and a dedicated deterministic testing surface before broad control expansion.
+8. Add reusable controls, then a real host contract and first adapter/backend pair.
 
 ## Deferred
 

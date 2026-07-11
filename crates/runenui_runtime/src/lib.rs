@@ -11,6 +11,7 @@ mod constraints;
 mod debug;
 mod focus;
 mod input;
+mod measurement;
 mod node;
 mod policy;
 pub mod prelude;
@@ -27,6 +28,10 @@ pub use input::{
     InputEvent, InputIntent, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint,
     PointerButton, PointerEvent, PointerPhase, resolve_pointer_event_target,
     resolve_pointer_input_event_target,
+};
+pub use measurement::{
+    DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement, TextMeasurementKind,
+    TextMeasurementRequest,
 };
 pub use node::{RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex};
 pub use policy::{
