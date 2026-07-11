@@ -59,6 +59,16 @@ fn dispatch_activation_disabled_and_trace_regressions_hold() -> Result<(), &'sta
             RuntimeEvent::RootRebuilt,
         ]
     );
+    let targeted = runtime
+        .trace()
+        .records()
+        .get(1)
+        .and_then(runenui_runtime::TraceRecord::target)
+        .ok_or("target")?;
+    assert_eq!(
+        targeted.authored_id().map(runenui_core::ElementId::as_str),
+        Some("increment")
+    );
     assert_eq!(runtime.activate(" "), ActivationResult::InvalidId);
     Ok(())
 }

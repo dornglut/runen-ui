@@ -5,6 +5,7 @@ use runenui_core::{
 use runenui_runtime::{
     DeterministicMeasurementProvider, LayoutConstraints, LogicalPoint, LogicalSize,
     SurfaceBuildContext, TextMeasurementKind, publish_surface, render_debug_surface_frame,
+    render_debug_surface_style_report,
 };
 
 fn length(value: f32) -> LogicalLength {
@@ -71,6 +72,9 @@ fn resolved_padding_and_token_provenance_share_one_publication()
             .computed_style()
             .padding(),
         Some(padding)
+    );
+    assert!(
+        render_debug_surface_style_report(publication.style_report()).contains("ResolvedToken")
     );
     Ok(())
 }
