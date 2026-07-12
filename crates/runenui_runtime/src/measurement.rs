@@ -8,7 +8,7 @@ use runenui_core::LogicalLength;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextMeasurementKind {
     Text,
-    ButtonLabel,
+    ControlLabel,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

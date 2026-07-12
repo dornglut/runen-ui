@@ -1,11 +1,11 @@
-/// Erases one typed element builder into [`Element`](crate::Element).
+/// Erases one typed view into [`Element`](crate::Element).
 ///
 /// The macro intentionally accepts the same Rust builder expression used
 /// without the macro; it has no parallel property grammar.
 #[macro_export]
 macro_rules! element {
     ($builder:expr $(,)?) => {
-        $crate::IntoElement::into_element($builder)
+        $crate::View::into_element($builder)
     };
 }
 
@@ -17,6 +17,6 @@ macro_rules! element {
 #[macro_export]
 macro_rules! children {
     ($($builder:expr),* $(,)?) => {
-        vec![$($crate::IntoElement::into_element($builder)),*]
+        vec![$($crate::View::into_element($builder)),*]
     };
 }

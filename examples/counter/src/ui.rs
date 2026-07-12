@@ -1,4 +1,4 @@
-use runenui_core::{Element, IntoElement, button, children, column, row, text};
+use runenui_core::{Element, View, button, children, column, row, text};
 
 use crate::app::{Counter, CounterAction};
 

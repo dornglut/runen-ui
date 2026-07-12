@@ -6,7 +6,7 @@
 
 use core::fmt::{self, Write as _};
 
-use crate::{LogicalRect, LogicalSize, RuntimeNodeId, SurfaceFrame, SurfaceNode, SurfaceNodeKind};
+use crate::{LogicalRect, LogicalSize, RuntimeNodeId, SurfaceFrame, SurfaceNode};
 
 /// Deterministic text renderer for renderer-facing surface frames.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -55,27 +55,19 @@ impl fmt::Display for DebugSurfaceNode<'_> {
 
         write!(
             formatter,
-            "node id={} parent={} authored={} bounds={} kind={}",
+            "node id={} parent={} authored={} bounds={} paint={} {:?} semantic={} {:?} enabled={} actionable={} diagnostics={:?}",
             format_node_id(node.id()),
             format_parent(node.parent()),
             format_authored_id(node),
             format_rect(node.bounds()),
-            DebugSurfaceNodeKind(node.kind())
+            node.paint().category(),
+            node.paint().description(),
+            node.semantics().role(),
+            node.semantics().name(),
+            node.semantics().enabled(),
+            node.semantics().actionable(),
+            node.diagnostics(),
         )
-    }
-}
-
-struct DebugSurfaceNodeKind<'a>(&'a SurfaceNodeKind);
-
-impl fmt::Display for DebugSurfaceNodeKind<'_> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            SurfaceNodeKind::Container => formatter.write_str("container"),
-            SurfaceNodeKind::Text { content } => write!(formatter, "text {content:?}"),
-            SurfaceNodeKind::Button { label, enabled } => {
-                write!(formatter, "button {label:?} enabled={enabled}")
-            }
-        }
     }
 }
 

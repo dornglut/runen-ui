@@ -11,14 +11,30 @@ Today RunenUI is a coherent **headless architecture proof**. It is not a product
 The active workspace proves:
 
 - application-owned state and typed actions with explicit `update`;
-- immutable `Element<Action>` description trees and builder/`element!` authoring;
+- typed transient views erased into open `Element<Action>` trees, ordinary
+  component functions, recursive typed action mapping, and builder/`element!`
+  authoring;
+- downstream `Widget<Action>` implementations with process-local type identity,
+  safe erasure, checked state/lifecycle conformance, public child-bearing
+  construction through `ChildLayoutWidget` and `Container<Action>`, explicit
+  mutable action extraction, and the same erased protocol used by private
+  built-in widget implementations;
 - deterministic headless dispatch, basic focus, press activation, and tracing;
 - typed style values, tokens, computed style, provenance, and diagnostics;
-- explicit layout constraints and a renderer-neutral measurement-provider seam;
+- explicit layout constraints, a renderer-neutral measurement-provider seam,
+  and separate one-query intrinsic/child-layout snapshots per publication;
 - constrained row/column measurement and arrangement with aligned frame, style, and layout diagnostics;
+- preorder/parent-aligned index, frame, style, and layout products with no
+  hidden actionable descendants;
 - a Counter application exercising the current public crates.
 
-Important limitations remain: runtime identity is rebuilt from preorder position, keys are not reconciled, focus is cleared after dispatch, input behavior is proof-level, text measurement is deterministic character counting, `SurfaceFrame` contains semantic control kinds rather than paint primitives, and mounted lifecycle, effects, semantics/accessibility, production text, native hosts, renderer backends, and production controls are absent.
+Important limitations remain: runtime identity is rebuilt from preorder position,
+keys are not reconciled, focus is cleared after dispatch, input behavior is
+proof-level, text measurement is deterministic character counting, and mounted
+state/lifecycle execution, effects, production semantics/accessibility, paint
+scenes, production text, native hosts, renderer backends, and production controls
+are absent. M2 paint and semantic facts are deterministic extension proofs, not
+the M5/M6 production products.
 
 ## Production profiles
 
@@ -36,7 +52,7 @@ The accepted runtime direction is hybrid:
 
 ```text
 Application state
-    -> transient immutable View/Element tree
+    -> transient owned View/Element tree
     -> keyed reconciliation
     -> persistent mounted runtime tree
     -> computed style and layout
@@ -65,10 +81,10 @@ When sources disagree, the current status, support matrix, roadmap, architecture
 
 ## Current API proof
 
-The Builder API is the semantic foundation; `element!` is optional sugar over the same closed proof vocabulary:
+The Builder API is the semantic foundation; `element!` is optional sugar over the same open view protocol:
 
 ```rust
-use runenui_core::{Element, IntoElement, button, children, column, text};
+use runenui_core::{Element, View, button, children, column, text};
 
 #[derive(Clone, Copy)]
 enum CounterAction {
@@ -87,9 +103,32 @@ fn counter_screen(value: i32) -> Element<CounterAction> {
 
 Typed builders reject incompatible configuration at compile time, `children!`
 has no fixed arity ceiling, and dynamic numeric/identifier constructors validate
-their inputs. This example does not imply component action mapping, external
-custom widgets, mounted reconciliation, correct release-based activation,
-production controls, or native rendering.
+their inputs. Components can author a local action and map their subtree into a
+parent action without knowing that parent type:
+
+```rust
+use runenui_core::{Element, View, button};
+
+enum ChildAction { Save }
+enum ParentAction { Child(ChildAction) }
+
+fn child() -> Element<ChildAction> {
+    button("Save").on_press(ChildAction::Save).into_element()
+}
+
+fn parent() -> Element<ParentAction> {
+    child().map_action(ParentAction::Child)
+}
+```
+
+This does not imply mounted reconciliation, persistent widget state, correct
+release-based activation, production controls, accessibility, paint scenes, or
+native rendering.
+
+M2 widget state is intentionally narrow: every widget explicitly declares and
+creates its state (`type State = (); fn create_state(&self) {}` for a stateless
+widget), but only the isolated lifecycle proof receives it. State-aware mounted
+capabilities remain a deliberate breaking M3 design, not an implemented claim.
 
 ## Validation
 

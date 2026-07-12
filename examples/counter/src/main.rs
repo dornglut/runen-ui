@@ -58,7 +58,6 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::ElementKind;
     use runenui_runtime::{ActivationResult, AppRuntime};
 
     use crate::app::{Counter, CounterAction, CounterApp, WIN_COUNT};
@@ -67,30 +66,18 @@ mod tests {
 
     fn root_text(counter: &Counter) -> Result<String, &'static str> {
         let root = root(counter);
-        let ElementKind::Container(container) = root.kind() else {
-            return Err("expected root container");
-        };
-        let Some(title) = container.children().first() else {
+        let Some(title) = root.children().first() else {
             return Err("expected title element");
         };
-        let ElementKind::Text(text) = title.kind() else {
-            return Err("expected title text");
-        };
-        Ok(text.content().to_owned())
+        Ok(title.semantics().name().to_owned())
     }
 
     fn value_text(counter: &Counter) -> Result<String, &'static str> {
         let root = root(counter);
-        let ElementKind::Container(container) = root.kind() else {
-            return Err("expected root container");
-        };
-        let Some(value) = container.children().get(1) else {
+        let Some(value) = root.children().get(1) else {
             return Err("expected value element");
         };
-        let ElementKind::Text(text) = value.kind() else {
-            return Err("expected value text");
-        };
-        Ok(text.content().to_owned())
+        Ok(value.semantics().name().to_owned())
     }
 
     #[test]
@@ -156,9 +143,9 @@ mod tests {
         let surface = debug_surface(&runtime);
 
         assert!(surface.contains("surface size=(240.0,160.0) nodes=7"));
-        assert!(surface.contains("kind=text \"Counter\""));
+        assert!(surface.contains("paint=text \"Counter\""));
         assert!(surface.contains("authored=counter.increment"));
-        assert!(surface.contains("kind=button \"+\" enabled=true"));
+        assert!(surface.contains("semantic=button \"+\" enabled=true actionable=true"));
     }
 
     #[test]
@@ -172,8 +159,8 @@ mod tests {
         let surface = debug_surface(&runtime);
 
         assert!(surface.contains("surface size=(240.0,160.0) nodes=4"));
-        assert!(surface.contains("kind=text \"You win\""));
-        assert!(surface.contains("kind=text \"Count: 10\""));
+        assert!(surface.contains("paint=text \"You win\""));
+        assert!(surface.contains("paint=text \"Count: 10\""));
         assert!(surface.contains("authored=counter.reset"));
     }
 }

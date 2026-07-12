@@ -68,6 +68,12 @@ impl<State, Action> Runtime<State, Action> {
         &self.root
     }
 
+    /// Returns the mutable transient root for explicit action extraction.
+    #[must_use]
+    pub(crate) const fn root_mut(&mut self) -> &mut Element<Action> {
+        &mut self.root
+    }
+
     /// Returns the runtime trace.
     #[must_use]
     pub(crate) const fn trace(&self) -> &Trace {

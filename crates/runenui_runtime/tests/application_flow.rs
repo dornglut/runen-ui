@@ -1,4 +1,6 @@
-use runenui_core::{Element, ElementKind, IntoElement, button, children, column, text};
+use runenui_core::{
+    Element, View, Widget, WidgetActivation, WidgetSemanticProof, button, children, column, text,
+};
 use runenui_runtime::{ActivationResult, AppRuntime, RuntimeEvent, UiApp};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -43,13 +45,7 @@ fn dispatch_activation_disabled_and_trace_regressions_hold() -> Result<(), &'sta
     assert_eq!(runtime.activate("locked"), ActivationResult::Disabled);
     assert_eq!(runtime.activate("increment"), ActivationResult::Dispatched);
     assert_eq!(runtime.state().count, 1);
-    let ElementKind::Container(root) = runtime.root().kind() else {
-        return Err("root");
-    };
-    let ElementKind::Text(value) = root.children()[0].kind() else {
-        return Err("value");
-    };
-    assert_eq!(value.content(), "1");
+    assert_eq!(runtime.root().children()[0].semantics().name(), "1");
     assert_eq!(
         runtime.trace().events(),
         &[
@@ -95,6 +91,54 @@ impl UiApp for NonCloneApp {
 #[test]
 fn non_clone_actions_support_mount_and_direct_dispatch() {
     let mut runtime = AppRuntime::<NonCloneApp>::mount(0);
-    runtime.dispatch(NonCloneAction::Increment);
+    assert_eq!(
+        runtime.activate_node(runtime.index().nodes()[0].id()),
+        ActivationResult::Dispatched
+    );
     assert_eq!(*runtime.state(), 1);
+    assert_eq!(
+        runtime.activate_node(runtime.index().nodes()[0].id()),
+        ActivationResult::Dispatched
+    );
+    assert_eq!(*runtime.state(), 2);
+    runtime.dispatch(NonCloneAction::Increment);
+    assert_eq!(*runtime.state(), 3);
+}
+
+#[derive(Debug)]
+struct ExhaustedActionSource;
+
+impl Widget<NonCloneAction> for ExhaustedActionSource {
+    type State = ();
+    fn create_state(&self) -> Self::State {}
+    fn activation(&self) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+    fn activate(&mut self) -> Option<NonCloneAction> {
+        None
+    }
+    fn semantics(&self) -> WidgetSemanticProof {
+        WidgetSemanticProof::new("control", "Exhausted").with_action("activate")
+    }
+}
+
+struct ExhaustedApp;
+impl UiApp for ExhaustedApp {
+    type State = ();
+    type Action = NonCloneAction;
+    fn root((): &()) -> Element<Self::Action> {
+        Element::new(ExhaustedActionSource)
+    }
+    fn update((): &mut (), _: Self::Action) {}
+}
+
+#[test]
+fn failed_runtime_extraction_does_not_change_actionable_facts() {
+    let mut runtime = AppRuntime::<ExhaustedApp>::mount(());
+    let node = runtime.index().nodes()[0].id();
+    assert!(runtime.index().nodes()[0].is_focusable());
+    assert_eq!(runtime.root().semantics().action_intent(), Some("activate"));
+    assert_eq!(runtime.activate_node(node), ActivationResult::NoAction);
+    assert!(runtime.index().nodes()[0].is_focusable());
+    assert_eq!(runtime.root().semantics().action_intent(), Some("activate"));
 }

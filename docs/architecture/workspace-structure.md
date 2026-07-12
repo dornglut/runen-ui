@@ -13,21 +13,25 @@ RunenUI/
 │   └── runenui_runtime/
 ├── examples/
 │   └── counter/
+├── tests/
+│   └── external_widget/
 └── xtask/
 ```
 
 | Package | Current ownership | Must not own |
 |---|---|---|
-| `runenui_core` | Validated logical values and authored identity, typed built-in builders/elements, layout intent, style values/tokens/resolution, and arity-free composition macros | Runtime state, hosts, renderer backends, app state, ECS, or legacy dependencies |
-| `runenui_runtime` | Headless app execution, opaque transient indexing, identity diagnostics, proof input/focus/activation, validated constraints/measurement, read-only layout/publication products, and trace | Application domain state, native windows, concrete renderers, ECS, or legacy dependencies |
+| `runenui_core` | Validated authored values/identity/style; separate built-in views/private widgets; open `View`/`Element`/`Widget`/`ChildLayoutWidget`; canonical child-layout container; action mapping/extraction; state/lifecycle seam | Persistent runtime state, hosts, renderer backends, app state, ECS, or legacy dependencies |
+| `runenui_runtime` | Headless execution/indexing, identity diagnostics, mutable dispatch/rebuild, intrinsic/child-layout snapshots, aligned frame/style/layout publication, hit testing, and trace | Application domain state, persistent M3 storage, native windows, concrete renderers, ECS, or legacy dependencies |
 | `counter` | Application-owned state/action/update and headless public-API proof | Framework internals, native host, renderer backend, or legacy imports |
+| `runenui_external_widget_conformance` | Non-publishable test-owned downstream controls, vertical/horizontal/intrinsic/unsupported child-layout widgets, mapping, state/lifecycle, alignment, hit, and snapshot proof | Production framework ownership or privileged internal access |
 | `xtask` | Repository validation orchestration | Framework runtime behavior |
 
 Current dependency direction is acyclic:
 
 ```text
 runenui_core <- runenui_runtime <- counter
-             \___________________/
+       ^              ^
+       └──────────────┴── external widget conformance
 ```
 
 `xtask` is repository tooling and has no framework dependency.
@@ -73,5 +77,5 @@ Important direction rules remain:
 
 See the [production roadmap](../roadmap.md) for the authoritative sequence.
 
-The current public-surface ownership and M1 construction restrictions are
-recorded in the [M1 public API contract](public-api.md).
+The current public-surface ownership and M1/M2 construction restrictions are
+recorded in the [public API contract](public-api.md).

@@ -6,7 +6,7 @@
 //! Incompatible configuration is absent from erased [`Element`] values:
 //!
 //! ```compile_fail
-//! use runenui_core::{IntoElement, text};
+//! use runenui_core::{View, text};
 //! let _ = text("label").disabled().into_element();
 //! ```
 //!
@@ -23,6 +23,49 @@
 //!
 //! ```compile_fail
 //! let _ = runenui_core::token_id!("name\u{0085}value");
+//! ```
+//!
+//! Widget erasure and opaque state payloads cannot be forged by consumers:
+//!
+//! ```compile_fail
+//! use runenui_core::{WidgetState, WidgetStateTypeId, WidgetTypeId};
+//! let _ = WidgetState {
+//!     widget_type: WidgetTypeId::of::<()>(),
+//!     state_type: WidgetStateTypeId::of::<()>(),
+//!     value: Box::new(()),
+//! };
+//! ```
+//!
+//! Public built-in view builders cannot bypass their validated conversion path:
+//!
+//! ```compile_fail
+//! use runenui_core::{Element, text};
+//! let _ = Element::<()>::new(text("Title"));
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_core::{Element, button};
+//! let _ = Element::<()>::new(button::<()>("Save"));
+//! ```
+//!
+//! A structurally childless widget cannot use the container authoring path:
+//!
+//! ```compile_fail
+//! use runenui_core::{Widget, children, container, text};
+//! #[derive(Debug)]
+//! struct Leaf;
+//! impl Widget<()> for Leaf {
+//!     type State = ();
+//!     fn create_state(&self) {}
+//! }
+//! let _ = container(Leaf, children![text("child")]);
+//! ```
+//!
+//! Gap remains a child-bearing container property, not a generic element setter:
+//!
+//! ```compile_fail
+//! use runenui_core::{View, text};
+//! let _ = text("leaf").into_element().gap(4_u16);
 //! ```
 
 #![forbid(unsafe_code)]
@@ -43,8 +86,11 @@ include!("token_macros.rs");
 
 pub use computed_style::ComputedStyle;
 pub use element::{
-    AuthoringDiagnostic, Button, ButtonElement, Container, ContainerElement, Element, ElementKind,
-    IntoElement, IntoElements, Text, TextElement, button, column, row, text,
+    AuthoringDiagnostic, Button, ChildLayout, ChildLayoutWidget, Container, Element, Text, View,
+    Views, Widget, WidgetActivation, WidgetDiagnostic, WidgetLifecycle, WidgetLifecycleContext,
+    WidgetLifecycleRequest, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof, WidgetState,
+    WidgetStateMismatch, WidgetStateTypeId, WidgetTextKind, WidgetTypeId, button, column,
+    container, row, text,
 };
 #[doc(hidden)]
 pub use identity::is_valid_identifier_literal;

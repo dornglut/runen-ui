@@ -38,6 +38,7 @@ impl SurfaceStyleReport {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceStyleNode {
     id: RuntimeNodeId,
+    parent: Option<RuntimeNodeId>,
     authored_id: Option<ElementId>,
     resolution: StyleResolution,
 }
@@ -46,11 +47,13 @@ impl SurfaceStyleNode {
     #[must_use]
     pub(crate) const fn new(
         id: RuntimeNodeId,
+        parent: Option<RuntimeNodeId>,
         authored_id: Option<ElementId>,
         resolution: StyleResolution,
     ) -> Self {
         Self {
             id,
+            parent,
             authored_id,
             resolution,
         }
@@ -59,6 +62,11 @@ impl SurfaceStyleNode {
     #[must_use]
     pub const fn id(&self) -> RuntimeNodeId {
         self.id
+    }
+
+    #[must_use]
+    pub const fn parent(&self) -> Option<RuntimeNodeId> {
+        self.parent
     }
 
     #[must_use]

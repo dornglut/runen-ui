@@ -1,9 +1,7 @@
 use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 
-use runenui_core::{
-    ElementId, ElementKey, IdentifierError, IntoElement, button, element_id, element_key,
-};
+use runenui_core::{ElementId, ElementKey, IdentifierError, View, button, element_id, element_key};
 
 fn hash(value: &impl Hash) -> u64 {
     let mut hasher = DefaultHasher::new();

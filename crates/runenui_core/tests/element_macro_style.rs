@@ -1,4 +1,4 @@
-use runenui_core::{Color, EdgeInsets, IntoElement, LogicalLength, Radius, button};
+use runenui_core::{Color, EdgeInsets, LogicalLength, Radius, View, button};
 
 #[test]
 fn typed_builder_style_remains_ergonomic() {

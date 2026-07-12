@@ -6,11 +6,12 @@
 current RunenUI headless proof.
 
 It owns validated logical lengths, authored IDs/keys, typed token references and
-non-overwriting token definitions, style intent/resolution, and the current
-closed text/button/container descriptions. `text`, `button`, `row`, and `column`
-return typed builders; only kind-valid configuration exists. `IntoElement` erases
-one builder, iterator/collection `IntoElements` scales homogeneous children, and
-`children!` collects any number of heterogeneous static children.
+non-overwriting token definitions, style intent/resolution, and the open
+transient `View`/`Element`/`Widget` architecture. `text`, `button`, `row`, and
+`column` return typed views/widgets using the same protocol as downstream
+implementations. `View` erases one value, iterator/collection `Views` scales
+homogeneous children, and `children!` collects any number of heterogeneous
+children.
 
 Dynamic identifier and float constructors are fallible. Identifier semantics are
 Unicode text-based regardless of allocation-free static or owned storage; literal
@@ -21,12 +22,24 @@ duplicate tree IDs and sibling keys. The old
 `Px`/`Length` split, unused length-token family, generic no-op element setters,
 argument-builder duplicates, and tuple arity implementations are gone.
 
-`ElementKind` remains a deliberately closed M1 proof type. External widget and
-component protocols are M2 work; keys do not preserve mounted identity until M3.
+`ElementKind` and the old built-in element views are removed. `WidgetTypeId`
+wraps process-local Rust type identity, private safe erasure preserves bounded
+capabilities, `map_action` recursively maps typed component actions, and opaque
+state/lifecycle access is checked. Public built-in authored views convert into
+private behavior-only widget payloads, preventing `Element::new` from silently
+losing builder configuration. `ChildLayoutWidget`, `ChildLayout`, and canonical
+`Container<Action>`/`container` authoring give downstream and built-in
+child-layout widgets the same atomic ownership and gap path. Action extraction
+is explicitly mutable and supports owned
+non-`Clone` actions without interior mutation. Every implementation must declare
+`State` and `create_state`; a stateless widget writes `type State = ();` and an
+empty constructor explicitly. M2 capabilities remain state-independent except
+for the lifecycle proof, so M3 must introduce the state-aware mounted behavior
+contract. Keys and widget state do not preserve mounted identity until M3.
 The crate does not own runtime state, input routing, effects, layout execution,
 semantics, paint scenes, renderer backends, native hosts, application state, ECS,
 or legacy dependencies.
 
-See the [M1 public API contract](../../docs/architecture/public-api.md), workspace
+See the [public API contract](../../docs/architecture/public-api.md), workspace
 [status](../../docs/status-map.md), [support matrix](../../docs/feature-support-matrix.md),
 and [roadmap](../../docs/roadmap.md).

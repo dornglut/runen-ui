@@ -19,21 +19,22 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Immutable UI descriptions | `supported` | `Element<Action>` trees derived from application state | Current descriptor model is closed and transient | M2–M3 |
-| Builder authoring | `supported` | Typed `Text`, `Button<Action>`, and `Container<Action>` builders with `IntoElement` erasure | Built-in element vocabulary remains closed | M2 |
-| `element!` authoring | `proof` | One ordinary builder expression lowered through `IntoElement` | No general component expression | M2 |
-| Composite function components | `partial` | Rust functions can return `Element<Action>` | Child action type must already be the parent action type | M2 |
-| Component action mapping | `unsupported` | None | No `map`-equivalent contract | M2 |
-| External custom widgets | `unsupported` | None | `ElementKind` is closed to core-defined variants | M2 |
+| Transient UI descriptions | `supported` | Open owned `Element<Action>` trees; borrowed inspection and explicit mutable action extraction | Descriptions do not retain mounted state; successful runtime activation rebuilds immediately | M3 |
+| Builder authoring | `supported` | Separate typed built-in views; downstream leaves use `Element::new`; all child-layout widgets use `Container<Action>` | Built-ins remain proof-level controls | M9 |
+| `element!` authoring | `supported` | One ordinary builder/view expression lowered through `View` | Thin convenience only; no property DSL | M2 complete |
+| Composite function components | `supported` | Ordinary Rust functions return typed views/elements | Components are not mounted state owners | M2 complete |
+| Component action mapping | `supported` | Recursive `Element::map_action(ChildAction -> ParentAction)` | Stored mapping closure is operation-local `'static`; no string/`Any` action conversion | M2 complete |
+| External custom widgets | `supported` | Public `Widget<Action>`/`ChildLayoutWidget<Action>`, private safe erasure, and downstream control/container conformance | State access is lifecycle-only; M3 introduces the breaking state-aware mounted behavior protocol | M2 complete; M3 |
+| Child-layout authoring | `supported` | Canonical `Container<Action>`/`container`, `ChildLayout::Linear`, arbitrary children, container-only gaps | M2 proof policy only; M7 owns production custom layout | M2 complete; M7 |
 | Typed control-specific builders | `supported` | Kind-specific builders; shared identity/style only where behavior is shared | Broader control vocabulary waits for M2/M9 | M2, M9 |
-| Arbitrary child counts | `supported` | Iterator/collection `IntoElements` plus arity-free heterogeneous `children!` | None within the current built-in proof vocabulary | M2 |
+| Arbitrary child counts | `supported` | Iterator/collection `Views` plus arity-free heterogeneous `children!` | None within the current transient protocol | M2 complete |
 
 ## 2. Application model
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Application-owned state | `supported` | `UiApp::State` and Counter | No granular runtime invalidation | M3–M4 |
-| Typed application actions | `supported` | `UiApp::Action`; typed button actions; non-`Clone` mount/direct-dispatch proof | Activation alone clones the action retained by the immutable authored tree | M2–M4 |
+| Typed application actions | `supported` | `UiApp::Action`; typed widget actions; recursive component mapping; non-`Clone` activation/direct-dispatch proof | Current activation is a one-shot transient slot followed by full rebuild | M4 |
 | Explicit update | `supported` | `UiApp::update(&mut State, Action)` | Synchronous only; no effect result | M4 |
 | Conditional root composition | `supported` | Counter/win screen switch | Full transient rebuild clears focus | M3 |
 | Batched/reentrant action processing | `unsupported` | None | No queue or ordering contract | M4 |
@@ -48,8 +49,8 @@ Support labels:
 | Stored element keys | `proof` | Unicode-validated textual keys with true-preorder sibling-duplicate diagnostics | Keys do not participate in reconciliation | M3 |
 | Persistent generational IDs | `unsupported` | None | No mounted arena or generation validation | M3 |
 | Keyed reconciliation | `unsupported` | None | Full root replacement after dispatch | M3 |
-| Mount/update/unmount lifecycle | `unsupported` | None | No mounted widget protocol | M2–M3 |
-| Runtime-local widget state | `unsupported` | None | Hover, pressed, scroll, edit, and animation state have no owner | M3 |
+| Mount/update/unmount lifecycle | `planned` | Public typed hooks and isolated checked conformance execution | `AppRuntime` does not execute lifecycle across rebuilds | M3 |
+| Runtime-local widget state | `planned` | Widgets declare/create typed state; opaque access is checked by type identity | No persistent runtime storage; hover, pressed, scroll, edit, and animation state are not retained | M3 |
 | Focus retention | `unsupported` | None | Dispatch clears focus | M3 |
 | Granular invalidation | `unsupported` | None | Publication recomputes transient products | M3–M4 |
 
@@ -60,9 +61,9 @@ Support labels:
 | Typed pointer vocabulary | `partial` | Position, phase, button, modifiers, optional target | No pointer/device ID, pressure, tilt, hover transitions, wheel, or capture | M4 |
 | Typed keyboard vocabulary | `partial` | Key, phase, modifiers, Tab traversal | Logical/physical keys, repeat, location, commands, and shortcuts incomplete | M4 |
 | Pointer hit targeting | `proof` | Frame rectangle targeting | Transient IDs and simplistic hit order | M4, M6 |
-| Pointer button activation | `proof` | Primary press dispatches button action | Incorrect production default: no capture/release-inside/cancellation | M4 |
-| Keyboard button activation | `proof` | Focused Enter/Space behavior | No shared semantic command pipeline | M4–M5 |
-| Focus traversal | `proof` | First/last/next/previous enabled buttons | Hardcoded built-in policy, no scopes or persistence | M3–M4 |
+| Pointer activation | `proof` | Primary press dispatches the targeted actionable widget action | Incorrect production default: no capture/release-inside/cancellation | M4 |
+| Keyboard activation | `proof` | Focused actionable widget responds to Enter/Space | No shared semantic command pipeline | M4–M5 |
+| Focus traversal | `proof` | First/last/next/previous widgets with enabled/actionable capability facts | No scopes, persistence, or semantic focus model | M3–M5 |
 | Event capture/target/bubble | `unsupported` | None | No propagation or default-action control | M4 |
 | Pointer capture | `unsupported` | None | Cannot implement correct buttons, drag, sliders, or scrolling | M4 |
 | Touch/pen behavior | `unsupported` | Generic pointer vocabulary only | No device identity or device-specific facts | M4 |
@@ -109,7 +110,10 @@ Support labels:
 | Finite/unbounded constraints | `supported` | Validated `LogicalLength`, `LogicalSize`, finite points, normalized `LayoutConstraints`, checked baselines | Broader sizing vocabulary remains absent | M7 |
 | Renderer-neutral measurement seam | `supported` | Borrowed `MeasurementProvider` | Text-only synchronous contract; no resource or typography input | M8 |
 | Deterministic headless measurement | `proof` | Unicode-scalar count with fixed metrics | Not production text geometry | M8 |
-| One measurement per node/publication | `proof` | Publication-local measured result and tests | No retained cache or invalidation | M7, M11 |
+| One measurement capability snapshot per node/publication | `proof` | Counter-backed downstream tests prove one query reused by measurement and arrangement | No retained cache or invalidation | M7, M11 |
+| One child-layout snapshot per child-bearing node/publication | `proof` | Counter-backed external alternating-axis proof | Only linear M2 policy exists | M7 |
+| Unsupported measurement handling | `proof` | Explicit unsupported and cross-version-unrecognized layout diagnostics | Zero fallback geometry is proof-level only | M7 |
+| Publication alignment | `proof` | Index/frame/style/layout IDs and parents align across built-in/external/nested/intrinsic/unsupported cases | Products remain transient and generationless | M3, M7 |
 | Row/column layout | `proof` | Intrinsic main axis; constrained cross axis; gaps/padding | No stretch, flex, alignment, wrapping, or remaining-space distribution | M7 |
 | Overflow diagnostics | `proof` | Runtime-node-aligned flags/report | No clipping or scrolling behavior | M7 |
 | Width/height/min/max/fill/shrink | `unsupported` | None | Authored sizing model absent | M7 |
@@ -124,8 +128,8 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Focusability facts | `proof` | Enabled built-in buttons are matched in runtime index | Not a semantic model and not extensible | M5 |
-| Semantic tree | `unsupported` | None | No roles, names, state, values, relationships, or stable semantic IDs | M5 |
+| Focusability facts | `proof` | Open widget activation facts drive runtime indexing for built-in and external controls | Not the M5 semantic focus model | M5 |
+| Semantic tree | `unsupported` | M2 per-widget role/name/enabled/action-intent proof facts | No tree, relationships, values, stable semantic IDs, or accessibility contract | M5 |
 | Semantic actions | `unsupported` | None | No shared activation/action path | M5 |
 | Accessibility queries/tests | `unsupported` | None | No public semantic test surface | M5 |
 | AccessKit adapter | `planned` | Accepted desktop direction | Depends on semantic tree and mounted IDs | M5 |
@@ -139,11 +143,11 @@ Support labels:
 | Unified surface publication | `proof` | Read-only frame/style/layout products from one preparation pass | Transient identity; no generation or neutral paint scene | M3, M6 |
 | Logical bounds inspection | `proof` | `SurfaceNode` rectangles and debug renderer | Bounds are not a standalone layout result | M6–M7 |
 | Rectangle hit testing | `proof` | Reverse frame order | No hit scene, stacking, clips, transforms, visibility, or pointer policy | M6 |
-| Renderer-neutral paint scene | `unsupported` | None | Semantic `Container`/`Text`/`Button` are not paint primitives | M6 |
+| Renderer-neutral paint scene | `unsupported` | M2 deterministic per-widget paint/debug proof facts | Facts are not paint primitives, resources, clips, transforms, order, or damage | M6 |
 | Paint primitives/resources | `unsupported` | None | No shapes, strokes, glyph/image handles, clips, layers, or damage | M6 |
 | Surface/frame generation | `unsupported` | None | Stale targets cannot be validated | M3, M6 |
 | Multi-surface publication | `unsupported` | None | No independent surface lifecycle or scale | M10 |
-| Debug semantic-frame consumer | `proof` | `DebugSurfaceRenderer` deterministically formats current semantic frame nodes | It is not a paint-scene consumer or renderer backend | M6 |
+| Debug semantic-frame consumer | `proof` | `DebugSurfaceRenderer` deterministically formats open paint/semantic/diagnostic widget facts | It is not a paint-scene consumer, accessibility product, or renderer backend | M5–M6 |
 | Deterministic paint-scene consumer | `planned` | None | Needs accepted paint/hit protocols | M6 |
 | Conventional renderer backend | `unsupported` | None | Protocol must stabilize first | M10 |
 | Embedded/SDF renderer consumer | `deferred` | None | Follows neutral protocol and conventional proof | M10 or M12 |
@@ -152,7 +156,7 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Static text descriptors | `proof` | Text elements and button labels | Closed primitive model | M2, M9 |
+| Static text descriptors | `proof` | Text/button widgets use the open protocol | No production text shaping or control contract | M8–M9 |
 | Headless deterministic metrics | `proof` | Fixed scalar width and line height | Not shaping, grapheme measurement, or font metrics | M8 |
 | Font discovery/fallback | `unsupported` | None | No font/resource provider | M8 |
 | Shaping and multilingual scripts | `unsupported` | None | No production text stack | M8 |
@@ -199,7 +203,7 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Workspace unit/integration tests | `supported` | Substantial deterministic proof suite | Mostly private/proof APIs and Ubuntu CI | M5, M11 |
+| Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 harness and Ubuntu-only CI | M5, M11 |
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Aligned reports and debug output | No stable codes, severity, strict mode, or generation | M3–M5 |
 | Runtime trace | `partial` | Coarse event records | Duplicate unbounded storage; no structured export/replay | M4–M5 |
@@ -216,7 +220,7 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Typed Rust as source authority | `supported` | Builders and `element!` | Extensibility and macro scaling incomplete | M1–M2 |
+| Typed Rust as source authority | `supported` | Builders, public `View`/`Widget`, ordinary components, and thin `element!`/`children!` | External source formats remain deferred | M2 complete |
 | External UI source format | `deferred` | None | Requires stable semantic authoring and diagnostics | M12 |
 | Inspector/devtools | `deferred` | Debug render/report functions only | No public mounted/semantic/scene observation model | M12 |
 | Hot reload/live preview | `deferred` | None | Requires stable identity, invalidation, source mapping, and host integration | M12 |

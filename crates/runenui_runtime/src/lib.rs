@@ -55,6 +55,6 @@ pub use policy::{
 pub use style_debug::{SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report};
 pub use surface::{
     LayoutOverflow, LogicalRect, LogicalSize, SurfaceBuildContext, SurfaceFrame, SurfaceLayoutNode,
-    SurfaceLayoutReport, SurfaceNode, SurfaceNodeKind, SurfacePublication, publish_surface,
+    SurfaceLayoutReport, SurfaceNode, SurfacePublication, publish_surface,
 };
 pub use trace::{RuntimeEvent, Trace, TraceRecord, TraceTarget};

@@ -1,6 +1,6 @@
 use runenui_core::{
-    Color, EdgeInsets, Element, IntoElement, LogicalLength, StyleTokens, button, children,
-    color_token, column, row, text,
+    Color, EdgeInsets, Element, LogicalLength, StyleTokens, View, button, children, color_token,
+    column, row, text,
 };
 use runenui_runtime::{
     DeterministicMeasurementProvider, LayoutConstraints, LogicalPoint, LogicalSize,
@@ -50,7 +50,8 @@ fn row_column_measurement_arrangement_hit_and_debug_regress() -> Result<(), &'st
         .ok_or("hit")?;
     assert_ne!(hit.id(), publication.frame().root().ok_or("root")?.id());
     assert!(
-        render_debug_surface_frame(publication.frame()).contains("kind=button \"A\" enabled=true")
+        render_debug_surface_frame(publication.frame())
+            .contains("semantic=button \"A\" enabled=true actionable=false")
     );
     Ok(())
 }

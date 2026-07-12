@@ -1,4 +1,4 @@
-use runenui_core::{Element, ElementId, IntoElement, button, children, column, text};
+use runenui_core::{Element, ElementId, View, button, children, column, text};
 use runenui_runtime::{
     ActivationResult, AppRuntime, InputEvent, InputEventResult, Key, KeyModifiers, KeyPhase,
     KeyboardActivationResult, KeyboardEvent, KeyboardFocusResult, LogicalPoint,

@@ -11,7 +11,7 @@ RunenUI separates application state, transient authoring, persistent runtime ide
 ```text
 Application state
   -> root/view
-Transient immutable View/Element tree
+Transient owned View/Element tree
   -> keyed reconciliation
 Persistent mounted runtime tree
   -> computed style
@@ -41,7 +41,7 @@ The current implementation is a deterministic headless proof with this narrower 
 
 ```text
 Application-owned State + Action
-  -> UiApp::root(State) -> Element<Action>
+  -> UiApp::root(State) -> typed View -> erased Element<Action>
   -> transient preorder RuntimeTreeIndex
   -> synchronous input/focus/activation policies
   -> UiApp::update(State, Action)
@@ -51,16 +51,30 @@ Application-owned State + Action
   -> SurfaceFrame + SurfaceStyleReport + SurfaceLayoutReport
 ```
 
-Current `RuntimeNodeId` values are preorder indexes for one built tree. `ElementKey` is stored but is not used for reconciliation. `ElementKind` is closed to text, button, and container. `SurfaceFrame` carries semantic `SurfaceNodeKind` values and is an inspectable proof product, not the accepted renderer-neutral paint protocol.
+Current `RuntimeNodeId` values are preorder indexes for one built tree.
+`ElementKey` is stored but is not used for reconciliation. M2 replaced the
+closed kind enum with public typed `Widget<Action>` implementations erased safely
+inside `Element<Action>`. Public built-in views convert to private behavior-only
+widget implementations; downstream leaf widgets use `Element::new`, while
+downstream and built-in child-layout widgets use the canonical
+`Container<Action>` builder. All share activation, intrinsic measurement,
+child-layout, paint-proof, semantic-proof, diagnostic, lifecycle-contract, and
+inspection paths. M2 state is available only to the isolated lifecycle proof;
+M3 must introduce the state-aware mounted behavior contract. `SurfaceFrame`
+carries open proof facts, not the accepted M5
+semantic tree or M6 renderer-neutral paint protocol.
 
-The current layout and styling implementation is credible and retained: typed style values and token resolution, concrete computed style, provenance, explicit constraints, a borrowed measurement provider, one measured result per node per publication, constrained cross-axis row/column behavior, computed padding, and aligned overflow diagnostics.
+The current layout and styling implementation is credible and retained: typed style values and token resolution, concrete computed style, provenance, explicit constraints, a borrowed measurement provider, separate one-query intrinsic and child-layout snapshots, component-wise intrinsic/child minimum combination, computed padding, linear arrangement, and aligned overflow/capability diagnostics. Index, frame, style, and layout products share preorder IDs and parents for every valid node.
 
 M1 repaired the proof surface around this implementation: logical distances and
 sizes are validated, typed builders prevent incompatible configuration, child
 composition has no arity ceiling, Unicode identifier identity is independent of
 static/owned storage, identity/token duplicates use true preorder, finite derived
-geometry saturates, and generated products are read-only. The closed `ElementKind` remains deliberate
-until M2 replaces the extension gate. See the [M1 public API contract](architecture/public-api.md).
+geometry saturates, and generated products are read-only. M2 then removed the
+closed dispatch path, added recursive typed component action mapping, explicit
+process-local widget/state type identity, and a checked lifecycle/state seam.
+See the [public API contract](architecture/public-api.md) and
+[ADR 0003](adr/0003-extensible-view-widget-component-protocol.md).
 
 ## Ownership rules
 
@@ -68,10 +82,14 @@ until M2 replaces the extension gate. See the [M1 public API contract](architect
 - Ephemeral interaction mechanics belong to mounted widget state.
 - Native resources and platform state belong to the host.
 - Renderer resources belong to the renderer/resource layer.
-- Components compose views and map local actions; widgets are mounted lifecycle participants.
+- Components compose views and map local actions; widgets declare runtime
+  participation/state contracts; mounted widgets are persistent M3 instances.
 - Mounted runtime mutation occurs on one logical UI thread.
 
-External crates must eventually be able to define widgets through public reconciliation, lifecycle, event, layout, paint, semantic, diagnostic, and deterministic-test contracts without modifying `runenui_core`.
+External crates can define widgets and participate in the current proof-level
+activation, layout, paint, semantic, diagnostic, lifecycle-conformance, and
+inspection paths without modifying RunenUI. M3–M8 own persistent reconciliation
+and the respective production subsystem contracts.
 
 ## Application and effect model
 
@@ -99,7 +117,7 @@ Host event
   -> effects and invalidation
 ```
 
-Pointer, keyboard, accessibility, automation, and programmatic activation converge on semantic control commands. Default pointer button activation is press, capture, pressed-state update, release, then activation only if release remains valid. Keyboard commands and text/IME input are separate event streams.
+Pointer, keyboard, accessibility, automation, and programmatic activation converge on semantic control commands. Default pointer activation for an actionable widget is press, capture, pressed-state update, release, then activation only if release remains valid. Keyboard commands and text/IME input are separate event streams.
 
 ## Layout and styling
 
@@ -133,7 +151,13 @@ The required profiles are headless/test, standalone desktop, and embedded host. 
 
 ## Current workspace boundary
 
-The active workspace intentionally contains `runenui_core`, `runenui_runtime`, the Counter example, and `xtask`. New crates require real ownership, dependency, optionality, independent-consumer, or conformance pressure. A target crate diagram is not permission to create empty crates, and the facade crate is deferred until lower-level APIs warrant a stable public surface.
+The active workspace intentionally contains `runenui_core`, `runenui_runtime`,
+the `counter` example, the non-publishable test-owned
+`runenui_external_widget_conformance` package, and `xtask`. New crates require
+real ownership, dependency, optionality, independent-consumer, or conformance
+pressure. A target crate diagram is not permission to create empty crates, and
+the facade crate is deferred until lower-level APIs warrant a stable public
+surface.
 
 ## Required ADRs before implementation choices
 

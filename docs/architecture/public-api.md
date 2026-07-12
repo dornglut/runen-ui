@@ -1,181 +1,223 @@
-# M1 Public API Contract
+# Public API Contract through M2
 
 > **Category: Current contract**
 
-This document records the reviewed public surface after M1. It is the durable
-inventory and rationale for the breaking correction; source-level Rust docs remain
-the authority for individual signatures.
+This document records the reviewed public surface after M1 and M2. Source-level
+Rust documentation remains authoritative for individual signatures. The design
+decision is [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md).
 
-## Inventory and ownership
+## Ownership and inventory
 
 `runenui_core` publicly owns:
 
-- values and errors: `LogicalLength`, `LogicalLengthError`, `Color`,
-  `EdgeInsets`, `Radius`, and their literal/token unions;
-- authored identity: `ElementId`, `ElementKey`, `TokenId`, typed color/spacing/
-  radius token references, `IdentifierError`, sealed builder-input conversion
-  traits, and literal-validation macros;
-- token definition and resolution: `StyleTokens`, `TokenFamily`,
-  `DuplicateTokenDefinition`, `StyleIntent`, `ComputedStyle`, provenance,
-  unresolved-token diagnostics, and the two pure resolution functions;
-- typed authoring: `Text`, `Button<Action>`, `Container<Action>`, their public
-  constructors and kind-specific methods, `Element<Action>`, read-only built-in
-  element views, `IntoElement`, `IntoElements`, and `text`/`button`/`row`/`column`;
-- macros: `element!` erases one builder expression, `children!` collects any
-  number of heterogeneous builders, and identifier/token literal macros validate
-  compile-time literals.
-
-All fields of public core structs are private. `TokenFamily` is
-`#[non_exhaustive]` because additional style families are expected as the style
-system grows. `ElementKind` and `Axis` are
-deliberately exhaustive closed proof enums: M2 replaces the extension gate rather
-than pretending this M1 built-in vocabulary is already extensible. Value unions
-are exhaustive because downstream matching is part of their current authored
-contract. `IntoElement` and `IntoElements` are intentionally open for downstream
-builder wrappers and iterator/collection composition; they do not constitute the
-M2 widget protocol.
+- validated logical lengths, authored IDs/keys, style values, typed token
+  references, non-overwriting token definitions, pure style resolution,
+  provenance, and diagnostics;
+- the `View<Action>` single-node conversion protocol, `Views<Action>` child
+  collection conversion, and owned erased `Element<Action>` transient node;
+- typed built-in authored `Text`, `Button<Action>`, and `Container<Action>` views
+  plus `text`, `button`, `container`, `row`, and `column` builders;
+- downstream `Widget<Action>` and `ChildLayoutWidget<Action>` implementation
+  contracts, `ChildLayout`, `WidgetTypeId`,
+  `WidgetStateTypeId`, opaque `WidgetState`, checked lifecycle state access, and
+  bounded activation/measurement/paint/semantic/diagnostic proof facts;
+- typed recursive `Element::map_action(ChildAction -> ParentAction)`;
+- thin `element!` and `children!` conveniences plus checked identity/token
+  literal macros.
 
 `runenui_runtime` publicly owns:
 
 - the open `UiApp` and `MeasurementProvider` traits;
-- `AppRuntime` construction, application dispatch, read-only state/root/trace/
-  focus/index access, proof input policy, activation, and surface publication;
-- validated constraints, measurement requests/results and baseline errors;
-- current input/event/result vocabulary;
-- opaque `RuntimeNodeId`, borrowed `RuntimeNodeRef`/`RuntimeTreeIndex`, and
-  read-only identity diagnostics;
-- read-only generated trace, frame, style-report, layout-report, and publication
-  products plus their accessors and deterministic debug formatters;
-- `LogicalSize` as a non-negative finite authored/publication size and fallible
-  `LogicalPoint` as a finite signed input coordinate.
+- `AppRuntime` construction, typed dispatch, read-only state/root/trace/focus/
+  index access, proof input policy, activation, and surface publication;
+- validated constraints, measurement requests/results, and geometry;
+- opaque transient `RuntimeNodeId`, borrowed `RuntimeNodeRef`/
+  `RuntimeTreeIndex`, and read-only identity diagnostics;
+- read-only trace, frame, style-report, layout-report, and publication products
+  with deterministic debug formatters.
 
-All generated-product fields are private. `RuntimeNodeId`, `RuntimeTreeIndex`,
-`SurfaceFrame`, `SurfaceNode`, style/layout report nodes, `Trace`, `TraceTarget`,
-and `FocusState` have no normal public construction or mutation path. Legitimate
-instances come from `AppRuntime`, publication, or another public runtime behavior.
-`SurfaceBuildContext`, constraints, measurement requests, and typed input events
-remain constructible because they are inputs rather than generated products.
+The non-publishable `runenui_external_widget_conformance` package is a genuine
+downstream consumer. It depends only on the two public crates and owns no
+privileged imports or runtime hook.
 
-Runtime input, policy-result, diagnostic, trace-event, measurement-kind, and
-surface-kind enums are `#[non_exhaustive]` because their proof vocabulary will
-grow. `AxisLimit` remains exhaustive because finite versus unbounded is the whole
-constraint state. `UiApp`, `MeasurementProvider`, `IntoElement`, and
-`IntoElements` are open. The `IntoElementId`/`IntoElementKey` builder-input
-traits are sealed so downstream code cannot bypass identifier validation; no M2
-widget extension point is prematurely sealed.
+## View, element, component, and widget
 
-The core prelude contains only ordinary typed builders, identity, `Element`,
-`LogicalLength`, and conversion traits. The runtime prelude contains only
-`AppRuntime`, `UiApp`, `LogicalSize`, and `SurfaceBuildContext`. Specialized
-style, diagnostics, input, measurement, and generated-product inspection use
-explicit root imports.
+`View<Action>` consumes a typed transient authoring value and returns one
+`Element<Action>`. `Element` is the owned erased transient product stored by the
+current runtime. It retains common ID/key, layout/style intent, diagnostics,
+children, and one safely erased widget implementation.
 
-No public struct exposes public fields. Public generic bounds are local:
-construction and direct dispatch accept any action type; only activation paths
-require `Action: Clone`, because the current immutable transient tree retains an
-action while dispatch consumes a duplicate. M1 does not move this bound onto
-`UiApp`, `Element`, or `AppRuntime`. Removing the final activation clone requires
-the M2/M3 action/mounted-storage design rather than hidden interior mutation.
+A component is ordinary Rust composition. It may return a typed view/element and
+map a child-local action subtree into a parent action. It is not a widget merely
+because it returns views, and it does not create mounted identity or state.
 
-## Defects, alternatives, and decisions
+`Widget<Action>` is the M2 transient proof-participant contract. An implementation
+declares a typed state, creates initial state, and may contribute narrow current
+activation, measurement, paint-proof, semantic-proof, diagnostic, and lifecycle
+behavior. `State` and `create_state` are mandatory; a stateless widget explicitly
+writes `type State = ();` and `fn create_state(&self) {}`. Defaults cover the
+remaining non-interactive, zero-sized proof capabilities without forcing
+unrelated future subsystem implementations.
 
-### Logical values
+Built-ins use exactly this public protocol. `ElementKind`, `TextElement`,
+`ButtonElement`, `ContainerElement`, `IntoElement`, and `IntoElements` are
+removed; no compatibility aliases or built-in dispatch path remain.
 
-The defect was competing unchecked `Px` and `Length` wrappers plus raw-float
-geometry constructors that admitted NaN, infinity, negative extents, and unstable
-float equality. Keeping both types with validation would preserve vocabulary
-ambiguity; silently normalizing authored invalid values would hide mistakes; a
-general unit algebra would exceed current needs. M1 therefore uses one
-`LogicalLength`: finite, non-negative, privately represented, fallible from `f32`,
-infallible from bounded unsigned integers, and saturating for the arithmetic used
-by current layout. `LogicalSize` contains two logical lengths. Signed points are
-fallible finite pairs. Constraints structurally contain valid lengths and raise an
-inverted finite maximum to the minimum. Baselines reject non-finite, negative, and
-out-of-height values. Valid finite arithmetic that overflows saturates to the
-appropriate finite boundary before product construction, including rectangle
-edges, arrangement cursors, padding expansion, and constraint subtraction.
+Public built-in views do not implement `Widget<Action>`. Conversion transfers
+their common authored fields once into `Element` and installs private
+behavior-only `TextWidget`, `ButtonWidget<Action>`, or
+`LinearContainerWidget`. Passing a configured built-in builder to
+`Element::new` is therefore a compile error rather than a configuration-loss
+path.
 
-This is a logical-coordinate contract; later host scale factors map logical to
-physical pixels without introducing another authored length type.
+Child-bearing widgets implement `ChildLayoutWidget<Action>` and return a
+non-exhaustive `ChildLayout`; M2 currently interprets `Linear { axis }`.
+`Container<Action>::new(widget, children)` and the `container` helper own the
+widget and arbitrary `Views<Action>` children atomically. Row, column, and
+downstream containers use this same authored builder, including common fields
+and container-only `gap`. Normal widgets remain structurally childless; there
+is no post-erasure child setter or generic element gap.
 
-### Identity and tokens
+## Safe erasure and identity
 
-The defect was unchecked string construction, representation-dependent identity,
-first-match duplicate IDs, sibling-key ambiguity, and token maps that silently
-overwrote definitions. Equality, ordering, and hashing now use identifier text,
-so allocation-free static and owned dynamic construction are semantically
-identical for IDs, keys, token references, maps, lookups, and duplicate detection.
+`Element::new` accepts a downstream `Widget<Action>` and installs a private
+object-safe adapter. Erased implementation/state payload types are not public and
+cannot be forged. The adapter uses checked safe `Any` downcasts only for opaque
+state access; mismatch returns `WidgetStateMismatch` before a typed hook runs.
+Both public crates retain `#![forbid(unsafe_code)]`.
 
-Identifiers admit ordinary Unicode text. Empty and Unicode-whitespace-only text,
-leading or trailing Unicode whitespace, and Unicode General Category Cc control
-characters are rejected. Dynamic ID, key, and token constructors return
-`IdentifierError`; literal macros reject the same grammar at compile time and
-construct allocation-free static values. Rust 1.93 provides const
-`char::is_whitespace`, but not const `str::chars` or `char::is_control`, so the
-shared const validator decodes the already-valid UTF-8 itself and recognizes the
-C0/C1 ranges that comprise category Cc. Runtime and literal paths therefore do
-not maintain divergent validators.
+Lifecycle compatibility checks concrete widget identity first, declared state
+identity second, then performs the private typed payload downcast. The public
+non-exhaustive mismatch enum distinguishes `WidgetType`, `StateType`, and
+`ErasedStatePayload`; its category-specific expected/actual accessors never
+mislabel widget IDs as state IDs. A mismatch returns before the lifecycle hook.
 
-Builder convenience accepts either validated values or strings, validates
-strings immediately, and retains an invalid authoring diagnostic instead of
-storing invalid identity or silently doing nothing. Runtime indexing emits
-diagnostics by numeric node preorder, never formatted-path lexical order.
-Diagnostics at one node use invalid ID, invalid key, duplicate ID, then duplicate
-sibling-key category order, with text order within a category. Element IDs are
-unique tree-wide; keys are unique among siblings. Ambiguous authored activation returns
-`ActivationResult::AmbiguousId` rather than selecting the first node.
+`WidgetTypeId` wraps the concrete implementation's process-local Rust `TypeId`.
+`WidgetStateTypeId` separately identifies its declared state. Debug type names
+are inspectable but never determine identity. Generic widget instantiations have
+Rust's deliberate concrete generic identity. Action mapping delegates the child
+widget/state identities rather than inventing a wrapper widget identity.
 
-Token definition uses `define_*` methods that return
-`DuplicateTokenDefinition`; the existing value is never replaced. The unused
-generic length-token family and value union were deleted. Persistent keyed
-matching remains an explicit M3 boundary: M1 validates authored sibling keys but
-does not reconcile or retain mounted identity.
+These IDs are not authored `ElementId`/`ElementKey`, transient `RuntimeNodeId`,
+or future mounted identity. They are not serialized and make no cross-build
+stability claim.
 
-### Typed configuration and composition
+## Typed action mapping and bounds
 
-The defect was a flat `Element` builder whose `gap`, `enabled`, `disabled`, and
-`on_press` calls appeared successful on incompatible kinds. Returning an error
-from every flat call would retain the misleading API shape; downcast-and-ignore
-was rejected; parallel typed and flat paths were rejected. `text`, `button`,
-`row`, and `column` now return typed builders. Only shared identity/style methods
-are shared; button and container behavior remains kind-specific. `IntoElement`
-is the single erasure boundary. The old argument structs, direct `Element`
-constructors, flat setters, and `*_with` helpers were removed.
+`Element::map_action` consumes a subtree and an owned typed mapper. Mapping is
+deferred until activation and recursively preserves children, authored ID/key,
+layout/style, diagnostics, type/state identity, and all non-action capabilities.
+Nested mappings compose without strings or application-action `Any` downcasts.
 
-Tuple implementations were inherently finite. `IntoElements` now accepts any
-iterator or collection of one element-builder type, covering empty, single,
-optional, vector, array, and iterator-produced children. `children!` creates a
-`Vec<Element<_>>` for arbitrary heterogeneous static children and nesting. It has
-no arity list. `element!` accepts exactly one builder expression and invokes the
-same erasure operation; it has no separate `action=` grammar. `on_press` is the
-only button-action term, while `id`, `key`, `gap`, `padding`, and children retain
-one builder meaning each.
+The stored closure alone is `'static`; it is neither `Send` nor `Sync`. No global
+`Action: Clone`, `Send`, `Sync`, or `'static` bound exists on `UiApp`, `Element`,
+or `AppRuntime`. M2 removes M1's activation `Clone` limitation: button and
+downstream proofs explicitly extract a non-`Clone` action through mutable
+`Widget::activate`/`Element::activate`, then successful dispatch immediately
+rebuilds the authored tree. Borrowed inspection cannot consume an action.
 
-### Generated products and evolution
+The transient source is one-shot: the first enabled extraction may return an
+action and the second returns `None`. Failed or disabled lookup consumes
+nothing. Configured focusability and semantic action intent stay stable after
+extraction. Runtime dispatch rebuilds immediately, restoring a newly authored
+source; mapped widgets forward mutable extraction through every mapping layer.
+The doc-hidden `extract_action_at_preorder_for_runtime` bridge supports current
+runtime lookup without exposing mutable children or erased internals. Its raw
+index belongs only to one transient tree, has no downstream compatibility
+guarantee, and is replaced by M3 generational mounted targeting.
 
-The defect was public constructors for traversal IDs, indexes, frames, frame
-nodes/kinds, style report nodes, traces, and focus state. Private fields alone did
-not prevent inconsistent products because those constructors accepted arbitrary
-parts. Constructors and mutation methods are now internal. Public accessors and
-debug formatters preserve inspection. Compile-fail doctests protect representative
-visibility and incompatible-configuration guarantees; behavior tests construct
-products through runtime/publication.
+Widget implementation values and state types must be `'static` at the erasure
+and state-type-identity operations that require Rust `TypeId`. This bound is
+local to those operations.
 
-This is the smallest M1 boundary. It does not introduce generation IDs, mounted
-reconciliation, widget extension, action mapping, custom layout, paint scenes,
-semantics, effects, or host behavior.
+## State and lifecycle seam
 
-## Migration table
+Every widget declares `State: 'static` and creates it; statelessness is explicit,
+not an associated-type default. `Element::create_widget_state` returns a
+non-forgeable opaque value.
+`Element::run_lifecycle` checks both widget and state type identities before
+running a typed `Mount`, `Update`, or `Unmount` hook with a bounded request
+collector.
 
-| Removed proof API | M1 contract |
+This is an isolated conformance seam. `AppRuntime` does not store that state,
+does not reconcile widgets, and does not run lifecycle across application
+rebuilds. M3 owns the persistent mounted arena, keyed/type/position matching,
+generational IDs, state retention/drop, lifecycle scheduling, focus retention,
+and granular invalidation.
+
+Only lifecycle receives typed state in M2. Activation, measurement, paint,
+semantics, and diagnostics are deliberately state-independent proof methods, so
+the current trait is not the complete mounted participant interface. M3 must
+introduce a breaking state-aware mounted behavior contract after its storage,
+reconciliation, borrowing, and phase-order design is accepted; M2 retains no
+persistent state and makes no state-dependent behavior claim.
+
+## Current capability proofs
+
+- Activation supplies enabled/actionable facts and may move one typed action.
+- `WidgetMeasure` supplies only fixed, text-intrinsic, or explicit unsupported
+  intrinsic minimums. `ChildLayoutWidget` separately supplies child arrangement.
+  M2 combines intrinsic and child content component-wise by maximum before
+  constraints and padding.
+- Intrinsic measurement and child layout are each snapshotted once per
+  node/publication and reused by measurement and arrangement. Unsupported or
+  unknown intrinsic capabilities publish deterministic diagnostics without
+  hiding children. Unknown child layout publishes
+  `runenui.child-layout.unrecognized`, falls back vertically, and preserves all
+  descendants. Generic control text is `ControlLabel` in both public crates.
+- Paint proof supplies deterministic category/description facts. It is not the
+  M6 primitive/resource scene.
+- Semantic proof supplies deterministic role/name/enabled/action-intent facts.
+  It is not the M5 semantic/accessibility tree.
+- Widget diagnostics are published in deterministic traversal order beside the
+  ordered `SurfaceLayoutNode::diagnostics()` collection.
+- Public element/index/frame APIs let downstream tests inspect and interact
+  without concrete runtime downcasts.
+- Index, frame, style report, and layout report have identical preorder node IDs
+  and parent relationships for every valid authored tree.
+
+M4 replaces the bounded activation policy with canonical routed events. M5 owns
+semantics, accessibility, and the public testing harness. M6 owns paint and hit
+scenes. M7 owns production layout/style extension. M8 owns production text.
+
+## Builders and macros
+
+Typed builders expose only kind-valid configuration. Common element identity and
+style remain common. `Views` accepts arbitrary iterators/collections of one view
+type; `children!` collects any number of heterogeneous views. `element!` erases
+exactly one ordinary Rust expression. Neither macro defines a second property,
+binding, component, or action language.
+
+## Generated products and evolution
+
+All generated-product fields remain private. `RuntimeNodeId`, tree indexes,
+frames/nodes, reports, traces, focus state, and opaque widget state have no normal
+public forgery or mutation path. Constructible public inputs include constraints,
+measurement requests, style tokens, widget capability facts, and typed input.
+
+Evolution-prone proof enums are `#[non_exhaustive]`. `UiApp`,
+`MeasurementProvider`, `View`, `Views`, `Widget`, and `ChildLayoutWidget` are
+open. Identifier builder
+input traits remain sealed so downstream code cannot bypass validation. The core
+prelude contains ordinary builders, identity, `Element`, `View`, and `Widget`;
+specialist capability/state/style inspection uses explicit root imports.
+
+## Breaking migration
+
+| Removed API | M2 contract |
 |---|---|
-| `Px`, `Length`, `LengthToken`, `LengthValue`, `Spacing` alias | `LogicalLength`, typed spacing/radius values |
-| unchecked `ElementId::new`, `ElementKey::new`, `TokenId::new` | fallible constructors; checked literal macros; builder diagnostics |
-| `StyleTokens::with_*` / `insert_*` replacement | non-overwriting `define_* -> Result` |
-| `TextArgs`, `ButtonArgs`, `ContainerArgs` | `Text`, `Button<Action>`, `Container<Action>` builders |
-| `Element::{text,button,container}` and `*_with` | typed free builders plus `IntoElement` |
-| flat `Element::gap/enabled/disabled/on_press` | kind-specific typed builder methods |
-| tuple child implementations through eight | iterator/collection `IntoElements` and arity-free `children!` |
-| nested macro grammar and `action=` | ordinary builder expression and canonical `on_press` |
-| public generated-product constructors/mutators | runtime generation plus read-only accessors |
-| broad core/runtime preludes | small ordinary-use preludes; explicit specialist imports |
+| `ElementKind<Action>` | private safe erasure of public `Widget<Action>` implementations |
+| `TextElement`, `ButtonElement<Action>`, `ContainerElement<Action>` | common `Element` and widget capability inspection |
+| `IntoElement<Action>` | `View<Action>` |
+| `IntoElements<Action>` | `Views<Action>` |
+| concrete-kind runtime matches | open activation/measurement/paint/semantic/diagnostic capabilities plus common children |
+| `SurfaceNodeKind` | open `SurfaceNode` widget type, paint, semantic, and diagnostic proof facts |
+| activation-only `Action: Clone` | explicit mutable one-shot extraction followed by rebuild |
+| `ChildBearingWidget`, `Element::with_children` | `ChildLayoutWidget`, `ChildLayout`, and canonical `Container<Action>` authoring |
+| `WidgetMeasure::Container` | independent intrinsic `WidgetMeasure` and child `ChildLayout` snapshots |
+| singular measurement diagnostic | ordered `SurfaceLayoutNode::diagnostics()` |
+
+M1's validated values, textual identity invariants, typed configuration,
+arity-free composition, protected products, and finite saturating geometry remain
+in force. M2 changes only the closed extension architecture and related proof
+publication; it does not begin M3.

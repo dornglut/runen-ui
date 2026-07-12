@@ -1,4 +1,4 @@
-use runenui_core::{Element, ElementId, IntoElement, button, column, element_id, element_key};
+use runenui_core::{Element, ElementId, View, button, column, element_id, element_key};
 use runenui_runtime::{ActivationResult, AppRuntime, DuplicateIdentityKind, UiApp};
 
 #[derive(Clone)]

@@ -2,7 +2,7 @@
 
 use core::marker::PhantomData;
 
-use runenui_core::{Element, ElementId, ElementKind};
+use runenui_core::{Element, ElementId};
 
 use crate::{
     FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, PointerButton, PointerEvent,
@@ -39,7 +39,7 @@ pub trait UiApp {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActivationResult {
-    /// A matching button action was dispatched.
+    /// The matching actionable widget's action was dispatched.
     Dispatched,
     /// No element with the requested authored or runtime ID exists in the current tree.
     NotFound,
@@ -47,7 +47,7 @@ pub enum ActivationResult {
     NotActivatable,
     /// The requested element exists, but it is intentionally disabled.
     Disabled,
-    /// The requested element exists on a button, but the button has no action.
+    /// The requested actionable widget has no remaining widget action.
     NoAction,
     /// More than one element has the requested authored ID.
     AmbiguousId,
@@ -260,12 +260,7 @@ where
 impl<App> AppRuntime<App>
 where
     App: UiApp,
-    App::Action: Clone,
 {
-    // Activation observes an action through the immutable authored tree and
-    // then rebuilds that tree after dispatch. The narrow Clone bound is the
-    // current proof's explicit cost for duplicating that stored action; mount
-    // and direct dispatch do not require it.
     /// Activates the element with the matching authored ID in the current tree.
     ///
     /// This is a semantic headless activation path for tests, tools, and host
@@ -305,15 +300,22 @@ where
         };
 
         match lookup {
-            ActivationLookup::Action { action, target } => {
-                self.runtime
-                    .dispatch_with_target(action, App::update, App::root, Some(target));
-                ActivationResult::Dispatched
+            ActivationLookup::Ready { target } => {
+                let action = self
+                    .runtime
+                    .root_mut()
+                    .extract_action_at_preorder_for_runtime(id.as_usize());
+                if let Some(action) = action {
+                    self.runtime
+                        .dispatch_with_target(action, App::update, App::root, Some(target));
+                    ActivationResult::Dispatched
+                } else {
+                    ActivationResult::NoAction
+                }
             }
             ActivationLookup::NotFound => ActivationResult::NotFound,
             ActivationLookup::NotActivatable => ActivationResult::NotActivatable,
             ActivationLookup::Disabled => ActivationResult::Disabled,
-            ActivationLookup::NoAction => ActivationResult::NoAction,
         }
     }
 
@@ -389,33 +391,23 @@ where
     }
 }
 
-enum ActivationLookup<Action> {
-    Action { action: Action, target: TraceTarget },
+enum ActivationLookup {
+    Ready { target: TraceTarget },
     NotFound,
     NotActivatable,
     Disabled,
-    NoAction,
 }
 
-fn activation_lookup<Action>(node: &RuntimeNodeRef<'_, Action>) -> ActivationLookup<Action>
-where
-    Action: Clone,
-{
-    match node.element().kind() {
-        ElementKind::Button(button) => {
-            if !button.enabled() {
-                return ActivationLookup::Disabled;
-            }
+fn activation_lookup<Action>(node: &RuntimeNodeRef<'_, Action>) -> ActivationLookup {
+    let activation = node.element().activation();
+    if !activation.is_actionable() {
+        return ActivationLookup::NotActivatable;
+    }
+    if !activation.enabled() {
+        return ActivationLookup::Disabled;
+    }
 
-            button
-                .on_press()
-                .map_or(ActivationLookup::NoAction, |action| {
-                    ActivationLookup::Action {
-                        action: action.clone(),
-                        target: node.trace_target(),
-                    }
-                })
-        }
-        ElementKind::Text(_) | ElementKind::Container(_) => ActivationLookup::NotActivatable,
+    ActivationLookup::Ready {
+        target: node.trace_target(),
     }
 }

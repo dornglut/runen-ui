@@ -9,13 +9,44 @@
 The current headless proof provides:
 
 - normalized independent minimum/maximum constraints with finite and unbounded maxima;
-- a borrowed synchronous renderer-neutral `MeasurementProvider` for text and button labels;
+- a borrowed synchronous renderer-neutral `MeasurementProvider` for text and control labels;
 - deterministic Unicode-scalar-count measurement for tests and headless examples;
 - computed padding applied through outer/content box constraints;
 - one `RuntimeNodeId`-aligned measured result per node per publication;
-- measurement-free arrangement;
+- one intrinsic-measurement snapshot per node and one child-layout snapshot per
+  child-bearing node per publication;
+- measurement-free arrangement from those exact publication-local snapshots;
 - intrinsic main-axis row/column sizing and loose finite cross-axis maxima;
 - aligned desired/constrained size and overflow diagnostics.
+- open intrinsic widget measurement for fixed size, text, and unsupported
+  capabilities, independent from open linear child layout;
+
+Surface preparation queries `Widget::measure()` exactly once per node and
+`ChildLayoutWidget::child_layout()` exactly once per child-bearing node per
+publication. The resolved tree owns both values. Intrinsic sizing, child
+measurement, arrangement, and layout diagnostics reuse them; text descriptors
+are not regenerated. A later publication queries each capability once again.
+These snapshots are transient publication data, not persistent mounted state.
+
+For a child-layout widget, the M2 proof combines its intrinsic minimum with its
+measured child-layout content using component-wise maximum. It then constrains
+content, expands padding, and applies outer constraints. A default container has
+zero intrinsic minimum; fixed and text minimum panels can enlarge child content.
+This deterministic rule is not the final M7 custom-layout policy.
+
+`WidgetMeasure::Unsupported` produces a deterministic
+`runenui.measurement.unsupported` layout diagnostic. The runtime's required
+cross-crate wildcard produces `runenui.measurement.unrecognized` for a newer
+unknown capability. Both use explicit zero fallback geometry only alongside the
+diagnostic; unknown behavior is never silently treated as ordinary zero size.
+The core and runtime measurement vocabularies both call generic control text
+`ControlLabel`; no button-specific alias is retained.
+
+`ChildLayout::Linear { axis }` is the current child policy. A future unknown
+variant produces `runenui.child-layout.unrecognized`, uses a vertical linear
+fallback, and still measures, arranges, frames, styles, and publishes every
+child. Layout diagnostics are the ordered `SurfaceLayoutNode::diagnostics()`
+collection.
 
 The box order is:
 
@@ -23,7 +54,7 @@ The box order is:
 outer constraints
   -> subtract computed padding
   -> content constraints
-  -> measure content
+  -> max(intrinsic widget minimum, measured child-layout content)
   -> constrain content
   -> add padding
   -> constrain outer size
@@ -31,7 +62,10 @@ outer constraints
 
 Provider sizes are structurally finite and non-negative. Authored invalid geometry is rejected; valid finite arithmetic that overflows during measurement, padding expansion, arrangement cursors, constraint subtraction, or derived rectangle-edge calculation saturates at a finite boundary. Overflow is diagnostic only: the current algorithm does not clip or scroll. Button minimum dimensions are temporary private runtime policy, not a production control recipe.
 
-The deterministic measurement provider is explicitly a test/headless proof. Character counting is not production text geometry.
+The deterministic measurement provider is explicitly a test/headless proof.
+Character counting is not production text geometry. `WidgetMeasure` is the
+bounded M2 participation proof; it does not freeze the M7 production custom
+layout contract.
 
 ## Current limitations
 

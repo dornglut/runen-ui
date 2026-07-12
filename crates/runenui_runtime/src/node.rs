@@ -3,7 +3,7 @@
 use core::fmt;
 use std::collections::{BTreeMap, btree_map::Entry};
 
-use runenui_core::{Element, ElementId, ElementKey, ElementKind};
+use runenui_core::{Element, ElementId, ElementKey};
 
 use crate::TraceTarget;
 
@@ -84,11 +84,9 @@ impl<'a, Action> RuntimeNodeRef<'a, Action> {
 
     /// Returns whether this node can receive focus in the current tree.
     #[must_use]
-    pub const fn is_focusable(&self) -> bool {
-        match self.element.kind() {
-            ElementKind::Button(button) => button.enabled(),
-            ElementKind::Text(_) | ElementKind::Container(_) => false,
-        }
+    pub fn is_focusable(&self) -> bool {
+        let activation = self.element.activation();
+        activation.is_actionable() && activation.enabled()
     }
 
     pub(crate) fn trace_target(&self) -> TraceTarget {
@@ -236,24 +234,23 @@ impl<'a, Action> RuntimeTreeIndex<'a, Action> {
             });
         }
 
-        if let ElementKind::Container(container) = element.kind() {
-            let mut sibling_keys: BTreeMap<ElementKey, String> = BTreeMap::new();
-            for (child_index, child) in container.children().iter().enumerate() {
-                let child_path = format!("{path}/{child_index}");
-                let sibling_key_duplicate = child.element_key().and_then(|key| match sibling_keys
-                    .entry(key.clone())
-                {
-                    Entry::Occupied(entry) => Some(SiblingKeyDuplicate {
-                        value: key.as_str().to_owned(),
-                        first_path: entry.get().clone(),
-                    }),
-                    Entry::Vacant(entry) => {
-                        entry.insert(child_path.clone());
-                        None
-                    }
-                });
-                self.push_node(Some(id), child, &child_path, ids, sibling_key_duplicate);
-            }
+        let mut sibling_keys: BTreeMap<ElementKey, String> = BTreeMap::new();
+        for (child_index, child) in element.children().iter().enumerate() {
+            let child_path = format!("{path}/{child_index}");
+            let sibling_key_duplicate =
+                child
+                    .element_key()
+                    .and_then(|key| match sibling_keys.entry(key.clone()) {
+                        Entry::Occupied(entry) => Some(SiblingKeyDuplicate {
+                            value: key.as_str().to_owned(),
+                            first_path: entry.get().clone(),
+                        }),
+                        Entry::Vacant(entry) => {
+                            entry.insert(child_path.clone());
+                            None
+                        }
+                    });
+            self.push_node(Some(id), child, &child_path, ids, sibling_key_duplicate);
         }
 
         id

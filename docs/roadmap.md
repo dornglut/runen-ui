@@ -14,7 +14,7 @@ This roadmap is the gated execution authority from the current headless proof to
 | `deferred` | Deliberately later than the first production foundation or release. |
 | `complete` | All exit criteria and required proofs pass. |
 
-Historical foundations—typed application flow, immutable element descriptions, deterministic headless proofs, typed style resolution, explicit constraints, measurement-provider contracts, and aligned publication diagnostics—are retained inputs. They do not complete any production milestone by themselves.
+Historical foundations—typed application flow, transient element descriptions, deterministic headless proofs, typed style resolution, explicit constraints, measurement-provider contracts, and aligned publication diagnostics—are retained inputs. They do not complete any production milestone by themselves.
 
 ## Non-negotiable sequencing
 
@@ -82,13 +82,17 @@ saturating derived geometry. See the [M1 public API contract](architecture/publi
 
 ## M2 — Extensible view/widget/component architecture
 
-**Status:** `queued`.
+**Status:** `complete`.
 
 **Goal:** Let external crates and reusable components participate without modifying closed core enums.
 
 **Why now:** Mounted identity, controls, semantics, layout, and rendering must be built on an open participant contract rather than hardcoded matches.
 
-**Included work:** Public transient View/Element protocol; widget type identity and type erasure; external widget/control boundary; component action mapping; component expressions; lifecycle-capable interface; runtime-local state contract; custom layout, paint, semantics, diagnostics, and testing participation; macro direction.
+**Included work:** Public transient View/Element protocol; separate built-in
+authored views/private widgets; widget/state identity and safe erasure; external
+leaf and child-layout boundaries; canonical container authoring; component action
+mapping; lifecycle-only state seam; proof-level intrinsic measurement, child
+layout, aligned publication, paint, semantics, diagnostics, and testing.
 
 **Explicit non-goals:** Broad built-in control library, production reconciliation implementation beyond the contract needed for proof, renderer backend, or facade crate.
 
@@ -98,11 +102,31 @@ saturating derived geometry. See the [M1 public API contract](architecture/publi
 
 **Exit criteria:** Core enums are no longer the extension gate; component and widget concepts are distinct; public custom-widget and action-mapping contracts are coherent and tested.
 
+**Completion:** ADR 0003 defines the view/element/component/widget vocabulary,
+safe owned erasure, process-local widget/state type identity, recursive typed
+action mapping, and the lifecycle seam for M3. Built-in text, button, and
+container convert to private behavior widgets using the same erased protocol as
+downstream widgets. `ChildLayoutWidget`, `ChildLayout`, and canonical
+`Container<Action>` separate child ownership/layout from intrinsic measurement.
+Runtime traversal, activation/focus, layout, publication, and debug inspection
+remain concrete-type-neutral. A genuine
+non-publishable downstream package proves custom state/lifecycle, mapped actions,
+explicit mutable non-`Clone` activation, vertical/horizontal/nested child layout
+with gaps, fixed/text/unsupported intrinsic minimums, independent one-query
+measurement/layout snapshots, descendant-preserving fallbacks, preorder/parent
+aligned index/frame/style/layout products, hit testing, paint/semantic facts,
+diagnostics, and public inspection on stable and Rust 1.93.0. Widget/state
+mismatches are category-accurate and generic control-label vocabulary is neutral.
+Closed M1 dispatch types were removed. The state seam is explicitly
+lifecycle-only; M3 will introduce the breaking state-aware mounted behavior
+protocol.
+No persistent mounted storage or reconciliation was implemented.
+
 **Unblocks:** M3 and future controls.
 
 ## M3 — Mounted runtime and reconciliation
 
-**Status:** `blocked` by M1–M2.
+**Status:** `queued`.
 
 **Goal:** Establish persistent runtime identity, lifecycle, state, and granular invalidation.
 
@@ -176,7 +200,10 @@ saturating derived geometry. See the [M1 public API contract](architecture/publi
 
 **Required proofs/tests:** Two independent deterministic consumers; custom backend proof renders without knowing `Button`; hit tests respect clips/transforms/visibility/order; scene snapshots are stable and generational targets reject stale input.
 
-**Exit criteria:** `SurfaceNodeKind` is no longer the renderer protocol; paint, hit, semantics, layout, and diagnostics are distinct authoritative products; no backend-specific vocabulary leaks into public scenes.
+**Exit criteria:** M2 widget paint/semantic proof facts are no longer mistaken for
+the renderer protocol; paint, hit, semantics, layout, and diagnostics are
+distinct authoritative products; no backend-specific vocabulary leaks into
+public scenes.
 
 **Unblocks:** M7 rendering integration and M10 backends.
 

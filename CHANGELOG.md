@@ -4,6 +4,39 @@
 
 ### Changed
 
+- Completed M2 with an open downstream `Widget<Action>` protocol, safe private
+  erasure, process-local widget/state type identity, checked lifecycle/state
+  conformance, typed recursive component action mapping, and open proof-level
+  event/layout/paint/semantic/diagnostic participation.
+- Migrated text, button, container, Counter, traversal, focus, activation,
+  layout, surface publication, and debug output off `ElementKind`; removed
+  `ElementKind`, built-in element views, `IntoElement`, `IntoElements`, and
+  `SurfaceNodeKind` without compatibility aliases.
+- Added a non-publishable downstream conformance package that implements and
+  interacts with a stateful custom control and child-bearing custom container
+  entirely through public APIs on stable and Rust 1.93.0.
+- Corrected lifecycle mismatches to distinguish widget type, state type, and
+  erased-payload failures with truthful expected/actual accessors.
+- Separated public built-in authored views from private behavior-only text,
+  button, and linear-container widget implementations; compile-fail proofs
+  prevent built-in builders from entering `Element::new` and losing common
+  configuration.
+- Replaced `ChildBearingWidget`, `Element::with_children`, and
+  `WidgetMeasure::Container` with `ChildLayoutWidget`, `ChildLayout`, and the
+  canonical `Container<Action>`/`container` authored path shared by row, column,
+  and downstream child-layout widgets.
+- Replaced hidden `RefCell<Option<Action>>` consumption through `&self` with
+  explicit mutable one-shot extraction while retaining non-`Clone` actions and
+  immediate successful-dispatch rebuilds.
+- Snapshotted every widget measurement capability once per node/publication,
+  independently snapshotted child layout once per child-bearing node, combined
+  intrinsic/child minimums, added descendant-preserving unsupported/version-skew
+  fallbacks, aligned index/frame/style/layout products, and renamed runtime
+  `ButtonLabel` to `ControlLabel` without an alias.
+- Clarified that stateless widgets explicitly declare/create `()` state and that
+  M2 proves state identity/lifecycle compatibility only; M3 owns the breaking
+  state-aware mounted behavior contract.
+
 - Completed M1 public API and vocabulary repair with validated logical values,
   IDs/keys/token IDs, deterministic duplicate diagnostics, typed element builders,
   arity-free children, reduced preludes, and read-only generated products.

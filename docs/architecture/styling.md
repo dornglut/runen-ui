@@ -14,7 +14,11 @@
 - concrete `ComputedStyle` containing no token references;
 - per-field provenance and unresolved-token diagnostics.
 
-`runenui_runtime::publish_surface` resolves every node once during one publication. The same resolution product supplies concrete style to `SurfaceFrame` and provenance/diagnostics to `SurfaceStyleReport`. Computed padding participates in measurement, placement, and outer-bound hit testing.
+`runenui_runtime::publish_surface` resolves every open widget element once during
+one publication. The same resolution product supplies concrete style to
+`SurfaceFrame` and provenance/diagnostics to `SurfaceStyleReport`. Computed
+padding participates in measurement, placement, and outer-bound hit testing for
+built-in and downstream widgets alike.
 
 Missing tokens are non-fatal: the computed field is absent, provenance records the missing token, diagnostics retain it, and render/layout consumers do not invent a fallback.
 

@@ -5,8 +5,9 @@
 //! layout pass, concrete computed-style delivery, and bounds hit testing.
 
 use runenui_core::{
-    Axis, ComputedStyle, EdgeInsets, Element, ElementId, ElementKind, LogicalLength,
-    StyleResolution, StyleTokens, resolve_style,
+    Axis, ChildLayout, ComputedStyle, EdgeInsets, Element, ElementId, LogicalLength,
+    StyleResolution, StyleTokens, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
+    WidgetSemanticProof, WidgetTextKind, WidgetTypeId, resolve_style,
 };
 
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
@@ -144,43 +145,6 @@ impl LogicalRect {
     }
 }
 
-/// Renderer-facing node kind carried by a surface frame.
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum SurfaceNodeKind {
-    /// Non-visual grouping node.
-    Container,
-    /// Text node with display content.
-    Text { content: String },
-    /// Button control with display label and enabled state.
-    Button { label: String, enabled: bool },
-}
-
-impl SurfaceNodeKind {
-    /// Creates a container surface node kind.
-    #[must_use]
-    const fn container() -> Self {
-        Self::Container
-    }
-
-    /// Creates a text surface node kind.
-    #[must_use]
-    fn text(content: impl Into<String>) -> Self {
-        Self::Text {
-            content: content.into(),
-        }
-    }
-
-    /// Creates a button surface node kind.
-    #[must_use]
-    fn button(label: impl Into<String>, enabled: bool) -> Self {
-        Self::Button {
-            label: label.into(),
-            enabled,
-        }
-    }
-}
-
 /// One ordered node in a renderer-facing surface frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceNode {
@@ -188,19 +152,27 @@ pub struct SurfaceNode {
     parent: Option<RuntimeNodeId>,
     authored_id: Option<ElementId>,
     bounds: LogicalRect,
-    kind: SurfaceNodeKind,
+    widget_proof: SurfaceWidgetProof,
     computed_style: ComputedStyle,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SurfaceWidgetProof {
+    widget_type_id: WidgetTypeId,
+    paint: WidgetPaintProof,
+    semantics: WidgetSemanticProof,
+    diagnostics: Vec<WidgetDiagnostic>,
 }
 
 impl SurfaceNode {
     /// Creates a surface node.
     #[must_use]
-    pub(crate) const fn new(
+    const fn new(
         id: RuntimeNodeId,
         parent: Option<RuntimeNodeId>,
         authored_id: Option<ElementId>,
         bounds: LogicalRect,
-        kind: SurfaceNodeKind,
+        widget_proof: SurfaceWidgetProof,
         computed_style: ComputedStyle,
     ) -> Self {
         Self {
@@ -208,7 +180,7 @@ impl SurfaceNode {
             parent,
             authored_id,
             bounds,
-            kind,
+            widget_proof,
             computed_style,
         }
     }
@@ -237,10 +209,28 @@ impl SurfaceNode {
         self.bounds
     }
 
-    /// Returns the renderer-facing surface node kind.
+    /// Returns the process-local concrete widget implementation identity.
     #[must_use]
-    pub const fn kind(&self) -> &SurfaceNodeKind {
-        &self.kind
+    pub const fn widget_type_id(&self) -> WidgetTypeId {
+        self.widget_proof.widget_type_id
+    }
+
+    /// Returns proof-level renderer-neutral paint/debug facts.
+    #[must_use]
+    pub const fn paint(&self) -> &WidgetPaintProof {
+        &self.widget_proof.paint
+    }
+
+    /// Returns proof-level renderer-neutral semantic facts.
+    #[must_use]
+    pub const fn semantics(&self) -> &WidgetSemanticProof {
+        &self.widget_proof.semantics
+    }
+
+    /// Returns deterministic widget diagnostics.
+    #[must_use]
+    pub const fn diagnostics(&self) -> &[WidgetDiagnostic] {
+        self.widget_proof.diagnostics.as_slice()
     }
 
     /// Returns the concrete resolved style consumed by layout and renderers.
@@ -345,42 +335,65 @@ impl LayoutOverflow {
 }
 
 /// One runtime-node-aligned diagnostic result from surface measurement.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceLayoutNode {
     id: RuntimeNodeId,
+    parent: Option<RuntimeNodeId>,
     outer_constraints: LayoutConstraints,
     content_constraints: LayoutConstraints,
     desired_content_size: LogicalSize,
     desired_outer_size: LogicalSize,
     constrained_outer_size: LogicalSize,
     overflow: LayoutOverflow,
+    diagnostics: Vec<WidgetDiagnostic>,
 }
 
 impl SurfaceLayoutNode {
+    fn placeholder(id: RuntimeNodeId) -> Self {
+        let zero = LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO);
+        Self::new(
+            id,
+            None,
+            [LayoutConstraints::unbounded(); 2],
+            [zero; 3],
+            LayoutOverflow::default(),
+        )
+    }
+
     const fn new(
         id: RuntimeNodeId,
-        outer_constraints: LayoutConstraints,
-        content_constraints: LayoutConstraints,
-        desired_content_size: LogicalSize,
-        desired_outer_size: LogicalSize,
-        constrained_outer_size: LogicalSize,
+        parent: Option<RuntimeNodeId>,
+        constraints: [LayoutConstraints; 2],
+        sizes: [LogicalSize; 3],
         overflow: LayoutOverflow,
     ) -> Self {
         Self {
             id,
-            outer_constraints,
-            content_constraints,
-            desired_content_size,
-            desired_outer_size,
-            constrained_outer_size,
+            parent,
+            outer_constraints: constraints[0],
+            content_constraints: constraints[1],
+            desired_content_size: sizes[0],
+            desired_outer_size: sizes[1],
+            constrained_outer_size: sizes[2],
             overflow,
+            diagnostics: Vec::new(),
         }
+    }
+
+    fn with_diagnostics(mut self, diagnostics: Vec<WidgetDiagnostic>) -> Self {
+        self.diagnostics = diagnostics;
+        self
     }
 
     /// Returns the generated runtime node ID.
     #[must_use]
     pub const fn id(&self) -> RuntimeNodeId {
         self.id
+    }
+
+    #[must_use]
+    pub const fn parent(&self) -> Option<RuntimeNodeId> {
+        self.parent
     }
 
     /// Returns the outer constraints supplied to this node.
@@ -417,6 +430,12 @@ impl SurfaceLayoutNode {
     #[must_use]
     pub const fn overflow(&self) -> LayoutOverflow {
         self.overflow
+    }
+
+    /// Returns ordered proof-level layout capability diagnostics.
+    #[must_use]
+    pub const fn diagnostics(&self) -> &[WidgetDiagnostic] {
+        self.diagnostics.as_slice()
     }
 }
 
@@ -584,6 +603,30 @@ pub fn publish_surface<Action>(
     );
     let style_report = build_surface_style_report(&resolved_tree);
 
+    debug_assert_eq!(resolved_tree.nodes().len(), frame.nodes().len());
+    debug_assert_eq!(resolved_tree.nodes().len(), style_report.nodes().len());
+    debug_assert_eq!(resolved_tree.nodes().len(), layout_report.nodes().len());
+    for (((resolved, framed), styled), laid_out) in resolved_tree
+        .nodes()
+        .iter()
+        .zip(frame.nodes())
+        .zip(style_report.nodes())
+        .zip(layout_report.nodes())
+    {
+        debug_assert_eq!(
+            (framed.id(), framed.parent()),
+            (resolved.id(), resolved.parent())
+        );
+        debug_assert_eq!(
+            (styled.id(), styled.parent()),
+            (resolved.id(), resolved.parent())
+        );
+        debug_assert_eq!(
+            (laid_out.id(), laid_out.parent()),
+            (resolved.id(), resolved.parent())
+        );
+    }
+
     SurfacePublication::new(frame, style_report, layout_report)
 }
 
@@ -598,10 +641,9 @@ impl<'a, Action> ResolvedSurfaceTree<'a, Action> {
             (0..index.nodes().len()).map(|_| Vec::new()).collect();
 
         for node in index.nodes() {
-            if let Some(parent) = node.parent()
-                && let Some(children) = children_by_parent.get_mut(parent.as_usize())
-            {
-                children.push(node.id());
+            if let Some(parent) = node.parent() {
+                debug_assert!(parent.as_usize() < children_by_parent.len());
+                children_by_parent[parent.as_usize()].push(node.id());
             }
         }
 
@@ -614,6 +656,8 @@ impl<'a, Action> ResolvedSurfaceTree<'a, Action> {
                 parent: node.parent(),
                 element: node.element(),
                 children,
+                measurement: node.element().measure(),
+                child_layout: node.element().child_layout(),
                 resolution: resolve_style(node.element().style(), tokens),
             })
             .collect();
@@ -625,8 +669,9 @@ impl<'a, Action> ResolvedSurfaceTree<'a, Action> {
         self.nodes.as_slice()
     }
 
-    fn node(&self, id: RuntimeNodeId) -> Option<&ResolvedSurfaceNode<'a, Action>> {
-        self.nodes.get(id.as_usize())
+    fn node(&self, id: RuntimeNodeId) -> &ResolvedSurfaceNode<'a, Action> {
+        debug_assert!(id.as_usize() < self.nodes.len());
+        &self.nodes[id.as_usize()]
     }
 }
 
@@ -635,6 +680,8 @@ struct ResolvedSurfaceNode<'a, Action> {
     parent: Option<RuntimeNodeId>,
     element: &'a Element<Action>,
     children: Vec<RuntimeNodeId>,
+    measurement: WidgetMeasure,
+    child_layout: Option<ChildLayout>,
     resolution: StyleResolution,
 }
 
@@ -655,6 +702,14 @@ impl<Action> ResolvedSurfaceNode<'_, Action> {
         self.children.as_slice()
     }
 
+    const fn measurement(&self) -> &WidgetMeasure {
+        &self.measurement
+    }
+
+    const fn child_layout(&self) -> Option<ChildLayout> {
+        self.child_layout
+    }
+
     const fn resolution(&self) -> &StyleResolution {
         &self.resolution
     }
@@ -669,6 +724,7 @@ fn build_surface_style_report<Action>(
         .map(|node| {
             SurfaceStyleNode::new(
                 node.id(),
+                node.parent(),
                 node.element().element_id().cloned(),
                 node.resolution().clone(),
             )
@@ -684,23 +740,14 @@ fn layout_resolved_surface<Action>(
     measurement_provider: &dyn MeasurementProvider,
 ) -> (SurfaceFrame, SurfaceLayoutReport) {
     let mut measured_layout = MeasuredSurfaceLayout::new(resolved_tree.nodes().len());
-    let mut frame_size =
-        root_constraints.constrain(LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO));
-
-    if let Some(root) = resolved_tree.node(RuntimeNodeId::ROOT) {
-        let measurer = SurfaceMeasurer::new(measurement_provider);
-        if let Some(size) =
-            measurer.measure_node(resolved_tree, &mut measured_layout, root, root_constraints)
-        {
-            frame_size = size;
-        }
-    }
+    let root = resolved_tree.node(RuntimeNodeId::ROOT);
+    let measurer = SurfaceMeasurer::new(measurement_provider);
+    let frame_size =
+        measurer.measure_node(resolved_tree, &mut measured_layout, root, root_constraints);
 
     let frame_nodes = {
         let mut arranger = SurfaceArrangementBuilder::new(&measured_layout);
-        if let Some(root) = resolved_tree.node(RuntimeNodeId::ROOT) {
-            arranger.push_node(resolved_tree, root, LogicalPoint::from_finite(0.0, 0.0));
-        }
+        arranger.push_node(resolved_tree, root, LogicalPoint::from_finite(0.0, 0.0));
         arranger.into_nodes()
     };
     let frame = SurfaceFrame::new(frame_size, frame_nodes);
@@ -709,41 +756,52 @@ fn layout_resolved_surface<Action>(
 }
 
 struct MeasuredSurfaceLayout {
-    nodes: Vec<Option<SurfaceLayoutNode>>,
+    nodes: Vec<SurfaceLayoutNode>,
+    measured: Vec<bool>,
 }
 
 impl MeasuredSurfaceLayout {
     fn new(node_count: usize) -> Self {
         Self {
-            nodes: vec![None; node_count],
+            nodes: (0..node_count)
+                .map(|index| SurfaceLayoutNode::placeholder(RuntimeNodeId::from_index(index)))
+                .collect(),
+            measured: vec![false; node_count],
         }
     }
 
-    fn node(&self, id: RuntimeNodeId) -> Option<&SurfaceLayoutNode> {
-        self.nodes.get(id.as_usize()).and_then(Option::as_ref)
+    fn is_measured(&self, id: RuntimeNodeId) -> bool {
+        self.measured[id.as_usize()]
     }
 
-    fn record(&mut self, node: SurfaceLayoutNode) -> Option<LogicalSize> {
-        let slot = self.nodes.get_mut(node.id().as_usize())?;
-        let result = slot.get_or_insert(node);
-        Some(result.constrained_outer_size())
+    fn node(&self, id: RuntimeNodeId) -> &SurfaceLayoutNode {
+        debug_assert!(self.is_measured(id));
+        &self.nodes[id.as_usize()]
+    }
+
+    fn record(&mut self, node: SurfaceLayoutNode) -> LogicalSize {
+        let index = node.id().as_usize();
+        debug_assert!(index < self.nodes.len());
+        let size = node.constrained_outer_size();
+        self.nodes[index] = node;
+        self.measured[index] = true;
+        size
     }
 
     fn into_report(self) -> SurfaceLayoutReport {
-        SurfaceLayoutReport::new(self.nodes.into_iter().flatten().collect())
+        debug_assert!(self.measured.iter().all(|measured| *measured));
+        SurfaceLayoutReport::new(self.nodes)
     }
 }
 
 struct SurfaceMeasurer<'a> {
     measurement_provider: &'a dyn MeasurementProvider,
-    button_policy: ButtonLayoutPolicy,
 }
 
 impl<'a> SurfaceMeasurer<'a> {
     fn new(measurement_provider: &'a dyn MeasurementProvider) -> Self {
         Self {
             measurement_provider,
-            button_policy: ButtonLayoutPolicy::default(),
         }
     }
 
@@ -753,57 +811,60 @@ impl<'a> SurfaceMeasurer<'a> {
         measured_layout: &mut MeasuredSurfaceLayout,
         node: &ResolvedSurfaceNode<'_, Action>,
         outer_constraints: LayoutConstraints,
-    ) -> Option<LogicalSize> {
-        if let Some(measured) = measured_layout.node(node.id()) {
-            return Some(measured.constrained_outer_size());
+    ) -> LogicalSize {
+        if measured_layout.is_measured(node.id()) {
+            return measured_layout.node(node.id()).constrained_outer_size();
         }
 
         let padding = resolved_padding(node);
         let content_constraints = content_constraints(outer_constraints, padding);
-
-        let (desired_content_size, desired_outer_size) = match node.element().kind() {
-            ElementKind::Text(text) => {
-                let desired_content_size = self.measure_text_content(
+        let mut diagnostics = Vec::new();
+        let intrinsic_size = match node.measurement() {
+            WidgetMeasure::Text {
+                content,
+                kind,
+                minimum_width,
+                minimum_height,
+            } => {
+                let measured_text = self.measure_text_content(
                     node,
-                    text.content(),
-                    TextMeasurementKind::Text,
+                    content,
+                    measurement_kind(*kind),
                     content_constraints,
                 );
-                let constrained_content_size = content_constraints.constrain(desired_content_size);
-                (
-                    desired_content_size,
-                    expand_size_by_padding(constrained_content_size, padding),
-                )
+                apply_minimum(measured_text, *minimum_width, *minimum_height)
             }
-            ElementKind::Button(button) => {
-                let desired_content_size = self.measure_text_content(
-                    node,
-                    button.label(),
-                    TextMeasurementKind::ButtonLabel,
-                    content_constraints,
-                );
-                let constrained_content_size = content_constraints.constrain(desired_content_size);
-                let padded_outer = expand_size_by_padding(constrained_content_size, padding);
-                (
-                    desired_content_size,
-                    self.button_policy.apply_minimum(padded_outer),
-                )
+            WidgetMeasure::Fixed { width, height } => LogicalSize::new(*width, *height),
+            WidgetMeasure::Unsupported { reason } => {
+                diagnostics.push(WidgetDiagnostic::new(
+                    "runenui.measurement.unsupported",
+                    format!("unsupported widget measurement capability: {reason}"),
+                ));
+                zero_size()
             }
-            ElementKind::Container(container) => {
-                let desired_content_size = self.measure_container_content(
-                    resolved_tree,
-                    measured_layout,
-                    node,
-                    container.axis(),
-                    content_constraints,
-                );
-                let constrained_content_size = content_constraints.constrain(desired_content_size);
-                (
-                    desired_content_size,
-                    expand_size_by_padding(constrained_content_size, padding),
-                )
+            _ => {
+                diagnostics.push(WidgetDiagnostic::new(
+                    "runenui.measurement.unrecognized",
+                    "widget measurement capability is not recognized by this runtime version",
+                ));
+                zero_size()
             }
         };
+
+        let child_content_size = node.child_layout().map_or_else(zero_size, |child_layout| {
+            let axis = child_layout_axis(child_layout, &mut diagnostics);
+            self.measure_child_layout_content(
+                resolved_tree,
+                measured_layout,
+                node,
+                axis,
+                content_constraints,
+            )
+        });
+        debug_assert!(node.child_layout().is_some() || node.children().is_empty());
+        let desired_content_size = component_max_size(intrinsic_size, child_content_size);
+        let constrained_content_size = content_constraints.constrain(desired_content_size);
+        let desired_outer_size = expand_size_by_padding(constrained_content_size, padding);
         let constrained_outer_size = outer_constraints.constrain(desired_outer_size);
         let overflow = layout_overflow(
             desired_content_size,
@@ -813,13 +874,16 @@ impl<'a> SurfaceMeasurer<'a> {
         );
         let measured = SurfaceLayoutNode::new(
             node.id(),
-            outer_constraints,
-            content_constraints,
-            desired_content_size,
-            desired_outer_size,
-            constrained_outer_size,
+            node.parent(),
+            [outer_constraints, content_constraints],
+            [
+                desired_content_size,
+                desired_outer_size,
+                constrained_outer_size,
+            ],
             overflow,
-        );
+        )
+        .with_diagnostics(diagnostics);
 
         measured_layout.record(measured)
     }
@@ -836,7 +900,7 @@ impl<'a> SurfaceMeasurer<'a> {
         sanitize_size(self.measurement_provider.measure_text(&request).size())
     }
 
-    fn measure_container_content<Action>(
+    fn measure_child_layout_content<Action>(
         &self,
         resolved_tree: &ResolvedSurfaceTree<'_, Action>,
         measured_layout: &mut MeasuredSurfaceLayout,
@@ -848,17 +912,10 @@ impl<'a> SurfaceMeasurer<'a> {
         let gap = node.element().layout().gap().get();
         let mut width: f32 = 0.0;
         let mut height: f32 = 0.0;
-        let mut measured_child_count = 0_usize;
-
-        for child_id in node.children() {
-            let Some(child) = resolved_tree.node(*child_id) else {
-                continue;
-            };
-            let Some(child_size) =
-                self.measure_node(resolved_tree, measured_layout, child, child_constraints)
-            else {
-                continue;
-            };
+        for (measured_child_count, child_id) in node.children().iter().enumerate() {
+            let child = resolved_tree.node(*child_id);
+            let child_size =
+                self.measure_node(resolved_tree, measured_layout, child, child_constraints);
 
             if measured_child_count > 0 {
                 match axis {
@@ -876,7 +933,6 @@ impl<'a> SurfaceMeasurer<'a> {
                     height = height.max(child_size.height());
                 }
             }
-            measured_child_count += 1;
         }
 
         LogicalSize::from_arithmetic(width, height)
@@ -906,25 +962,33 @@ impl<'a> SurfaceArrangementBuilder<'a> {
         node: &ResolvedSurfaceNode<'_, Action>,
         origin: LogicalPoint,
     ) {
-        let Some(measured) = self.measured_layout.node(node.id()) else {
-            return;
-        };
+        let measured = self.measured_layout.node(node.id());
         let bounds = LogicalRect::new(origin, measured.constrained_outer_size());
         self.nodes.push(SurfaceNode::new(
             node.id(),
             node.parent(),
             node.element().element_id().cloned(),
             bounds,
-            surface_kind(node.element().kind()),
+            SurfaceWidgetProof {
+                widget_type_id: node.element().widget_type_id(),
+                paint: node.element().paint(),
+                semantics: node.element().semantics(),
+                diagnostics: node.element().widget_diagnostics(),
+            },
             node.resolution().computed_style(),
         ));
 
-        if let ElementKind::Container(container) = node.element().kind() {
-            self.push_container_children(resolved_tree, node, bounds, container.axis());
+        if let Some(child_layout) = node.child_layout() {
+            self.push_child_layout_children(
+                resolved_tree,
+                node,
+                bounds,
+                child_layout_axis_without_diagnostic(child_layout),
+            );
         }
     }
 
-    fn push_container_children<Action>(
+    fn push_child_layout_children<Action>(
         &mut self,
         resolved_tree: &ResolvedSurfaceTree<'_, Action>,
         container_node: &ResolvedSurfaceNode<'_, Action>,
@@ -935,15 +999,9 @@ impl<'a> SurfaceArrangementBuilder<'a> {
         let padding = resolved_padding(container_node);
         let mut cursor_x = finite_sum(parent_bounds.x(), padding.left().get());
         let mut cursor_y = finite_sum(parent_bounds.y(), padding.top().get());
-        let mut arranged_child_count = 0_usize;
-
-        for child_id in container_node.children() {
-            let Some(child) = resolved_tree.node(*child_id) else {
-                continue;
-            };
-            let Some(measured_child) = self.measured_layout.node(*child_id) else {
-                continue;
-            };
+        for (arranged_child_count, child_id) in container_node.children().iter().enumerate() {
+            let child = resolved_tree.node(*child_id);
+            let measured_child = self.measured_layout.node(*child_id);
             let child_size = measured_child.constrained_outer_size();
 
             if arranged_child_count > 0 {
@@ -963,32 +1021,48 @@ impl<'a> SurfaceArrangementBuilder<'a> {
                 Axis::Vertical => cursor_y = finite_sum(cursor_y, child_size.height()),
                 Axis::Horizontal => cursor_x = finite_sum(cursor_x, child_size.width()),
             }
-            arranged_child_count += 1;
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct ButtonLayoutPolicy {
-    min_width: f32,
-    min_height: f32,
+fn apply_minimum(
+    size: LogicalSize,
+    minimum_width: LogicalLength,
+    minimum_height: LogicalLength,
+) -> LogicalSize {
+    LogicalSize::from_arithmetic(
+        max_extent(size.width(), minimum_width.get()),
+        max_extent(size.height(), minimum_height.get()),
+    )
 }
 
-impl Default for ButtonLayoutPolicy {
-    fn default() -> Self {
-        Self {
-            min_width: 64.0,
-            min_height: 32.0,
-        }
+const fn zero_size() -> LogicalSize {
+    LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO)
+}
+
+fn component_max_size(left: LogicalSize, right: LogicalSize) -> LogicalSize {
+    LogicalSize::from_arithmetic(
+        left.width().max(right.width()),
+        left.height().max(right.height()),
+    )
+}
+
+fn child_layout_axis(child_layout: ChildLayout, diagnostics: &mut Vec<WidgetDiagnostic>) -> Axis {
+    if let ChildLayout::Linear { axis } = child_layout {
+        axis
+    } else {
+        diagnostics.push(WidgetDiagnostic::new(
+            "runenui.child-layout.unrecognized",
+            "child layout capability is not recognized; using vertical linear fallback",
+        ));
+        Axis::Vertical
     }
 }
 
-impl ButtonLayoutPolicy {
-    fn apply_minimum(self, size: LogicalSize) -> LogicalSize {
-        LogicalSize::from_arithmetic(
-            max_extent(size.width(), self.min_width),
-            max_extent(size.height(), self.min_height),
-        )
+const fn child_layout_axis_without_diagnostic(child_layout: ChildLayout) -> Axis {
+    match child_layout {
+        ChildLayout::Linear { axis } => axis,
+        _ => Axis::Vertical,
     }
 }
 
@@ -1140,10 +1214,9 @@ fn logical_extent_from_arithmetic(value: f32) -> LogicalLength {
     LogicalLength::new(extent_from_arithmetic(value)).unwrap_or_default()
 }
 
-fn surface_kind<Action>(kind: &ElementKind<Action>) -> SurfaceNodeKind {
+const fn measurement_kind(kind: WidgetTextKind) -> TextMeasurementKind {
     match kind {
-        ElementKind::Container(_) => SurfaceNodeKind::container(),
-        ElementKind::Text(text) => SurfaceNodeKind::text(text.content()),
-        ElementKind::Button(button) => SurfaceNodeKind::button(button.label(), button.enabled()),
+        WidgetTextKind::ControlLabel => TextMeasurementKind::ControlLabel,
+        _ => TextMeasurementKind::Text,
     }
 }
