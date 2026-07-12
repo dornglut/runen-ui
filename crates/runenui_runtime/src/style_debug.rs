@@ -15,7 +15,7 @@ pub struct SurfaceStyleReport {
 
 impl SurfaceStyleReport {
     #[must_use]
-    pub const fn new(nodes: Vec<SurfaceStyleNode>) -> Self {
+    pub(crate) const fn new(nodes: Vec<SurfaceStyleNode>) -> Self {
         Self { nodes }
     }
 
@@ -44,7 +44,7 @@ pub struct SurfaceStyleNode {
 
 impl SurfaceStyleNode {
     #[must_use]
-    pub const fn new(
+    pub(crate) const fn new(
         id: RuntimeNodeId,
         authored_id: Option<ElementId>,
         resolution: StyleResolution,

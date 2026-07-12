@@ -18,8 +18,8 @@ RunenUI/
 
 | Package | Current ownership | Must not own |
 |---|---|---|
-| `runenui_core` | Host-neutral authored elements, identity/key vocabulary, layout intent, style values/tokens/resolution, computed style, and macro/builder proof | Runtime state, hosts, renderer backends, app state, ECS, or legacy dependencies |
-| `runenui_runtime` | Headless app execution, transient indexing, proof input/focus/activation, constraints/measurement, layout/publication, diagnostics, and trace | Application domain state, native windows, concrete renderers, ECS, or legacy dependencies |
+| `runenui_core` | Validated logical values and authored identity, typed built-in builders/elements, layout intent, style values/tokens/resolution, and arity-free composition macros | Runtime state, hosts, renderer backends, app state, ECS, or legacy dependencies |
+| `runenui_runtime` | Headless app execution, opaque transient indexing, identity diagnostics, proof input/focus/activation, validated constraints/measurement, read-only layout/publication products, and trace | Application domain state, native windows, concrete renderers, ECS, or legacy dependencies |
 | `counter` | Application-owned state/action/update and headless public-API proof | Framework internals, native host, renderer backend, or legacy imports |
 | `xtask` | Repository validation orchestration | Framework runtime behavior |
 
@@ -72,3 +72,6 @@ Important direction rules remain:
 - M11 may add the facade crate after the lower-level public surface is ready to stabilize.
 
 See the [production roadmap](../roadmap.md) for the authoritative sequence.
+
+The current public-surface ownership and M1 construction restrictions are
+recorded in the [M1 public API contract](public-api.md).

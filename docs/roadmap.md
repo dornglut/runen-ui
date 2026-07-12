@@ -27,7 +27,7 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 ## M0 — Repository authority and governance reset
 
-**Status:** `complete`; M1 has not started.
+**Status:** `complete`.
 
 **Goal:** Make repository documentation, active content, metadata, governance, and validation truthful for a pre-1.0 production-readiness program.
 
@@ -51,7 +51,7 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 ## M1 — Public API and core vocabulary repair
 
-**Status:** `queued` after M0.
+**Status:** `complete`.
 
 **Goal:** Remove prototype compatibility traps before more framework code depends on them.
 
@@ -67,11 +67,22 @@ Historical foundations—typed application flow, immutable element descriptions,
 
 **Exit criteria:** Invalid values cannot silently enter normal public paths; ambiguous identity is diagnosed; invalid element configuration cannot silently no-op; child authoring has no fixed tuple ceiling; public API is deliberately pre-1.0 and generated products cannot be freely forged.
 
+**Completion:** One validated logical-length vocabulary replaced competing raw
+wrappers; IDs, keys, and token IDs validate; duplicate authored identity and token
+definitions are deterministic and non-overwriting; typed builders replaced flat
+no-op setters; iterator/collection children plus `children!` removed arity limits;
+preludes and generated-product construction were restricted; enum/trait and
+`Action: Clone` policy was reviewed. Public API and compile-fail tests, Counter,
+and authority documents were migrated. Owner-review corrections additionally
+prove representation-independent textual identity, one Unicode grammar for
+literal/dynamic IDs and tokens, true numeric-preorder diagnostics, and finite
+saturating derived geometry. See the [M1 public API contract](architecture/public-api.md).
+
 **Unblocks:** M2 and safer M3 implementation.
 
 ## M2 — Extensible view/widget/component architecture
 
-**Status:** `blocked` by M1.
+**Status:** `queued`.
 
 **Goal:** Let external crates and reusable components participate without modifying closed core enums.
 

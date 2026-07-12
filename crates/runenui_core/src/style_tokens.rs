@@ -1,8 +1,51 @@
-//! In-memory style token values.
+//! Validated in-memory style-token definitions.
 
-use std::collections::BTreeMap;
+use core::{error::Error, fmt};
+use std::collections::{BTreeMap, btree_map::Entry};
 
-use crate::{Color, ColorToken, EdgeInsets, Radius, RadiusToken, SpacingToken};
+use crate::{Color, ColorToken, EdgeInsets, Radius, RadiusToken, SpacingToken, TokenId};
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Current style-token family.
+///
+/// This enum is non-exhaustive because later style milestones may add families
+/// such as typography, borders, shadows, or opacity.
+pub enum TokenFamily {
+    Color,
+    Spacing,
+    Radius,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DuplicateTokenDefinition {
+    family: TokenFamily,
+    token: TokenId,
+}
+
+impl DuplicateTokenDefinition {
+    #[must_use]
+    pub const fn family(&self) -> TokenFamily {
+        self.family
+    }
+    #[must_use]
+    pub const fn token(&self) -> &TokenId {
+        &self.token
+    }
+}
+
+impl fmt::Display for DuplicateTokenDefinition {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "duplicate {:?} token definition: {}",
+            self.family,
+            self.token.as_str()
+        )
+    }
+}
+
+impl Error for DuplicateTokenDefinition {}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleTokens {
@@ -17,115 +60,94 @@ impl StyleTokens {
         Self::default()
     }
 
-    #[must_use]
-    pub fn with_color(mut self, token: impl Into<ColorToken>, value: Color) -> Self {
-        self.colors.insert(token.into(), value);
-        self
-    }
-
-    #[must_use]
-    pub fn with_spacing(mut self, token: impl Into<SpacingToken>, value: EdgeInsets) -> Self {
-        self.spacing.insert(token.into(), value);
-        self
-    }
-
-    #[must_use]
-    pub fn with_radius(mut self, token: impl Into<RadiusToken>, value: Radius) -> Self {
-        self.radii.insert(token.into(), value);
-        self
-    }
-
-    pub fn insert_color(&mut self, token: impl Into<ColorToken>, value: Color) -> Option<Color> {
-        self.colors.insert(token.into(), value)
-    }
-
-    pub fn insert_spacing(
+    /// Defines a color token without replacement.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DuplicateTokenDefinition`] if the color token already exists.
+    pub fn define_color(
         &mut self,
-        token: impl Into<SpacingToken>,
+        token: ColorToken,
+        value: Color,
+    ) -> Result<(), DuplicateTokenDefinition> {
+        define(
+            &mut self.colors,
+            token,
+            value,
+            TokenFamily::Color,
+            ColorToken::id,
+        )
+    }
+
+    /// Defines a spacing token without replacement.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DuplicateTokenDefinition`] if the spacing token already exists.
+    pub fn define_spacing(
+        &mut self,
+        token: SpacingToken,
         value: EdgeInsets,
-    ) -> Option<EdgeInsets> {
-        self.spacing.insert(token.into(), value)
+    ) -> Result<(), DuplicateTokenDefinition> {
+        define(
+            &mut self.spacing,
+            token,
+            value,
+            TokenFamily::Spacing,
+            SpacingToken::id,
+        )
     }
 
-    pub fn insert_radius(
+    /// Defines a radius token without replacement.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DuplicateTokenDefinition`] if the radius token already exists.
+    pub fn define_radius(
         &mut self,
-        token: impl Into<RadiusToken>,
+        token: RadiusToken,
         value: Radius,
-    ) -> Option<Radius> {
-        self.radii.insert(token.into(), value)
+    ) -> Result<(), DuplicateTokenDefinition> {
+        define(
+            &mut self.radii,
+            token,
+            value,
+            TokenFamily::Radius,
+            RadiusToken::id,
+        )
     }
 
     #[must_use]
     pub fn color(&self, token: &ColorToken) -> Option<Color> {
         self.colors.get(token).copied()
     }
-
     #[must_use]
     pub fn spacing(&self, token: &SpacingToken) -> Option<EdgeInsets> {
         self.spacing.get(token).copied()
     }
-
     #[must_use]
     pub fn radius(&self, token: &RadiusToken) -> Option<Radius> {
         self.radii.get(token).copied()
     }
-
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.colors.is_empty() && self.spacing.is_empty() && self.radii.is_empty()
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::StyleTokens;
-    use crate::{Color, ColorToken, EdgeInsets, Length, Radius, RadiusToken, SpacingToken};
-
-    #[test]
-    fn token_map_defaults_to_empty() {
-        let tokens = StyleTokens::default();
-
-        assert!(tokens.is_empty());
-        assert_eq!(tokens.color(&ColorToken::new("color.text.primary")), None);
-        assert_eq!(tokens.spacing(&SpacingToken::new("space.2")), None);
-    }
-
-    #[test]
-    fn token_map_stores_typed_values() {
-        let spacing = EdgeInsets::all(Length::px(8.0));
-        let radius = Radius::all(Length::px(4.0));
-        let tokens = StyleTokens::new()
-            .with_color("color.text.primary", Color::WHITE)
-            .with_spacing("space.2", spacing)
-            .with_radius("radius.control", radius);
-
-        assert!(!tokens.is_empty());
-        assert_eq!(
-            tokens.color(&ColorToken::new("color.text.primary")),
-            Some(Color::WHITE)
-        );
-        assert_eq!(tokens.spacing(&SpacingToken::new("space.2")), Some(spacing));
-        assert_eq!(
-            tokens.radius(&RadiusToken::new("radius.control")),
-            Some(radius)
-        );
-    }
-
-    #[test]
-    fn insert_returns_replaced_value() {
-        let mut tokens = StyleTokens::new();
-
-        assert_eq!(
-            tokens.insert_color("color.text.primary", Color::WHITE),
-            None
-        );
-        assert_eq!(
-            tokens.insert_color("color.text.primary", Color::BLACK),
-            Some(Color::WHITE)
-        );
-        assert_eq!(
-            tokens.color(&ColorToken::new("color.text.primary")),
-            Some(Color::BLACK)
-        );
+fn define<Key: Ord, Value>(
+    map: &mut BTreeMap<Key, Value>,
+    key: Key,
+    value: Value,
+    family: TokenFamily,
+    token_id: fn(&Key) -> &TokenId,
+) -> Result<(), DuplicateTokenDefinition> {
+    let token = token_id(&key).clone();
+    match map.entry(key) {
+        Entry::Vacant(entry) => {
+            entry.insert(value);
+            Ok(())
+        }
+        Entry::Occupied(_) => Err(DuplicateTokenDefinition { family, token }),
     }
 }

@@ -6,8 +6,8 @@ The Counter example demonstrates the currently implemented typed headless loop:
 
 - application-owned `Counter` state and `CounterAction`;
 - explicit `update` and conditional root composition;
-- builder-authored text/buttons with typed actions;
-- direct and authored-ID activation;
+- typed-builder-authored text/buttons with canonical `on_press` actions and arity-free children;
+- direct and validated authored-ID activation;
 - transition to a win screen and reset;
 - deterministic trace/debug output;
 - surface publication with tight constraints, deterministic measurement, and aligned frame/style/layout diagnostics.

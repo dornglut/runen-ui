@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Completed M1 public API and vocabulary repair with validated logical values,
+  IDs/keys/token IDs, deterministic duplicate diagnostics, typed element builders,
+  arity-free children, reduced preludes, and read-only generated products.
+- Replaced the nested `element!` property grammar with ordinary builder
+  expressions and canonical `on_press`; removed prototype compatibility APIs.
+- Restricted `Action: Clone` to activation paths and documented public enum/trait
+  evolution policy.
+- Corrected M1 identity to compare, order, and hash by Unicode-validated text
+  independent of static/owned storage; literal and dynamic validation now share
+  one grammar, and token families are explicitly non-exhaustive.
+- Corrected derived geometry to saturate at finite boundaries and identity
+  diagnostics to use true numeric preorder with deterministic same-node ordering.
+
 > **Category: Current contract**
 
 All notable changes to RunenUI are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses Semantic Versioning as qualified by the [API stability policy](docs/api-stability.md).

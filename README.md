@@ -68,7 +68,7 @@ When sources disagree, the current status, support matrix, roadmap, architecture
 The Builder API is the semantic foundation; `element!` is optional sugar over the same closed proof vocabulary:
 
 ```rust
-use runenui_core::{Element, button, column, text};
+use runenui_core::{Element, IntoElement, button, children, column, text};
 
 #[derive(Clone, Copy)]
 enum CounterAction {
@@ -76,15 +76,20 @@ enum CounterAction {
 }
 
 fn counter_screen(value: i32) -> Element<CounterAction> {
-    column((
+    column(children![
         text(format!("Count: {value}")),
         button("+").on_press(CounterAction::Increment),
-    ))
-    .gap(8)
+    ])
+    .gap(8_u16)
+    .into_element()
 }
 ```
 
-This example reflects the implemented API. It does not imply component action mapping, external custom widgets, mounted reconciliation, correct release-based activation, production controls, or native rendering.
+Typed builders reject incompatible configuration at compile time, `children!`
+has no fixed arity ceiling, and dynamic numeric/identifier constructors validate
+their inputs. This example does not imply component action mapping, external
+custom widgets, mounted reconciliation, correct release-based activation,
+production controls, or native rendering.
 
 ## Validation
 

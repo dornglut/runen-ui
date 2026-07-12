@@ -2,6 +2,7 @@
 
 use crate::{ActivationResult, RuntimeNodeId};
 
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum KeyboardFocusResult {
     Moved(RuntimeNodeId),
@@ -9,6 +10,7 @@ pub enum KeyboardFocusResult {
     Ignored,
 }
 
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum KeyboardActivationResult {
     Handled(ActivationResult),
@@ -16,6 +18,7 @@ pub enum KeyboardActivationResult {
     Ignored,
 }
 
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PointerFocusResult {
     Moved(RuntimeNodeId),
@@ -25,6 +28,7 @@ pub enum PointerFocusResult {
     Ignored,
 }
 
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PointerActivationResult {
     Handled(ActivationResult),
@@ -32,6 +36,7 @@ pub enum PointerActivationResult {
     Ignored,
 }
 
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputEventResult {
     Pointer {

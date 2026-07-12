@@ -1,180 +1,118 @@
+use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
+use std::hash::{Hash, Hasher};
+
 use runenui_core::{
-    Color, ColorToken, ColorValue, ComputedStyle, EdgeInsets, Length, Radius, RadiusToken,
-    RadiusValue, SpacingToken, StyleFieldProvenance, StyleIntent, StyleProvenance, StyleTokens,
-    UnresolvedStyleToken, resolve_literal_style, resolve_style,
+    Color, ColorToken, ComputedStyle, DuplicateTokenDefinition, EdgeInsets, IdentifierError,
+    LogicalLength, Radius, RadiusToken, SpacingToken, StyleIntent, StyleTokens, TokenId,
+    color_token, radius_token, resolve_style, spacing_token, token_id,
 };
 
-#[test]
-fn empty_intent_records_absent_provenance() {
-    let resolution = resolve_style(&StyleIntent::EMPTY, &StyleTokens::new());
-
-    assert_eq!(resolution.computed_style(), ComputedStyle::EMPTY);
-    assert_eq!(resolution.provenance(), &StyleProvenance::EMPTY);
-    assert_eq!(resolution.unresolved_tokens(), []);
-    assert!(resolution.is_fully_resolved());
+fn hash(value: &impl Hash) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
 }
 
 #[test]
-fn literal_style_records_literal_provenance_for_each_field() {
-    let padding = EdgeInsets::all(Length::px(8.0));
-    let radius = Radius::all(Length::px(4.0));
-    let intent = StyleIntent::EMPTY
-        .with_foreground(Color::WHITE)
-        .with_background(Color::BLACK)
-        .with_padding(padding)
-        .with_radius(radius);
-
-    let resolution = resolve_literal_style(&intent);
-
-    assert_eq!(
-        resolution.computed_style(),
-        ComputedStyle::EMPTY
-            .with_foreground(Color::WHITE)
-            .with_background(Color::BLACK)
-            .with_padding(padding)
-            .with_radius(radius)
-    );
-    assert_eq!(
-        resolution.provenance(),
-        &StyleProvenance::new(
-            StyleFieldProvenance::Literal,
-            StyleFieldProvenance::Literal,
-            StyleFieldProvenance::Literal,
-            StyleFieldProvenance::Literal,
-        )
-    );
-    assert_eq!(resolution.unresolved_tokens(), []);
+fn token_definitions_do_not_silently_overwrite() -> Result<(), Box<dyn std::error::Error>> {
+    let token = color_token!("color.text.primary");
+    let mut tokens = StyleTokens::new();
+    tokens.define_color(token.clone(), Color::WHITE)?;
+    let duplicate = match tokens.define_color(token.clone(), Color::BLACK) {
+        Ok(()) => return Err("expected duplicate token error".into()),
+        Err(error) => error,
+    };
+    assert_eq!(duplicate.token().as_str(), "color.text.primary");
+    assert_eq!(tokens.color(&token), Some(Color::WHITE));
+    Ok(())
 }
 
 #[test]
-fn literal_resolution_reports_missing_token_provenance_without_token_values() {
-    let intent = StyleIntent::EMPTY
-        .with_foreground(ColorValue::token("color.text.primary"))
-        .with_background(ColorToken::new("color.surface"))
-        .with_padding(SpacingToken::new("space.2"))
-        .with_radius(RadiusValue::token("radius.control"));
+fn token_identity_and_lookup_are_textual_across_constructor_forms()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dynamic = TokenId::new("color.primary")?;
+    let static_id = TokenId::from_static("color.primary")?;
+    assert_eq!(dynamic, static_id);
+    assert_eq!(dynamic.cmp(&static_id), std::cmp::Ordering::Equal);
+    assert_eq!(hash(&dynamic), hash(&static_id));
+    let mut ordered = BTreeMap::new();
+    ordered.insert(static_id.clone(), "static");
+    assert_eq!(ordered.get(&dynamic), Some(&"static"));
+    let mut hashed = HashMap::new();
+    hashed.insert(dynamic.clone(), "dynamic");
+    assert_eq!(hashed.get(&static_id), Some(&"dynamic"));
 
-    let resolution = resolve_literal_style(&intent);
-
-    assert_eq!(resolution.computed_style(), ComputedStyle::EMPTY);
-    assert!(!resolution.is_fully_resolved());
+    let dynamic_color = ColorToken::new(dynamic);
+    let static_color = color_token!("color.primary");
+    assert_eq!(dynamic_color, static_color);
     assert_eq!(
-        resolution.provenance(),
-        &StyleProvenance::new(
-            StyleFieldProvenance::MissingToken(ColorToken::new("color.text.primary")),
-            StyleFieldProvenance::MissingToken(ColorToken::new("color.surface")),
-            StyleFieldProvenance::MissingToken(SpacingToken::new("space.2")),
-            StyleFieldProvenance::MissingToken(RadiusToken::new("radius.control")),
-        )
+        SpacingToken::new(TokenId::new("space.content")?),
+        spacing_token!("space.content")
     );
     assert_eq!(
-        resolution.unresolved_tokens(),
-        [
-            UnresolvedStyleToken::Foreground(ColorToken::new("color.text.primary")),
-            UnresolvedStyleToken::Background(ColorToken::new("color.surface")),
-            UnresolvedStyleToken::Padding(SpacingToken::new("space.2")),
-            UnresolvedStyleToken::Radius(RadiusToken::new("radius.control")),
-        ]
+        RadiusToken::new(TokenId::new("radius.control")?),
+        radius_token!("radius.control")
     );
+
+    let mut tokens = StyleTokens::new();
+    tokens.define_color(dynamic_color, Color::WHITE)?;
+    assert_eq!(tokens.color(&static_color), Some(Color::WHITE));
+
+    let mut reverse = StyleTokens::new();
+    reverse.define_spacing(
+        spacing_token!("space.content"),
+        EdgeInsets::all(LogicalLength::new(4.0)?),
+    )?;
+    assert_eq!(
+        reverse.spacing(&SpacingToken::new(TokenId::new("space.content")?)),
+        Some(EdgeInsets::all(LogicalLength::new(4.0)?))
+    );
+
+    let mut duplicate = StyleTokens::new();
+    duplicate.define_radius(
+        RadiusToken::new(TokenId::new("radius.control")?),
+        Radius::ZERO,
+    )?;
+    let error = match duplicate.define_radius(radius_token!("radius.control"), Radius::ZERO) {
+        Ok(()) => return Err("mixed storage duplicate was accepted".into()),
+        Err(error) => error,
+    };
+    assert_eq!(error.token(), &token_id!("radius.control"));
+    Ok(())
 }
 
 #[test]
-fn token_backed_intent_records_resolved_token_provenance() {
-    let padding = EdgeInsets::all(Length::px(8.0));
-    let radius = Radius::all(Length::px(4.0));
-    let tokens = StyleTokens::new()
-        .with_color("color.text.primary", Color::WHITE)
-        .with_color("color.surface", Color::BLACK)
-        .with_spacing("space.2", padding)
-        .with_radius("radius.control", radius);
-    let intent = StyleIntent::EMPTY
-        .with_foreground(ColorToken::new("color.text.primary"))
-        .with_background(ColorToken::new("color.surface"))
-        .with_padding(SpacingToken::new("space.2"))
-        .with_radius(RadiusToken::new("radius.control"));
-
-    let resolution = resolve_style(&intent, &tokens);
-
-    assert_eq!(
-        resolution.computed_style(),
-        ComputedStyle::EMPTY
-            .with_foreground(Color::WHITE)
-            .with_background(Color::BLACK)
-            .with_padding(padding)
-            .with_radius(radius)
-    );
-    assert_eq!(
-        resolution.provenance(),
-        &StyleProvenance::new(
-            StyleFieldProvenance::ResolvedToken(ColorToken::new("color.text.primary")),
-            StyleFieldProvenance::ResolvedToken(ColorToken::new("color.surface")),
-            StyleFieldProvenance::ResolvedToken(SpacingToken::new("space.2")),
-            StyleFieldProvenance::ResolvedToken(RadiusToken::new("radius.control")),
-        )
-    );
-    assert!(resolution.is_fully_resolved());
-    assert_eq!(resolution.unresolved_tokens(), []);
+fn token_ids_use_the_unicode_identifier_grammar() {
+    for (value, expected) in [
+        ("\u{00A0}", IdentifierError::WhitespaceOnly),
+        ("\u{2003}", IdentifierError::WhitespaceOnly),
+        ("\u{00A0}name", IdentifierError::SurroundingWhitespace),
+        ("name\u{2003}", IdentifierError::SurroundingWhitespace),
+        ("name\u{0085}value", IdentifierError::ControlCharacter),
+    ] {
+        assert_eq!(TokenId::new(value), Err(expected));
+        assert_eq!(TokenId::from_static(value), Err(expected));
+    }
+    for value in ["fenster.öffnen", "画面.開始", "контрол.кнопка"] {
+        assert_eq!(TokenId::new(value).as_ref().map(TokenId::as_str), Ok(value));
+        assert_eq!(
+            TokenId::from_static(value).as_ref().map(TokenId::as_str),
+            Ok(value)
+        );
+    }
+    assert_eq!(token_id!("画面.開始").as_str(), "画面.開始");
 }
 
 #[test]
-fn missing_token_map_entries_record_missing_token_provenance() {
-    let tokens = StyleTokens::new().with_color("color.text.primary", Color::WHITE);
-    let intent = StyleIntent::EMPTY
-        .with_foreground(ColorToken::new("color.text.primary"))
-        .with_background(ColorToken::new("color.surface"));
-
-    let resolution = resolve_style(&intent, &tokens);
-
+fn style_resolution_preserves_provenance() -> Result<(), DuplicateTokenDefinition> {
+    let token = color_token!("color.text.primary");
+    let mut tokens = StyleTokens::new();
+    tokens.define_color(token.clone(), Color::WHITE)?;
+    let resolution = resolve_style(&StyleIntent::EMPTY.with_foreground(token), &tokens);
     assert_eq!(
         resolution.computed_style(),
         ComputedStyle::EMPTY.with_foreground(Color::WHITE)
     );
-    assert_eq!(
-        resolution.provenance(),
-        &StyleProvenance::new(
-            StyleFieldProvenance::ResolvedToken(ColorToken::new("color.text.primary")),
-            StyleFieldProvenance::MissingToken(ColorToken::new("color.surface")),
-            StyleFieldProvenance::Absent,
-            StyleFieldProvenance::Absent,
-        )
-    );
-    assert_eq!(
-        resolution.unresolved_tokens(),
-        [UnresolvedStyleToken::Background(ColorToken::new(
-            "color.surface"
-        ))]
-    );
-}
-
-#[test]
-fn mixed_intent_records_literal_resolved_missing_and_absent_provenance() {
-    let tokens = StyleTokens::new().with_color("color.surface", Color::BLACK);
-    let intent = StyleIntent::EMPTY
-        .with_foreground(Color::WHITE)
-        .with_background(ColorToken::new("color.surface"))
-        .with_radius(RadiusToken::new("radius.control"));
-
-    let resolution = resolve_style(&intent, &tokens);
-
-    assert_eq!(
-        resolution.computed_style(),
-        ComputedStyle::EMPTY
-            .with_foreground(Color::WHITE)
-            .with_background(Color::BLACK)
-    );
-    assert_eq!(
-        resolution.provenance(),
-        &StyleProvenance::new(
-            StyleFieldProvenance::Literal,
-            StyleFieldProvenance::ResolvedToken(ColorToken::new("color.surface")),
-            StyleFieldProvenance::Absent,
-            StyleFieldProvenance::MissingToken(RadiusToken::new("radius.control")),
-        )
-    );
-    assert_eq!(
-        resolution.unresolved_tokens(),
-        [UnresolvedStyleToken::Radius(RadiusToken::new(
-            "radius.control"
-        ))]
-    );
+    assert!(resolution.is_fully_resolved());
+    Ok(())
 }

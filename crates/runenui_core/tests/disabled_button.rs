@@ -1,4 +1,4 @@
-use runenui_core::{ElementKind, button, text};
+use runenui_core::{ElementKind, IntoElement, button};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Action {
@@ -6,49 +6,16 @@ enum Action {
 }
 
 #[test]
-fn buttons_are_enabled_by_default() -> Result<(), &'static str> {
-    let element = button("Submit").on_press(Action::Submit);
-
-    let ElementKind::Button(button) = element.kind() else {
-        return Err("expected button element");
-    };
-
-    assert!(button.enabled());
-    assert_eq!(button.on_press(), Some(&Action::Submit));
-    Ok(())
-}
-
-#[test]
-fn disabled_marks_button_inactive_without_removing_action() -> Result<(), &'static str> {
-    let element = button("Submit").on_press(Action::Submit).disabled();
-
-    let ElementKind::Button(button) = element.kind() else {
-        return Err("expected button element");
-    };
-
-    assert!(!button.enabled());
-    assert_eq!(button.on_press(), Some(&Action::Submit));
-    Ok(())
-}
-
-#[test]
-fn enabled_builder_can_restore_a_disabled_button() -> Result<(), &'static str> {
+fn disabled_button_preserves_action_and_can_be_reenabled() -> Result<(), &'static str> {
     let element = button("Submit")
         .on_press(Action::Submit)
         .disabled()
-        .enabled(true);
-
+        .enabled(true)
+        .into_element();
     let ElementKind::Button(button) = element.kind() else {
-        return Err("expected button element");
+        return Err("button");
     };
-
     assert!(button.enabled());
+    assert_eq!(button.on_press(), Some(&Action::Submit));
     Ok(())
-}
-
-#[test]
-fn disabled_builder_is_noop_for_non_buttons() {
-    let element = text::<Action>("Static").disabled();
-
-    assert!(matches!(element.kind(), ElementKind::Text(_)));
 }

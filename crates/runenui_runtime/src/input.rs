@@ -1,6 +1,20 @@
 //! Runtime input vocabulary.
 
+use core::{error::Error, fmt};
+
 use crate::{RuntimeNodeId, SurfaceFrame};
+
+/// Error returned for a non-finite logical coordinate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LogicalPointError;
+
+impl fmt::Display for LogicalPointError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("logical point coordinates must be finite")
+    }
+}
+
+impl Error for LogicalPointError {}
 
 /// Logical position in UI coordinate space.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -11,8 +25,25 @@ pub struct LogicalPoint {
 
 impl LogicalPoint {
     /// Creates a logical point.
-    #[must_use]
-    pub const fn new(x: f32, y: f32) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LogicalPointError`] if either coordinate is non-finite.
+    pub const fn new(x: f32, y: f32) -> Result<Self, LogicalPointError> {
+        if x.is_nan()
+            || y.is_nan()
+            || x == f32::INFINITY
+            || x == f32::NEG_INFINITY
+            || y == f32::INFINITY
+            || y == f32::NEG_INFINITY
+        {
+            Err(LogicalPointError)
+        } else {
+            Ok(Self { x, y })
+        }
+    }
+
+    pub(crate) const fn from_finite(x: f32, y: f32) -> Self {
         Self { x, y }
     }
 
@@ -125,6 +156,7 @@ impl KeyModifiers {
 }
 
 /// Pointer button reported by a host.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PointerButton {
     /// Primary activation button, usually left mouse or primary touch.
@@ -138,6 +170,7 @@ pub enum PointerButton {
 }
 
 /// Pointer input phase.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PointerPhase {
     /// Pointer moved without a button state transition.
@@ -218,6 +251,7 @@ impl PointerEvent {
 }
 
 /// Keyboard key identity reported by a host.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Key {
     /// Enter or Return.
@@ -235,6 +269,7 @@ pub enum Key {
 }
 
 /// Keyboard input phase.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum KeyPhase {
     /// Key was pressed.
@@ -295,6 +330,7 @@ impl KeyboardEvent {
 }
 
 /// Raw host input event accepted by the runtime boundary.
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum InputEvent {
     /// Pointer input.
@@ -304,6 +340,7 @@ pub enum InputEvent {
 }
 
 /// Runtime-level intent resolved from input.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputIntent {
     /// Activate an element by generated runtime node identity.

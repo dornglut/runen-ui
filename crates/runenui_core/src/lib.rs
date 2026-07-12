@@ -2,6 +2,28 @@
 //!
 //! This crate owns the public, host-neutral UI description model.
 //! It must not depend on runtime, renderer, compiler, host, ECS, or legacy crates.
+//!
+//! Incompatible configuration is absent from erased [`Element`] values:
+//!
+//! ```compile_fail
+//! use runenui_core::{IntoElement, text};
+//! let _ = text("label").disabled().into_element();
+//! ```
+//!
+//! Identifier literal macros apply the same Unicode-aware grammar as dynamic
+//! constructors and reject invalid literals during compilation:
+//!
+//! ```compile_fail
+//! let _ = runenui_core::element_id!("\u{00A0}");
+//! ```
+//!
+//! ```compile_fail
+//! let _ = runenui_core::element_key!("name\u{2003}");
+//! ```
+//!
+//! ```compile_fail
+//! let _ = runenui_core::token_id!("name\u{0085}value");
+//! ```
 
 #![forbid(unsafe_code)]
 
@@ -13,22 +35,28 @@ pub mod prelude;
 mod style;
 mod style_resolution;
 mod style_tokens;
+mod value;
 
 include!("element_macros.rs");
+include!("identity_macros.rs");
+include!("token_macros.rs");
 
 pub use computed_style::ComputedStyle;
 pub use element::{
-    ButtonArgs, ButtonElement, ContainerArgs, ContainerElement, Element, ElementKind, IntoElements,
-    TextArgs, TextElement, button, button_with, column, container_with, row, text, text_with,
+    AuthoringDiagnostic, Button, ButtonElement, Container, ContainerElement, Element, ElementKind,
+    IntoElement, IntoElements, Text, TextElement, button, column, row, text,
 };
-pub use identity::{ElementId, ElementKey};
-pub use layout::{Axis, LayoutStyle, Px};
+#[doc(hidden)]
+pub use identity::is_valid_identifier_literal;
+pub use identity::{ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey};
+pub use layout::{Axis, LayoutStyle};
 pub use style::{
-    Color, ColorToken, ColorValue, EdgeInsets, Length, LengthToken, LengthValue, Radius,
-    RadiusToken, RadiusValue, Spacing, SpacingToken, SpacingValue, StyleIntent, TokenId,
+    Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,
+    SpacingValue, StyleIntent, TokenId,
 };
 pub use style_resolution::{
     StyleFieldProvenance, StyleProvenance, StyleResolution, UnresolvedStyleToken,
     resolve_literal_style, resolve_style,
 };
-pub use style_tokens::StyleTokens;
+pub use style_tokens::{DuplicateTokenDefinition, StyleTokens, TokenFamily};
+pub use value::{LogicalLength, LogicalLengthError};

@@ -15,7 +15,7 @@ pub struct Runtime<State, Action> {
 impl<State, Action> Runtime<State, Action> {
     /// Mounts an initial state and builds the first root element tree.
     #[must_use]
-    pub fn mount(state: State, root: impl FnOnce(&State) -> Element<Action>) -> Self {
+    pub(crate) fn mount(state: State, root: impl FnOnce(&State) -> Element<Action>) -> Self {
         let root = root(&state);
         let mut trace = Trace::new();
         trace.record(RuntimeEvent::Mounted);
@@ -29,7 +29,7 @@ impl<State, Action> Runtime<State, Action> {
     }
 
     /// Dispatches one typed action, runs update, and rebuilds the root tree.
-    pub fn dispatch(
+    pub(crate) fn dispatch(
         &mut self,
         action: Action,
         update: impl FnOnce(&mut State, Action),
@@ -58,41 +58,41 @@ impl<State, Action> Runtime<State, Action> {
 
     /// Returns the current application state.
     #[must_use]
-    pub const fn state(&self) -> &State {
+    pub(crate) const fn state(&self) -> &State {
         &self.state
     }
 
     /// Returns the current root element tree.
     #[must_use]
-    pub const fn root(&self) -> &Element<Action> {
+    pub(crate) const fn root(&self) -> &Element<Action> {
         &self.root
     }
 
     /// Returns the runtime trace.
     #[must_use]
-    pub const fn trace(&self) -> &Trace {
+    pub(crate) const fn trace(&self) -> &Trace {
         &self.trace
     }
 
     /// Returns the runtime focus state.
     #[must_use]
-    pub const fn focus(&self) -> &FocusState {
+    pub(crate) const fn focus(&self) -> &FocusState {
         &self.focus
     }
 
     /// Sets focus to the provided runtime node ID without validating the ID.
-    pub const fn set_focus(&mut self, id: RuntimeNodeId) {
+    pub(crate) const fn set_focus(&mut self, id: RuntimeNodeId) {
         self.focus.set(id);
     }
 
     /// Clears the current focus target.
-    pub const fn clear_focus(&mut self) {
+    pub(crate) const fn clear_focus(&mut self) {
         self.focus.clear();
     }
 
     /// Consumes the runtime and returns the final application state.
     #[must_use]
-    pub fn into_state(self) -> State {
+    pub(crate) fn into_state(self) -> State {
         self.state
     }
 }

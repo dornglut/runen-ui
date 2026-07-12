@@ -29,13 +29,13 @@ outer constraints
   -> constrain outer size
 ```
 
-Invalid provider sizes are sanitized before geometry use. Overflow is diagnostic only: the current algorithm does not clip or scroll. Button minimum dimensions are temporary private runtime policy, not a production control recipe.
+Provider sizes are structurally finite and non-negative. Authored invalid geometry is rejected; valid finite arithmetic that overflows during measurement, padding expansion, arrangement cursors, constraint subtraction, or derived rectangle-edge calculation saturates at a finite boundary. Overflow is diagnostic only: the current algorithm does not clip or scroll. Button minimum dimensions are temporary private runtime policy, not a production control recipe.
 
 The deterministic measurement provider is explicitly a test/headless proof. Character counting is not production text geometry.
 
 ## Current limitations
 
-There is no complete sizing/min/max/fill/shrink vocabulary, flex/grid, main/cross alignment, baseline use, wrapping, stack/absolute/overlay layout, margin/border box, aspect ratio, clipping, scrolling, transforms, virtualization, retained cache, or incremental invalidation. Current public float constructors also need M1 invariants.
+There is no complete sizing/min/max/fill/shrink vocabulary, flex/grid, main/cross alignment, baseline use, wrapping, stack/absolute/overlay layout, margin/border box, aspect ratio, clipping, scrolling, transforms, virtualization, retained cache, or incremental invalidation. M1 now enforces finite non-negative `LogicalLength`/`LogicalSize` values, fallible finite signed points, normalized constraints, finite saturating current-layout arithmetic (including generated bounds and hit-test edges), and validated baselines; broader sizing behavior remains M7 work.
 
 ## Production contract
 

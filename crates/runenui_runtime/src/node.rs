@@ -1,5 +1,8 @@
 //! Runtime node identity and indexing.
 
+use core::fmt;
+use std::collections::{BTreeMap, btree_map::Entry};
+
 use runenui_core::{Element, ElementId, ElementKey, ElementKind};
 
 use crate::TraceTarget;
@@ -14,11 +17,11 @@ pub struct RuntimeNodeId(usize);
 
 impl RuntimeNodeId {
     /// Root node ID for a built runtime tree.
-    pub const ROOT: Self = Self(0);
+    pub(crate) const ROOT: Self = Self(0);
 
     /// Creates a runtime node ID from a traversal index.
     #[must_use]
-    pub const fn from_index(index: usize) -> Self {
+    pub(crate) const fn from_index(index: usize) -> Self {
         Self(index)
     }
 
@@ -96,14 +99,85 @@ impl<'a, Action> RuntimeNodeRef<'a, Action> {
 /// Indexed borrowed view over one built runtime tree.
 pub struct RuntimeTreeIndex<'a, Action> {
     nodes: Vec<RuntimeNodeRef<'a, Action>>,
+    diagnostics: Vec<IdentityDiagnostic>,
+}
+
+/// Duplicate authored-identity category.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DuplicateIdentityKind {
+    InvalidElementId,
+    InvalidElementKey,
+    ElementId,
+    SiblingKey,
+}
+
+/// Deterministic duplicate-authored-identity diagnostic.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IdentityDiagnostic {
+    kind: DuplicateIdentityKind,
+    value: String,
+    first_path: String,
+    duplicate_path: String,
+    preorder_index: usize,
+}
+
+impl IdentityDiagnostic {
+    #[must_use]
+    pub const fn kind(&self) -> DuplicateIdentityKind {
+        self.kind
+    }
+    #[must_use]
+    pub const fn value(&self) -> &str {
+        self.value.as_str()
+    }
+    #[must_use]
+    pub const fn first_path(&self) -> &str {
+        self.first_path.as_str()
+    }
+    #[must_use]
+    pub const fn duplicate_path(&self) -> &str {
+        self.duplicate_path.as_str()
+    }
+
+    /// Returns the numeric preorder index of the node that emitted this diagnostic.
+    #[must_use]
+    pub const fn preorder_index(&self) -> usize {
+        self.preorder_index
+    }
+}
+
+impl fmt::Display for IdentityDiagnostic {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind {
+            DuplicateIdentityKind::InvalidElementId | DuplicateIdentityKind::InvalidElementKey => {
+                write!(
+                    formatter,
+                    "invalid {:?} {:?} at {}",
+                    self.kind, self.value, self.duplicate_path
+                )
+            }
+            DuplicateIdentityKind::ElementId | DuplicateIdentityKind::SiblingKey => {
+                write!(
+                    formatter,
+                    "duplicate {:?} {:?}: first at {}, duplicate at {}",
+                    self.kind, self.value, self.first_path, self.duplicate_path
+                )
+            }
+        }
+    }
 }
 
 impl<'a, Action> RuntimeTreeIndex<'a, Action> {
     /// Builds an index for the provided root element tree.
     #[must_use]
-    pub fn new(root: &'a Element<Action>) -> Self {
-        let mut index = Self { nodes: Vec::new() };
-        index.push_node(None, root);
+    pub(crate) fn new(root: &'a Element<Action>) -> Self {
+        let mut index = Self {
+            nodes: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+        let mut ids = BTreeMap::new();
+        index.push_node(None, root, "root", &mut ids, None);
         index
     }
 
@@ -111,13 +185,74 @@ impl<'a, Action> RuntimeTreeIndex<'a, Action> {
         &mut self,
         parent: Option<RuntimeNodeId>,
         element: &'a Element<Action>,
+        path: &str,
+        ids: &mut BTreeMap<ElementId, String>,
+        sibling_key_duplicate: Option<SiblingKeyDuplicate>,
     ) -> RuntimeNodeId {
         let id = RuntimeNodeId::from_index(self.nodes.len());
         self.nodes.push(RuntimeNodeRef::new(id, parent, element));
 
+        let mut authoring_diagnostics: Vec<_> = element.authoring_diagnostics().iter().collect();
+        authoring_diagnostics.sort_by(|left, right| {
+            authoring_priority(left.field())
+                .cmp(&authoring_priority(right.field()))
+                .then_with(|| left.value().cmp(right.value()))
+        });
+        for authoring in authoring_diagnostics {
+            self.diagnostics.push(IdentityDiagnostic {
+                kind: if authoring.field() == "id" {
+                    DuplicateIdentityKind::InvalidElementId
+                } else {
+                    DuplicateIdentityKind::InvalidElementKey
+                },
+                value: authoring.value().to_owned(),
+                first_path: path.to_owned(),
+                duplicate_path: path.to_owned(),
+                preorder_index: id.as_usize(),
+            });
+        }
+
+        if let Some(authored_id) = element.element_id() {
+            if let Some(first_path) = ids.get(authored_id) {
+                self.diagnostics.push(IdentityDiagnostic {
+                    kind: DuplicateIdentityKind::ElementId,
+                    value: authored_id.as_str().to_owned(),
+                    first_path: first_path.clone(),
+                    duplicate_path: path.to_owned(),
+                    preorder_index: id.as_usize(),
+                });
+            } else {
+                ids.insert(authored_id.clone(), path.to_owned());
+            }
+        }
+
+        if let Some(duplicate) = sibling_key_duplicate {
+            self.diagnostics.push(IdentityDiagnostic {
+                kind: DuplicateIdentityKind::SiblingKey,
+                value: duplicate.value,
+                first_path: duplicate.first_path,
+                duplicate_path: path.to_owned(),
+                preorder_index: id.as_usize(),
+            });
+        }
+
         if let ElementKind::Container(container) = element.kind() {
-            for child in container.children() {
-                self.push_node(Some(id), child);
+            let mut sibling_keys: BTreeMap<ElementKey, String> = BTreeMap::new();
+            for (child_index, child) in container.children().iter().enumerate() {
+                let child_path = format!("{path}/{child_index}");
+                let sibling_key_duplicate = child.element_key().and_then(|key| match sibling_keys
+                    .entry(key.clone())
+                {
+                    Entry::Occupied(entry) => Some(SiblingKeyDuplicate {
+                        value: key.as_str().to_owned(),
+                        first_path: entry.get().clone(),
+                    }),
+                    Entry::Vacant(entry) => {
+                        entry.insert(child_path.clone());
+                        None
+                    }
+                });
+                self.push_node(Some(id), child, &child_path, ids, sibling_key_duplicate);
             }
         }
 
@@ -128,6 +263,16 @@ impl<'a, Action> RuntimeTreeIndex<'a, Action> {
     #[must_use]
     pub const fn nodes(&self) -> &[RuntimeNodeRef<'a, Action>] {
         self.nodes.as_slice()
+    }
+
+    /// Returns diagnostics in true numeric preorder discovery order.
+    ///
+    /// Diagnostics at one node are ordered as invalid ID, invalid key,
+    /// duplicate authored ID, then duplicate sibling key. Values within one
+    /// category are ordered by identifier text.
+    #[must_use]
+    pub const fn diagnostics(&self) -> &[IdentityDiagnostic] {
+        self.diagnostics.as_slice()
     }
 
     /// Returns all focusable runtime nodes in traversal order.
@@ -173,10 +318,18 @@ impl<'a, Action> RuntimeTreeIndex<'a, Action> {
 
     /// Returns the first node with the matching authored element ID.
     #[must_use]
-    pub fn node_by_authored_id(&self, id: impl AsRef<str>) -> Option<&RuntimeNodeRef<'a, Action>> {
-        let id = id.as_ref();
-        self.nodes.iter().find(
-            |node| matches!(node.authored_id(), Some(element_id) if element_id.as_str() == id),
-        )
+    pub fn node_by_authored_id(&self, id: &ElementId) -> Option<&RuntimeNodeRef<'a, Action>> {
+        self.nodes
+            .iter()
+            .find(|node| matches!(node.authored_id(), Some(element_id) if element_id == id))
     }
+}
+
+struct SiblingKeyDuplicate {
+    value: String,
+    first_path: String,
+}
+
+fn authoring_priority(field: &str) -> u8 {
+    u8::from(field != "id")
 }

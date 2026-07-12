@@ -14,7 +14,7 @@ pub struct FocusState {
 impl FocusState {
     /// Creates an empty focus state.
     #[must_use]
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             focused_node_id: None,
         }
@@ -36,12 +36,12 @@ impl FocusState {
     }
 
     /// Sets focus to the provided runtime node ID.
-    pub const fn set(&mut self, id: RuntimeNodeId) {
+    pub(crate) const fn set(&mut self, id: RuntimeNodeId) {
         self.focused_node_id = Some(id);
     }
 
     /// Clears the focused runtime node ID.
-    pub const fn clear(&mut self) {
+    pub(crate) const fn clear(&mut self) {
         self.focused_node_id = None;
     }
 }
