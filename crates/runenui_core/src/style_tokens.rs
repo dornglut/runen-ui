@@ -5,7 +5,12 @@ use std::collections::{BTreeMap, btree_map::Entry};
 
 use crate::{Color, ColorToken, EdgeInsets, Radius, RadiusToken, SpacingToken, TokenId};
 
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Current style-token family.
+///
+/// This enum is non-exhaustive because later style milestones may add families
+/// such as typography, borders, shadows, or opacity.
 pub enum TokenFamily {
     Color,
     Spacing,

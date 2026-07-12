@@ -12,9 +12,12 @@ return typed builders; only kind-valid configuration exists. `IntoElement` erase
 one builder, iterator/collection `IntoElements` scales homogeneous children, and
 `children!` collects any number of heterogeneous static children.
 
-Dynamic identifier and float constructors are fallible. Builder identifier
-convenience records invalid authoring diagnostics rather than storing invalid
-identity. The runtime diagnoses duplicate tree IDs and sibling keys. The old
+Dynamic identifier and float constructors are fallible. Identifier semantics are
+Unicode text-based regardless of allocation-free static or owned storage; literal
+macros enforce the same grammar at compile time. Builder identifier convenience
+records invalid authoring diagnostics rather than storing invalid identity. Token
+families are non-exhaustive for future style evolution. The runtime diagnoses
+duplicate tree IDs and sibling keys. The old
 `Px`/`Length` split, unused length-token family, generic no-op element setters,
 argument-builder duplicates, and tuple arity implementations are gone.
 

@@ -4,7 +4,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     DeterministicMeasurementProvider, LayoutConstraints, LogicalPoint, LogicalSize,
-    SurfaceBuildContext, TextMeasurementKind, publish_surface, render_debug_surface_frame,
+    MeasurementProvider, SurfaceBuildContext, SurfaceNode, TextMeasurement, TextMeasurementKind,
+    TextMeasurementRequest, publish_surface, render_debug_surface_frame,
     render_debug_surface_style_report,
 };
 
@@ -13,6 +14,10 @@ fn length(value: f32) -> LogicalLength {
 }
 fn size(width: f32, height: f32) -> LogicalSize {
     LogicalSize::new(length(width), length(height))
+}
+
+fn assert_float_bits(actual: f32, expected: f32) {
+    assert_eq!(actual.to_bits(), expected.to_bits());
 }
 
 #[test]
@@ -108,4 +113,106 @@ fn invalid_dynamic_sizes_and_overflow_are_explicit() {
         TextMeasurementKind::Text,
         TextMeasurementKind::Text
     ));
+}
+
+struct BoundaryMeasurementProvider;
+
+impl MeasurementProvider for BoundaryMeasurementProvider {
+    fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement {
+        let measured = match request.content() {
+            "huge-width" => size(f32::MAX, 1.0),
+            "huge-height" => size(1.0, f32::MAX),
+            _ => size(1.0, 1.0),
+        };
+        TextMeasurement::new(measured)
+    }
+}
+
+#[test]
+fn derived_geometry_saturates_and_never_publishes_non_finite_values()
+-> Result<(), Box<dyn std::error::Error>> {
+    let tokens = StyleTokens::new();
+    let provider = BoundaryMeasurementProvider;
+    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded())
+        .with_measurement_provider(&provider);
+
+    let horizontal: Element<()> = row(children![
+        text("small"),
+        text("huge-width"),
+        text("after-one"),
+        text("after-two"),
+    ])
+    .into_element();
+    let horizontal = publish_surface(&horizontal, &context);
+    let nodes = horizontal.frame().nodes();
+    assert_float_bits(nodes[2].bounds().x(), 1.0);
+    assert_float_bits(nodes[2].bounds().width(), f32::MAX);
+    assert_float_bits(nodes[2].bounds().max_x(), f32::MAX);
+    assert_float_bits(nodes[3].bounds().x(), f32::MAX);
+    assert_float_bits(nodes[3].bounds().width(), 1.0);
+    assert_float_bits(nodes[3].bounds().max_x(), f32::MAX);
+    assert_float_bits(nodes[4].bounds().x(), f32::MAX);
+
+    let before_max = f32::from_bits(f32::MAX.to_bits() - 1);
+    assert!(
+        nodes[2]
+            .bounds()
+            .contains(LogicalPoint::new(before_max, 0.5)?)
+    );
+    assert!(
+        !nodes[2]
+            .bounds()
+            .contains(LogicalPoint::new(f32::MAX, 0.5)?)
+    );
+    assert_eq!(
+        horizontal
+            .frame()
+            .hit_test(LogicalPoint::new(before_max, 0.5)?)
+            .map(SurfaceNode::id),
+        Some(nodes[2].id())
+    );
+
+    let vertical: Element<()> = column(children![
+        text("small"),
+        text("huge-height"),
+        text("after-one"),
+        text("after-two"),
+    ])
+    .into_element();
+    let vertical = publish_surface(&vertical, &context);
+    let vertical_nodes = vertical.frame().nodes();
+    assert_float_bits(vertical_nodes[2].bounds().y(), 1.0);
+    assert_float_bits(vertical_nodes[2].bounds().height(), f32::MAX);
+    assert_float_bits(vertical_nodes[2].bounds().max_y(), f32::MAX);
+    assert_float_bits(vertical_nodes[3].bounds().y(), f32::MAX);
+    assert_float_bits(vertical_nodes[3].bounds().height(), 1.0);
+    assert_float_bits(vertical_nodes[3].bounds().max_y(), f32::MAX);
+
+    let padded: Element<()> = text("small")
+        .padding(EdgeInsets::all(LogicalLength::MAX))
+        .into_element();
+    let padded = publish_surface(&padded, &context);
+    let padded_root = padded.frame().root().ok_or("padded root")?;
+    assert_float_bits(padded_root.bounds().width(), f32::MAX);
+    assert_float_bits(padded_root.bounds().height(), f32::MAX);
+
+    for publication in [&horizontal, &vertical, &padded] {
+        assert!(publication.frame().size().width().is_finite());
+        assert!(publication.frame().size().height().is_finite());
+        for node in publication.frame().nodes() {
+            let bounds = node.bounds();
+            assert!(bounds.x().is_finite());
+            assert!(bounds.y().is_finite());
+            assert!(bounds.width().is_finite());
+            assert!(bounds.height().is_finite());
+            assert!(bounds.max_x().is_finite());
+            assert!(bounds.max_y().is_finite());
+        }
+        for node in publication.layout_report().nodes() {
+            let size = node.constrained_outer_size();
+            assert!(size.width().is_finite());
+            assert!(size.height().is_finite());
+        }
+    }
+    Ok(())
 }

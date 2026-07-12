@@ -5,7 +5,7 @@ macro_rules! element_id {
         const _: () = if !$crate::is_valid_identifier_literal($value) {
             panic!("invalid element ID literal");
         };
-        match $crate::ElementId::new($value) {
+        match $crate::ElementId::from_static($value) {
             Ok(value) => value,
             Err(_) => unreachable!("compile-time ID validation disagreed with runtime validation"),
         }
@@ -19,7 +19,7 @@ macro_rules! element_key {
         const _: () = if !$crate::is_valid_identifier_literal($value) {
             panic!("invalid element key literal");
         };
-        match $crate::ElementKey::new($value) {
+        match $crate::ElementKey::from_static($value) {
             Ok(value) => value,
             Err(_) => unreachable!("compile-time key validation disagreed with runtime validation"),
         }

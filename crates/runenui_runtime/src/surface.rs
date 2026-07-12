@@ -43,8 +43,11 @@ impl LogicalSize {
         ))
     }
 
-    pub(crate) fn from_sanitized(width: f32, height: f32) -> Self {
-        Self::new(logical_extent(width), logical_extent(height))
+    pub(crate) fn from_arithmetic(width: f32, height: f32) -> Self {
+        Self::new(
+            logical_extent_from_arithmetic(width),
+            logical_extent_from_arithmetic(height),
+        )
     }
 
     /// Returns the horizontal extent.
@@ -118,16 +121,16 @@ impl LogicalRect {
         self.size.height()
     }
 
-    /// Returns the right edge.
+    /// Returns the right edge, saturating finite arithmetic overflow.
     #[must_use]
     pub fn max_x(&self) -> f32 {
-        self.x() + self.width()
+        finite_saturating_add(self.x(), self.width())
     }
 
-    /// Returns the bottom edge.
+    /// Returns the bottom edge, saturating finite arithmetic overflow.
     #[must_use]
     pub fn max_y(&self) -> f32 {
-        self.y() + self.height()
+        finite_saturating_add(self.y(), self.height())
     }
 
     /// Returns whether the point is inside this rectangle.
@@ -876,7 +879,7 @@ impl<'a> SurfaceMeasurer<'a> {
             measured_child_count += 1;
         }
 
-        LogicalSize::from_sanitized(width, height)
+        LogicalSize::from_arithmetic(width, height)
     }
 }
 
@@ -982,7 +985,7 @@ impl Default for ButtonLayoutPolicy {
 
 impl ButtonLayoutPolicy {
     fn apply_minimum(self, size: LogicalSize) -> LogicalSize {
-        LogicalSize::from_sanitized(
+        LogicalSize::from_arithmetic(
             max_extent(size.width(), self.min_width),
             max_extent(size.height(), self.min_height),
         )
@@ -1032,20 +1035,20 @@ fn loose_axis(axis: AxisConstraints) -> AxisConstraints {
 
 fn content_axis_constraints(axis: AxisConstraints, padding: f32) -> AxisConstraints {
     let max = match axis.max() {
-        AxisLimit::Finite(max) => {
-            AxisLimit::Finite(logical_extent(subtract_extent(max.get(), padding)))
-        }
+        AxisLimit::Finite(max) => AxisLimit::Finite(logical_extent_from_arithmetic(
+            subtract_extent(max.get(), padding),
+        )),
         AxisLimit::Unbounded => AxisLimit::Unbounded,
     };
 
     AxisConstraints::new(
-        logical_extent(subtract_extent(axis.min().get(), padding)),
+        logical_extent_from_arithmetic(subtract_extent(axis.min().get(), padding)),
         max,
     )
 }
 
 fn expand_size_by_padding(size: LogicalSize, padding: EdgeInsets) -> LogicalSize {
-    LogicalSize::from_sanitized(
+    LogicalSize::from_arithmetic(
         finite_sum(size.width(), horizontal_padding(padding)),
         finite_sum(size.height(), vertical_padding(padding)),
     )
@@ -1100,24 +1103,41 @@ fn vertical_padding(padding: EdgeInsets) -> f32 {
 }
 
 fn subtract_extent(value: f32, amount: f32) -> f32 {
-    valid_extent(value - amount)
+    let difference = value - amount;
+    if difference > 0.0 { difference } else { 0.0 }
 }
 
 fn finite_sum(left: f32, right: f32) -> f32 {
-    let sum = valid_extent(left) + valid_extent(right);
-    if sum.is_finite() { sum } else { f32::MAX }
+    finite_saturating_add(extent_from_arithmetic(left), extent_from_arithmetic(right))
 }
 
-fn valid_extent(value: f32) -> f32 {
+fn finite_saturating_add(left: f32, right: f32) -> f32 {
+    let sum = left + right;
+    if sum.is_finite() {
+        sum
+    } else if left.is_sign_negative() && right.is_sign_negative() {
+        f32::MIN
+    } else {
+        f32::MAX
+    }
+}
+
+fn extent_from_arithmetic(value: f32) -> f32 {
+    debug_assert!(
+        !value.is_nan() && value >= 0.0,
+        "internal extent arithmetic must be non-negative and not NaN"
+    );
     if value.is_finite() && value > 0.0 {
         value
+    } else if value == f32::INFINITY {
+        f32::MAX
     } else {
         0.0
     }
 }
 
-fn logical_extent(value: f32) -> LogicalLength {
-    LogicalLength::new(valid_extent(value)).unwrap_or_default()
+fn logical_extent_from_arithmetic(value: f32) -> LogicalLength {
+    LogicalLength::new(extent_from_arithmetic(value)).unwrap_or_default()
 }
 
 fn surface_kind<Action>(kind: &ElementKind<Action>) -> SurfaceNodeKind {

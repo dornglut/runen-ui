@@ -10,8 +10,9 @@ assigns opaque preorder IDs, validates authored tree identity, provides basic
 focus and press activation, resolves style, applies validated constraints and
 provider-backed intrinsic measurement, arranges the small row/column layout, and
 publishes aligned frame/style/layout products. Duplicate IDs and sibling keys
-produce stable path diagnostics; ambiguous ID activation never chooses the first
-match.
+produce true numeric-preorder diagnostics with deterministic same-node category
+ordering; ambiguous ID activation never chooses the first match. Derived layout
+and rectangle-edge arithmetic saturates instead of publishing NaN or infinity.
 
 Runtime IDs, indexes, focus/trace state, frames, frame nodes, and style/layout
 reports are generated read-only products with no normal public forgery

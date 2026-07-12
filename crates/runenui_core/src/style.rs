@@ -1,15 +1,16 @@
 //! Validated host-neutral authored style vocabulary.
 
-use crate::{IdentifierError, LogicalLength, identity::validate_identifier};
+use crate::{
+    IdentifierError, LogicalLength,
+    identity::{IdentifierText, validate_identifier},
+};
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct TokenId(TokenText);
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum TokenText {
-    Static(&'static str),
-    Owned(Box<str>),
-}
+/// Validated textual identity for a style token.
+///
+/// Equality, ordering, and hashing depend only on [`Self::as_str`], not whether
+/// the identifier came from static or owned storage.
+pub struct TokenId(IdentifierText);
 
 impl TokenId {
     /// Validates a dynamic token identifier.
@@ -20,7 +21,7 @@ impl TokenId {
     pub fn new(id: impl Into<String>) -> Result<Self, IdentifierError> {
         let id = id.into();
         validate_identifier(&id)?;
-        Ok(Self(TokenText::Owned(id.into_boxed_str())))
+        Ok(Self(IdentifierText::owned(id)))
     }
 
     /// Validates a static token identifier.
@@ -30,17 +31,14 @@ impl TokenId {
     /// Returns [`IdentifierError`] when the identifier text is invalid.
     pub const fn from_static(id: &'static str) -> Result<Self, IdentifierError> {
         match validate_identifier(id) {
-            Ok(()) => Ok(Self(TokenText::Static(id))),
+            Ok(()) => Ok(Self(IdentifierText::from_static(id))),
             Err(error) => Err(error),
         }
     }
 
     #[must_use]
-    pub fn as_str(&self) -> &str {
-        match &self.0 {
-            TokenText::Static(value) => value,
-            TokenText::Owned(value) => value,
-        }
+    pub const fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 }
 
@@ -68,7 +66,7 @@ macro_rules! define_token_ref {
                 &self.0
             }
             #[must_use]
-            pub fn as_str(&self) -> &str {
+            pub const fn as_str(&self) -> &str {
                 self.0.as_str()
             }
         }

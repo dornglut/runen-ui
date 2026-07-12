@@ -5,7 +5,7 @@ macro_rules! token_id {
         const _: () = if !$crate::is_valid_identifier_literal($value) {
             panic!("invalid token ID literal");
         };
-        match $crate::TokenId::new($value) {
+        match $crate::TokenId::from_static($value) {
             Ok(value) => value,
             Err(_) => unreachable!("compile-time token validation disagreed with runtime validation"),
         }

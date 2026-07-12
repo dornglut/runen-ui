@@ -13,7 +13,8 @@ the authority for individual signatures.
 - values and errors: `LogicalLength`, `LogicalLengthError`, `Color`,
   `EdgeInsets`, `Radius`, and their literal/token unions;
 - authored identity: `ElementId`, `ElementKey`, `TokenId`, typed color/spacing/
-  radius token references, `IdentifierError`, and literal-validation macros;
+  radius token references, `IdentifierError`, sealed builder-input conversion
+  traits, and literal-validation macros;
 - token definition and resolution: `StyleTokens`, `TokenFamily`,
   `DuplicateTokenDefinition`, `StyleIntent`, `ComputedStyle`, provenance,
   unresolved-token diagnostics, and the two pure resolution functions;
@@ -24,7 +25,9 @@ the authority for individual signatures.
   number of heterogeneous builders, and identifier/token literal macros validate
   compile-time literals.
 
-All fields of public core structs are private. `ElementKind` and `Axis` are
+All fields of public core structs are private. `TokenFamily` is
+`#[non_exhaustive]` because additional style families are expected as the style
+system grows. `ElementKind` and `Axis` are
 deliberately exhaustive closed proof enums: M2 replaces the extension gate rather
 than pretending this M1 built-in vocabulary is already extensible. Value unions
 are exhaustive because downstream matching is part of their current authored
@@ -56,8 +59,10 @@ remain constructible because they are inputs rather than generated products.
 Runtime input, policy-result, diagnostic, trace-event, measurement-kind, and
 surface-kind enums are `#[non_exhaustive]` because their proof vocabulary will
 grow. `AxisLimit` remains exhaustive because finite versus unbounded is the whole
-constraint state. `UiApp`, `MeasurementProvider`, and core conversion traits are
-open; no M2 widget extension point is prematurely sealed.
+constraint state. `UiApp`, `MeasurementProvider`, `IntoElement`, and
+`IntoElements` are open. The `IntoElementId`/`IntoElementKey` builder-input
+traits are sealed so downstream code cannot bypass identifier validation; no M2
+widget extension point is prematurely sealed.
 
 The core prelude contains only ordinary typed builders, identity, `Element`,
 `LogicalLength`, and conversion traits. The runtime prelude contains only
@@ -86,21 +91,38 @@ infallible from bounded unsigned integers, and saturating for the arithmetic use
 by current layout. `LogicalSize` contains two logical lengths. Signed points are
 fallible finite pairs. Constraints structurally contain valid lengths and raise an
 inverted finite maximum to the minimum. Baselines reject non-finite, negative, and
-out-of-height values. Runtime arithmetic saturates before product construction.
+out-of-height values. Valid finite arithmetic that overflows saturates to the
+appropriate finite boundary before product construction, including rectangle
+edges, arrangement cursors, padding expansion, and constraint subtraction.
 
 This is a logical-coordinate contract; later host scale factors map logical to
 physical pixels without introducing another authored length type.
 
 ### Identity and tokens
 
-The defect was unchecked string construction, first-match duplicate IDs, sibling
-key ambiguity, and token maps that silently overwrote definitions. Dynamic ID,
-key, and token constructors now return `IdentifierError`; literal macros validate
-at compile time. Builder string convenience validates immediately and retains an
-invalid authoring diagnostic instead of storing an invalid identifier or silently
-doing nothing. Runtime indexing emits stable path-based diagnostics sorted by
-duplicate path, diagnostic kind, and value. Element IDs are unique tree-wide;
-keys are unique among siblings. Ambiguous authored activation returns
+The defect was unchecked string construction, representation-dependent identity,
+first-match duplicate IDs, sibling-key ambiguity, and token maps that silently
+overwrote definitions. Equality, ordering, and hashing now use identifier text,
+so allocation-free static and owned dynamic construction are semantically
+identical for IDs, keys, token references, maps, lookups, and duplicate detection.
+
+Identifiers admit ordinary Unicode text. Empty and Unicode-whitespace-only text,
+leading or trailing Unicode whitespace, and Unicode General Category Cc control
+characters are rejected. Dynamic ID, key, and token constructors return
+`IdentifierError`; literal macros reject the same grammar at compile time and
+construct allocation-free static values. Rust 1.93 provides const
+`char::is_whitespace`, but not const `str::chars` or `char::is_control`, so the
+shared const validator decodes the already-valid UTF-8 itself and recognizes the
+C0/C1 ranges that comprise category Cc. Runtime and literal paths therefore do
+not maintain divergent validators.
+
+Builder convenience accepts either validated values or strings, validates
+strings immediately, and retains an invalid authoring diagnostic instead of
+storing invalid identity or silently doing nothing. Runtime indexing emits
+diagnostics by numeric node preorder, never formatted-path lexical order.
+Diagnostics at one node use invalid ID, invalid key, duplicate ID, then duplicate
+sibling-key category order, with text order within a category. Element IDs are
+unique tree-wide; keys are unique among siblings. Ambiguous authored activation returns
 `ActivationResult::AmbiguousId` rather than selecting the first node.
 
 Token definition uses `define_*` methods that return

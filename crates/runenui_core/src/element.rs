@@ -1,8 +1,8 @@
 //! Typed host-neutral UI element tree and builders.
 
 use crate::{
-    Axis, ColorValue, ElementId, ElementKey, IdentifierError, LayoutStyle, LogicalLength,
-    RadiusValue, SpacingValue, StyleIntent,
+    Axis, ColorValue, ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey,
+    LayoutStyle, LogicalLength, RadiusValue, SpacingValue, StyleIntent,
 };
 
 /// Type-erased built-in element description consumed by the current runtime.
@@ -105,14 +105,14 @@ impl Text {
     }
 
     #[must_use]
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        assign_id(&mut self.id, &mut self.diagnostics, id.into());
+    pub fn id(mut self, id: impl IntoElementId) -> Self {
+        assign_id(&mut self.id, &mut self.diagnostics, id);
         self
     }
 
     #[must_use]
-    pub fn key(mut self, key: impl Into<String>) -> Self {
-        assign_key(&mut self.key, &mut self.diagnostics, key.into());
+    pub fn key(mut self, key: impl IntoElementKey) -> Self {
+        assign_key(&mut self.key, &mut self.diagnostics, key);
         self
     }
 
@@ -188,14 +188,14 @@ impl<Action> Button<Action> {
     }
 
     #[must_use]
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        assign_id(&mut self.id, &mut self.diagnostics, id.into());
+    pub fn id(mut self, id: impl IntoElementId) -> Self {
+        assign_id(&mut self.id, &mut self.diagnostics, id);
         self
     }
 
     #[must_use]
-    pub fn key(mut self, key: impl Into<String>) -> Self {
-        assign_key(&mut self.key, &mut self.diagnostics, key.into());
+    pub fn key(mut self, key: impl IntoElementKey) -> Self {
+        assign_key(&mut self.key, &mut self.diagnostics, key);
         self
     }
 
@@ -285,14 +285,14 @@ impl<Action> Container<Action> {
     }
 
     #[must_use]
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        assign_id(&mut self.id, &mut self.diagnostics, id.into());
+    pub fn id(mut self, id: impl IntoElementId) -> Self {
+        assign_id(&mut self.id, &mut self.diagnostics, id);
         self
     }
 
     #[must_use]
-    pub fn key(mut self, key: impl Into<String>) -> Self {
-        assign_key(&mut self.key, &mut self.diagnostics, key.into());
+    pub fn key(mut self, key: impl IntoElementKey) -> Self {
+        assign_key(&mut self.key, &mut self.diagnostics, key);
         self
     }
 
@@ -440,11 +440,11 @@ pub fn row<Action>(children: impl IntoElements<Action>) -> Container<Action> {
 fn assign_id(
     slot: &mut Option<ElementId>,
     diagnostics: &mut Vec<AuthoringDiagnostic>,
-    value: String,
+    value: impl IntoElementId,
 ) {
-    match ElementId::new(value.clone()) {
+    match value.into_element_id() {
         Ok(id) => *slot = Some(id),
-        Err(error) => diagnostics.push(AuthoringDiagnostic {
+        Err((value, error)) => diagnostics.push(AuthoringDiagnostic {
             field: "id",
             value,
             error,
@@ -455,11 +455,11 @@ fn assign_id(
 fn assign_key(
     slot: &mut Option<ElementKey>,
     diagnostics: &mut Vec<AuthoringDiagnostic>,
-    value: String,
+    value: impl IntoElementKey,
 ) {
-    match ElementKey::new(value.clone()) {
+    match value.into_element_key() {
         Ok(key) => *slot = Some(key),
-        Err(error) => diagnostics.push(AuthoringDiagnostic {
+        Err((value, error)) => diagnostics.push(AuthoringDiagnostic {
             field: "key",
             value,
             error,

@@ -11,6 +11,11 @@
   expressions and canonical `on_press`; removed prototype compatibility APIs.
 - Restricted `Action: Clone` to activation paths and documented public enum/trait
   evolution policy.
+- Corrected M1 identity to compare, order, and hash by Unicode-validated text
+  independent of static/owned storage; literal and dynamic validation now share
+  one grammar, and token families are explicitly non-exhaustive.
+- Corrected derived geometry to saturate at finite boundaries and identity
+  diagnostics to use true numeric preorder with deterministic same-node ordering.
 
 > **Category: Current contract**
 

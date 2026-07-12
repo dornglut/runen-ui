@@ -44,8 +44,8 @@ Support labels:
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Per-build runtime indexing | `proof` | Preorder `RuntimeNodeId`/`RuntimeTreeIndex` | ID can identify a different node after rebuild | M3 |
-| Authored element IDs | `partial` | Validated IDs, invalid-authoring diagnostics, deterministic duplicate paths, ambiguity-safe activation | IDs remain transient handles rather than persistent identity | M3 |
-| Stored element keys | `proof` | Validated keys with deterministic sibling-duplicate diagnostics | Keys do not participate in reconciliation | M3 |
+| Authored element IDs | `partial` | Unicode-validated textual IDs, invalid-authoring diagnostics, true-preorder duplicate paths, ambiguity-safe activation | IDs remain transient handles rather than persistent identity | M3 |
+| Stored element keys | `proof` | Unicode-validated textual keys with true-preorder sibling-duplicate diagnostics | Keys do not participate in reconciliation | M3 |
 | Persistent generational IDs | `unsupported` | None | No mounted arena or generation validation | M3 |
 | Keyed reconciliation | `unsupported` | None | Full root replacement after dispatch | M3 |
 | Mount/update/unmount lifecycle | `unsupported` | None | No mounted widget protocol | M2–M3 |
@@ -92,7 +92,7 @@ Support labels:
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Literal color/padding/radius | `supported` | `StyleIntent` and `ComputedStyle` | Very small property surface | M7 |
-| Typed token references | `supported` | Validated color/spacing/radius token families and non-overwriting definitions | Theme loading/fallback remain absent | M7 |
+| Typed token references | `supported` | Unicode-validated text identity, color/spacing/radius families, mixed static/dynamic lookup, and non-overwriting definitions | Theme loading/fallback remain absent | M7 |
 | Token resolution | `supported` | `StyleTokens` and pure resolver | In-memory values only; no fallback or theme loading | M7 |
 | Provenance and missing-token diagnostics | `supported` | `StyleResolution`/`SurfaceStyleReport` | Limited to current fields and one publication | M7 |
 | Computed padding geometry | `proof` | Padding affects measurement, placement, and hit bounds | Incomplete box model | M7 |

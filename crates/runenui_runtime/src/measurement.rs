@@ -188,7 +188,7 @@ impl MeasurementProvider for DeterministicMeasurementProvider {
     fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement {
         let count = f32::from(u16::try_from(request.content().chars().count()).unwrap_or(u16::MAX));
         let width = count * self.char_width.get();
-        let intrinsic = LogicalSize::from_sanitized(
+        let intrinsic = LogicalSize::from_arithmetic(
             if width.is_finite() { width } else { f32::MAX },
             self.line_height.get(),
         );

@@ -9,6 +9,21 @@
 //! use runenui_core::{IntoElement, text};
 //! let _ = text("label").disabled().into_element();
 //! ```
+//!
+//! Identifier literal macros apply the same Unicode-aware grammar as dynamic
+//! constructors and reject invalid literals during compilation:
+//!
+//! ```compile_fail
+//! let _ = runenui_core::element_id!("\u{00A0}");
+//! ```
+//!
+//! ```compile_fail
+//! let _ = runenui_core::element_key!("name\u{2003}");
+//! ```
+//!
+//! ```compile_fail
+//! let _ = runenui_core::token_id!("name\u{0085}value");
+//! ```
 
 #![forbid(unsafe_code)]
 
@@ -33,7 +48,7 @@ pub use element::{
 };
 #[doc(hidden)]
 pub use identity::is_valid_identifier_literal;
-pub use identity::{ElementId, ElementKey, IdentifierError};
+pub use identity::{ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey};
 pub use layout::{Axis, LayoutStyle};
 pub use style::{
     Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,

@@ -13,10 +13,12 @@ During `0.x`:
 - a facade crate is deferred until lower-level APIs are ready to present a coherent normal-user surface.
 
 M1 applies this policy concretely: obsolete prototype constructors and aliases
-were removed without compatibility wrappers; evolution-prone runtime enums are
-`#[non_exhaustive]`; intentionally closed authored value enums remain exhaustive;
-`UiApp`, `MeasurementProvider`, and conversion traits are open; generated products
-are read-only. See the [public API contract](architecture/public-api.md).
+were removed without compatibility wrappers; evolution-prone runtime enums and
+`TokenFamily` are `#[non_exhaustive]`; intentionally closed authored value enums
+remain exhaustive; `UiApp`, `MeasurementProvider`, `IntoElement`, and
+`IntoElements` are open, while identifier-input conversion is sealed to preserve
+validation; generated products are read-only. See the [public API
+contract](architecture/public-api.md).
 
 A type being public, documented, or tested does not make it stable. Support claims come from the feature/support matrix and behavioral milestone gates.
 
