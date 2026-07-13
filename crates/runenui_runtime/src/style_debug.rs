@@ -6,7 +6,7 @@ use runenui_core::{
     ComputedStyle, ElementId, StyleProvenance, StyleResolution, UnresolvedStyleToken,
 };
 
-use crate::RuntimeNodeId;
+use crate::{MountedNodeId, SemanticNodeId};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SurfaceStyleReport {
@@ -30,15 +30,16 @@ impl SurfaceStyleReport {
     }
 
     #[must_use]
-    pub fn node(&self, id: RuntimeNodeId) -> Option<&SurfaceStyleNode> {
+    pub fn node(&self, id: &MountedNodeId) -> Option<&SurfaceStyleNode> {
         self.nodes.iter().find(|node| node.id() == id)
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceStyleNode {
-    id: RuntimeNodeId,
-    parent: Option<RuntimeNodeId>,
+    id: MountedNodeId,
+    semantic_id: SemanticNodeId,
+    parent: Option<MountedNodeId>,
     authored_id: Option<ElementId>,
     resolution: StyleResolution,
 }
@@ -46,13 +47,15 @@ pub struct SurfaceStyleNode {
 impl SurfaceStyleNode {
     #[must_use]
     pub(crate) const fn new(
-        id: RuntimeNodeId,
-        parent: Option<RuntimeNodeId>,
+        id: MountedNodeId,
+        semantic_id: SemanticNodeId,
+        parent: Option<MountedNodeId>,
         authored_id: Option<ElementId>,
         resolution: StyleResolution,
     ) -> Self {
         Self {
             id,
+            semantic_id,
             parent,
             authored_id,
             resolution,
@@ -60,13 +63,18 @@ impl SurfaceStyleNode {
     }
 
     #[must_use]
-    pub const fn id(&self) -> RuntimeNodeId {
-        self.id
+    pub const fn id(&self) -> &MountedNodeId {
+        &self.id
     }
 
     #[must_use]
-    pub const fn parent(&self) -> Option<RuntimeNodeId> {
-        self.parent
+    pub const fn semantic_id(&self) -> &SemanticNodeId {
+        &self.semantic_id
+    }
+
+    #[must_use]
+    pub const fn parent(&self) -> Option<&MountedNodeId> {
+        self.parent.as_ref()
     }
 
     #[must_use]
@@ -126,8 +134,8 @@ impl fmt::Display for DebugSurfaceStyleNode<'_> {
 
         write!(
             formatter,
-            "style id={} authored={} computed={:?} provenance={:?} unresolved={:?}",
-            node.id().as_usize(),
+            "style id={:?} authored={} computed={:?} provenance={:?} unresolved={:?}",
+            node.id(),
             format_authored_id(node),
             node.computed_style(),
             node.provenance(),

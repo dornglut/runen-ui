@@ -2,12 +2,12 @@
 
 use runenui_core::ElementId;
 
-use crate::RuntimeNodeId;
+use crate::MountedNodeId;
 
 /// Trace target for runtime events caused by a specific element.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceTarget {
-    runtime_node_id: RuntimeNodeId,
+    mounted_node_id: MountedNodeId,
     authored_id: Option<ElementId>,
 }
 
@@ -15,19 +15,19 @@ impl TraceTarget {
     /// Creates a trace target from generated runtime identity and optional authored identity.
     #[must_use]
     pub(crate) const fn new(
-        runtime_node_id: RuntimeNodeId,
+        mounted_node_id: MountedNodeId,
         authored_id: Option<ElementId>,
     ) -> Self {
         Self {
-            runtime_node_id,
+            mounted_node_id,
             authored_id,
         }
     }
 
     /// Returns the generated runtime node ID for this target.
     #[must_use]
-    pub const fn runtime_node_id(&self) -> RuntimeNodeId {
-        self.runtime_node_id
+    pub const fn mounted_node_id(&self) -> &MountedNodeId {
+        &self.mounted_node_id
     }
 
     /// Returns the optional authored element ID for this target.
@@ -47,8 +47,10 @@ pub enum RuntimeEvent {
     ActionDispatched,
     /// The application update function returned.
     StateUpdated,
-    /// The root UI was rebuilt from the latest state.
-    RootRebuilt,
+    TreeReconciled,
+    FocusRetained,
+    FocusCleared,
+    RuntimeShutdown,
 }
 
 /// One runtime trace record, with optional element target details.

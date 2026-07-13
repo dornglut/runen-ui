@@ -47,11 +47,18 @@ impl fmt::Display for DuplicateTokenDefinition {
 
 impl Error for DuplicateTokenDefinition {}
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct StyleTokens {
     colors: BTreeMap<ColorToken, Color>,
     spacing: BTreeMap<SpacingToken, EdgeInsets>,
     radii: BTreeMap<RadiusToken, Radius>,
+    revision: u64,
+}
+
+impl PartialEq for StyleTokens {
+    fn eq(&self, other: &Self) -> bool {
+        self.colors == other.colors && self.spacing == other.spacing && self.radii == other.radii
+    }
 }
 
 impl StyleTokens {
@@ -76,7 +83,9 @@ impl StyleTokens {
             value,
             TokenFamily::Color,
             ColorToken::id,
-        )
+        )?;
+        self.advance_revision();
+        Ok(())
     }
 
     /// Defines a spacing token without replacement.
@@ -95,7 +104,9 @@ impl StyleTokens {
             value,
             TokenFamily::Spacing,
             SpacingToken::id,
-        )
+        )?;
+        self.advance_revision();
+        Ok(())
     }
 
     /// Defines a radius token without replacement.
@@ -114,7 +125,9 @@ impl StyleTokens {
             value,
             TokenFamily::Radius,
             RadiusToken::id,
-        )
+        )?;
+        self.advance_revision();
+        Ok(())
     }
 
     #[must_use]
@@ -132,6 +145,25 @@ impl StyleTokens {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.colors.is_empty() && self.spacing.is_empty() && self.radii.is_empty()
+    }
+
+    /// Monotonic diagnostic revision for callers that want a cheap change hint.
+    ///
+    /// Cache correctness must compare token content because independent token
+    /// sets and saturated revisions can share this value.
+    #[must_use]
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    const fn advance_revision(&mut self) {
+        self.revision = self.revision.saturating_add(1);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    pub const fn __seed_revision_for_test(&mut self, revision: u64) {
+        self.revision = revision;
     }
 }
 

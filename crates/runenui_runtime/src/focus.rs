@@ -1,47 +1,40 @@
-//! Runtime focus state.
+//! Mounted focus state.
 
-use crate::RuntimeNodeId;
+use crate::MountedNodeId;
 
-/// Runtime focus state for one built tree.
-///
-/// Focus stores generated runtime node identity. Runtime node IDs are tree-local,
-/// so the runtime clears focus whenever a dispatch rebuilds the root tree.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FocusTargetResult {
+    Focused,
+    NotFocusable,
+    StaleTarget,
+    ForeignRuntime,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FocusState {
-    focused_node_id: Option<RuntimeNodeId>,
+    focused_node_id: Option<MountedNodeId>,
 }
 
 impl FocusState {
-    /// Creates an empty focus state.
     #[must_use]
     pub(crate) const fn new() -> Self {
         Self {
             focused_node_id: None,
         }
     }
-
-    /// Returns the currently focused runtime node ID, if any.
     #[must_use]
-    pub const fn focused_node(&self) -> Option<RuntimeNodeId> {
-        self.focused_node_id
+    pub const fn focused_node(&self) -> Option<&MountedNodeId> {
+        self.focused_node_id.as_ref()
     }
-
-    /// Returns whether the provided runtime node ID is focused.
     #[must_use]
-    pub const fn is_focused(&self, id: RuntimeNodeId) -> bool {
-        match self.focused_node_id {
-            Some(focused) => focused.as_usize() == id.as_usize(),
-            None => false,
-        }
+    pub fn is_focused(&self, id: &MountedNodeId) -> bool {
+        self.focused_node_id.as_ref() == Some(id)
     }
-
-    /// Sets focus to the provided runtime node ID.
-    pub(crate) const fn set(&mut self, id: RuntimeNodeId) {
+    pub(crate) fn set(&mut self, id: MountedNodeId) {
         self.focused_node_id = Some(id);
     }
-
-    /// Clears the focused runtime node ID.
-    pub(crate) const fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.focused_node_id = None;
     }
 }

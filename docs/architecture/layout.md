@@ -9,24 +9,36 @@
 The current headless proof provides:
 
 - normalized independent minimum/maximum constraints with finite and unbounded maxima;
-- a borrowed synchronous renderer-neutral `MeasurementProvider` for text and control labels;
+- a borrowed synchronous renderer-neutral `MeasurementProvider` for text and
+  control labels, with explicit stable cache identity and behavior revision;
 - deterministic Unicode-scalar-count measurement for tests and headless examples;
 - computed padding applied through outer/content box constraints;
-- one `RuntimeNodeId`-aligned measured result per node per publication;
-- one intrinsic-measurement snapshot per node and one child-layout snapshot per
-  child-bearing node per publication;
+- one `MountedNodeId`/`SemanticNodeId`-aligned measured result per live node;
+- persistent selective intrinsic-measurement and child-layout capability caches;
 - measurement-free arrangement from those exact publication-local snapshots;
 - intrinsic main-axis row/column sizing and loose finite cross-axis maxima;
 - aligned desired/constrained size and overflow diagnostics.
 - open intrinsic widget measurement for fixed size, text, and unsupported
   capabilities, independent from open linear child layout;
 
-Surface preparation queries `Widget::measure()` exactly once per node and
-`ChildLayoutWidget::child_layout()` exactly once per child-bearing node per
-publication. The resolved tree owns both values. Intrinsic sizing, child
-measurement, arrangement, and layout diagnostics reuse them; text descriptors
-are not regenerated. A later publication queries each capability once again.
-These snapshots are transient publication data, not persistent mounted state.
+The first surface preparation queries dirty `Widget::measure(state)` and
+`ChildLayoutWidget::child_layout(state)` capabilities once. Intrinsic sizing,
+child measurement, arrangement, and layout diagnostics reuse the mounted cache.
+The M3 proof publication context key includes root constraints, exact
+`StyleTokens` content, and measurement-provider identity/revision. Providers
+must change identity or revision whenever measurement behavior changes; a change
+invalidates measurement-dependent layout without clearing clean widget
+capability descriptors.
+A retained topology snapshot supplies only structural order and identity.
+Whenever layout executes, its publication-local resolved nodes read current
+mounted `LayoutStyle` values and combine them with current cached style
+resolutions. Compatible gap and padding changes therefore update child bounds,
+content constraints, and hit-test bounds without a tree rebuild.
+A clean later publication performs no widget query; `LAYOUT` invalidation clears
+both caches. Publication-context changes may still recompute proof layout from
+clean capability facts. Layout execution rebuilds bounds and the hit-test
+projection while reusing clean paint and semantic capability facts. This is not
+the production retained layout cache owned by M7/M11.
 
 For a child-layout widget, the M2 proof combines its intrinsic minimum with its
 measured child-layout content using component-wise maximum. It then constrains

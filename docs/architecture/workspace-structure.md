@@ -20,8 +20,8 @@ RunenUI/
 
 | Package | Current ownership | Must not own |
 |---|---|---|
-| `runenui_core` | Validated authored values/identity/style; separate built-in views/private widgets; open `View`/`Element`/`Widget`/`ChildLayoutWidget`; canonical child-layout container; action mapping/extraction; state/lifecycle seam | Persistent runtime state, hosts, renderer backends, app state, ECS, or legacy dependencies |
-| `runenui_runtime` | Headless execution/indexing, identity diagnostics, mutable dispatch/rebuild, intrinsic/child-layout snapshots, aligned frame/style/layout publication, hit testing, and trace | Application domain state, persistent M3 storage, native windows, concrete renderers, ECS, or legacy dependencies |
+| `runenui_core` | Validated authored values/identity/style; transient views/elements; state-aware widgets; lifecycle contexts; invalidation; technically public doc-hidden unstable safe runtime bridge | Persistent mounted storage, hosts, renderer backends, app state, ECS, or legacy dependencies |
+| `runenui_runtime` | Generational mounted arena/tree, reconciliation, lifecycle/shutdown, focus/interaction slots, caches/invalidation phases, mounted dispatch/targeting, aligned publication, hit testing, and trace | Application domain state, M4 event/effect scheduling, native windows, concrete renderers, ECS, or legacy dependencies |
 | `counter` | Application-owned state/action/update and headless public-API proof | Framework internals, native host, renderer backend, or legacy imports |
 | `runenui_external_widget_conformance` | Non-publishable test-owned downstream controls, vertical/horizontal/intrinsic/unsupported child-layout widgets, mapping, state/lifecycle, alignment, hit, and snapshot proof | Production framework ownership or privileged internal access |
 | `xtask` | Repository validation orchestration | Framework runtime behavior |
@@ -35,6 +35,13 @@ runenui_core <- runenui_runtime <- counter
 ```
 
 `xtask` is repository tooling and has no framework dependency.
+
+Within the crates, built-in authoring is separate from the public element/widget
+protocol. Mounted storage is divided into arena, identity, node, capability
+cache, invalidation, interaction, matching, lifecycle, and diagnostic modules.
+Surface context/key/cache ownership is separate from phase resolution,
+measurement, arrangement, and publication code. These are module boundaries,
+not new crate boundaries.
 
 ## Extraction rule
 

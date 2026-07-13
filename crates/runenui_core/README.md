@@ -23,20 +23,24 @@ duplicate tree IDs and sibling keys. The old
 argument-builder duplicates, and tuple arity implementations are gone.
 
 `ElementKind` and the old built-in element views are removed. `WidgetTypeId`
-wraps process-local Rust type identity, private safe erasure preserves bounded
-capabilities, `map_action` recursively maps typed component actions, and opaque
-state/lifecycle access is checked. Public built-in authored views convert into
-private behavior-only widget payloads, preventing `Element::new` from silently
-losing builder configuration. `ChildLayoutWidget`, `ChildLayout`, and canonical
-`Container<Action>`/`container` authoring give downstream and built-in
-child-layout widgets the same atomic ownership and gap path. Action extraction
-is explicitly mutable and supports owned
-non-`Clone` actions without interior mutation. Every implementation must declare
-`State` and `create_state`; a stateless widget writes `type State = ();` and an
-empty constructor explicitly. M2 capabilities remain state-independent except
-for the lifecycle proof, so M3 must introduce the state-aware mounted behavior
-contract. Keys and widget state do not preserve mounted identity until M3.
-The crate does not own runtime state, input routing, effects, layout execution,
+wraps process-local Rust type identity, private safe erasure preserves
+state-aware capabilities, and `map_action` recursively maps typed component
+actions without changing widget or state identity. Public built-in authored views
+convert into private behavior-only widget payloads. `ChildLayoutWidget`,
+`ChildLayout`, and canonical `Container<Action>`/`container` authoring give
+downstream and built-in child-layout widgets the same atomic ownership and gap
+path. Every implementation declares `State` and `create_state`;
+mount/update/unmount and activation receive runtime-owned contexts, all
+capabilities observe persistent state, and stateless widgets use `State = ()`.
+`WidgetInvalidation` is a manual selective bitset. `StyleTokens` carries a
+monotonic diagnostic revision, while sound runtime cache compatibility compares
+the complete token definitions and values. The `__runtime` bridge
+is technically public only because core and runtime are separate crates; it is
+outside the prelude, doc-hidden, unstable, unsupported for applications, and
+semver-exempt before 1.0. It safely consumes transient elements into checked,
+non-forgeable mounted widget/state plumbing without exposing payload or arena
+construction.
+The crate does not own mounted storage, input routing, effects, layout execution,
 semantics, paint scenes, renderer backends, native hosts, application state, ECS,
 or legacy dependencies.
 

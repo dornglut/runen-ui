@@ -23,21 +23,21 @@ No framework subsystem is currently `stable`.
 
 | Area | Current maturity | What exists | Decisive limitation | Target milestone |
 |---|---|---|---|---|
-| Authoring and composition | `usable` | Separate built-in views/private widgets; downstream leaves; canonical child-layout `Container`; recursive mapping; arity-free composition | Descriptions are not mounted identity or retained state | M2 complete; M3 |
+| Authoring and composition | `usable` | Separate built-in views/private widgets; downstream leaves; canonical child-layout `Container`; recursive mapping; arity-free composition | Descriptions are transient reconciliation inputs, not mounted identity/state | M2–M3 complete |
 | Application model | `usable` | Application-owned state/actions; `UiApp`; explicit synchronous `update`; deterministic dispatch | No action queue, effects, tasks, subscriptions, cancellation, or reentrancy contract | M4 |
-| Transient runtime indexing | `proof` | Per-build opaque `RuntimeNodeId`, borrowed `RuntimeTreeIndex`, Unicode-validated textual authored IDs, and true-preorder duplicate diagnostics | IDs are valid for one built tree and may identify different elements after rebuild | M3 |
-| Stored element keys | `proof` | Validated `ElementKey` values are retained and sibling duplicates are diagnosed deterministically | Keys do not participate in matching or preserve runtime identity | M3 |
-| Persistent mounted identity and lifecycle | `planned` | M2 defines truthful widget/state compatibility, safe initial state, checked lifecycle hooks, and an isolated lifecycle-only state seam | Capabilities cannot observe state; no retained state, mounted tree, reconciliation, generations, scheduling, or invalidation | M3 |
-| Events and interaction | `proof` | Typed pointer/keyboard vocabulary; hit targeting; traversal focus; explicit mutable non-`Clone` action extraction; immediate successful-dispatch rebuild | No routing phases, pointer identity/capture, release-based activation, focus scopes, text/IME separation, or stale-target protection | M4 |
+| Mounted runtime identity and indexing | `usable` | Runtime-local generational `MountedNodeId`, distinct `SemanticNodeId`, logical-preorder `MountedTreeIndex`, stale/foreign rejection, authored-ID lookup diagnostics | One mounted root and runtime-local IDs remain the M3 boundary | M3 complete |
+| Keyed reconciliation | `usable` | Transactional sibling-local matching, unkeyed ordinal policy, structured duplicate-key no-reuse diagnostics, cross-parent remount, exact reports | Cross-parent movement remounts; duplicate keys preserve no ambiguous lifetime | M3 complete |
+| Persistent widget state and lifecycle | `usable` | State-aware capabilities, preorder mount/update, postorder removal/replacement/shutdown, state drop after unmount, interaction slots | No M4 task/subscription ownership | M3 complete; M4 queued |
+| Events and interaction | `proof` | Typed pointer/keyboard vocabulary; mounted hit targets; traversal focus; explicit mutable non-`Clone` activation; immediate transient-root rebuild and mounted reconciliation after successful dispatch | Mounted targets are stale/foreign safe, but there are no routing phases, pointer identity/capture, release-based activation, focus scopes, text/IME separation, or full event-level target diagnostics | M4 |
 | Normalized UI navigation commands | `absent` | None; keyboard Tab/Enter/Space policies are device-specific proofs | No abstract next/previous/directional/activate/cancel/menu/context commands or modality tracking | M4 |
 | Directional/spatial focus navigation | `absent` | None | Current focus movement is linear traversal only | M4 |
 | Effects and scheduling | `absent` | Synchronous dispatch only | No effects, queue, task executor, timers, subscriptions, cancellation, wakeups, or shutdown model | M4 |
 | Styling | `partial` | Colors, padding, radius, typed tokens, computed style, provenance, missing-token diagnostics | No themes, recipes, variants, interaction states, typography, borders, fallback, or preferences | M7–M8 |
 | Layout and measurement | `proof` | Separate one-query intrinsic/child-layout snapshots; component-wise minimum combination; padding/gaps; unsupported/unknown fallbacks; aligned index/frame/style/layout products | Linear M2 proof only; no production sizing/alignment/flex/grid/scroll/incremental layout | M7–M8 |
 | Focusability facts | `proof` | Any widget contributes enabled/actionable facts through the open protocol; built-in and external controls pass traversal tests | Still proof-level and not the M5 semantic/focus model | M5 |
-| Semantic/accessibility tree | `absent` | M2 widgets publish minimal deterministic role/name/enabled/action-intent proof facts | Proof facts are not a tree and have no stable semantic IDs, relationships, AccessKit adapter, or accessibility claim | M5, M10 |
-| Surface publication | `proof` | Aligned read-only `SurfaceFrame`, `SurfaceStyleReport`, and `SurfaceLayoutReport` products | Products use transient IDs; no surface generation or multi-surface lifecycle | M3, M6, M10 |
-| Hit testing | `proof` | Reverse-order rectangle hit testing over frame bounds | No explicit hit scene, stacking contract, clips, transforms, visibility/inertness, pointer policy, or stable generation | M6 |
+| Semantic/accessibility tree | `absent` | Widgets publish minimal deterministic role/name/enabled/action-intent proof facts and mounted lifetimes expose `SemanticNodeId` | Proof facts are not a production semantic tree and have no relationships, values, semantic actions, AccessKit adapter, or accessibility claim | M5, M10 |
+| Surface publication | `proof` | Topology-only whole-surface cache, current mounted style/layout reads, exact token-content key, independent phase-entry/report proofs, and warmed structural/common-field tests | One current publication domain; proof facts are not M5/M6 products or production retained layout | M6, M10 |
+| Hit testing | `proof` | Reverse-order rectangle hit testing over frame bounds returns generation-safe mounted targets | No explicit hit scene, stacking contract, clips, transforms, visibility/inertness, or pointer policy | M6 |
 | Debug/semantic frame consumption | `proof` | Deterministic text rendering includes open widget paint/semantic/diagnostic proof facts | Debug output is not a paint scene, semantic tree, accessibility product, or backend | M5–M6 |
 | Renderer-neutral paint scene | `absent` | M2 publishes deterministic open widget paint/debug facts | Proof facts are not primitives/resources and have no clips, transforms, layers, or damage | M6 |
 | Production renderer backend | `absent` | None | No conventional or SDF backend; the neutral scene must be accepted first | M10, M12 |
@@ -56,5 +56,4 @@ No framework subsystem is currently `stable`.
 
 ## Current milestone
 
-M0, M1, and the owner-reviewed M2 finalization are complete. M3 is queued; no M3
-implementation has started.
+M0–M3 are complete. M4 is queued; no M4 implementation has started.

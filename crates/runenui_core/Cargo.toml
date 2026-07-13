@@ -12,5 +12,8 @@ rust-version.workspace = true
 
 [dependencies]
 
+[features]
+internal-test-seams = []
+
 [lints]
 workspace = true

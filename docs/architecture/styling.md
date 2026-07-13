@@ -14,13 +14,24 @@
 - concrete `ComputedStyle` containing no token references;
 - per-field provenance and unresolved-token diagnostics.
 
-`runenui_runtime::publish_surface` resolves every open widget element once during
-one publication. The same resolution product supplies concrete style to
+`AppRuntime::publish_surface` resolves current mounted authored style for each
+publication context. The same resolution product supplies concrete style to
 `SurfaceFrame` and provenance/diagnostics to `SurfaceStyleReport`. Computed
 padding participates in measurement, placement, and outer-bound hit testing for
 built-in and downstream widgets alike.
 
 Missing tokens are non-fatal: the computed field is absent, provenance records the missing token, diagnostics retain it, and render/layout consumers do not invent a fallback.
+
+`StyleTokens::revision()` advances after every successful definition and remains
+a diagnostic/change hint. The M3 proof publication cache owns and compares an
+exact token-content snapshot, so independent same-revision sets, divergent
+clones, and saturated revisions cannot alias. The topology cache owns no
+`StyleIntent`; style resolution checks each topology ID and reads current authored
+style from the mounted node. Reconciliation separately detects an authored token
+reference change even when token content and revision are unchanged. Style
+resolution compares old and new computed facts: padding changes schedule layout
+and hit testing, while foreground/background/radius-only changes schedule paint
+without layout.
 
 This proof does not include typography, borders, shadows, opacity, transforms, themes, recipes, variants, interaction-state layers, inheritance, external theme loading, or renderer materials. M1 removed the unused `LengthToken`/`LengthValue` family, unified geometry on validated `LogicalLength`, and made duplicate token definitions explicit non-overwriting errors. Token identity is Unicode-validated identifier text independent of static or owned storage, so mixed-form lookup and duplicate detection agree. `TokenFamily` is `#[non_exhaustive]`: color, spacing, and radius are inspectable current variants, while typography, borders, shadows, opacity, transforms, themes, recipes, and interaction-state styling make future families plausible.
 
@@ -39,7 +50,11 @@ platform and user preferences
 
 The resolution order must be explicit, deterministic, and inspectable. A general CSS selector/cascade system is not the initial model.
 
-Application state owns durable meaning such as validation or selection. Mounted widgets own ephemeral hover, pressed, focus, disabled mechanics, and animation state. Recipes and interaction-state styling therefore wait for M3 mounted state and M4 interaction contracts.
+Application state owns durable meaning such as validation or selection. Mounted
+widgets now own persistent proof slots for hover, pressed, focus, capture
+placeholder, and scroll offset. Recipes and interaction-state styling still wait
+for the M4 interaction contract and M7 styling policy; M3 slots alone do not
+define production state layers.
 
 Renderers consume resolved visual facts only. They never resolve tokens, recipes, variants, or themes. Layout consumes resolved geometry-affecting values. Accessibility/testing may inspect contrast, focus indication, disabled state, error state, and provenance without renderer ownership.
 

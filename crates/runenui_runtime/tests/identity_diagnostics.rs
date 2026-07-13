@@ -1,104 +1,94 @@
-use runenui_core::{Element, ElementId, View, button, column, element_id, element_key};
-use runenui_runtime::{ActivationResult, AppRuntime, DuplicateIdentityKind, UiApp};
-
-#[derive(Clone)]
-enum Action {
-    Hit,
-}
+use runenui_core::{Element, View, button, children, column, text};
+use runenui_runtime::{AppRuntime, DuplicateIdentityKind, UiApp};
 
 struct App;
-
 impl UiApp for App {
     type State = ();
-    type Action = Action;
-
-    fn root((): &()) -> Element<Action> {
-        let mut children = Vec::new();
-        children.push(
-            button("first")
-                .id(element_id!("mixed.identity"))
-                .key(element_key!("mixed.key"))
-                .on_press(Action::Hit)
-                .into_element(),
-        );
-        children.push(button("invalid-before-ten").id("\u{00A0}").into_element());
-        children.push(
-            button("all-categories")
-                .id("\u{00A0}bad")
-                .id("mixed.identity")
-                .key("bad\u{2003}")
-                .key("mixed.key")
-                .on_press(Action::Hit)
-                .into_element(),
-        );
-        for index in 3..10 {
-            children.push(button(format!("child-{index}")).into_element());
-        }
-        children.push(
-            button("ten")
-                .id("mixed.identity")
-                .key("mixed.key")
-                .on_press(Action::Hit)
-                .into_element(),
-        );
-        children.push(button("eleven").into_element());
-        children.push(button("twelve").into_element());
-        column(children).into_element()
+    type Action = ();
+    fn root((): &()) -> Element<()> {
+        column(children![
+            button("A").id("same").key("same"),
+            button("B")
+                .id(String::from("same"))
+                .key(String::from("same")),
+            text("invalid id").id("bad\nvalue"),
+            text("invalid key").key("bad\tkey"),
+        ])
+        .into_element()
     }
-
-    fn update((): &mut (), _: Action) {}
+    fn update((): &mut (), (): ()) {}
 }
 
 #[test]
-fn mixed_storage_identity_and_true_preorder_diagnostics_are_stable()
--> Result<(), runenui_core::IdentifierError> {
+fn authored_duplicates_are_deterministic_in_mounted_preorder() {
     let mut runtime = AppRuntime::<App>::mount(());
     let index = runtime.index();
-
-    let dynamic_lookup = ElementId::new("mixed.identity")?;
-    assert_eq!(
-        index
-            .node_by_authored_id(&dynamic_lookup)
-            .map(|node| node.id().as_usize()),
-        Some(1)
-    );
-
-    let diagnostics = index.diagnostics();
-    let observed: Vec<_> = diagnostics
+    assert_eq!(index.nodes().len(), 5);
+    let exact: Vec<_> = index
+        .diagnostics()
         .iter()
         .map(|diagnostic| {
             (
-                diagnostic.preorder_index(),
-                diagnostic.duplicate_path(),
                 diagnostic.kind(),
+                diagnostic.value().to_owned(),
+                diagnostic.first_path().to_owned(),
+                diagnostic.duplicate_path().to_owned(),
+                diagnostic.preorder_index(),
+                diagnostic.to_string(),
             )
         })
         .collect();
     assert_eq!(
-        observed,
+        exact,
         vec![
-            (2, "root/1", DuplicateIdentityKind::InvalidElementId),
-            (3, "root/2", DuplicateIdentityKind::InvalidElementId),
-            (3, "root/2", DuplicateIdentityKind::InvalidElementKey),
-            (3, "root/2", DuplicateIdentityKind::ElementId),
-            (3, "root/2", DuplicateIdentityKind::SiblingKey),
-            (11, "root/10", DuplicateIdentityKind::ElementId),
-            (11, "root/10", DuplicateIdentityKind::SiblingKey),
+            (
+                DuplicateIdentityKind::SiblingKey,
+                "same".to_owned(),
+                "root/0".to_owned(),
+                "root/1".to_owned(),
+                2,
+                "SiblingKey \"same\": root/0 -> root/1".to_owned(),
+            ),
+            (
+                DuplicateIdentityKind::ElementId,
+                "same".to_owned(),
+                "root/0".to_owned(),
+                "root/1".to_owned(),
+                2,
+                "ElementId \"same\": root/0 -> root/1".to_owned(),
+            ),
+            (
+                DuplicateIdentityKind::InvalidElementId,
+                "bad\nvalue".to_owned(),
+                "root/2".to_owned(),
+                "root/2".to_owned(),
+                3,
+                "InvalidElementId \"bad\\nvalue\": root/2 -> root/2".to_owned(),
+            ),
+            (
+                DuplicateIdentityKind::InvalidElementKey,
+                "bad\tkey".to_owned(),
+                "root/3".to_owned(),
+                "root/3".to_owned(),
+                4,
+                "InvalidElementKey \"bad\\tkey\": root/3 -> root/3".to_owned(),
+            ),
         ]
     );
-    assert_eq!(diagnostics[3].first_path(), "root/0");
-    assert_eq!(diagnostics[4].first_path(), "root/0");
-    assert_eq!(
-        diagnostics[4].to_string(),
-        "duplicate SiblingKey \"mixed.key\": first at root/0, duplicate at root/2"
-    );
 
-    let repeated = AppRuntime::<App>::mount(());
-    assert_eq!(diagnostics, repeated.index().diagnostics());
     drop(index);
     assert_eq!(
-        runtime.activate("mixed.identity"),
-        ActivationResult::AmbiguousId
+        runtime.activate("same"),
+        runenui_runtime::ActivationResult::AmbiguousId
     );
-    Ok(())
+    let repeated: Vec<_> = runtime
+        .index()
+        .diagnostics()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        repeated,
+        exact.into_iter().map(|entry| entry.5).collect::<Vec<_>>()
+    );
 }

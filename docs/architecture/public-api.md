@@ -1,223 +1,257 @@
-# Public API Contract through M2
+# Public API Contract through M3
 
 > **Category: Current contract**
 
-This document records the reviewed public surface after M1 and M2. Source-level
-Rust documentation remains authoritative for individual signatures. The design
-decision is [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md).
+This document records the reviewed public surface after M3. Source-level Rust
+documentation is authoritative for signatures. [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md)
+defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
+defines mounted ownership and reconciliation.
 
 ## Ownership and inventory
 
-`runenui_core` publicly owns:
+`runenui_core` owns validated authored values and identity, style intent and
+resolution, transient `View`/`Element` authoring, typed built-in views, the open
+state-aware `Widget`/`ChildLayoutWidget` contracts, proof capability values,
+lifecycle contexts, `WidgetInvalidation`, and typed recursive action mapping.
 
-- validated logical lengths, authored IDs/keys, style values, typed token
-  references, non-overwriting token definitions, pure style resolution,
-  provenance, and diagnostics;
-- the `View<Action>` single-node conversion protocol, `Views<Action>` child
-  collection conversion, and owned erased `Element<Action>` transient node;
-- typed built-in authored `Text`, `Button<Action>`, and `Container<Action>` views
-  plus `text`, `button`, `container`, `row`, and `column` builders;
-- downstream `Widget<Action>` and `ChildLayoutWidget<Action>` implementation
-  contracts, `ChildLayout`, `WidgetTypeId`,
-  `WidgetStateTypeId`, opaque `WidgetState`, checked lifecycle state access, and
-  bounded activation/measurement/paint/semantic/diagnostic proof facts;
-- typed recursive `Element::map_action(ChildAction -> ParentAction)`;
-- thin `element!` and `children!` conveniences plus checked identity/token
-  literal macros.
+`runenui_runtime` owns `UiApp`, `AppRuntime`, persistent mounted storage,
+reconciliation, lifecycle execution, focus and interaction slots, mounted
+targeting, invalidation scheduling, capability caches, measurement/layout
+execution, trace, and mounted publication. The public mounted inspection and
+integrity vocabulary includes:
 
-`runenui_runtime` publicly owns:
+- `MountedNodeId`, `SemanticNodeId`, `MountedNodeRef`, and `MountedTreeIndex`;
+- `ReconciliationGeneration` and `ReconciliationReport`;
+- `FocusTargetResult`, `ActivationResult`, and `RuntimeError`;
+- read-only frame, style-report, layout-report, and publication products.
 
-- the open `UiApp` and `MeasurementProvider` traits;
-- `AppRuntime` construction, typed dispatch, read-only state/root/trace/focus/
-  index access, proof input policy, activation, and surface publication;
-- validated constraints, measurement requests/results, and geometry;
-- opaque transient `RuntimeNodeId`, borrowed `RuntimeNodeRef`/
-  `RuntimeTreeIndex`, and read-only identity diagnostics;
-- read-only trace, frame, style-report, layout-report, and publication products
-  with deterministic debug formatters.
+The ordinary preludes remain narrow. Specialist mounted/lifecycle inspection is
+imported explicitly from crate roots. Generated IDs, mounted state, arena
+storage, reconciliation reports, and publication products have no public
+constructors.
 
-The non-publishable `runenui_external_widget_conformance` package is a genuine
-downstream consumer. It depends only on the two public crates and owns no
-privileged imports or runtime hook.
+## Transient authoring and mounted authority
 
-## View, element, component, and widget
+`View<Action>` consumes a typed authored value into one erased
+`Element<Action>`. An element contains common authored ID/key, layout/style
+intent, authoring diagnostics, transient children, and one safely erased widget
+description. Reconciliation consumes it. `AppRuntime` does not retain an element
+root, publish from an element, target an element, or treat authored/preorder
+position as persistent identity.
 
-`View<Action>` consumes a typed transient authoring value and returns one
-`Element<Action>`. `Element` is the owned erased transient product stored by the
-current runtime. It retains common ID/key, layout/style intent, diagnostics,
-children, and one safely erased widget implementation.
+Components are ordinary Rust composition and typed action mapping. They do not
+automatically create mounted identity or state. Stable reorderable collections
+must author sibling-local unique keys.
 
-A component is ordinary Rust composition. It may return a typed view/element and
-map a child-local action subtree into a parent action. It is not a widget merely
-because it returns views, and it does not create mounted identity or state.
+The private mounted tree is the sole runtime authority. `MountedTreeIndex`
+traverses logical mounted preorder; arena slot order is never observable as tree
+order. A mounted node owns parent/ordered children, authored metadata, current
+widget description, persistent erased state, interaction slots, replacement
+status, capability caches, and internal dirty phases.
 
-`Widget<Action>` is the M2 transient proof-participant contract. An implementation
-declares a typed state, creates initial state, and may contribute narrow current
-activation, measurement, paint-proof, semantic-proof, diagnostic, and lifecycle
-behavior. `State` and `create_state` are mandatory; a stateless widget explicitly
-writes `type State = ();` and `fn create_state(&self) {}`. Defaults cover the
-remaining non-interactive, zero-sized proof capabilities without forcing
-unrelated future subsystem implementations.
+## State-aware widget contract
 
-Built-ins use exactly this public protocol. `ElementKind`, `TextElement`,
-`ButtonElement`, `ContainerElement`, `IntoElement`, and `IntoElements` are
-removed; no compatibility aliases or built-in dispatch path remain.
+Every `Widget<Action>` declares `State: 'static` and creates it. Stateless
+widgets use `State = ()`. The runtime passes persistent state to:
 
-Public built-in views do not implement `Widget<Action>`. Conversion transfers
-their common authored fields once into `Element` and installs private
-behavior-only `TextWidget`, `ButtonWidget<Action>`, or
-`LinearContainerWidget`. Passing a configured built-in builder to
-`Element::new` is therefore a compile error rather than a configuration-loss
-path.
+- `mount`, `update`, and `unmount`;
+- immutable activation facts, measurement, paint, semantics, and diagnostics;
+- mutable activation;
+- `ChildLayoutWidget::child_layout`.
 
-Child-bearing widgets implement `ChildLayoutWidget<Action>` and return a
-non-exhaustive `ChildLayout`; M2 currently interprets `Linear { axis }`.
-`Container<Action>::new(widget, children)` and the `container` helper own the
-widget and arbitrary `Views<Action>` children atomically. Row, column, and
-downstream containers use this same authored builder, including common fields
-and container-only `gap`. Normal widgets remain structurally childless; there
-is no post-erasure child setter or generic element gap.
+`WidgetMountContext`, `WidgetUpdateContext`, and `WidgetActivationContext` can
+request `WidgetInvalidation`. `WidgetUnmountContext` exposes a
+`WidgetUnmountReason` of `Removed`, `Replaced`, or `RuntimeShutdown`. Contexts do
+not expose mounted IDs, task/effect APIs, or mutable runtime internals.
 
-## Safe erasure and identity
+The default update invalidates `ALL` for correctness. Built-in text, button, and
+linear-container widgets implement narrower comparison-based invalidation.
+Button action payload replacement requires no `Clone`, `Eq`, or `PartialEq` and
+does not itself invalidate visual capabilities.
 
-`Element::new` accepts a downstream `Widget<Action>` and installs a private
-object-safe adapter. Erased implementation/state payload types are not public and
-cannot be forged. The adapter uses checked safe `Any` downcasts only for opaque
-state access; mismatch returns `WidgetStateMismatch` before a typed hook runs.
-Both public crates retain `#![forbid(unsafe_code)]`.
+`Element::map_action` replaces only action plumbing. It recursively delegates
+every state-aware capability and preserves underlying widget/state type IDs.
+Compatible reconciliation installs the newly authored description and mapper or
+one-shot action source while retaining state and mounted identity. No global
+`Action: Clone`, `Send`, `Sync`, or `'static` bound exists.
 
-Lifecycle compatibility checks concrete widget identity first, declared state
-identity second, then performs the private typed payload downcast. The public
-non-exhaustive mismatch enum distinguishes `WidgetType`, `StateType`, and
-`ErasedStatePayload`; its category-specific expected/actual accessors never
-mislabel widget IDs as state IDs. A mismatch returns before the lifecycle hook.
+## Safe core/runtime bridge
 
-`WidgetTypeId` wraps the concrete implementation's process-local Rust `TypeId`.
-`WidgetStateTypeId` separately identifies its declared state. Debug type names
-are inspectable but never determine identity. Generic widget instantiations have
-Rust's deliberate concrete generic identity. Action mapping delegates the child
-widget/state identities rather than inventing a wrapper widget identity.
+Core cannot depend on runtime, so doc-hidden `runenui_core::__runtime` plumbing
+consumes an element into common fields, an erased mounted widget, and transient
+children. Erased operations use checked `Any` downcasts. The bridge is absent
+from the prelude, exposes no concrete widget downcasts, and provides no payload
+or arena construction path. It is technically public only because core and
+runtime are separate Rust crates; it is doc-hidden, unstable, unsupported for
+application use, semver-exempt before 1.0, and safe. Both crates forbid unsafe
+code.
 
-These IDs are not authored `ElementId`/`ElementKey`, transient `RuntimeNodeId`,
-or future mounted identity. They are not serialized and make no cross-build
-stability claim.
+A payload mismatch never invokes a typed callback with the wrong state and
+never panics by design. It emits
+`runenui.runtime.state-payload-mismatch`. Integrity-aware caches preserve the
+difference between mismatch and ordinary capability defaults while publication
+uses deterministic disabled/zero/vertical/default fallbacks. Activation exposes
+`RuntimeError::WidgetStatePayloadMismatch`. A mismatch during compatible update
+replaces immediately without partially committing the new description; a
+mismatch discovered by another capability replaces on the next reconciliation.
 
-## Typed action mapping and bounds
+## Identity and targeting
 
-`Element::map_action` consumes a subtree and an owned typed mapper. Mapping is
-deferred until activation and recursively preserves children, authored ID/key,
-layout/style, diagnostics, type/state identity, and all non-action capabilities.
-Nested mappings compose without strings or application-action `Any` downcasts.
+`MountedNodeId` privately stores:
 
-The stored closure alone is `'static`; it is neither `Send` nor `Sync`. No global
-`Action: Clone`, `Send`, `Sync`, or `'static` bound exists on `UiApp`, `Element`,
-or `AppRuntime`. M2 removes M1's activation `Clone` limitation: button and
-downstream proofs explicitly extract a non-`Clone` action through mutable
-`Widget::activate`/`Element::activate`, then successful dispatch immediately
-rebuilds the authored tree. Borrowed inspection cannot consume an action.
+```text
+Arc<RuntimeInstanceMarker> + arena slot + u64 generation
+```
 
-The transient source is one-shot: the first enabled extraction may return an
-action and the second returns `None`. Failed or disabled lookup consumes
-nothing. Configured focusability and semantic action intent stay stable after
-extraction. Runtime dispatch rebuilds immediately, restoring a newly authored
-source; mapped widgets forward mutable extraction through every mapping layer.
-The doc-hidden `extract_action_at_preorder_for_runtime` bridge supports current
-runtime lookup without exposing mutable children or erased internals. Its raw
-index belongs only to one transient tree, has no downstream compatibility
-guarantee, and is replaced by M3 generational mounted targeting.
+It is `Clone`, `Debug`, `Eq`, and `Hash`, but not `Copy`. Equality compares
+tokens with `Arc::ptr_eq`; hashing includes `Arc::as_ptr`, slot, and generation.
+There is no global counter, random ID, serialization, or preorder identity.
 
-Widget implementation values and state types must be `'static` at the erasure
-and state-type-identity operations that require Rust `TypeId`. This bound is
-local to those operations.
+`SemanticNodeId` is a distinct type and namespace with the same mounted lifetime
+triplet. It survives compatible update and keyed reorder, and changes on
+replacement. It is not yet a semantic-tree node or accessibility identity
+contract.
 
-## State and lifecycle seam
+Both IDs are process-local and runtime-instance-local. Validation checks the
+runtime token first. A different token is `ForeignRuntime`; a same-runtime
+invalid/vacant slot or generation mismatch is `StaleTarget`. Old IDs never
+target slot replacements, even when the deterministic arena reuses the same
+index.
 
-Every widget declares `State: 'static` and creates it; statelessness is explicit,
-not an associated-type default. `Element::create_widget_state` returns a
-non-forgeable opaque value.
-`Element::run_lifecycle` checks both widget and state type identities before
-running a typed `Mount`, `Update`, or `Unmount` hook with a bounded request
-collector.
+Authored `ElementId` remains a validated lookup/diagnostic handle. It does not
+affect reconciliation compatibility and may change while mounted identity
+survives. Ambiguous authored-ID activation is rejected.
 
-This is an isolated conformance seam. `AppRuntime` does not store that state,
-does not reconcile widgets, and does not run lifecycle across application
-rebuilds. M3 owns the persistent mounted arena, keyed/type/position matching,
-generational IDs, state retention/drop, lifecycle scheduling, focus retention,
-and granular invalidation.
+## Reconciliation
 
-Only lifecycle receives typed state in M2. Activation, measurement, paint,
-semantics, and diagnostics are deliberately state-independent proof methods, so
-the current trait is not the complete mounted participant interface. M3 must
-introduce a breaking state-aware mounted behavior contract after its storage,
-reconciliation, borrowing, and phase-order design is accepted; M2 retains no
-persistent state and makes no state-dependent behavior claim.
+The root is compatible only when its key, widget type ID, and state type ID
+match and it has no recorded integrity failure. `None` root keys compare equal.
 
-## Current capability proofs
+For children, keys are sibling-local. A unique keyed child matches a unique old
+sibling with the same key and compatible widget/state types regardless of
+position. Keyed reorder preserves IDs, state, interaction slots, focus, and
+clean caches. A key change, type incompatibility, or cross-parent placement
+remounts.
 
-- Activation supplies enabled/actionable facts and may move one typed action.
-- `WidgetMeasure` supplies only fixed, text-intrinsic, or explicit unsupported
-  intrinsic minimums. `ChildLayoutWidget` separately supplies child arrangement.
-  M2 combines intrinsic and child content component-wise by maximum before
-  constraints and padding.
-- Intrinsic measurement and child layout are each snapshotted once per
-  node/publication and reused by measurement and arrangement. Unsupported or
-  unknown intrinsic capabilities publish deterministic diagnostics without
-  hiding children. Unknown child layout publishes
-  `runenui.child-layout.unrecognized`, falls back vertically, and preserves all
-  descendants. Generic control text is `ControlLabel` in both public crates.
-- Paint proof supplies deterministic category/description facts. It is not the
-  M6 primitive/resource scene.
-- Semantic proof supplies deterministic role/name/enabled/action-intent facts.
-  It is not the M5 semantic/accessibility tree.
-- Widget diagnostics are published in deterministic traversal order beside the
-  ordered `SurfaceLayoutNode::diagnostics()` collection.
-- Public element/index/frame APIs let downstream tests inspect and interact
-  without concrete runtime downcasts.
-- Index, frame, style report, and layout report have identical preorder node IDs
-  and parent relationships for every valid authored tree.
+Unkeyed children match by ordinal among unkeyed siblings, not absolute child
+index. Keyed insertion/removal does not shift unkeyed matching; unkeyed
+insertion/removal can shift later semantic meaning onto existing ordinal
+lifetimes.
 
-M4 replaces the bounded activation policy with canonical routed events. M5 owns
-semantics, accessibility, and the public testing harness. M6 owns paint and hit
-scenes. M7 owns production layout/style extension. M8 owns production text.
+Keys duplicated in either old or new sibling lists are ineligible for reuse on
+both sides. Every new occurrence mounts, every unmatched old occurrence
+unmounts, and deterministic diagnostics record the ambiguous key and paths.
+There is no first/last-match state preservation.
 
-## Builders and macros
+Final mounted child order exactly follows new authored order. `moved_count`
+counts only a preserved node whose sibling position changed under the same
+parent. Cross-parent changes are remounts.
 
-Typed builders expose only kind-valid configuration. Common element identity and
-style remain common. `Views` accepts arbitrary iterators/collections of one view
-type; `children!` collects any number of heterogeneous views. `element!` erases
-exactly one ordinary Rust expression. Neither macro defines a second property,
-binding, component, or action language.
+## Lifecycle and shutdown
 
-## Generated products and evolution
+Initial mount and compatible update run parent-before-child in new authored
+preorder. Each preserved node receives exactly one checked update from the new
+description before that description is committed. Removal unmounts
+children-before-parent while each node remains arena-live through its hook;
+arena removal, stale identity, and state drop follow the hook. Replacement
+fully unmounts and drops the old subtree before mounting the new subtree.
 
-All generated-product fields remain private. `RuntimeNodeId`, tree indexes,
-frames/nodes, reports, traces, focus state, and opaque widget state have no normal
-public forgery or mutation path. Constructible public inputs include constraints,
-measurement requests, style tokens, widget capability facts, and typed input.
+State drops after its unmount hook. Interaction slots and caches disappear with
+the mounted lifetime. `AppRuntime::into_state` and `Drop` both perform idempotent
+postorder `RuntimeShutdown`; every remaining node receives exactly one shutdown
+unmount.
 
-Evolution-prone proof enums are `#[non_exhaustive]`. `UiApp`,
-`MeasurementProvider`, `View`, `Views`, `Widget`, and `ChildLayoutWidget` are
-open. Identifier builder
-input traits remain sealed so downstream code cannot bypass validation. The core
-prelude contains ordinary builders, identity, `Element`, `View`, and `Widget`;
-specialist capability/state/style inspection uses explicit root imports.
+## Activation, focus, and interaction slots
 
-## Breaking migration
+Mounted activation validates the ID, reads checked state-aware activation facts,
+rejects disabled/non-actionable targets, preflights reconciliation-generation
+capacity, invokes the mutable widget/state pair, applies local invalidation, and optionally
+dispatches an application action followed by immediate reconciliation.
+`Dispatched`, state-only `Activated`, `NoAction`, disabled/non-activatable,
+stale, foreign, and runtime-error outcomes are distinct. Exhaustion rejects all
+mutable activation before state, one-shot action, focus, cache, report, trace, or
+application mutation. State-only interaction changes validate focus immediately.
 
-| Removed API | M2 contract |
-|---|---|
-| `ElementKind<Action>` | private safe erasure of public `Widget<Action>` implementations |
-| `TextElement`, `ButtonElement<Action>`, `ContainerElement<Action>` | common `Element` and widget capability inspection |
-| `IntoElement<Action>` | `View<Action>` |
-| `IntoElements<Action>` | `Views<Action>` |
-| concrete-kind runtime matches | open activation/measurement/paint/semantic/diagnostic capabilities plus common children |
-| `SurfaceNodeKind` | open `SurfaceNode` widget type, paint, semantic, and diagnostic proof facts |
-| activation-only `Action: Clone` | explicit mutable one-shot extraction followed by rebuild |
-| `ChildBearingWidget`, `Element::with_children` | `ChildLayoutWidget`, `ChildLayout`, and canonical `Container<Action>` authoring |
-| `WidgetMeasure::Container` | independent intrinsic `WidgetMeasure` and child `ChildLayout` snapshots |
-| singular measurement diagnostic | ordered `SurfaceLayoutNode::diagnostics()` |
+Focus stores `Option<MountedNodeId>`. It survives compatible update, authored-ID
+change, and keyed reorder, and clears on removal, replacement, disablement, or
+loss of actionability/focusability. Traversal follows current mounted preorder.
 
-M1's validated values, textual identity invariants, typed configuration,
-arity-free composition, protected products, and finite saturating geometry remain
-in force. M2 changes only the closed extension architecture and related proof
-publication; it does not begin M3.
+Each node privately owns hovered, pressed, capture-placeholder, and logical
+scroll-offset slots. They survive compatible updates and reset on replacement.
+The capture placeholder is an ownership proof only; M4 owns pointer IDs, routed
+events, true capture, and release-inside activation.
+
+## Invalidation and capability caches
+
+`WidgetInvalidation` is a manual bitset with `NONE`, `INTERACTION`, `LAYOUT`,
+`PAINT`, `SEMANTICS`, `DIAGNOSTICS`, and `ALL`, plus containment, union,
+emptiness, `BitOr`, and `BitOrAssign`.
+
+| Invalidation | Cleared widget caches | Scheduled dependent output |
+|---|---|---|
+| `INTERACTION` | activation | focus validation, interaction, semantics, paint |
+| `LAYOUT` | measurement, child layout | layout, hit testing, semantic bounds, paint placement |
+| `PAINT` | paint | paint output |
+| `SEMANTICS` | semantics | semantic output |
+| `DIAGNOSTICS` | widget diagnostics | diagnostic output |
+| `ALL` | all capabilities | all dependent phases |
+
+Each capability cache retains unresolved, ready, or payload-mismatch state.
+`INTERACTION` alone does not clear paint or semantic widget facts. Structural and
+common authored changes add runtime-detected phase work; they do not
+automatically requery unrelated clean capabilities. Publication-context changes
+compare root constraints, exact style-token content, and measurement-provider
+identity/revision. Providers must change identity or revision whenever behavior
+changes. Runtime-owned proof publication products and an inspectable
+`SurfacePhaseReport` allow clean tree/style/layout/hit-test/paint/semantics/
+diagnostics branches to be genuinely skipped while preserving clean widget
+caches. Topology snapshots retain structural/alignment metadata only. Style and
+layout execution use current mounted authored values, and reconciliation—not the
+context key—detects authored token-reference or gap changes. The report lists
+actual executed phase functions; private test-only counters are incremented at
+the phase entry points and are independent from report recording.
+M3 does not claim a production retained layout cache.
+
+## Reports and publication
+
+Initial mount completes reconciliation generation 1. Each successful
+reconciliation increments once using `checked_add`; direct dispatch and mutable
+activation both preflight exhaustion before application, widget, mounted,
+one-shot-action, focus, cache, report, or trace mutation.
+
+`ReconciliationReport` defines counts by mounted lifetime: live nodes after
+completion, new lifetimes mounted, preserved nodes updated once, lifetimes
+ended, same-parent preserved moves, retained-focus truth, and structured
+deterministic diagnostics containing complete duplicate-key old/new occurrences.
+
+`AppRuntime::publish_surface(&mut self, context)` is the only public surface
+publication authority. `MountedTreeIndex`, `SurfaceFrame`,
+`SurfaceStyleReport`, and `SurfaceLayoutReport` expose equal mounted/semantic ID,
+parent, authored-ID, and current preorder sequences with no ghost
+actionable/focusable node. A tree change rebuilds every aligned product from one
+current topology snapshot. Compatible common-field changes retain that topology
+but refresh style/layout facts from current mounted nodes. The free transient
+publication function is removed.
+
+## Breaking M3 migration
+
+Removed without aliases:
+
+- `RuntimeNodeId`, `RuntimeNodeRef`, and `RuntimeTreeIndex`;
+- `WidgetState`, `WidgetStateMismatch`, `WidgetLifecycle`,
+  `WidgetLifecycleRequest`, and the old lifecycle context;
+- direct element lifecycle/capability execution and preorder action extraction;
+- free `publish_surface(Element)`.
+
+Added:
+
+- mounted/semantic identity and inspection;
+- reconciliation generation/report vocabulary;
+- state-aware widget lifecycle/activation contexts and unmount reasons;
+- selective widget invalidation;
+- focus/activation stale and foreign results;
+- public runtime integrity errors.
+
+M1 validated values, textual identity, typed configuration, arity-free
+composition, protected generated products, and finite saturating geometry remain
+in force. M4 and later production subsystems are not implied by M3.

@@ -1,6 +1,6 @@
 //! Renderer-neutral intrinsic text measurement contracts.
 
-use crate::{LayoutConstraints, LogicalSize, RuntimeNodeId};
+use crate::{LayoutConstraints, LogicalSize, MountedNodeId};
 use core::{error::Error, fmt};
 use runenui_core::LogicalLength;
 
@@ -11,11 +11,11 @@ pub enum TextMeasurementKind {
     ControlLabel,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TextMeasurementRequest<'a> {
     content: &'a str,
     constraints: LayoutConstraints,
-    node_id: Option<RuntimeNodeId>,
+    node_id: Option<MountedNodeId>,
     kind: TextMeasurementKind,
 }
 
@@ -34,7 +34,7 @@ impl<'a> TextMeasurementRequest<'a> {
         }
     }
     #[must_use]
-    pub const fn with_node_id(mut self, node_id: RuntimeNodeId) -> Self {
+    pub fn with_node_id(mut self, node_id: MountedNodeId) -> Self {
         self.node_id = Some(node_id);
         self
     }
@@ -47,8 +47,8 @@ impl<'a> TextMeasurementRequest<'a> {
         self.constraints
     }
     #[must_use]
-    pub const fn node_id(&self) -> Option<RuntimeNodeId> {
-        self.node_id
+    pub const fn node_id(&self) -> Option<&MountedNodeId> {
+        self.node_id.as_ref()
     }
     #[must_use]
     pub const fn kind(&self) -> TextMeasurementKind {
@@ -141,6 +141,15 @@ fn validate_baseline(value: f32, height: f32) -> Result<(), BaselineError> {
 
 /// Open synchronous measurement service; providers are intentionally downstream-implementable.
 pub trait MeasurementProvider {
+    /// Stable identity for publication-cache compatibility.
+    ///
+    /// The provider must change this identity or [`Self::cache_revision`]
+    /// whenever any behavior that can affect a measurement changes. Reusing
+    /// both values is an explicit promise that cached measurements remain
+    /// compatible.
+    fn cache_identity(&self) -> u64;
+    /// Revision of measurement behavior for the stable identity.
+    fn cache_revision(&self) -> u64;
     fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement;
 }
 
@@ -185,6 +194,15 @@ impl DeterministicMeasurementProvider {
 }
 
 impl MeasurementProvider for DeterministicMeasurementProvider {
+    fn cache_identity(&self) -> u64 {
+        (u64::from(self.char_width.get().to_bits()) << 32)
+            | u64::from(self.line_height.get().to_bits())
+    }
+
+    fn cache_revision(&self) -> u64 {
+        0
+    }
+
     fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement {
         let count = f32::from(u16::try_from(request.content().chars().count()).unwrap_or(u16::MAX));
         let width = count * self.char_width.get();

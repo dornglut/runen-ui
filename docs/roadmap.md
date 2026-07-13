@@ -117,16 +117,15 @@ measurement/layout snapshots, descendant-preserving fallbacks, preorder/parent
 aligned index/frame/style/layout products, hit testing, paint/semantic facts,
 diagnostics, and public inspection on stable and Rust 1.93.0. Widget/state
 mismatches are category-accurate and generic control-label vocabulary is neutral.
-Closed M1 dispatch types were removed. The state seam is explicitly
-lifecycle-only; M3 will introduce the breaking state-aware mounted behavior
-protocol.
-No persistent mounted storage or reconciliation was implemented.
+Closed M1 dispatch types were removed. Its lifecycle-only state seam was the
+accepted input to M3 and has now been removed by the state-aware mounted
+protocol; ADR 0004 supersedes that provisional boundary.
 
 **Unblocks:** M3 and future controls.
 
 ## M3 — Mounted runtime and reconciliation
 
-**Status:** `queued`.
+**Status:** `complete`.
 
 **Goal:** Establish persistent runtime identity, lifecycle, state, and granular invalidation.
 
@@ -142,11 +141,19 @@ No persistent mounted storage or reconciliation was implemented.
 
 **Exit criteria:** The authored tree is demonstrably transient and mounted state persistent; generational safety and lifecycle tests pass; unconditional focus clearing and preorder identity authority are removed.
 
+**Completion record:** ADR 0004 establishes the mounted tree as sole runtime
+authority. Generation preflight, transactional mismatch replacement,
+arena-live lifecycle ordering, operational invalidation, retained proof
+publication, topology-only snapshots, current mounted style/layout resolution,
+independent phase-entry instrumentation, structured diagnostics, and restored
+M1/M2 conformance are implemented. The full stable and Rust 1.93.0 validation
+matrix passes. M4 boundaries remain intact.
+
 **Unblocks:** M4–M7 and mounted control behavior.
 
 ## M4 — Events, effects, scheduling, and trace v2
 
-**Status:** `blocked` by M3.
+**Status:** `queued`.
 
 **Goal:** Provide one correct interaction pipeline and deterministic application-work runtime.
 
@@ -166,7 +173,7 @@ No persistent mounted storage or reconciliation was implemented.
 
 ## M5 — Semantics and deterministic public testing
 
-**Status:** `blocked` by M3–M4.
+**Status:** `blocked` by M4.
 
 **Goal:** Make renderer-independent accessibility semantics and framework-level testing first-class.
 
@@ -186,7 +193,7 @@ No persistent mounted storage or reconciliation was implemented.
 
 ## M6 — Renderer-neutral paint and hit-test scene protocol
 
-**Status:** `blocked` by M3 and coordinated with M5.
+**Status:** `blocked` by M5.
 
 **Goal:** Publish backend-neutral paint and hit-test products without widget semantics.
 
@@ -209,7 +216,7 @@ public scenes.
 
 ## M7 — Production layout and styling
 
-**Status:** `blocked` by M3–M6.
+**Status:** `blocked` by M4–M6.
 
 **Goal:** Support normal responsive applications, tools, scrolling, overlays, and stateful visual policy.
 

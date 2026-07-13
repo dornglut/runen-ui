@@ -6,9 +6,9 @@ use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
     Axis, ChildLayout, ChildLayoutWidget, Container, EdgeInsets, Element, LogicalLength, View,
-    Views, Widget, WidgetActivation, WidgetDiagnostic, WidgetLifecycle, WidgetLifecycleContext,
-    WidgetLifecycleRequest, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof, WidgetTextKind,
-    button, children, column, container, text,
+    Views, Widget, WidgetActivation, WidgetActivationContext, WidgetDiagnostic, WidgetInvalidation,
+    WidgetMeasure, WidgetMountContext, WidgetPaintProof, WidgetSemanticProof, WidgetTextKind,
+    WidgetUnmountContext, WidgetUpdateContext, button, children, column, container, text,
 };
 use runenui_runtime::UiApp;
 
@@ -59,53 +59,60 @@ impl Widget<ChildAction> for PulseButton {
         PulseState::default()
     }
 
-    fn activation(&self) -> WidgetActivation {
+    fn activation(&self, _state: &Self::State) -> WidgetActivation {
         WidgetActivation::actionable(self.enabled)
     }
 
-    fn activate(&mut self) -> Option<ChildAction> {
+    fn activate(
+        &mut self,
+        state: &mut Self::State,
+        context: &mut WidgetActivationContext,
+    ) -> Option<ChildAction> {
         if self.enabled {
+            state.lifecycle_count += 1;
+            context.invalidate(WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS);
             self.action.take()
         } else {
             None
         }
     }
 
-    fn measure(&self) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
         WidgetMeasure::Fixed {
             width: LogicalLength::new(80.0).unwrap_or_default(),
             height: LogicalLength::new(24.0).unwrap_or_default(),
         }
     }
 
-    fn paint(&self) -> WidgetPaintProof {
+    fn paint(&self, _state: &Self::State) -> WidgetPaintProof {
         WidgetPaintProof::new("pulse", format!("label={:?}", self.label))
     }
 
-    fn semantics(&self) -> WidgetSemanticProof {
+    fn semantics(&self, _state: &Self::State) -> WidgetSemanticProof {
         WidgetSemanticProof::new("pulse-button", self.label.clone())
             .with_enabled(self.enabled)
             .with_action("pulse")
     }
 
-    fn diagnostics(&self) -> Vec<WidgetDiagnostic> {
+    fn diagnostics(&self, _state: &Self::State) -> Vec<WidgetDiagnostic> {
         vec![WidgetDiagnostic::new(
             "external.pulse.ready",
             format!("{} is ready", self.label),
         )]
     }
 
-    fn lifecycle(
-        &self,
-        state: &mut Self::State,
-        event: WidgetLifecycle,
-        context: &mut WidgetLifecycleContext,
-    ) {
+    fn mount(&self, state: &mut Self::State, context: &mut WidgetMountContext) {
         state.lifecycle_count += 1;
-        context.request(WidgetLifecycleRequest::Diagnostic(WidgetDiagnostic::new(
-            "external.pulse.lifecycle",
-            format!("{}:{event:?}", state.lifecycle_count),
-        )));
+        context.invalidate(WidgetInvalidation::DIAGNOSTICS);
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext) {
+        state.lifecycle_count += 1;
+        context.invalidate(WidgetInvalidation::DIAGNOSTICS);
+    }
+
+    fn unmount(&self, state: &mut Self::State, _context: &mut WidgetUnmountContext) {
+        state.lifecycle_count += 1;
     }
 }
 
@@ -137,13 +144,13 @@ pub struct CustomColumn;
 impl<Action> Widget<Action> for CustomColumn {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn paint(&self) -> WidgetPaintProof {
+    fn paint(&self, _state: &Self::State) -> WidgetPaintProof {
         WidgetPaintProof::new("external-panel", "axis=Vertical")
     }
-    fn semantics(&self) -> WidgetSemanticProof {
+    fn semantics(&self, _state: &Self::State) -> WidgetSemanticProof {
         WidgetSemanticProof::new("group", "External panel")
     }
-    fn diagnostics(&self) -> Vec<WidgetDiagnostic> {
+    fn diagnostics(&self, _state: &Self::State) -> Vec<WidgetDiagnostic> {
         vec![WidgetDiagnostic::new(
             "external.panel.ready",
             "external child-layout widget is ready",
@@ -152,7 +159,7 @@ impl<Action> Widget<Action> for CustomColumn {
 }
 
 impl<Action> ChildLayoutWidget<Action> for CustomColumn {
-    fn child_layout(&self) -> ChildLayout {
+    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
         ChildLayout::Linear {
             axis: Axis::Vertical,
         }
@@ -170,16 +177,16 @@ pub struct CustomRow;
 impl<Action> Widget<Action> for CustomRow {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn paint(&self) -> WidgetPaintProof {
+    fn paint(&self, _state: &Self::State) -> WidgetPaintProof {
         WidgetPaintProof::new("external-row", "axis=Horizontal")
     }
-    fn semantics(&self) -> WidgetSemanticProof {
+    fn semantics(&self, _state: &Self::State) -> WidgetSemanticProof {
         WidgetSemanticProof::new("group", "External row")
     }
 }
 
 impl<Action> ChildLayoutWidget<Action> for CustomRow {
-    fn child_layout(&self) -> ChildLayout {
+    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
         ChildLayout::Linear {
             axis: Axis::Horizontal,
         }
@@ -192,7 +199,7 @@ pub struct MinimumPanel;
 impl<Action> Widget<Action> for MinimumPanel {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
         WidgetMeasure::Fixed {
             width: LogicalLength::new(180.0).unwrap_or_default(),
             height: LogicalLength::new(60.0).unwrap_or_default(),
@@ -201,7 +208,7 @@ impl<Action> Widget<Action> for MinimumPanel {
 }
 
 impl<Action> ChildLayoutWidget<Action> for MinimumPanel {
-    fn child_layout(&self) -> ChildLayout {
+    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
         ChildLayout::Linear {
             axis: Axis::Vertical,
         }
@@ -214,7 +221,7 @@ pub struct TextMinimumPanel;
 impl<Action> Widget<Action> for TextMinimumPanel {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
         WidgetMeasure::Text {
             content: "external text intrinsic minimum".to_owned(),
             kind: WidgetTextKind::Text,
@@ -225,7 +232,7 @@ impl<Action> Widget<Action> for TextMinimumPanel {
 }
 
 impl<Action> ChildLayoutWidget<Action> for TextMinimumPanel {
-    fn child_layout(&self) -> ChildLayout {
+    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
         ChildLayout::Linear {
             axis: Axis::Horizontal,
         }
@@ -238,7 +245,7 @@ pub struct UnsupportedMinimumPanel;
 impl<Action> Widget<Action> for UnsupportedMinimumPanel {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
         WidgetMeasure::Unsupported {
             reason: "external child-layout intrinsic proof",
         }
@@ -246,7 +253,7 @@ impl<Action> Widget<Action> for UnsupportedMinimumPanel {
 }
 
 impl<Action> ChildLayoutWidget<Action> for UnsupportedMinimumPanel {
-    fn child_layout(&self) -> ChildLayout {
+    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
         ChildLayout::Linear {
             axis: Axis::Vertical,
         }
@@ -424,14 +431,14 @@ pub struct CountingLayoutPanel {
 impl Widget<()> for CountingLayoutPanel {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
         self.measure_calls.set(self.measure_calls.get() + 1);
         WidgetMeasure::default()
     }
 }
 
 impl ChildLayoutWidget<()> for CountingLayoutPanel {
-    fn child_layout(&self) -> ChildLayout {
+    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
         let call = self.child_layout_calls.get() + 1;
         self.child_layout_calls.set(call);
         ChildLayout::Linear {
@@ -452,7 +459,7 @@ struct CountingText {
 impl Widget<()> for CountingText {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
         self.calls.set(self.calls.get() + 1);
         WidgetMeasure::Text {
             content: "counted descriptor".to_owned(),
@@ -471,7 +478,7 @@ struct CountingFixed {
 impl Widget<()> for CountingFixed {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
         self.calls.set(self.calls.get() + 1);
         WidgetMeasure::Fixed {
             width: LogicalLength::new(20.0).unwrap_or_default(),
@@ -507,7 +514,7 @@ pub struct UnsupportedMeasure;
 impl Widget<()> for UnsupportedMeasure {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
         WidgetMeasure::Unsupported {
             reason: "external proof capability",
         }

@@ -4,6 +4,45 @@
 
 ### Changed
 
+- Replaced transient preorder runtime authority with a private persistent
+  generational mounted tree and separate runtime-local mounted/semantic IDs.
+- Added exact sibling-local keyed reconciliation, unkeyed ordinal matching,
+  duplicate-key no-reuse diagnostics, cross-parent remounting, deterministic
+  reconciliation generations, and lifetime-based reports.
+- Replaced the provisional M2 lifecycle seam with state-aware widget
+  capabilities, mounted lifecycle/activation contexts, explicit unmount reasons,
+  persistent interaction slots, checked erasure fallbacks, and idempotent
+  shutdown through `into_state` and `Drop`.
+- Moved focus, activation, input targets, measurement requests, trace targets,
+  and aligned frame/style/layout publication to `MountedNodeId`; stale and
+  foreign targets are now distinct and focus survives compatible rebuilds.
+- Added selective `WidgetInvalidation`, integrity-aware capability caches, and
+  one topology-aligned whole-surface publication cache. Topology snapshots
+  retain structural/alignment facts only; compatible style and layout phases
+  read current mounted authored values, including token-reference and gap
+  changes. Structural changes rebuild every node-aligned fact, style-token
+  context compatibility compares exact token content, measurement compatibility
+  uses the provider's explicit identity/revision promise, and private test probes
+  count actual phase entry independently from `SurfacePhaseReport` bookkeeping.
+- Added generation-capacity preflight before every mutable activation,
+  transactional compatible update with immediate mismatch replacement,
+  arena-live unmount ordering, immediate state-only focus validation, and
+  non-default interaction-slot retention/reset proofs across compatible update,
+  dispatch, state-only activation, removal, cross-parent remount, generational
+  arena reuse, replacement, and shutdown.
+- Replaced reconciliation `Vec<String>` diagnostics with structured duplicate
+  sibling-key and state-payload-mismatch values containing deterministic paths.
+- Removed un-emitted `NodeMounted`, `NodeUpdated`, and `NodeUnmounted` trace
+  variants; trace v2 remains an M4 boundary.
+- Split built-in authoring, mounted matching/lifecycle/cache/invalidation/
+  interaction/diagnostics, and surface context/cache ownership into focused
+  modules.
+- Removed `RuntimeNodeId`, `RuntimeNodeRef`, `RuntimeTreeIndex`, `WidgetState`,
+  the old lifecycle vocabulary, direct transient capability/action execution,
+  and free element publication without compatibility aliases.
+- Expanded downstream conformance and Counter proofs for retained state,
+  identity, focus, lifecycle/shutdown, invalidation/cache reuse, publication
+  alignment, and stale/foreign target safety.
 - Completed M2 with an open downstream `Widget<Action>` protocol, safe private
   erasure, process-local widget/state type identity, checked lifecycle/state
   conformance, typed recursive component action mapping, and open proof-level

@@ -6,7 +6,7 @@
 
 use core::fmt::{self, Write as _};
 
-use crate::{LogicalRect, LogicalSize, RuntimeNodeId, SurfaceFrame, SurfaceNode};
+use crate::{LogicalRect, LogicalSize, MountedNodeId, SurfaceFrame, SurfaceNode};
 
 /// Deterministic text renderer for renderer-facing surface frames.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -78,11 +78,11 @@ fn append_line(output: &mut String, arguments: fmt::Arguments<'_>) {
     output.push('\n');
 }
 
-fn format_node_id(id: RuntimeNodeId) -> String {
-    id.as_usize().to_string()
+fn format_node_id(id: &MountedNodeId) -> String {
+    format!("{id:?}")
 }
 
-fn format_parent(parent: Option<RuntimeNodeId>) -> String {
+fn format_parent(parent: Option<&MountedNodeId>) -> String {
     parent.map_or_else(|| "-".to_owned(), format_node_id)
 }
 

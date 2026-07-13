@@ -14,27 +14,37 @@ The active workspace proves:
 - typed transient views erased into open `Element<Action>` trees, ordinary
   component functions, recursive typed action mapping, and builder/`element!`
   authoring;
-- downstream `Widget<Action>` implementations with process-local type identity,
-  safe erasure, checked state/lifecycle conformance, public child-bearing
-  construction through `ChildLayoutWidget` and `Container<Action>`, explicit
-  mutable action extraction, and the same erased protocol used by private
-  built-in widget implementations;
-- deterministic headless dispatch, basic focus, press activation, and tracing;
+- downstream state-aware `Widget<Action>` implementations with process-local
+  widget/state identity, safe checked erasure, mounted lifecycle contexts,
+  selective invalidation, child-bearing construction through
+  `ChildLayoutWidget` and `Container<Action>`, and the same protocol used by
+  private built-in widget implementations;
+- a persistent generational mounted tree with sibling-local keyed reconciliation,
+  unkeyed ordinal matching, retained local state/focus/interaction slots,
+  deterministic mount/update/unmount/shutdown, stale/foreign target rejection,
+  separate semantic identity, capability caches, and reconciliation reports;
+- deterministic headless dispatch, mounted press activation, focus traversal,
+  proof-level tracing, and mounted surface publication;
 - typed style values, tokens, computed style, provenance, and diagnostics;
 - explicit layout constraints, a renderer-neutral measurement-provider seam,
   and separate one-query intrinsic/child-layout snapshots per publication;
 - constrained row/column measurement and arrangement with aligned frame, style, and layout diagnostics;
-- preorder/parent-aligned index, frame, style, and layout products with no
-  hidden actionable descendants;
+- mounted-preorder/parent-aligned index, frame, style, and layout products with
+  matching mounted/semantic identities, parent and authored metadata, including
+  after warmed structural cache changes;
+- a proof-level whole-surface cache with topology-only structural snapshots,
+  current-mounted style/layout phase input, exact token-content context keys,
+  and independently tested actual-execution phase reports;
 - a Counter application exercising the current public crates.
 
-Important limitations remain: runtime identity is rebuilt from preorder position,
-keys are not reconciled, focus is cleared after dispatch, input behavior is
-proof-level, text measurement is deterministic character counting, and mounted
-state/lifecycle execution, effects, production semantics/accessibility, paint
-scenes, production text, native hosts, renderer backends, and production controls
-are absent. M2 paint and semantic facts are deterministic extension proofs, not
-the M5/M6 production products.
+Important limitations remain: input behavior is press-based and proof-level,
+text measurement is deterministic character counting, and routed events,
+pointer identity/capture, effects/tasks/scheduling, production
+semantics/accessibility, paint/hit scenes, production layout/style/text, native
+hosts, renderer backends, and production controls are absent. M3 has one mounted
+root, one focus domain, and one current publication domain. Current paint and
+semantic facts remain deterministic extension proofs, not the M5/M6 production
+products.
 
 ## Production profiles
 
@@ -60,9 +70,17 @@ Application state
     -> host accessibility/event integration + renderer backend
 ```
 
-The transient authored tree is not persistent runtime state. The mounted tree will retain generational identity, lifecycle, widget-local interaction state, focus/capture, dirty state, semantic identity, and task/subscription ownership. Renderers will consume paint primitives and resources, not semantic widget kinds.
-
-This target is documented architecture, not a claim about the current implementation.
+The transient authored tree is consumed by reconciliation and is not persistent
+runtime state. The mounted tree now retains generational and semantic identity,
+widget-local state, lifecycle, focus, interaction slots, operational phases,
+integrity-aware capability caches, and a proof-level retained publication cache.
+Tree changes rebuild every topology-dependent fact from one current mounted
+preorder snapshot. Compatible style and layout changes retain topology and read
+the current mounted `StyleIntent` and `LayoutStyle`; authored token-reference
+changes are scheduled by reconciliation even when token content is unchanged.
+No production retained-layout claim is implied.
+Task/subscription ownership begins in M4; renderer-neutral
+paint and hit-test scenes begin in M6.
 
 ## Canonical project documents
 
@@ -121,14 +139,11 @@ fn parent() -> Element<ParentAction> {
 }
 ```
 
-This does not imply mounted reconciliation, persistent widget state, correct
+Every widget explicitly declares and creates state (`type State = ();` for a
+stateless widget). Mounted activation may mutate it, every capability can observe
+it, and compatible reconciliation retains it. This does not imply correct
 release-based activation, production controls, accessibility, paint scenes, or
 native rendering.
-
-M2 widget state is intentionally narrow: every widget explicitly declares and
-creates its state (`type State = (); fn create_state(&self) {}` for a stateless
-widget), but only the isolated lifecycle proof receives it. State-aware mounted
-capabilities remain a deliberate breaking M3 design, not an implemented claim.
 
 ## Validation
 

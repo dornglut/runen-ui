@@ -1,17 +1,17 @@
 //! Runtime input policy result types.
 
-use crate::{ActivationResult, RuntimeNodeId};
+use crate::{ActivationResult, MountedNodeId};
 
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum KeyboardFocusResult {
-    Moved(RuntimeNodeId),
+    Moved(MountedNodeId),
     NoFocusableNode,
     Ignored,
 }
 
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum KeyboardActivationResult {
     Handled(ActivationResult),
     NoFocusedNode,
@@ -19,9 +19,9 @@ pub enum KeyboardActivationResult {
 }
 
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PointerFocusResult {
-    Moved(RuntimeNodeId),
+    Moved(MountedNodeId),
     NoTarget,
     NotFound,
     NotFocusable,
@@ -29,7 +29,7 @@ pub enum PointerFocusResult {
 }
 
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PointerActivationResult {
     Handled(ActivationResult),
     NoTarget,
@@ -37,7 +37,7 @@ pub enum PointerActivationResult {
 }
 
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InputEventResult {
     Pointer {
         focus: PointerFocusResult,

@@ -4,6 +4,11 @@
 >
 > **Status:** Accepted
 >
+> **M3 note:** ADR 0004 supersedes this ADR's provisional lifecycle-only state,
+> transient preorder targeting, and transient publication sections. The M2
+> view/element/widget/component vocabulary and open safe-erasure direction remain
+> historical inputs and active where ADR 0004 does not replace them.
+>
 > **Decision date:** 2026-07-12
 >
 > **Reviewed baseline:** `19ff06c77d1d21d04ea54c8193f4a206663d0975`

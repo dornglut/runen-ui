@@ -2,19 +2,21 @@
 
 > **Category: Guide**
 
-The Counter example demonstrates the currently implemented typed headless loop:
+Counter owns only typed product state, actions, update logic, and transient view
+authoring. Stable keys identify the Counter and Win roots, the control row, and
+each interactive control; no reconciliation or lifecycle plumbing enters the
+example.
 
-- application-owned `Counter` state and `CounterAction`;
-- explicit `update` and conditional root composition;
-- typed `View`-authored text/buttons/containers using the open widget protocol,
-  separate private built-in behavior widgets, canonical `on_press` actions,
-  `ChildLayout`-backed row/column authoring, and arity-free children;
-- direct and validated authored-ID activation;
-- explicit owned action extraction followed by immediate root rebuild;
-- transition to a win screen and reset;
-- deterministic trace/debug output;
-- surface publication with tight constraints, deterministic measurement, open
-  paint/semantic proof facts, and aligned frame/style/layout diagnostics.
+The mounted-runtime tests prove that Increment, Decrement, and Reset receive
+independent mounted and semantic IDs; Increment focus, IDs, and widget-local
+activation state survive compatible rebuilds; the transition to Win unmounts
+the Counter controls and makes their IDs stale; removed focus clears; and
+returning to Counter creates new mounted and semantic lifetimes. Mounted index,
+frame, style, and layout publication remain aligned after transitions; root
+replacement rebuilds every node-aligned cached product from the new lifetime. A
+test-only generation seam proves rejected exhausted activation preserves Counter
+state, mounted/semantic identity, focus, widget-local activation state, report,
+trace, cached publication, and the one-shot increment action.
 
 Run it with:
 
@@ -22,14 +24,10 @@ Run it with:
 cargo run --package counter
 ```
 
-This is not a desktop application, renderer/backend proof, production control
-example, accessibility proof, or production text demonstration. It uses
-transient preorder runtime IDs, press activation, deterministic character-count
-measurement, separate intrinsic/child-layout snapshots per publication, the
-small row/column layout, aligned publication products, and proof-level
-`SurfaceFrame` facts.
-It does not use persistent widget state, production semantics/paint scenes,
-windowing, GPU rendering, ECS, compiler/program/artifact machinery, or legacy
-code.
+This is a deterministic headless proof, not a desktop application, production
+control/accessibility/text example, paint scene, native host, or renderer. Input
+is still proof-level press activation; M4 owns routed events, capture,
+release-inside behavior, effects, and scheduling.
 
-See the [feature/support matrix](../../docs/feature-support-matrix.md) for the exact limits and the [roadmap](../../docs/roadmap.md) for production gates.
+See the [feature/support matrix](../../docs/feature-support-matrix.md) and
+[roadmap](../../docs/roadmap.md) for exact limits.

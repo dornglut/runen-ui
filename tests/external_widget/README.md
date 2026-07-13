@@ -2,33 +2,32 @@
 
 > **Category: Test fixture**
 
-This non-publishable package is compiled as a genuine downstream consumer. It
-depends only on the public `runenui_core` and `runenui_runtime` packages and
-defines a stateful interactive `PulseButton` without framework registration or
-private imports. It also defines `CustomColumn`, `CustomRow`, fixed/text/
-unsupported intrinsic panels, and a counter-backed layout panel through
-`ChildLayoutWidget` and the canonical `Container<Action>` builder.
-Its stateless implementations explicitly declare `State = ()` and an empty
-`create_state`; those requirements are convenient but not automatic defaults.
+This non-publishable package is a genuine downstream consumer of public
+`runenui_core` and `runenui_runtime` APIs. It defines external state-aware leaf
+and child-layout widgets without framework registration, private imports,
+feature flags, global registries, source modification, or unsafe code.
 
-Its tests prove concrete and generic widget type identity, checked state and
-lifecycle hooks, recursive local-to-parent action mapping, non-`Clone`
-activation, built-in composition, measurement/arrangement, deterministic
-paint/semantic/diagnostic facts, focusability, and public runtime inspection.
-The external container proof covers heterogeneous and arbitrary child counts,
-traversal and parent relationships, descendant identity diagnostics, recursive
-action mapping and activation, custom layout participation, and descendant
-surface publication.
-Measurement conformance uses an external counter-backed container and text
-descriptor to prove one capability query per node/publication, reuse of the
-same axis during arrangement, a fresh single query on the next publication,
-and deterministic unsupported-capability diagnostics. Alignment tests compare
-index, frame, style, and layout preorder IDs/parents across built-in, external,
-nested, intrinsic-minimum, and unsupported cases, then prove descendant hit
-testing and runtime activation. External and nested nonzero gaps are geometric
-proofs, not documentation-only claims.
+The fixture proves that persistent widget state is visible to activation,
+measurement, child layout, paint, semantics, and diagnostics; activation can
+produce `Activated` without an application action; mapped non-`Clone` actions
+remain supported; and lifecycle mount/update/unmount/shutdown order is runtime
+owned.
 
-The lifecycle execution and paint/semantic values are M2 conformance proofs.
-They do not claim persistent mounted state, a production semantic/accessibility
-tree, or a renderer-neutral paint scene. Only lifecycle can access typed state
-in M2; state-dependent mounted capabilities remain a breaking M3 contract.
+Mounted conformance covers keyed reorder preserving mounted/semantic identity,
+state, focus, and interaction slots; stale and foreign target rejection;
+postorder cleanup; clean capability-cache reuse; selective paint/layout
+invalidation; immediate focus validation; truthful phase reports and isolated
+paint/semantics/diagnostics/layout execution; built-in
+and external row/column layout; fixed/text/unsupported intrinsic minimums;
+measurement and child-layout query counts; nested gaps; hit testing; structured
+identity diagnostics; and exact mounted-ID, semantic-ID, and parent alignment
+across the mounted index and all publication products. Measurement provider
+revision changes execute layout with current provider output.
+
+Focused downstream identity coverage also proves concrete and generic widget
+type identity, state type identity, and recursive mapping of non-`Clone`
+actions without changing the mounted widget/state pair.
+
+The fixture remains proof-level. It does not claim routed events, pointer
+capture/release behavior, effects or scheduling, a production semantic tree,
+paint scene, layout engine, host, or renderer backend.

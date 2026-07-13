@@ -12,16 +12,21 @@ impl CounterScreen {
             row(children![
                 button("-")
                     .id("counter.decrement")
+                    .key("counter.decrement")
                     .on_press(CounterAction::Decrement),
                 button("+")
                     .id("counter.increment")
+                    .key("counter.increment")
                     .on_press(CounterAction::Increment),
                 button("Reset")
                     .id("counter.reset")
+                    .key("counter.reset")
                     .on_press(CounterAction::Reset),
             ])
+            .key("counter.controls")
             .gap(8_u16),
         ])
+        .key("counter.screen")
         .gap(8_u16)
         .into_element()
     }
@@ -38,8 +43,10 @@ impl WinScreen {
             text(format!("Count: {count}")).id("counter.value"),
             button("Reset")
                 .id("counter.reset")
+                .key("counter.reset")
                 .on_press(CounterAction::Reset),
         ])
+        .key("win.screen")
         .gap(8_u16)
         .into_element()
     }

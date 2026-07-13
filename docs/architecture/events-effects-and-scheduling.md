@@ -6,7 +6,15 @@ This document records the accepted M4 direction. It is not an implemented API sk
 
 ## Current proof
 
-The runtime currently performs synchronous direct dispatch, rebuilds the full root, and clears focus. It has typed pointer/keyboard vocabulary, traversal focus, rectangle targeting, press-based button activation, an overlapping input-intent path, and a coarse unbounded trace. There is no event propagation, pointer identity/capture, action queue, effect executor, timer, subscription, cancellation, wake scheduling, text/IME event stream, or deterministic clock.
+The runtime currently performs synchronous direct dispatch and mounted
+reconciliation. Compatible nodes retain focus; stale and foreign mounted targets
+are rejected; each node owns proof interaction slots; and activation can mutate
+persistent widget state. It still has only typed pointer/keyboard vocabulary,
+linear traversal focus, rectangle targeting, press-based button activation, an
+overlapping input-intent path, and a coarse proof trace. There is no event
+propagation, pointer identity/true capture, release-inside policy, action queue,
+effect executor, timer, subscription, cancellation, wake scheduling, text/IME
+event stream, or deterministic clock.
 
 ## Canonical target event path
 

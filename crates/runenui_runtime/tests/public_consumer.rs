@@ -27,12 +27,14 @@ impl UiApp for App {
 
 #[test]
 fn ordinary_core_and_runtime_preludes_compile_together() {
-    let runtime = AppRuntime::<App>::mount(());
+    let mut runtime = AppRuntime::<App>::mount(());
     let size = LogicalSize::try_new(100.0, 40.0).unwrap_or_else(|_| unreachable!());
     let tokens = runenui_core::StyleTokens::new();
     let _context = SurfaceBuildContext::tight(&tokens, size);
     assert_eq!(
-        runtime.root().element_id().map(ElementId::as_str),
+        runtime.index().nodes()[0]
+            .authored_id()
+            .map(ElementId::as_str),
         Some("press")
     );
 }

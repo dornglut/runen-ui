@@ -25,15 +25,21 @@
 //! let _ = runenui_core::token_id!("name\u{0085}value");
 //! ```
 //!
-//! Widget erasure and opaque state payloads cannot be forged by consumers:
+//! Mounted widget state cannot be forged by consumers:
 //!
 //! ```compile_fail
-//! use runenui_core::{WidgetState, WidgetStateTypeId, WidgetTypeId};
-//! let _ = WidgetState {
-//!     widget_type: WidgetTypeId::of::<()>(),
-//!     state_type: WidgetStateTypeId::of::<()>(),
+//! use runenui_core::__runtime::MountedWidgetState;
+//! let _ = MountedWidgetState {
 //!     value: Box::new(()),
 //! };
+//! ```
+//!
+//! Transient elements cannot execute mounted lifecycle or capabilities:
+//!
+//! ```compile_fail
+//! use runenui_core::{View, text};
+//! let element = text("temporary").into_element();
+//! let _ = element.create_widget_state();
 //! ```
 //!
 //! Public built-in view builders cannot bypass their validated conversion path:
@@ -70,6 +76,7 @@
 
 #![forbid(unsafe_code)]
 
+mod builtins;
 mod computed_style;
 mod element;
 mod identity;
@@ -79,19 +86,32 @@ mod style;
 mod style_resolution;
 mod style_tokens;
 mod value;
+mod widget_context;
+mod widget_erasure;
+mod widget_mapping;
 
 include!("element_macros.rs");
 include!("identity_macros.rs");
 include!("token_macros.rs");
 
+pub use builtins::{Button, Container, Text, button, column, container, row, text};
 pub use computed_style::ComputedStyle;
 pub use element::{
-    AuthoringDiagnostic, Button, ChildLayout, ChildLayoutWidget, Container, Element, Text, View,
-    Views, Widget, WidgetActivation, WidgetDiagnostic, WidgetLifecycle, WidgetLifecycleContext,
-    WidgetLifecycleRequest, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof, WidgetState,
-    WidgetStateMismatch, WidgetStateTypeId, WidgetTextKind, WidgetTypeId, button, column,
-    container, row, text,
+    AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
+    WidgetActivation, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof,
+    WidgetStateTypeId, WidgetTextKind, WidgetTypeId,
 };
+/// Unstable safe bridge from transient core elements to the mounted runtime.
+///
+/// This namespace is public only because core and runtime are separate Rust
+/// crates. It is doc-hidden, outside the prelude, unsupported for application
+/// use, semver-exempt before 1.0, and may change without compatibility support.
+#[doc(hidden)]
+pub mod __runtime {
+    pub use crate::widget_erasure::{
+        ElementParts, ElementRuntimeParts, MountedWidget, MountedWidgetState, WidgetBridgeError,
+    };
+}
 #[doc(hidden)]
 pub use identity::is_valid_identifier_literal;
 pub use identity::{ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey};
@@ -106,3 +126,7 @@ pub use style_resolution::{
 };
 pub use style_tokens::{DuplicateTokenDefinition, StyleTokens, TokenFamily};
 pub use value::{LogicalLength, LogicalLengthError};
+pub use widget_context::{
+    WidgetActivationContext, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
+    WidgetUnmountReason, WidgetUpdateContext,
+};

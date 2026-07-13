@@ -1,0 +1,686 @@
+#![allow(
+    clippy::option_if_let_else,
+    clippy::option_option,
+    clippy::redundant_pub_crate,
+    clippy::single_match_else
+)]
+
+use std::{collections::HashSet, sync::Arc};
+
+use runenui_core::{
+    __runtime::ElementParts, Element, ElementId, WidgetInvalidation, WidgetMountContext,
+    WidgetUnmountReason, WidgetUpdateContext,
+};
+
+use super::{
+    CapabilityCaches, DirtyPhases, InteractionState, MountedNodeId, SemanticNodeId,
+    apply_invalidation,
+    arena::MountedArena,
+    id::RuntimeInstanceMarker,
+    node::{MountedNode, state_is_corrupted},
+    reconcile::analyze_sibling_keys,
+};
+use crate::ReconciliationDiagnostic;
+
+#[derive(Debug, Default)]
+pub(crate) struct ReconcileStats {
+    pub(crate) mounted: usize,
+    pub(crate) updated: usize,
+    pub(crate) unmounted: usize,
+    pub(crate) moved: usize,
+    pub(crate) diagnostics: Vec<ReconciliationDiagnostic>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TargetStatus {
+    Live,
+    Stale,
+    Foreign,
+}
+
+pub(crate) struct MountedTree<Action> {
+    pub(super) runtime: Arc<RuntimeInstanceMarker>,
+    pub(super) arena: MountedArena<MountedNode<Action>>,
+    pub(super) root: Option<MountedNodeId>,
+    pub(super) shutdown: bool,
+}
+
+impl<Action> MountedTree<Action> {
+    pub(crate) fn mount(root: Element<Action>) -> (Self, ReconcileStats) {
+        let mut tree = Self {
+            runtime: Arc::new(RuntimeInstanceMarker),
+            arena: MountedArena::new(),
+            root: None,
+            shutdown: false,
+        };
+        let mut stats = ReconcileStats::default();
+        let root_id = tree.mount_parts(None, root.into_runtime_parts(), &mut stats);
+        tree.root = Some(root_id);
+        (tree, stats)
+    }
+
+    fn mount_parts(
+        &mut self,
+        parent: Option<MountedNodeId>,
+        parts: ElementParts<Action>,
+        stats: &mut ReconcileStats,
+    ) -> MountedNodeId {
+        let (authored_id, key, layout, style, authoring_diagnostics, widget, children) =
+            parts.into_parts();
+        let widget_state = widget.create_state();
+        let runtime = Arc::clone(&self.runtime);
+        let (slot, generation) = self.arena.insert_with(|slot, generation| {
+            let id = MountedNodeId::new(&runtime, slot, generation);
+            MountedNode {
+                semantic_id: SemanticNodeId::new(&runtime, slot, generation),
+                id,
+                parent,
+                children: Vec::new(),
+                authored_id,
+                key,
+                layout,
+                style,
+                authoring_diagnostics,
+                widget,
+                state: widget_state,
+                #[cfg(test)]
+                state_corrupted: false,
+                interaction: InteractionState::default(),
+                integrity_failed: false,
+                caches: CapabilityCaches::default(),
+                dirty_phases: DirtyPhases::ALL,
+            }
+        });
+        let id = MountedNodeId::new(&self.runtime, slot, generation);
+        stats.mounted += 1;
+
+        let mut context = WidgetMountContext::__runtime_new();
+        if let Some(node) = self.arena.get_mut(slot, generation) {
+            if node.widget.mount(&mut node.state, &mut context).is_err() {
+                mark_mismatch(node, "mount", stats);
+            }
+            apply_invalidation(node, context.__runtime_take_invalidation());
+        }
+
+        let mounted_children = children
+            .into_iter()
+            .map(|child| self.mount_parts(Some(id.clone()), child.into_runtime_parts(), stats))
+            .collect();
+        self.node_mut(&id)
+            .unwrap_or_else(|| unreachable!("new mounted node must remain live"))
+            .children = mounted_children;
+        id
+    }
+
+    pub(crate) fn reconcile(&mut self, root: Element<Action>) -> ReconcileStats {
+        let mut stats = ReconcileStats::default();
+        let parts = root.into_runtime_parts();
+        let old_root = self
+            .root
+            .clone()
+            .unwrap_or_else(|| unreachable!("mounted tree has a root before shutdown"));
+        if self.compatible(&old_root, &parts) {
+            if let Err(parts) = self.update_node(&old_root, parts, "root", &mut stats) {
+                self.unmount_subtree(&old_root, WidgetUnmountReason::Replaced, "root", &mut stats);
+                self.root = Some(self.mount_parts(None, *parts, &mut stats));
+            }
+        } else {
+            self.unmount_subtree(&old_root, WidgetUnmountReason::Replaced, "root", &mut stats);
+            self.root = Some(self.mount_parts(None, parts, &mut stats));
+        }
+        stats
+    }
+
+    fn compatible(&self, id: &MountedNodeId, parts: &ElementParts<Action>) -> bool {
+        let Some(node) = self.node(id) else {
+            return false;
+        };
+        !node.integrity_failed
+            && node.key.as_ref() == parts.key()
+            && node.widget.widget_type_id() == parts.widget().widget_type_id()
+            && node.widget.state_type_id() == parts.widget().state_type_id()
+    }
+
+    fn update_node(
+        &mut self,
+        id: &MountedNodeId,
+        parts: ElementParts<Action>,
+        path: &str,
+        stats: &mut ReconcileStats,
+    ) -> Result<(), Box<ElementParts<Action>>> {
+        let mut update_context = WidgetUpdateContext::__runtime_new();
+        {
+            let node = self
+                .node_mut(id)
+                .unwrap_or_else(|| unreachable!("compatible node is live"));
+            if state_is_corrupted(node)
+                || parts
+                    .widget()
+                    .update(&mut node.state, &mut update_context)
+                    .is_err()
+            {
+                node.integrity_failed = true;
+                stats
+                    .diagnostics
+                    .push(ReconciliationDiagnostic::StatePayloadMismatch {
+                        path: path.to_owned(),
+                    });
+                return Err(Box::new(parts));
+            }
+        }
+        let (authored_id, key, layout, style, authoring_diagnostics, widget, children) =
+            parts.into_parts();
+        let old_children;
+        let common_invalidation;
+        {
+            let node = self
+                .node_mut(id)
+                .unwrap_or_else(|| unreachable!("compatible node is live"));
+            let tree_metadata_changed = node.authored_id != authored_id;
+            let style_changed = node.style != style;
+            common_invalidation = common_field_invalidation(
+                node,
+                authored_id.as_ref(),
+                layout,
+                &style,
+                &authoring_diagnostics,
+            );
+            old_children = node.children.clone();
+            node.authored_id = authored_id;
+            node.key = key;
+            node.layout = layout;
+            node.style = style;
+            node.authoring_diagnostics = authoring_diagnostics;
+            node.widget = widget;
+            apply_invalidation(
+                node,
+                update_context.__runtime_take_invalidation() | common_invalidation,
+            );
+            if tree_metadata_changed {
+                node.dirty_phases.insert(DirtyPhases::TREE);
+            }
+            if style_changed {
+                node.dirty_phases.insert(DirtyPhases::STYLE);
+            }
+        }
+        stats.updated += 1;
+        let new_children = self.reconcile_children(id, &old_children, children, path, stats);
+        let structural = old_children != new_children;
+        let node = self
+            .node_mut(id)
+            .unwrap_or_else(|| unreachable!("updated node remains live"));
+        node.children = new_children;
+        if structural {
+            apply_invalidation(node, WidgetInvalidation::LAYOUT);
+            node.dirty_phases.insert(DirtyPhases::TREE);
+        }
+        Ok(())
+    }
+
+    fn reconcile_children(
+        &mut self,
+        parent: &MountedNodeId,
+        old_children: &[MountedNodeId],
+        children: Vec<Element<Action>>,
+        parent_path: &str,
+        stats: &mut ReconcileStats,
+    ) -> Vec<MountedNodeId> {
+        let new_parts: Vec<_> = children
+            .into_iter()
+            .map(Element::into_runtime_parts)
+            .collect();
+        let sibling_matches =
+            analyze_sibling_keys(self, old_children, &new_parts, parent_path, stats);
+        let old_keys = sibling_matches.old_keys;
+        let old_unkeyed = sibling_matches.old_unkeyed;
+        let new_keys = sibling_matches.new_keys;
+
+        let mut used = HashSet::new();
+        let mut unkeyed_ordinal = 0usize;
+        let mut final_children = Vec::with_capacity(new_parts.len());
+        for (new_position, parts) in new_parts.into_iter().enumerate() {
+            let key = parts.key().cloned();
+            let candidate = if let Some(key) = key.as_ref() {
+                let old = old_keys.get(key);
+                let new = new_keys.get(key);
+                match (old, new) {
+                    (Some(old), Some(new)) if old.len() == 1 && new.len() == 1 => {
+                        Some(old[0].clone())
+                    }
+                    _ => None,
+                }
+            } else {
+                let candidate = old_unkeyed.get(unkeyed_ordinal).cloned();
+                unkeyed_ordinal += 1;
+                candidate
+            };
+
+            let child_path = format!("{parent_path}/{new_position}");
+            if let Some((old_position, old_id)) = candidate {
+                used.insert(old_id.clone());
+                if self.compatible(&old_id, &parts) {
+                    match self.update_node(&old_id, parts, &child_path, stats) {
+                        Ok(()) => {
+                            if old_position != new_position {
+                                stats.moved += 1;
+                            }
+                            final_children.push(old_id);
+                        }
+                        Err(parts) => {
+                            self.unmount_subtree(
+                                &old_id,
+                                WidgetUnmountReason::Replaced,
+                                &child_path,
+                                stats,
+                            );
+                            final_children.push(self.mount_parts(
+                                Some(parent.clone()),
+                                *parts,
+                                stats,
+                            ));
+                        }
+                    }
+                } else {
+                    self.unmount_subtree(
+                        &old_id,
+                        WidgetUnmountReason::Replaced,
+                        &child_path,
+                        stats,
+                    );
+                    final_children.push(self.mount_parts(Some(parent.clone()), parts, stats));
+                }
+            } else {
+                final_children.push(self.mount_parts(Some(parent.clone()), parts, stats));
+            }
+        }
+
+        for old in old_children {
+            if !used.contains(old) {
+                let old_position = old_children
+                    .iter()
+                    .position(|candidate| candidate == old)
+                    .unwrap_or_default();
+                self.unmount_subtree(
+                    old,
+                    WidgetUnmountReason::Removed,
+                    &format!("{parent_path}/{old_position}"),
+                    stats,
+                );
+            }
+        }
+        final_children
+    }
+
+    pub(crate) fn target_status(&self, id: &MountedNodeId) -> TargetStatus {
+        if !id.belongs_to(&self.runtime) {
+            TargetStatus::Foreign
+        } else if self.arena.get(id.slot, id.generation).is_some() {
+            TargetStatus::Live
+        } else {
+            TargetStatus::Stale
+        }
+    }
+
+    pub(crate) fn node(&self, id: &MountedNodeId) -> Option<&MountedNode<Action>> {
+        if !id.belongs_to(&self.runtime) {
+            return None;
+        }
+        self.arena.get(id.slot, id.generation)
+    }
+    pub(crate) fn node_mut(&mut self, id: &MountedNodeId) -> Option<&mut MountedNode<Action>> {
+        if !id.belongs_to(&self.runtime) {
+            return None;
+        }
+        self.arena.get_mut(id.slot, id.generation)
+    }
+    pub(crate) const fn live_count(&self) -> usize {
+        self.arena.live_count()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_interaction_for_test(
+        &mut self,
+        id: &MountedNodeId,
+        hovered: bool,
+        pressed: bool,
+        capture_placeholder: bool,
+        scroll_offset: (f32, f32),
+    ) {
+        let node = self
+            .node_mut(id)
+            .unwrap_or_else(|| unreachable!("test target remains live"));
+        node.interaction = InteractionState {
+            hovered,
+            pressed,
+            capture_placeholder,
+            scroll_offset,
+        };
+    }
+
+    #[cfg(test)]
+    pub(crate) fn corrupt_state_for_test(&mut self, id: &MountedNodeId) {
+        let node = self
+            .node_mut(id)
+            .unwrap_or_else(|| unreachable!("test target remains live"));
+        node.state_corrupted = true;
+        node.caches = CapabilityCaches::default();
+        node.dirty_phases = DirtyPhases::ALL;
+    }
+
+    pub(crate) fn pending_phases(&self) -> DirtyPhases {
+        let mut pending = DirtyPhases::default();
+        for id in self.preorder_ids() {
+            if let Some(node) = self.node(&id) {
+                pending |= node.dirty_phases;
+            }
+        }
+        pending
+    }
+
+    pub(crate) fn finish_publication(&mut self, completed: DirtyPhases) {
+        for id in self.preorder_ids() {
+            if let Some(node) = self.node_mut(&id) {
+                node.dirty_phases.remove(completed);
+            }
+        }
+    }
+
+    pub(crate) fn finish_focus_validation(&mut self) {
+        for id in self.preorder_ids() {
+            if let Some(node) = self.node_mut(&id) {
+                node.dirty_phases.remove(DirtyPhases::FOCUS_VALIDATION);
+            }
+        }
+    }
+}
+
+fn common_field_invalidation<Action>(
+    node: &MountedNode<Action>,
+    authored_id: Option<&ElementId>,
+    layout: runenui_core::LayoutStyle,
+    style: &runenui_core::StyleIntent,
+    diagnostics: &[runenui_core::AuthoringDiagnostic],
+) -> WidgetInvalidation {
+    let mut invalidation = WidgetInvalidation::NONE;
+    if node.layout != layout || node.style.padding() != style.padding() {
+        invalidation |= WidgetInvalidation::LAYOUT;
+    }
+    if node.style.foreground() != style.foreground()
+        || node.style.background() != style.background()
+        || node.style.radius() != style.radius()
+    {
+        invalidation |= WidgetInvalidation::PAINT;
+    }
+    if node.authored_id.as_ref() != authored_id || node.authoring_diagnostics != diagnostics {
+        invalidation |= WidgetInvalidation::DIAGNOSTICS;
+    }
+    invalidation
+}
+
+fn mark_mismatch<Action>(node: &mut MountedNode<Action>, path: &str, stats: &mut ReconcileStats) {
+    node.integrity_failed = true;
+    stats
+        .diagnostics
+        .push(ReconciliationDiagnostic::StatePayloadMismatch {
+            path: path.to_owned(),
+        });
+}
+
+#[cfg(test)]
+mod tests {
+    use runenui_core::{Element, ElementId, View, children, column, text};
+
+    use super::{MountedNodeId, MountedTree, TargetStatus};
+    use crate::ReconciliationDiagnostic;
+
+    fn tree(order: [&str; 2], a_key: &str, a_id: &str) -> Element<()> {
+        column(
+            order
+                .into_iter()
+                .map(|name| {
+                    text(name)
+                        .id(if name == "a" { a_id } else { "b" })
+                        .key(if name == "a" { a_key } else { "b" })
+                        .into_element()
+                })
+                .collect::<Vec<_>>(),
+        )
+        .key("root")
+        .into_element()
+    }
+
+    fn authored_id(tree: &mut MountedTree<()>, authored: &str) -> MountedNodeId {
+        let authored = ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+        tree.index()
+            .node_by_authored_id(&authored)
+            .unwrap_or_else(|| unreachable!())
+            .id()
+            .clone()
+    }
+
+    #[test]
+    fn every_interaction_slot_is_retained_and_replacement_starts_fresh() {
+        let (mut mounted, _) = MountedTree::mount(tree(["a", "b"], "a", "a"));
+        let a = authored_id(&mut mounted, "a");
+        mounted.set_interaction_for_test(&a, true, true, true, (13.0, 21.0));
+
+        mounted.reconcile(tree(["b", "a"], "a", "renamed-a"));
+        let retained = authored_id(&mut mounted, "renamed-a");
+        assert_eq!(retained, a);
+        let index = mounted.index();
+        let interaction = index
+            .node(&retained)
+            .unwrap_or_else(|| unreachable!())
+            .interaction();
+        assert!(interaction.hovered());
+        assert!(interaction.pressed());
+        assert!(interaction.capture_placeholder());
+        assert_eq!(interaction.scroll_offset(), (13.0, 21.0));
+        drop(index);
+
+        mounted.reconcile(tree(["b", "a"], "replacement", "renamed-a"));
+        let replacement = authored_id(&mut mounted, "renamed-a");
+        assert_ne!(replacement, retained);
+        let index = mounted.index();
+        let interaction = index
+            .node(&replacement)
+            .unwrap_or_else(|| unreachable!())
+            .interaction();
+        assert!(!interaction.hovered());
+        assert!(!interaction.pressed());
+        assert!(!interaction.capture_placeholder());
+        assert_eq!(interaction.scroll_offset(), (0.0, 0.0));
+        drop(index);
+        assert_eq!(mounted.target_status(&retained), TargetStatus::Stale);
+
+        let old_root = mounted.publication_preorder_ids()[0].clone();
+        mounted.set_interaction_for_test(&old_root, true, true, true, (13.0, 21.0));
+        mounted.reconcile(
+            column(vec![
+                text("b").id("b").key("b").into_element(),
+                text("a").id("renamed-a").key("replacement").into_element(),
+            ])
+            .key("replacement-root")
+            .into_element(),
+        );
+        let new_root = mounted.publication_preorder_ids()[0].clone();
+        assert_ne!(new_root, old_root);
+        assert_eq!(mounted.target_status(&old_root), TargetStatus::Stale);
+        let index = mounted.index();
+        let interaction = index.nodes()[0].interaction();
+        assert!(!interaction.hovered());
+        assert!(!interaction.pressed());
+        assert!(!interaction.capture_placeholder());
+        assert_eq!(interaction.scroll_offset(), (0.0, 0.0));
+    }
+
+    #[test]
+    fn removed_interaction_slots_are_cleared_before_generational_arena_reuse() {
+        let (mut mounted, _) = MountedTree::mount(tree(["a", "b"], "a", "a"));
+        let removed = authored_id(&mut mounted, "a");
+        mounted.set_interaction_for_test(&removed, true, true, true, (31.0, 47.0));
+
+        mounted.reconcile(
+            column(vec![text("b").id("b").key("b").into_element()])
+                .key("root")
+                .into_element(),
+        );
+        assert_eq!(mounted.target_status(&removed), TargetStatus::Stale);
+        assert!(mounted.node(&removed).is_none());
+
+        mounted.reconcile(
+            column(vec![
+                text("b").id("b").key("b").into_element(),
+                text("c").id("c").key("c").into_element(),
+            ])
+            .key("root")
+            .into_element(),
+        );
+        let replacement = authored_id(&mut mounted, "c");
+        assert_eq!(replacement.slot, removed.slot);
+        assert!(replacement.generation > removed.generation);
+        let index = mounted.index();
+        let interaction = index
+            .node(&replacement)
+            .unwrap_or_else(|| unreachable!())
+            .interaction();
+        assert!(!interaction.hovered());
+        assert!(!interaction.pressed());
+        assert!(!interaction.capture_placeholder());
+        assert_eq!(interaction.scroll_offset(), (0.0, 0.0));
+        assert_eq!(mounted.target_status(&removed), TargetStatus::Stale);
+        assert!(mounted.node(&removed).is_none());
+    }
+
+    fn parented(child_on_left: bool) -> Element<()> {
+        let child = || text("a").id("a").key("a").into_element();
+        column(vec![
+            column(if child_on_left {
+                vec![child()]
+            } else {
+                Vec::new()
+            })
+            .id("left")
+            .key("left")
+            .into_element(),
+            column(if child_on_left {
+                Vec::new()
+            } else {
+                vec![child()]
+            })
+            .id("right")
+            .key("right")
+            .into_element(),
+        ])
+        .key("root")
+        .into_element()
+    }
+
+    #[test]
+    fn cross_parent_remount_resets_every_interaction_slot() {
+        let (mut mounted, _) = MountedTree::mount(parented(true));
+        let old = authored_id(&mut mounted, "a");
+        mounted.set_interaction_for_test(&old, true, true, true, (9.0, 12.0));
+        mounted.reconcile(parented(false));
+        let remounted = authored_id(&mut mounted, "a");
+        assert_ne!(remounted, old);
+        assert_eq!(mounted.target_status(&old), TargetStatus::Stale);
+        let index = mounted.index();
+        let interaction = index
+            .node(&remounted)
+            .unwrap_or_else(|| unreachable!())
+            .interaction();
+        assert!(!interaction.hovered());
+        assert!(!interaction.pressed());
+        assert!(!interaction.capture_placeholder());
+        assert_eq!(interaction.scroll_offset(), (0.0, 0.0));
+    }
+
+    #[test]
+    fn shutdown_clears_all_lifetimes_and_is_idempotent() {
+        let (mut mounted, _) = MountedTree::mount(tree(["a", "b"], "a", "a"));
+        let ids: Vec<_> = mounted.publication_preorder_ids().into_iter().collect();
+        for id in &ids {
+            mounted.set_interaction_for_test(id, true, true, true, (5.0, 8.0));
+        }
+        let first = mounted.shutdown();
+        assert_eq!(first.unmounted, ids.len());
+        assert_eq!(mounted.live_count(), 0);
+        assert!(mounted.publication_preorder_ids().is_empty());
+        for id in &ids {
+            assert_eq!(mounted.target_status(id), TargetStatus::Stale);
+            assert!(mounted.node(id).is_none());
+        }
+        let second = mounted.shutdown();
+        assert_eq!(second.unmounted, 0);
+        assert_eq!(mounted.live_count(), 0);
+    }
+
+    #[test]
+    fn compatible_update_payload_mismatch_replaces_in_the_same_generation() {
+        let (mut mounted, _) = MountedTree::mount(tree(["a", "b"], "a", "a"));
+        let root = mounted.index().nodes()[0].id().clone();
+        let old_child = authored_id(&mut mounted, "a");
+        mounted.corrupt_state_for_test(&root);
+
+        let stats = mounted.reconcile(tree(["a", "b"], "a", "a"));
+        let new_root = mounted.index().nodes()[0].id().clone();
+        let new_child = authored_id(&mut mounted, "a");
+        assert_ne!(new_root, root);
+        assert_ne!(new_child, old_child);
+        assert_eq!(stats.mounted, 3);
+        assert_eq!(stats.updated, 0);
+        assert_eq!(stats.unmounted, 3);
+        assert_eq!(
+            stats.diagnostics,
+            vec![
+                ReconciliationDiagnostic::StatePayloadMismatch {
+                    path: "root".to_owned(),
+                },
+                ReconciliationDiagnostic::StatePayloadMismatch {
+                    path: "root".to_owned(),
+                },
+            ]
+        );
+        assert_eq!(mounted.target_status(&root), TargetStatus::Stale);
+    }
+
+    #[test]
+    fn child_payload_mismatch_replaces_descendants_without_updating_them() {
+        let authored = || {
+            column(children![
+                column(children![text("grandchild").id("grandchild")])
+                    .id("corrupted-child")
+                    .key("corrupted-child")
+            ])
+            .key("root")
+            .into_element()
+        };
+        let (mut mounted, _) = MountedTree::mount(authored());
+        let child = authored_id(&mut mounted, "corrupted-child");
+        let grandchild = authored_id(&mut mounted, "grandchild");
+        mounted.corrupt_state_for_test(&child);
+
+        let stats = mounted.reconcile(authored());
+        let replacement_child = authored_id(&mut mounted, "corrupted-child");
+        let replacement_grandchild = authored_id(&mut mounted, "grandchild");
+        assert_ne!(replacement_child, child);
+        assert_ne!(replacement_grandchild, grandchild);
+        assert_eq!(stats.mounted, 2);
+        assert_eq!(stats.updated, 1);
+        assert_eq!(stats.unmounted, 2);
+        assert_eq!(mounted.target_status(&child), TargetStatus::Stale);
+        assert_eq!(mounted.target_status(&grandchild), TargetStatus::Stale);
+        assert_eq!(
+            stats.diagnostics,
+            vec![
+                ReconciliationDiagnostic::StatePayloadMismatch {
+                    path: "root/0".to_owned(),
+                },
+                ReconciliationDiagnostic::StatePayloadMismatch {
+                    path: "root/0".to_owned(),
+                },
+            ]
+        );
+    }
+}

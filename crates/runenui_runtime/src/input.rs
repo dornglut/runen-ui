@@ -2,10 +2,10 @@
 
 use core::{error::Error, fmt};
 
-use crate::{RuntimeNodeId, SurfaceFrame};
+use crate::{MountedNodeId, SurfaceFrame};
 
 /// Error returned for a non-finite logical coordinate.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LogicalPointError;
 
 impl fmt::Display for LogicalPointError {
@@ -184,13 +184,13 @@ pub enum PointerPhase {
 }
 
 /// Pointer input after optional host hit-test resolution.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PointerEvent {
     phase: PointerPhase,
     position: LogicalPoint,
     button: Option<PointerButton>,
     modifiers: KeyModifiers,
-    target: Option<RuntimeNodeId>,
+    target: Option<MountedNodeId>,
 }
 
 impl PointerEvent {
@@ -201,7 +201,7 @@ impl PointerEvent {
         position: LogicalPoint,
         button: Option<PointerButton>,
         modifiers: KeyModifiers,
-        target: Option<RuntimeNodeId>,
+        target: Option<MountedNodeId>,
     ) -> Self {
         Self {
             phase,
@@ -214,7 +214,7 @@ impl PointerEvent {
 
     /// Returns this pointer event with a replaced runtime target.
     #[must_use]
-    pub const fn with_target(mut self, target: Option<RuntimeNodeId>) -> Self {
+    pub fn with_target(mut self, target: Option<MountedNodeId>) -> Self {
         self.target = target;
         self
     }
@@ -245,8 +245,8 @@ impl PointerEvent {
 
     /// Returns the resolved runtime target, if the host already hit-tested it.
     #[must_use]
-    pub const fn target(&self) -> Option<RuntimeNodeId> {
-        self.target
+    pub const fn target(&self) -> Option<&MountedNodeId> {
+        self.target.as_ref()
     }
 }
 
@@ -284,7 +284,7 @@ pub struct KeyboardEvent {
     phase: KeyPhase,
     key: Key,
     modifiers: KeyModifiers,
-    target: Option<RuntimeNodeId>,
+    target: Option<MountedNodeId>,
 }
 
 impl KeyboardEvent {
@@ -294,7 +294,7 @@ impl KeyboardEvent {
         phase: KeyPhase,
         key: Key,
         modifiers: KeyModifiers,
-        target: Option<RuntimeNodeId>,
+        target: Option<MountedNodeId>,
     ) -> Self {
         Self {
             phase,
@@ -324,8 +324,8 @@ impl KeyboardEvent {
 
     /// Returns the resolved runtime target, if the host already assigned one.
     #[must_use]
-    pub const fn target(&self) -> Option<RuntimeNodeId> {
-        self.target
+    pub const fn target(&self) -> Option<&MountedNodeId> {
+        self.target.as_ref()
     }
 }
 
@@ -341,16 +341,16 @@ pub enum InputEvent {
 
 /// Runtime-level intent resolved from input.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InputIntent {
     /// Activate an element by generated runtime node identity.
-    ActivateNode(RuntimeNodeId),
+    ActivateNode(MountedNodeId),
 }
 
 impl InputIntent {
     /// Creates an activation intent for a runtime node.
     #[must_use]
-    pub const fn activate_node(id: RuntimeNodeId) -> Self {
+    pub const fn activate_node(id: MountedNodeId) -> Self {
         Self::ActivateNode(id)
     }
 }
@@ -358,7 +358,8 @@ impl InputIntent {
 /// Returns a pointer event targeted by hit testing its position against a surface frame.
 #[must_use]
 pub fn resolve_pointer_event_target(frame: &SurfaceFrame, event: PointerEvent) -> PointerEvent {
-    event.with_target(frame.hit_test_id(event.position()))
+    let target = frame.hit_test_id(event.position());
+    event.with_target(target)
 }
 
 /// Returns a pointer input event targeted by hit testing its position against a surface frame.

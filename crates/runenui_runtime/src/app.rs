@@ -1,328 +1,299 @@
-//! App-bound runtime wrapper and activation.
+//! Application-bound mounted runtime and activation.
 
 use core::marker::PhantomData;
 
 use runenui_core::{Element, ElementId};
 
 use crate::{
-    FocusState, InputEvent, Key, KeyPhase, KeyboardEvent, PointerButton, PointerEvent,
-    PointerPhase, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex, SurfaceBuildContext,
-    SurfacePublication, Trace, TraceTarget,
+    FocusState, FocusTargetResult, InputEvent, Key, KeyPhase, KeyboardEvent, MountedNodeId,
+    MountedTreeIndex, PointerButton, PointerEvent, PointerPhase, ReconciliationReport,
+    RuntimeError, SurfaceBuildContext, SurfacePublication, Trace, TraceTarget,
+    mounted::TargetStatus,
     policy::{
         InputEventResult, KeyboardActivationResult, KeyboardFocusResult, PointerActivationResult,
         PointerFocusResult,
     },
-    publish_surface,
     runtime::Runtime,
+    surface::{SurfaceCache, publish_mounted_surface_cached},
 };
 
-/// Application contract used by [`AppRuntime`].
-///
-/// The app owns its state, action type, update logic, and root UI composition.
-/// The runtime owns dispatch sequencing, update invocation, root rebuilds, and
-/// trace recording.
 pub trait UiApp {
-    /// Application state.
     type State;
-
-    /// Typed actions produced by UI controls or host input.
     type Action;
-
-    /// Builds the current root UI tree from application state.
     fn root(state: &Self::State) -> Element<Self::Action>;
-
-    /// Applies one typed action to application state.
     fn update(state: &mut Self::State, action: Self::Action);
 }
 
-/// Result of semantic headless activation by authored element ID.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ActivationResult {
-    /// The matching actionable widget's action was dispatched.
     Dispatched,
-    /// No element with the requested authored or runtime ID exists in the current tree.
-    NotFound,
-    /// The requested element exists, but the element is not activatable.
-    NotActivatable,
-    /// The requested element exists, but it is intentionally disabled.
-    Disabled,
-    /// The requested actionable widget has no remaining widget action.
+    Activated,
     NoAction,
-    /// More than one element has the requested authored ID.
+    NotFound,
+    NotActivatable,
+    Disabled,
     AmbiguousId,
-    /// The requested authored ID was invalid.
     InvalidId,
+    StaleTarget,
+    ForeignRuntime,
+    RuntimeError(RuntimeError),
 }
 
-/// Runtime wrapper that binds an app's root and update functions once.
-pub struct AppRuntime<App>
-where
-    App: UiApp,
-{
+pub struct AppRuntime<App: UiApp> {
     runtime: Runtime<App::State, App::Action>,
+    surface_cache: Option<SurfaceCache>,
+    phase_report: crate::SurfacePhaseReport,
     _app: PhantomData<fn() -> App>,
 }
 
-impl<App> AppRuntime<App>
-where
-    App: UiApp,
-{
-    /// Mounts an app with its initial state.
+impl<App: UiApp> AppRuntime<App> {
     #[must_use]
     pub fn mount(state: App::State) -> Self {
         Self {
             runtime: Runtime::mount(state, App::root),
+            surface_cache: None,
+            phase_report: crate::SurfacePhaseReport::default(),
             _app: PhantomData,
         }
     }
 
-    /// Dispatches one typed action through the bound app update/root pair.
-    pub fn dispatch(&mut self, action: App::Action) {
-        self.runtime.dispatch(action, App::update, App::root);
-    }
-
-    /// Returns an indexed borrowed view of the current root element tree.
-    #[must_use]
-    pub fn index(&self) -> RuntimeTreeIndex<'_, App::Action> {
-        RuntimeTreeIndex::new(self.root())
-    }
-
-    /// Sets focus to a focusable runtime node in the current tree.
+    /// Dispatches an application action and reconciles the mounted tree.
     ///
-    /// Returns `false` when the node ID is not present or is not focusable.
-    pub fn set_focus(&mut self, id: RuntimeNodeId) -> bool {
-        if matches!(self.index().node(id), Some(node) if node.is_focusable()) {
-            self.runtime.set_focus(id);
-            true
-        } else {
-            false
+    /// # Errors
+    ///
+    /// Returns an integrity error when the reconciliation generation is exhausted.
+    pub fn dispatch(&mut self, action: App::Action) -> Result<&ReconciliationReport, RuntimeError> {
+        let report = self.runtime.dispatch(action, App::update, App::root)?;
+        self.phase_report = crate::SurfacePhaseReport::one(crate::SurfacePhase::FocusValidation);
+        Ok(report)
+    }
+
+    #[must_use]
+    pub fn index(&mut self) -> MountedTreeIndex<'_, App::Action> {
+        self.runtime.tree.index()
+    }
+
+    pub fn set_focus(&mut self, id: MountedNodeId) -> FocusTargetResult {
+        match self.runtime.tree.target_status(&id) {
+            TargetStatus::Foreign => FocusTargetResult::ForeignRuntime,
+            TargetStatus::Stale => FocusTargetResult::StaleTarget,
+            TargetStatus::Live => {
+                let activation = self.runtime.tree.activation(&id);
+                if activation
+                    .is_ok_and(|activation| activation.enabled() && activation.is_actionable())
+                {
+                    self.runtime.set_focus(id);
+                    FocusTargetResult::Focused
+                } else {
+                    FocusTargetResult::NotFocusable
+                }
+            }
         }
     }
 
-    /// Focuses the first focusable runtime node in traversal order.
-    pub fn focus_first(&mut self) -> Option<RuntimeNodeId> {
-        let node_id = self.index().first_focusable_node().map(RuntimeNodeRef::id);
-        self.apply_focus_result(node_id)
+    pub fn focus_first(&mut self) -> Option<MountedNodeId> {
+        let id = self.index().first_focusable_node().map(|n| n.id().clone());
+        self.apply_focus_result(id)
     }
-
-    /// Focuses the last focusable runtime node in traversal order.
-    pub fn focus_last(&mut self) -> Option<RuntimeNodeId> {
-        let node_id = self.index().last_focusable_node().map(RuntimeNodeRef::id);
-        self.apply_focus_result(node_id)
+    pub fn focus_last(&mut self) -> Option<MountedNodeId> {
+        let id = self.index().last_focusable_node().map(|n| n.id().clone());
+        self.apply_focus_result(id)
     }
-
-    /// Focuses the next focusable runtime node, wrapping to the first node.
-    ///
-    /// If there is no focused node, this focuses the first focusable node.
-    pub fn focus_next(&mut self) -> Option<RuntimeNodeId> {
-        let node_id = {
+    pub fn focus_next(&mut self) -> Option<MountedNodeId> {
+        let current = self.focus().focused_node().cloned();
+        let id = {
             let index = self.index();
-            self.focus().focused_node().map_or_else(
-                || index.first_focusable_node().map(RuntimeNodeRef::id),
+            current.as_ref().map_or_else(
+                || index.first_focusable_node().map(|n| n.id().clone()),
                 |current| {
                     index
                         .next_focusable_after(current)
                         .or_else(|| index.first_focusable_node())
-                        .map(RuntimeNodeRef::id)
+                        .map(|n| n.id().clone())
                 },
             )
         };
-
-        self.apply_focus_result(node_id)
+        self.apply_focus_result(id)
     }
-
-    /// Focuses the previous focusable runtime node, wrapping to the last node.
-    ///
-    /// If there is no focused node, this focuses the last focusable node.
-    pub fn focus_previous(&mut self) -> Option<RuntimeNodeId> {
-        let node_id = {
+    pub fn focus_previous(&mut self) -> Option<MountedNodeId> {
+        let current = self.focus().focused_node().cloned();
+        let id = {
             let index = self.index();
-            self.focus().focused_node().map_or_else(
-                || index.last_focusable_node().map(RuntimeNodeRef::id),
+            current.as_ref().map_or_else(
+                || index.last_focusable_node().map(|n| n.id().clone()),
                 |current| {
                     index
                         .previous_focusable_before(current)
                         .or_else(|| index.last_focusable_node())
-                        .map(RuntimeNodeRef::id)
+                        .map(|n| n.id().clone())
                 },
             )
         };
-
-        self.apply_focus_result(node_id)
+        self.apply_focus_result(id)
     }
-
-    /// Applies keyboard focus policy to one keyboard event.
-    ///
-    /// Pressed Tab moves to the next focusable node. Pressed Shift+Tab moves to
-    /// the previous focusable node. Other keyboard events are ignored.
-    pub fn handle_keyboard_focus(&mut self, event: &KeyboardEvent) -> KeyboardFocusResult {
-        if event.phase() != KeyPhase::Pressed || !matches!(event.key(), Key::Tab) {
-            return KeyboardFocusResult::Ignored;
-        }
-
-        let node_id = if event.modifiers().shift() {
-            self.focus_previous()
-        } else {
-            self.focus_next()
-        };
-
-        node_id.map_or(
-            KeyboardFocusResult::NoFocusableNode,
-            KeyboardFocusResult::Moved,
-        )
-    }
-
-    /// Applies pointer focus policy to one already-targeted pointer event.
-    ///
-    /// Pressed primary pointer events focus the resolved target when that target
-    /// is present and focusable. Other pointer events are ignored.
-    pub fn handle_pointer_focus(&mut self, event: &PointerEvent) -> PointerFocusResult {
-        if event.phase() != PointerPhase::Pressed || event.button() != Some(PointerButton::Primary)
-        {
-            return PointerFocusResult::Ignored;
-        }
-
-        let Some(node_id) = event.target() else {
-            return PointerFocusResult::NoTarget;
-        };
-
-        let focusable = {
-            let index = self.index();
-            index.node(node_id).map(RuntimeNodeRef::is_focusable)
-        };
-
-        match focusable {
-            Some(true) => {
-                self.runtime.set_focus(node_id);
-                PointerFocusResult::Moved(node_id)
-            }
-            Some(false) => PointerFocusResult::NotFocusable,
-            None => PointerFocusResult::NotFound,
-        }
-    }
-
-    const fn apply_focus_result(
-        &mut self,
-        node_id: Option<RuntimeNodeId>,
-    ) -> Option<RuntimeNodeId> {
-        if let Some(node_id) = node_id {
-            self.runtime.set_focus(node_id);
-            Some(node_id)
+    fn apply_focus_result(&mut self, id: Option<MountedNodeId>) -> Option<MountedNodeId> {
+        if let Some(id) = id {
+            self.runtime.set_focus(id.clone());
+            Some(id)
         } else {
             self.runtime.clear_focus();
             None
         }
     }
-
-    /// Clears the current focus target.
-    pub const fn clear_focus(&mut self) {
+    pub fn clear_focus(&mut self) {
         self.runtime.clear_focus();
     }
-
-    /// Returns the current runtime focus state.
     #[must_use]
     pub const fn focus(&self) -> &FocusState {
         self.runtime.focus()
     }
-
-    /// Returns the current application state.
     #[must_use]
     pub const fn state(&self) -> &App::State {
         self.runtime.state()
     }
-
-    /// Returns the current root element tree.
-    #[must_use]
-    pub const fn root(&self) -> &Element<App::Action> {
-        self.runtime.root()
-    }
-
-    /// Publishes aligned renderer-facing, style, and layout-diagnostic products.
-    #[must_use]
-    pub fn publish_surface(&self, context: &SurfaceBuildContext<'_>) -> SurfacePublication {
-        publish_surface(self.root(), context)
-    }
-
-    /// Returns the runtime trace.
     #[must_use]
     pub const fn trace(&self) -> &Trace {
         self.runtime.trace()
     }
-
-    /// Consumes this app runtime and returns the final application state.
+    #[must_use]
+    pub const fn reconciliation_report(&self) -> &ReconciliationReport {
+        self.runtime.report()
+    }
+    #[must_use]
+    pub fn publish_surface(&mut self, context: &SurfaceBuildContext<'_>) -> SurfacePublication {
+        let (publication, report) = publish_mounted_surface_cached(
+            &mut self.runtime.tree,
+            context,
+            &mut self.surface_cache,
+        );
+        self.phase_report = report;
+        publication
+    }
+    #[must_use]
+    pub const fn last_surface_phase_report(&self) -> &crate::SurfacePhaseReport {
+        &self.phase_report
+    }
     #[must_use]
     pub fn into_state(self) -> App::State {
         self.runtime.into_state()
     }
-}
 
-impl<App> AppRuntime<App>
-where
-    App: UiApp,
-{
-    /// Activates the element with the matching authored ID in the current tree.
-    ///
-    /// This is a semantic headless activation path for tests, tools, and host
-    /// automation. Renderer hit testing should eventually resolve to internal
-    /// runtime node identity and call [`Self::activate_node`].
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    pub const fn __seed_reconciliation_generation_for_test(&mut self, generation: u64) {
+        self.runtime.seed_generation_for_test(generation);
+    }
+
     pub fn activate(&mut self, id: impl AsRef<str>) -> ActivationResult {
         let Ok(id) = ElementId::new(id.as_ref()) else {
             return ActivationResult::InvalidId;
         };
         let node_id = {
             let index = self.index();
-            if index.diagnostics().iter().any(|diagnostic| {
-                diagnostic.kind() == crate::DuplicateIdentityKind::ElementId
-                    && diagnostic.value() == id.as_str()
+            if index.diagnostics().iter().any(|d| {
+                d.kind() == crate::DuplicateIdentityKind::ElementId && d.value() == id.as_str()
             }) {
                 return ActivationResult::AmbiguousId;
             }
-            index.node_by_authored_id(&id).map(RuntimeNodeRef::id)
+            index.node_by_authored_id(&id).map(|n| n.id().clone())
         };
-
-        node_id.map_or(ActivationResult::NotFound, |node_id| {
-            self.activate_node(node_id)
-        })
+        node_id.map_or(ActivationResult::NotFound, |id| self.activate_node(&id))
     }
 
-    /// Activates the element with the matching generated runtime node ID.
-    ///
-    /// This is the renderer-facing activation seam: future hit testing can
-    /// resolve pointer/focus targets to [`RuntimeNodeId`] and call this method
-    /// without requiring authored element IDs.
-    pub fn activate_node(&mut self, id: RuntimeNodeId) -> ActivationResult {
-        let lookup = {
-            let index = self.index();
-            index
+    pub fn activate_node(&mut self, id: &MountedNodeId) -> ActivationResult {
+        match self.runtime.tree.target_status(id) {
+            TargetStatus::Foreign => return ActivationResult::ForeignRuntime,
+            TargetStatus::Stale => return ActivationResult::StaleTarget,
+            TargetStatus::Live => {}
+        }
+        let (activation, target) = {
+            let Ok(activation) = self.runtime.tree.activation_probe(id) else {
+                return ActivationResult::RuntimeError(RuntimeError::WidgetStatePayloadMismatch);
+            };
+            let authored = self
+                .runtime
+                .tree
                 .node(id)
-                .map_or(ActivationLookup::NotFound, |node| activation_lookup(node))
+                .and_then(|n| n.authored_id.clone());
+            (activation, TraceTarget::new(id.clone(), authored))
         };
-
-        match lookup {
-            ActivationLookup::Ready { target } => {
-                let action = self
-                    .runtime
-                    .root_mut()
-                    .extract_action_at_preorder_for_runtime(id.as_usize());
-                if let Some(action) = action {
+        if !activation.is_actionable() {
+            return ActivationResult::NotActivatable;
+        }
+        if !activation.enabled() {
+            return ActivationResult::Disabled;
+        }
+        if let Err(error) = self.runtime.preflight_reconciliation_generation() {
+            return ActivationResult::RuntimeError(error);
+        }
+        let Ok((action, invalidation)) = self.runtime.tree.activate(id) else {
+            return ActivationResult::RuntimeError(RuntimeError::WidgetStatePayloadMismatch);
+        };
+        if let Some(action) = action {
+            return match self.runtime.dispatch_with_target(
+                action,
+                App::update,
+                App::root,
+                Some(target),
+            ) {
+                Ok(_) => ActivationResult::Dispatched,
+                Err(error) => ActivationResult::RuntimeError(error),
+            };
+        }
+        if invalidation.is_empty() {
+            ActivationResult::NoAction
+        } else {
+            if invalidation.contains(runenui_core::WidgetInvalidation::INTERACTION) {
+                let focused = self.runtime.focus().focused_node().cloned();
+                if focused.as_ref().is_some_and(|focused| {
                     self.runtime
-                        .dispatch_with_target(action, App::update, App::root, Some(target));
-                    ActivationResult::Dispatched
-                } else {
-                    ActivationResult::NoAction
+                        .tree
+                        .activation(focused)
+                        .map_or(true, |activation| {
+                            !activation.enabled() || !activation.is_actionable()
+                        })
+                }) {
+                    self.runtime.clear_focus();
                 }
+                self.runtime.tree.finish_focus_validation();
+                self.phase_report =
+                    crate::SurfacePhaseReport::one(crate::SurfacePhase::FocusValidation);
             }
-            ActivationLookup::NotFound => ActivationResult::NotFound,
-            ActivationLookup::NotActivatable => ActivationResult::NotActivatable,
-            ActivationLookup::Disabled => ActivationResult::Disabled,
+            ActivationResult::Activated
         }
     }
 
-    /// Applies keyboard activation policy to one keyboard event.
-    ///
-    /// Pressed Enter or Space activates the currently focused runtime node.
-    /// Other keyboard events are ignored.
+    pub fn handle_keyboard_focus(&mut self, event: &KeyboardEvent) -> KeyboardFocusResult {
+        if event.phase() != KeyPhase::Pressed || !matches!(event.key(), Key::Tab) {
+            return KeyboardFocusResult::Ignored;
+        }
+        let id = if event.modifiers().shift() {
+            self.focus_previous()
+        } else {
+            self.focus_next()
+        };
+        id.map_or(
+            KeyboardFocusResult::NoFocusableNode,
+            KeyboardFocusResult::Moved,
+        )
+    }
+    pub fn handle_pointer_focus(&mut self, event: &PointerEvent) -> PointerFocusResult {
+        if event.phase() != PointerPhase::Pressed || event.button() != Some(PointerButton::Primary)
+        {
+            return PointerFocusResult::Ignored;
+        }
+        let Some(id) = event.target().cloned() else {
+            return PointerFocusResult::NoTarget;
+        };
+        match self.set_focus(id.clone()) {
+            FocusTargetResult::Focused => PointerFocusResult::Moved(id),
+            FocusTargetResult::NotFocusable => PointerFocusResult::NotFocusable,
+            FocusTargetResult::StaleTarget | FocusTargetResult::ForeignRuntime => {
+                PointerFocusResult::NotFound
+            }
+        }
+    }
     pub fn handle_keyboard_activation(
         &mut self,
         event: &KeyboardEvent,
@@ -330,42 +301,26 @@ where
         if event.phase() != KeyPhase::Pressed || !matches!(event.key(), Key::Enter | Key::Space) {
             return KeyboardActivationResult::Ignored;
         }
-
-        let Some(node_id) = self.focus().focused_node() else {
+        let Some(id) = self.focus().focused_node().cloned() else {
             return KeyboardActivationResult::NoFocusedNode;
         };
-
-        KeyboardActivationResult::Handled(self.activate_node(node_id))
+        KeyboardActivationResult::Handled(self.activate_node(&id))
     }
-
-    /// Applies pointer activation policy to one already-targeted pointer event.
-    ///
-    /// Pressed primary pointer events activate the resolved target. Other pointer
-    /// events are ignored.
     pub fn handle_pointer_activation(&mut self, event: &PointerEvent) -> PointerActivationResult {
         if event.phase() != PointerPhase::Pressed || event.button() != Some(PointerButton::Primary)
         {
             return PointerActivationResult::Ignored;
         }
-
-        let Some(node_id) = event.target() else {
+        let Some(id) = event.target().cloned() else {
             return PointerActivationResult::NoTarget;
         };
-
-        PointerActivationResult::Handled(self.activate_node(node_id))
+        PointerActivationResult::Handled(self.activate_node(&id))
     }
-
-    /// Applies the default runtime policy for one already-targeted input event.
-    ///
-    /// Pointer events run focus policy first and activation policy second.
-    /// Keyboard events route Tab to focus policy and Enter/Space to activation
-    /// policy. Other input events are ignored.
     pub fn handle_input_event(&mut self, event: &InputEvent) -> InputEventResult {
         match event {
             InputEvent::Pointer(event) => {
                 let focus = self.handle_pointer_focus(event);
                 let activation = self.handle_pointer_activation(event);
-
                 if focus == PointerFocusResult::Ignored
                     && activation == PointerActivationResult::Ignored
                 {
@@ -379,7 +334,6 @@ where
                 if focus != KeyboardFocusResult::Ignored {
                     return InputEventResult::KeyboardFocus(focus);
                 }
-
                 let activation = self.handle_keyboard_activation(event);
                 if activation == KeyboardActivationResult::Ignored {
                     InputEventResult::Ignored
@@ -391,23 +345,257 @@ where
     }
 }
 
-enum ActivationLookup {
-    Ready { target: TraceTarget },
-    NotFound,
-    NotActivatable,
-    Disabled,
-}
+#[cfg(test)]
+mod tests {
+    use std::{cell::Cell, rc::Rc};
 
-fn activation_lookup<Action>(node: &RuntimeNodeRef<'_, Action>) -> ActivationLookup {
-    let activation = node.element().activation();
-    if !activation.is_actionable() {
-        return ActivationLookup::NotActivatable;
-    }
-    if !activation.enabled() {
-        return ActivationLookup::Disabled;
+    use runenui_core::{
+        Element, StyleTokens, Widget, WidgetActivation, WidgetActivationContext,
+        WidgetInvalidation, WidgetPaintProof,
+    };
+
+    use crate::{
+        ActivationResult, AppRuntime, LayoutConstraints, RuntimeError, SurfaceBuildContext, UiApp,
+    };
+
+    #[derive(Clone, Copy, Debug)]
+    enum Action {
+        Fire,
     }
 
-    ActivationLookup::Ready {
-        target: node.trace_target(),
+    #[derive(Debug)]
+    struct State {
+        updates: usize,
+        mutable_calls: Rc<Cell<usize>>,
+    }
+
+    #[derive(Debug)]
+    struct OneShot {
+        action: Option<Action>,
+        mutable_calls: Rc<Cell<usize>>,
+    }
+
+    impl Widget<Action> for OneShot {
+        type State = usize;
+
+        fn create_state(&self) -> Self::State {
+            0
+        }
+
+        fn activation(&self, _: &Self::State) -> WidgetActivation {
+            WidgetActivation::actionable(true)
+        }
+
+        fn activate(
+            &mut self,
+            state: &mut Self::State,
+            context: &mut WidgetActivationContext,
+        ) -> Option<Action> {
+            self.mutable_calls.set(self.mutable_calls.get() + 1);
+            *state += 1;
+            context.invalidate(WidgetInvalidation::PAINT);
+            self.action.take()
+        }
+
+        fn paint(&self, state: &Self::State) -> WidgetPaintProof {
+            WidgetPaintProof::new("one-shot", state.to_string())
+        }
+    }
+
+    struct IntegrityApp;
+
+    impl UiApp for IntegrityApp {
+        type State = State;
+        type Action = Action;
+
+        fn root(state: &Self::State) -> Element<Self::Action> {
+            Element::new(OneShot {
+                action: Some(Action::Fire),
+                mutable_calls: Rc::clone(&state.mutable_calls),
+            })
+            .key("root")
+        }
+
+        fn update(state: &mut Self::State, action: Self::Action) {
+            match action {
+                Action::Fire => {}
+            }
+            state.updates += 1;
+        }
+    }
+
+    #[derive(Debug)]
+    struct SlotWidget;
+
+    impl Widget<()> for SlotWidget {
+        type State = usize;
+
+        fn create_state(&self) -> Self::State {
+            0
+        }
+
+        fn activation(&self, _: &Self::State) -> WidgetActivation {
+            WidgetActivation::actionable(true)
+        }
+
+        fn activate(
+            &mut self,
+            state: &mut Self::State,
+            context: &mut WidgetActivationContext,
+        ) -> Option<()> {
+            *state += 1;
+            context.invalidate(WidgetInvalidation::PAINT);
+            None
+        }
+    }
+
+    struct SlotApp;
+
+    impl UiApp for SlotApp {
+        type State = usize;
+        type Action = ();
+
+        fn root(_: &Self::State) -> Element<Self::Action> {
+            Element::new(SlotWidget).id("slot").key("slot")
+        }
+
+        fn update(state: &mut Self::State, (): Self::Action) {
+            *state += 1;
+        }
+    }
+
+    fn assert_non_default_slots(runtime: &mut AppRuntime<SlotApp>, id: &crate::MountedNodeId) {
+        let index = runtime.index();
+        let interaction = index
+            .node(id)
+            .unwrap_or_else(|| unreachable!("compatible lifetime remains live"))
+            .interaction();
+        assert!(interaction.hovered());
+        assert!(interaction.pressed());
+        assert!(interaction.capture_placeholder());
+        assert_eq!(interaction.scroll_offset(), (23.0, 37.0));
+    }
+
+    #[test]
+    fn ordinary_dispatch_and_state_only_activation_retain_every_interaction_slot() {
+        let mut runtime = AppRuntime::<SlotApp>::mount(0);
+        let id = runtime.index().nodes()[0].id().clone();
+        runtime
+            .runtime
+            .tree
+            .set_interaction_for_test(&id, true, true, true, (23.0, 37.0));
+
+        runtime.dispatch(()).unwrap_or_else(|_| unreachable!());
+        assert_eq!(runtime.index().nodes()[0].id(), &id);
+        assert_non_default_slots(&mut runtime, &id);
+
+        assert_eq!(runtime.activate_node(&id), ActivationResult::Activated);
+        assert_eq!(runtime.index().nodes()[0].id(), &id);
+        assert_non_default_slots(&mut runtime, &id);
+    }
+
+    #[test]
+    fn exhausted_generation_rejects_activation_before_every_mutation() {
+        let mutable_calls = Rc::new(Cell::new(0));
+        let mut runtime = AppRuntime::<IntegrityApp>::mount(State {
+            updates: 0,
+            mutable_calls: Rc::clone(&mutable_calls),
+        });
+        let id = runtime.index().nodes()[0].id().clone();
+        let semantic = runtime.index().nodes()[0].semantic_id().clone();
+        runtime
+            .runtime
+            .tree
+            .set_interaction_for_test(&id, true, true, true, (17.0, 29.0));
+        assert_eq!(
+            runtime.set_focus(id.clone()),
+            crate::FocusTargetResult::Focused
+        );
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let before_publication = runtime.publish_surface(&context);
+        let before_report = runtime.reconciliation_report().clone();
+        let before_trace = runtime.trace().clone();
+        let before_phase_report = runtime.last_surface_phase_report().clone();
+        runtime.runtime.seed_generation_for_test(u64::MAX);
+
+        assert_eq!(
+            runtime.activate_node(&id),
+            ActivationResult::RuntimeError(RuntimeError::ReconciliationGenerationExhausted)
+        );
+        assert_eq!(runtime.state().updates, 0);
+        assert_eq!(mutable_calls.get(), 0);
+        assert_eq!(runtime.index().nodes()[0].id(), &id);
+        assert_eq!(runtime.index().nodes()[0].semantic_id(), &semantic);
+        assert_eq!(runtime.focus().focused_node(), Some(&id));
+        let interaction = runtime.index().nodes()[0].interaction();
+        assert!(interaction.hovered());
+        assert!(interaction.pressed());
+        assert!(interaction.capture_placeholder());
+        assert_eq!(interaction.scroll_offset(), (17.0, 29.0));
+        assert_eq!(runtime.reconciliation_report(), &before_report);
+        assert_eq!(runtime.trace(), &before_trace);
+        assert_eq!(runtime.last_surface_phase_report(), &before_phase_report);
+        assert_eq!(runtime.publish_surface(&context), before_publication);
+
+        runtime.runtime.seed_generation_for_test(1);
+        assert_eq!(runtime.activate_node(&id), ActivationResult::Dispatched);
+        assert_eq!(runtime.state().updates, 1);
+        assert_eq!(mutable_calls.get(), 1);
+    }
+
+    #[test]
+    fn corrupted_capabilities_remain_integrity_errors_and_reconcile_to_fresh_state() {
+        let mutable_calls = Rc::new(Cell::new(0));
+        let mut runtime = AppRuntime::<IntegrityApp>::mount(State {
+            updates: 0,
+            mutable_calls: Rc::clone(&mutable_calls),
+        });
+        let old = runtime.index().nodes()[0].id().clone();
+        runtime.runtime.tree.corrupt_state_for_test(&old);
+
+        assert_eq!(
+            runtime.activate_node(&old),
+            ActivationResult::RuntimeError(RuntimeError::WidgetStatePayloadMismatch)
+        );
+        assert_eq!(mutable_calls.get(), 0);
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let publication = runtime.publish_surface(&context);
+        assert_eq!(
+            publication
+                .frame()
+                .root()
+                .unwrap_or_else(|| unreachable!())
+                .diagnostics()[0]
+                .code(),
+            "runenui.runtime.state-payload-mismatch"
+        );
+        assert_eq!(mutable_calls.get(), 0);
+
+        runtime
+            .dispatch(Action::Fire)
+            .unwrap_or_else(|_| unreachable!());
+        let fresh = runtime.index().nodes()[0].id().clone();
+        assert_ne!(fresh, old);
+        assert_eq!(runtime.state().updates, 1);
+        assert_eq!(runtime.reconciliation_report().mounted_count(), 1);
+        assert_eq!(runtime.reconciliation_report().unmounted_count(), 1);
+        assert_eq!(
+            runtime.reconciliation_report().diagnostics(),
+            &[crate::ReconciliationDiagnostic::StatePayloadMismatch {
+                path: "root".to_owned(),
+            }]
+        );
+        let publication = runtime.publish_surface(&context);
+        assert_eq!(
+            publication
+                .frame()
+                .root()
+                .unwrap_or_else(|| unreachable!())
+                .paint()
+                .description(),
+            "0"
+        );
     }
 }

@@ -7,8 +7,24 @@
 //! Runtime-generated identities and products have no public forgery constructors:
 //!
 //! ```compile_fail
-//! use runenui_runtime::RuntimeNodeId;
-//! let _ = RuntimeNodeId::from_index(7);
+//! use runenui_runtime::MountedNodeId;
+//! let _ = MountedNodeId { slot: 7, generation: 1 };
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_runtime::SemanticNodeId;
+//! let _ = SemanticNodeId { slot: 7, generation: 1 };
+//! ```
+//!
+//! Mounted storage and transient publication are not public escape hatches:
+//!
+//! ```compile_fail
+//! use runenui_runtime::mounted::MountedArena;
+//! let _ = MountedArena::<()>::new();
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_runtime::publish_surface;
 //! ```
 //!
 //! ```compile_fail
@@ -24,7 +40,7 @@ mod debug;
 mod focus;
 mod input;
 mod measurement;
-mod node;
+mod mounted;
 mod policy;
 pub mod prelude;
 mod runtime;
@@ -35,7 +51,7 @@ mod trace;
 pub use app::{ActivationResult, AppRuntime, UiApp};
 pub use constraints::{AxisConstraints, AxisLimit, LayoutConstraints};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
-pub use focus::FocusState;
+pub use focus::{FocusState, FocusTargetResult};
 pub use input::{
     InputEvent, InputIntent, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint,
     LogicalPointError, PointerButton, PointerEvent, PointerPhase, resolve_pointer_event_target,
@@ -45,16 +61,20 @@ pub use measurement::{
     BaselineError, DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement,
     TextMeasurementKind, TextMeasurementRequest,
 };
-pub use node::{
-    DuplicateIdentityKind, IdentityDiagnostic, RuntimeNodeId, RuntimeNodeRef, RuntimeTreeIndex,
+pub use mounted::{
+    DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef, MountedNodeId, MountedNodeRef,
+    MountedTreeIndex, SemanticNodeId,
 };
 pub use policy::{
     InputEventResult, KeyboardActivationResult, KeyboardFocusResult, PointerActivationResult,
     PointerFocusResult,
 };
+pub use runtime::{
+    ReconciliationDiagnostic, ReconciliationGeneration, ReconciliationReport, RuntimeError,
+};
 pub use style_debug::{SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report};
 pub use surface::{
     LayoutOverflow, LogicalRect, LogicalSize, SurfaceBuildContext, SurfaceFrame, SurfaceLayoutNode,
-    SurfaceLayoutReport, SurfaceNode, SurfacePublication, publish_surface,
+    SurfaceLayoutReport, SurfaceNode, SurfacePhase, SurfacePhaseReport, SurfacePublication,
 };
 pub use trace::{RuntimeEvent, Trace, TraceRecord, TraceTarget};

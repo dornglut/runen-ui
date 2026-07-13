@@ -37,34 +37,55 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 
 ## Current implementation
 
-The current implementation is a deterministic headless proof with this narrower shape:
+The current implementation is a deterministic mounted headless proof with this
+narrower shape:
 
 ```text
 Application-owned State + Action
   -> UiApp::root(State) -> typed View -> erased Element<Action>
-  -> transient preorder RuntimeTreeIndex
-  -> synchronous input/focus/activation policies
+  -> sibling-local mounted reconciliation
+  -> persistent generational MountedTree
+  -> state-aware cached widget capabilities
+  -> synchronous mounted input/focus/activation policies
   -> UiApp::update(State, Action)
-  -> full root rebuild and focus clear
-  -> per-publication style resolution
-  -> provider-backed row/column measurement and arrangement
+  -> phase-aware topology/style/layout/paint/semantic/diagnostic facts
+  -> provider-backed row/column measurement and arrangement when dirty
   -> SurfaceFrame + SurfaceStyleReport + SurfaceLayoutReport
 ```
 
-Current `RuntimeNodeId` values are preorder indexes for one built tree.
-`ElementKey` is stored but is not used for reconciliation. M2 replaced the
-closed kind enum with public typed `Widget<Action>` implementations erased safely
-inside `Element<Action>`. Public built-in views convert to private behavior-only
-widget implementations; downstream leaf widgets use `Element::new`, while
-downstream and built-in child-layout widgets use the canonical
-`Container<Action>` builder. All share activation, intrinsic measurement,
-child-layout, paint-proof, semantic-proof, diagnostic, lifecycle-contract, and
-inspection paths. M2 state is available only to the isolated lifecycle proof;
-M3 must introduce the state-aware mounted behavior contract. `SurfaceFrame`
-carries open proof facts, not the accepted M5
+`MountedNodeId` and `SemanticNodeId` are separate runtime-instance-local types
+containing an opaque `Arc` token, arena slot, and non-wrapping generation.
+Unique sibling keys reorder without changing lifetime; unkeyed children match by
+unkeyed ordinal; duplicate keys preserve no ambiguous lifetime; and cross-parent
+moves remount. The mounted tree owns widget state, lifecycle, focus, interaction
+slots, invalidation, capability caches, and publication authority. Transient
+elements are consumed and not retained as a parallel tree.
+
+Public built-in and downstream widgets share the same state-aware checked
+erasure bridge. Compatible update is transactional; mismatch replaces in the
+current generation. Mount/update run in preorder, removal/replacement/shutdown
+unmount in postorder while arena occupancy remains live through each hook, and
+state drops after removal. Focus survives compatible
+updates and clears only when its mounted lifetime or actionable/focusable facts
+cease to be valid. `SurfaceFrame` still carries open proof facts, not the M5
 semantic tree or M6 renderer-neutral paint protocol.
 
-The current layout and styling implementation is credible and retained: typed style values and token resolution, concrete computed style, provenance, explicit constraints, a borrowed measurement provider, separate one-query intrinsic and child-layout snapshots, component-wise intrinsic/child minimum combination, computed padding, linear arrangement, and aligned overflow/capability diagnostics. Index, frame, style, and layout products share preorder IDs and parents for every valid node.
+The current layout and styling implementation is credible and retained: typed
+style values and token resolution, concrete computed style, provenance, explicit
+constraints, a borrowed measurement provider, component-wise intrinsic/child
+minimum combination, computed padding, linear arrangement, and aligned
+overflow/capability diagnostics. Mounted capabilities are cached with explicit
+integrity state. Operational phase planning and a retained proof publication
+cache stores a topology-only mounted preorder snapshot, root constraints, an
+exact style-token content snapshot, and the measurement provider's explicit
+identity/revision compatibility promise. Tree changes rebuild all
+topology-dependent facts. Compatible style and layout phases use current mounted
+`StyleIntent` and `LayoutStyle`, so literal, authored token-reference, padding,
+and gap changes cannot be hidden by the topology cache. Clean or isolated phases
+skip unrelated capability work; private phase-entry probes independently verify
+the public execution report. Mounted index, frame, style, and layout products
+share logical preorder mounted IDs, semantic IDs, parents, and authored metadata
+for every live node.
 
 M1 repaired the proof surface around this implementation: logical distances and
 sizes are validated, typed builders prevent incompatible configuration, child
@@ -72,7 +93,9 @@ composition has no arity ceiling, Unicode identifier identity is independent of
 static/owned storage, identity/token duplicates use true preorder, finite derived
 geometry saturates, and generated products are read-only. M2 then removed the
 closed dispatch path, added recursive typed component action mapping, explicit
-process-local widget/state type identity, and a checked lifecycle/state seam.
+  process-local widget/state type identity, and a checked lifecycle/state seam.
+M3 replaces the seam with the mounted authority described by
+[ADR 0004](adr/0004-mounted-runtime-reconciliation.md).
 See the [public API contract](architecture/public-api.md) and
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md).
 
@@ -83,13 +106,13 @@ See the [public API contract](architecture/public-api.md) and
 - Native resources and platform state belong to the host.
 - Renderer resources belong to the renderer/resource layer.
 - Components compose views and map local actions; widgets declare runtime
-  participation/state contracts; mounted widgets are persistent M3 instances.
+  participation/state contracts; mounted widgets are persistent runtime instances.
 - Mounted runtime mutation occurs on one logical UI thread.
 
-External crates can define widgets and participate in the current proof-level
-activation, layout, paint, semantic, diagnostic, lifecycle-conformance, and
-inspection paths without modifying RunenUI. M3–M8 own persistent reconciliation
-and the respective production subsystem contracts.
+External crates can define widgets and participate in mounted state, lifecycle,
+activation, layout, paint, semantic, diagnostic, invalidation, and inspection
+paths without modifying RunenUI. M4–M8 own the remaining production subsystem
+contracts.
 
 ## Application and effect model
 
@@ -146,6 +169,12 @@ Accessibility is mandatory for production controls. Semantics are renderer-indep
 ## Hosts, surfaces, and renderers
 
 One application runtime may own multiple logical surfaces that share application state and resources while retaining independent scale, layout roots, focus scopes, publication generations, and host lifecycle.
+
+That is a later target. M3 is multi-surface-ready only because mounted IDs do not
+encode platform windows and semantic identity is renderer-independent. The
+current runtime has one mounted root, one active focus domain, and one current
+publication domain; it has no independent per-surface focus, multiple roots,
+surface lifecycle, cross-surface movement, or per-surface generations.
 
 The required profiles are headless/test, standalone desktop, and embedded host. The renderer-neutral scene protocol is stabilized first, then proven by deterministic consumers, one conventional desktop backend, and only afterward an embedded/SDF consumer.
 

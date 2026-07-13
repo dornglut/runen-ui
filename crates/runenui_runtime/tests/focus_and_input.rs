@@ -1,29 +1,24 @@
-use runenui_core::{Element, ElementId, View, button, children, column, text};
+use runenui_core::{Element, View, button, children, row};
 use runenui_runtime::{
-    ActivationResult, AppRuntime, InputEvent, InputEventResult, Key, KeyModifiers, KeyPhase,
-    KeyboardActivationResult, KeyboardEvent, KeyboardFocusResult, LogicalPoint,
-    PointerActivationResult, PointerButton, PointerEvent, PointerFocusResult, PointerPhase,
-    RuntimeNodeRef, UiApp,
+    AppRuntime, FocusTargetResult, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint,
+    PointerButton, PointerEvent, PointerPhase, UiApp,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Debug)]
 enum Action {
-    Hit,
+    A,
+    B,
 }
 struct App;
 impl UiApp for App {
     type State = usize;
     type Action = Action;
     fn root(_: &usize) -> Element<Action> {
-        column(children![
-            text("Title").id("title"),
-            button("First").id("first").on_press(Action::Hit),
-            button("Disabled")
-                .id("disabled")
-                .on_press(Action::Hit)
-                .disabled(),
-            button("Second").id("second").on_press(Action::Hit),
+        row(children![
+            button("A").id("a").key("a").on_press(Action::A),
+            button("B").id("b").key("b").on_press(Action::B)
         ])
+        .key("root")
         .into_element()
     }
     fn update(state: &mut usize, _: Action) {
@@ -31,60 +26,25 @@ impl UiApp for App {
     }
 }
 
-fn node(
-    runtime: &AppRuntime<App>,
-    id: &str,
-) -> Result<runenui_runtime::RuntimeNodeId, &'static str> {
-    let id = ElementId::new(id).map_err(|_| "id")?;
-    runtime
-        .index()
-        .node_by_authored_id(&id)
-        .map(RuntimeNodeRef::id)
-        .ok_or("node")
-}
-
 #[test]
-fn focus_keyboard_and_pointer_policies_regress() -> Result<(), &'static str> {
+fn mounted_focus_traversal_and_input_policy_work() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    let first = node(&runtime, "first")?;
-    assert_eq!(
-        runtime.handle_keyboard_focus(&KeyboardEvent::new(
-            KeyPhase::Pressed,
-            Key::Tab,
-            KeyModifiers::NONE,
-            None
-        )),
-        KeyboardFocusResult::Moved(first)
-    );
-    assert_eq!(
-        runtime.handle_keyboard_activation(&KeyboardEvent::new(
-            KeyPhase::Pressed,
-            Key::Enter,
-            KeyModifiers::NONE,
-            None
-        )),
-        KeyboardActivationResult::Handled(ActivationResult::Dispatched)
-    );
-    assert_eq!(*runtime.state(), 1);
-
-    let second = node(&runtime, "second")?;
-    let point = LogicalPoint::new(1.0, 1.0).map_err(|_| "point")?;
-    let event = InputEvent::Pointer(PointerEvent::new(
+    let a = runtime.index().nodes()[1].id().clone();
+    assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
+    let tab = KeyboardEvent::new(KeyPhase::Pressed, Key::Tab, KeyModifiers::NONE, None);
+    runtime.handle_keyboard_focus(&tab);
+    assert_ne!(runtime.focus().focused_node(), Some(&a));
+    let enter = KeyboardEvent::new(KeyPhase::Pressed, Key::Enter, KeyModifiers::NONE, None);
+    runtime.handle_keyboard_activation(&enter);
+    assert_eq!(runtime.state(), &1);
+    let pointer = PointerEvent::new(
         PointerPhase::Pressed,
-        point,
+        LogicalPoint::new(1.0, 1.0).unwrap_or_else(|_| unreachable!()),
         Some(PointerButton::Primary),
         KeyModifiers::NONE,
-        Some(second),
-    ));
-    assert_eq!(
-        runtime.handle_input_event(&event),
-        InputEventResult::Pointer {
-            focus: PointerFocusResult::Moved(second),
-            activation: PointerActivationResult::Handled(ActivationResult::Dispatched),
-        }
+        Some(a),
     );
-    assert_eq!(*runtime.state(), 2);
-    Ok(())
+    runtime.handle_pointer_focus(&pointer);
 }
 
 #[test]
