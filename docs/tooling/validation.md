@@ -22,9 +22,9 @@ The baseline runs, in order:
 
 ```powershell
 cargo +stable fmt --all --check
-cargo +stable test --workspace --locked
-cargo +stable clippy --workspace --all-targets --locked -- -D warnings
-cargo +1.93.0 test --workspace --locked
+cargo +stable test --workspace --all-features --locked
+cargo +stable clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo +1.93.0 test --workspace --all-features --locked
 # repository-relative Markdown links from the resolved workspace root
 # MIT ownership, workspace license expression, and publish=false metadata
 ```

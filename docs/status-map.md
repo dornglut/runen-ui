@@ -24,14 +24,14 @@ No framework subsystem is currently `stable`.
 | Area | Current maturity | What exists | Decisive limitation | Target milestone |
 |---|---|---|---|---|
 | Authoring and composition | `usable` | Separate built-in views/private widgets; downstream leaves; canonical child-layout `Container`; recursive mapping; arity-free composition | Descriptions are transient reconciliation inputs, not mounted identity/state | M2–M3 complete |
-| Application model | `usable` | Application-owned state/actions; `UiApp`; explicit synchronous `update`; deterministic dispatch | No action queue, initial/update effects, state-derived subscriptions, tasks, keyed cancellation, or reentrancy contract | M4 |
+| Application model | `partial` | Application-owned state/actions; transitional runtime-owned `UiApp`; explicit `submit_action`; non-wrapping work sequences; one FIFO; bounded explicit pump; one update/reconcile transaction per processed action | No initial/update effects, state-derived subscriptions, tasks, keyed cancellation, host protocol, or complete application-work contract | M4 active |
 | Mounted runtime identity and indexing | `usable` | Runtime-local generational `MountedNodeId`, distinct `SemanticNodeId`, logical-preorder `MountedTreeIndex`, stale/foreign rejection, authored-ID lookup diagnostics | One mounted root and runtime-local IDs remain the M3 boundary | M3 complete |
 | Keyed reconciliation | `usable` | Transactional sibling-local matching, unkeyed ordinal policy, structured duplicate-key no-reuse diagnostics, cross-parent remount, exact reports | Cross-parent movement remounts; duplicate keys preserve no ambiguous lifetime | M3 complete |
-| Persistent widget state and lifecycle | `usable` | State-aware capabilities, preorder mount/update, postorder removal/replacement/shutdown, state drop after unmount, interaction slots | No M4 task/subscription ownership | M3 complete; M4 queued |
-| Events and interaction | `proof` | Typed pointer/keyboard vocabulary; mounted hit targets; traversal focus; explicit mutable non-`Clone` activation; immediate transient-root rebuild and mounted reconciliation after successful dispatch | Mounted targets are stale/foreign safe, but there are no routing phases, surface-input generation, pointer identity/capture, release-based activation, focus scopes, text/IME separation, or full event-level target diagnostics | M4 |
+| Persistent widget state and lifecycle | `usable` | State-aware capabilities, preorder mount/update, postorder removal/replacement/shutdown, state drop after unmount, interaction slots, explicit idempotent runtime shutdown | No M4 task/subscription ownership | M3 complete; M4 active |
+| Events and interaction | `proof` | Typed pointer/keyboard vocabulary; mounted hit targets; traversal focus; repeatable non-`Clone` `on_activate`; proof pointer/keyboard activation queues without updating; queue-full/closed/terminal preflight | Proof helpers remain press-based; there are no routing phases, surface-input generation, pointer identity/capture, release-based activation, focus scopes, text/IME separation, or full event-level target diagnostics | M4 active |
 | Normalized UI navigation commands | `absent` | None; keyboard Tab/Enter/Space policies are device-specific proofs | No abstract next/previous/directional/activate/cancel/menu/context commands or modality tracking | M4 |
 | Directional/spatial focus navigation | `absent` | None | Current focus movement is linear traversal only | M4 |
-| Effects and scheduling | `absent` | Synchronous dispatch only | No effects, queue, initial work, task executor, timers, subscriptions, keyed cancellation, wake handshake, limits, or shutdown model | M4 |
+| Effects and scheduling | `proof` | One bounded application-action FIFO, explicit processed-envelope budget, one readiness-checkpoint authority, explicit saturation/terminal/shutdown outcomes | Only application actions and the processed-envelope budget exist; no effects, initial work, executor, completions, local tasks, timers, subscriptions, keyed cancellation, host requests, remaining budgets, or wake/redraw handshake | M4 active |
 | Styling | `partial` | Colors, padding, radius, typed tokens, computed style, provenance, missing-token diagnostics | No themes, recipes, variants, interaction states, typography, borders, fallback, or preferences | M7–M8 |
 | Layout and measurement | `proof` | Separate one-query intrinsic/child-layout snapshots; component-wise minimum combination; padding/gaps; unsupported/unknown fallbacks; aligned index/frame/style/layout products | Linear M2 proof only; no production sizing/alignment/flex/grid/scroll/incremental layout | M7–M8 |
 | Focusability facts | `proof` | Any widget contributes enabled/actionable facts through the open protocol; built-in and external controls pass traversal tests | Still proof-level and not the M5 semantic/focus model | M5 |
@@ -43,13 +43,13 @@ No framework subsystem is currently `stable`.
 | Production renderer backend | `absent` | None | No conventional or SDF backend; the neutral scene must be accepted first | M10, M12 |
 | Deterministic text measurement | `proof` | Provider seam and Unicode-scalar-count measurements support headless tests | Fixed metrics are not font, shaping, grapheme, bidi, wrapping, or baseline layout | M8 |
 | Production text subsystem | `absent` | None | No font discovery, shaping, fallback, bidi, wrapping, editing, selection, clipboard, or IME | M8 |
-| Button behavior | `proof` | Label, enabled state, typed action, press activation, and focused Enter/Space behavior are tested | No mounted pressed state, pointer capture, release-inside activation, `on_activate`, semantics, recipes, or accessibility contract | M4, M9 |
+| Button behavior | `proof` | Label, enabled state, repeatable typed `on_activate` factory, multiple queued activations, and focused Enter/Space proof behavior are tested | No mounted pressed state, pointer capture, release-inside activation, routed semantic-command convergence, production semantics, recipes, or accessibility contract | M4, M9 |
 | Standard control library | `absent` | None beyond text/button proofs | No complete lifecycle/event/semantic/style/layout/keyboard/accessibility contracts | M9 |
 | Host neutrality | `usable` | Active core/runtime have no native window, GPU, ECS, platform-controller, or legacy dependencies | Neutrality alone is not a host integration contract | M10 |
 | Host/platform integration | `absent` | None | No host contract, native event loop/window, DPI, clipboard, cursor, IME, drag/drop, accessibility bridge, wake acknowledgment, or multi-window support | M4, M10 |
 | Raw controller/gamepad platform input | `absent` | None | No device connection/identity, raw button/axis translation, normalization/dead zones, or embedded-host mapping | M10 |
 | Testing and diagnostics | `partial` | Substantial proof-level integration tests; genuine downstream widget conformance; deterministic open widget/style/layout inspection; strict lints | No unified M5 public harness, M4 public conformance matrix implementation, stable semantic queries, deterministic clock/tasks, replay, snapshots, fuzzing, property tests, benchmarks, or platform tests | M4–M5, M11 |
-| Trace and observability | `proof` | Coarse mount/action/update/rebuild records and debug rendering | Duplicated unbounded storage; no sequence/generation/effect/surface/saturation/wake-ack facts, sink, export, redaction, or replay | M4–M5 |
+| Trace and observability | `partial` | One bounded canonical `TraceRecord` sequence, non-wrapping trace IDs, work/causal/reconciliation/target facts, oldest-first eviction, and exclusive dropped-before watermark | Current records cover queue, activation, action transactions, terminal, cancellation, and shutdown only; no effect/owner/surface/wake-redraw facts, sink, JSONL export, redaction, or replay | M4–M5 |
 | Source formats and devtools | `deferred` | Context-export tooling only; no UI source system | No parser, source mapping, inspector, hot reload, live preview, or visual authoring | M12 |
 | Advanced editor/game systems | `deferred` | Product direction only | No virtualization, advanced data controls, animation, overlays, docking, workspaces, or advanced multi-surface systems | M12 |
 | Legacy archive | `archived` | Git history and annotated tag `legacy-runenwerk-ui-archive-2026-07-11` preserve the audited tree | Removed from active content; salvage remains opt-in and must follow current architecture | M0B complete |
@@ -57,9 +57,13 @@ No framework subsystem is currently `stable`.
 ## Current milestone
 
 M0–M3 are complete. ADR 0005 and ADR 0006 were accepted by the repository owner
-on 2026-07-14 as the M4 implementation charter. M4 remains queued until its first
-implementation slice begins. The Gate 0 package closes the implementation-
-defining questions, including dedicated mounted subscription declarations,
-exact route-only command defaults, terminal pointer cleanup, executor refusal,
-and bounded trace-sink behavior. It supplies the normative proof matrix plus the
-directional-focus corpus. No M4 implementation has started.
+on 2026-07-14 as the M4 implementation charter, and M4 is active. The first M4
+implementation slice is under review and establishes the canonical
+application-action FIFO, processed-envelope pump, queue-backed proof activation,
+repeatable `on_activate`, terminal/shutdown policy, and bounded canonical trace
+foundation. The Gate 0 package remains the authority for later work, including
+dedicated mounted subscription declarations, exact route-only command defaults,
+terminal pointer cleanup, executor refusal, and bounded trace-sink behavior.
+Effects, tasks, timers, subscriptions, host requests, routed events, remaining
+budgets, wake/redraw, complete trace v2, and the rest of the normative proof
+matrix remain unimplemented.

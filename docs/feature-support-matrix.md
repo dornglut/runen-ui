@@ -33,11 +33,11 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Application-owned state | `supported` | `UiApp::State`, Counter, mounted reconciliation | Application dispatch still rebuilds a transient description; no queue/effects | M4 |
-| Typed application actions | `supported` | `UiApp::Action`; typed widget actions; recursive component mapping; non-`Clone` activation/direct-dispatch proof | Current activation consumes the current transient action slot, then rebuilds the transient root and reconciles it into the mounted tree | M4 |
-| Explicit update | `supported` | `UiApp::update(&mut State, Action)` | Synchronous only; no effect result | M4 |
+| Application-owned state | `supported` | `UiApp::State`, Counter, queued update/reconciliation | `UiApp` remains runtime-owned until the complete application-work contract; no effects | M4 |
+| Typed application actions | `supported` | `UiApp::Action`; typed widget actions; recursive component mapping; repeatable non-`Clone` activation factories | Only application-action envelopes exist; no event/effect/completion/timer/notification families | M4 |
+| Explicit update | `supported` | One private processor is the sole `UiApp::update(&mut State, Action)` caller | Synchronous no-effect signature only | M4 |
 | Conditional root composition | `supported` | Counter/win root replacement with deterministic unmount/remount | One mounted root | M3 complete |
-| Batched/reentrant action processing | `unsupported` | None | No queue or ordering contract | M4 |
+| Batched/reentrant action processing | `proof` | Multiple submissions or activations queue before a bounded, iterative pump; every action reconciles before the next update | Application-action FIFO only; no general reentrant output/effect envelope contract | M4 |
 | Initial/update effects | `unsupported` | Accepted `initial_effects`/`IntoEffects` target contract only | No effects implementation or startup ordering proof | M4 |
 | Fine-grained signals as primary model | `deferred` | None by design | Signals may only be future adapters | Post-M3 |
 
@@ -52,7 +52,7 @@ Support labels:
 | Keyed reconciliation | `supported` | Transactional compatible update, reorder retention, unkeyed ordinal matching, cross-parent remount, structured duplicate diagnostics | Stable reorderable collections require keys | M3 complete |
 | Mount/update/unmount lifecycle | `supported` | Deterministic preorder/postorder, arena-live hooks, state drop after removal, idempotent shutdown | Callbacks must not panic | M3 complete |
 | Runtime-local widget state | `supported` | Integrity-aware checked capabilities; persistent state and private interaction slots | Broader control state waits for later milestones | M3 complete |
-| Focus retention | `supported` | Compatible/keyed updates retain focus; removal/replacement/disable and state-only loss clear it immediately | One focus domain; no scopes/directional navigation | M3 complete; M4 queued |
+| Focus retention | `supported` | Compatible/keyed updates retain focus; removal/replacement/disable and state-only loss clear it immediately | One focus domain; no scopes/directional navigation | M3 complete; M4 active |
 | Granular invalidation | `supported` | Explicit phase functions, exact context key, topology-only whole-surface cache, current mounted common-field reads, independently verified `SurfacePhaseReport` | Whole-surface structural rebuilds remain conservative; production incremental layout is later work | M3 complete; M7/M11 |
 
 ## 4. Events and interaction
@@ -62,8 +62,8 @@ Support labels:
 | Typed pointer vocabulary | `partial` | Position, phase, button, modifiers, optional target | No pointer/device ID, pressure, tilt, hover transitions, wheel, or capture | M4 |
 | Typed keyboard vocabulary | `partial` | Key, phase, modifiers, Tab traversal | Logical/physical keys, repeat, location, commands, and shortcuts incomplete | M4 |
 | Pointer hit targeting | `proof` | Frame rectangle targeting returns generation-safe `MountedNodeId` values | No explicit hit scene, stacking, clips, transforms, visibility, or pointer policy | M4, M6 |
-| Pointer activation | `proof` | Primary press dispatches the targeted actionable widget action | Incorrect production default: no capture/release-inside/cancellation | M4 |
-| Keyboard activation | `proof` | Focused actionable widget responds to Enter/Space | No shared semantic command pipeline | M4–M5 |
+| Pointer activation | `proof` | Primary press proof helper queues through the same activation authority without pumping | Incorrect production default: no capture/release-inside/cancellation | M4 |
+| Keyboard activation | `proof` | Focused Enter/Space proof helper queues through the same activation authority without pumping | No shared semantic command pipeline | M4–M5 |
 | Focus traversal | `proof` | Persistent mounted first/last/next/previous traversal | No scopes, directional navigation, modality, or semantic focus model | M4–M5 |
 | Event capture/target/bubble | `unsupported` | None | No propagation or default-action control | M4 |
 | Pointer capture | `unsupported` | None | Cannot implement correct buttons, drag, sliders, or scrolling | M4 |
@@ -84,10 +84,13 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Synchronous dispatch | `supported` | `AppRuntime::dispatch` | Immediate update, transient-root rebuild, and mounted reconciliation only; no queue or effect result | M4 |
-| Action queue and ordering | `unsupported` | None | No batching/reentrancy rules | M4 |
+| Synchronous direct dispatch | `unsupported` | `AppRuntime::dispatch` and private dispatch authorities were removed | Callers must submit and explicitly pump | M4 |
+| Application action submission | `proof` | `submit_action` returns a `WorkSequence` or the exact unaccepted action | Application actions only; no effects or other envelope families | M4 |
+| Queue saturation | `proof` | Configured waiting-envelope capacity, including zero; explicit full/closed/terminal outcomes; no work-sequence consumption or callback on rejection | No transaction-output/live-work/executor/sink limits yet | M4 |
+| Action queue and ordering | `proof` | One runtime-owned application-action FIFO; non-wrapping sequences; iterative processing; reconciliation completes between actions | Partial foundation only: unimplemented event, effect, completion, timer, notification, and committed-start families prevent full general FIFO conformance | M4 |
 | Effects | `unsupported` | Target direction only | No executable contract | M4 |
-| Readiness checkpoints and pump budgets | `unsupported` | Accepted deterministic checkpoint/budget contract only | No queue pump, completion import, local poll, or timer promotion implementation | M4 |
+| Processed-envelope pump budget | `proof` | Explicit zero/N budget; exact processed/remaining/cancelled report; quiescent/budget-exhausted/closed/terminal outcomes | Application-action envelopes only | M4 |
+| Other readiness budgets | `unsupported` | One checkpoint extension authority exists | No completion import, local-task poll, or timer promotion implementation | M4 |
 | Owner-local keyed cancellation | `unsupported` | Accepted validated `WorkKey` and commit-bound generation contract only | No work registry or same-batch cancellation behavior | M4 |
 | Async tasks | `unsupported` | None | No executor, completion mapping, or lifecycle ownership | M4 |
 | Timers and subscriptions | `unsupported` | None | No deterministic time or cancellation | M4 |
@@ -182,7 +185,7 @@ Support labels:
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Text/label | `proof` | Static text element | No production text, semantics, or control contract | M8–M9 |
-| Button | `proof` | Label, enabled/actionable state, persistent local activation state and interaction slots | No routed press/capture/release behavior, production semantics, recipes, or accessibility | M4–M9 |
+| Button | `proof` | Label, enabled/actionable state, repeatable `on_activate` action factory, persistent local activation state and interaction slots | No routed press/capture/release behavior, production semantics, recipes, or accessibility | M4–M9 |
 | Checkbox/radio/toggle | `unsupported` | None | Standard control foundation absent | M9 |
 | Slider/progress | `unsupported` | None | Events, semantics, and layout prerequisites absent | M9 |
 | Text field | `unsupported` | None | Production text/editing prerequisites absent | M8–M9 |
@@ -217,7 +220,8 @@ Support labels:
 | Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 harness and Ubuntu-only CI | M5, M11 |
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, and debug output | No stable severity/strict mode or per-surface generation | M5–M7 |
-| Runtime trace | `partial` | Coarse event records | Duplicate unbounded storage; no structured export/replay | M4–M5 |
+| Runtime trace | `partial` | One canonical structured sequence records mount, submissions, activation, action transactions, reconciliation/focus, budget exhaustion, cancellation, terminal, and shutdown | No effects/tasks/timers/subscriptions/host/wake-redraw facts, JSONL, sink, redaction, or replay | M4–M5 |
+| Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, and exclusive dropped-before watermark | Retention foundation is not complete trace v2 | M4–M5 |
 | Bounded external trace sink | `unsupported` | Accepted bounded/try-based subordinate sink target contract only | No sink, backpressure diagnostic, or recursion guard | M4–M5 |
 | Public headless test harness | `planned` | Current tests prove demand | No `runenui_testing` public boundary | M5 |
 | Semantic/layout/hit/paint assertions | `planned` | Layout/frame internals are inspectable | No unified public assertions | M5–M6 |

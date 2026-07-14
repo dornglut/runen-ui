@@ -37,11 +37,19 @@ This vocabulary marks current and target terms explicitly. Target terms do not i
 | `SurfacePublication` | One publication containing aligned frame, style report, and layout report. |
 | `SurfacePhaseReport` | Inspectable record of proof-level tree/style/layout/hit-test/paint/semantics/diagnostics/focus work executed by the latest runtime operation. |
 | `SurfaceFrame` | Current bounds/style plus open paint/semantic/diagnostic proof product; not a paint scene or accessibility tree. |
-| Trace | Current proof-level record of mount/action/update/reconcile/focus/shutdown events; trace v2 remains M4. |
+| `on_activate` | Repeatable button callback that produces a fresh typed action for each accepted proof activation; routed semantic-command convergence remains later M4 work. |
+| Sequenced work queue | One runtime-owned bounded FIFO currently containing only application-action envelopes; every accepted envelope receives a non-wrapping `WorkSequence` and later M4 work adds the other accepted envelope families. |
+| `WorkSequence` | Runtime-issued non-zero identity for accepted work, beginning at 1 and never wrapping; it is distinct from trace and reconciliation sequences. |
+| Pump | Explicit iterative runtime operation that processes queued envelopes; the current runtime never pumps implicitly from submission or activation. |
+| Processed-envelope budget | Current `PumpBudget` limit where one popped envelope consumes one unit; completion-import, local-poll, and timer-promotion budgets remain accepted targets. |
+| Runtime terminal state | Non-resettable running-but-inspectable state after work, reconciliation, or enabled-trace sequence exhaustion; it rejects new work and mutable callbacks until explicit shutdown closes the runtime. |
+| `TraceSequence` | Runtime-issued non-zero identity for a canonical trace record, beginning at 1 and never wrapping when tracing is enabled. |
+| Trace watermark | Exclusive `dropped_before_sequence`: `Some(S)` means every trace sequence less than `S` has been evicted from bounded retention. |
+| Bounded canonical trace | One retained record sequence for queue, activation, application transactions, reconciliation/focus, terminal, cancellation, and shutdown; complete trace v2 remains an M4 target. |
 
-`on_press` is the current M1–M3 button-action term. Proposed M4 deliberately
-replaces it with semantic `on_activate`; no implementation change exists until
-M4 lands. `map_action` is typed and recursive. `element!` accepts the same
+`on_press` was removed without an alias when `on_activate` became the authored
+semantic activation callback.
+`map_action` is typed and recursive. `element!` accepts the same
 builder expression as direct authoring and introduces no separate binding names.
 Identifiers reject empty or Unicode-whitespace-only text, surrounding Unicode
 whitespace, and Unicode control characters while accepting ordinary Unicode.
@@ -61,12 +69,10 @@ implementation charter but do not describe implemented support.
 | `SurfaceInputContext` | Opaque runtime-issued runtime namespace, `SurfaceId`, coordinate-space revision, and exact displayed hit-test generation carried by ingress. Retained snapshots are interpreted exactly and unavailable input is never retargeted; same-runtime/surface terminal pointer integrity cleanup is separate from ordinary targeting. |
 | Semantic command | Device-independent focus, activation, cancellation, menu, context, or scroll intent shared by pointer/keyboard/controller/accessibility/automation/programmatic sources. |
 | Route-only semantic command | `CancelOrBack`, menu/context-menu, or logical-scroll command whose single normal route ends with no action/runtime mutation when unconsumed; delegation is explicit queued output. |
-| `on_activate` | Proposed semantic authored callback reached by routed activation from all supported modalities; replaces physical-phase `on_press` without an alias. |
 | `PointerId` | Runtime-session identity for one active pointer stream; separate from optional device identity and mounted target identity. |
 | Pointer capture | Runtime-owned `PointerId -> MountedNodeId` routing override with staged transfer and deterministic release. |
 | Composition owner | Exact focused mounted generation that accepted IME composition start; focus/lifetime change invalidates later updates rather than retargeting them. |
 | Commit-derived notification | Later canonical capture/composition/focus/boundary event appended from an atomic interaction or reconciliation commit before the initiating transaction's application outputs. |
-| Sequenced work queue | One UI-thread-owned FIFO of events, commands, actions, completions, timer firings, notifications, and committed effect starts; newly accepted work never overtakes existing work. |
 | `initial_effects` | Default-empty one-time application work collected only after successful initial mount/reconciliation and ordered before initial subscription starts. |
 | Update effects | Ordered optional output returned by two-argument `update`; `()` is the no-effects result. |
 | Application subscriptions | Default-empty desired stream set derived from application state after initial mount and every successful action/reconciliation. |
@@ -82,11 +88,11 @@ implementation charter but do not describe implemented support.
 | Subscription | Declarative owner/key/source-type/configuration identity for an ongoing stream whose validated items map to actions on the UI thread. |
 | Application host protocol | One closed application-defined command/response/`ResponseKind` protocol; token, owner, and exact expected/actual kind validate before its UI-thread mapper. |
 | Readiness checkpoint | Ordered UI-thread import, due-timer promotion, at-most-once eligible local-task polling, ready-output acceptance, and queue-tail sequencing run before/between envelopes and before quiescence. |
-| Pump budgets | Separate limits for processed envelopes, cross-thread imports, local-task polls, and timer promotions; exhaustion preserves order, re-arms wake, and reports non-quiescent progress. |
+| Remaining pump budgets | Separate limits for cross-thread imports, local-task polls, and timer promotions; exhaustion preserves order, re-arms wake, and reports non-quiescent progress. The current implementation supports only the processed-envelope budget. |
 | Wake request | Coalesced host signal that runtime work remains, using explicit request/acknowledge/re-arm semantics; it does not imply redraw. |
 | Redraw request | Independently coalesced dirty-publication signal with take/acknowledge generation; it does not own frame timing. |
 | Runtime limits | Configured queue, transaction-output, live-work, canonical-trace, and optional sink-delivery bounds with explicit full/closed outcomes and no silent action drop. |
-| Poisoned runtime | Terminal integrity state after an unrollbackable post-mutation failure; no further callbacks or work start, but inspection/export/extraction/shutdown remain. |
+| Complete terminal integrity policy | Later terminal handling for unrollbackable post-mutation failures; the current implementation supports only known sequence-exhaustion terminal reasons. |
 | Trace v2 | One bounded structured causal record sequence with sequence/transaction/reconciliation/surface/owner facts, saturation and wake/redraw records, and redacted deterministic export. |
 | Trace sink | Optional bounded/try-based external copy destination subordinate to canonical trace; full/closed/failure affects only the copy and its guarded diagnostic is not recursively redelivered. |
 

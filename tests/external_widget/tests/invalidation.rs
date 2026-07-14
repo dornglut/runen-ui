@@ -5,7 +5,16 @@ use runenui_core::{
     WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof,
     WidgetUpdateContext,
 };
-use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext, SurfacePhase, UiApp};
+use runenui_runtime::{
+    AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase, UiApp,
+};
+
+fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
+    runtime
+        .submit_action(action)
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+}
 
 fn context(tokens: &StyleTokens) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(tokens, LayoutConstraints::unbounded())
@@ -130,9 +139,10 @@ fn clean_and_paint_only_publication_skip_unrelated_work() {
     assert!(runtime.last_surface_phase_report().executed().is_empty());
     assert_eq!(calls.measure.get(), 1);
 
-    runtime
-        .dispatch(CacheAction::Invalidate(WidgetInvalidation::PAINT))
-        .unwrap_or_else(|_| unreachable!());
+    process_one(
+        &mut runtime,
+        CacheAction::Invalidate(WidgetInvalidation::PAINT),
+    );
     publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
@@ -145,9 +155,10 @@ fn clean_and_paint_only_publication_skip_unrelated_work() {
 fn layout_and_semantics_invalidation_execute_exact_dependencies() {
     let (calls, mut runtime, tokens) = mounted_cache();
     publish(&mut runtime, &tokens);
-    runtime
-        .dispatch(CacheAction::Invalidate(WidgetInvalidation::LAYOUT))
-        .unwrap_or_else(|_| unreachable!());
+    process_one(
+        &mut runtime,
+        CacheAction::Invalidate(WidgetInvalidation::LAYOUT),
+    );
     publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
@@ -158,9 +169,10 @@ fn layout_and_semantics_invalidation_execute_exact_dependencies() {
         (2, 2, 1)
     );
 
-    runtime
-        .dispatch(CacheAction::Invalidate(WidgetInvalidation::SEMANTICS))
-        .unwrap_or_else(|_| unreachable!());
+    process_one(
+        &mut runtime,
+        CacheAction::Invalidate(WidgetInvalidation::SEMANTICS),
+    );
     publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
@@ -173,9 +185,10 @@ fn layout_and_semantics_invalidation_execute_exact_dependencies() {
 fn diagnostics_and_interaction_invalidation_are_operationally_isolated() {
     let (calls, mut runtime, tokens) = mounted_cache();
     publish(&mut runtime, &tokens);
-    runtime
-        .dispatch(CacheAction::Invalidate(WidgetInvalidation::DIAGNOSTICS))
-        .unwrap_or_else(|_| unreachable!());
+    process_one(
+        &mut runtime,
+        CacheAction::Invalidate(WidgetInvalidation::DIAGNOSTICS),
+    );
     publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
@@ -183,9 +196,10 @@ fn diagnostics_and_interaction_invalidation_are_operationally_isolated() {
     );
     assert_eq!(calls.diagnostics.get(), 2);
 
-    runtime
-        .dispatch(CacheAction::Invalidate(WidgetInvalidation::INTERACTION))
-        .unwrap_or_else(|_| unreachable!());
+    process_one(
+        &mut runtime,
+        CacheAction::Invalidate(WidgetInvalidation::INTERACTION),
+    );
     assert!(
         runtime
             .last_surface_phase_report()

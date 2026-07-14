@@ -6,9 +6,16 @@ use runenui_core::{
     WidgetSemanticProof, WidgetUnmountContext, WidgetUpdateContext, column,
 };
 use runenui_runtime::{
-    ActivationResult, AppRuntime, FocusTargetResult, LayoutConstraints, MountedNodeId,
+    ActivationResult, AppRuntime, FocusTargetResult, LayoutConstraints, MountedNodeId, PumpBudget,
     SurfaceBuildContext, UiApp,
 };
+
+fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
+    runtime
+        .submit_action(action)
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+}
 
 fn context(tokens: &StyleTokens) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(tokens, LayoutConstraints::unbounded())
@@ -154,9 +161,7 @@ fn keyed_reorder_preserves_mounted_semantic_state_focus_and_slots() {
         .clone();
     assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
     assert_eq!(runtime.activate_node(&a), ActivationResult::Activated);
-    runtime
-        .dispatch(TreeAction::Swap)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, TreeAction::Swap);
     let after = node_id(&mut runtime, "probe.a");
     assert_eq!(after, a);
     assert_eq!(
@@ -206,9 +211,7 @@ fn removal_makes_ids_stale_clears_focus_and_shutdown_unmounts_once() {
     });
     let a = node_id(&mut runtime, "probe.a");
     assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
-    runtime
-        .dispatch(TreeAction::RemoveA)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, TreeAction::RemoveA);
     assert_eq!(runtime.activate_node(&a), ActivationResult::StaleTarget);
     assert_eq!(runtime.set_focus(a), FocusTargetResult::StaleTarget);
     assert_eq!(runtime.focus().focused_node(), None);

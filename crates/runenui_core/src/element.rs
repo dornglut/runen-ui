@@ -292,10 +292,10 @@ pub trait Widget<Action>: fmt::Debug {
         WidgetActivation::NONE
     }
 
-    /// Extracts the action for one accepted activation from this transient widget.
+    /// Produces an action for one accepted activation.
     ///
-    /// Returning an action may mutate the widget's transient action source.
-    /// Capability inspection remains borrowed and cannot consume it.
+    /// Repeatable controls create a fresh owned action on each invocation.
+    /// Capability inspection remains borrowed and cannot invoke the callback.
     fn activate(
         &mut self,
         _state: &mut Self::State,

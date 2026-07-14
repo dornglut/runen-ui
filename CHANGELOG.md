@@ -1,19 +1,40 @@
 # Changelog
 
-## Unreleased
+> **Category: Current contract**
+
+All notable changes to RunenUI are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses Semantic Versioning as qualified by the [API stability policy](docs/api-stability.md).
+
+## [Unreleased]
 
 ### Changed
 
-- Revised proposed M4 routed event and semantic-command architecture with
-  exact core/runtime ownership, safe namespace-based opaque identities, the
-  normative event-family policy, retained displayed-generation surface input,
-  observable target/current-target/phase facts, immutable routes, non-reentrant
-  propagation, exact transition/output ordering, pointer identity/capture,
-  deterministic multi-pointer geometry revalidation, integrity-only terminal
-  pointer cleanup for unavailable snapshots, focus scopes, exact no-action
-  defaults for unconsumed route-only commands, separate keyboard/text/IME streams,
-  semantic `on_activate`, and release-inside activation.
-- Revised proposed M4 deterministic action/effect scheduling with
+- Corrected M4A capacity handling so configured queue and canonical-trace
+  capacities remain logical saturation limits while internal storage grows only
+  with accepted envelopes and retained records. Added exact stable/MSRV proofs
+  for `usize::MAX` logical capacities, queue-full activation trace isolation and
+  work-sequence preservation, activation work-sequence exhaustion, trace
+  exhaustion during pumping, and repeated trace-watermark advancement. Aligned
+  the accepted M4 authority wording, public API guarantees, workspace ownership,
+  and active documentation inventory.
+- Established the bounded M4A canonical application-action FIFO, non-wrapping
+  work sequencing, explicit processed-envelope pump, and explicit saturation,
+  terminal, cancellation, and idempotent shutdown outcomes. Removed direct
+  dispatch authority, cut proof activation over to queued actions, replaced
+  one-shot `on_press` with repeatable non-`Clone` `on_activate` factories, and
+  replaced duplicated unbounded tracing with one bounded canonical sequence and
+  exclusive eviction watermark. Effects, tasks, timers, subscriptions, host
+  requests, routed events, remaining pump budgets, wake/redraw, sinks, export,
+  replay, and complete M4 support remain unimplemented.
+- Accepted the M4 routed event and semantic-command architecture with exact
+  core/runtime ownership, safe namespace-based opaque identities, the normative
+  event-family policy, retained displayed-generation surface input, observable
+  target/current-target/phase facts, immutable routes, non-reentrant propagation,
+  exact transition/output ordering, pointer identity/capture, deterministic
+  multi-pointer geometry revalidation, integrity-only terminal pointer cleanup
+  for unavailable snapshots, focus scopes, exact no-action defaults for
+  unconsumed route-only commands, separate keyboard/text/IME streams, semantic
+  `on_activate`, and release-inside activation.
+- Accepted the M4 deterministic action/effect scheduling architecture with
   `initial_effects`, two-argument no-effects updates, state-derived application
   subscriptions, dedicated complete-set mounted subscription declarations,
   commit-bound owner-local keyed cancellation/replacement, lifecycle-owned
@@ -99,7 +120,6 @@
 - Clarified that stateless widgets explicitly declare/create `()` state and that
   M2 proves state identity/lifecycle compatibility only; M3 owns the breaking
   state-aware mounted behavior contract.
-
 - Completed M1 public API and vocabulary repair with validated logical values,
   IDs/keys/token IDs, deterministic duplicate diagnostics, typed element builders,
   arity-free children, reduced preludes, and read-only generated products.
@@ -112,20 +132,16 @@
   one grammar, and token families are explicitly non-exhaustive.
 - Corrected derived geometry to saturate at finite boundaries and identity
   diagnostics to use true numeric preorder with deterministic same-node ordering.
-
-> **Category: Current contract**
-
-All notable changes to RunenUI are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses Semantic Versioning as qualified by the [API stability policy](docs/api-stability.md).
-
-## [Unreleased]
-
-### Changed
-
-- Reframed RunenUI truthfully as a pre-1.0 headless architecture proof with required headless, desktop, and embedded production profiles.
-- Added canonical status, support, architecture, documentation-retention, and M0–M12 roadmap authorities.
-- Archived the historical Runenwerk UI tree at `legacy-runenwerk-ui-archive-2026-07-11` and removed it from active content.
-- Consolidated incremental architecture documents into durable styling, layout, event/effect, ADR, and history records.
+- Reframed RunenUI truthfully as a pre-1.0 headless architecture proof with
+  required headless, desktop, and embedded production profiles.
+- Added canonical status, support, architecture, documentation-retention, and
+  M0–M12 roadmap authorities.
+- Archived the historical Runenwerk UI tree at
+  `legacy-runenwerk-ui-archive-2026-07-11` and removed it from active content.
+- Consolidated incremental architecture documents into durable styling, layout,
+  event/effect, ADR, and history records.
 - Reset workspace packages from `1.0.0` to `0.1.0` and disabled publication.
-- Established dual MIT/Apache-2.0 licensing, governance, toolchain, stability, release, and validation policies.
+- Established dual MIT/Apache-2.0 licensing, governance, toolchain, stability,
+  release, and validation policies.
 
 No stable release has been published.

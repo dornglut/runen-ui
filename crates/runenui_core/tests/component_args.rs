@@ -11,7 +11,7 @@ fn typed_builders_use_the_open_widget_protocol() {
     let button_element = button("Save")
         .id("save")
         .disabled()
-        .on_press(Action::Save)
+        .on_activate(|| Action::Save)
         .into_element();
     let (_, _, _, _, _, text_widget, _) = text_element.into_runtime_parts().into_parts();
     let text_state = text_widget.create_state();
@@ -32,7 +32,7 @@ fn typed_builders_use_the_open_widget_protocol() {
     let button = button("Save")
         .id("save")
         .disabled()
-        .on_press(Action::Save)
+        .on_activate(|| Action::Save)
         .into_element();
     let container = column(children![text, button]).gap(8_u16).into_element();
     assert_eq!(container.children().len(), 2);

@@ -23,8 +23,9 @@ The active workspace proves:
   unkeyed ordinal matching, retained local state/focus/interaction slots,
   deterministic mount/update/unmount/shutdown, stale/foreign target rejection,
   separate semantic identity, capability caches, and reconciliation reports;
-- deterministic headless dispatch, mounted press activation, focus traversal,
-  proof-level tracing, and mounted surface publication;
+- deterministic queued application actions, an explicit bounded pump, mounted
+  proof activation, focus traversal, bounded canonical tracing, and mounted
+  surface publication;
 - typed style values, tokens, computed style, provenance, and diagnostics;
 - explicit layout constraints, a renderer-neutral measurement-provider seam,
   and separate one-query intrinsic/child-layout snapshots per publication;
@@ -39,12 +40,13 @@ The active workspace proves:
 
 Important limitations remain: input behavior is press-based and proof-level,
 text measurement is deterministic character counting, and routed events,
-pointer identity/capture, effects/tasks/scheduling, production
-semantics/accessibility, paint/hit scenes, production layout/style/text, native
-hosts, renderer backends, and production controls are absent. M3 has one mounted
-root, one focus domain, and one current publication domain. Current paint and
-semantic facts remain deterministic extension proofs, not the M5/M6 production
-products.
+pointer identity/capture, release-inside activation, effects, tasks, timers,
+subscriptions, host requests, the remaining readiness budgets, wake/redraw,
+complete trace v2, trace export/sinks/replay, production semantics/accessibility,
+paint/hit scenes, production layout/style/text, native hosts, renderer backends,
+and production controls are absent. The current runtime has one mounted root,
+one focus domain, and one current publication domain. Current paint and semantic
+facts remain deterministic extension proofs, not the M5/M6 production products.
 
 ## Production profiles
 
@@ -112,7 +114,7 @@ enum CounterAction {
 fn counter_screen(value: i32) -> Element<CounterAction> {
     column(children![
         text(format!("Count: {value}")),
-        button("+").on_press(CounterAction::Increment),
+        button("+").on_activate(|| CounterAction::Increment),
     ])
     .gap(8_u16)
     .into_element()
@@ -131,7 +133,7 @@ enum ChildAction { Save }
 enum ParentAction { Child(ChildAction) }
 
 fn child() -> Element<ChildAction> {
-    button("Save").on_press(ChildAction::Save).into_element()
+    button("Save").on_activate(|| ChildAction::Save).into_element()
 }
 
 fn parent() -> Element<ParentAction> {

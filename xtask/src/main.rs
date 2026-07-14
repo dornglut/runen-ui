@@ -12,20 +12,27 @@ const EXPECTED_LICENSE_EXPRESSION: &str = "license = \"MIT OR Apache-2.0\"";
 const EXPECTED_MIT_NOTICE: &str = "Copyright (c) 2026 Crystonix";
 const VALIDATE_STEPS: &[(&str, &[&str])] = &[
     ("stable", &["fmt", "--all", "--check"]),
-    ("stable", &["test", "--workspace", "--locked"]),
+    (
+        "stable",
+        &["test", "--workspace", "--all-features", "--locked"],
+    ),
     (
         "stable",
         &[
             "clippy",
             "--workspace",
             "--all-targets",
+            "--all-features",
             "--locked",
             "--",
             "-D",
             "warnings",
         ],
     ),
-    ("1.93.0", &["test", "--workspace", "--locked"]),
+    (
+        "1.93.0",
+        &["test", "--workspace", "--all-features", "--locked"],
+    ),
 ];
 
 fn main() -> ExitCode {

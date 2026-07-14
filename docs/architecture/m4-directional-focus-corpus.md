@@ -4,7 +4,7 @@
 >
 > **Milestone:** M4
 >
-> **Status:** Proposed; normative only after ADR 0005 is accepted
+> **Status:** Accepted and normative; ADR 0005 is accepted
 >
 > **Reviewed baseline:** `83e3771c34e021ac2960cab2cfd926c1128998ca`
 

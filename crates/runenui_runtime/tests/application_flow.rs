@@ -2,7 +2,7 @@ use runenui_core::{
     Element, View, Widget, WidgetActivation, WidgetActivationContext, WidgetSemanticProof, button,
     children, column, text,
 };
-use runenui_runtime::{ActivationResult, AppRuntime, RuntimeEvent, UiApp};
+use runenui_runtime::{ActivationResult, AppRuntime, PumpBudget, TraceRecordKind, UiApp};
 
 #[derive(Debug, Eq, PartialEq)]
 enum Action {
@@ -18,7 +18,7 @@ impl UiApp for App {
             button("+")
                 .id("increment")
                 .key("increment")
-                .on_press(Action::Increment)
+                .on_activate(|| Action::Increment)
         ])
         .key("root")
         .into_element()
@@ -29,7 +29,7 @@ impl UiApp for App {
 }
 
 #[test]
-fn dispatch_reconciles_without_replacing_compatible_nodes() {
+fn queued_action_reconciles_without_replacing_compatible_nodes() {
     let mut runtime = AppRuntime::<App>::mount(0);
     let ids: Vec<_> = runtime
         .index()
@@ -39,8 +39,10 @@ fn dispatch_reconciles_without_replacing_compatible_nodes() {
         .collect();
     assert_eq!(runtime.reconciliation_report().generation().get(), 1);
     runtime
-        .dispatch(Action::Increment)
+        .submit_action(Action::Increment)
         .unwrap_or_else(|_| unreachable!());
+    assert_eq!(runtime.state(), &0);
+    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
     assert_eq!(runtime.state(), &1);
     let after: Vec<_> = runtime
         .index()
@@ -53,16 +55,24 @@ fn dispatch_reconciles_without_replacing_compatible_nodes() {
     assert!(
         runtime
             .trace()
-            .events()
-            .contains(&RuntimeEvent::TreeReconciled)
+            .kinds()
+            .any(|kind| matches!(kind, TraceRecordKind::TreeReconciled))
     );
 }
 
 #[test]
-fn mounted_activation_dispatches_fresh_non_clone_actions() {
+fn mounted_activation_queues_fresh_non_clone_actions() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    assert_eq!(runtime.activate("increment"), ActivationResult::Dispatched);
-    assert_eq!(runtime.activate("increment"), ActivationResult::Dispatched);
+    assert!(matches!(
+        runtime.activate("increment"),
+        ActivationResult::Queued { .. }
+    ));
+    assert!(matches!(
+        runtime.activate("increment"),
+        ActivationResult::Queued { .. }
+    ));
+    assert_eq!(runtime.state(), &0);
+    assert_eq!(runtime.pump(PumpBudget::new(2)).processed_envelopes(), 2);
     assert_eq!(runtime.state(), &2);
 }
 
@@ -106,6 +116,11 @@ impl UiApp for NonCloneApp {
 fn non_clone_actions_remain_supported() {
     let mut runtime = AppRuntime::<NonCloneApp>::mount(Vec::new());
     let id = runtime.index().nodes()[0].id().clone();
-    assert_eq!(runtime.activate_node(&id), ActivationResult::Dispatched);
+    assert!(matches!(
+        runtime.activate_node(&id),
+        ActivationResult::Queued { .. }
+    ));
+    assert!(runtime.state().is_empty());
+    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
     assert_eq!(runtime.state(), &["owned"]);
 }

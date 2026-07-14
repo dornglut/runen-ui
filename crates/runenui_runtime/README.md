@@ -21,14 +21,22 @@ mounted preorder, never arena order, drives inspection, focus traversal, and
 publication.
 
 The runtime executes mount/update in preorder, unmount in postorder, replacement
-before new mount, and shutdown exactly once through both `into_state` and
-`Drop`. Nodes remain arena-live through unmount; slot release and state drop
-follow the hook. Activation preflights generation capacity before it can mutate
-persistent widget state or consume a one-shot action, request selective
-invalidation, return `Activated` without an application action, or dispatch an
-owned non-`Clone` action followed by reconciliation. Reconciliation reports
-record the completed generation and exact mounted/updated/unmounted/moved
-lifetime counts.
+before new mount, and shutdown exactly once through explicit `shutdown`,
+`into_state`, and `Drop`. Nodes remain arena-live through unmount; slot release
+and state drop follow the hook. One runtime-owned canonical application-action
+FIFO is the only action authority. `submit_action` returns a non-wrapping
+`WorkSequence` or the exact unaccepted action, and the explicit
+processed-envelope pump handles a caller-bounded number of envelopes without
+recursion. Each action update completes reconciliation and focus validation
+before the next envelope begins.
+
+Transitional proof activation preflights runtime status, target capability,
+generation capacity, queue capacity, work sequencing, and mandatory trace
+sequences before it mutates persistent widget state or invokes an action
+factory. An action-producing activation appends one envelope and returns without
+pumping; state-only activation remains distinct. Queue-full, closed, and terminal
+outcomes invoke no mutable callback. Reconciliation reports record the completed
+generation and exact mounted/updated/unmounted/moved lifetime counts.
 
 State-aware activation, measurement, child layout, paint, semantics, and
 diagnostics use integrity-aware caches per mounted node. `WidgetInvalidation`
@@ -59,9 +67,13 @@ current row/column layout,
 measurement provider, paint facts, and semantic facts remain bounded headless
 proofs.
 
-M3 owns exactly one mounted root, one active focus domain, and one current
-publication domain. There is no routed event model, pointer identity or true
-capture, release-inside activation, action queue, effects/tasks/timers,
+The current single-root/focus/publication domain has exactly one mounted root,
+one active focus domain, and one current publication domain. Its trace is one
+bounded canonical record sequence with
+non-wrapping trace identities and an exclusive eviction watermark. There is no
+routed event model, pointer identity or true capture, release-inside activation,
+effects/tasks/timers/subscriptions, host requests, remaining readiness budgets,
+wake/redraw integration, trace sink/export/replay,
 production semantic tree/accessibility adapter, renderer-neutral paint/hit
 scene, production layout/style/text, native host, or renderer backend.
 

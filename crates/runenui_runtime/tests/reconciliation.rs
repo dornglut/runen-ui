@@ -1,5 +1,12 @@
 use runenui_core::{Element, ElementId, View, Widget, children, column, row, text};
-use runenui_runtime::{AppRuntime, ReconciliationDiagnostic, UiApp};
+use runenui_runtime::{AppRuntime, PumpBudget, ReconciliationDiagnostic, UiApp};
+
+fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
+    runtime
+        .submit_action(action)
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+}
 
 fn id_by_authored<App: UiApp>(
     runtime: &mut AppRuntime<App>,
@@ -59,14 +66,10 @@ fn keyed_insertion_does_not_shift_unkeyed_ordinals_but_unkeyed_insertion_does() 
     let mut runtime = AppRuntime::<OrdinalApp>::mount(OrdinalState { case: 0 });
     let u1 = id_by_authored(&mut runtime, "u1");
     let u2 = id_by_authored(&mut runtime, "u2");
-    runtime
-        .dispatch(OrdinalAction::KeyedInsert)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, OrdinalAction::KeyedInsert);
     assert_eq!(id_by_authored(&mut runtime, "u1"), u1);
     assert_eq!(id_by_authored(&mut runtime, "u2"), u2);
-    runtime
-        .dispatch(OrdinalAction::UnkeyedInsert)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, OrdinalAction::UnkeyedInsert);
     assert_eq!(id_by_authored(&mut runtime, "new"), u1);
     assert_eq!(id_by_authored(&mut runtime, "u1"), u2);
 }
@@ -113,9 +116,7 @@ impl UiApp for MoveApp {
 fn cross_parent_keyed_move_remounts() {
     let mut runtime = AppRuntime::<MoveApp>::mount(MoveState { moved: false });
     let child = id_by_authored(&mut runtime, "child");
-    runtime
-        .dispatch(MoveAction::Move)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, MoveAction::Move);
     assert_ne!(id_by_authored(&mut runtime, "child"), child);
     assert_eq!(runtime.reconciliation_report().moved_count(), 0);
 }
@@ -148,9 +149,7 @@ impl UiApp for DuplicateApp {
 fn duplicate_keys_reuse_no_ambiguous_lifetime() {
     let mut runtime = AppRuntime::<DuplicateApp>::mount(DuplicateState { duplicate: false });
     let old = id_by_authored(&mut runtime, "one");
-    runtime
-        .dispatch(DuplicateAction::Duplicate)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, DuplicateAction::Duplicate);
     assert_ne!(id_by_authored(&mut runtime, "one"), old);
     assert_eq!(runtime.reconciliation_report().mounted_count(), 2);
     assert_eq!(runtime.reconciliation_report().unmounted_count(), 1);
@@ -206,9 +205,7 @@ impl UiApp for DuplicateTransitionApp {
 fn duplicate_diagnostics_include_complete_old_and_new_occurrences() {
     let key = runenui_core::ElementKey::new("same").unwrap_or_else(|_| unreachable!());
     let mut runtime = AppRuntime::<DuplicateTransitionApp>::mount(0);
-    runtime
-        .dispatch(DuplicateTransition::KeepDuplicate)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, DuplicateTransition::KeepDuplicate);
     assert_eq!(
         runtime.reconciliation_report().diagnostics(),
         &[ReconciliationDiagnostic::DuplicateSiblingKey {
@@ -218,9 +215,7 @@ fn duplicate_diagnostics_include_complete_old_and_new_occurrences() {
             new_occurrence_paths: vec!["root/0".to_owned(), "root/1".to_owned()],
         }]
     );
-    runtime
-        .dispatch(DuplicateTransition::RemoveDuplicate)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, DuplicateTransition::RemoveDuplicate);
     assert_eq!(
         runtime.reconciliation_report().diagnostics(),
         &[ReconciliationDiagnostic::DuplicateSiblingKey {
@@ -232,9 +227,7 @@ fn duplicate_diagnostics_include_complete_old_and_new_occurrences() {
     );
 
     let mut disappearing = AppRuntime::<DuplicateTransitionApp>::mount(0);
-    disappearing
-        .dispatch(DuplicateTransition::RemoveAll)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut disappearing, DuplicateTransition::RemoveAll);
     assert_eq!(
         disappearing.reconciliation_report().diagnostics(),
         &[ReconciliationDiagnostic::DuplicateSiblingKey {
@@ -294,9 +287,7 @@ impl UiApp for NestedDuplicateApp {
 #[test]
 fn nested_duplicate_sets_report_complete_paths_in_deterministic_preorder() {
     let mut runtime = AppRuntime::<NestedDuplicateApp>::mount(false);
-    runtime
-        .dispatch(NestedDuplicateAction::Duplicate)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, NestedDuplicateAction::Duplicate);
     assert_eq!(
         runtime.reconciliation_report().diagnostics(),
         &[
@@ -341,9 +332,7 @@ impl UiApp for RootApp {
 fn root_key_change_replaces_while_authored_id_change_alone_does_not_define_identity() {
     let mut runtime = AppRuntime::<RootApp>::mount(false);
     let old = runtime.index().nodes()[0].id().clone();
-    runtime
-        .dispatch(RootAction::Replace)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, RootAction::Replace);
     assert_ne!(runtime.index().nodes()[0].id(), &old);
     assert_eq!(runtime.reconciliation_report().mounted_count(), 1);
     assert_eq!(runtime.reconciliation_report().unmounted_count(), 1);
@@ -372,9 +361,7 @@ impl UiApp for RenameApp {
 fn authored_id_change_preserves_mounted_identity() {
     let mut runtime = AppRuntime::<RenameApp>::mount(false);
     let old = runtime.index().nodes()[0].id().clone();
-    runtime
-        .dispatch(RenameAction::Rename)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, RenameAction::Rename);
     assert_eq!(runtime.index().nodes()[0].id(), &old);
     assert_eq!(
         runtime.index().nodes()[0]
@@ -421,8 +408,6 @@ impl UiApp for WidgetApp {
 fn same_key_with_incompatible_widget_remounts_even_when_state_type_matches() {
     let mut runtime = AppRuntime::<WidgetApp>::mount(false);
     let old = runtime.index().nodes()[0].id().clone();
-    runtime
-        .dispatch(WidgetAction::Replace)
-        .unwrap_or_else(|_| unreachable!());
+    process_one(&mut runtime, WidgetAction::Replace);
     assert_ne!(runtime.index().nodes()[0].id(), &old);
 }

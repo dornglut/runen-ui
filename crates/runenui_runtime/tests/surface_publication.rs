@@ -3,8 +3,8 @@ use runenui_core::{
     color_token, column, radius_token, row, spacing_token, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MountedNodeId, SemanticNodeId,
-    SurfaceBuildContext, SurfacePhase, UiApp, render_debug_surface_frame,
+    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
+    SemanticNodeId, SurfaceBuildContext, SurfacePhase, UiApp, render_debug_surface_frame,
 };
 
 #[derive(Debug)]
@@ -161,8 +161,9 @@ fn warm_and_change(
         LayoutConstraints::unbounded(),
     ));
     runtime
-        .dispatch(StructureAction::Set(next))
+        .submit_action(StructureAction::Set(next))
         .unwrap_or_else(|_| unreachable!());
+    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
     let publication = runtime.publish_surface(&SurfaceBuildContext::new(
         &tokens,
         LayoutConstraints::unbounded(),
@@ -232,7 +233,7 @@ impl UiApp for App {
             button("Press")
                 .id("press")
                 .key("press")
-                .on_press(Action::Press)
+                .on_activate(|| Action::Press)
         ])
         .key("root")
         .gap(4_u16)
@@ -406,8 +407,9 @@ fn warm_common_fields(
     let before = runtime.publish_surface(&context);
     let identities = mounted_identities(&mut runtime);
     runtime
-        .dispatch(SetCommonFields(changed))
+        .submit_action(SetCommonFields(changed))
         .unwrap_or_else(|_| unreachable!());
+    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
     let after = runtime.publish_surface(&context);
     (runtime, before, after, identities)
 }

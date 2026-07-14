@@ -1,11 +1,15 @@
-# Public API Contract through M3
+# Current Public API Contract
 
 > **Category: Current contract**
 
-This document records the reviewed public surface after M3. Source-level Rust
+This document records the reviewed public surface for the bounded queue, pump,
+activation, and trace foundation. Source-level Rust
 documentation is authoritative for signatures. [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md)
 defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
-defines mounted ownership and reconciliation.
+defines mounted ownership and reconciliation; accepted
+[ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines the complete
+M4 application-work target. The current implementation contains only the
+foundation documented here.
 
 ## Ownership and inventory
 
@@ -14,21 +18,63 @@ resolution, transient `View`/`Element` authoring, typed built-in views, the open
 state-aware `Widget`/`ChildLayoutWidget` contracts, proof capability values,
 lifecycle contexts, `WidgetInvalidation`, and typed recursive action mapping.
 
-`runenui_runtime` owns `UiApp`, `AppRuntime`, persistent mounted storage,
-reconciliation, lifecycle execution, focus and interaction slots, mounted
-targeting, invalidation scheduling, capability caches, measurement/layout
-execution, trace, and mounted publication. The public mounted inspection and
-integrity vocabulary includes:
+`runenui_runtime` owns the transitional `UiApp`, `AppRuntime`, the canonical
+application-action FIFO and pump, persistent mounted storage, reconciliation,
+lifecycle execution, focus and interaction slots, mounted targeting,
+invalidation scheduling, capability caches, measurement/layout execution,
+bounded trace, and mounted publication. `UiApp` remains runtime-owned only until
+the reviewed complete application-work contract lands; this is not final
+architecture ownership. The public runtime, mounted inspection, and integrity
+vocabulary includes:
 
 - `MountedNodeId`, `SemanticNodeId`, `MountedNodeRef`, and `MountedTreeIndex`;
 - `ReconciliationGeneration` and `ReconciliationReport`;
-- `FocusTargetResult`, `ActivationResult`, and `RuntimeError`;
+- `RuntimeConfig`, `WorkSequence`, `SubmitActionResult`, `PumpBudget`, and
+  `PumpReport`;
+- `RuntimeStatus`, `RuntimeTerminalReason`, `ShutdownReport`,
+  `FocusTargetResult`, `ActivationResult`, and `RuntimeError`;
+- `TraceConfig`, `TraceSequence`, `TraceRecord`, `TraceRecordKind`,
+  `TraceTarget`, and `Trace`;
 - read-only frame, style-report, layout-report, and publication products.
 
-The ordinary preludes remain narrow. Specialist mounted/lifecycle inspection is
-imported explicitly from crate roots. Generated IDs, mounted state, arena
-storage, reconciliation reports, and publication products have no public
-constructors.
+The ordinary preludes remain narrow. Specialist runtime/mounted/lifecycle
+inspection is imported explicitly from crate roots. Generated IDs and
+sequences, queue/envelope storage, mounted state, arena storage, reconciliation
+reports, trace records, and publication products have no public constructors.
+
+## Queue, pump, and runtime status
+
+`RuntimeConfig::default()` selects a waiting-envelope capacity of 1024 and a
+`TraceConfig` capacity of 1024. `with_queue_capacity` and `with_trace_config`
+return adjusted values; fields remain private. Queue capacity counts waiting
+envelopes only, and zero is valid. Queue and trace capacities are logical limits:
+internal storage grows with accepted envelopes or retained records and does not
+reserve the complete configured capacity when the runtime mounts.
+
+`AppRuntime::submit_action(action)` appends one application action when running,
+capacity is available, and the non-wrapping sequence authority can advance. It
+returns a runtime-issued `WorkSequence`, beginning at 1, or a
+`SubmitActionError<Action>` classified as full, closed, or terminal. Rejection
+returns the exact owned action through `into_action` and does not consume a work
+sequence. `Action` requires no `Clone`, `Send`, or `Debug` bound.
+
+`AppRuntime::pump(PumpBudget::new(max_processed_envelopes))` processes at most
+that many FIFO envelopes iteratively. `PumpReport` exposes processed, remaining,
+and terminal-cancelled envelope counts plus a `PumpOutcome` of quiescent, budget
+exhausted, closed, or terminal. One popped envelope is one processed-envelope
+unit. Each accepted application action completes update, root rebuilding,
+reconciliation, focus validation, reports, and mandatory trace records before
+the next begins. The current readiness checkpoint has no completion, local-task, or
+timer source; the other three accepted pump budgets are not implemented.
+
+`AppRuntime::status()` reports `Running`, `Terminal(reason)`, or `Closed`.
+Work-sequence, reconciliation-generation, or enabled-trace-sequence exhaustion
+is terminal and non-resettable: no later mutable callback runs, queued envelopes
+are cancelled, new submissions return their actions, and inspection/state
+extraction remain available. `shutdown()` is explicit and idempotent; its report
+exposes whether shutdown was already complete plus cancelled-envelope and
+unmounted-lifetime counts. `into_state` and `Drop` invoke the same shutdown
+authority.
 
 ## Transient authoring and mounted authority
 
@@ -66,13 +112,16 @@ not expose mounted IDs, task/effect APIs, or mutable runtime internals.
 
 The default update invalidates `ALL` for correctness. Built-in text, button, and
 linear-container widgets implement narrower comparison-based invalidation.
-Button action payload replacement requires no `Clone`, `Eq`, or `PartialEq` and
-does not itself invalidate visual capabilities.
+Button callback replacement requires no `Clone`, `Copy`, `Debug`, `Eq`, or
+`PartialEq` on `Action` and does not itself invalidate visual capabilities.
+`Button::on_activate(callback: impl FnMut() -> Action + 'static)` installs an
+owned action factory invoked for every accepted proof activation. `on_press` is
+removed without an alias.
 
 `Element::map_action` replaces only action plumbing. It recursively delegates
 every state-aware capability and preserves underlying widget/state type IDs.
-Compatible reconciliation installs the newly authored description and mapper or
-one-shot action source while retaining state and mounted identity. No global
+Compatible reconciliation installs the newly authored description, mapper, and
+activation factory while retaining state and mounted identity. No global
 `Action: Clone`, `Send`, `Sync`, or `'static` bound exists.
 
 ## Safe core/runtime bridge
@@ -157,20 +206,27 @@ arena removal, stale identity, and state drop follow the hook. Replacement
 fully unmounts and drops the old subtree before mounting the new subtree.
 
 State drops after its unmount hook. Interaction slots and caches disappear with
-the mounted lifetime. `AppRuntime::into_state` and `Drop` both perform idempotent
-postorder `RuntimeShutdown`; every remaining node receives exactly one shutdown
-unmount.
+the mounted lifetime. Explicit `AppRuntime::shutdown`, `into_state`, and `Drop`
+share one idempotent postorder `RuntimeShutdown` authority; every remaining node
+receives exactly one shutdown unmount.
 
 ## Activation, focus, and interaction slots
 
-Mounted activation validates the ID, reads checked state-aware activation facts,
-rejects disabled/non-actionable targets, preflights reconciliation-generation
-capacity, invokes the mutable widget/state pair, applies local invalidation, and optionally
-dispatches an application action followed by immediate reconciliation.
-`Dispatched`, state-only `Activated`, `NoAction`, disabled/non-activatable,
-stale, foreign, and runtime-error outcomes are distinct. Exhaustion rejects all
-mutable activation before state, one-shot action, focus, cache, report, trace, or
-application mutation. State-only interaction changes validate focus immediately.
+Mounted proof activation validates runtime and target, reads checked activation
+facts, rejects disabled/non-actionable targets, then preflights reconciliation
+capacity, one queue slot, work-sequence availability, and mandatory trace
+allowance before invoking the mutable widget/state pair. An action-producing
+activation appends one envelope and returns `Queued { sequence }` without
+pumping; application state does not change until a caller pumps. State-only
+`Activated`, `NoAction`, `QueueFull`, `Closed`, `Terminal`, disabled/non-
+activatable, stale, foreign, and runtime-error outcomes are distinct. Queue-full,
+closed, terminal, or known sequence exhaustion rejects before widget state,
+factory, invalidation, focus, reconciliation report, publication/cache, or
+application mutation. Rejection and terminal trace records may still be appended
+when trace sequencing remains available. State-only interaction changes validate
+focus immediately. Pointer and keyboard activation helpers use this same queue-
+backed proof authority, but remain press-based and do not imply routed events or
+semantic commands.
 
 Focus stores `Option<MountedNodeId>`. It survives compatible update, authored-ID
 change, and keyed reorder, and clears on removal, replacement, disablement, or
@@ -214,10 +270,12 @@ M3 does not claim a production retained layout cache.
 
 ## Reports and publication
 
-Initial mount completes reconciliation generation 1. Each successful
-reconciliation increments once using `checked_add`; direct dispatch and mutable
-activation both preflight exhaustion before application, widget, mounted,
-one-shot-action, focus, cache, report, or trace mutation.
+Initial mount completes reconciliation generation 1. Each successfully processed
+application action increments once using `checked_add`; the action processor and
+mutable activation preflight relevant exhaustion before application, widget,
+mounted, factory, focus, cache, or reconciliation-report mutation. Diagnostic
+rejection or terminal trace facts remain permitted when trace sequencing is
+available.
 
 `ReconciliationReport` defines counts by mounted lifetime: live nodes after
 completion, new lifetimes mounted, preserved nodes updated once, lifetimes
@@ -233,7 +291,28 @@ current topology snapshot. Compatible common-field changes retain that topology
 but refresh style/layout facts from current mounted nodes. The free transient
 publication function is removed.
 
-## Breaking M3 migration
+## Bounded canonical trace
+
+`TraceConfig::new(capacity)` configures retained records; capacity zero disables
+retention without allocating trace sequences or changing runtime behavior. The
+configured capacity is a logical retention limit, not an eager allocation
+request. `AppRuntime::trace()` borrows the one canonical `Trace`, whose
+`records()` and `kinds()` iterators run oldest-to-newest without a duplicate
+store. `TraceRecord` accessors expose a non-forgeable `TraceSequence`, structured
+kind, optional `WorkSequence`, optional causal-parent `TraceSequence`, optional
+reconciliation generations before/after, and optional `TraceTarget`. Action
+payloads are never stored.
+
+Oldest records are evicted at capacity. `dropped_before_sequence()` is an
+exclusive watermark: `Some(S)` means every trace sequence less than `S` is no
+longer retained. Ordinary eviction cannot affect application behavior. When
+enabled mandatory trace sequencing cannot advance, the runtime becomes terminal
+before the pending mutable callback and cancels queued work. The current contract
+has no external
+sink, JSONL/export/redaction contract, replay, or records for unimplemented
+events/effects/tasks/timers/subscriptions/host/wake-redraw work.
+
+## Breaking migrations
 
 Removed without aliases:
 
@@ -241,7 +320,10 @@ Removed without aliases:
 - `WidgetState`, `WidgetStateMismatch`, `WidgetLifecycle`,
   `WidgetLifecycleRequest`, and the old lifecycle context;
 - direct element lifecycle/capability execution and preorder action extraction;
-- free `publish_surface(Element)`.
+- free `publish_surface(Element)`;
+- `AppRuntime::dispatch` and private direct-dispatch authorities;
+- `Button::on_press` and one-shot button actions;
+- duplicated, unbounded runtime-event/trace storage.
 
 Added:
 
@@ -250,8 +332,16 @@ Added:
 - state-aware widget lifecycle/activation contexts and unmount reasons;
 - selective widget invalidation;
 - focus/activation stale and foreign results;
-- public runtime integrity errors.
+- public runtime integrity errors;
+- canonical action submission, work sequencing, bounded pumping, runtime status,
+  terminal reasons, and explicit shutdown reports;
+- repeatable `Button::on_activate` factories and queue-accurate activation
+  outcomes;
+- bounded canonical trace configuration, sequences, records, targets, and
+  retention watermark.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
-in force. M4 and later production subsystems are not implied by M3.
+in force. The current contract does not imply effects, subscriptions, tasks,
+timers, host requests, routed events, remaining readiness budgets, wake/redraw,
+complete trace v2, or M4 completion.

@@ -10,21 +10,24 @@ inventory is the [M4 conformance matrix](m4-conformance-matrix.md). Acceptance
 authorizes implementation but does not make any target implemented; support
 exists only after its public behavioral proofs pass.
 
-## Current proof
+## Current queue, pump, activation, and trace foundation
 
-The runtime currently performs synchronous direct dispatch and mounted
-reconciliation. Compatible nodes retain focus; stale and foreign mounted targets
-are rejected; each node owns proof interaction slots; and activation can mutate
-persistent widget state. It still has only typed pointer/keyboard vocabulary,
-linear traversal focus, rectangle targeting, press-based button activation, an
-overlapping input-intent/direct-policy path, and a coarse duplicated unbounded
-trace.
+The current implementation provides one bounded runtime-owned
+application-action FIFO,
+non-wrapping work sequences, an explicit processed-envelope pump, queue-backed
+proof activation, and one bounded canonical trace sequence. Each processed
+action completes mounted reconciliation and focus validation before the next
+begins. Compatible nodes retain focus; stale and foreign mounted targets are
+rejected; each node owns proof interaction slots; and activation can mutate
+persistent widget state only after queue/generation/trace preflight. The proof
+input helpers still provide only typed pointer/keyboard vocabulary, linear
+traversal focus, rectangle targeting, and press-based button activation.
 
 There is no routed propagation, surface-input generation context, pointer
-identity/true capture, release-inside policy, action queue, initial effects,
-effect executor, timer, state-derived subscription declaration, keyed
-cancellation, race-free wake scheduling, text/IME stream, deterministic clock,
-saturation policy, or trace v2.
+identity/true capture, release-inside policy, initial/update effects, effect
+executor, task or timer source, state-derived subscription declaration, keyed
+cancellation, race-free wake/redraw scheduling, text/IME stream, deterministic
+clock, remaining pump budgets, trace sink/export/replay, or complete trace v2.
 
 ## Canonical target path
 
@@ -257,11 +260,12 @@ does not execute rendering inside a wake callback.
 
 ## Trace v2
 
-Trace v2 replaces the current duplicate vectors with one bounded canonical
-record sequence. Records carry monotonic sequence and transaction identity,
-causal linkage, reconciliation generation, surface/targets/owners, structured
-work kinds, saturation/failure facts, wake/redraw acknowledgment, and logical
-scheduler time.
+The bounded trace foundation replaces the duplicate vectors with one canonical
+record sequence. Its records carry monotonic trace and optional work sequences,
+causal linkage, reconciliation generations, activation targets, queue/
+transaction/focus facts, saturation, terminal cancellation, and shutdown.
+Complete trace v2 later adds event/effect/owner/surface facts, wake/redraw
+acknowledgment, and logical scheduler time.
 
 Capacity is configurable. Dropping old records advances an explicit watermark.
 Text and IME payloads are redacted by default. A versioned deterministic JSONL

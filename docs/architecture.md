@@ -46,8 +46,10 @@ Application-owned State + Action
   -> sibling-local mounted reconciliation
   -> persistent generational MountedTree
   -> state-aware cached widget capabilities
-  -> synchronous mounted input/focus/activation policies
-  -> UiApp::update(State, Action)
+  -> mounted proof input/focus/activation policies
+  -> one sequenced application-action FIFO
+  -> explicit processed-envelope pump
+  -> UiApp::update(State, Action) + complete reconciliation
   -> phase-aware topology/style/layout/paint/semantic/diagnostic facts
   -> provider-backed row/column measurement and arrangement when dirty
   -> SurfaceFrame + SurfaceStyleReport + SurfaceLayoutReport
@@ -95,13 +97,15 @@ geometry saturates, and generated products are read-only. M2 then removed the
 closed dispatch path, added recursive typed component action mapping, explicit
 process-local widget/state type identity, and a checked lifecycle/state seam.
 M3 replaces the seam with the mounted authority described by
-[ADR 0004](adr/0004-mounted-runtime-reconciliation.md). M4 architecture is now
-under active owner review through revised proposed
+[ADR 0004](adr/0004-mounted-runtime-reconciliation.md). Accepted
 [ADR 0005](adr/0005-canonical-event-routing-and-commands.md),
-[ADR 0006](adr/0006-effects-scheduling-and-trace-v2.md), and the normative
-[M4 conformance matrix](architecture/m4-conformance-matrix.md) and
-[directional-focus corpus](architecture/m4-directional-focus-corpus.md); no M4
-implementation support is implied.
+[ADR 0006](adr/0006-effects-scheduling-and-trace-v2.md), the normative
+[M4 conformance matrix](architecture/m4-conformance-matrix.md), and the
+[directional-focus corpus](architecture/m4-directional-focus-corpus.md) define
+M4. The current implementation provides only the application-action queue,
+processed-envelope pump, queue-backed proof activation, terminal/shutdown
+foundation, and bounded canonical trace. Remaining M4 subsystems are target
+architecture.
 See the [public API contract](architecture/public-api.md) and
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md).
 
@@ -132,13 +136,14 @@ The primary application model remains:
 state -> view -> action -> update -> state
 ```
 
-Application update remains synchronous and application-state-owned. Proposed
-[ADR 0006](adr/0006-effects-scheduling-and-trace-v2.md) adds one runtime-owned
-FIFO action/work loop while preserving a simple two-argument update. `update`
-returns optional ordered effects and `()` is the no-effects result. A separate
-default-empty `initial_effects` authority describes one-time work after initial
-mount, and a default-empty state-derived `subscriptions` authority declares
-ongoing streams after initial mount and every successful action/reconciliation.
+Application update remains synchronous and application-state-owned. The current
+implementation adds one runtime-owned FIFO containing application-action
+envelopes and a bounded explicit pump while preserving the two-argument
+no-effect update. Direct dispatch is not an authority. The accepted complete
+contract in
+[ADR 0006](adr/0006-effects-scheduling-and-trace-v2.md) later adds ordered update
+effects, a default-empty `initial_effects` authority, and default-empty state-
+derived application subscriptions; none of those are implemented currently.
 
 Effects request owned actions, tasks, timers, keyed cancellation/replacement,
 typed application host requests, and completion actions; they begin only after
@@ -156,12 +161,15 @@ unmount completes.
 Wake and redraw use separate request/acknowledge state machines. Local non-`Send`
 work remains possible, stronger bounds apply only to concrete operations that
 require them, and configured saturation outcomes never silently drop accepted
-actions or completions.
+actions or completions. Queue and canonical-trace capacities are logical limits;
+their storage grows with accepted work rather than reserving the complete
+configured limit when the runtime mounts.
 
-The pump uses explicit readiness checkpoints and separate processed-envelope,
-completion-import, local-poll, and timer-promotion budgets. Readiness is accepted
-and sequenced on the UI thread at the queue tail; budget exhaustion preserves
-order, re-arms wake, and reports non-quiescent progress.
+The current pump implements the processed-envelope budget and one readiness-
+checkpoint extension point; there are no completion, task, or timer sources yet.
+The accepted complete pump adds separate completion-import, local-poll, and
+timer-promotion budgets. Current budget exhaustion preserves application-action
+order and reports remaining work; wake re-arming remains unimplemented.
 
 Each send-task start makes one executor attempt. Refusal is a recoverable terminal
 outcome for that exact generation with no retry/pending queue or default action;
@@ -171,7 +179,7 @@ failure cannot block, alter behavior, or recursively redeliver its diagnostic.
 
 ## Event model
 
-The proposed canonical path is:
+The accepted target canonical path is:
 
 ```text
 Host event or synthetic command
@@ -185,7 +193,7 @@ Host event or synthetic command
   -> update and reconciliation
 ```
 
-Proposed [ADR 0005](adr/0005-canonical-event-routing-and-commands.md)
+Accepted [ADR 0005](adr/0005-canonical-event-routing-and-commands.md)
 fixes route snapshotting, observable target/current-target/phase facts,
 non-reentrant propagation, independent stop-propagation/default-prevention,
 pointer identity/capture, exact displayed-generation surface input, focus scopes,
@@ -239,17 +247,19 @@ Accessibility is mandatory for production controls. Semantics are renderer-indep
 
 One application runtime may own multiple logical surfaces that share application state and resources while retaining independent scale, layout roots, focus scopes, publication generations, and host lifecycle.
 
-That is a later target. M3 is multi-surface-ready only because mounted IDs do not
-encode platform windows and semantic identity is renderer-independent. The
-current runtime has one mounted root, one active focus domain, and one current
-publication domain; it has no independent per-surface focus, multiple roots,
-surface lifecycle, cross-surface movement, or per-surface generations.
+That is a later target. The mounted representation is multi-surface-ready because
+mounted IDs do not encode platform windows and semantic identity is renderer-
+independent. The current runtime has one mounted root, one active focus domain,
+and one current publication domain; it has no independent per-surface focus,
+multiple roots, surface lifecycle, cross-surface movement, or per-surface
+generations.
 
-M4 adds an opaque single-domain surface-input context to event ingress. It names
-the logical `SurfaceId`, coordinate-space revision, and exact retained displayed
-generation; retired/foreign/missing contexts are rejected without retargeting.
-This is a forward-compatible seam, not a claim that multi-surface lifecycle
-exists before M10.
+Accepted M4 architecture adds an opaque single-domain surface-input context to
+event ingress. It names the logical `SurfaceId`, coordinate-space revision, and
+exact retained displayed generation; retired/foreign/missing contexts are
+rejected without retargeting. This is a forward-compatible target seam, not a
+claim that surface-input handling or multi-surface lifecycle exists in the
+current implementation or before M10.
 
 The required profiles are headless/test, standalone desktop, and embedded host. The renderer-neutral scene protocol is stabilized first, then proven by deterministic consumers, one conventional desktop backend, and only afterward an embedded/SDF consumer.
 
@@ -267,8 +277,11 @@ surface.
 
 The View/Widget/type-erasure protocol and mounted reconciliation/storage
 decisions are accepted in ADR 0003 and ADR 0004. Event routing/commands and
-effects/scheduling/trace are revised proposed decisions in ADR 0005 and ADR 0006
-and remain implementation gates until owner acceptance. Their normative public
+effects/scheduling/trace are accepted in ADR 0005 and ADR 0006 and are the active
+M4 implementation authorities. The current implementation contains only their
+bounded queue, pump, proof-activation, terminal/shutdown, and trace foundation;
+every remaining normative M4 requirement remains an implementation and
+completion gate. Public
 proof requirements are fixed in the M4 conformance matrix and directional-focus
 corpus.
 

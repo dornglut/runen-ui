@@ -13,15 +13,15 @@ impl CounterScreen {
                 button("-")
                     .id("counter.decrement")
                     .key("counter.decrement")
-                    .on_press(CounterAction::Decrement),
+                    .on_activate(|| CounterAction::Decrement),
                 button("+")
                     .id("counter.increment")
                     .key("counter.increment")
-                    .on_press(CounterAction::Increment),
+                    .on_activate(|| CounterAction::Increment),
                 button("Reset")
                     .id("counter.reset")
                     .key("counter.reset")
-                    .on_press(CounterAction::Reset),
+                    .on_activate(|| CounterAction::Reset),
             ])
             .key("counter.controls")
             .gap(8_u16),
@@ -44,7 +44,7 @@ impl WinScreen {
             button("Reset")
                 .id("counter.reset")
                 .key("counter.reset")
-                .on_press(CounterAction::Reset),
+                .on_activate(|| CounterAction::Reset),
         ])
         .key("win.screen")
         .gap(8_u16)

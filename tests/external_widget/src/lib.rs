@@ -32,7 +32,6 @@ pub struct PulseState {
 pub struct PulseButton {
     label: String,
     enabled: bool,
-    action: Option<ChildAction>,
 }
 
 impl PulseButton {
@@ -41,7 +40,6 @@ impl PulseButton {
         Self {
             label: label.into(),
             enabled: true,
-            action: Some(ChildAction::Pulse),
         }
     }
 
@@ -71,7 +69,7 @@ impl Widget<ChildAction> for PulseButton {
         if self.enabled {
             state.lifecycle_count += 1;
             context.invalidate(WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS);
-            self.action.take()
+            Some(ChildAction::Pulse)
         } else {
             None
         }
@@ -131,7 +129,7 @@ pub fn parent_view() -> Element<ParentAction> {
         child_component().map_action(ParentAction::Child),
         button("Reset")
             .id("external.reset")
-            .on_press(ParentAction::Reset),
+            .on_activate(|| ParentAction::Reset),
     ])
     .id("external.panel")
     .key("panel-key")
@@ -288,7 +286,7 @@ pub fn diagnostic_panel() -> Element<ParentAction> {
             text("nested").id("external.duplicate"),
             button("Nested action")
                 .id("external.nested")
-                .on_press(ChildAction::Pulse)
+                .on_activate(|| ChildAction::Pulse)
                 .into_element()
                 .map_action(ParentAction::Child),
         ])
@@ -328,7 +326,7 @@ fn layout_children() -> Vec<Element<LayoutAction>> {
         button("Activate")
             .id("layout.action")
             .key("action-key")
-            .on_press(LayoutAction::Activate)
+            .on_activate(|| LayoutAction::Activate)
             .into_element(),
         text("tail").id("layout.tail").into_element(),
     ]
@@ -367,7 +365,7 @@ pub fn layout_case_view(case: LayoutCase) -> Element<LayoutAction> {
                 button("Activate")
                     .id("layout.action")
                     .key("action-key")
-                    .on_press(LayoutAction::Activate),
+                    .on_activate(|| LayoutAction::Activate),
                 text("nested tail").id("layout.tail"),
             ])
             .id("layout.nested")

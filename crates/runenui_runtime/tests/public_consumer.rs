@@ -14,7 +14,7 @@ impl UiApp for App {
     fn root((): &()) -> Element<Action> {
         button("Press")
             .id("press")
-            .on_press(Action::Press)
+            .on_activate(|| Action::Press)
             .into_element()
     }
 

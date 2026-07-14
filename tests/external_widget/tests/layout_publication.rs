@@ -6,7 +6,7 @@ use runenui_external_widget_conformance::{
 };
 use runenui_runtime::{
     ActivationResult, AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize,
-    MeasurementProvider, SurfaceBuildContext, TextMeasurement, TextMeasurementKind,
+    MeasurementProvider, PumpBudget, SurfaceBuildContext, TextMeasurement, TextMeasurementKind,
     TextMeasurementRequest, UiApp,
 };
 
@@ -241,7 +241,11 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         )
         .unwrap_or_else(|_| unreachable!());
         assert_eq!(publication.frame().hit_test_id(point), Some(action.clone()));
-        assert_eq!(runtime.activate_node(&action), ActivationResult::Dispatched);
+        assert!(matches!(
+            runtime.activate_node(&action),
+            ActivationResult::Queued { .. }
+        ));
+        assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
         assert_eq!(runtime.state().activations, 1);
     }
 }

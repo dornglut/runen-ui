@@ -153,7 +153,7 @@ matrix passes. M4 boundaries remain intact.
 
 ## M4 — Events, effects, scheduling, and trace v2
 
-**Status:** `queued`.
+**Status:** `active`.
 
 **Goal:** Provide one correct interaction pipeline and deterministic application-work runtime.
 
@@ -166,7 +166,152 @@ matrix passes. M4 boundaries remain intact.
 **Dependencies:** Mounted identity/lifecycle; accepted event and effects ADRs.
 
 **Architecture gate:** ADR 0005 and ADR 0006 were accepted by the repository
-owner on 2026-07-14. Implementation has not started.
+owner on 2026-07-14.
+
+### M4 implementation slices
+
+#### M4A — Canonical queue, pump, activation, and trace foundation
+
+**Status:** `in review`. After PR #74 merges, this slice becomes `complete`.
+
+**Delivered scope:**
+
+- one private sequenced work queue;
+- the application-action envelope family;
+- non-wrapping `WorkSequence` allocation;
+- an explicit processed-envelope pump;
+- removal of direct dispatch authority;
+- queue-backed proof activation and repeatable `on_activate` factories;
+- queue saturation with exact unaccepted-action recovery;
+- terminal and shutdown foundations;
+- one bounded canonical trace with an exclusive eviction watermark.
+
+M4A is a delivery label only. It does not appear in permanent public API or
+subsystem vocabulary, and this slice does not complete M4.
+
+#### M4B — Application work and deterministic scheduler
+
+**Status:** `blocked by M4A`.
+
+**Goal:** Implement the complete ADR 0006 application-work contract and
+scheduler.
+
+**Included work:**
+
+- move the final public `UiApp` contract into `runenui_core`;
+- add `HostProtocol`, `Effects`, `IntoEffects`, default-empty
+  `initial_effects`, ordered update effects, and application subscriptions;
+- add dedicated complete-set mounted subscription declarations and owner-local
+  subscription invalidation;
+- add `WorkKey`, application and mounted work owners, and a private generational
+  work registry;
+- add committed effect-start and cancellation envelopes;
+- support local non-`Send` tasks, send-capable tasks, exactly one executor start
+  attempt, structured executor refusal, and optional typed start-failure
+  mapping;
+- add a deterministic monotonic clock plus one-shot and repeating timers;
+- implement exact host request/response-kind validation;
+- implement all four pump budgets, real readiness checkpoints, and complete
+  quiescence criteria;
+- enforce configured live-work and transaction-output limits;
+- add race-free wake and redraw state machines;
+- complete shutdown/lifecycle cancellation for implemented work and the full
+  post-mutation terminal/poison policy.
+
+Every new work family must enter the existing canonical sequenced queue. No task
+queue, timer execution loop, host queue, or subscription queue may become a
+second processing authority. M4B adds trace facts for every scheduler/work
+behavior it implements; basic scheduler observability is not deferred to M4D.
+
+**Explicit non-goals:** Routed input events, pointer capture, focus scopes,
+text/IME routing, an external trace sink, replay, and a native host
+implementation.
+
+**Exit criteria:** The public application contract is core-owned with no
+runtime-owned competitor; initial/update/subscription ordering is deterministic;
+all ADR 0006 scheduler/work conformance rows in this scope pass on stable and
+MSRV.
+
+#### M4C — Canonical routed interaction and semantic commands
+
+**Status:** `blocked by M4B`.
+
+**Goal:** Implement ADR 0005 on top of the canonical scheduler.
+
+**Included work:**
+
+- core-owned event-family vocabulary and opaque safe mounted/surface identities
+  required by public protocols;
+- `SurfaceInputContext` plus retained current/previous displayed hit-test
+  generations and exact retired, missing, foreign-runtime, and foreign-surface
+  outcomes;
+- `UiEvent`, borrowed transaction-scoped `EventContext`, immutable route
+  snapshots, capture/target/bubble phases, propagation stopping, and default
+  prevention;
+- staged interaction changes and commit-derived notifications;
+- pointer IDs, optional device IDs, pressed ownership, true pointer capture,
+  deterministic pointer-boundary updates, and release-inside activation;
+- semantic `Activate`, semantic command routing, and exact route-only defaults;
+- explicit queued command delegation and input modality;
+- focus scopes, next/previous focus, directional navigation, and every vector in
+  the directional-focus corpus;
+- keyboard down/up policy plus separate committed-text and IME streams with
+  composition ownership;
+- normalized controller, accessibility-stub, automation, and programmatic
+  convergence;
+- terminal pointer-integrity cleanup;
+- removal of transitional direct pointer/keyboard activation and overlapping
+  input-intent paths.
+
+Event callbacks may collect provisional actions, commands, invalidation, and
+mounted-owned work. They must never directly update application state,
+reconcile, execute effects, or recursively route another event. M4C adds event,
+route, phase, default, target, surface, pointer, focus, capture, composition,
+modality, and command trace facts as those behaviors land.
+
+**Explicit non-goals:** A production accessibility adapter, production text
+editing, native event translation, a renderer backend, and multi-surface
+lifecycle.
+
+**Exit criteria:** One canonical event path remains with no direct activation or
+focus bypass; pointer, keyboard, controller, accessibility stub, automation, and
+programmatic activation converge; all ADR 0005 and directional-focus
+conformance rows pass through public APIs.
+
+#### M4D — Trace v2 completion and M4 conformance closure
+
+**Status:** `blocked by M4B and M4C`.
+
+**Goal:** Complete external observability, reconstruction, and every remaining
+M4 exit criterion.
+
+**Included work:**
+
+- complete the trace-record schema for all M4 work;
+- add logical scheduler time, surface/publication facts, work owners, and
+  private generations;
+- add effect, task, timer, subscription, host-request, wake/redraw request and
+  acknowledgment, terminal, and poison reconstruction facts;
+- enforce payload redaction, text/IME redaction by default, and an optional
+  application label provider without `Action: Debug`;
+- add deterministic versioned JSONL projection;
+- add a bounded or try-based subordinate external trace sink with sink-full,
+  sink-closed, and sink-failure diagnostics, a recursion guard, and behavioral
+  isolation from canonical trace;
+- add replay foundations and end-to-end Counter causal reconstruction;
+- complete every remaining M4 conformance-matrix row;
+- remove the final transitional M1–M3/M4A implementation paths;
+- perform final current-contract, support-matrix, status-map, vocabulary, and
+  public API cleanup.
+
+M4D does not postpone basic trace coverage owned by M4B or M4C. Those slices
+trace their behavior when implemented; M4D completes the schema,
+externalization, reconstruction, replay foundation, and milestone closure.
+
+**Exit criteria:** Every row required for M4 passes on stable and MSRV; Counter
+and downstream conformance use public APIs; one canonical queue and one
+canonical event path remain; complete trace reconstruction and exact-head
+`cargo validate` pass; M4 is marked complete and M5 becomes unblocked.
 
 **Required proofs/tests:** The normative [M4 conformance matrix](architecture/m4-conformance-matrix.md) and every vector in the [directional-focus corpus](architecture/m4-directional-focus-corpus.md) must pass through public APIs. They cover exact event-family and command-default policy; current/previous/retired/foreign/missing surface generations, no retargeting, and terminal pointer cleanup; cross-pointer publication order; pointer/keyboard/normalized-controller/accessibility-stub/automation/programmatic convergence; deterministic focus/scopes/restoration; capture/composition/boundary/cancellation/release cases; exact initial work ordering, state-derived application subscriptions, and owner-local complete mounted declarations; readiness checkpoints and separate pump budgets; deterministic task/timer/subscription/host ordering; one-attempt executor start/refusal and optional failure mapping; all four same-batch keyed cancellation/start cases; exact host response-kind validation; queue limits and no-silent-drop behavior; wake/redraw races; terminal integrity; bounded canonical trace reconstruction and bounded sink backpressure/recursion behavior; and idempotent shutdown.
 

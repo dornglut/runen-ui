@@ -1,10 +1,55 @@
-//! Runtime trace records.
+//! Bounded canonical runtime trace records.
+
+use core::num::NonZeroU64;
+use std::collections::VecDeque;
 
 use runenui_core::ElementId;
 
-use crate::MountedNodeId;
+use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
 
-/// Trace target for runtime events caused by a specific element.
+/// Non-wrapping identity of one canonical trace record.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TraceSequence(NonZeroU64);
+
+impl TraceSequence {
+    /// Returns the numeric sequence value.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0.get()
+    }
+
+    const fn new(value: NonZeroU64) -> Self {
+        Self(value)
+    }
+}
+
+/// Configuration for canonical in-memory trace retention.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TraceConfig {
+    capacity: usize,
+}
+
+impl TraceConfig {
+    /// Creates trace configuration with the requested retained-record capacity.
+    #[must_use]
+    pub const fn new(capacity: usize) -> Self {
+        Self { capacity }
+    }
+
+    /// Returns the retained-record capacity.
+    #[must_use]
+    pub const fn capacity(self) -> usize {
+        self.capacity
+    }
+}
+
+impl Default for TraceConfig {
+    fn default() -> Self {
+        Self::new(1024)
+    }
+}
+
+/// Trace target for runtime work caused by a specific mounted node.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceTarget {
     mounted_node_id: MountedNodeId,
@@ -12,7 +57,6 @@ pub struct TraceTarget {
 }
 
 impl TraceTarget {
-    /// Creates a trace target from generated runtime identity and optional authored identity.
     #[must_use]
     pub(crate) const fn new(
         mounted_node_id: MountedNodeId,
@@ -24,97 +68,206 @@ impl TraceTarget {
         }
     }
 
-    /// Returns the generated runtime node ID for this target.
+    /// Returns the mounted node identity for this target.
     #[must_use]
     pub const fn mounted_node_id(&self) -> &MountedNodeId {
         &self.mounted_node_id
     }
 
-    /// Returns the optional authored element ID for this target.
+    /// Returns the optional authored element identity for this target.
     #[must_use]
     pub const fn authored_id(&self) -> Option<&ElementId> {
         self.authored_id.as_ref()
     }
 }
 
-/// Coarse runtime trace events emitted by the headless loop.
+/// Structured kind of one canonical trace record.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RuntimeEvent {
-    /// The runtime was mounted with initial state and root UI.
-    Mounted,
-    /// A typed action was accepted for dispatch.
-    ActionDispatched,
-    /// The application update function returned.
-    StateUpdated,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TraceRecordKind {
+    RuntimeMounted,
+    ActionSubmissionAccepted,
+    ActionSubmissionRejectedFull,
+    ActionSubmissionRejectedClosed,
+    ActionSubmissionRejectedTerminal,
+    ActivationCommitted,
+    ActivationRejectedFull,
+    ApplicationActionTransactionStarted,
+    ApplicationStateUpdated,
     TreeReconciled,
     FocusRetained,
     FocusCleared,
-    RuntimeShutdown,
+    PumpBudgetExhausted,
+    QueuedWorkCancelled {
+        count: usize,
+    },
+    RuntimeTerminal {
+        reason: RuntimeTerminalReason,
+    },
+    RuntimeShutdown {
+        cancelled_queued: usize,
+        unmounted_lifetimes: usize,
+    },
 }
 
-/// One runtime trace record, with optional element target details.
+/// One immutable canonical trace record.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceRecord {
-    event: RuntimeEvent,
+    sequence: TraceSequence,
+    kind: TraceRecordKind,
+    work_sequence: Option<WorkSequence>,
+    causal_parent: Option<TraceSequence>,
+    reconciliation_before: Option<ReconciliationGeneration>,
+    reconciliation_after: Option<ReconciliationGeneration>,
     target: Option<TraceTarget>,
 }
 
 impl TraceRecord {
-    const fn new(event: RuntimeEvent, target: Option<TraceTarget>) -> Self {
-        Self { event, target }
-    }
-
-    /// Returns the coarse runtime event.
+    /// Returns this record's trace sequence.
     #[must_use]
-    pub const fn event(&self) -> RuntimeEvent {
-        self.event
+    pub const fn sequence(&self) -> TraceSequence {
+        self.sequence
     }
 
-    /// Returns target details for events caused by a specific element.
+    /// Returns this record's structured kind.
+    #[must_use]
+    pub const fn kind(&self) -> &TraceRecordKind {
+        &self.kind
+    }
+
+    /// Returns the associated global work sequence, when applicable.
+    #[must_use]
+    pub const fn work_sequence(&self) -> Option<WorkSequence> {
+        self.work_sequence
+    }
+
+    /// Returns the causal parent trace sequence, when applicable.
+    #[must_use]
+    pub const fn causal_parent(&self) -> Option<TraceSequence> {
+        self.causal_parent
+    }
+
+    /// Returns the reconciliation generation before this record's transaction.
+    #[must_use]
+    pub const fn reconciliation_before(&self) -> Option<ReconciliationGeneration> {
+        self.reconciliation_before
+    }
+
+    /// Returns the reconciliation generation after this record's transaction.
+    #[must_use]
+    pub const fn reconciliation_after(&self) -> Option<ReconciliationGeneration> {
+        self.reconciliation_after
+    }
+
+    /// Returns the mounted trace target, when applicable.
     #[must_use]
     pub const fn target(&self) -> Option<&TraceTarget> {
         self.target.as_ref()
     }
 }
 
-/// Ordered runtime trace log.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// One bounded canonical trace store.
+#[derive(Debug, Eq, PartialEq)]
 pub struct Trace {
-    events: Vec<RuntimeEvent>,
-    records: Vec<TraceRecord>,
+    capacity: usize,
+    records: VecDeque<TraceRecord>,
+    next_sequence: Option<NonZeroU64>,
+    dropped_before_sequence: Option<TraceSequence>,
 }
 
 impl Trace {
-    /// Creates an empty trace log.
     #[must_use]
-    pub(crate) const fn new() -> Self {
+    pub(crate) const fn new(config: TraceConfig) -> Self {
+        let capacity = config.capacity();
         Self {
-            events: Vec::new(),
-            records: Vec::new(),
+            capacity,
+            records: VecDeque::new(),
+            next_sequence: NonZeroU64::new(1),
+            dropped_before_sequence: None,
         }
     }
 
-    /// Appends one untargeted runtime event.
-    pub(crate) fn record(&mut self, event: RuntimeEvent) {
-        self.record_with_target(event, None);
+    pub(crate) fn can_record_mandatory(&self, count: usize) -> bool {
+        if self.capacity == 0 || count == 0 {
+            return true;
+        }
+        self.next_sequence.is_some_and(|next| {
+            u64::try_from(count - 1)
+                .ok()
+                .and_then(|additional| next.get().checked_add(additional))
+                .is_some()
+        })
     }
 
-    /// Appends one runtime event with optional target details.
-    pub(crate) fn record_with_target(&mut self, event: RuntimeEvent, target: Option<TraceTarget>) {
-        self.events.push(event);
-        self.records.push(TraceRecord::new(event, target));
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn record(
+        &mut self,
+        kind: TraceRecordKind,
+        work_sequence: Option<WorkSequence>,
+        causal_parent: Option<TraceSequence>,
+        reconciliation_before: Option<ReconciliationGeneration>,
+        reconciliation_after: Option<ReconciliationGeneration>,
+        target: Option<TraceTarget>,
+    ) -> Option<TraceSequence> {
+        if self.capacity == 0 {
+            return None;
+        }
+        let sequence = TraceSequence::new(self.next_sequence?);
+        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        if self.records.len() == self.capacity
+            && let Some(evicted) = self.records.pop_front()
+            && let Some(next) = evicted
+                .sequence
+                .get()
+                .checked_add(1)
+                .and_then(NonZeroU64::new)
+        {
+            self.dropped_before_sequence = Some(TraceSequence::new(next));
+        }
+        self.records.push_back(TraceRecord {
+            sequence,
+            kind,
+            work_sequence,
+            causal_parent,
+            reconciliation_before,
+            reconciliation_after,
+            target,
+        });
+        Some(sequence)
     }
 
-    /// Returns the recorded coarse event sequence.
+    /// Borrows canonical records from oldest retained to newest.
     #[must_use]
-    pub const fn events(&self) -> &[RuntimeEvent] {
-        self.events.as_slice()
+    pub fn records(&self) -> impl ExactSizeIterator<Item = &TraceRecord> {
+        self.records.iter()
     }
 
-    /// Returns the recorded event sequence with target details.
+    /// Borrows structured record kinds from oldest retained to newest.
     #[must_use]
-    pub const fn records(&self) -> &[TraceRecord] {
-        self.records.as_slice()
+    pub fn kinds(&self) -> impl ExactSizeIterator<Item = &TraceRecordKind> {
+        self.records.iter().map(TraceRecord::kind)
+    }
+
+    /// Returns the number of retained records.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
+    /// Returns whether no records are retained.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+
+    /// Returns the exclusive watermark for records evicted from retention.
+    #[must_use]
+    pub const fn dropped_before_sequence(&self) -> Option<TraceSequence> {
+        self.dropped_before_sequence
+    }
+
+    #[cfg(any(test, feature = "internal-test-seams"))]
+    pub(crate) const fn seed_next_sequence_for_test(&mut self, next: u64) {
+        self.next_sequence = NonZeroU64::new(next);
     }
 }

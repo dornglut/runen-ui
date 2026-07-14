@@ -1,4 +1,4 @@
-//! Persistent mounted runtime ownership and reconciliation generations.
+//! Persistent runtime state, action transactions, and terminal authority.
 
 #![allow(clippy::redundant_pub_crate)]
 
@@ -7,29 +7,57 @@ use core::fmt;
 use runenui_core::{Element, ElementKey};
 
 use crate::{
-    FocusState, MountedNodeId, RuntimeEvent, Trace, TraceTarget,
+    FocusState, MountedNodeId, RuntimeConfig, SubmitActionError, SubmitActionResult, Trace,
+    TraceRecordKind, TraceSequence, TraceTarget, WorkSequence,
+    app::UiApp,
     mounted::{MountedTree, TargetStatus},
+    queue::{ApplicationActionEnvelope, ApplicationActionOrigin, WorkQueue},
 };
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum RuntimeTerminalReason {
+    WorkSequenceExhausted,
+    ReconciliationGenerationExhausted,
+    TraceSequenceExhausted,
+}
+
+impl fmt::Display for RuntimeTerminalReason {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::WorkSequenceExhausted => formatter.write_str("work sequence exhausted"),
+            Self::ReconciliationGenerationExhausted => {
+                formatter.write_str("reconciliation generation exhausted")
+            }
+            Self::TraceSequenceExhausted => formatter.write_str("trace sequence exhausted"),
+        }
+    }
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimeStatus {
+    Running,
+    Terminal(RuntimeTerminalReason),
+    Closed,
+}
 
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeError {
-    ReconciliationGenerationExhausted,
     WidgetStatePayloadMismatch,
 }
 
 impl fmt::Display for RuntimeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ReconciliationGenerationExhausted => {
-                f.write_str("reconciliation generation exhausted")
-            }
             Self::WidgetStatePayloadMismatch => {
-                f.write_str("mounted widget state payload mismatch")
+                formatter.write_str("mounted widget state payload mismatch")
             }
         }
     }
 }
+
 impl std::error::Error for RuntimeError {}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -69,7 +97,7 @@ pub enum ReconciliationDiagnostic {
 }
 
 impl fmt::Display for ReconciliationDiagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DuplicateSiblingKey {
                 key,
@@ -77,14 +105,14 @@ impl fmt::Display for ReconciliationDiagnostic {
                 old_occurrence_paths,
                 new_occurrence_paths,
             } => write!(
-                f,
+                formatter,
                 "duplicate sibling key {:?} under {parent_path}; old=[{}], new=[{}]",
                 key.as_str(),
                 old_occurrence_paths.join(", "),
                 new_occurrence_paths.join(", ")
             ),
             Self::StatePayloadMismatch { path } => {
-                write!(f, "mounted widget state payload mismatch at {path}")
+                write!(formatter, "mounted widget state payload mismatch at {path}")
             }
         }
     }
@@ -125,22 +153,67 @@ impl ReconciliationReport {
     }
 }
 
+/// Result of one explicit, idempotent runtime shutdown.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ShutdownReport {
+    already_complete: bool,
+    cancelled_queued_envelopes: usize,
+    unmounted_lifetimes: usize,
+}
+
+impl ShutdownReport {
+    #[must_use]
+    pub const fn already_complete(self) -> bool {
+        self.already_complete
+    }
+    #[must_use]
+    pub const fn cancelled_queued_envelopes(self) -> usize {
+        self.cancelled_queued_envelopes
+    }
+    #[must_use]
+    pub const fn unmounted_lifetimes(self) -> usize {
+        self.unmounted_lifetimes
+    }
+}
+
 pub(crate) struct Runtime<State, Action> {
     state: Option<State>,
     pub(crate) tree: MountedTree<Action>,
+    queue: WorkQueue<Action>,
     trace: Trace,
     focus: FocusState,
     generation: u64,
     report: ReconciliationReport,
-    shutdown: bool,
+    status: RuntimeStatus,
+    #[cfg(test)]
+    readiness_checkpoint_count: usize,
+}
+
+pub(crate) enum ProcessApplicationActionOutcome {
+    Completed,
+    Terminal {
+        reason: RuntimeTerminalReason,
+        cancelled: usize,
+    },
 }
 
 impl<State, Action> Runtime<State, Action> {
-    pub(crate) fn mount(state: State, root: impl FnOnce(&State) -> Element<Action>) -> Self {
+    pub(crate) fn mount(
+        state: State,
+        root: impl FnOnce(&State) -> Element<Action>,
+        config: RuntimeConfig,
+    ) -> Self {
         let transient = root(&state);
         let (tree, reconcile_stats) = MountedTree::mount(transient);
-        let mut trace = Trace::new();
-        trace.record(RuntimeEvent::Mounted);
+        let mut trace = Trace::new(config.trace_config());
+        trace.record(
+            TraceRecordKind::RuntimeMounted,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let report = ReconciliationReport {
             generation: ReconciliationGeneration(1),
             live_node_count: tree.live_count(),
@@ -154,85 +227,221 @@ impl<State, Action> Runtime<State, Action> {
         Self {
             state: Some(state),
             tree,
+            queue: WorkQueue::new(config.queue_capacity()),
             trace,
             focus: FocusState::new(),
             generation: 1,
             report,
-            shutdown: false,
+            status: RuntimeStatus::Running,
+            #[cfg(test)]
+            readiness_checkpoint_count: 0,
         }
     }
 
-    pub(crate) fn dispatch(
+    pub(crate) fn submit_action(
         &mut self,
         action: Action,
-        update: impl FnOnce(&mut State, Action),
-        root: impl FnOnce(&State) -> Element<Action>,
-    ) -> Result<&ReconciliationReport, RuntimeError> {
-        self.dispatch_with_target(action, update, root, None)
-    }
-
-    pub(crate) fn dispatch_with_target(
-        &mut self,
-        action: Action,
-        update: impl FnOnce(&mut State, Action),
-        root: impl FnOnce(&State) -> Element<Action>,
+        origin: ApplicationActionOrigin,
+        causal_parent: Option<TraceSequence>,
         target: Option<TraceTarget>,
-    ) -> Result<&ReconciliationReport, RuntimeError> {
-        let next = self.next_generation()?;
-        self.trace
-            .record_with_target(RuntimeEvent::ActionDispatched, target.clone());
-        let app_state = self
-            .state
-            .as_mut()
-            .unwrap_or_else(|| unreachable!("live runtime retains application state"));
-        update(app_state, action);
-        self.trace
-            .record_with_target(RuntimeEvent::StateUpdated, target.clone());
-        let transient = root(app_state);
-        let previous_focus = self.focus.focused_node().cloned();
-        let reconcile_stats = self.tree.reconcile(transient);
-        self.generation = next;
-        let retained_focus = previous_focus
-            .as_ref()
-            .is_some_and(|id| self.validate_focus(id));
-        if !retained_focus && previous_focus.is_some() {
-            self.focus.clear();
-            self.trace.record(RuntimeEvent::FocusCleared);
-        } else if retained_focus {
-            self.trace.record(RuntimeEvent::FocusRetained);
+    ) -> SubmitActionResult<Action> {
+        match self.status {
+            RuntimeStatus::Closed => {
+                self.record_optional(
+                    TraceRecordKind::ActionSubmissionRejectedClosed,
+                    None,
+                    None,
+                    None,
+                );
+                return Err(SubmitActionError::Closed(action));
+            }
+            RuntimeStatus::Terminal(reason) => {
+                self.record_optional(
+                    TraceRecordKind::ActionSubmissionRejectedTerminal,
+                    None,
+                    None,
+                    None,
+                );
+                return Err(SubmitActionError::Terminal { action, reason });
+            }
+            RuntimeStatus::Running => {}
         }
-        self.tree.finish_focus_validation();
-        self.trace
-            .record_with_target(RuntimeEvent::TreeReconciled, target);
-        self.report = ReconciliationReport {
-            generation: ReconciliationGeneration(next),
-            live_node_count: self.tree.live_count(),
-            mounted_count: reconcile_stats.mounted,
-            updated_count: reconcile_stats.updated,
-            unmounted_count: reconcile_stats.unmounted,
-            moved_count: reconcile_stats.moved,
-            retained_focus,
-            diagnostics: reconcile_stats.diagnostics,
+        if self.queue.is_full() {
+            self.record_optional(
+                TraceRecordKind::ActionSubmissionRejectedFull,
+                None,
+                None,
+                target,
+            );
+            return Err(SubmitActionError::Full(action));
+        }
+        if !self.queue.has_sequence() {
+            let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(SubmitActionError::Terminal { action, reason });
+        }
+        if !self.trace.can_record_mandatory(1) {
+            let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(SubmitActionError::Terminal { action, reason });
+        }
+        let trace_target = target.clone();
+        let sequence = match self
+            .queue
+            .push_preflighted(action, causal_parent, target, origin)
+        {
+            Ok(sequence) => sequence,
+            Err(action) => {
+                let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+                self.enter_terminal(reason, 0);
+                return Err(SubmitActionError::Terminal { action, reason });
+            }
         };
-        Ok(&self.report)
+        self.trace.record(
+            TraceRecordKind::ActionSubmissionAccepted,
+            Some(sequence),
+            causal_parent,
+            None,
+            None,
+            trace_target,
+        );
+        Ok(sequence)
     }
 
-    pub(crate) fn preflight_reconciliation_generation(&self) -> Result<(), RuntimeError> {
-        self.next_generation().map(drop)
+    pub(crate) fn activation_preflight(
+        &mut self,
+        target: &TraceTarget,
+    ) -> Result<(), RuntimeStatus> {
+        match self.status {
+            RuntimeStatus::Running => {}
+            status => return Err(status),
+        }
+        if self.next_generation().is_none() {
+            let reason = RuntimeTerminalReason::ReconciliationGenerationExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(RuntimeStatus::Terminal(reason));
+        }
+        if self.queue.is_full() {
+            self.record_optional(
+                TraceRecordKind::ActivationRejectedFull,
+                None,
+                None,
+                Some(target.clone()),
+            );
+            return Err(RuntimeStatus::Running);
+        }
+        if !self.queue.has_sequence() {
+            let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(RuntimeStatus::Terminal(reason));
+        }
+        if !self.trace.can_record_mandatory(2) {
+            let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(RuntimeStatus::Terminal(reason));
+        }
+        Ok(())
     }
 
-    fn next_generation(&self) -> Result<u64, RuntimeError> {
-        self.generation
-            .checked_add(1)
-            .ok_or(RuntimeError::ReconciliationGenerationExhausted)
+    pub(crate) fn commit_activation(
+        &mut self,
+        action: Option<Action>,
+        target: TraceTarget,
+        origin: ApplicationActionOrigin,
+    ) -> Option<WorkSequence> {
+        let causal_parent = self.trace.record(
+            TraceRecordKind::ActivationCommitted,
+            None,
+            None,
+            None,
+            None,
+            Some(target.clone()),
+        );
+        let action = action?;
+        let sequence =
+            match self
+                .queue
+                .push_preflighted(action, causal_parent, Some(target.clone()), origin)
+            {
+                Ok(sequence) => sequence,
+                Err(_action) => {
+                    self.enter_terminal(RuntimeTerminalReason::WorkSequenceExhausted, 0);
+                    return None;
+                }
+            };
+        self.trace.record(
+            TraceRecordKind::ActionSubmissionAccepted,
+            Some(sequence),
+            causal_parent,
+            None,
+            None,
+            Some(target),
+        );
+        Some(sequence)
+    }
+
+    pub(crate) fn pop_application_action(&mut self) -> Option<ApplicationActionEnvelope<Action>> {
+        self.queue.pop_application_action()
+    }
+
+    pub(crate) fn queued_len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub(crate) fn queue_is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub(crate) fn enter_terminal(
+        &mut self,
+        reason: RuntimeTerminalReason,
+        additional_cancelled: usize,
+    ) -> usize {
+        if !matches!(self.status, RuntimeStatus::Running) {
+            return 0;
+        }
+        let cancelled = self.queue.cancel_all().saturating_add(additional_cancelled);
+        self.status = RuntimeStatus::Terminal(reason);
+        self.record_optional(
+            TraceRecordKind::RuntimeTerminal { reason },
+            None,
+            None,
+            None,
+        );
+        if cancelled > 0 {
+            self.record_optional(
+                TraceRecordKind::QueuedWorkCancelled { count: cancelled },
+                None,
+                None,
+                None,
+            );
+        }
+        cancelled
+    }
+
+    pub(crate) fn record_optional(
+        &mut self,
+        kind: TraceRecordKind,
+        work_sequence: Option<WorkSequence>,
+        causal_parent: Option<TraceSequence>,
+        target: Option<TraceTarget>,
+    ) {
+        if self.trace.can_record_mandatory(1) {
+            self.trace
+                .record(kind, work_sequence, causal_parent, None, None, target);
+        }
+    }
+
+    const fn next_generation(&self) -> Option<u64> {
+        self.generation.checked_add(1)
     }
 
     fn validate_focus(&mut self, id: &MountedNodeId) -> bool {
-        self.tree.target_status(id) == TargetStatus::Live && {
-            self.tree
+        self.tree.target_status(id) == TargetStatus::Live
+            && self
+                .tree
                 .activation(id)
                 .is_ok_and(|activation| activation.enabled() && activation.is_actionable())
-        }
     }
 
     #[must_use]
@@ -260,15 +469,47 @@ impl<State, Action> Runtime<State, Action> {
     pub(crate) const fn report(&self) -> &ReconciliationReport {
         &self.report
     }
+    #[must_use]
+    pub(crate) const fn status(&self) -> RuntimeStatus {
+        self.status
+    }
 
-    pub(crate) fn shutdown(&mut self) {
-        if self.shutdown {
-            return;
+    #[cfg(test)]
+    pub(crate) const fn note_readiness_checkpoint(&mut self) {
+        self.readiness_checkpoint_count += 1;
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn readiness_checkpoint_count_for_test(&self) -> usize {
+        self.readiness_checkpoint_count
+    }
+
+    pub(crate) fn shutdown(&mut self) -> ShutdownReport {
+        if matches!(self.status, RuntimeStatus::Closed) {
+            return ShutdownReport {
+                already_complete: true,
+                cancelled_queued_envelopes: 0,
+                unmounted_lifetimes: 0,
+            };
         }
-        self.tree.shutdown();
+        let cancelled_queued_envelopes = self.queue.cancel_all();
+        let stats = self.tree.shutdown();
         self.focus.clear();
-        self.trace.record(RuntimeEvent::RuntimeShutdown);
-        self.shutdown = true;
+        self.record_optional(
+            TraceRecordKind::RuntimeShutdown {
+                cancelled_queued: cancelled_queued_envelopes,
+                unmounted_lifetimes: stats.unmounted,
+            },
+            None,
+            None,
+            None,
+        );
+        self.status = RuntimeStatus::Closed;
+        ShutdownReport {
+            already_complete: false,
+            cancelled_queued_envelopes,
+            unmounted_lifetimes: stats.unmounted,
+        }
     }
 
     pub(crate) fn into_state(mut self) -> State {
@@ -282,32 +523,118 @@ impl<State, Action> Runtime<State, Action> {
     pub(crate) const fn seed_generation_for_test(&mut self, generation: u64) {
         self.generation = generation;
     }
+
+    #[cfg(any(test, feature = "internal-test-seams"))]
+    pub(crate) const fn seed_next_work_sequence_for_test(&mut self, next: u64) {
+        self.queue.seed_next_sequence_for_test(next);
+    }
+
+    #[cfg(any(test, feature = "internal-test-seams"))]
+    pub(crate) const fn seed_next_trace_sequence_for_test(&mut self, next: u64) {
+        self.trace.seed_next_sequence_for_test(next);
+    }
+}
+
+pub(crate) fn process_application_action<App: UiApp>(
+    runtime: &mut Runtime<App::State, App::Action>,
+    envelope: ApplicationActionEnvelope<App::Action>,
+) -> ProcessApplicationActionOutcome {
+    let ApplicationActionEnvelope {
+        sequence,
+        action,
+        causal_parent,
+        target,
+        origin: _origin,
+    } = envelope;
+    let before = ReconciliationGeneration(runtime.generation);
+    let Some(next) = runtime.next_generation() else {
+        let reason = RuntimeTerminalReason::ReconciliationGenerationExhausted;
+        let cancelled = runtime.enter_terminal(reason, 1);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    };
+    let trace_count = if runtime.focus.focused_node().is_some() {
+        4
+    } else {
+        3
+    };
+    if !runtime.trace.can_record_mandatory(trace_count) {
+        let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+        let cancelled = runtime.enter_terminal(reason, 1);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
+    runtime.trace.record(
+        TraceRecordKind::ApplicationActionTransactionStarted,
+        Some(sequence),
+        causal_parent,
+        Some(before),
+        None,
+        target.clone(),
+    );
+    let app_state = runtime
+        .state
+        .as_mut()
+        .unwrap_or_else(|| unreachable!("live runtime retains application state"));
+    App::update(app_state, action);
+    runtime.trace.record(
+        TraceRecordKind::ApplicationStateUpdated,
+        Some(sequence),
+        causal_parent,
+        Some(before),
+        None,
+        target.clone(),
+    );
+    let transient = App::root(app_state);
+    let previous_focus = runtime.focus.focused_node().cloned();
+    let reconcile_stats = runtime.tree.reconcile(transient);
+    runtime.generation = next;
+    let after = ReconciliationGeneration(next);
+    let retained_focus = previous_focus
+        .as_ref()
+        .is_some_and(|id| runtime.validate_focus(id));
+    if !retained_focus && previous_focus.is_some() {
+        runtime.focus.clear();
+        runtime.trace.record(
+            TraceRecordKind::FocusCleared,
+            Some(sequence),
+            causal_parent,
+            Some(before),
+            Some(after),
+            target.clone(),
+        );
+    } else if retained_focus {
+        runtime.trace.record(
+            TraceRecordKind::FocusRetained,
+            Some(sequence),
+            causal_parent,
+            Some(before),
+            Some(after),
+            target.clone(),
+        );
+    }
+    runtime.tree.finish_focus_validation();
+    runtime.report = ReconciliationReport {
+        generation: after,
+        live_node_count: runtime.tree.live_count(),
+        mounted_count: reconcile_stats.mounted,
+        updated_count: reconcile_stats.updated,
+        unmounted_count: reconcile_stats.unmounted,
+        moved_count: reconcile_stats.moved,
+        retained_focus,
+        diagnostics: reconcile_stats.diagnostics,
+    };
+    runtime.trace.record(
+        TraceRecordKind::TreeReconciled,
+        Some(sequence),
+        causal_parent,
+        Some(before),
+        Some(after),
+        target,
+    );
+    ProcessApplicationActionOutcome::Completed
 }
 
 impl<State, Action> Drop for Runtime<State, Action> {
     fn drop(&mut self) {
         self.shutdown();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use runenui_core::{Element, View, text};
-
-    use super::{Runtime, RuntimeError};
-
-    fn root(_: &String) -> Element<()> {
-        text("root").key("root").into_element()
-    }
-
-    #[test]
-    fn generation_exhaustion_aborts_before_application_or_tree_mutation() {
-        let mut runtime = Runtime::mount(String::new(), root);
-        let mounted = runtime.tree.index().nodes()[0].id().clone();
-        runtime.generation = u64::MAX;
-        let result = runtime.dispatch((), |state, ()| state.push('x'), root);
-        assert_eq!(result, Err(RuntimeError::ReconciliationGenerationExhausted));
-        assert_eq!(runtime.state(), "");
-        assert_eq!(runtime.tree.index().nodes()[0].id(), &mounted);
     }
 }

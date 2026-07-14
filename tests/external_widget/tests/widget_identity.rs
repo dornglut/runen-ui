@@ -2,7 +2,7 @@ use runenui_core::{Element, ElementId, WidgetStateTypeId, WidgetTypeId};
 use runenui_external_widget_conformance::{
     ChildAction, GenericWidget, ParentAction, PulseButton, PulseState, child_component,
 };
-use runenui_runtime::{ActivationResult, AppRuntime, UiApp};
+use runenui_runtime::{ActivationResult, AppRuntime, PumpBudget, UiApp};
 
 fn node_by_authored_id<App: UiApp>(
     runtime: &mut AppRuntime<App>,
@@ -46,11 +46,17 @@ fn concrete_widget_state_and_action_mapping_identity_are_mounted_and_stable() {
     );
 
     let mounted = runtime.index().nodes()[0].id().clone();
-    assert_eq!(
+    assert!(matches!(
         runtime.activate_node(&mounted),
-        ActivationResult::Dispatched
-    );
-    assert_eq!(*runtime.state(), 1);
+        ActivationResult::Queued { .. }
+    ));
+    assert!(matches!(
+        runtime.activate_node(&mounted),
+        ActivationResult::Queued { .. }
+    ));
+    assert_eq!(*runtime.state(), 0);
+    assert_eq!(runtime.pump(PumpBudget::new(2)).processed_envelopes(), 2);
+    assert_eq!(*runtime.state(), 2);
     assert_eq!(
         node_by_authored_id(&mut runtime, "external.pulse"),
         (
@@ -93,10 +99,11 @@ fn nested_recursive_mapping_preserves_non_clone_action_and_widget_state_identity
         )
     );
     let mounted = runtime.index().nodes()[0].id().clone();
-    assert_eq!(
+    assert!(matches!(
         runtime.activate_node(&mounted),
-        ActivationResult::Dispatched
-    );
+        ActivationResult::Queued { .. }
+    ));
+    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
     assert_eq!(
         runtime.state(),
         &Some(NestedAction::Outer(ParentAction::Child(ChildAction::Pulse)))

@@ -21,7 +21,7 @@ RunenUI/
 | Package | Current ownership | Must not own |
 |---|---|---|
 | `runenui_core` | Validated authored values/identity/style; transient views/elements; state-aware widgets; lifecycle contexts; invalidation; technically public doc-hidden unstable safe runtime bridge | Persistent mounted storage, hosts, renderer backends, app state, ECS, or legacy dependencies |
-| `runenui_runtime` | Generational mounted arena/tree, reconciliation, lifecycle/shutdown, focus/interaction slots, caches/invalidation phases, mounted dispatch/targeting, aligned publication, hit testing, and trace | Application domain state, native windows, concrete renderers, ECS, or legacy dependencies |
+| `runenui_runtime` | Generational mounted arena/tree, reconciliation, lifecycle/shutdown, focus/interaction slots, caches/invalidation phases, canonical action submission and pumping, mounted activation/targeting, terminal authority, bounded trace, aligned publication, and hit testing | Application domain state, native windows, concrete renderers, ECS, or legacy dependencies |
 | `counter` | Application-owned state/action/update and headless public-API proof | Framework internals, native host, renderer backend, or legacy imports |
 | `runenui_external_widget_conformance` | Non-publishable test-owned downstream controls, vertical/horizontal/intrinsic/unsupported child-layout widgets, mapping, state/lifecycle, alignment, hit, and snapshot proof | Production framework ownership or privileged internal access |
 | `xtask` | Repository validation orchestration | Framework runtime behavior |
@@ -36,16 +36,19 @@ runenui_core <- runenui_runtime <- counter
 
 `xtask` is repository tooling and has no framework dependency.
 
-The proposed M4 split preserves this graph. `runenui_core` gains only public
-host-neutral protocol/value definitions: opaque mounted/surface identities,
-events/commands, action mapping, transaction-scoped event/work contexts,
-`UiApp`, `HostProtocol`, `WorkKey`, and effect/subscription descriptions.
-`runenui_runtime` remains the sole live authority for namespace creation,
-arenas/topology, validation, snapshots/routes, interaction mutation,
+The accepted M4 ownership direction preserves this graph. `runenui_core` gains
+only public host-neutral protocol/value definitions: opaque mounted/surface
+identities, events/commands, action mapping, transaction-scoped event/work
+contexts, `UiApp`, `HostProtocol`, `WorkKey`, and effect/subscription
+descriptions. `runenui_runtime` remains the sole live authority for namespace
+creation, arenas/topology, validation, snapshots/routes, interaction mutation,
 reconciliation, queue sequences/checkpoints, work execution, timers/clocks,
-subscriptions, host requests, wake/redraw, trace, and shutdown. Hidden safe core
-construction seams do not own live state or bypass runtime validation. M4 adds
-no third crate.
+subscriptions, host requests, wake/redraw, trace, and shutdown. The current
+implementation contains only the runtime-owned application-action queue/pump,
+proof activation, terminal/shutdown, and bounded trace foundation; final
+`UiApp` ownership moves to core in the complete application-work slice. Hidden
+safe core construction seams do not own live state or bypass runtime validation.
+M4 adds no third crate.
 
 Within the crates, built-in authoring is separate from the public element/widget
 protocol. Mounted storage is divided into arena, identity, node, capability
@@ -53,6 +56,12 @@ cache, invalidation, interaction, matching, lifecycle, and diagnostic modules.
 Surface context/key/cache ownership is separate from phase resolution,
 measurement, arrangement, and publication code. These are module boundaries,
 not new crate boundaries.
+
+Current source boundaries follow present responsibilities: runtime configuration
+is separate from queue sequencing, while `app.rs`, `runtime.rs`, and `trace.rs`
+remain intact until routed interaction, scheduler/work-registry, and trace
+export/sink responsibilities actually exist. Speculative milestone-named modules
+are not part of the workspace structure.
 
 ## Extraction rule
 

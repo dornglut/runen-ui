@@ -73,6 +73,21 @@
 //! use runenui_core::{View, text};
 //! let _ = text("leaf").into_element().gap(4_u16);
 //! ```
+//!
+//! The removed physical-phase button callback has no compatibility alias:
+//!
+//! ```compile_fail
+//! use runenui_core::button;
+//! let _ = button("Save").on_press(());
+//! ```
+//!
+//! Semantic activation creates fresh owned actions without a clone bound:
+//!
+//! ```
+//! use runenui_core::button;
+//! struct Action;
+//! let _ = button("Save").on_activate(|| Action);
+//! ```
 
 #![forbid(unsafe_code)]
 

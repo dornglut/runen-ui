@@ -4,7 +4,7 @@ use runenui_core::{
     ChildLayout, ChildLayoutWidget, Element, View, Widget, WidgetMountContext,
     WidgetUnmountContext, children, container,
 };
-use runenui_runtime::{AppRuntime, UiApp};
+use runenui_runtime::{AppRuntime, PumpBudget, UiApp};
 
 #[derive(Debug)]
 struct LifetimeState {
@@ -113,8 +113,9 @@ fn replacement_unmounts_live_postorder_then_drops_before_new_preorder_mount() {
     );
 
     runtime
-        .dispatch(Action::Replace)
+        .submit_action(Action::Replace)
         .unwrap_or_else(|_| unreachable!());
+    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
     assert_eq!(
         log.borrow().as_slice(),
         [

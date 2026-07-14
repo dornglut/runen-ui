@@ -130,7 +130,7 @@ pub struct Button<Action> {
     id: Option<ElementId>,
     key: Option<ElementKey>,
     enabled: bool,
-    on_press: Option<Action>,
+    activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
     style: StyleIntent,
     diagnostics: Vec<AuthoringDiagnostic>,
@@ -145,7 +145,7 @@ impl<Action> fmt::Debug for Button<Action> {
             .field("key", &self.key)
             .field("enabled", &self.enabled)
             .field("actionable", &self.actionable)
-            .field("has_action", &self.on_press.is_some())
+            .field("has_callback", &self.activation_factory.is_some())
             .field("style", &self.style)
             .field("diagnostics", &self.diagnostics)
             .finish()
@@ -160,7 +160,7 @@ impl<Action> Button<Action> {
             id: None,
             key: None,
             enabled: true,
-            on_press: None,
+            activation_factory: None,
             actionable: false,
             style: StyleIntent::EMPTY,
             diagnostics: Vec::new(),
@@ -177,8 +177,8 @@ impl<Action> Button<Action> {
         self.enabled(false)
     }
     #[must_use]
-    pub fn on_press(mut self, action: Action) -> Self {
-        self.on_press = Some(action);
+    pub fn on_activate(mut self, callback: impl FnMut() -> Action + 'static) -> Self {
+        self.activation_factory = Some(Box::new(callback));
         self.actionable = true;
         self
     }
@@ -187,7 +187,7 @@ impl<Action> Button<Action> {
 struct ButtonWidget<Action> {
     label: String,
     enabled: bool,
-    on_press: Option<Action>,
+    activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
 }
 
@@ -206,7 +206,7 @@ impl<Action> fmt::Debug for ButtonWidget<Action> {
             .field("label", &self.label)
             .field("enabled", &self.enabled)
             .field("actionable", &self.actionable)
-            .field("has_action", &self.on_press.is_some())
+            .field("has_callback", &self.activation_factory.is_some())
             .finish()
     }
 }
@@ -255,7 +255,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         if self.enabled {
             state.activation_count = state.activation_count.saturating_add(1);
             context.invalidate(WidgetInvalidation::PAINT);
-            self.on_press.take()
+            self.activation_factory.as_mut().map(|factory| factory())
         } else {
             None
         }
@@ -298,7 +298,7 @@ impl<Action: 'static> View<Action> for Button<Action> {
             Box::new(WidgetAdapter(ButtonWidget {
                 label: self.label,
                 enabled: self.enabled,
-                on_press: self.on_press,
+                activation_factory: self.activation_factory,
                 actionable: self.actionable,
             })),
             Vec::new(),

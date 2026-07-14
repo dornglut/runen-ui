@@ -32,6 +32,9 @@ downstream and built-in child-layout widgets the same atomic ownership and gap
 path. Every implementation declares `State` and `create_state`;
 mount/update/unmount and activation receive runtime-owned contexts, all
 capabilities observe persistent state, and stateless widgets use `State = ()`.
+Built-in buttons use repeatable `on_activate` action factories, so each accepted
+proof activation can produce a fresh action without requiring `Action: Clone`,
+`Copy`, or `Debug`.
 `WidgetInvalidation` is a manual selective bitset. `StyleTokens` carries a
 monotonic diagnostic revision, while sound runtime cache compatibility compares
 the complete token definitions and values. The `__runtime` bridge

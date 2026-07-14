@@ -9,9 +9,9 @@ feature flags, global registries, source modification, or unsafe code.
 
 The fixture proves that persistent widget state is visible to activation,
 measurement, child layout, paint, semantics, and diagnostics; activation can
-produce `Activated` without an application action; mapped non-`Clone` actions
-remain supported; and lifecycle mount/update/unmount/shutdown order is runtime
-owned.
+produce `Activated` without an application action; repeated activations can
+queue fresh mapped non-`Clone` actions before pumping; and lifecycle
+mount/update/unmount/shutdown order is runtime owned.
 
 Mounted conformance covers keyed reorder preserving mounted/semantic identity,
 state, focus, and interaction slots; stale and foreign target rejection;

@@ -20,7 +20,7 @@ fn macro_and_builder_are_identical_and_have_no_child_ceiling() {
         text("9"),
         text("10"),
         text("11"),
-        button("12").on_press(Action::Hit),
+        button("12").on_activate(|| Action::Hit),
     ]));
     let builder_root: Element<Action> = runenui_core::View::into_element(column(children![
         text("0"),
@@ -35,7 +35,7 @@ fn macro_and_builder_are_identical_and_have_no_child_ceiling() {
         text("9"),
         text("10"),
         text("11"),
-        button("12").on_press(Action::Hit),
+        button("12").on_activate(|| Action::Hit),
     ]));
     assert_eq!(format!("{macro_root:?}"), format!("{builder_root:?}"));
     assert_eq!(macro_root.children().len(), 13);

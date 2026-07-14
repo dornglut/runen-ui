@@ -9,7 +9,11 @@ enum Action {
 fn builders_preserve_nested_structure_and_style() {
     let root: Element<Action> = column(children![
         text("Title"),
-        row(children![button("A").on_press(Action::Hit), button("B")]).gap(4_u16),
+        row(children![
+            button("A").on_activate(|| Action::Hit),
+            button("B")
+        ])
+        .gap(4_u16),
     ])
     .gap(8_u16)
     .into_element();

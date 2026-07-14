@@ -10,7 +10,9 @@ mod ui;
 
 use app::{Counter, CounterApp, WIN_COUNT};
 use runenui_core::{LogicalLength, StyleTokens};
-use runenui_runtime::{AppRuntime, LogicalSize, SurfaceBuildContext, render_debug_surface_frame};
+use runenui_runtime::{
+    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, render_debug_surface_frame,
+};
 
 const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(
     match LogicalLength::new(240.0) {
@@ -43,15 +45,17 @@ fn main() {
     for _ in 0..WIN_COUNT {
         runtime.activate("counter.increment");
     }
+    runtime.pump(PumpBudget::new(WIN_COUNT as usize));
 
     print_debug_surface("counter.surface.win", &mut runtime);
 
     runtime.activate("counter.reset");
+    runtime.pump(PumpBudget::new(1));
 
     print_debug_surface("counter.surface.reset", &mut runtime);
 
     let count = runtime.state().count;
-    let trace_events = runtime.trace().events().len();
+    let trace_events = runtime.trace().len();
 
     println!("counter.count={count} trace_events={trace_events}");
 }
@@ -60,7 +64,8 @@ fn main() {
 mod tests {
     use runenui_core::{LogicalLength, StyleTokens};
     use runenui_runtime::{
-        ActivationResult, AppRuntime, FocusTargetResult, LogicalSize, SurfaceBuildContext,
+        ActivationResult, AppRuntime, FocusTargetResult, LogicalSize, PumpBudget, RuntimeStatus,
+        RuntimeTerminalReason, SurfaceBuildContext,
     };
 
     use crate::app::{Counter, CounterAction, CounterApp, WIN_COUNT};
@@ -103,11 +108,12 @@ mod tests {
     fn reset_returns_to_counter_screen() {
         let mut runtime = AppRuntime::<CounterApp>::mount(Counter { count: 10 });
 
-        assert_eq!(
+        assert!(matches!(
             runtime.activate("counter.reset"),
-            ActivationResult::Dispatched
-        );
-
+            ActivationResult::Queued { .. }
+        ));
+        assert_eq!(runtime.state(), &Counter { count: 10 });
+        runtime.pump(PumpBudget::new(1));
         assert_eq!(runtime.state(), &Counter { count: 0 });
         assert_eq!(published_names(runtime.into_state())[1], "Counter");
     }
@@ -117,24 +123,26 @@ mod tests {
         let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
 
         for _ in 0..WIN_COUNT {
-            assert_eq!(
+            assert!(matches!(
                 runtime.activate("counter.increment"),
-                ActivationResult::Dispatched
-            );
+                ActivationResult::Queued { .. }
+            ));
         }
-
+        assert_eq!(runtime.state(), &Counter::new());
+        runtime.pump(PumpBudget::new(WIN_COUNT as usize));
         assert_eq!(runtime.state(), &Counter { count: 10 });
         assert_eq!(published_names(runtime.into_state())[1], "You win");
     }
 
     #[test]
-    fn direct_dispatch_still_works_without_authored_ids() {
+    fn submitted_action_waits_for_the_explicit_pump() {
         let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
 
         runtime
-            .dispatch(CounterAction::Increment)
+            .submit_action(CounterAction::Increment)
             .unwrap_or_else(|_| unreachable!());
-
+        assert_eq!(runtime.state(), &Counter::new());
+        runtime.pump(PumpBudget::new(1));
         assert_eq!(runtime.state(), &Counter { count: 1 });
     }
 
@@ -163,14 +171,15 @@ mod tests {
         let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
         let before = runtime.publish_surface(&context);
         let report = runtime.reconciliation_report().clone();
-        let trace = runtime.trace().clone();
         runtime.__seed_reconciliation_generation_for_test(u64::MAX);
 
         assert_eq!(
             runtime.activate_node(&increment),
-            ActivationResult::RuntimeError(
-                runenui_runtime::RuntimeError::ReconciliationGenerationExhausted
-            )
+            ActivationResult::Terminal(RuntimeTerminalReason::ReconciliationGenerationExhausted)
+        );
+        assert_eq!(
+            runtime.status(),
+            RuntimeStatus::Terminal(RuntimeTerminalReason::ReconciliationGenerationExhausted)
         );
         assert_eq!(runtime.state(), &Counter::new());
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
@@ -183,15 +192,8 @@ mod tests {
             &semantic
         );
         assert_eq!(runtime.reconciliation_report(), &report);
-        assert_eq!(runtime.trace(), &trace);
         assert_eq!(runtime.publish_surface(&context), before);
-
-        runtime.__seed_reconciliation_generation_for_test(1);
-        assert_eq!(
-            runtime.activate_node(&increment),
-            ActivationResult::Dispatched
-        );
-        assert_eq!(runtime.state(), &Counter { count: 1 });
+        assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 0);
     }
 
     #[test]
@@ -211,9 +213,10 @@ mod tests {
 
         for _ in 0..WIN_COUNT {
             runtime
-                .dispatch(CounterAction::Increment)
+                .submit_action(CounterAction::Increment)
                 .unwrap_or_else(|_| unreachable!());
         }
+        runtime.pump(PumpBudget::new(WIN_COUNT as usize));
 
         let surface = debug_surface(&mut runtime);
 
@@ -244,10 +247,11 @@ mod tests {
             runtime.set_focus(increment.clone()),
             FocusTargetResult::Focused
         );
-        assert_eq!(
+        assert!(matches!(
             runtime.activate_node(&increment),
-            ActivationResult::Dispatched
-        );
+            ActivationResult::Queued { .. }
+        ));
+        runtime.pump(PumpBudget::new(1));
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
         assert_eq!(
             runtime
@@ -270,20 +274,22 @@ mod tests {
                 .contains("activations=1")
         );
         for _ in 1..WIN_COUNT {
-            assert_eq!(
+            assert!(matches!(
                 runtime.activate("counter.increment"),
-                ActivationResult::Dispatched
-            );
+                ActivationResult::Queued { .. }
+            ));
         }
+        runtime.pump(PumpBudget::new((WIN_COUNT - 1) as usize));
         assert_eq!(runtime.focus().focused_node(), None);
         assert_eq!(
             runtime.activate_node(&increment),
             ActivationResult::StaleTarget
         );
-        assert_eq!(
+        assert!(matches!(
             runtime.activate("counter.reset"),
-            ActivationResult::Dispatched
-        );
+            ActivationResult::Queued { .. }
+        ));
+        runtime.pump(PumpBudget::new(1));
         let replacement = runtime
             .index()
             .node_by_authored_id(&authored)
