@@ -18,10 +18,16 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `docs/documentation-retention-plan.md` | Current contract | Retained active | Active/removed document disposition and recovery record |
 | `docs/architecture/styling.md` | Target architecture | Retained active | Consolidated current and target styling contract |
 | `docs/architecture/layout.md` | Target architecture | Retained active | Consolidated current and target layout/measurement contract |
-| `docs/architecture/events-effects-and-scheduling.md` | Target architecture | Retained active | Event, command, effect, scheduling, trace, and controller-navigation direction |
+| `docs/architecture/events-effects-and-scheduling.md` | Target architecture | Retained active | Canonical M4 current-versus-target event, command-default, subscription, effect/failure, scheduling, bounded-trace, and host-neutrality overview |
+| `docs/architecture/m4-conformance-matrix.md` | Target architecture | Retained active | Normative public behavioral proof matrix, including mounted declaration, terminal pointer, executor-refusal, and sink-backpressure cases, required before M4 can be declared complete |
+| `docs/architecture/m4-directional-focus-corpus.md` | Target architecture | Retained active | Proposed normative M4 public-outcome vectors for directional focus, scope policy, restoration, and eligibility without exposing the private scoring formula |
 | `docs/architecture/workspace-structure.md` | Target architecture | Retained active | Current workspace and evidence-based extraction rules |
 | `docs/adr/0001-typed-token-authoring.md` | ADR | Retained active | Accepted typed-expression token authoring decision |
 | `docs/adr/0002-keep-layout-in-runtime.md` | ADR | Retained active | Accepted layout ownership and extraction-gate decision |
+| `docs/adr/0003-extensible-view-widget-component-protocol.md` | ADR | Retained active | Accepted open View/Widget/component and safe-erasure decision |
+| `docs/adr/0004-mounted-runtime-reconciliation.md` | ADR | Retained active | Accepted mounted authority, generational identity, lifecycle, reconciliation, and invalidation decision |
+| `docs/adr/0005-canonical-event-routing-and-commands.md` | ADR | Retained active | Revised proposed M4 protocol ownership, routed-event and exact command-default policy, displayed-generation input plus terminal pointer cleanup, focus/composition, capture, and semantic activation contract |
+| `docs/adr/0006-effects-scheduling-and-trace-v2.md` | ADR | Retained active | Revised proposed M4 lifecycle work, application and dedicated mounted subscription authority, commit-bound cancellation, readiness/budgets, executor/host failure, wake/redraw, and bounded trace/sink contract |
 | `docs/history/legacy-archive.md` | Historical record | Retained active | Legacy tag, removal, recovery, and bounded salvage guidance |
 | `docs/vocabulary.md` | Current contract | Retained active | Explicit current and target terms |
 | `docs/influences.md` | Guide | Retained active | Non-authoritative upstream lessons and candidates |
@@ -53,7 +59,7 @@ The paths below are historical M0 baseline paths and no longer exist at `HEAD`.
 | `docs/crate-map.md` | Obsolete | Removed in M0B | `docs/architecture/workspace-structure.md`; Git history |
 | `docs/dependency-map.md` | Obsolete | Consolidated and removed in M0B | `docs/architecture/workspace-structure.md`, `AGENTS.md`; Git history |
 | `docs/cutover-plan.md` | Obsolete | Removed in M0B | `docs/history/legacy-archive.md`; Git history |
-| `docs/legacy-audit.md` | Obsolete | Replaced and removed in M0B | `docs/history/legacy-archive.md`; Git history and archival tag |
+| `docs/legacy-audit.md` | Historical record | Replaced and removed in M0B | `docs/history/legacy-archive.md`; Git history and archival tag |
 | `docs/target-api.md` | Obsolete | Accepted direction migrated; fake API removed in M0B | `docs/architecture/events-effects-and-scheduling.md`; Git history |
 | `docs/audits/RunenUI-deep-audit-and-remediation-backlog.md` | Historical record | Open work migrated and backlog removed in M0B | Status/support/roadmap authorities; Git history |
 | `docs/architecture/computed-style-model.md` | Current contract | Consolidated and removed in M0B | `docs/architecture/styling.md`; Git history |

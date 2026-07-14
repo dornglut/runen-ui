@@ -38,6 +38,7 @@ Support labels:
 | Explicit update | `supported` | `UiApp::update(&mut State, Action)` | Synchronous only; no effect result | M4 |
 | Conditional root composition | `supported` | Counter/win root replacement with deterministic unmount/remount | One mounted root | M3 complete |
 | Batched/reentrant action processing | `unsupported` | None | No queue or ordering contract | M4 |
+| Initial/update effects | `unsupported` | Accepted `initial_effects`/`IntoEffects` target contract only | No effects implementation or startup ordering proof | M4 |
 | Fine-grained signals as primary model | `deferred` | None by design | Signals may only be future adapters | Post-M3 |
 
 ## 3. Runtime identity and lifecycle
@@ -74,6 +75,10 @@ Support labels:
 | Directional/spatial focus navigation | `unsupported` | None | Current traversal supports only linear next/previous keyboard focus | M4 |
 | Controller activation/cancel/menu commands | `unsupported` | None | Controller input cannot converge on semantic control commands | M4 |
 | Input modality tracking | `unsupported` | None | Runtime does not track pointer, keyboard, controller, accessibility, or automation modality | M4 |
+| Displayed-generation input targeting | `unsupported` | Accepted opaque `SurfaceInputContext` target contract only | No current/previous snapshot ring or retired/foreign/missing outcome contract in code | M4 |
+| Terminal pointer context cleanup | `unsupported` | Accepted same-runtime/surface integrity-only cancellation target contract only | Retired/missing pointer up/cancel cleanup is not implemented | M4 |
+| Route-only command defaults | `unsupported` | Accepted exact no-action target for unconsumed cancel/menu/context/scroll commands | No canonical semantic-command route exists | M4 |
+| Directional focus corpus | `unsupported` | Accepted public-outcome corpus only | No directional implementation or corpus test passes yet | M4 |
 
 ## 5. Effects and scheduling
 
@@ -82,8 +87,12 @@ Support labels:
 | Synchronous dispatch | `supported` | `AppRuntime::dispatch` | Immediate update, transient-root rebuild, and mounted reconciliation only; no queue or effect result | M4 |
 | Action queue and ordering | `unsupported` | None | No batching/reentrancy rules | M4 |
 | Effects | `unsupported` | Target direction only | No executable contract | M4 |
+| Readiness checkpoints and pump budgets | `unsupported` | Accepted deterministic checkpoint/budget contract only | No queue pump, completion import, local poll, or timer promotion implementation | M4 |
+| Owner-local keyed cancellation | `unsupported` | Accepted validated `WorkKey` and commit-bound generation contract only | No work registry or same-batch cancellation behavior | M4 |
 | Async tasks | `unsupported` | None | No executor, completion mapping, or lifecycle ownership | M4 |
 | Timers and subscriptions | `unsupported` | None | No deterministic time or cancellation | M4 |
+| Mounted subscription declarations | `unsupported` | Accepted dedicated complete-set widget capability target only | No owner-local dirtying, declaration reconciliation, or lifecycle execution | M4 |
+| Send-executor start outcomes | `unsupported` | Accepted one-attempt started/unavailable/full/closed/rejected target contract only | No executor adapter, terminal refusal, or optional failure mapper | M4 |
 | Host commands | `unsupported` | None | No host/effect boundary | M4, M10 |
 | Wake/redraw scheduling | `unsupported` | None | Explicit publication only | M4 |
 | Deterministic scheduler testing | `unsupported` | None | No clock/task executor | M4–M5 |
@@ -146,6 +155,7 @@ Support labels:
 | Renderer-neutral paint scene | `unsupported` | M2 deterministic per-widget paint/debug proof facts | Facts are not paint primitives, resources, clips, transforms, order, or damage | M6 |
 | Paint primitives/resources | `unsupported` | None | No shapes, strokes, glyph/image handles, clips, layers, or damage | M6 |
 | Surface/frame generation | `unsupported` | Reconciliation generation and mounted stale-target validation exist | No independent surface/scene publication generation | M6 |
+| Retained surface-input snapshots | `unsupported` | Accepted current/previous displayed-generation target contract only | No `SurfaceInputContext`, bounded snapshot ring, or no-retarget validation | M4, M6 |
 | Multi-surface publication | `unsupported` | None | No independent surface lifecycle or scale | M10 |
 | Debug semantic-frame consumer | `proof` | `DebugSurfaceRenderer` deterministically formats open paint/semantic/diagnostic widget facts | It is not a paint-scene consumer, accessibility product, or renderer backend | M5–M6 |
 | Deterministic paint-scene consumer | `planned` | None | Needs accepted paint/hit protocols | M6 |
@@ -187,6 +197,7 @@ Support labels:
 |---|---|---|---|---|
 | Host-neutral core/runtime | `supported` | No native window, GPU, ECS, or legacy dependencies | Neutrality alone is not an embedding contract | M10 |
 | Host contract | `unsupported` | Input/measurement types are isolated vocabulary | No lifecycle, services, capability, wakeup, or resource contract | M10 |
+| Closed application host protocol | `unsupported` | Accepted command/response/response-kind target contract only | No request generations, exact kind validation, or UI-thread mapper path | M4 |
 | Headless host profile | `partial` | Direct deterministic mounted runtime use | No public semantic harness, deterministic clock/tasks, or host contract | M4–M5 |
 | Desktop event loop/window | `unsupported` | None | No Winit or equivalent adapter | M10 |
 | Windows/macOS/Linux support | `unsupported` | Platform-independent Rust tests only | No native application proof | M10–M11 |
@@ -207,6 +218,7 @@ Support labels:
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, and debug output | No stable severity/strict mode or per-surface generation | M5–M7 |
 | Runtime trace | `partial` | Coarse event records | Duplicate unbounded storage; no structured export/replay | M4–M5 |
+| Bounded external trace sink | `unsupported` | Accepted bounded/try-based subordinate sink target contract only | No sink, backpressure diagnostic, or recursion guard | M4–M5 |
 | Public headless test harness | `planned` | Current tests prove demand | No `runenui_testing` public boundary | M5 |
 | Semantic/layout/hit/paint assertions | `planned` | Layout/frame internals are inspectable | No unified public assertions | M5–M6 |
 | Deterministic time/tasks | `unsupported` | None | Scheduler absent | M4–M5 |

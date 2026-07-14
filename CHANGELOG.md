@@ -4,6 +4,30 @@
 
 ### Changed
 
+- Revised proposed M4 routed event and semantic-command architecture with
+  exact core/runtime ownership, safe namespace-based opaque identities, the
+  normative event-family policy, retained displayed-generation surface input,
+  observable target/current-target/phase facts, immutable routes, non-reentrant
+  propagation, exact transition/output ordering, pointer identity/capture,
+  deterministic multi-pointer geometry revalidation, integrity-only terminal
+  pointer cleanup for unavailable snapshots, focus scopes, exact no-action
+  defaults for unconsumed route-only commands, separate keyboard/text/IME streams,
+  semantic `on_activate`, and release-inside activation.
+- Revised proposed M4 deterministic action/effect scheduling with
+  `initial_effects`, two-argument no-effects updates, state-derived application
+  subscriptions, dedicated complete-set mounted subscription declarations,
+  commit-bound owner-local keyed cancellation/replacement, lifecycle-owned
+  local/send tasks with one-attempt terminal executor refusal, exact readiness
+  checkpoints and four pump budgets, timers, an exact response-kind-validated
+  host protocol, configured saturation outcomes, race-free wake/redraw
+  acknowledgment, terminal integrity policy, one bounded structured trace v2,
+  and bounded/try-based subordinate sink delivery.
+- Added a normative M4 conformance matrix covering public downstream routing,
+  modality/command convergence, focus/capture/composition ordering, startup and
+  application and mounted subscription work, task/timer/host/executor-refusal
+  behavior, cancellation, queue/wake races, sink backpressure, saturation, trace
+  causality, and shutdown, plus a 20-vector directional-focus corpus that freezes
+  public outcomes without exposing the private score.
 - Replaced transient preorder runtime authority with a private persistent
   generational mounted tree and separate runtime-local mounted/semantic IDs.
 - Added exact sibling-local keyed reconciliation, unkeyed ordinal matching,
