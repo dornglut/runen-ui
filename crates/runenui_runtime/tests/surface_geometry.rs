@@ -1,10 +1,12 @@
+#![allow(refining_impl_trait)]
+
 use runenui_core::{
-    Color, EdgeInsets, Element, LogicalLength, StyleTokens, View, button, children, color_token,
-    column, row, text,
+    Color, EdgeInsets, Element, LogicalLength, NoHostProtocol, StyleTokens, UiApp, View, button,
+    children, color_token, column, row, text,
 };
 use runenui_runtime::{
     AppRuntime, DeterministicMeasurementProvider, LayoutConstraints, LogicalPoint, LogicalSize,
-    MeasurementProvider, SurfaceBuildContext, TextMeasurement, TextMeasurementRequest, UiApp,
+    MeasurementProvider, SurfaceBuildContext, TextMeasurement, TextMeasurementRequest,
     render_debug_surface_frame, render_debug_surface_style_report,
 };
 
@@ -21,6 +23,7 @@ struct CompositeApp;
 impl UiApp for CompositeApp {
     type State = ();
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
         column(children![
@@ -78,6 +81,7 @@ struct StyledApp;
 impl UiApp for StyledApp {
     type State = ();
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
         text("X")
@@ -146,6 +150,7 @@ struct BoundaryApp;
 impl UiApp for BoundaryApp {
     type State = BoundaryCase;
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<Self::Action> {
         match state {

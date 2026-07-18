@@ -226,7 +226,7 @@ callback. It then invokes the mounted widget, collects invalidation, and
 optionally dispatches an application action followed immediately by
 reconciliation. `Dispatched` means an action updated the application and
 reconciliation completed. `Activated` means no application action was produced
-but local invalidation or interaction behavior changed. `NoAction` means neither
+but local invalidation or interaction behavior changed. The empty outcome means neither
 occurred. Stale, foreign, and integrity-error results are distinct. At
 `u64::MAX`, all mutable activation—including state-only activation—returns
 `ReconciliationGenerationExhausted` without changing widget/application state,
@@ -363,6 +363,14 @@ queues, effects, tasks, timers, subscriptions, host commands, deterministic
 scheduling, trace v2, a production semantic tree, accessibility APIs, a
 renderer-neutral paint/hit scene, production layout/style/text, broader
 controls, hosts, or renderer backends. Those remain M4 and later work.
+
+### Scheduler authority before unmount
+
+Mounted children still unmount before ancestors and remain arena-live through
+their hook, but scheduler producer authority does not. Before invoking each
+unmount hook, the runtime centrally revokes every exact-owner work generation,
+producer token, queued completion payload, future, timer, source, mapper, and
+host request. A producer racing the hook therefore observes stale authority.
 
 ## Consequences
 

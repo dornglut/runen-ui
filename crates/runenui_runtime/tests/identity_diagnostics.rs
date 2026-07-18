@@ -1,10 +1,13 @@
-use runenui_core::{Element, View, button, children, column, text};
-use runenui_runtime::{AppRuntime, DuplicateIdentityKind, UiApp};
+#![allow(refining_impl_trait)]
+
+use runenui_core::{Element, NoHostProtocol, UiApp, View, button, children, column, text};
+use runenui_runtime::{AppRuntime, DuplicateIdentityKind};
 
 struct App;
 impl UiApp for App {
     type State = ();
     type Action = ();
+    type HostProtocol = NoHostProtocol;
     fn root((): &()) -> Element<()> {
         column(children![
             button("A").id("same").key("same"),

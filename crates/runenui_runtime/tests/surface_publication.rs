@@ -1,10 +1,12 @@
+#![allow(refining_impl_trait)]
+
 use runenui_core::{
-    Color, EdgeInsets, Element, LogicalLength, Radius, StyleTokens, View, button, children,
-    color_token, column, radius_token, row, spacing_token, text,
+    Color, EdgeInsets, Element, LogicalLength, NoHostProtocol, Radius, StyleTokens, UiApp, View,
+    button, children, color_token, column, radius_token, row, spacing_token, text,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
-    SemanticNodeId, SurfaceBuildContext, SurfacePhase, UiApp, render_debug_surface_frame,
+    SemanticNodeId, SurfaceBuildContext, SurfacePhase, render_debug_surface_frame,
 };
 
 #[derive(Debug)]
@@ -38,6 +40,7 @@ fn structural_leaf(name: &'static str, authored: &'static str) -> Element<Struct
 impl UiApp for StructuralApp {
     type State = Structure;
     type Action = StructureAction;
+    type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<Self::Action> {
         match state {
@@ -160,10 +163,21 @@ fn warm_and_change(
         &tokens,
         LayoutConstraints::unbounded(),
     ));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
     runtime
         .submit_action(StructureAction::Set(next))
         .unwrap_or_else(|_| unreachable!());
-    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
     let publication = runtime.publish_surface(&SurfaceBuildContext::new(
         &tokens,
         LayoutConstraints::unbounded(),
@@ -227,6 +241,7 @@ struct App;
 impl UiApp for App {
     type State = ();
     type Action = Action;
+    type HostProtocol = NoHostProtocol;
     fn root((): &()) -> Element<Action> {
         row(children![
             text("Title").id("title").key("title"),
@@ -313,6 +328,7 @@ struct CommonFieldsApp;
 impl UiApp for CommonFieldsApp {
     type State = CommonFields;
     type Action = SetCommonFields;
+    type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<Self::Action> {
         let root = match state {
@@ -406,10 +422,21 @@ fn warm_common_fields(
     let context = SurfaceBuildContext::new(tokens, constraints);
     let before = runtime.publish_surface(&context);
     let identities = mounted_identities(&mut runtime);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
     runtime
         .submit_action(SetCommonFields(changed))
         .unwrap_or_else(|_| unreachable!());
-    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
     let after = runtime.publish_surface(&context);
     (runtime, before, after, identities)
 }
@@ -675,6 +702,7 @@ struct TokenApp;
 impl UiApp for TokenApp {
     type State = ();
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
         text("X")

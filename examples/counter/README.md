@@ -28,9 +28,11 @@ cargo run --package counter
 
 This is a deterministic headless proof, not a desktop application, production
 control/accessibility/text example, paint scene, native host, or renderer. Input
-is still proof-level press activation routed only into the current action queue;
-later M4 work owns routed events, capture, release-inside behavior, effects,
-tasks, timers, subscriptions, and complete scheduling.
+is still proof-level press activation routed only into the canonical queue.
+Counter intentionally proves the ergonomic `()` no-effects update with
+`NoHostProtocol`; separate runtime fixtures cover tasks, timers, subscriptions,
+host requests, and the four-budget scheduler. M4C owns routed events, capture,
+and release-inside behavior.
 
 See the [feature/support matrix](../../docs/feature-support-matrix.md) and
 [roadmap](../../docs/roadmap.md) for exact limits.

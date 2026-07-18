@@ -1,11 +1,26 @@
-use runenui_core::{Element, ElementId, View, Widget, children, column, row, text};
-use runenui_runtime::{AppRuntime, PumpBudget, ReconciliationDiagnostic, UiApp};
+#![allow(refining_impl_trait)]
+
+use runenui_core::{
+    Element, ElementId, NoHostProtocol, UiApp, View, Widget, children, column, row, text,
+};
+use runenui_runtime::{AppRuntime, PumpBudget, ReconciliationDiagnostic};
 
 fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!());
-    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
 }
 
 fn id_by_authored<App: UiApp>(
@@ -34,6 +49,7 @@ struct OrdinalApp;
 impl UiApp for OrdinalApp {
     type State = OrdinalState;
     type Action = OrdinalAction;
+    type HostProtocol = NoHostProtocol;
     fn root(state: &Self::State) -> Element<Self::Action> {
         let children: Vec<Element<Self::Action>> = match state.case {
             0 => vec![
@@ -86,6 +102,7 @@ struct MoveApp;
 impl UiApp for MoveApp {
     type State = MoveState;
     type Action = MoveAction;
+    type HostProtocol = NoHostProtocol;
     fn root(state: &Self::State) -> Element<Self::Action> {
         let child = || text("child").id("child").key("child");
         row(children![
@@ -133,6 +150,7 @@ struct DuplicateApp;
 impl UiApp for DuplicateApp {
     type State = DuplicateState;
     type Action = DuplicateAction;
+    type HostProtocol = NoHostProtocol;
     fn root(state: &Self::State) -> Element<Self::Action> {
         let mut items = vec![text("one").id("one").key("same").into_element()];
         if state.duplicate {
@@ -176,6 +194,7 @@ struct DuplicateTransitionApp;
 impl UiApp for DuplicateTransitionApp {
     type State = u8;
     type Action = DuplicateTransition;
+    type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<Self::Action> {
         let count = match *state {
@@ -249,6 +268,7 @@ struct NestedDuplicateApp;
 impl UiApp for NestedDuplicateApp {
     type State = bool;
     type Action = NestedDuplicateAction;
+    type HostProtocol = NoHostProtocol;
 
     fn root(duplicate: &Self::State) -> Element<Self::Action> {
         let outer_count = usize::from(*duplicate) + 1;
@@ -317,6 +337,7 @@ struct RootApp;
 impl UiApp for RootApp {
     type State = bool;
     type Action = RootAction;
+    type HostProtocol = NoHostProtocol;
     fn root(replaced: &bool) -> Element<Self::Action> {
         text("root")
             .id(if *replaced { "after" } else { "before" })
@@ -346,6 +367,7 @@ struct RenameApp;
 impl UiApp for RenameApp {
     type State = bool;
     type Action = RenameAction;
+    type HostProtocol = NoHostProtocol;
     fn root(renamed: &bool) -> Element<Self::Action> {
         text("root")
             .id(if *renamed { "renamed" } else { "original" })
@@ -391,6 +413,7 @@ struct WidgetApp;
 impl UiApp for WidgetApp {
     type State = bool;
     type Action = WidgetAction;
+    type HostProtocol = NoHostProtocol;
     fn root(replaced: &bool) -> Element<Self::Action> {
         let element = if *replaced {
             Element::new(WidgetB)

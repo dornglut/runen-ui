@@ -40,6 +40,12 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
+M4A is complete. The M4B implementation correction is complete at the exact
+reviewed head, pending owner acceptance.
+M4C remains blocked pending M4B acceptance, and M4D remains blocked pending M4B
+acceptance and M4C; therefore
+the target M4 pipeline is not complete.
+
 ```text
 Application-owned State + Action
   -> UiApp::root(State) -> typed View -> erased Element<Action>
@@ -47,8 +53,8 @@ Application-owned State + Action
   -> persistent generational MountedTree
   -> state-aware cached widget capabilities
   -> mounted proof input/focus/activation policies
-  -> one sequenced application-action FIFO
-  -> explicit processed-envelope pump
+  -> one generalized sequenced work FIFO
+  -> explicit four-budget readiness pump
   -> UiApp::update(State, Action) + complete reconciliation
   -> phase-aware topology/style/layout/paint/semantic/diagnostic facts
   -> provider-backed row/column measurement and arrangement when dirty
@@ -102,10 +108,14 @@ M3 replaces the seam with the mounted authority described by
 [ADR 0006](adr/0006-effects-scheduling-and-trace-v2.md), the normative
 [M4 conformance matrix](architecture/m4-conformance-matrix.md), and the
 [directional-focus corpus](architecture/m4-directional-focus-corpus.md) define
-M4. The current implementation provides only the application-action queue,
-processed-envelope pump, queue-backed proof activation, terminal/shutdown
-foundation, and bounded canonical trace. Remaining M4 subsystems are target
-architecture.
+M4. The current M4B implementation adds the core-owned application-work
+contract, one ordered transaction planner, state-current application and
+mounted subscription reconciliation, generational tasks/timers/host work,
+four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
+complete per-family causal scheduler trace proofs. M4B remains pending owner
+acceptance. Routed interaction is
+still M4C target architecture, and trace-v2 normalization/export/replay remains
+M4D target architecture.
 See the [public API contract](architecture/public-api.md) and
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md).
 
@@ -137,13 +147,12 @@ state -> view -> action -> update -> state
 ```
 
 Application update remains synchronous and application-state-owned. The current
-implementation adds one runtime-owned FIFO containing application-action
-envelopes and a bounded explicit pump while preserving the two-argument
-no-effect update. Direct dispatch is not an authority. The accepted complete
-contract in
-[ADR 0006](adr/0006-effects-scheduling-and-trace-v2.md) later adds ordered update
-effects, a default-empty `initial_effects` authority, and default-empty state-
-derived application subscriptions; none of those are implemented currently.
+implementation uses one runtime-owned generalized FIFO and a four-budget
+explicit pump while preserving the two-argument `()` no-effects update. Direct
+dispatch is not an authority. The core-owned contract from
+[ADR 0006](adr/0006-effects-scheduling-and-trace-v2.md) implements ordered update
+effects, default-empty `initial_effects`, and default-empty state-derived
+application subscriptions.
 
 Effects request owned actions, tasks, timers, keyed cancellation/replacement,
 typed application host requests, and completion actions; they begin only after
@@ -151,12 +160,33 @@ the owning update/reconciliation commits. Runtime-private generational IDs
 protect completion safety, while applications use validated owner-local
 `WorkKey` values as durable cancellation intent.
 
-Mounted subscriptions are not imperative event work. The widget protocol
+The private work registry stores pending-start and running generations only.
+Completion, refusal, cancellation, owner invalidation, and scheduler closure
+remove records and keyed bindings immediately; stale queued envelopes resolve
+by generation absence rather than retained terminal tombstones.
+
+Mounted subscriptions are not imperative event work, and declaration values are
+not retained as caches. The widget protocol
 declares one complete state-derived desired set for an exact mounted owner after
 committed mount. Later passes occur only after explicit owner-local invalidation.
+The declaration callback runs against newest live widget state only when its
+queued exact-owner reconciliation envelope reaches the queue front; stale-owner
+envelopes suppress the callback.
 Runtime reconciliation retains equal declarations, replaces changes, cancels
 absence, rejects duplicate keys, and invalidates the generation before owner
 unmount completes.
+
+Local subscription sources implement a wake-aware `poll_next` protocol and are
+polled only when eligible, at most once per readiness checkpoint. They share
+creation-order authority and the `max_local_polls`/`polled_local_work` budget
+with local tasks, so a sleeping source permits quiescence. Send subscription
+sources are owned `Send` producers given one nonblocking start attempt with a
+structured started/unavailable/full/closed/rejected outcome. Their ingress is
+`Starting` during the callback and promotes to `Running` only after `Started`;
+synchronous sends return the exact item as `NotStarted`. Concrete items
+enter bounded completion ingress; full, closed, or stale submission returns the
+exact item, and the UI-thread mapper runs only after the generation is validated
+live.
 
 Wake and redraw use separate request/acknowledge state machines. Local non-`Send`
 work remains possible, stronger bounds apply only to concrete operations that
@@ -165,11 +195,34 @@ actions or completions. Queue and canonical-trace capacities are logical limits;
 their storage grows with accepted work rather than reserving the complete
 configured limit when the runtime mounts.
 
-The current pump implements the processed-envelope budget and one readiness-
-checkpoint extension point; there are no completion, task, or timer sources yet.
-The accepted complete pump adds separate completion-import, local-poll, and
-timer-promotion budgets. Current budget exhaustion preserves application-action
-order and reports remaining work; wake re-arming remains unimplemented.
+Terminal integrity and explicit shutdown share one idempotent scheduler-closure
+authority. It closes completion/wake producers without invoking the external
+wake transport, drains the queue and live registry, and clears every retained
+task, timer, subscription, mapper, host payload/reservation, and pending
+declaration. Subscription diagnostics use an independently configured bounded
+oldest-first retention limit.
+
+Creating a detached send-capable host response does not reserve its request.
+One lock-protected `Open` response state admits exactly one detached ingress,
+direct completion, or cancellation transition. Full detached ingress leaves it
+open for exact-completion retry; cancellation removes an already queued detached
+payload and the response slot before UI mapping. Terminal generations are
+absence, never retained response tombstones.
+
+Exact-generation revocation is one scheduler authority spanning registry,
+producer ingress, completion payloads, futures, timers, sources, mappers, and
+host requests. Mounted removal/replacement invokes it before the unmount hook.
+Mandatory trace admission is checked and operation-specific, and enabled-trace
+accepted actions use their own acceptance fact as causal parent. Wake request,
+transport, delivery claims, and callback-in-flight state share one state mutex;
+host callbacks run outside all framework synchronization guards, remain
+serialized, and are claimed at most once per outstanding request.
+
+The current pump applies separate processed-envelope, completion-import,
+local-work-poll, and timer-promotion budgets at deterministic readiness checkpoints.
+Budget exhaustion preserves application-action order, reports all remaining
+serviceable work and future deadlines, and re-arms the coalesced wake edge when
+work remains.
 
 Each send-task start makes one executor attempt. Refusal is a recoverable terminal
 outcome for that exact generation with no retry/pending queue or default action;

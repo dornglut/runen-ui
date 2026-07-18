@@ -1,8 +1,19 @@
-use runenui_core::{Element, ElementId, WidgetStateTypeId, WidgetTypeId};
+#![allow(refining_impl_trait)]
+
+use runenui_core::{Element, ElementId, NoHostProtocol, UiApp, WidgetStateTypeId, WidgetTypeId};
 use runenui_external_widget_conformance::{
     ChildAction, GenericWidget, ParentAction, PulseButton, PulseState, child_component,
 };
-use runenui_runtime::{ActivationResult, AppRuntime, PumpBudget, UiApp};
+use runenui_runtime::{ActivationResult, AppRuntime, PumpBudget};
+
+fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>) {
+    let _ = runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+}
 
 fn node_by_authored_id<App: UiApp>(
     runtime: &mut AppRuntime<App>,
@@ -21,6 +32,7 @@ struct PulseApp;
 impl UiApp for PulseApp {
     type State = usize;
     type Action = ParentAction;
+    type HostProtocol = NoHostProtocol;
 
     fn root(_: &Self::State) -> Element<Self::Action> {
         child_component().map_action(ParentAction::Child)
@@ -37,6 +49,7 @@ impl UiApp for PulseApp {
 #[test]
 fn concrete_widget_state_and_action_mapping_identity_are_mounted_and_stable() {
     let mut runtime = AppRuntime::<PulseApp>::mount(0);
+    settle_initial_mounted_declarations(&mut runtime);
     assert_eq!(
         node_by_authored_id(&mut runtime, "external.pulse"),
         (
@@ -48,14 +61,19 @@ fn concrete_widget_state_and_action_mapping_identity_are_mounted_and_stable() {
     let mounted = runtime.index().nodes()[0].id().clone();
     assert!(matches!(
         runtime.activate_node(&mounted),
-        ActivationResult::Queued { .. }
+        ActivationResult::Queued(_)
     ));
     assert!(matches!(
         runtime.activate_node(&mounted),
-        ActivationResult::Queued { .. }
+        ActivationResult::Queued(_)
     ));
     assert_eq!(*runtime.state(), 0);
-    assert_eq!(runtime.pump(PumpBudget::new(2)).processed_envelopes(), 2);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        2
+    );
     assert_eq!(*runtime.state(), 2);
     assert_eq!(
         node_by_authored_id(&mut runtime, "external.pulse"),
@@ -76,6 +94,7 @@ struct NestedMappingApp;
 impl UiApp for NestedMappingApp {
     type State = Option<NestedAction>;
     type Action = NestedAction;
+    type HostProtocol = NoHostProtocol;
 
     fn root(_: &Self::State) -> Element<Self::Action> {
         child_component()
@@ -91,6 +110,7 @@ impl UiApp for NestedMappingApp {
 #[test]
 fn nested_recursive_mapping_preserves_non_clone_action_and_widget_state_identity() {
     let mut runtime = AppRuntime::<NestedMappingApp>::mount(None);
+    settle_initial_mounted_declarations(&mut runtime);
     assert_eq!(
         node_by_authored_id(&mut runtime, "external.pulse"),
         (
@@ -101,9 +121,14 @@ fn nested_recursive_mapping_preserves_non_clone_action_and_widget_state_identity
     let mounted = runtime.index().nodes()[0].id().clone();
     assert!(matches!(
         runtime.activate_node(&mounted),
-        ActivationResult::Queued { .. }
+        ActivationResult::Queued(_)
     ));
-    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
     assert_eq!(
         runtime.state(),
         &Some(NestedAction::Outer(ParentAction::Child(ChildAction::Pulse)))
@@ -116,6 +141,7 @@ struct GenericApp<T>(core::marker::PhantomData<T>);
 impl<T: core::fmt::Debug + Default + 'static> UiApp for GenericApp<T> {
     type State = ();
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
         Element::new(GenericWidget(T::default())).id("generic")

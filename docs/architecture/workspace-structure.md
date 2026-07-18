@@ -20,8 +20,8 @@ RunenUI/
 
 | Package | Current ownership | Must not own |
 |---|---|---|
-| `runenui_core` | Validated authored values/identity/style; transient views/elements; state-aware widgets; lifecycle contexts; invalidation; technically public doc-hidden unstable safe runtime bridge | Persistent mounted storage, hosts, renderer backends, app state, ECS, or legacy dependencies |
-| `runenui_runtime` | Generational mounted arena/tree, reconciliation, lifecycle/shutdown, focus/interaction slots, caches/invalidation phases, canonical action submission and pumping, mounted activation/targeting, terminal authority, bounded trace, aligned publication, and hit testing | Application domain state, native windows, concrete renderers, ECS, or legacy dependencies |
+| `runenui_core` | `UiApp`, host-neutral effects/work/subscription protocols; validated authored values/identity/style; transient views/elements; state-aware widgets; lifecycle contexts; invalidation; doc-hidden safe runtime bridge | Persistent mounted storage, live scheduling, hosts, renderer backends, app state, ECS, or legacy dependencies |
+| `runenui_runtime` | Generational mounted arena/tree and live work registry; reconciliation/lifecycle; generalized FIFO and four-budget scheduler; clocks/tasks/timers/subscriptions/host requests; wake/redraw; terminal/shutdown; bounded trace; aligned publication and hit testing | Application domain policy, native windows, concrete renderers, ECS, or legacy dependencies |
 | `counter` | Application-owned state/action/update and headless public-API proof | Framework internals, native host, renderer backend, or legacy imports |
 | `runenui_external_widget_conformance` | Non-publishable test-owned downstream controls, vertical/horizontal/intrinsic/unsupported child-layout widgets, mapping, state/lifecycle, alignment, hit, and snapshot proof | Production framework ownership or privileged internal access |
 | `xtask` | Repository validation orchestration | Framework runtime behavior |
@@ -36,19 +36,24 @@ runenui_core <- runenui_runtime <- counter
 
 `xtask` is repository tooling and has no framework dependency.
 
-The accepted M4 ownership direction preserves this graph. `runenui_core` gains
+The implemented M4 ownership direction preserves this graph. `runenui_core` owns
 only public host-neutral protocol/value definitions: opaque mounted/surface
 identities, events/commands, action mapping, transaction-scoped event/work
 contexts, `UiApp`, `HostProtocol`, `WorkKey`, and effect/subscription
 descriptions. `runenui_runtime` remains the sole live authority for namespace
 creation, arenas/topology, validation, snapshots/routes, interaction mutation,
 reconciliation, queue sequences/checkpoints, work execution, timers/clocks,
-subscriptions, host requests, wake/redraw, trace, and shutdown. The current
-implementation contains only the runtime-owned application-action queue/pump,
-proof activation, terminal/shutdown, and bounded trace foundation; final
-`UiApp` ownership moves to core in the complete application-work slice. Hidden
-safe core construction seams do not own live state or bypass runtime validation.
+subscriptions, host requests, wake/redraw, trace, and shutdown. Completion
+ingress owns only live `Starting`/`Running` generations; centralized revocation
+removes registry and retained producer state before lifecycle callbacks. The
+current implementation includes the application-work and deterministic-scheduler slice.
+Hidden safe core construction seams do not own live state or bypass runtime validation.
 M4 adds no third crate.
+
+That corrected M4B ownership slice is implemented at the exact reviewed head and
+pending owner acceptance. M4C is
+blocked pending M4B acceptance, and M4D is blocked pending M4B acceptance and
+M4C; no additional crate boundary is implied by those blocked slices.
 
 Within the crates, built-in authoring is separate from the public element/widget
 protocol. Mounted storage is divided into arena, identity, node, capability
@@ -57,10 +62,9 @@ Surface context/key/cache ownership is separate from phase resolution,
 measurement, arrangement, and publication code. These are module boundaries,
 not new crate boundaries.
 
-Current source boundaries follow present responsibilities: runtime configuration
-is separate from queue sequencing, while `app.rs`, `runtime.rs`, and `trace.rs`
-remain intact until routed interaction, scheduler/work-registry, and trace
-export/sink responsibilities actually exist. Speculative milestone-named modules
+Current source boundaries follow present responsibilities: configuration,
+queue/pump, completion, clock, wake, redraw, transaction, trace, and family-
+specific live work are separate capability modules. Speculative milestone-named modules
 are not part of the workspace structure.
 
 ## Extraction rule

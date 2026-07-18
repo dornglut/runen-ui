@@ -27,6 +27,10 @@ impl DirtyPhases {
     pub(crate) const fn remove(&mut self, phases: Self) {
         self.0 &= !phases.0;
     }
+
+    const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
 }
 
 impl core::ops::BitOrAssign for DirtyPhases {
@@ -41,26 +45,46 @@ pub(crate) fn apply_invalidation<Action>(
 ) {
     if invalidation.contains(WidgetInvalidation::INTERACTION) {
         node.caches.activation = CachedCapability::Unresolved;
-        node.dirty_phases.insert(DirtyPhases::FOCUS_VALIDATION);
-        node.dirty_phases.insert(DirtyPhases::PAINT);
-        node.dirty_phases.insert(DirtyPhases::SEMANTICS);
     }
     if invalidation.contains(WidgetInvalidation::LAYOUT) {
         node.caches.measurement = CachedCapability::Unresolved;
         node.caches.child_layout = CachedCapability::Unresolved;
-        node.dirty_phases.insert(DirtyPhases::LAYOUT);
-        node.dirty_phases.insert(DirtyPhases::HIT_TEST);
     }
     if invalidation.contains(WidgetInvalidation::PAINT) {
         node.caches.paint = CachedCapability::Unresolved;
-        node.dirty_phases.insert(DirtyPhases::PAINT);
     }
     if invalidation.contains(WidgetInvalidation::SEMANTICS) {
         node.caches.semantics = CachedCapability::Unresolved;
-        node.dirty_phases.insert(DirtyPhases::SEMANTICS);
     }
     if invalidation.contains(WidgetInvalidation::DIAGNOSTICS) {
         node.caches.diagnostics = CachedCapability::Unresolved;
-        node.dirty_phases.insert(DirtyPhases::DIAGNOSTICS);
     }
+    node.dirty_phases.insert(publication_phases(invalidation));
+}
+
+pub(crate) const fn publication_is_dirty(invalidation: WidgetInvalidation) -> bool {
+    !publication_phases(invalidation).is_empty()
+}
+
+const fn publication_phases(invalidation: WidgetInvalidation) -> DirtyPhases {
+    let mut phases = DirtyPhases(0);
+    if invalidation.contains(WidgetInvalidation::INTERACTION) {
+        phases.insert(DirtyPhases::FOCUS_VALIDATION);
+        phases.insert(DirtyPhases::PAINT);
+        phases.insert(DirtyPhases::SEMANTICS);
+    }
+    if invalidation.contains(WidgetInvalidation::LAYOUT) {
+        phases.insert(DirtyPhases::LAYOUT);
+        phases.insert(DirtyPhases::HIT_TEST);
+    }
+    if invalidation.contains(WidgetInvalidation::PAINT) {
+        phases.insert(DirtyPhases::PAINT);
+    }
+    if invalidation.contains(WidgetInvalidation::SEMANTICS) {
+        phases.insert(DirtyPhases::SEMANTICS);
+    }
+    if invalidation.contains(WidgetInvalidation::DIAGNOSTICS) {
+        phases.insert(DirtyPhases::DIAGNOSTICS);
+    }
+    phases
 }

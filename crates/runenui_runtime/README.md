@@ -5,6 +5,9 @@
 `runenui_runtime` owns deterministic mounted execution and surface publication
 for the RunenUI headless proof.
 
+The deterministic application-work scheduler is the M4B slice currently in
+review. M4C routed interaction and M4D trace export/replay remain blocked.
+
 `AppRuntime` binds application state, typed actions, update, and transient root
 authoring. Each authored root is consumed by sibling-local reconciliation into a
 private safe generational arena. Unique keys match regardless of sibling
@@ -23,20 +26,42 @@ publication.
 The runtime executes mount/update in preorder, unmount in postorder, replacement
 before new mount, and shutdown exactly once through explicit `shutdown`,
 `into_state`, and `Drop`. Nodes remain arena-live through unmount; slot release
-and state drop follow the hook. One runtime-owned canonical application-action
-FIFO is the only action authority. `submit_action` returns a non-wrapping
+and state drop follow the hook. One runtime-owned generalized FIFO is the only
+work-order authority. `submit_action` returns a non-wrapping
 `WorkSequence` or the exact unaccepted action, and the explicit
 processed-envelope pump handles a caller-bounded number of envelopes without
 recursion. Each action update completes reconciliation and focus validation
 before the next envelope begins.
 
+The canonical FIFO also sequences effect starts/cancellations, final mapped
+application actions, timer firings, and complete-set subscription
+reconciliation. Ready local/send task and subscription values, host responses,
+and typed start failures map directly to one final action envelope instead of
+passing through an action-bearing completion envelope. Readiness checkpoints
+share four explicit per-pump budgets for
+processed envelopes, completion imports, local-work polls, and timer promotions.
+`PumpReport` exposes exact counters, exhaustion flags, serviceable readiness,
+future deadlines, and publication dirtiness. Local futures use wake-aware
+eligibility; send payloads cross a bounded ingress and map to non-`Send` actions
+only after UI-thread generation validation.
+
+Application and exact mounted owners share one generational work registry.
+Keyed replacement and cancellation never retarget a newer generation. Manual or
+host monotonic time drives deterministic one-shot/repeating timers. Typed host
+requests expose opaque runtime-local tokens and validate response kind before
+mapping. Atomic wake requests and revisioned redraw take/acknowledgment remain
+separate; shutdown closes producers and reports per-family cancellation counts.
+
 Transitional proof activation preflights runtime status, target capability,
 generation capacity, queue capacity, work sequencing, and mandatory trace
 sequences before it mutates persistent widget state or invokes an action
-factory. An action-producing activation appends one envelope and returns without
-pumping; state-only activation remains distinct. Queue-full, closed, and terminal
-outcomes invoke no mutable callback. Reconciliation reports record the completed
-generation and exact mounted/updated/unmounted/moved lifetime counts.
+factory. Its subscription invalidation, primary action, and auxiliary outputs
+commit through one plan: owner cancellation cleanup, mounted subscription
+reconciliation, primary action, then auxiliary collector order. It returns
+without pumping; state-only activation remains distinct. Queue-full, closed,
+and terminal outcomes invoke no mutable callback. Reconciliation reports record
+the completed generation and exact mounted/updated/unmounted/moved lifetime
+counts.
 
 State-aware activation, measurement, child layout, paint, semantics, and
 diagnostics use integrity-aware caches per mounted node. `WidgetInvalidation`
@@ -70,10 +95,11 @@ proofs.
 The current single-root/focus/publication domain has exactly one mounted root,
 one active focus domain, and one current publication domain. Its trace is one
 bounded canonical record sequence with
-non-wrapping trace identities and an exclusive eviction watermark. There is no
+non-wrapping trace identities, opaque exact scheduler-work identity and
+structured outcomes, actual accepted work sequences, basic causal lineage, and
+an exclusive eviction watermark. There is no
 routed event model, pointer identity or true capture, release-inside activation,
-effects/tasks/timers/subscriptions, host requests, remaining readiness budgets,
-wake/redraw integration, trace sink/export/replay,
+trace sink/export/replay or full trace-v2 normalization,
 production semantic tree/accessibility adapter, renderer-neutral paint/hit
 scene, production layout/style/text, native host, or renderer backend.
 

@@ -14,14 +14,23 @@ impl<Action> MountedTree<Action> {
         id: &MountedNodeId,
         reason: WidgetUnmountReason,
         path: &str,
-        stats: &mut ReconcileStats,
+        stats: &mut ReconcileStats<Action>,
+        before_unmount: &mut dyn FnMut(&MountedNodeId),
     ) {
         let Some(children) = self.node(id).map(|node| node.children.clone()) else {
             return;
         };
         for (position, child) in children.into_iter().enumerate() {
-            self.unmount_subtree(&child, reason, &format!("{path}/{position}"), stats);
+            self.unmount_subtree(
+                &child,
+                reason,
+                &format!("{path}/{position}"),
+                stats,
+                before_unmount,
+            );
         }
+        before_unmount(id);
+        stats.unmounted_owners.push(id.clone());
         let mismatch = if let Some(node) = self.arena.get_mut(id.slot, id.generation) {
             let mut context = WidgetUnmountContext::__runtime_new(reason);
             state_is_corrupted(node) || node.widget.unmount(&mut node.state, &mut context).is_err()
@@ -41,17 +50,19 @@ impl<Action> MountedTree<Action> {
         }
     }
 
-    pub(crate) fn shutdown(&mut self) -> ReconcileStats {
+    pub(crate) fn shutdown(&mut self) -> ReconcileStats<Action> {
         let mut stats = ReconcileStats::default();
         if self.shutdown {
             return stats;
         }
         if let Some(root) = self.root.take() {
+            let mut before_unmount = |_: &MountedNodeId| {};
             self.unmount_subtree(
                 &root,
                 WidgetUnmountReason::RuntimeShutdown,
                 "root",
                 &mut stats,
+                &mut before_unmount,
             );
         }
         self.shutdown = true;

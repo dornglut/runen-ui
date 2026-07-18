@@ -37,20 +37,36 @@ fn print_debug_surface(label: &str, runtime: &mut AppRuntime<CounterApp>) {
     println!("{label}\n{surface}");
 }
 
+fn settle_initial_work(runtime: &mut AppRuntime<CounterApp>) {
+    let _ = runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+}
+
 fn main() {
     let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    settle_initial_work(&mut runtime);
 
     print_debug_surface("counter.surface.initial", &mut runtime);
 
     for _ in 0..WIN_COUNT {
         runtime.activate("counter.increment");
     }
-    runtime.pump(PumpBudget::new(WIN_COUNT as usize));
+    runtime.pump(PumpBudget::new(
+        WIN_COUNT as usize,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    settle_initial_work(&mut runtime);
 
     print_debug_surface("counter.surface.win", &mut runtime);
 
     runtime.activate("counter.reset");
-    runtime.pump(PumpBudget::new(1));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
 
     print_debug_surface("counter.surface.reset", &mut runtime);
 
@@ -69,9 +85,16 @@ mod tests {
     };
 
     use crate::app::{Counter, CounterAction, CounterApp, WIN_COUNT};
-    use crate::debug_surface;
-    fn published_names(counter: Counter) -> Vec<String> {
+    use crate::{debug_surface, settle_initial_work};
+
+    fn mounted_counter(counter: Counter) -> AppRuntime<CounterApp> {
         let mut runtime = AppRuntime::<CounterApp>::mount(counter);
+        settle_initial_work(&mut runtime);
+        runtime
+    }
+
+    fn published_names(counter: Counter) -> Vec<String> {
+        let mut runtime = mounted_counter(counter);
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::tight(
             &tokens,
@@ -106,49 +129,54 @@ mod tests {
 
     #[test]
     fn reset_returns_to_counter_screen() {
-        let mut runtime = AppRuntime::<CounterApp>::mount(Counter { count: 10 });
+        let mut runtime = mounted_counter(Counter { count: 10 });
 
         assert!(matches!(
             runtime.activate("counter.reset"),
-            ActivationResult::Queued { .. }
+            ActivationResult::Queued(_)
         ));
         assert_eq!(runtime.state(), &Counter { count: 10 });
-        runtime.pump(PumpBudget::new(1));
+        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.state(), &Counter { count: 0 });
         assert_eq!(published_names(runtime.into_state())[1], "Counter");
     }
 
     #[test]
     fn semantic_increment_activation_reaches_win_screen() {
-        let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+        let mut runtime = mounted_counter(Counter::new());
 
         for _ in 0..WIN_COUNT {
             assert!(matches!(
                 runtime.activate("counter.increment"),
-                ActivationResult::Queued { .. }
+                ActivationResult::Queued(_)
             ));
         }
         assert_eq!(runtime.state(), &Counter::new());
-        runtime.pump(PumpBudget::new(WIN_COUNT as usize));
+        runtime.pump(PumpBudget::new(
+            WIN_COUNT as usize,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ));
         assert_eq!(runtime.state(), &Counter { count: 10 });
         assert_eq!(published_names(runtime.into_state())[1], "You win");
     }
 
     #[test]
     fn submitted_action_waits_for_the_explicit_pump() {
-        let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+        let mut runtime = mounted_counter(Counter::new());
 
         runtime
             .submit_action(CounterAction::Increment)
             .unwrap_or_else(|_| unreachable!());
         assert_eq!(runtime.state(), &Counter::new());
-        runtime.pump(PumpBudget::new(1));
+        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.state(), &Counter { count: 1 });
     }
 
     #[test]
     fn generation_exhaustion_preserves_counter_and_mounted_state() {
-        let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+        let mut runtime = mounted_counter(Counter::new());
         let authored =
             runenui_core::ElementId::new("counter.increment").unwrap_or_else(|_| unreachable!());
         let increment = runtime
@@ -193,12 +221,17 @@ mod tests {
         );
         assert_eq!(runtime.reconciliation_report(), &report);
         assert_eq!(runtime.publish_surface(&context), before);
-        assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 0);
+        assert_eq!(
+            runtime
+                .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+                .processed_envelopes(),
+            0
+        );
     }
 
     #[test]
     fn debug_surface_output_exposes_counter_screen() {
-        let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+        let mut runtime = mounted_counter(Counter::new());
         let surface = debug_surface(&mut runtime);
 
         assert!(surface.contains("surface size=(240.0,160.0) nodes=7"));
@@ -209,14 +242,19 @@ mod tests {
 
     #[test]
     fn debug_surface_output_exposes_win_screen_after_rebuild() {
-        let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+        let mut runtime = mounted_counter(Counter::new());
 
         for _ in 0..WIN_COUNT {
             runtime
                 .submit_action(CounterAction::Increment)
                 .unwrap_or_else(|_| unreachable!());
         }
-        runtime.pump(PumpBudget::new(WIN_COUNT as usize));
+        runtime.pump(PumpBudget::new(
+            WIN_COUNT as usize,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ));
 
         let surface = debug_surface(&mut runtime);
 
@@ -228,7 +266,7 @@ mod tests {
 
     #[test]
     fn mounted_identity_focus_state_and_screen_replacement_are_proven() {
-        let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+        let mut runtime = mounted_counter(Counter::new());
         let authored =
             runenui_core::ElementId::new("counter.increment").unwrap_or_else(|_| unreachable!());
         let increment = runtime
@@ -249,9 +287,9 @@ mod tests {
         );
         assert!(matches!(
             runtime.activate_node(&increment),
-            ActivationResult::Queued { .. }
+            ActivationResult::Queued(_)
         ));
-        runtime.pump(PumpBudget::new(1));
+        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
         assert_eq!(
             runtime
@@ -276,20 +314,26 @@ mod tests {
         for _ in 1..WIN_COUNT {
             assert!(matches!(
                 runtime.activate("counter.increment"),
-                ActivationResult::Queued { .. }
+                ActivationResult::Queued(_)
             ));
         }
-        runtime.pump(PumpBudget::new((WIN_COUNT - 1) as usize));
+        runtime.pump(PumpBudget::new(
+            (WIN_COUNT - 1) as usize,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ));
         assert_eq!(runtime.focus().focused_node(), None);
         assert_eq!(
             runtime.activate_node(&increment),
             ActivationResult::StaleTarget
         );
+        settle_initial_work(&mut runtime);
         assert!(matches!(
             runtime.activate("counter.reset"),
-            ActivationResult::Queued { .. }
+            ActivationResult::Queued(_)
         ));
-        runtime.pump(PumpBudget::new(1));
+        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
         let replacement = runtime
             .index()
             .node_by_authored_id(&authored)

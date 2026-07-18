@@ -5,6 +5,9 @@
 `runenui_core` is the host- and renderer-neutral authored-data crate in the
 current RunenUI headless proof.
 
+The application-work protocol implemented here is the M4B surface currently in
+review; routed interaction remains blocked in M4C.
+
 It owns validated logical lengths, authored IDs/keys, typed token references and
 non-overwriting token definitions, style intent/resolution, and the open
 transient `View`/`Element`/`Widget` architecture. `text`, `button`, `row`, and
@@ -35,6 +38,15 @@ capabilities observe persistent state, and stateless widgets use `State = ()`.
 Built-in buttons use repeatable `on_activate` action factories, so each accepted
 proof activation can produce a fresh action without requiring `Action: Clone`,
 `Copy`, or `Debug`.
+Core also owns the host-neutral application-work vocabulary: `UiApp`,
+`HostProtocol`/`NoHostProtocol`, opaque ordered `Effects`, validated `WorkKey`,
+task/timer/host-request descriptions, and complete-set application/mounted
+`SubscriptionSet` declarations. These values are inert; the runtime alone owns
+live execution, generations, clocks, queues, and cancellation.
+`SendSubscriptionSource::start` is a nonblocking, exactly-once attempt returning
+`SendSubscriptionStartOutcome`; `SendSubscriptionSink::try_send` returns
+`SendSubscriptionSinkError::Full`, `Closed`, or `Stale` with exact item
+ownership. Refusal never implies a runtime retry.
 `WidgetInvalidation` is a manual selective bitset. `StyleTokens` carries a
 monotonic diagnostic revision, while sound runtime cache compatibility compares
 the complete token definitions and values. The `__runtime` bridge
@@ -43,7 +55,7 @@ outside the prelude, doc-hidden, unstable, unsupported for applications, and
 semver-exempt before 1.0. It safely consumes transient elements into checked,
 non-forgeable mounted widget/state plumbing without exposing payload or arena
 construction.
-The crate does not own mounted storage, input routing, effects, layout execution,
+The crate does not own mounted storage, input routing, live effect execution, layout execution,
 semantics, paint scenes, renderer backends, native hosts, application state, ECS,
 or legacy dependencies.
 

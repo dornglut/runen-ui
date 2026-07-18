@@ -1,17 +1,28 @@
+#![allow(refining_impl_trait)]
+
 use std::{cell::Cell, rc::Rc};
 
-use runenui_core::{Element, ElementId, StyleTokens};
+use runenui_core::{Element, ElementId, NoHostProtocol, StyleTokens, UiApp};
 use runenui_external_widget_conformance::{
     LayoutCase, LayoutConformanceApp, LayoutState, UnsupportedMeasure, counting_measurement_tree,
 };
 use runenui_runtime::{
     ActivationResult, AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize,
     MeasurementProvider, PumpBudget, SurfaceBuildContext, TextMeasurement, TextMeasurementKind,
-    TextMeasurementRequest, UiApp,
+    TextMeasurementRequest,
 };
 
 fn size(width: f32, height: f32) -> LogicalSize {
     LogicalSize::try_new(width, height).unwrap_or_else(|_| unreachable!())
+}
+
+fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>) {
+    let _ = runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
 }
 
 struct ControlLabelProvider {
@@ -50,6 +61,7 @@ struct CountingApp;
 impl UiApp for CountingApp {
     type State = CountingState;
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<Self::Action> {
         counting_measurement_tree(
@@ -123,6 +135,7 @@ struct UnsupportedApp;
 impl UiApp for UnsupportedApp {
     type State = ();
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
         Element::new(UnsupportedMeasure).key("unsupported")
@@ -167,6 +180,7 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
             case,
             activations: 0,
         });
+        settle_initial_mounted_declarations(&mut runtime);
         let tokens = StyleTokens::new();
         let publication = runtime.publish_surface(&SurfaceBuildContext::new(
             &tokens,
@@ -243,9 +257,14 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         assert_eq!(publication.frame().hit_test_id(point), Some(action.clone()));
         assert!(matches!(
             runtime.activate_node(&action),
-            ActivationResult::Queued { .. }
+            ActivationResult::Queued(_)
         ));
-        assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+        assert_eq!(
+            runtime
+                .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+                .processed_envelopes(),
+            1
+        );
         assert_eq!(runtime.state().activations, 1);
     }
 }

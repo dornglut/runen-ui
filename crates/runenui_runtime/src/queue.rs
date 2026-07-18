@@ -5,7 +5,8 @@
 use core::{fmt, num::NonZeroU64};
 use std::collections::VecDeque;
 
-use crate::{RuntimeTerminalReason, TraceSequence, TraceTarget};
+use crate::{MountedNodeId, work::WorkGeneration};
+use crate::{RuntimeTerminalReason, TraceSequence, TraceTarget, TraceWorkIdentity};
 
 /// Non-wrapping sequence assigned to accepted runtime work.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -94,6 +95,7 @@ pub(crate) enum ApplicationActionOrigin {
     MountedActivation,
     KeyboardActivation,
     PointerActivation,
+    ApplicationEffect,
 }
 
 pub(crate) struct ApplicationActionEnvelope<Action> {
@@ -104,8 +106,35 @@ pub(crate) struct ApplicationActionEnvelope<Action> {
     pub(crate) origin: ApplicationActionOrigin,
 }
 
-enum WorkEnvelope<Action> {
+pub(crate) enum WorkEnvelope<Action> {
     ApplicationAction(ApplicationActionEnvelope<Action>),
+    EffectStart(SequencedWork),
+    WorkCancellation(CancellationEnvelope),
+    TimerFiring(SequencedWork),
+    MountedSubscriptionReconcile {
+        sequence: WorkSequence,
+        owner: MountedNodeId,
+        causal_parent: Option<TraceSequence>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct SequencedWork {
+    pub(crate) sequence: WorkSequence,
+    pub(crate) generation: WorkGeneration,
+}
+
+pub(crate) struct CancellationEnvelope {
+    pub(crate) sequence: WorkSequence,
+    pub(crate) generation: WorkGeneration,
+    pub(crate) identity: TraceWorkIdentity,
+    pub(crate) causal_parent: Option<TraceSequence>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum QueueCommitError {
+    Full,
+    SequenceExhausted,
 }
 
 pub(crate) struct WorkQueue<Action> {
@@ -127,8 +156,35 @@ impl<Action> WorkQueue<Action> {
         self.waiting.len() >= self.capacity
     }
 
+    pub(crate) fn preflight_commit(&self, count: usize) -> Result<(), QueueCommitError> {
+        if self
+            .waiting
+            .len()
+            .checked_add(count)
+            .is_none_or(|required| required > self.capacity)
+        {
+            return Err(QueueCommitError::Full);
+        }
+        if count == 0 {
+            return Ok(());
+        }
+        let next = self
+            .next_sequence
+            .ok_or(QueueCommitError::SequenceExhausted)?;
+        let additional =
+            u64::try_from(count - 1).map_err(|_| QueueCommitError::SequenceExhausted)?;
+        next.get()
+            .checked_add(additional)
+            .ok_or(QueueCommitError::SequenceExhausted)?;
+        Ok(())
+    }
+
     pub(crate) const fn has_sequence(&self) -> bool {
         self.next_sequence.is_some()
+    }
+
+    pub(crate) fn next_sequence(&self) -> Option<WorkSequence> {
+        self.next_sequence.map(WorkSequence::new)
     }
 
     pub(crate) fn push_preflighted(
@@ -154,10 +210,76 @@ impl<Action> WorkQueue<Action> {
         Ok(sequence)
     }
 
-    pub(crate) fn pop_application_action(&mut self) -> Option<ApplicationActionEnvelope<Action>> {
-        self.waiting.pop_front().map(|envelope| match envelope {
-            WorkEnvelope::ApplicationAction(action) => action,
+    pub(crate) fn push_effect_start(
+        &mut self,
+        generation: WorkGeneration,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_control(|sequence| {
+            WorkEnvelope::EffectStart(SequencedWork {
+                sequence,
+                generation,
+            })
         })
+    }
+
+    pub(crate) fn push_cancellation(
+        &mut self,
+        generation: WorkGeneration,
+        identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_control(|sequence| {
+            WorkEnvelope::WorkCancellation(CancellationEnvelope {
+                sequence,
+                generation,
+                identity,
+                causal_parent,
+            })
+        })
+    }
+
+    pub(crate) fn push_timer_firing(
+        &mut self,
+        generation: WorkGeneration,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_control(|sequence| {
+            WorkEnvelope::TimerFiring(SequencedWork {
+                sequence,
+                generation,
+            })
+        })
+    }
+
+    pub(crate) fn push_mounted_subscription_reconcile(
+        &mut self,
+        owner: MountedNodeId,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_control(|sequence| WorkEnvelope::MountedSubscriptionReconcile {
+            sequence,
+            owner,
+            causal_parent,
+        })
+    }
+
+    fn push_control(
+        &mut self,
+        envelope: impl FnOnce(WorkSequence) -> WorkEnvelope<Action>,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        if self.is_full() {
+            return Err(QueueCommitError::Full);
+        }
+        let next = self
+            .next_sequence
+            .ok_or(QueueCommitError::SequenceExhausted)?;
+        let sequence = WorkSequence::new(next);
+        self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
+        self.waiting.push_back(envelope(sequence));
+        Ok(sequence)
+    }
+
+    pub(crate) fn pop(&mut self) -> Option<WorkEnvelope<Action>> {
+        self.waiting.pop_front()
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -174,7 +296,7 @@ impl<Action> WorkQueue<Action> {
         count
     }
 
-    #[cfg(any(test, feature = "internal-test-seams"))]
+    #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn seed_next_sequence_for_test(&mut self, next: u64) {
         self.next_sequence = NonZeroU64::new(next);
     }

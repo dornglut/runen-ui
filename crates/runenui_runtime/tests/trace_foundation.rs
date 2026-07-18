@@ -1,6 +1,8 @@
-use runenui_core::{Element, View, button};
+#![allow(refining_impl_trait)]
+
+use runenui_core::{Element, NoHostProtocol, UiApp, View, button};
 use runenui_runtime::{
-    ActivationResult, AppRuntime, PumpBudget, RuntimeConfig, TraceConfig, TraceRecordKind, UiApp,
+    ActivationResult, AppRuntime, PumpBudget, RuntimeConfig, TraceConfig, TraceRecordKind,
 };
 
 struct App;
@@ -8,6 +10,7 @@ struct App;
 impl UiApp for App {
     type State = usize;
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root(_: &Self::State) -> Element<Self::Action> {
         button("Go")
@@ -28,7 +31,7 @@ fn capacity_zero_retains_nothing_and_changes_no_behavior() {
     let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
     assert!(runtime.trace().is_empty());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(1));
+    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.state(), &1);
     assert!(runtime.trace().is_empty());
     assert_eq!(runtime.trace().dropped_before_sequence(), None);
@@ -40,9 +43,9 @@ fn logical_trace_capacity_does_not_eagerly_reserve() {
     let mut runtime = AppRuntime::<App>::mount_with_config(0, config);
 
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    let report = runtime.pump(PumpBudget::new(1));
+    let report = runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
 
-    assert_eq!(report.processed_envelopes(), 1);
+    assert_eq!(report.processed_envelopes(), 2);
     assert_eq!(runtime.state(), &1);
     assert!(!runtime.trace().is_empty());
     assert!(
@@ -65,13 +68,13 @@ fn bounded_retention_evicts_oldest_and_advances_the_exclusive_watermark() {
         .records()
         .map(|record| record.sequence().get())
         .collect();
-    assert_eq!(sequences, [2, 3, 4]);
+    assert_eq!(sequences, [6, 7, 8]);
     assert_eq!(
         runtime
             .trace()
             .dropped_before_sequence()
             .map(runenui_runtime::TraceSequence::get),
-        Some(2)
+        Some(6)
     );
 
     let one = RuntimeConfig::default().with_trace_config(TraceConfig::new(1));
@@ -84,7 +87,7 @@ fn bounded_retention_evicts_oldest_and_advances_the_exclusive_watermark() {
         .records()
         .next()
         .unwrap_or_else(|| unreachable!());
-    assert_eq!(retained.sequence().get(), 2);
+    assert_eq!(retained.sequence().get(), 6);
     assert!(matches!(
         retained.kind(),
         TraceRecordKind::ActionSubmissionAccepted
@@ -94,7 +97,7 @@ fn bounded_retention_evicts_oldest_and_advances_the_exclusive_watermark() {
             .trace()
             .dropped_before_sequence()
             .map(runenui_runtime::TraceSequence::get),
-        Some(2)
+        Some(6)
     );
 }
 
@@ -114,14 +117,14 @@ fn repeated_eviction_advances_exclusive_watermark_exactly() {
         );
     }
 
-    assert_eq!(observed, [None, Some(2), Some(3), Some(4)]);
+    assert_eq!(observed, [Some(5), Some(6), Some(7), Some(8)]);
     assert_eq!(
         runtime
             .trace()
             .records()
             .map(|record| record.sequence().get())
             .collect::<Vec<_>>(),
-        [4, 5]
+        [8, 9]
     );
 }
 
@@ -134,7 +137,7 @@ fn direct_submission_records_work_sequence_without_a_causal_parent() {
         .records()
         .find(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted))
         .unwrap_or_else(|| unreachable!());
-    assert_eq!(work.get(), 1);
+    assert_eq!(work.get(), 2);
     assert_eq!(acceptance.work_sequence(), Some(work));
     assert_eq!(acceptance.causal_parent(), None);
     assert_eq!(acceptance.target(), None);
@@ -144,9 +147,12 @@ fn direct_submission_records_work_sequence_without_a_causal_parent() {
 fn activation_acceptance_links_target_and_commit_then_transaction_generations() {
     let mut runtime = AppRuntime::<App>::mount(0);
     let target = runtime.index().nodes()[0].id().clone();
-    let ActivationResult::Queued { sequence: work } = runtime.activate_node(&target) else {
+    let ActivationResult::Queued(commit) = runtime.activate_node(&target) else {
         unreachable!()
     };
+    let work = commit
+        .primary_action_sequence
+        .unwrap_or_else(|| unreachable!("button activation queues its primary action"));
     assert_eq!(runtime.state(), &0);
     let records: Vec<_> = runtime.trace().records().collect();
     let commit = records
@@ -168,7 +174,7 @@ fn activation_acceptance_links_target_and_commit_then_transaction_generations() 
         Some(&target)
     );
 
-    runtime.pump(PumpBudget::new(1));
+    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
     let started = runtime
         .trace()
         .records()
@@ -207,7 +213,7 @@ fn activation_acceptance_links_target_and_commit_then_transaction_generations() 
 fn logical_record_order() -> Vec<TraceRecordKind> {
     let mut runtime = AppRuntime::<App>::mount(0);
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(1));
+    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
     runtime.trace().kinds().cloned().collect()
 }
 
@@ -219,6 +225,7 @@ fn identical_logical_execution_has_identical_record_order() {
 #[test]
 fn shutdown_cancellation_is_visible_in_the_canonical_trace() {
     let mut runtime = AppRuntime::<App>::mount(0);
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     let shutdown = runtime.shutdown();

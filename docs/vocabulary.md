@@ -38,14 +38,15 @@ This vocabulary marks current and target terms explicitly. Target terms do not i
 | `SurfacePhaseReport` | Inspectable record of proof-level tree/style/layout/hit-test/paint/semantics/diagnostics/focus work executed by the latest runtime operation. |
 | `SurfaceFrame` | Current bounds/style plus open paint/semantic/diagnostic proof product; not a paint scene or accessibility tree. |
 | `on_activate` | Repeatable button callback that produces a fresh typed action for each accepted proof activation; routed semantic-command convergence remains later M4 work. |
-| Sequenced work queue | One runtime-owned bounded FIFO currently containing only application-action envelopes; every accepted envelope receives a non-wrapping `WorkSequence` and later M4 work adds the other accepted envelope families. |
+| Sequenced work queue | One runtime-owned bounded FIFO for actions, effect starts/cancellation, timer firings, and subscription reconciliation; readiness/completion callbacks map directly to their final action envelope, and every accepted envelope receives a non-wrapping `WorkSequence`. |
 | `WorkSequence` | Runtime-issued non-zero identity for accepted work, beginning at 1 and never wrapping; it is distinct from trace and reconciliation sequences. |
 | Pump | Explicit iterative runtime operation that processes queued envelopes; the current runtime never pumps implicitly from submission or activation. |
-| Processed-envelope budget | Current `PumpBudget` limit where one popped envelope consumes one unit; completion-import, local-poll, and timer-promotion budgets remain accepted targets. |
+| Pump budgets | Four independent explicit `PumpBudget` limits for processed envelopes, completion imports, local-work polls shared by tasks and local subscription sources, and timer promotions. |
 | Runtime terminal state | Non-resettable running-but-inspectable state after work, reconciliation, or enabled-trace sequence exhaustion; it rejects new work and mutable callbacks until explicit shutdown closes the runtime. |
 | `TraceSequence` | Runtime-issued non-zero identity for a canonical trace record, beginning at 1 and never wrapping when tracing is enabled. |
 | Trace watermark | Exclusive `dropped_before_sequence`: `Some(S)` means every trace sequence less than `S` has been evicted from bounded retention. |
-| Bounded canonical trace | One retained record sequence for queue, activation, application transactions, reconciliation/focus, terminal, cancellation, and shutdown; complete trace v2 remains an M4 target. |
+| Bounded canonical trace | One retained record sequence for queue, activation, application/work transactions, scheduler checkpoints, wake/redraw, reconciliation/focus, terminal, cancellation, and shutdown; export/replay and full trace-v2 normalization remain M4D. |
+| `TraceWorkIdentity` | Read-only application-or-mounted owner, family, exact private generation value, and optional authored key attached to scheduler work facts; it is diagnostic identity, not a runtime capability. |
 
 `on_press` was removed without an alias when `on_activate` became the authored
 semantic activation callback.
@@ -54,10 +55,15 @@ builder expression as direct authoring and introduces no separate binding names.
 Identifiers reject empty or Unicode-whitespace-only text, surrounding Unicode
 whitespace, and Unicode control characters while accepting ordinary Unicode.
 
-## Accepted M4 target terms
+## M4 contract terms
 
-These terms are fixed by accepted ADR 0005 and ADR 0006. They form the M4
-implementation charter but do not describe implemented support.
+These terms are fixed by accepted ADR 0005 and ADR 0006. Application-work and
+scheduler terms below are implemented by the application-work slice;
+routed-event terms remain M4C.
+
+Milestone status is M4A complete, M4B implemented and pending owner acceptance,
+M4C blocked pending M4B acceptance, and M4D blocked pending M4B acceptance and
+M4C. M4 is incomplete.
 
 | Term | Meaning |
 |---|---|
@@ -73,13 +79,18 @@ implementation charter but do not describe implemented support.
 | Pointer capture | Runtime-owned `PointerId -> MountedNodeId` routing override with staged transfer and deterministic release. |
 | Composition owner | Exact focused mounted generation that accepted IME composition start; focus/lifetime change invalidates later updates rather than retargeting them. |
 | Commit-derived notification | Later canonical capture/composition/focus/boundary event appended from an atomic interaction or reconciliation commit before the initiating transaction's application outputs. |
-| `initial_effects` | Default-empty one-time application work collected only after successful initial mount/reconciliation and ordered before initial subscription starts. |
+| `initial_effects` | Default-empty one-time application work collected only after successful initial mount/reconciliation inside one atomic plan ordered after mounted declarations and before application subscription starts and mounted mount output. |
 | Update effects | Ordered optional output returned by two-argument `update`; `()` is the no-effects result. |
 | Application subscriptions | Default-empty desired stream set derived from application state after initial mount and every successful action/reconciliation. |
 | Effect | Typed request recorded during application or eligible mounted work, appended only after its owning transaction commits, and executed only after owner/key revalidation. |
 | Mounted work output | Restricted exact-mounted-owner imperative output supporting actions, tasks, timers, and same-owner keyed cancellation, but neither application host requests nor subscription declarations. |
-| Mounted subscriptions | Dedicated state-derived complete desired set declared by the widget for one exact mounted generation and reconciled by the runtime after committed mount or explicit owner-local invalidation. |
+| Mounted subscriptions | Dedicated state-derived complete desired set evaluated at the front of an exact-owner reconciliation envelope after committed mount or owner-local invalidation; declarations are not cached across mounted-state changes. |
 | Subscription invalidation | Provisional owner-local event/update request that schedules one later mounted declaration evaluation; it neither declares nor starts subscription work. |
+| Send subscription start | One nonblocking attempt returning started, unavailable, full, closed, or rejected; refusal reclaims the exact generation and is never retried implicitly. |
+| Producer authority | Live-only exact-generation permission to submit a task completion, send-subscription item, or host response; cancellation, replacement, unmount, completion, terminal closure, and shutdown remove it rather than retaining a tombstone. |
+| `NotStarted` | Exact send-subscription item recovery while its generation exists in `Starting` but has not committed `Started -> Running`. |
+| `WidgetActivationOutput` | Independent optional action and persistent-state-change facts returned by mutable widget activation. |
+| Activation capacity | Exact bounded authority (`WaitingEnvelopes`, `LocalTasks`, `SendTasks`, or `Timers`) that refused conservative activation admission. |
 | Work owner | Application lifetime or one exact mounted generation responsible for task/timer/subscription/host-request cancellation. |
 | `WorkKey` | Cloneable/hashable validated textual owner-local durable cancellation/replacement identity paired with work kind; private commit-bound generations remain stale completion/cancellation authority. |
 | Local task | UI-thread-polled one-shot work that may hold non-`Send` state and produce `Action` directly. |
@@ -88,11 +99,12 @@ implementation charter but do not describe implemented support.
 | Subscription | Declarative owner/key/source-type/configuration identity for an ongoing stream whose validated items map to actions on the UI thread. |
 | Application host protocol | One closed application-defined command/response/`ResponseKind` protocol; token, owner, and exact expected/actual kind validate before its UI-thread mapper. |
 | Readiness checkpoint | Ordered UI-thread import, due-timer promotion, at-most-once eligible local-task polling, ready-output acceptance, and queue-tail sequencing run before/between envelopes and before quiescence. |
-| Remaining pump budgets | Separate limits for cross-thread imports, local-task polls, and timer promotions; exhaustion preserves order, re-arms wake, and reports non-quiescent progress. The current implementation supports only the processed-envelope budget. |
+| Remaining pump budgets | Separate limits for cross-thread imports, local-task polls, and timer promotions; exhaustion preserves order, re-arms wake, and reports non-quiescent progress. |
 | Wake request | Coalesced host signal that runtime work remains, using explicit request/acknowledge/re-arm semantics; it does not imply redraw. |
+| Mandatory trace plan | Checked operation-specific exact or maximum record requirement admitted before the corresponding mutable scheduler boundary; capacity zero disables it behavior-neutrally. |
 | Redraw request | Independently coalesced dirty-publication signal with take/acknowledge generation; it does not own frame timing. |
-| Runtime limits | Configured queue, transaction-output, live-work, canonical-trace, and optional sink-delivery bounds with explicit full/closed outcomes and no silent action drop. |
-| Complete terminal integrity policy | Later terminal handling for unrollbackable post-mutation failures; the current implementation supports only known sequence-exhaustion terminal reasons. |
+| Runtime limits | Configured waiting-envelope, transaction-output, per-family live-work, completion-ingress, and canonical-trace bounds with explicit full/closed outcomes and no silent accepted-work drop. |
+| Complete terminal integrity policy | Sequence exhaustion becomes terminal before mutation; an unrollbackable post-mutation transaction-capacity failure poisons the runtime, closes producers, and cancels queued/live work. |
 | Trace v2 | One bounded structured causal record sequence with sequence/transaction/reconciliation/surface/owner facts, saturation and wake/redraw records, and redacted deterministic export. |
 | Trace sink | Optional bounded/try-based external copy destination subordinate to canonical trace; full/closed/failure affects only the copy and its guarded diagnostic is not recursively redelivered. |
 

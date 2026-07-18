@@ -91,8 +91,10 @@
 
 #![forbid(unsafe_code)]
 
+mod application;
 mod builtins;
 mod computed_style;
+mod effects;
 mod element;
 mod identity;
 mod layout;
@@ -100,21 +102,27 @@ pub mod prelude;
 mod style;
 mod style_resolution;
 mod style_tokens;
+mod subscription;
 mod value;
 mod widget_context;
 mod widget_erasure;
 mod widget_mapping;
+mod work;
 
 include!("element_macros.rs");
 include!("identity_macros.rs");
 include!("token_macros.rs");
 
+pub use application::{
+    HostProtocol, NoHostCommand, NoHostProtocol, NoHostResponse, NoHostResponseKind, UiApp,
+};
 pub use builtins::{Button, Container, Text, button, column, container, row, text};
 pub use computed_style::ComputedStyle;
+pub use effects::{Effects, IntoEffects};
 pub use element::{
     AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
-    WidgetActivation, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof,
-    WidgetStateTypeId, WidgetTextKind, WidgetTypeId,
+    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
+    WidgetSemanticProof, WidgetStateTypeId, WidgetTextKind, WidgetTypeId,
 };
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///
@@ -123,9 +131,12 @@ pub use element::{
 /// use, semver-exempt before 1.0, and may change without compatibility support.
 #[doc(hidden)]
 pub mod __runtime {
+    pub use crate::effects::{Effect, HostRequestEffect, MountedEffect};
+    pub use crate::subscription::{ErasedSendSubscriptionSource, Subscription, SubscriptionSource};
     pub use crate::widget_erasure::{
         ElementParts, ElementRuntimeParts, MountedWidget, MountedWidgetState, WidgetBridgeError,
     };
+    pub use crate::work::{LocalTaskEffect, SendFuture, SendOutput, SendTaskEffect};
 }
 #[doc(hidden)]
 pub use identity::is_valid_identifier_literal;
@@ -140,8 +151,13 @@ pub use style_resolution::{
     resolve_literal_style, resolve_style,
 };
 pub use style_tokens::{DuplicateTokenDefinition, StyleTokens, TokenFamily};
+pub use subscription::{
+    LocalSubscriptionSource, SendSubscriptionSink, SendSubscriptionSinkError,
+    SendSubscriptionSource, SendSubscriptionStartOutcome, SubscriptionSet,
+};
 pub use value::{LogicalLength, LogicalLengthError};
 pub use widget_context::{
     WidgetActivationContext, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
     WidgetUnmountReason, WidgetUpdateContext,
 };
+pub use work::{SendTaskStartFailure, TimerEffect, WorkFamily, WorkKey, WorkKeyError};

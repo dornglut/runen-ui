@@ -234,10 +234,13 @@ The exact trait spelling may use associated output types instead of return-posit
 - there is one canonical `UiApp` contract, not competing simple/advanced runtime
   authorities;
 - collecting output never executes it;
-- after successful initial mount/reconciliation, the runtime collects and commits
-  `initial_effects`, evaluates subscriptions, appends initial effects in collector
-  order, then appends subscription starts in declaration order before updating
-  wake/redraw state;
+- after successful initial mount/reconciliation, the runtime builds one atomic
+  initial transaction covering every mounted declaration owner, `initial_effects`,
+  application subscriptions, and mounted mount output; the complete plan is
+  preflighted once and assigns queue order as mounted declaration reconciliation
+  in mounted preorder, initial effects in collector order, application subscription
+  starts in declaration order, then mounted mount output in mounted preorder and
+  collector order;
 - no initial work starts before initial reconciliation succeeds;
 - bounds such as `Send`, `Sync`, and `'static` apply only to concrete work,
   payloads, mappers, or host transports that need them.
@@ -592,6 +595,16 @@ A host later returns a response, application-level failure, or cancellation
 against the opaque request token. Only after token generation, owner, and exact
 response kind validate may the runtime invoke the mapper and append an action.
 
+Response acceptance has one lock-protected authority per live request generation.
+Registration inserts `Open`; successful detached ingress changes
+`Open -> DetachedQueued`; successful direct completion changes
+`Open -> DirectClaimed`. Full detached ingress leaves `Open` so the exact
+completion can be retried. Cancellation, replacement, owner revocation,
+completion, terminal closure, and shutdown remove the generation's retained
+response slot and any queued detached payload. No `Cancelled` tombstone is
+retained. A missing slot is stale authority, and every competing or late path is
+stale.
+
 A mismatched response is a structured host-protocol diagnostic and never reaches
 application update or a newer request generation. Concrete response payloads
 may cross threads when their types satisfy required bounds; `Action` itself need
@@ -620,14 +633,30 @@ redraw does not render inside a wake callback.
 
 Wake uses an explicit race-free handshake shared with completion senders:
 
-1. a producer that may make work ready atomically transitions wake state from
-   `Idle` to `Requested` and invokes the host wake transport only on that edge;
-2. when servicing the wake, the UI thread acknowledges/clears `Requested`
+1. a producer that may make work ready transitions wake state from `Idle` to an
+   undelivered `Requested` epoch;
+2. while holding the wake-state mutex, the runtime claims that epoch exactly
+   once when a transport exists and no callback is in flight;
+3. the owned claim is invoked only after every RunenUI synchronization guard is
+   released; explicit `callback_in_flight` state serializes callbacks without a
+   lock-held host boundary;
+4. when servicing the wake, the UI thread acknowledges/clears `Requested`
    **before** pumping;
-3. completions racing after that clear observe `Idle` and request another wake;
-4. after the pump, the runtime rechecks queue/readiness/deadline state and
+5. a new request created while the previous callback remains in flight stays
+   pending; normal callback completion claims and invokes it once;
+6. after the pump, the runtime rechecks queue/readiness/deadline state and
    re-arms a wake if work remains;
-5. shutdown closes the wake handle so later producers receive `Closed`.
+7. transport installation claims one pending undelivered epoch, while transport
+   replacement never reclaims an epoch already delivered;
+8. shutdown closes wake authority so later producers receive `Closed` and later
+   installation/acknowledgment cannot reopen it.
+
+Close prevents every delivery claim that linearizes afterward and returns
+without waiting for host code. A callback claimed before close may invoke or
+finish after close returns. Its normal completion clears in-flight bookkeeping,
+observes `Closed`, and schedules nothing further. This is intentionally not the
+stronger physical guarantee that no callback instruction can execute after
+close; that would require waiting or cooperative cancellation across host code.
 
 This prevents a completion from being stranded between host acknowledgment and
 pump completion. The host transport may be a native user event, channel, callback,
@@ -696,6 +725,13 @@ completion/cancellation, timers, subscriptions, host requests, publication,
 send-executor start outcomes, trace-sink diagnostics, integrity failure,
 poisoning, and shutdown.
 
+Transaction planning retains callback semantic order separately from the queue's
+cleanup-before-start grouping. Request and invalidation trace facts therefore
+follow collector order, including provisional request -> generation commit ->
+same-batch cancellation -> invalidation. Every accepted final action records its
+acceptance before queue append, and the action envelope carries that acceptance
+as the causal parent of its later application transaction.
+
 Trace never requires `Action: Debug`. It stores type/category and causal identity;
 an application may opt into a redacted label provider. Text commit and IME
 payloads are redacted by default. Full text capture requires explicit
@@ -762,6 +798,31 @@ transaction ordering, non-`Send` actions, local/send tasks, terminal executor
 start outcomes and optional failure mapping, timer order, lifecycle cancellation,
 host mismatch rejection, saturation, wake races, redraw races, bounded trace-sink
 backpressure/recursion, trace causality, and idempotent shutdown.
+
+### Final scheduler-integrity clarification
+
+Producer permission is live-only exact-generation authority. Send tasks and
+send subscriptions have `Starting` and `Running` ingress states; host responses
+retain only `Open`, `DetachedQueued`, or `DirectClaimed`. Terminal states are
+removed. A send-subscription item during `Starting` returns exact `NotStarted`,
+and a send-task completion after revocation returns exact `Stale`.
+
+Mandatory trace admission uses one checked operation-specific plan. With trace
+enabled, every accepted final action has exactly one same-`WorkSequence`
+`ActionSubmissionAccepted` parent; detached host completion requires four
+records and send task/subscription completion three. Trace capacity zero changes
+no scheduler behavior. Exact exhaustion detected before user mutation retains
+its reason; an unexpected failure after mutation begins is `Poisoned`.
+
+Activation saturation names the exact bounded authority, and widget activation
+separately reports persistent state mutation. `NoEffect` means no state change,
+invalidation, subscription invalidation, action, or auxiliary work. Wake request,
+transport, delivery claims, and explicit callback-in-flight bookkeeping share
+one state mutex. `DeliveryClaim` values invoke host code outside all RunenUI
+synchronization guards; callback completion serially claims a newer pending
+epoch. Close prevents later claims without waiting for a prior one. Deterministic
+state-transition and blocking-callback tests own this rule, while repeated race
+stress is supplementary.
 
 ## Consequences
 

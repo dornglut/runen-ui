@@ -6,6 +6,11 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
+Milestone status: M4A is complete; the M4B implementation correction is complete
+at the exact reviewed head and pending owner acceptance; M4C is blocked pending M4B
+acceptance; M4D is blocked pending M4B
+acceptance and M4C. M4 as a whole is not complete.
+
 ## What exists today
 
 The active workspace proves:
@@ -23,9 +28,20 @@ The active workspace proves:
   unkeyed ordinal matching, retained local state/focus/interaction slots,
   deterministic mount/update/unmount/shutdown, stale/foreign target rejection,
   separate semantic identity, capability caches, and reconciliation reports;
+- the core-owned `UiApp` contract, ordered initial/update effects, declarative
+  application and mounted subscriptions, keyed lifecycle work, typed host
+  requests, local/send tasks, monotonic timers, and a deterministic four-budget
+  scheduler with live-only generational producer authority, exact saturation,
+  checked trace admission, and independent wake/redraw handshakes whose wake
+  callbacks are claimed once, serialized, and invoked outside all framework
+  synchronization guards;
+- one ordered application transaction planner, state-current subscription
+  declaration evaluation, direct completion-to-action delivery, explicit send-
+  subscription `Starting -> Running` start/sink outcomes, exact ownership
+  recovery, and causal scheduler trace lineage;
 - deterministic queued application actions, an explicit bounded pump, mounted
-  proof activation, focus traversal, bounded canonical tracing, and mounted
-  surface publication;
+  proof activation, focus traversal, scheduler-aware bounded canonical tracing,
+  and mounted surface publication;
 - typed style values, tokens, computed style, provenance, and diagnostics;
 - explicit layout constraints, a renderer-neutral measurement-provider seam,
   and separate one-query intrinsic/child-layout snapshots per publication;
@@ -40,9 +56,8 @@ The active workspace proves:
 
 Important limitations remain: input behavior is press-based and proof-level,
 text measurement is deterministic character counting, and routed events,
-pointer identity/capture, release-inside activation, effects, tasks, timers,
-subscriptions, host requests, the remaining readiness budgets, wake/redraw,
-complete trace v2, trace export/sinks/replay, production semantics/accessibility,
+pointer identity/capture, release-inside activation, complete routed events,
+complete trace v2 normalization, trace export/sinks/replay, production semantics/accessibility,
 paint/hit scenes, production layout/style/text, native hosts, renderer backends,
 and production controls are absent. The current runtime has one mounted root,
 one focus domain, and one current publication domain. Current paint and semantic
@@ -81,8 +96,8 @@ preorder snapshot. Compatible style and layout changes retain topology and read
 the current mounted `StyleIntent` and `LayoutStyle`; authored token-reference
 changes are scheduled by reconciliation even when token content is unchanged.
 No production retained-layout claim is implied.
-Task/subscription ownership begins in M4; renderer-neutral
-paint and hit-test scenes begin in M6.
+Application and exact-mounted-generation task/subscription ownership is current;
+renderer-neutral paint and hit-test scenes begin in M6.
 
 ## Canonical project documents
 

@@ -10,11 +10,10 @@ inventory is the [M4 conformance matrix](m4-conformance-matrix.md). Acceptance
 authorizes implementation but does not make any target implemented; support
 exists only after its public behavioral proofs pass.
 
-## Current queue, pump, activation, and trace foundation
+## Current application-work and scheduler implementation
 
-The current implementation provides one bounded runtime-owned
-application-action FIFO,
-non-wrapping work sequences, an explicit processed-envelope pump, queue-backed
+The current implementation provides one bounded runtime-owned generalized FIFO,
+non-wrapping work sequences, an explicit four-budget pump, queue-backed
 proof activation, and one bounded canonical trace sequence. Each processed
 action completes mounted reconciliation and focus validation before the next
 begins. Compatible nodes retain focus; stale and foreign mounted targets are
@@ -23,11 +22,17 @@ persistent widget state only after queue/generation/trace preflight. The proof
 input helpers still provide only typed pointer/keyboard vocabulary, linear
 traversal focus, rectangle targeting, and press-based button activation.
 
-There is no routed propagation, surface-input generation context, pointer
-identity/true capture, release-inside policy, initial/update effects, effect
-executor, task or timer source, state-derived subscription declaration, keyed
-cancellation, race-free wake/redraw scheduling, text/IME stream, deterministic
-clock, remaining pump budgets, trace sink/export/replay, or complete trace v2.
+Core-owned initial/update effects, local/send tasks, deterministic timers,
+application and mounted complete-set subscriptions, keyed generational
+cancellation, typed host requests, configured limits, completion ingress,
+race-free wake, revisioned redraw, lifecycle cancellation, and scheduler trace
+facts are implemented. Scheduler callbacks preflight queue/work/trace capacity;
+send work becomes running only after executor acceptance; repeating-deadline
+overflow terminates only that timer after its current valid firing; and
+work-specific trace records carry opaque exact owner/family/generation/key
+identity. There is no routed propagation, surface-input generation
+context, pointer identity/true capture, release-inside policy, text/IME stream,
+trace sink/export/replay, or complete trace-v2 normalization.
 
 ## Canonical target path
 
@@ -144,17 +149,23 @@ The application lifecycle has three explicit output authorities:
 compact `update(state, action)` shape without an unused collector parameter,
 while advanced applications return/build an ordered effect batch.
 
-After initial reconciliation succeeds, the runtime commits `initial_effects`,
-evaluates subscriptions, appends initial effects in collector order, and then
-appends subscription starts in declaration order. No initial work starts before
-reconciliation succeeds.
+After initial reconciliation succeeds, the runtime commits one atomic initial
+plan covering all mounted declaration owners, initial effects, application
+subscriptions evaluated from current state, and mounted mount output. Queue order
+is mounted declaration reconciliation in mounted preorder, initial effects in
+collector order, application subscription starts in declaration order, then
+mounted mount output in mounted preorder and collector order. Aggregate output,
+queue, generation, family, and mandatory-trace admission covers the complete
+plan; rejection consumes no partial sequence or generation and starts no work.
 
 Eligible mounted callbacks receive only a restricted exact-owner work output for
 actions, tasks, timers, and same-owner keyed cancellation. Mounted subscriptions
 use a separate state-derived widget declaration capability whose invocation is a
 complete desired set. Event and compatible-update contexts may provisionally
 dirty that declaration for their exact owner, but cannot imperatively mutate a
-registry or declare a partial set. Reusable widgets do not become generic over
+registry or declare a partial set. Activation commits that invalidation together
+with its primary action and auxiliary outputs through the same plan. Reusable
+widgets do not become generic over
 application host policy. Unmount remains cancellation-only.
 
 Requests never execute inside update or widget callbacks. They append only after
@@ -181,10 +192,14 @@ execution therefore does not impose `Action: Send` on the application.
 
 Subscriptions retain only when owner, key, source type, and source-defined
 configuration identity agree. Application declarations run after each successful
-action/reconciliation. The initial mounted declaration runs after committed
-mount; later declarations run only after explicit owner-local invalidation from
+action/reconciliation against the current post-update state; complete
+declaration values are never cached. The initial mounted declaration is part of
+the atomic post-reconciliation initial plan; later declarations run only after
+explicit owner-local invalidation from
 compatible update, routed event, or another documented lifecycle seam. Unrelated
-events do not re-declare them.
+events do not re-declare them. A mounted declaration is evaluated only at the
+front of its exact-owner reconciliation envelope, sees newest live mounted
+state, and is suppressed when that owner is stale.
 Equal declarations retain, changed declarations replace, absence cancels,
 duplicates retain no ambiguous stream, and owner removal invalidates before
 unmount completion. Arbitrary closures are never compared. Timers use
@@ -202,6 +217,15 @@ methods add `Send` bounds, and widgets cannot issue application host commands.
 Framework clipboard/cursor/IME/window/accessibility services remain separate M10
 host capabilities.
 
+One lock-protected state machine owns each live response generation. Registration
+inserts `Open`; successful detached acceptance changes `Open -> DetachedQueued`;
+successful direct acceptance changes `Open -> DirectClaimed`. Full detached
+ingress leaves `Open` for exact retry. Cancellation, replacement, owner
+revocation, completion, terminal closure, and shutdown remove the generation's
+retained response slot and any queued payload. No `Cancelled` tombstone is
+retained. A missing slot is stale authority, and competing or late completion
+paths are stale.
+
 Removal, replacement, keyed cancellation, and shutdown invalidate work tokens
 before cooperative executor cancellation. Late completions are stale and never
 invoke UI-thread mappers.
@@ -213,23 +237,52 @@ poisoning, and no action unless the effect explicitly supplied a UI-thread start
 failure mapper. Retry is a new effect and generation; refused owned payloads are
 returned for deterministic runtime-side handling when the adapter permits.
 
+A send-subscription start envelope likewise makes one nonblocking attempt with
+`Started`, `Unavailable`, `Full`, `Closed`, or `Rejected`. Refusal reclaims that
+generation and never retries implicitly. During `Starting`, submission returns
+`NotStarted` with the exact item. Only `Running` may accept an item successfully;
+otherwise the sink returns `Full`, `Closed`, or `Stale` with exact ownership.
+
 ## Queue, failure, and saturation contract
 
-One UI-thread-owned non-reentrant FIFO accepts events, commands, actions,
-completions, timer firings, commit-derived notifications, and effect starts.
+One UI-thread-owned non-reentrant FIFO accepts events, commands, actions, timer
+firings, commit-derived notifications, subscription reconciliation, and effect
+starts.
 Every accepted envelope goes to the queue tail; no source category overtakes work
 already accepted. Each application action updates state and reconciles the
 mounted tree before its outputs become visible.
 
+One application transaction plan assigns accepted sequences in this order:
+exact cancellation cleanup, mounted subscription reconciliation, update outputs
+in collector order, application subscription starts in declaration order, then
+mounted lifecycle outputs. Activation uses the same authority with cleanup,
+mounted subscription reconciliation, primary action, then auxiliary outputs.
+Ready callback and mapper results allocate only their final application-action
+envelope; no action-producing path depends on a second unreserved sequence.
+
+Mutable activation reserves the complete configured callback allowance before
+the callback: one reconciliation generation, `2 * transaction_outputs + 1`
+queue slots, `transaction_outputs`
+work generations and free slots in every mounted-accessible family, and
+`4 * transaction_outputs + 1` mandatory trace records. A committed activation
+reports the first accepted sequence, optional primary-action sequence, and total
+queued envelope count. Auxiliary-only work is therefore `Queued`; explicit
+widget-state mutation or a coalesced subscription invalidation is `Activated`;
+only an authoritative empty `WidgetActivationOutput` with no context effect is
+`NoEffect`. Saturation returns the exact `ActivationCapacity`. Every accepted
+external queue commit requests the coalesced wake edge, while publication-affecting
+invalidation independently requests redraw.
+
 A readiness checkpoint runs before the first envelope, after each processed
 envelope while budget remains, and before quiescence. It imports cross-thread
 completions in transport order, promotes timers by deadline/creation sequence,
-polls each eligible local task at most once in creation order, accepts ready
+polls each eligible local task or local subscription source at most once in
+creation order, accepts ready
 outputs in creation order, and assigns each accepted result a new UI-thread
 global sequence at the queue tail. Producers never assign runtime sequences and
 checkpoint results never execute recursively.
 
-Processed envelopes, completion imports, local-task polls, and timer promotions
+Processed envelopes, completion imports, local-work polls, and timer promotions
 have separate budgets. Exhaustion preserves work/order, re-arms wake, and returns
 non-quiescent progress. Quiescence additionally requires no imported completion,
 due timer, immediately ready eligible local task under the allowed check, or
@@ -238,7 +291,12 @@ mandatory derived work; a future timer contributes only its next deadline.
 M4 defines configured limits for queued envelopes, transaction outputs, live
 work classes, and trace. External/full/closed outcomes are explicit. Cross-thread
 senders retain unaccepted payloads. Typed actions and completions are never
-silently dropped.
+silently dropped. Send tasks, send subscriptions, and host responses retain
+live-only per-generation producer authority. Send-subscription ingress is
+`Starting` during `start` and `Running` only after `Started`; a startup send
+returns exact `NotStarted`. Cancellation, replacement, unmount, completion,
+terminal closure, and shutdown centrally remove the generation and every
+retained payload, source, and mapper.
 
 Recoverable stale/full/closed outcomes leave the runtime coherent. If an
 unexpected integrity failure occurs after unrollbackable application mutation,
@@ -252,7 +310,19 @@ Wake and redraw use independent state machines. Wake has an explicit
 request/acknowledge/re-arm handshake: the host clears the outstanding wake before
 pumping, racing completions can request another wake, and the runtime rechecks
 remaining work after the pump. This prevents lost wakeups without owning a native
-event loop.
+event loop. Request state, installed transport, and delivery ownership share one
+state mutex. A separate callback-in-flight fact serializes delivery without a
+lock-held host boundary. The runtime claims an eligible request under the state
+mutex, releases every RunenUI synchronization guard, and only then invokes the
+transport. A request arriving while a callback is in flight remains undelivered
+until that callback returns, then is claimed and delivered once. Transport
+replacement cannot reclaim an already delivered request.
+
+Close prevents every later delivery claim, removes the installed transport, and
+returns without waiting for a callback claimed earlier. Such a callback may
+finish after close; its completion clears in-flight bookkeeping but cannot
+re-arm or reopen the closed state. Deterministic state-transition and blocking-
+callback tests own this contract; repeated concurrent races are supplementary.
 
 Redraw has a separate take/acknowledge generation. Invalidation racing with
 publication leaves a new redraw armed. Wake does not imply redraw, and redraw
@@ -261,11 +331,21 @@ does not execute rendering inside a wake callback.
 ## Trace v2
 
 The bounded trace foundation replaces the duplicate vectors with one canonical
-record sequence. Its records carry monotonic trace and optional work sequences,
+record sequence. Its records carry monotonic trace and actual accepted work sequences,
 causal linkage, reconciliation generations, activation targets, queue/
 transaction/focus facts, saturation, terminal cancellation, and shutdown.
-Complete trace v2 later adds event/effect/owner/surface facts, wake/redraw
-acknowledgment, and logical scheduler time.
+Scheduler work facts additionally expose a read-only opaque identity containing
+the application or exact mounted owner, family, private generation value, and
+optional authored key. Complete trace v2 later adds routed-event and surface
+facts, logical scheduler time, deterministic export, and replay.
+
+Transaction semantic request/invalidation facts preserve callback collector
+order separately from cleanup-before-start queue grouping. Mandatory trace
+admission uses a checked operation-specific plan. Detached host completion
+requires four records; send-task and send-subscription completion require three.
+Capacity zero disables retention and allocation without changing scheduler
+behavior. The accepted final action trace fact is recorded before append and causally parents the later
+application transaction that processes that envelope.
 
 Capacity is configurable. Dropping old records advances an explicit watermark.
 Text and IME payloads are redacted by default. A versioned deterministic JSONL

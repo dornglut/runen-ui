@@ -1,11 +1,11 @@
 use crate::element::{
     AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, Widget, WidgetActivation,
-    WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof, WidgetStateTypeId,
-    WidgetTypeId,
+    WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof,
+    WidgetStateTypeId, WidgetTypeId,
 };
 use crate::{
-    ElementId, ElementKey, LayoutStyle, StyleIntent, WidgetActivationContext, WidgetMountContext,
-    WidgetUnmountContext, WidgetUpdateContext,
+    ElementId, ElementKey, LayoutStyle, StyleIntent, SubscriptionSet, WidgetActivationContext,
+    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext,
 };
 use core::{any::Any, fmt};
 
@@ -17,24 +17,29 @@ pub trait ErasedWidget<Action>: fmt::Debug {
     fn mount(
         &self,
         state: &mut dyn Any,
-        context: &mut WidgetMountContext,
+        context: &mut WidgetMountContext<Action>,
     ) -> Result<(), WidgetBridgeError>;
     fn update(
         &self,
         state: &mut dyn Any,
-        context: &mut WidgetUpdateContext,
+        context: &mut WidgetUpdateContext<Action>,
     ) -> Result<(), WidgetBridgeError>;
     fn unmount(
         &self,
         state: &mut dyn Any,
         context: &mut WidgetUnmountContext,
     ) -> Result<(), WidgetBridgeError>;
+    fn subscriptions(
+        &self,
+        state: &dyn Any,
+        subscriptions: &mut SubscriptionSet<Action>,
+    ) -> Result<(), WidgetBridgeError>;
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError>;
     fn activate(
         &mut self,
         state: &mut dyn Any,
-        context: &mut WidgetActivationContext,
-    ) -> Result<Option<Action>, WidgetBridgeError>;
+        context: &mut WidgetActivationContext<Action>,
+    ) -> Result<WidgetActivationOutput<Action>, WidgetBridgeError>;
     fn measure(&self, state: &dyn Any) -> Result<WidgetMeasure, WidgetBridgeError>;
     fn child_layout(&self, state: &dyn Any) -> Result<Option<ChildLayout>, WidgetBridgeError>;
     fn paint(&self, state: &dyn Any) -> Result<WidgetPaintProof, WidgetBridgeError>;
@@ -68,7 +73,7 @@ where
     fn mount(
         &self,
         state: &mut dyn Any,
-        context: &mut WidgetMountContext,
+        context: &mut WidgetMountContext<Action>,
     ) -> Result<(), WidgetBridgeError> {
         self.0
             .mount(downcast_mut::<Implementation::State>(state)?, context);
@@ -77,7 +82,7 @@ where
     fn update(
         &self,
         state: &mut dyn Any,
-        context: &mut WidgetUpdateContext,
+        context: &mut WidgetUpdateContext<Action>,
     ) -> Result<(), WidgetBridgeError> {
         self.0
             .update(downcast_mut::<Implementation::State>(state)?, context);
@@ -92,6 +97,15 @@ where
             .unmount(downcast_mut::<Implementation::State>(state)?, context);
         Ok(())
     }
+    fn subscriptions(
+        &self,
+        state: &dyn Any,
+        subscriptions: &mut SubscriptionSet<Action>,
+    ) -> Result<(), WidgetBridgeError> {
+        self.0
+            .subscriptions(downcast_ref::<Implementation::State>(state)?, subscriptions);
+        Ok(())
+    }
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError> {
         Ok(self
             .0
@@ -100,8 +114,8 @@ where
     fn activate(
         &mut self,
         state: &mut dyn Any,
-        context: &mut WidgetActivationContext,
-    ) -> Result<Option<Action>, WidgetBridgeError> {
+        context: &mut WidgetActivationContext<Action>,
+    ) -> Result<WidgetActivationOutput<Action>, WidgetBridgeError> {
         Ok(self
             .0
             .activate(downcast_mut::<Implementation::State>(state)?, context))
@@ -151,7 +165,7 @@ where
     fn mount(
         &self,
         state: &mut dyn Any,
-        context: &mut WidgetMountContext,
+        context: &mut WidgetMountContext<Action>,
     ) -> Result<(), WidgetBridgeError> {
         self.0
             .mount(downcast_mut::<Implementation::State>(state)?, context);
@@ -160,7 +174,7 @@ where
     fn update(
         &self,
         state: &mut dyn Any,
-        context: &mut WidgetUpdateContext,
+        context: &mut WidgetUpdateContext<Action>,
     ) -> Result<(), WidgetBridgeError> {
         self.0
             .update(downcast_mut::<Implementation::State>(state)?, context);
@@ -175,6 +189,15 @@ where
             .unmount(downcast_mut::<Implementation::State>(state)?, context);
         Ok(())
     }
+    fn subscriptions(
+        &self,
+        state: &dyn Any,
+        subscriptions: &mut SubscriptionSet<Action>,
+    ) -> Result<(), WidgetBridgeError> {
+        self.0
+            .subscriptions(downcast_ref::<Implementation::State>(state)?, subscriptions);
+        Ok(())
+    }
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError> {
         Ok(self
             .0
@@ -183,8 +206,8 @@ where
     fn activate(
         &mut self,
         state: &mut dyn Any,
-        context: &mut WidgetActivationContext,
-    ) -> Result<Option<Action>, WidgetBridgeError> {
+        context: &mut WidgetActivationContext<Action>,
+    ) -> Result<WidgetActivationOutput<Action>, WidgetBridgeError> {
         Ok(self
             .0
             .activate(downcast_mut::<Implementation::State>(state)?, context))
@@ -281,14 +304,14 @@ impl<Action> MountedWidget<Action> {
     pub fn mount(
         &self,
         state: &mut MountedWidgetState,
-        context: &mut WidgetMountContext,
+        context: &mut WidgetMountContext<Action>,
     ) -> Result<(), WidgetBridgeError> {
         self.inner.mount(state.value.as_mut(), context)
     }
     pub fn update(
         &self,
         state: &mut MountedWidgetState,
-        context: &mut WidgetUpdateContext,
+        context: &mut WidgetUpdateContext<Action>,
     ) -> Result<(), WidgetBridgeError> {
         self.inner.update(state.value.as_mut(), context)
     }
@@ -299,6 +322,14 @@ impl<Action> MountedWidget<Action> {
     ) -> Result<(), WidgetBridgeError> {
         self.inner.unmount(state.value.as_mut(), context)
     }
+    pub fn subscriptions(
+        &self,
+        state: &MountedWidgetState,
+        subscriptions: &mut SubscriptionSet<Action>,
+    ) -> Result<(), WidgetBridgeError> {
+        self.inner
+            .subscriptions(state.value.as_ref(), subscriptions)
+    }
     pub fn activation(
         &self,
         state: &MountedWidgetState,
@@ -308,8 +339,8 @@ impl<Action> MountedWidget<Action> {
     pub fn activate(
         &mut self,
         state: &mut MountedWidgetState,
-        context: &mut WidgetActivationContext,
-    ) -> Result<Option<Action>, WidgetBridgeError> {
+        context: &mut WidgetActivationContext<Action>,
+    ) -> Result<WidgetActivationOutput<Action>, WidgetBridgeError> {
         self.inner.activate(state.value.as_mut(), context)
     }
     pub fn measure(&self, state: &MountedWidgetState) -> Result<WidgetMeasure, WidgetBridgeError> {

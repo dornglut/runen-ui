@@ -8,7 +8,8 @@
 use std::{collections::HashSet, sync::Arc};
 
 use runenui_core::{
-    __runtime::ElementParts, Element, ElementId, WidgetInvalidation, WidgetMountContext,
+    __runtime::{ElementParts, WidgetBridgeError},
+    Element, ElementId, SubscriptionSet, WidgetInvalidation, WidgetMountContext,
     WidgetUnmountReason, WidgetUpdateContext,
 };
 
@@ -22,13 +23,35 @@ use super::{
 };
 use crate::ReconciliationDiagnostic;
 
-#[derive(Debug, Default)]
-pub(crate) struct ReconcileStats {
+pub(crate) struct ReconcileStats<Action> {
     pub(crate) mounted: usize,
     pub(crate) updated: usize,
     pub(crate) unmounted: usize,
     pub(crate) moved: usize,
     pub(crate) diagnostics: Vec<ReconciliationDiagnostic>,
+    pub(crate) mounted_owners: Vec<MountedNodeId>,
+    pub(crate) unmounted_owners: Vec<MountedNodeId>,
+    pub(crate) subscription_invalidated: Vec<MountedNodeId>,
+    pub(crate) mounted_outputs: Vec<(
+        MountedNodeId,
+        Vec<runenui_core::__runtime::MountedEffect<Action>>,
+    )>,
+}
+
+impl<Action> Default for ReconcileStats<Action> {
+    fn default() -> Self {
+        Self {
+            mounted: 0,
+            updated: 0,
+            unmounted: 0,
+            moved: 0,
+            diagnostics: Vec::new(),
+            mounted_owners: Vec::new(),
+            unmounted_owners: Vec::new(),
+            subscription_invalidated: Vec::new(),
+            mounted_outputs: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,7 +69,7 @@ pub(crate) struct MountedTree<Action> {
 }
 
 impl<Action> MountedTree<Action> {
-    pub(crate) fn mount(root: Element<Action>) -> (Self, ReconcileStats) {
+    pub(crate) fn mount(root: Element<Action>) -> (Self, ReconcileStats<Action>) {
         let mut tree = Self {
             runtime: Arc::new(RuntimeInstanceMarker),
             arena: MountedArena::new(),
@@ -63,7 +86,7 @@ impl<Action> MountedTree<Action> {
         &mut self,
         parent: Option<MountedNodeId>,
         parts: ElementParts<Action>,
-        stats: &mut ReconcileStats,
+        stats: &mut ReconcileStats<Action>,
     ) -> MountedNodeId {
         let (authored_id, key, layout, style, authoring_diagnostics, widget, children) =
             parts.into_parts();
@@ -101,6 +124,11 @@ impl<Action> MountedTree<Action> {
             }
             apply_invalidation(node, context.__runtime_take_invalidation());
         }
+        let outputs = context.__runtime_take_outputs();
+        if !outputs.is_empty() {
+            stats.mounted_outputs.push((id.clone(), outputs));
+        }
+        stats.mounted_owners.push(id.clone());
 
         let mounted_children = children
             .into_iter()
@@ -112,7 +140,17 @@ impl<Action> MountedTree<Action> {
         id
     }
 
-    pub(crate) fn reconcile(&mut self, root: Element<Action>) -> ReconcileStats {
+    #[cfg(test)]
+    pub(crate) fn reconcile(&mut self, root: Element<Action>) -> ReconcileStats<Action> {
+        let mut before_unmount = |_: &MountedNodeId| {};
+        self.reconcile_with_before_unmount(root, &mut before_unmount)
+    }
+
+    pub(crate) fn reconcile_with_before_unmount(
+        &mut self,
+        root: Element<Action>,
+        before_unmount: &mut dyn FnMut(&MountedNodeId),
+    ) -> ReconcileStats<Action> {
         let mut stats = ReconcileStats::default();
         let parts = root.into_runtime_parts();
         let old_root = self
@@ -120,12 +158,26 @@ impl<Action> MountedTree<Action> {
             .clone()
             .unwrap_or_else(|| unreachable!("mounted tree has a root before shutdown"));
         if self.compatible(&old_root, &parts) {
-            if let Err(parts) = self.update_node(&old_root, parts, "root", &mut stats) {
-                self.unmount_subtree(&old_root, WidgetUnmountReason::Replaced, "root", &mut stats);
+            if let Err(parts) =
+                self.update_node(&old_root, parts, "root", &mut stats, before_unmount)
+            {
+                self.unmount_subtree(
+                    &old_root,
+                    WidgetUnmountReason::Replaced,
+                    "root",
+                    &mut stats,
+                    before_unmount,
+                );
                 self.root = Some(self.mount_parts(None, *parts, &mut stats));
             }
         } else {
-            self.unmount_subtree(&old_root, WidgetUnmountReason::Replaced, "root", &mut stats);
+            self.unmount_subtree(
+                &old_root,
+                WidgetUnmountReason::Replaced,
+                "root",
+                &mut stats,
+                before_unmount,
+            );
             self.root = Some(self.mount_parts(None, parts, &mut stats));
         }
         stats
@@ -146,7 +198,8 @@ impl<Action> MountedTree<Action> {
         id: &MountedNodeId,
         parts: ElementParts<Action>,
         path: &str,
-        stats: &mut ReconcileStats,
+        stats: &mut ReconcileStats<Action>,
+        before_unmount: &mut dyn FnMut(&MountedNodeId),
     ) -> Result<(), Box<ElementParts<Action>>> {
         let mut update_context = WidgetUpdateContext::__runtime_new();
         {
@@ -203,8 +256,16 @@ impl<Action> MountedTree<Action> {
                 node.dirty_phases.insert(DirtyPhases::STYLE);
             }
         }
+        if update_context.__runtime_take_subscription_invalidation() {
+            stats.subscription_invalidated.push(id.clone());
+        }
+        let outputs = update_context.__runtime_take_outputs();
+        if !outputs.is_empty() {
+            stats.mounted_outputs.push((id.clone(), outputs));
+        }
         stats.updated += 1;
-        let new_children = self.reconcile_children(id, &old_children, children, path, stats);
+        let new_children =
+            self.reconcile_children(id, &old_children, children, path, stats, before_unmount);
         let structural = old_children != new_children;
         let node = self
             .node_mut(id)
@@ -223,7 +284,8 @@ impl<Action> MountedTree<Action> {
         old_children: &[MountedNodeId],
         children: Vec<Element<Action>>,
         parent_path: &str,
-        stats: &mut ReconcileStats,
+        stats: &mut ReconcileStats<Action>,
+        before_unmount: &mut dyn FnMut(&MountedNodeId),
     ) -> Vec<MountedNodeId> {
         let new_parts: Vec<_> = children
             .into_iter()
@@ -259,7 +321,7 @@ impl<Action> MountedTree<Action> {
             if let Some((old_position, old_id)) = candidate {
                 used.insert(old_id.clone());
                 if self.compatible(&old_id, &parts) {
-                    match self.update_node(&old_id, parts, &child_path, stats) {
+                    match self.update_node(&old_id, parts, &child_path, stats, before_unmount) {
                         Ok(()) => {
                             if old_position != new_position {
                                 stats.moved += 1;
@@ -272,6 +334,7 @@ impl<Action> MountedTree<Action> {
                                 WidgetUnmountReason::Replaced,
                                 &child_path,
                                 stats,
+                                before_unmount,
                             );
                             final_children.push(self.mount_parts(
                                 Some(parent.clone()),
@@ -286,6 +349,7 @@ impl<Action> MountedTree<Action> {
                         WidgetUnmountReason::Replaced,
                         &child_path,
                         stats,
+                        before_unmount,
                     );
                     final_children.push(self.mount_parts(Some(parent.clone()), parts, stats));
                 }
@@ -305,6 +369,7 @@ impl<Action> MountedTree<Action> {
                     WidgetUnmountReason::Removed,
                     &format!("{parent_path}/{old_position}"),
                     stats,
+                    before_unmount,
                 );
             }
         }
@@ -326,6 +391,16 @@ impl<Action> MountedTree<Action> {
             return None;
         }
         self.arena.get(id.slot, id.generation)
+    }
+    pub(crate) fn declare_subscriptions(
+        &self,
+        id: &MountedNodeId,
+        subscriptions: &mut SubscriptionSet<Action>,
+    ) -> Result<(), WidgetBridgeError> {
+        let node = self
+            .node(id)
+            .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
+        node.widget.subscriptions(&node.state, subscriptions)
     }
     pub(crate) fn node_mut(&mut self, id: &MountedNodeId) -> Option<&mut MountedNode<Action>> {
         if !id.belongs_to(&self.runtime) {
@@ -417,7 +492,11 @@ fn common_field_invalidation<Action>(
     invalidation
 }
 
-fn mark_mismatch<Action>(node: &mut MountedNode<Action>, path: &str, stats: &mut ReconcileStats) {
+fn mark_mismatch<Action>(
+    node: &mut MountedNode<Action>,
+    path: &str,
+    stats: &mut ReconcileStats<Action>,
+) {
     node.integrity_failed = true;
     stats
         .diagnostics
@@ -428,7 +507,11 @@ fn mark_mismatch<Action>(node: &mut MountedNode<Action>, path: &str, stats: &mut
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{Element, ElementId, View, children, column, text};
+    use std::{cell::Cell, rc::Rc};
+
+    use runenui_core::{
+        Element, ElementId, View, Widget, WidgetUnmountContext, children, column, text,
+    };
 
     use super::{MountedNodeId, MountedTree, TargetStatus};
     use crate::ReconciliationDiagnostic;
@@ -456,6 +539,35 @@ mod tests {
             .unwrap_or_else(|| unreachable!())
             .id()
             .clone()
+    }
+
+    #[derive(Debug)]
+    struct UnmountOrderingProbe(Rc<Cell<bool>>);
+
+    impl Widget<()> for UnmountOrderingProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn unmount(&self, (): &mut Self::State, _: &mut WidgetUnmountContext) {
+            assert!(
+                self.0.get(),
+                "owner invalidation must precede the unmount callback"
+            );
+        }
+    }
+
+    #[test]
+    fn owner_invalidation_callback_precedes_unmount_hook() {
+        let invalidated = Rc::new(Cell::new(false));
+        let (mut mounted, _) = MountedTree::mount(
+            Element::new(UnmountOrderingProbe(Rc::clone(&invalidated))).key("probe"),
+        );
+
+        mounted.reconcile_with_before_unmount(text("replacement").into_element(), &mut |_| {
+            invalidated.set(true);
+        });
+        assert!(invalidated.get());
     }
 
     #[test]

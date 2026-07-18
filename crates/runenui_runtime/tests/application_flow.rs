@@ -1,8 +1,10 @@
+#![allow(refining_impl_trait)]
+
 use runenui_core::{
-    Element, View, Widget, WidgetActivation, WidgetActivationContext, WidgetSemanticProof, button,
-    children, column, text,
+    Element, NoHostProtocol, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
+    WidgetActivationOutput, WidgetSemanticProof, button, children, column, text,
 };
-use runenui_runtime::{ActivationResult, AppRuntime, PumpBudget, TraceRecordKind, UiApp};
+use runenui_runtime::{ActivationResult, AppRuntime, PumpBudget, TraceRecordKind};
 
 #[derive(Debug, Eq, PartialEq)]
 enum Action {
@@ -12,6 +14,7 @@ struct App;
 impl UiApp for App {
     type State = usize;
     type Action = Action;
+    type HostProtocol = NoHostProtocol;
     fn root(state: &usize) -> Element<Action> {
         column(children![
             text(state.to_string()).id("value").key("value"),
@@ -42,7 +45,12 @@ fn queued_action_reconciles_without_replacing_compatible_nodes() {
         .submit_action(Action::Increment)
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(runtime.state(), &0);
-    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        4
+    );
     assert_eq!(runtime.state(), &1);
     let after: Vec<_> = runtime
         .index()
@@ -65,14 +73,19 @@ fn mounted_activation_queues_fresh_non_clone_actions() {
     let mut runtime = AppRuntime::<App>::mount(0);
     assert!(matches!(
         runtime.activate("increment"),
-        ActivationResult::Queued { .. }
+        ActivationResult::Queued(_)
     ));
     assert!(matches!(
         runtime.activate("increment"),
-        ActivationResult::Queued { .. }
+        ActivationResult::Queued(_)
     ));
     assert_eq!(runtime.state(), &0);
-    assert_eq!(runtime.pump(PumpBudget::new(2)).processed_envelopes(), 2);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(5, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        5
+    );
     assert_eq!(runtime.state(), &2);
 }
 
@@ -91,10 +104,13 @@ impl Widget<NonCloneAction> for NonCloneWidget {
     fn activate(
         &mut self,
         state: &mut Self::State,
-        _: &mut WidgetActivationContext,
-    ) -> Option<NonCloneAction> {
+        _: &mut WidgetActivationContext<NonCloneAction>,
+    ) -> WidgetActivationOutput<NonCloneAction> {
         *state += 1;
-        self.0.take()
+        self.0.take().map_or_else(
+            WidgetActivationOutput::changed,
+            WidgetActivationOutput::changed_with_action,
+        )
     }
     fn semantics(&self, _: &Self::State) -> WidgetSemanticProof {
         WidgetSemanticProof::new("custom", "non-clone").with_action("activate")
@@ -104,6 +120,7 @@ struct NonCloneApp;
 impl UiApp for NonCloneApp {
     type State = Vec<String>;
     type Action = NonCloneAction;
+    type HostProtocol = NoHostProtocol;
     fn root(_: &Self::State) -> Element<Self::Action> {
         Element::new(NonCloneWidget(Some(NonCloneAction("owned".into())))).key("non-clone")
     }
@@ -118,9 +135,14 @@ fn non_clone_actions_remain_supported() {
     let id = runtime.index().nodes()[0].id().clone();
     assert!(matches!(
         runtime.activate_node(&id),
-        ActivationResult::Queued { .. }
+        ActivationResult::Queued(_)
     ));
     assert!(runtime.state().is_empty());
-    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        2
+    );
     assert_eq!(runtime.state(), &["owned"]);
 }

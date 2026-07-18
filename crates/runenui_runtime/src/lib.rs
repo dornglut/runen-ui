@@ -49,6 +49,25 @@
 //! let _ = TraceRecord { kind: TraceRecordKind::RuntimeMounted };
 //! ```
 //!
+//! Scheduler trace work identity is inspectable but cannot forge live work:
+//!
+//! ```compile_fail
+//! use runenui_runtime::{TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner};
+//! let _ = TraceWorkIdentity::new(
+//!     TraceWorkOwner::Application,
+//!     TraceWorkFamily::LocalTask,
+//!     1,
+//!     None,
+//! );
+//! ```
+//!
+//! Host request tokens are opaque exact-generation capabilities:
+//!
+//! ```compile_fail
+//! use runenui_runtime::HostRequestToken;
+//! let _ = HostRequestToken {};
+//! ```
+//!
 //! Queue storage and envelopes are private runtime implementation details:
 //!
 //! ```compile_fail
@@ -78,13 +97,13 @@
 //! Direct dispatch was removed; actions enter through submission and pumping:
 //!
 //! ```compile_fail
-//! # use runenui_core::{Element, View, text};
-//! # use runenui_runtime::{AppRuntime, UiApp};
+//! # use runenui_core::{IntoEffects, NoHostProtocol, UiApp, View, text};
+//! # use runenui_runtime::AppRuntime;
 //! # struct App;
 //! # impl UiApp for App {
-//! #   type State = (); type Action = ();
-//! #   fn root(_: &()) -> Element<()> { text("x").into_element() }
-//! #   fn update(_: &mut (), _: ()) {}
+//! #   type State = (); type Action = (); type HostProtocol = NoHostProtocol;
+//! #   fn root(_: &()) -> impl View<()> { text("x") }
+//! #   fn update(_: &mut (), _: ()) -> impl IntoEffects<(), NoHostProtocol> {}
 //! # }
 //! let mut runtime = AppRuntime::<App>::mount(());
 //! runtime.dispatch(());
@@ -93,6 +112,8 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod clock;
+mod completion;
 mod config;
 mod constraints;
 mod debug;
@@ -104,13 +125,23 @@ mod policy;
 pub mod prelude;
 mod pump;
 mod queue;
+mod redraw;
 mod runtime;
 mod style_debug;
 mod surface;
 mod trace;
+mod transaction;
+mod wake;
+mod work;
 
-pub use app::{ActivationResult, AppRuntime, UiApp};
-pub use config::RuntimeConfig;
+pub use app::{ActivationCapacity, ActivationCommit, ActivationResult, AppRuntime};
+pub use clock::{ManualClock, MonotonicClock, MonotonicInstant, MonotonicTimeError};
+pub use completion::{
+    HostResponseCompletion, HostResponseCompletionError, SendTaskCompletion,
+    SendTaskCompletionError, SendTaskExecutor, SendTaskJob, SendTaskStartError,
+    SendTaskStartOutcome,
+};
+pub use config::{RuntimeConfig, RuntimeLimits};
 pub use constraints::{AxisConstraints, AxisLimit, LayoutConstraints};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
 pub use focus::{FocusState, FocusTargetResult};
@@ -131,15 +162,23 @@ pub use policy::{
     InputEventResult, KeyboardActivationResult, KeyboardFocusResult, PointerActivationResult,
     PointerFocusResult,
 };
-pub use pump::{PumpBudget, PumpOutcome, PumpReport};
+pub use pump::{PumpBudget, PumpBudgetExhaustion, PumpOutcome, PumpReport};
 pub use queue::{SubmitActionError, SubmitActionErrorKind, SubmitActionResult, WorkSequence};
+pub use redraw::{RedrawAcknowledgeError, RedrawRequest};
 pub use runtime::{
-    ReconciliationDiagnostic, ReconciliationGeneration, ReconciliationReport, RuntimeError,
-    RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
+    HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
+    ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
+    SubscriptionDiagnostic, SubscriptionOwnerKind, TimerFiringOutcome, TimerStartOutcome,
 };
 pub use style_debug::{SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report};
 pub use surface::{
     LayoutOverflow, LogicalRect, LogicalSize, SurfaceBuildContext, SurfaceFrame, SurfaceLayoutNode,
     SurfaceLayoutReport, SurfaceNode, SurfacePhase, SurfacePhaseReport, SurfacePublication,
 };
-pub use trace::{Trace, TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget};
+pub use trace::{
+    Trace, TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget,
+    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
+    TraceWorkStartRefusal,
+};
+pub use wake::{WakeRequestOutcome, WakeTransport};
+pub use work::host_request::{HostRequestRef, HostRequestToken};

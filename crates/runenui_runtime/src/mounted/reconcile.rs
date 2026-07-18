@@ -20,7 +20,7 @@ pub(crate) fn analyze_sibling_keys<Action>(
     old_children: &[MountedNodeId],
     new_parts: &[ElementParts<Action>],
     parent_path: &str,
-    stats: &mut ReconcileStats,
+    stats: &mut ReconcileStats<Action>,
 ) -> SiblingMatches {
     let mut old_keys: BTreeMap<ElementKey, Vec<(usize, MountedNodeId)>> = BTreeMap::new();
     let mut old_unkeyed = Vec::new();

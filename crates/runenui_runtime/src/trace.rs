@@ -3,9 +3,98 @@
 use core::num::NonZeroU64;
 use std::collections::VecDeque;
 
-use runenui_core::ElementId;
+use runenui_core::{ElementId, WorkKey};
 
 use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
+
+/// Checked admission requirement for one mutation boundary.
+///
+/// Constructors describe either the exact mandatory records for an operation or
+/// the documented maximum path that must be admitted before user code runs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MandatoryTracePlan {
+    records: usize,
+}
+
+impl MandatoryTracePlan {
+    const fn exact(records: usize) -> Self {
+        Self { records }
+    }
+
+    pub(super) const fn action_acceptance() -> Self {
+        Self::exact(1)
+    }
+
+    pub(super) const fn one_fact() -> Self {
+        Self::exact(1)
+    }
+
+    pub(super) const fn work_cancellation() -> Self {
+        Self::exact(2)
+    }
+
+    pub(super) const fn send_completion() -> Self {
+        Self::exact(3)
+    }
+
+    pub(super) const fn host_completion() -> Self {
+        Self::exact(4)
+    }
+
+    pub(super) const fn callback_with_action() -> Self {
+        Self::exact(3)
+    }
+
+    pub(super) const fn typed_start_refusal_with_action() -> Self {
+        Self::exact(1)
+    }
+
+    pub(super) const fn work_start(host_request: bool) -> Self {
+        Self::exact(if host_request { 3 } else { 2 })
+    }
+
+    pub(super) const fn application_action_base(has_focus: bool) -> Self {
+        Self::exact(if has_focus { 4 } else { 3 })
+    }
+
+    pub(super) fn lifecycle_invalidations(count: usize) -> Option<Self> {
+        Self::exact(2).checked_mul(count)
+    }
+
+    pub(super) fn activation_maximum(outputs: usize) -> Option<Self> {
+        Self::exact(4)
+            .checked_mul(outputs)
+            .and_then(|plan| plan.checked_add(Self::one_fact()))
+    }
+
+    pub(super) fn activation_commit(
+        invalidated: usize,
+        starts: usize,
+        actions: usize,
+    ) -> Option<Self> {
+        Self::exact(2)
+            .checked_mul(invalidated)
+            .and_then(|plan| {
+                Self::exact(2)
+                    .checked_mul(starts)
+                    .and_then(|starts| plan.checked_add(starts))
+            })
+            .and_then(|plan| plan.checked_add(Self::exact(actions)))
+            .and_then(|plan| plan.checked_add(Self::one_fact()))
+    }
+
+    pub(super) const fn planned_scheduler_transaction(records: usize) -> Self {
+        Self::exact(records)
+    }
+
+    pub(super) fn checked_add(self, other: Self) -> Option<Self> {
+        self.records.checked_add(other.records).map(Self::exact)
+    }
+
+    pub(super) fn checked_mul(self, count: usize) -> Option<Self> {
+        self.records.checked_mul(count).map(Self::exact)
+    }
+}
 
 /// Non-wrapping identity of one canonical trace record.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -91,13 +180,68 @@ pub enum TraceRecordKind {
     ActionSubmissionRejectedClosed,
     ActionSubmissionRejectedTerminal,
     ActivationCommitted,
-    ActivationRejectedFull,
+    ActivationRejectedSaturated {
+        capacity: crate::ActivationCapacity,
+    },
     ApplicationActionTransactionStarted,
     ApplicationStateUpdated,
     TreeReconciled,
     FocusRetained,
     FocusCleared,
     PumpBudgetExhausted,
+    InitialEffectsCommitted {
+        count: usize,
+    },
+    InitialApplicationTransactionStarted,
+    UpdateEffectsCommitted {
+        count: usize,
+    },
+    WorkRequested,
+    WorkGenerationCommitted,
+    WorkStartAttempted,
+    WorkStartAccepted,
+    WorkStartRefused {
+        outcome: TraceWorkStartRefusal,
+    },
+    WorkLogicallyInvalidated,
+    WorkCancellationBound,
+    WorkCleanupProcessed,
+    WorkCompletionImported,
+    WorkCompletionRejectedStale,
+    WorkCompletionMapped,
+    LocalWorkPolled,
+    LocalWorkReady,
+    TimerPromoted,
+    ReadinessCheckpoint {
+        imported_completions: usize,
+        polled_local_work: usize,
+        promoted_timers: usize,
+    },
+    SubscriptionDeclared,
+    SubscriptionDiffCommitted {
+        started: usize,
+        cancelled: usize,
+        duplicate_keys: usize,
+    },
+    MountedSubscriptionReconciliationSuppressedStale,
+    TimerFired,
+    TimerTerminated {
+        outcome: TraceTimerTerminalOutcome,
+    },
+    HostRequestExposed,
+    HostResponseAccepted,
+    HostResponseRejected,
+    WakeRequested,
+    WakeAcknowledged,
+    RedrawRequested {
+        revision: u64,
+    },
+    RedrawTaken {
+        revision: u64,
+    },
+    RedrawAcknowledged {
+        revision: u64,
+    },
     QueuedWorkCancelled {
         count: usize,
     },
@@ -110,6 +254,97 @@ pub enum TraceRecordKind {
     },
 }
 
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceWorkFamily {
+    LocalTask,
+    SendTask,
+    Timer,
+    Subscription,
+    HostRequest,
+}
+
+/// Public owner classification for opaque scheduler trace identity.
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TraceWorkOwner {
+    Application,
+    Mounted(MountedNodeId),
+}
+
+/// Opaque, read-only identity of one exact scheduler work generation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TraceWorkIdentity {
+    owner: TraceWorkOwner,
+    family: TraceWorkFamily,
+    generation: u64,
+    key: Option<WorkKey>,
+}
+
+impl TraceWorkIdentity {
+    pub(crate) const fn new(
+        owner: TraceWorkOwner,
+        family: TraceWorkFamily,
+        generation: u64,
+        key: Option<WorkKey>,
+    ) -> Self {
+        Self {
+            owner,
+            family,
+            generation,
+            key,
+        }
+    }
+
+    /// Returns the application or exact mounted owner classification.
+    #[must_use]
+    pub const fn owner(&self) -> &TraceWorkOwner {
+        &self.owner
+    }
+
+    /// Returns the scheduler family.
+    #[must_use]
+    pub const fn family(&self) -> TraceWorkFamily {
+        self.family
+    }
+
+    /// Returns the exact private generation as a read-only diagnostic value.
+    #[must_use]
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Returns the optional authored key.
+    #[must_use]
+    pub const fn key(&self) -> Option<&WorkKey> {
+        self.key.as_ref()
+    }
+}
+
+/// Structured executor or timer start refusal.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceWorkStartRefusal {
+    ExecutorUnavailable,
+    ExecutorFull,
+    ExecutorClosed,
+    ExecutorRejected,
+    SubscriptionUnavailable,
+    SubscriptionFull,
+    SubscriptionClosed,
+    SubscriptionRejected,
+    TimerZeroInterval,
+    TimerDeadlineOverflow,
+}
+
+/// Structured terminal outcome of one timer generation.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceTimerTerminalOutcome {
+    Completed,
+    RepeatDeadlineOverflow,
+}
+
 /// One immutable canonical trace record.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceRecord {
@@ -120,6 +355,7 @@ pub struct TraceRecord {
     reconciliation_before: Option<ReconciliationGeneration>,
     reconciliation_after: Option<ReconciliationGeneration>,
     target: Option<TraceTarget>,
+    work: Option<TraceWorkIdentity>,
 }
 
 impl TraceRecord {
@@ -164,6 +400,12 @@ impl TraceRecord {
     pub const fn target(&self) -> Option<&TraceTarget> {
         self.target.as_ref()
     }
+
+    /// Returns the exact scheduler work identity for work-specific facts.
+    #[must_use]
+    pub const fn work(&self) -> Option<&TraceWorkIdentity> {
+        self.work.as_ref()
+    }
 }
 
 /// One bounded canonical trace store.
@@ -187,12 +429,16 @@ impl Trace {
         }
     }
 
-    pub(crate) fn can_record_mandatory(&self, count: usize) -> bool {
-        if self.capacity == 0 || count == 0 {
+    pub(crate) const fn is_enabled(&self) -> bool {
+        self.capacity != 0
+    }
+
+    pub(crate) fn can_admit(&self, plan: MandatoryTracePlan) -> bool {
+        if !self.is_enabled() || plan.records == 0 {
             return true;
         }
         self.next_sequence.is_some_and(|next| {
-            u64::try_from(count - 1)
+            u64::try_from(plan.records - 1)
                 .ok()
                 .and_then(|additional| next.get().checked_add(additional))
                 .is_some()
@@ -232,7 +478,33 @@ impl Trace {
             reconciliation_before,
             reconciliation_after,
             target,
+            work: None,
         });
+        Some(sequence)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn record_work(
+        &mut self,
+        kind: TraceRecordKind,
+        work_sequence: Option<WorkSequence>,
+        causal_parent: Option<TraceSequence>,
+        reconciliation_before: Option<ReconciliationGeneration>,
+        reconciliation_after: Option<ReconciliationGeneration>,
+        target: Option<TraceTarget>,
+        work: TraceWorkIdentity,
+    ) -> Option<TraceSequence> {
+        let sequence = self.record(
+            kind,
+            work_sequence,
+            causal_parent,
+            reconciliation_before,
+            reconciliation_after,
+            target,
+        )?;
+        if let Some(record) = self.records.back_mut() {
+            record.work = Some(work);
+        }
         Some(sequence)
     }
 
@@ -266,7 +538,7 @@ impl Trace {
         self.dropped_before_sequence
     }
 
-    #[cfg(any(test, feature = "internal-test-seams"))]
+    #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn seed_next_sequence_for_test(&mut self, next: u64) {
         self.next_sequence = NonZeroU64::new(next);
     }

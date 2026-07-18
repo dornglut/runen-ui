@@ -8,6 +8,65 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Removed the C9 wake delivery mutex from the host callback boundary. Wake
+  delivery now uses explicit callback-in-flight state: each epoch is claimed
+  once under wake-state synchronization, host code runs after every RunenUI
+  mutex is released, callbacks remain serialized, and close prevents new claims
+  without waiting for an earlier callback. Deterministic transition tests are
+  the primary proof; repeated races remain supplementary coverage.
+- Closed the final M4B scheduler-integrity correction: terminal host-response
+  slots are reclaimed, exact-generation task/subscription/host authority is
+  revoked before unmount callbacks, send-subscription startup is
+  `Starting -> Running` with exact `NotStarted`, and stale send-task completion
+  returns exact ownership.
+- Replaced magic trace counts with checked operation-specific admission and made
+  enabled-trace action acceptance authoritative; trace capacity zero remains
+  behavior-neutral, while unexpected post-mutation commit failures poison.
+- Replaced generic activation queue saturation with `ActivationCapacity`, added
+  `WidgetActivationOutput<Action>`, tightened `NoEffect`, and made each wake
+  request epoch claimable at most once.
+
+- Corrected the M4B mounted activation path so subscription invalidation,
+  primary action, and auxiliary exact-owner work commit through one ordered
+  transaction plan. The plan preflights queue, work-sequence, generation, and
+  family capacity; invalidates exact cancellation targets at commit; and
+  installs starts only after acceptance.
+- Removed retained application and mounted subscription declaration values.
+  Application declarations are evaluated from current post-update state inside
+  the transaction, while mounted declarations are evaluated only when their
+  queued exact-owner reconciliation envelope reaches the front; stale owners
+  suppress the callback and allocate no work.
+- Replaced unconditionally polled subscription closures with wake-aware local
+  sources and start-once send producers. Send startup now reports structured
+  started/unavailable/full/closed/rejected outcomes, and sink submission returns
+  the exact item for full, closed, or stale rejection without hidden retry.
+- Reclaimed work-registry records immediately on completion, cancellation, or
+  refusal; bounded retained subscription diagnostics through `RuntimeLimits`;
+  unified terminal/shutdown producer closure; and changed detached host
+  responses so only successful bounded-ingress submission reserves a request.
+- Added one scheduler callback-acceptance preflight, corrected send-executor
+  publication so only accepted jobs become running, made repeating-deadline
+  overflow an explicit non-poisoning timer terminal outcome, and attached
+  read-only owner/family/generation/key identity plus structured outcomes to
+  mandatory scheduler trace facts.
+- Removed redundant action-bearing completion envelopes: accepted local/send
+  task and subscription results, timer firings, host responses, and typed start
+  failures now map directly to one final application-action envelope. Host
+  cancellation sequence exhaustion now terminalizes and closes all scheduling
+  authority, while queue saturation remains recoverable.
+- Attached actual accepted `WorkSequence` values and causal parents to scheduler
+  facts from application transaction through request, generation commit, start,
+  completion/firing/cancellation, and final action. Full trace-v2 normalization,
+  export, sinks, redaction, and replay remain M4D.
+- Completed the corrective M4B conformance gates and aligned current authority
+  documents to M4A complete, M4B in review, M4C blocked by M4B, and M4D blocked
+  by M4B and M4C. This does not claim routed events or full M4 completion.
+- Implemented the M4B core-owned `UiApp`/host protocol, ordered effects,
+  application and mounted complete-set subscriptions, generational keyed work,
+  local/send tasks, deterministic timers, typed host requests, configured live
+  limits, four-budget readiness pump, atomic wake, revisioned redraw,
+  lifecycle/poison shutdown integrity, and scheduler trace facts. M4B is in
+  review; routed events remain M4C and trace export/replay remains M4D.
 - Corrected M4A capacity handling so configured queue and canonical-trace
   capacities remain logical saturation limits while internal storage grows only
   with accepted envelopes and retained records. Added exact stable/MSRV proofs
@@ -22,9 +81,8 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   dispatch authority, cut proof activation over to queued actions, replaced
   one-shot `on_press` with repeatable non-`Clone` `on_activate` factories, and
   replaced duplicated unbounded tracing with one bounded canonical sequence and
-  exclusive eviction watermark. Effects, tasks, timers, subscriptions, host
-  requests, routed events, remaining pump budgets, wake/redraw, sinks, export,
-  replay, and complete M4 support remain unimplemented.
+  exclusive eviction watermark. That foundation is now extended by M4B;
+  routed events, sinks, export, replay, and complete M4 support remain pending.
 - Accepted the M4 routed event and semantic-command architecture with exact
   core/runtime ownership, safe namespace-based opaque identities, the normative
   event-family policy, retained displayed-generation surface input, observable

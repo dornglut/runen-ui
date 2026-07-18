@@ -6,7 +6,8 @@ use crate::{
     WidgetInvalidation, WidgetUpdateContext,
     element::{
         AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
-        WidgetActivation, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof, WidgetTextKind,
+        WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetPaintProof,
+        WidgetSemanticProof, WidgetTextKind,
     },
     widget_erasure::{ChildLayoutWidgetAdapter, ErasedWidget, WidgetAdapter},
 };
@@ -83,7 +84,7 @@ impl<Action> Widget<Action> for TextWidget {
     fn create_state(&self) -> Self::State {
         self.content.clone()
     }
-    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext) {
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if *state != self.content {
             context.invalidate(
                 WidgetInvalidation::LAYOUT
@@ -221,7 +222,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
             activation_count: 0,
         }
     }
-    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext) {
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if state.label != self.label {
             context.invalidate(
                 WidgetInvalidation::LAYOUT
@@ -250,14 +251,18 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
     fn activate(
         &mut self,
         state: &mut Self::State,
-        context: &mut WidgetActivationContext,
-    ) -> Option<Action> {
+        context: &mut WidgetActivationContext<Action>,
+    ) -> WidgetActivationOutput<Action> {
         if self.enabled {
             state.activation_count = state.activation_count.saturating_add(1);
             context.invalidate(WidgetInvalidation::PAINT);
-            self.activation_factory.as_mut().map(|factory| factory())
+            self.activation_factory
+                .as_mut()
+                .map_or_else(WidgetActivationOutput::changed, |factory| {
+                    WidgetActivationOutput::changed_with_action(factory())
+                })
         } else {
-            None
+            WidgetActivationOutput::none()
         }
     }
     fn measure(&self, _: &Self::State) -> WidgetMeasure {
@@ -366,7 +371,7 @@ impl<Action> Widget<Action> for LinearContainerWidget {
     fn create_state(&self) -> Self::State {
         self.axis
     }
-    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext) {
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         if *state != self.axis {
             context.invalidate(WidgetInvalidation::LAYOUT);
             *state = self.axis;

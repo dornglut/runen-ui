@@ -212,7 +212,7 @@ the owned non-`Clone` action and a second extraction returns `None`. Disabled or
 otherwise rejected activation does not call the mutable hook and consumes
 nothing. Actionable/focusable/semantic facts describe configured behavior and
 remain stable after extraction; an exhausted direct tree therefore remains
-actionable but returns `NoAction`. A successful runtime activation authors a
+actionable but produces no action. A successful runtime activation authors a
 fresh source during the immediate rebuild, so the rebuilt control can activate
 again. Mapped wrappers forward mutable activation and map only a produced
 action. If application update panics, normal runtime consistency guarantees do
@@ -331,6 +331,14 @@ complete production protocols.
   without ECS or Runenwerk.
 - **Renderer-owned widgets:** rejected; renderers consume resolved proof/scene
   facts and never own UI semantics or behavior.
+
+### Activation output correction
+
+Mutable `Widget::activate` returns `WidgetActivationOutput<Action>` rather than
+`Option<Action>`. The optional action and persistent `state_changed` fact are
+independent and survive recursive action mapping. This is a breaking pre-1.0
+correction: state-only mutation must be explicit, and an empty output is the
+authoritative no-mutation/no-action result.
 
 ## Consequences
 

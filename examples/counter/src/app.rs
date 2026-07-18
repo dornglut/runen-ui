@@ -1,5 +1,4 @@
-use runenui_core::Element;
-use runenui_runtime::UiApp;
+use runenui_core::{IntoEffects, NoHostProtocol, UiApp, View};
 
 use crate::ui::root;
 
@@ -40,12 +39,16 @@ pub struct CounterApp;
 impl UiApp for CounterApp {
     type State = Counter;
     type Action = CounterAction;
+    type HostProtocol = NoHostProtocol;
 
-    fn root(state: &Self::State) -> Element<Self::Action> {
+    fn root(state: &Self::State) -> impl View<Self::Action> {
         root(state)
     }
 
-    fn update(state: &mut Self::State, action: Self::Action) {
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
         update(state, action);
     }
 }

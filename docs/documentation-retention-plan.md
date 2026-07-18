@@ -12,14 +12,14 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 |---|---|---|---|
 | `README.md` | Current contract | Retained active | Truthful entry point, current proof, production profiles, canonical links, validation, and licensing |
 | `docs/architecture.md` | Target architecture | Retained active | Canonical current-versus-target pipeline and ownership overview |
-| `docs/architecture/public-api.md` | Current contract | Retained active | Reviewed current queue/pump/runtime surface, migrations, and limits |
+| `docs/architecture/public-api.md` | Current contract | Retained active | Reviewed application-work, four-budget scheduler, queue/runtime surface, migrations, and limits |
 | `docs/status-map.md` | Current contract | Retained active | Subsystem maturity using the canonical status taxonomy |
 | `docs/feature-support-matrix.md` | Current contract | Retained active | Capability-level support, limitations, and milestone ownership |
 | `docs/roadmap.md` | Current contract | Retained active | M0–M12 dependency gates and completion criteria |
 | `docs/documentation-retention-plan.md` | Current contract | Retained active | Active/removed document disposition and recovery record |
 | `docs/architecture/styling.md` | Target architecture | Retained active | Consolidated current and target styling contract |
 | `docs/architecture/layout.md` | Target architecture | Retained active | Consolidated current and target layout/measurement contract |
-| `docs/architecture/events-effects-and-scheduling.md` | Target architecture | Retained active | Canonical M4 current-versus-target event, command-default, subscription, effect/failure, scheduling, bounded-trace, and host-neutrality overview |
+| `docs/architecture/events-effects-and-scheduling.md` | Target architecture | Retained active | Canonical M4 overview distinguishing implemented application work/scheduling from routed-event and trace-export targets |
 | `docs/architecture/m4-conformance-matrix.md` | Target architecture | Retained active | Normative public behavioral proof matrix, including mounted declaration, terminal pointer, executor-refusal, and sink-backpressure cases, required before M4 can be declared complete |
 | `docs/architecture/m4-directional-focus-corpus.md` | Target architecture | Retained active | Accepted normative M4 public-outcome vectors for directional focus, scope policy, restoration, and eligibility without exposing the private scoring formula |
 | `docs/architecture/workspace-structure.md` | Target architecture | Retained active | Current workspace and evidence-based extraction rules |

@@ -1,20 +1,37 @@
+#![allow(refining_impl_trait)]
+
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Element, LogicalLength, StyleTokens, View, Widget, WidgetActivation, WidgetActivationContext,
-    WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetMountContext, WidgetPaintProof,
-    WidgetSemanticProof, WidgetUnmountContext, WidgetUpdateContext, column,
+    Element, LogicalLength, NoHostProtocol, StyleTokens, UiApp, View, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic, WidgetInvalidation,
+    WidgetMeasure, WidgetMountContext, WidgetPaintProof, WidgetSemanticProof, WidgetUnmountContext,
+    WidgetUpdateContext, column,
 };
 use runenui_runtime::{
     ActivationResult, AppRuntime, FocusTargetResult, LayoutConstraints, MountedNodeId, PumpBudget,
-    SurfaceBuildContext, UiApp,
+    SurfaceBuildContext,
 };
 
 fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!());
-    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+}
+
+fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>) {
+    let _ = runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
 }
 
 fn context(tokens: &StyleTokens) -> SurfaceBuildContext<'_> {
@@ -55,14 +72,14 @@ impl Widget<()> for StatefulPulse {
         &mut self,
         state: &mut Self::State,
         context: &mut WidgetActivationContext,
-    ) -> Option<()> {
+    ) -> WidgetActivationOutput<()> {
         state.activations = state.activations.saturating_add(1);
         context.invalidate(
             WidgetInvalidation::PAINT
                 | WidgetInvalidation::SEMANTICS
                 | WidgetInvalidation::DIAGNOSTICS,
         );
-        None
+        WidgetActivationOutput::changed()
     }
     fn measure(&self, state: &Self::State) -> WidgetMeasure {
         WidgetMeasure::Fixed {
@@ -106,6 +123,7 @@ struct TreeApp;
 impl UiApp for TreeApp {
     type State = TreeState;
     type Action = TreeAction;
+    type HostProtocol = NoHostProtocol;
     fn root(state: &Self::State) -> Element<Self::Action> {
         let children: Vec<Element<()>> = state
             .order
@@ -152,6 +170,7 @@ fn keyed_reorder_preserves_mounted_semantic_state_focus_and_slots() {
         show_a: true,
         log: Rc::clone(&log),
     });
+    settle_initial_mounted_declarations(&mut runtime);
     let a = node_id(&mut runtime, "probe.a");
     let semantic = runtime
         .index()
@@ -209,6 +228,7 @@ fn removal_makes_ids_stale_clears_focus_and_shutdown_unmounts_once() {
         show_a: true,
         log: Rc::clone(&log),
     });
+    settle_initial_mounted_declarations(&mut runtime);
     let a = node_id(&mut runtime, "probe.a");
     assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
     process_one(&mut runtime, TreeAction::RemoveA);
@@ -313,10 +333,10 @@ impl Widget<()> for SelfDisabling {
         &mut self,
         state: &mut Self::State,
         context: &mut WidgetActivationContext,
-    ) -> Option<()> {
+    ) -> WidgetActivationOutput<()> {
         state.enabled = false;
         context.invalidate(WidgetInvalidation::INTERACTION);
-        None
+        WidgetActivationOutput::changed()
     }
 }
 
@@ -325,6 +345,7 @@ struct SelfDisablingApp;
 impl UiApp for SelfDisablingApp {
     type State = ();
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
         Element::new(SelfDisabling).key("self-disabling")
@@ -361,10 +382,10 @@ impl Widget<()> for SelfRetaining {
         &mut self,
         state: &mut Self::State,
         context: &mut WidgetActivationContext,
-    ) -> Option<()> {
+    ) -> WidgetActivationOutput<()> {
         *state += 1;
         context.invalidate(WidgetInvalidation::INTERACTION);
-        None
+        WidgetActivationOutput::changed()
     }
 }
 
@@ -373,6 +394,7 @@ struct SelfRetainingApp;
 impl UiApp for SelfRetainingApp {
     type State = ();
     type Action = ();
+    type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
         Element::new(SelfRetaining).key("self-retaining")

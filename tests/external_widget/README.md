@@ -7,6 +7,9 @@ This non-publishable package is a genuine downstream consumer of public
 and child-layout widgets without framework registration, private imports,
 feature flags, global registries, source modification, or unsafe code.
 
+Its mounted-work and subscription proofs participate in M4B, which is in
+review; the fixture does not claim the blocked M4C routed-event surface.
+
 The fixture proves that persistent widget state is visible to activation,
 measurement, child layout, paint, semantics, and diagnostics; activation can
 produce `Activated` without an application action; repeated activations can
@@ -28,6 +31,15 @@ Focused downstream identity coverage also proves concrete and generic widget
 type identity, state type identity, and recursive mapping of non-`Clone`
 actions without changing the mounted widget/state pair.
 
+The downstream widget protocol also exposes complete-set mounted subscription
+declarations and owner-local invalidation without registry access. Runtime tests
+prove declaration after mount, coalesced compatible-update invalidation, stable
+identity retention/replacement, duplicate diagnostics, and owner-lifetime
+cancellation through this same public bridge. The fixture also proves activation
+invalidation is committed before primary/auxiliary actions, a queued declaration
+observes newest live mounted state, and a removed dirty owner suppresses its
+declaration callback with structured trace evidence.
+
 The fixture remains proof-level. It does not claim routed events, pointer
-capture/release behavior, effects or scheduling, a production semantic tree,
+capture/release behavior, a production semantic tree,
 paint scene, layout engine, host, or renderer backend.

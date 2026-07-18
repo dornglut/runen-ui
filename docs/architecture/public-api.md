@@ -2,29 +2,33 @@
 
 > **Category: Current contract**
 
-This document records the reviewed public surface for the bounded queue, pump,
-activation, and trace foundation. Source-level Rust
+This document records the reviewed public surface for application work, the
+deterministic scheduler, activation, and canonical trace. Source-level Rust
 documentation is authoritative for signatures. [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md)
 defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
 defines mounted ownership and reconciliation; accepted
-[ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines the complete
-M4 application-work target. The current implementation contains only the
-foundation documented here.
+[ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines application
+work and scheduling; the M4B implementation correction is complete at the exact
+reviewed head, pending owner acceptance. Routed events and trace export/replay
+remain later M4 slices. The review-draft
+[M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
+records proposed future ownership and transaction decisions but does not describe
+implemented public API until its slices are accepted.
 
 ## Ownership and inventory
 
-`runenui_core` owns validated authored values and identity, style intent and
+`runenui_core` owns `UiApp`, host-neutral effects/subscriptions/work protocols,
+validated authored values and identity, style intent and
 resolution, transient `View`/`Element` authoring, typed built-in views, the open
 state-aware `Widget`/`ChildLayoutWidget` contracts, proof capability values,
 lifecycle contexts, `WidgetInvalidation`, and typed recursive action mapping.
 
-`runenui_runtime` owns the transitional `UiApp`, `AppRuntime`, the canonical
-application-action FIFO and pump, persistent mounted storage, reconciliation,
+`runenui_runtime` owns `AppRuntime`, the canonical generalized FIFO and pump,
+persistent mounted storage, reconciliation,
 lifecycle execution, focus and interaction slots, mounted targeting,
 invalidation scheduling, capability caches, measurement/layout execution,
-bounded trace, and mounted publication. `UiApp` remains runtime-owned only until
-the reviewed complete application-work contract lands; this is not final
-architecture ownership. The public runtime, mounted inspection, and integrity
+bounded trace, live work registry, clocks, completion ingress, wake/redraw, and
+mounted publication. The public runtime, mounted inspection, and integrity
 vocabulary includes:
 
 - `MountedNodeId`, `SemanticNodeId`, `MountedNodeRef`, and `MountedTreeIndex`;
@@ -32,7 +36,7 @@ vocabulary includes:
 - `RuntimeConfig`, `WorkSequence`, `SubmitActionResult`, `PumpBudget`, and
   `PumpReport`;
 - `RuntimeStatus`, `RuntimeTerminalReason`, `ShutdownReport`,
-  `FocusTargetResult`, `ActivationResult`, and `RuntimeError`;
+  `FocusTargetResult`, `ActivationCommit`, `ActivationResult`, and `RuntimeError`;
 - `TraceConfig`, `TraceSequence`, `TraceRecord`, `TraceRecordKind`,
   `TraceTarget`, and `Trace`;
 - read-only frame, style-report, layout-report, and publication products.
@@ -44,12 +48,17 @@ reports, trace records, and publication products have no public constructors.
 
 ## Queue, pump, and runtime status
 
-`RuntimeConfig::default()` selects a waiting-envelope capacity of 1024 and a
+`RuntimeConfig::default()` selects a waiting-envelope capacity of 4096 and a
 `TraceConfig` capacity of 1024. `with_queue_capacity` and `with_trace_config`
 return adjusted values; fields remain private. Queue capacity counts waiting
 envelopes only, and zero is valid. Queue and trace capacities are logical limits:
 internal storage grows with accepted envelopes or retained records and does not
 reserve the complete configured capacity when the runtime mounts.
+Default live local-task, send-task, timer, subscription, and host-request limits
+are 2048 each; the default transaction-output limit is 1024.
+`RuntimeLimits::with_subscription_diagnostics` independently bounds the public
+diagnostic retention slice; zero disables that auxiliary retention without
+changing canonical trace behavior.
 
 `AppRuntime::submit_action(action)` appends one application action when running,
 capacity is available, and the non-wrapping sequence authority can advance. It
@@ -58,23 +67,77 @@ returns a runtime-issued `WorkSequence`, beginning at 1, or a
 returns the exact owned action through `into_action` and does not consume a work
 sequence. `Action` requires no `Clone`, `Send`, or `Debug` bound.
 
-`AppRuntime::pump(PumpBudget::new(max_processed_envelopes))` processes at most
-that many FIFO envelopes iteratively. `PumpReport` exposes processed, remaining,
-and terminal-cancelled envelope counts plus a `PumpOutcome` of quiescent, budget
-exhausted, closed, or terminal. One popped envelope is one processed-envelope
-unit. Each accepted application action completes update, root rebuilding,
+Application and mounted output batches use one provisional transaction planner.
+It resolves owner/family/key bindings for the complete batch, preflights every
+queue sequence and work generation without consuming rejected capacity, then
+atomically invalidates exact cancellation/replacement targets, installs accepted
+records, and appends cleanup before ordered starts/actions.
+For an application update the accepted order is cancellation cleanup, mounted
+subscription reconciliation, update outputs, application subscription starts,
+then mounted lifecycle outputs. Activation uses cleanup, mounted subscription
+reconciliation, primary action, then auxiliary outputs.
+
+Initial application work uses the same single-plan authority. After successful
+initial reconciliation, it atomically admits mounted subscription reconciliation
+in mounted preorder, initial effects in collector order, application subscription
+starts in declaration order, then mounted mount output in mounted preorder and
+collector order. All aggregate limits are preflighted before commit; a rejected
+plan consumes no partial queue sequence or work generation and starts no work.
+
+`AppRuntime::pump(PumpBudget::new(envelopes, imports, polls, promotions))`
+shares four explicit limits across every checkpoint in that call. `PumpReport`
+exposes exact counters, independent exhaustion flags, readiness/deadline facts,
+publication dirtiness, and a `PumpOutcome` of quiescent, budget exhausted,
+closed, or terminal. One popped envelope is one processed-envelope unit. Each
+accepted application action completes update, root rebuilding,
 reconciliation, focus validation, reports, and mandatory trace records before
-the next begins. The current readiness checkpoint has no completion, local-task, or
-timer source; the other three accepted pump budgets are not implemented.
+the next begins. `max_local_polls`, `polled_local_work`, and the `local_polls`
+exhaustion flag cover local tasks and local subscription sources together.
+Checkpoints import bounded completions, promote due timers, poll wake-eligible
+local work in private generation order, and append accepted outputs at the FIFO
+tail.
+
+`SubscriptionSet::local` accepts a `LocalSubscriptionSource` whose `poll_next`
+receives a safe `Context`; sleeping sources are not polled again until their
+waker fires. `SubscriptionSet::send` accepts a start-once
+`SendSubscriptionSource` and supplies a cloneable `SendSubscriptionSink` whose
+nonblocking `start` returns `Started`, `Unavailable`, `Full`, `Closed`, or
+`Rejected`. While the source remains `Starting`, `try_send` returns
+`SendSubscriptionSinkError::NotStarted(exact_item)`; only `Running` accepts.
+Running ingress returns the exact item on full, closed, or stale rejection.
+Neither refusal path retries implicitly. The send-side item may be `Send` while
+the UI mapper and resulting application action remain non-`Send`.
 
 `AppRuntime::status()` reports `Running`, `Terminal(reason)`, or `Closed`.
-Work-sequence, reconciliation-generation, or enabled-trace-sequence exhaustion
+Work-sequence, work-generation, reconciliation-generation, or enabled-trace-sequence exhaustion
 is terminal and non-resettable: no later mutable callback runs, queued envelopes
 are cancelled, new submissions return their actions, and inspection/state
 extraction remain available. `shutdown()` is explicit and idempotent; its report
 exposes whether shutdown was already complete plus cancelled-envelope and
 unmounted-lifetime counts. `into_state` and `Drop` invoke the same shutdown
 authority.
+
+`WakeTransport::request_wake` executes only after the runtime has claimed one
+eligible request epoch and released every RunenUI synchronization guard. Request
+state and `callback_in_flight` are separate facts: callbacks remain serialized,
+while an acknowledged new request can remain pending behind a callback already
+in flight. Installing a transport claims a pending undelivered request once;
+replacing a transport never redelivers an already claimed epoch. Closing wake
+authority prevents new claims and returns without waiting. A callback claimed
+before close may finish afterward, but its completion cannot reopen or re-arm
+the closed state. Panic recovery from host adapters is not promised.
+
+`HostProtocol::Response` is retained runtime data and therefore `'static`; it
+needs `Send` only when creating a detached `HostResponseCompletion`. Creation
+does not reserve the request. `submit` returns `Full`, `Closed`, or `Stale` with
+the exact completion. One lock-protected state machine owns each live response
+generation: registration inserts `Open`; detached acceptance changes
+`Open -> DetachedQueued`; direct acceptance changes `Open -> DirectClaimed`;
+full detached submission leaves `Open` for exact retry. Cancellation,
+replacement, owner revocation, completion, terminal closure, and shutdown remove
+the retained response slot and any queued detached payload. No `Cancelled`
+tombstone is retained. A missing slot is stale authority, and every competing or
+late transition is stale.
 
 ## Transient authoring and mounted authority
 
@@ -105,10 +168,22 @@ widgets use `State = ()`. The runtime passes persistent state to:
 - mutable activation;
 - `ChildLayoutWidget::child_layout`.
 
-`WidgetMountContext`, `WidgetUpdateContext`, and `WidgetActivationContext` can
-request `WidgetInvalidation`. `WidgetUnmountContext` exposes a
+`WidgetMountContext<Action>`, `WidgetUpdateContext<Action>`, and
+`WidgetActivationContext<Action>` can request `WidgetInvalidation`, invalidate
+owner-local subscription declarations, and collect exact-mounted-owner actions,
+local/send tasks, timers, and keyed cancellation intent. They expose neither
+host requests nor subscription declarations. `WidgetUnmountContext` exposes a
 `WidgetUnmountReason` of `Removed`, `Replaced`, or `RuntimeShutdown`. Contexts do
-not expose mounted IDs, task/effect APIs, or mutable runtime internals.
+not expose mounted IDs or mutable runtime internals.
+
+Mutable activation returns `WidgetActivationOutput<Action>`. Its optional action
+and explicit `state_changed` fact are independent, so a widget can truthfully
+report state-only mutation, action-only output, both, or neither. Action mapping
+preserves the state-change fact.
+
+The current public widget contract has no routed `event` capability or
+`WidgetEventOutput`. Those remain M4C1 target work and are described only by the
+review-draft M4C charter until accepted and implemented.
 
 The default update invalidates `ALL` for correctness. Built-in text, button, and
 linear-container widgets implement narrower comparison-based invalidation.
@@ -146,7 +221,7 @@ mismatch discovered by another capability replaces on the next reconciliation.
 
 ## Identity and targeting
 
-`MountedNodeId` privately stores:
+`MountedNodeId` currently privately stores:
 
 ```text
 Arc<RuntimeInstanceMarker> + arena slot + u64 generation
@@ -166,6 +241,10 @@ runtime token first. A different token is `ForeignRuntime`; a same-runtime
 invalid/vacant slot or generation mismatch is `StaleTarget`. Old IDs never
 target slot replacements, even when the deterministic arena reuses the same
 index.
+
+The proposed M4C1 migration to one hidden core-owned runtime namespace and one
+core-owned public `MountedNodeId` is target architecture only until accepted and
+implemented.
 
 Authored `ElementId` remains a validated lookup/diagnostic handle. It does not
 affect reconciliation compatibility and may change while mounted identity
@@ -200,8 +279,10 @@ parent. Cross-parent changes are remounts.
 
 Initial mount and compatible update run parent-before-child in new authored
 preorder. Each preserved node receives exactly one checked update from the new
-description before that description is committed. Removal unmounts
-children-before-parent while each node remains arena-live through its hook;
+description before that description is committed. Removal revokes every
+exact-owner producer token, queued completion payload, source, mapper, timer,
+and registry record children-before-parent before the corresponding unmount
+hook begins. Each node remains arena-live through its hook;
 arena removal, stale identity, and state drop follow the hook. Replacement
 fully unmounts and drops the old subtree before mounting the new subtree.
 
@@ -213,20 +294,43 @@ receives exactly one shutdown unmount.
 ## Activation, focus, and interaction slots
 
 Mounted proof activation validates runtime and target, reads checked activation
-facts, rejects disabled/non-actionable targets, then preflights reconciliation
-capacity, one queue slot, work-sequence availability, and mandatory trace
-allowance before invoking the mutable widget/state pair. An action-producing
-activation appends one envelope and returns `Queued { sequence }` without
-pumping; application state does not change until a caller pumps. State-only
-`Activated`, `NoAction`, `QueueFull`, `Closed`, `Terminal`, disabled/non-
-activatable, stale, foreign, and runtime-error outcomes are distinct. Queue-full,
-closed, terminal, or known sequence exhaustion rejects before widget state,
-factory, invalidation, focus, reconciliation report, publication/cache, or
-application mutation. Rejection and terminal trace records may still be appended
-when trace sequencing remains available. State-only interaction changes validate
-focus immediately. Pointer and keyboard activation helpers use this same queue-
-backed proof authority, but remain press-based and do not imply routed events or
-semantic commands.
+facts, rejects disabled/non-actionable targets, then conservatively reserves the
+complete configured callback allowance before invoking the mutable widget/state
+pair: one reconciliation generation, `2 * transaction_outputs + 1` queue slots,
+`transaction_outputs` work generations plus that much free capacity in every
+mounted-accessible work family, and `4 * transaction_outputs + 1` mandatory trace
+records. A queued activation returns `Queued(ActivationCommit)` without pumping;
+the commit exposes `first_sequence`, optional `primary_action_sequence`, and
+`queued_envelopes`.
+
+Auxiliary-only work is queued, state-only mutation and coalesced subscription
+invalidation are `Activated`, and only an explicit absence of state mutation,
+invalidation, subscription invalidation, action, or auxiliary work is
+`NoEffect`. Application state does not change until a caller pumps.
+`Saturated(ActivationCapacity)`, `Closed`, `Terminal`, disabled/non-activatable,
+stale, foreign, and runtime-error outcomes are distinct. Saturation, closed,
+terminal, or known sequence exhaustion rejects before widget state, factory,
+invalidation, focus, reconciliation report, publication/cache, or application
+mutation. Rejection and terminal trace records may still be appended when trace
+sequencing remains available. State-only interaction changes validate focus
+immediately. Accepted queue work requests the shared coalesced wake edge;
+publication-affecting invalidation requests redraw independently. Pointer and
+keyboard activation helpers use this same queue-backed proof authority, but
+remain press-based and do not imply routed events or semantic commands.
+
+`ActivationCapacity` identifies `WaitingEnvelopes`, `LocalTasks`, `SendTasks`, or
+`Timers`; activation never collapses those authorities into a generic queue
+result.
+
+## C9 public authority delta
+
+| Old contract | New contract | Reason | Accepted ADR rule | Downstream migration | Proof owner |
+|---|---|---|---|---|---|
+| Send-subscription startup could accept provisionally | `Starting` submissions return `SendSubscriptionSinkError::NotStarted(exact_item)`; only `Running` accepts | Success must mean durable ownership | ADR 0006 producer admission | Match `NotStarted` and recover with `into_item` | `subscription_scheduler::send_subscription_start_outcomes_are_once_only_reclaimed_and_explicitly_retryable` |
+| Cancelled send-task completion could enter ingress | `SendTaskCompletionError::Stale(exact_completion)` | Producer validity is exact-generation, not global | ADR 0006 cancellation | Match `Stale` separately from `Closed` | `scheduler_work::cancelled_send_completion_never_invokes_ui_mapper` |
+| Activation exposed generic `QueueFull` | `ActivationResult::Saturated(ActivationCapacity)` | Report the bounded refusing authority | ADR 0006 configured saturation | Match the exact capacity | `activation_queue::conservative_activation_admission_rejects_every_bounded_authority_before_callback` |
+| `Widget::activate` returned `Option<Action>` | It returns `WidgetActivationOutput<Action>` | State mutation is independent from action output | ADR 0003 widget protocol; ADR 0004 mounted state | Return `none`, `action`, `changed`, or `changed_with_action` | `mounted_work_output::activation_result_counts_auxiliary_batches_and_separates_wake_from_redraw` |
+| `NoEffect` meant no newly queued output | It means no state change, invalidation, subscription invalidation, action, or auxiliary work | Coalescing does not erase semantic effect | ADR 0006 transaction semantics | Report mutation explicitly | `mounted_work_output::coalesced_subscription_invalidation_is_an_effect_not_no_effect` |
 
 Focus stores `Option<MountedNodeId>`. It survives compatible update, authored-ID
 change, and keyed reorder, and clears on removal, replacement, disablement, or
@@ -300,17 +404,28 @@ request. `AppRuntime::trace()` borrows the one canonical `Trace`, whose
 `records()` and `kinds()` iterators run oldest-to-newest without a duplicate
 store. `TraceRecord` accessors expose a non-forgeable `TraceSequence`, structured
 kind, optional `WorkSequence`, optional causal-parent `TraceSequence`, optional
-reconciliation generations before/after, and optional `TraceTarget`. Action
-payloads are never stored.
+reconciliation generations before/after, optional `TraceTarget`, and optional
+`TraceWorkIdentity`. Work identity exposes only read-only owner, family, exact
+private generation value, and optional authored `WorkKey`; it is not a runtime
+capability. Action payloads are never stored. Scheduler records link the
+application transaction, work request, generation commit, start attempt/outcome,
+completion/firing/cancellation, and final action using causal parents and the
+actual accepted envelope `WorkSequence` where one exists. This is the M4B
+lineage foundation, not the deferred M4D export/replay contract.
+
+Transaction semantic request/invalidation records preserve callback collector
+order independently from cleanup-before-start queue grouping. Final action
+acceptance is recorded before queue append, and the accepted action trace record
+is the causal parent of the application transaction that later processes it.
 
 Oldest records are evicted at capacity. `dropped_before_sequence()` is an
 exclusive watermark: `Some(S)` means every trace sequence less than `S` is no
 longer retained. Ordinary eviction cannot affect application behavior. When
 enabled mandatory trace sequencing cannot advance, the runtime becomes terminal
 before the pending mutable callback and cancels queued work. The current contract
-has no external
-sink, JSONL/export/redaction contract, replay, or records for unimplemented
-events/effects/tasks/timers/subscriptions/host/wake-redraw work.
+has no routed-event causal graph, external sink, JSONL/export/redaction contract,
+replay, or records for unimplemented routed-event, external-sink, export, or
+replay work.
 
 ## Breaking migrations
 
@@ -327,6 +442,14 @@ Removed without aliases:
 
 Added:
 
+- core-owned `UiApp`, `HostProtocol`, `NoHostProtocol`, opaque ordered
+  `Effects`/`IntoEffects`, `SubscriptionSet`, `LocalSubscriptionSource`,
+  `SendSubscriptionSource`, `SendSubscriptionSink`, `WorkKey`, task/timer/host
+  work descriptions, and mounted subscription declaration/invalidation
+  capability;
+- runtime-owned `RuntimeLimits`, live work generations, manual/host monotonic
+  clocks, send-executor/completion handles, typed host-request tokens,
+  `PumpBudget`/`PumpReport`, wake transport, and redraw request/acknowledgment;
 - mounted/semantic identity and inspection;
 - reconciliation generation/report vocabulary;
 - state-aware widget lifecycle/activation contexts and unmount reasons;
@@ -337,11 +460,12 @@ Added:
   terminal reasons, and explicit shutdown reports;
 - repeatable `Button::on_activate` factories and queue-accurate activation
   outcomes;
-- bounded canonical trace configuration, sequences, records, targets, and
-  retention watermark.
+- bounded canonical trace configuration, sequences, records, targets, opaque
+  scheduler work identities/outcomes, and retention watermark.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
-in force. The current contract does not imply effects, subscriptions, tasks,
-timers, host requests, routed events, remaining readiness budgets, wake/redraw,
-complete trace v2, or M4 completion.
+in force. The current contract includes effects, subscriptions, tasks, timers,
+host requests, all four readiness budgets, and wake/redraw. It does not imply
+routed events, trace export/replay, complete trace-v2 normalization, or M4
+completion.

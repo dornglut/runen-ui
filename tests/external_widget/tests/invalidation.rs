@@ -1,19 +1,26 @@
+#![allow(refining_impl_trait)]
+
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, Element, StyleTokens, View, Widget, WidgetActivation,
-    WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof,
-    WidgetUpdateContext,
+    ChildLayout, ChildLayoutWidget, Element, NoHostProtocol, StyleTokens, UiApp, View, Widget,
+    WidgetActivation, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetPaintProof,
+    WidgetSemanticProof, WidgetUpdateContext,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase, UiApp,
+    AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase,
 };
 
 fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!());
-    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
 }
 
 fn context(tokens: &StyleTokens) -> SurfaceBuildContext<'_> {
@@ -84,6 +91,7 @@ struct CacheApp;
 impl UiApp for CacheApp {
     type State = CacheState;
     type Action = CacheAction;
+    type HostProtocol = NoHostProtocol;
     fn root(state: &Self::State) -> Element<Self::Action> {
         runenui_core::container(
             InvalidationProbe {
@@ -104,10 +112,16 @@ impl UiApp for CacheApp {
 
 fn mounted_cache() -> (Rc<Calls>, AppRuntime<CacheApp>, StyleTokens) {
     let calls = Rc::new(Calls::default());
-    let runtime = AppRuntime::<CacheApp>::mount(CacheState {
+    let mut runtime = AppRuntime::<CacheApp>::mount(CacheState {
         invalidation: WidgetInvalidation::NONE,
         calls: Rc::clone(&calls),
     });
+    let _ = runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
     (calls, runtime, StyleTokens::new())
 }
 

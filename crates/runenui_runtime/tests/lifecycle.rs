@@ -1,10 +1,12 @@
+#![allow(refining_impl_trait)]
+
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, Element, View, Widget, WidgetMountContext,
-    WidgetUnmountContext, children, container,
+    ChildLayout, ChildLayoutWidget, Element, NoHostProtocol, UiApp, View, Widget,
+    WidgetMountContext, WidgetUnmountContext, children, container,
 };
-use runenui_runtime::{AppRuntime, PumpBudget, UiApp};
+use runenui_runtime::{AppRuntime, PumpBudget};
 
 #[derive(Debug)]
 struct LifetimeState {
@@ -67,6 +69,7 @@ struct App;
 impl UiApp for App {
     type State = AppState;
     type Action = Action;
+    type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<Self::Action> {
         let prefix = if state.replacement { "new" } else { "old" };
@@ -115,7 +118,12 @@ fn replacement_unmounts_live_postorder_then_drops_before_new_preorder_mount() {
     runtime
         .submit_action(Action::Replace)
         .unwrap_or_else(|_| unreachable!());
-    assert_eq!(runtime.pump(PumpBudget::new(1)).processed_envelopes(), 1);
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        3
+    );
     assert_eq!(
         log.borrow().as_slice(),
         [

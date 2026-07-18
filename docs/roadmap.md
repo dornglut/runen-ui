@@ -172,7 +172,7 @@ owner on 2026-07-14.
 
 #### M4A — Canonical queue, pump, activation, and trace foundation
 
-**Status:** `in review`. After PR #74 merges, this slice becomes `complete`.
+**Status:** `complete`.
 
 **Delivered scope:**
 
@@ -191,7 +191,7 @@ subsystem vocabulary, and this slice does not complete M4.
 
 #### M4B — Application work and deterministic scheduler
 
-**Status:** `blocked by M4A`.
+**Status:** implemented; pending owner acceptance.
 
 **Goal:** Implement the complete ADR 0006 application-work contract and
 scheduler.
@@ -203,6 +203,9 @@ scheduler.
   `initial_effects`, ordered update effects, and application subscriptions;
 - add dedicated complete-set mounted subscription declarations and owner-local
   subscription invalidation;
+- evaluate application declarations from current transaction state and mounted
+  declarations at their exact queued reconciliation envelope, without retained
+  declaration-value caches;
 - add `WorkKey`, application and mounted work owners, and a private generational
   work registry;
 - add committed effect-start and cancellation envelopes;
@@ -214,9 +217,17 @@ scheduler.
 - implement all four pump budgets, real readiness checkpoints, and complete
   quiescence criteria;
 - enforce configured live-work and transaction-output limits;
-- add race-free wake and redraw state machines;
+- add a one-state-mutex wake request/transport/claim state machine, explicit
+  callback-in-flight serialization with no framework lock held across host code,
+  and independent revisioned redraw;
+- keep task, send-subscription, and host producer authority generational,
+  live-only, tombstone-free, and revoked before unmount callbacks;
+- use checked operation-specific mandatory trace admission and exact accepted-
+  action lineage when tracing is enabled;
 - complete shutdown/lifecycle cancellation for implemented work and the full
   post-mutation terminal/poison policy.
+- attach actual accepted work sequences and basic causal lineage across request,
+  generation, start, completion/cancellation, and resulting action facts.
 
 Every new work family must enter the existing canonical sequenced queue. No task
 queue, timer execution loop, host queue, or subscription queue may become a
@@ -232,9 +243,13 @@ runtime-owned competitor; initial/update/subscription ordering is deterministic;
 all ADR 0006 scheduler/work conformance rows in this scope pass on stable and
 MSRV.
 
+The final scheduler-integrity correction is implemented at the exact reviewed head.
+M4B remains pending owner acceptance; it does not unblock
+M4C or M4D by implementation claim alone.
+
 #### M4C — Canonical routed interaction and semantic commands
 
-**Status:** `blocked by M4B`.
+**Status:** `blocked pending M4B acceptance`.
 
 **Goal:** Implement ADR 0005 on top of the canonical scheduler.
 
@@ -280,7 +295,7 @@ conformance rows pass through public APIs.
 
 #### M4D — Trace v2 completion and M4 conformance closure
 
-**Status:** `blocked by M4B and M4C`.
+**Status:** `blocked pending M4B acceptance and M4C`.
 
 **Goal:** Complete external observability, reconstruction, and every remaining
 M4 exit criterion.

@@ -2,15 +2,189 @@
 
 #![forbid(unsafe_code)]
 
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    task::Poll,
+};
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, Container, EdgeInsets, Element, LogicalLength, View,
-    Views, Widget, WidgetActivation, WidgetActivationContext, WidgetDiagnostic, WidgetInvalidation,
+    Axis, ChildLayout, ChildLayoutWidget, Container, EdgeInsets, Element, IntoEffects,
+    LogicalLength, NoHostProtocol, SubscriptionSet, UiApp, View, Views, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic, WidgetInvalidation,
     WidgetMeasure, WidgetMountContext, WidgetPaintProof, WidgetSemanticProof, WidgetTextKind,
-    WidgetUnmountContext, WidgetUpdateContext, button, children, column, container, text,
+    WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children, column, container, text,
 };
-use runenui_runtime::UiApp;
+
+/// Downstream-observable mounted-subscription lifecycle facts.
+#[derive(Debug, Default)]
+pub struct ExternalSubscriptionLog {
+    declarations: Cell<usize>,
+    polled_declarations: RefCell<Vec<usize>>,
+    observed_states: RefCell<Vec<usize>>,
+}
+
+impl ExternalSubscriptionLog {
+    #[must_use]
+    pub const fn declarations(&self) -> usize {
+        self.declarations.get()
+    }
+
+    #[must_use]
+    pub fn polled_declarations(&self) -> Vec<usize> {
+        self.polled_declarations.borrow().clone()
+    }
+
+    #[must_use]
+    pub fn observed_states(&self) -> Vec<usize> {
+        self.observed_states.borrow().clone()
+    }
+}
+
+pub struct ExternalActivationSubscriptionWidget<Action> {
+    log: Rc<ExternalSubscriptionLog>,
+    primary: Box<dyn FnMut() -> Action>,
+    auxiliary: Box<dyn FnMut() -> Action>,
+    updated_state: Option<usize>,
+}
+
+impl<Action> core::fmt::Debug for ExternalActivationSubscriptionWidget<Action> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ExternalActivationSubscriptionWidget")
+            .finish_non_exhaustive()
+    }
+}
+
+impl<Action> ExternalActivationSubscriptionWidget<Action> {
+    #[must_use]
+    pub fn new(
+        log: Rc<ExternalSubscriptionLog>,
+        primary: impl FnMut() -> Action + 'static,
+        auxiliary: impl FnMut() -> Action + 'static,
+    ) -> Self {
+        Self {
+            log,
+            primary: Box::new(primary),
+            auxiliary: Box::new(auxiliary),
+            updated_state: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn updated_state(mut self, updated_state: usize) -> Self {
+        self.updated_state = Some(updated_state);
+        self
+    }
+}
+
+impl<Action> Widget<Action> for ExternalActivationSubscriptionWidget<Action> {
+    type State = usize;
+
+    fn create_state(&self) -> Self::State {
+        0
+    }
+
+    fn activation(&self, _: &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        if let Some(updated_state) = self.updated_state {
+            *state = updated_state;
+            context.invalidate_subscriptions();
+        }
+    }
+
+    fn activate(
+        &mut self,
+        state: &mut Self::State,
+        context: &mut WidgetActivationContext<Action>,
+    ) -> WidgetActivationOutput<Action> {
+        *state += 1;
+        context.invalidate_subscriptions();
+        context.emit((self.auxiliary)());
+        WidgetActivationOutput::changed_with_action((self.primary)())
+    }
+
+    fn subscriptions(&self, state: &Self::State, _: &mut SubscriptionSet<Action>) {
+        self.log.declarations.set(self.log.declarations.get() + 1);
+        self.log.observed_states.borrow_mut().push(*state);
+    }
+}
+
+/// Genuine downstream widget that declares one owner-local subscription.
+#[derive(Debug)]
+pub struct ExternalSubscriptionWidget {
+    log: Rc<ExternalSubscriptionLog>,
+    revision: u64,
+    enabled: bool,
+    duplicate: bool,
+}
+
+impl ExternalSubscriptionWidget {
+    #[must_use]
+    pub const fn new(log: Rc<ExternalSubscriptionLog>) -> Self {
+        Self {
+            log,
+            revision: 1,
+            enabled: true,
+            duplicate: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn revision(mut self, revision: u64) -> Self {
+        self.revision = revision;
+        self
+    }
+
+    #[must_use]
+    pub const fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    #[must_use]
+    pub const fn duplicate(mut self, duplicate: bool) -> Self {
+        self.duplicate = duplicate;
+        self
+    }
+}
+
+impl<Action> Widget<Action> for ExternalSubscriptionWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn update(&self, (): &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
+        context.invalidate_subscriptions();
+    }
+
+    fn subscriptions(&self, (): &Self::State, subscriptions: &mut SubscriptionSet<Action>) {
+        if !self.enabled {
+            return;
+        }
+        let declaration = self.log.declarations.get() + 1;
+        self.log.declarations.set(declaration);
+        let log = Rc::clone(&self.log);
+        subscriptions.local(
+            WorkKey::new("external.subscription").unwrap_or_else(|_| unreachable!()),
+            self.revision,
+            move |_: &mut std::task::Context<'_>| {
+                log.polled_declarations.borrow_mut().push(declaration);
+                Poll::Pending
+            },
+        );
+        if self.duplicate {
+            subscriptions.local(
+                WorkKey::new("external.subscription").unwrap_or_else(|_| unreachable!()),
+                self.revision,
+                |_: &mut std::task::Context<'_>| Poll::Pending,
+            );
+        }
+    }
+}
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ChildAction {
@@ -64,14 +238,14 @@ impl Widget<ChildAction> for PulseButton {
     fn activate(
         &mut self,
         state: &mut Self::State,
-        context: &mut WidgetActivationContext,
-    ) -> Option<ChildAction> {
+        context: &mut WidgetActivationContext<ChildAction>,
+    ) -> WidgetActivationOutput<ChildAction> {
         if self.enabled {
             state.lifecycle_count += 1;
             context.invalidate(WidgetInvalidation::PAINT | WidgetInvalidation::SEMANTICS);
-            Some(ChildAction::Pulse)
+            WidgetActivationOutput::changed_with_action(ChildAction::Pulse)
         } else {
-            None
+            WidgetActivationOutput::none()
         }
     }
 
@@ -99,12 +273,12 @@ impl Widget<ChildAction> for PulseButton {
         )]
     }
 
-    fn mount(&self, state: &mut Self::State, context: &mut WidgetMountContext) {
+    fn mount(&self, state: &mut Self::State, context: &mut WidgetMountContext<ChildAction>) {
         state.lifecycle_count += 1;
         context.invalidate(WidgetInvalidation::DIAGNOSTICS);
     }
 
-    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext) {
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<ChildAction>) {
         state.lifecycle_count += 1;
         context.invalidate(WidgetInvalidation::DIAGNOSTICS);
     }
@@ -382,12 +556,16 @@ pub struct LayoutConformanceApp;
 impl UiApp for LayoutConformanceApp {
     type State = LayoutState;
     type Action = LayoutAction;
+    type HostProtocol = NoHostProtocol;
 
-    fn root(state: &Self::State) -> Element<Self::Action> {
+    fn root(state: &Self::State) -> impl View<Self::Action> {
         layout_case_view(state.case)
     }
 
-    fn update(state: &mut Self::State, action: Self::Action) {
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
         match action {
             LayoutAction::Activate => state.activations += 1,
         }
@@ -399,12 +577,16 @@ pub struct ConformanceApp;
 impl UiApp for ConformanceApp {
     type State = usize;
     type Action = ParentAction;
+    type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> Element<Self::Action> {
+    fn root(_: &Self::State) -> impl View<Self::Action> {
         parent_view()
     }
 
-    fn update(state: &mut Self::State, action: Self::Action) {
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
         match action {
             ParentAction::Child(ChildAction::Pulse) => *state += 1,
             ParentAction::Reset => *state = 0,

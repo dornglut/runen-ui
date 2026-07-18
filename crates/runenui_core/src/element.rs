@@ -7,8 +7,9 @@ use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAda
 use crate::widget_mapping::MappedWidget;
 use crate::{
     Axis, ColorValue, ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey,
-    LayoutStyle, LogicalLength, RadiusValue, SpacingValue, StyleIntent, WidgetActivationContext,
-    WidgetInvalidation, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext,
+    LayoutStyle, LogicalLength, RadiusValue, SpacingValue, StyleIntent, SubscriptionSet,
+    WidgetActivationContext, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -227,6 +228,92 @@ pub struct WidgetActivation {
     actionable: bool,
 }
 
+/// Explicit semantic result of one accepted mutable widget activation.
+///
+/// The action and persistent-state mutation facts are independent: an
+/// activation may produce either, both, or neither.
+#[must_use]
+pub struct WidgetActivationOutput<Action> {
+    action: Option<Action>,
+    state_changed: bool,
+}
+
+impl<Action> WidgetActivationOutput<Action> {
+    /// Reports that the callback committed no primary action or persistent state change.
+    pub const fn none() -> Self {
+        Self {
+            action: None,
+            state_changed: false,
+        }
+    }
+
+    /// Reports one primary action without a persistent state change.
+    pub const fn action(action: Action) -> Self {
+        Self {
+            action: Some(action),
+            state_changed: false,
+        }
+    }
+
+    /// Reports a persistent state change without a primary action.
+    pub const fn changed() -> Self {
+        Self {
+            action: None,
+            state_changed: true,
+        }
+    }
+
+    /// Reports both a persistent state change and one primary action.
+    pub const fn changed_with_action(action: Action) -> Self {
+        Self {
+            action: Some(action),
+            state_changed: true,
+        }
+    }
+
+    /// Borrows the primary action when one was produced.
+    pub const fn action_ref(&self) -> Option<&Action> {
+        self.action.as_ref()
+    }
+
+    /// Consumes the output and returns its primary action.
+    pub fn into_action(self) -> Option<Action> {
+        self.action
+    }
+
+    /// Returns whether persistent widget state changed.
+    pub const fn state_changed(&self) -> bool {
+        self.state_changed
+    }
+
+    /// Maps the primary action while preserving the state-change fact.
+    pub fn map_action<ParentAction>(
+        self,
+        mapper: impl FnOnce(Action) -> ParentAction,
+    ) -> WidgetActivationOutput<ParentAction> {
+        WidgetActivationOutput {
+            action: self.action.map(mapper),
+            state_changed: self.state_changed,
+        }
+    }
+}
+
+impl<Action> Default for WidgetActivationOutput<Action> {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
+impl<Action> fmt::Debug for WidgetActivationOutput<Action> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WidgetActivationOutput")
+            .field("has_action", &self.action.is_some())
+            .field("state_changed", &self.state_changed)
+            .finish()
+    }
+}
+
 impl Default for WidgetActivation {
     fn default() -> Self {
         Self::NONE
@@ -279,29 +366,33 @@ pub trait Widget<Action>: fmt::Debug {
     /// `State = ()` and return `()` here.
     fn create_state(&self) -> Self::State;
 
-    fn mount(&self, _state: &mut Self::State, _context: &mut WidgetMountContext) {}
+    fn mount(&self, _state: &mut Self::State, _context: &mut WidgetMountContext<Action>) {}
 
-    fn update(&self, _state: &mut Self::State, context: &mut WidgetUpdateContext) {
+    fn update(&self, _state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
         context.invalidate(WidgetInvalidation::ALL);
     }
 
     fn unmount(&self, _state: &mut Self::State, _context: &mut WidgetUnmountContext) {}
+
+    /// Declares the complete desired subscription set for this mounted state.
+    fn subscriptions(&self, _state: &Self::State, _subscriptions: &mut SubscriptionSet<Action>) {}
 
     /// Returns non-consuming activation/focus facts.
     fn activation(&self, _state: &Self::State) -> WidgetActivation {
         WidgetActivation::NONE
     }
 
-    /// Produces an action for one accepted activation.
+    /// Reports the action and persistent-state effects of one accepted activation.
     ///
-    /// Repeatable controls create a fresh owned action on each invocation.
+    /// Repeatable controls create a fresh owned action on each invocation;
+    /// state mutation is reported independently even when there is no action.
     /// Capability inspection remains borrowed and cannot invoke the callback.
     fn activate(
         &mut self,
         _state: &mut Self::State,
-        _context: &mut WidgetActivationContext,
-    ) -> Option<Action> {
-        None
+        _context: &mut WidgetActivationContext<Action>,
+    ) -> WidgetActivationOutput<Action> {
+        WidgetActivationOutput::none()
     }
 
     /// Returns current proof-level measurement behavior.

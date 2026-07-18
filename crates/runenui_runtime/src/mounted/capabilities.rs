@@ -7,11 +7,19 @@ use super::{
     tree::MountedTree,
 };
 
+pub(crate) struct MountedActivationOutput<Action> {
+    pub(crate) invalidation: WidgetInvalidation,
+    pub(crate) subscription_invalidation: bool,
+    pub(crate) outputs: Vec<runenui_core::__runtime::MountedEffect<Action>>,
+    pub(crate) primary_action: bool,
+    pub(crate) state_changed: bool,
+}
+
 impl<Action> MountedTree<Action> {
     pub(crate) fn activate(
         &mut self,
         id: &MountedNodeId,
-    ) -> Result<(Option<Action>, WidgetInvalidation), WidgetBridgeError> {
+    ) -> Result<MountedActivationOutput<Action>, WidgetBridgeError> {
         let node = self
             .node_mut(id)
             .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
@@ -19,10 +27,24 @@ impl<Action> MountedTree<Action> {
             return Err(WidgetBridgeError::StatePayloadMismatch);
         }
         let mut context = WidgetActivationContext::__runtime_new();
-        let action = node.widget.activate(&mut node.state, &mut context)?;
+        let activation = node.widget.activate(&mut node.state, &mut context)?;
         let invalidation = context.__runtime_take_invalidation();
+        let subscription_invalidation = context.__runtime_take_subscription_invalidation();
         apply_invalidation(node, invalidation);
-        Ok((action, invalidation))
+        let mut outputs = context.__runtime_take_outputs();
+        let state_changed = activation.state_changed();
+        let action = activation.into_action();
+        let primary_action = action.is_some();
+        if let Some(action) = action {
+            outputs.insert(0, runenui_core::__runtime::MountedEffect::Action(action));
+        }
+        Ok(MountedActivationOutput {
+            invalidation,
+            subscription_invalidation,
+            outputs,
+            primary_action,
+            state_changed,
+        })
     }
 
     pub(crate) fn activation(

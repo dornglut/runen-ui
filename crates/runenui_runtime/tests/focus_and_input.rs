@@ -1,7 +1,9 @@
-use runenui_core::{Element, View, button, children, row};
+#![allow(refining_impl_trait)]
+
+use runenui_core::{Element, NoHostProtocol, UiApp, View, button, children, row};
 use runenui_runtime::{
     AppRuntime, FocusTargetResult, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint,
-    PointerButton, PointerEvent, PointerPhase, PumpBudget, UiApp,
+    PointerButton, PointerEvent, PointerPhase, PumpBudget,
 };
 
 #[derive(Debug)]
@@ -13,6 +15,7 @@ struct App;
 impl UiApp for App {
     type State = usize;
     type Action = Action;
+    type HostProtocol = NoHostProtocol;
     fn root(_: &usize) -> Element<Action> {
         row(children![
             button("A").id("a").key("a").on_activate(|| Action::A),
@@ -37,7 +40,7 @@ fn mounted_focus_traversal_and_input_policy_work() {
     let enter = KeyboardEvent::new(KeyPhase::Pressed, Key::Enter, KeyModifiers::NONE, None);
     runtime.handle_keyboard_activation(&enter);
     assert_eq!(runtime.state(), &0);
-    runtime.pump(PumpBudget::new(1));
+    runtime.pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.state(), &1);
     let pointer = PointerEvent::new(
         PointerPhase::Pressed,

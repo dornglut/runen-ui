@@ -1,3 +1,5 @@
+#![allow(refining_impl_trait)]
+
 use runenui_core::prelude::*;
 use runenui_runtime::prelude::*;
 
@@ -10,6 +12,7 @@ struct App;
 impl UiApp for App {
     type State = ();
     type Action = Action;
+    type HostProtocol = NoHostProtocol;
 
     fn root((): &()) -> Element<Action> {
         button("Press")
