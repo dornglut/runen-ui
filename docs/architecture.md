@@ -40,10 +40,9 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
-M4A is complete. The M4B implementation correction is complete at the exact
-reviewed head, pending owner acceptance.
-M4C remains blocked pending M4B acceptance, and M4D remains blocked pending M4B
-acceptance and M4C; therefore
+M4A is complete. M4B is complete, owner-accepted, and squash-merged. M4C0
+documentation/conformance alignment is implemented pending owner acceptance.
+M4C1–M4C5 and M4D1–M4D3 remain blocked in sequence; therefore
 the target M4 pipeline is not complete.
 
 ```text
@@ -112,10 +111,9 @@ M4. The current M4B implementation adds the core-owned application-work
 contract, one ordered transaction planner, state-current application and
 mounted subscription reconciliation, generational tasks/timers/host work,
 four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
-complete per-family causal scheduler trace proofs. M4B remains pending owner
-acceptance. Routed interaction is
-still M4C target architecture, and trace-v2 normalization/export/replay remains
-M4D target architecture.
+complete per-family causal scheduler trace proofs. Routed interaction is still
+unimplemented M4C target architecture, and trace-v2 normalization/export/replay
+remains unimplemented M4D target architecture.
 See the [public API contract](architecture/public-api.md) and
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md).
 

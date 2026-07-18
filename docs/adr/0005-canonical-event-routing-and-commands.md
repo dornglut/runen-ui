@@ -12,6 +12,16 @@
 >
 > **Reviewed baseline:** `83e3771c34e021ac2960cab2cfd926c1128998ca`
 
+## Implementation authority clarification
+
+This ADR remains the behavioral authority. The accepted
+[M4C delivery and routed-transaction charter](../architecture/m4c-delivery-and-routed-transaction-charter.md)
+fixes implementation ownership, public protocol boundaries, transaction
+admission, mutation policy, trace causality, and the M4C0–M4D3 delivery sequence.
+The [M4 conformance matrix](../architecture/m4-conformance-matrix.md) remains the
+observable acceptance and proof contract. Charter acceptance does not claim
+runtime implementation.
+
 ## Context
 
 M3 established one persistent mounted authority with generational

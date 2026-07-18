@@ -6,10 +6,12 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M4A is complete; the M4B implementation correction is complete
-at the exact reviewed head and pending owner acceptance; M4C is blocked pending M4B
-acceptance; M4D is blocked pending M4B
-acceptance and M4C. M4 as a whole is not complete.
+Milestone status: M4A and M4B are complete. M4C0 documentation/conformance
+alignment is complete and owner-accepted. M4C1 is queued as the next
+implementation slice; M4C2–M4C5 and M4D1–M4D3 remain blocked in sequence, and
+M4 is not complete. See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
+[accepted M4C delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md),
+and [M4 conformance matrix](docs/architecture/m4-conformance-matrix.md).
 
 ## What exists today
 

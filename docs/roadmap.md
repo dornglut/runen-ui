@@ -191,7 +191,7 @@ subsystem vocabulary, and this slice does not complete M4.
 
 #### M4B — Application work and deterministic scheduler
 
-**Status:** implemented; pending owner acceptance.
+**Status:** `complete`; owner-accepted and squash-merged in PR #75.
 
 **Goal:** Implement the complete ADR 0006 application-work contract and
 scheduler.
@@ -243,90 +243,245 @@ runtime-owned competitor; initial/update/subscription ordering is deterministic;
 all ADR 0006 scheduler/work conformance rows in this scope pass on stable and
 MSRV.
 
-The final scheduler-integrity correction is implemented at the exact reviewed head.
-M4B remains pending owner acceptance; it does not unblock
-M4C or M4D by implementation claim alone.
+The final scheduler-integrity correction, stable/MSRV proof package, exact-head
+CI, owner review, and squash merge are accepted. M4B does not by itself claim
+routed events, trace export/replay, or M4 completion.
 
-#### M4C — Canonical routed interaction and semantic commands
+The accepted [M4C delivery charter](architecture/m4c-delivery-and-routed-transaction-charter.md)
+is the implementation and delivery authority for the remaining slices. The
+[M4 conformance matrix](architecture/m4-conformance-matrix.md) is their
+observable acceptance and proof authority.
 
-**Status:** `blocked pending M4B acceptance`.
+#### M4C0 — Conformance ownership and decision closure
 
-**Goal:** Implement ADR 0005 on top of the canonical scheduler.
+**Status:** `complete`; owner-accepted in PR #76.
 
-**Included work:**
+**Goal:** Freeze stable matrix IDs, one delivery owner per observation, explicit
+positive/negative/trace proof ownership, accepted M4B status, and repository-wide
+execution authority before runtime work resumes.
 
-- core-owned event-family vocabulary and opaque safe mounted/surface identities
-  required by public protocols;
-- `SurfaceInputContext` plus retained current/previous displayed hit-test
-  generations and exact retired, missing, foreign-runtime, and foreign-surface
-  outcomes;
-- `UiEvent`, borrowed transaction-scoped `EventContext`, immutable route
-  snapshots, capture/target/bubble phases, propagation stopping, and default
-  prevention;
-- staged interaction changes and commit-derived notifications;
-- pointer IDs, optional device IDs, pressed ownership, true pointer capture,
-  deterministic pointer-boundary updates, and release-inside activation;
-- semantic `Activate`, semantic command routing, and exact route-only defaults;
-- explicit queued command delegation and input modality;
-- focus scopes, next/previous focus, directional navigation, and every vector in
-  the directional-focus corpus;
-- keyboard down/up policy plus separate committed-text and IME streams with
-  composition ownership;
-- normalized controller, accessibility-stub, automation, and programmatic
-  convergence;
-- terminal pointer-integrity cleanup;
-- removal of transitional direct pointer/keyboard activation and overlapping
-  input-intent paths.
+**Dependencies:** Accepted and squash-merged M4B; owner acceptance of the M4C
+delivery charter.
 
-Event callbacks may collect provisional actions, commands, invalidation, and
-mounted-owned work. They must never directly update application state,
-reconcile, execute effects, or recursively route another event. M4C adds event,
-route, phase, default, target, surface, pointer, focus, capture, composition,
-modality, and command trace facts as those behaviors land.
+**Included work:** Charter acceptance; in-place matrix normalization; aggregate
+row splits; exact M4C1 inventory; roadmap, current API, status, support, README,
+changelog, ADR, and architecture alignment.
 
-**Explicit non-goals:** A production accessibility adapter, production text
-editing, native event translation, a renderer backend, and multi-surface
-lifecycle.
+**Explicit non-goals:** Rust changes, tests, public API placeholders, routed
+events, semantic commands, surface contexts, pointer/focus/input behavior, or
+trace export/replay.
 
-**Exit criteria:** One canonical event path remains with no direct activation or
-focus bypass; pointer, keyboard, controller, accessibility stub, automation, and
-programmatic activation converge; all ADR 0005 and directional-focus
-conformance rows pass through public APIs.
+**Proof ownership:** Matrix uniqueness/schema/count audit; cross-document truth
+searches; documentation-only diff review; stable/MSRV `cargo validate`; exact-head
+CI.
 
-#### M4D — Trace v2 completion and M4 conformance closure
+**Exit criteria:** The accepted charter and matrix are one consistent execution
+authority; every normative row has a unique permanent ID, proof owners, slice,
+status, and gate; no current document claims M4C/M4D implementation or M4
+completion.
 
-**Status:** `blocked pending M4B acceptance and M4C`.
+**Completion record:** The corrected authority head passed exact-head CI, the
+repository owner accepted M4C0, and no runtime implementation or API scaffold was
+introduced.
 
-**Goal:** Complete external observability, reconstruction, and every remaining
-M4 exit criterion.
+**Next unblocked slice:** M4C1.
 
-**Included work:**
+#### M4C1 — Routed semantic-command kernel
 
-- complete the trace-record schema for all M4 work;
-- add logical scheduler time, surface/publication facts, work owners, and
-  private generations;
-- add effect, task, timer, subscription, host-request, wake/redraw request and
-  acknowledgment, terminal, and poison reconstruction facts;
-- enforce payload redaction, text/IME redaction by default, and an optional
-  application label provider without `Action: Debug`;
-- add deterministic versioned JSONL projection;
-- add a bounded or try-based subordinate external trace sink with sink-full,
-  sink-closed, and sink-failure diagnostics, a recursion guard, and behavioral
-  isolation from canonical trace;
-- add replay foundations and end-to-end Counter causal reconstruction;
-- complete every remaining M4 conformance-matrix row;
-- remove the final transitional M1–M3/M4A implementation paths;
-- perform final current-contract, support-matrix, status-map, vocabulary, and
-  public API cleanup.
+**Status:** `queued`; next implementation slice.
 
-M4D does not postpone basic trace coverage owned by M4B or M4C. Those slices
-trace their behavior when implemented; M4D completes the schema,
-externalization, reconstruction, replay foundation, and milestone closure.
+**Goal:** Implement the shared runtime namespace, core-owned protocol identity
+values, one immutable routed semantic-command transaction, exact admission and
+commit, semantic `Activate`, route-only cancel/menu/context commands, and basic
+causal trace.
 
-**Exit criteria:** Every row required for M4 passes on stable and MSRV; Counter
-and downstream conformance use public APIs; one canonical queue and one
-canonical event path remain; complete trace reconstruction and exact-head
-`cargo validate` pass; M4 is marked complete and M5 becomes unblocked.
+**Dependencies:** Accepted and merged M4C0.
+
+**Included work:** `ID-01`–`ID-04`, `ROUTE-01`–`ROUTE-13`, `CMD-01`–`CMD-14`,
+and `MIGRATION-01`–`MIGRATION-05` from the conformance matrix.
+
+**Explicit non-goals:** Surface context; pointer/logical scrolling; focus
+scopes; keyboard/text/IME; authored-ID automation resolution; semantic
+accessibility resolution; export or replay.
+
+**Proof ownership:** Public core/runtime API proofs, downstream routed-widget
+conformance, Counter programmatic activation, rejection/admission boundaries,
+slice-local causal trace, stable/MSRV validation, and exact-head CI.
+
+**Exit criteria:** One queued non-reentrant routed command path exists, all M4C1
+rows are proof-complete at the exact head, and no direct activation authority
+survives outside explicitly bounded focus-only transition helpers.
+
+**Next unblocked slice:** M4C2 after M4C1 owner acceptance and merge.
+
+#### M4C2 — Displayed-generation surface context
+
+**Status:** `blocked` pending M4C1 acceptance.
+
+**Goal:** Bind neutral input targeting to runtime-issued logical surface,
+coordinate revision, and exact retained displayed hit-test generation.
+
+**Dependencies:** Accepted and merged M4C1 shared namespace and routing kernel.
+
+**Included work:** `SurfaceId`, `SurfaceInputContext`, current/previous and
+configurable bounded retention, exact historical targeting, and retired,
+missing, foreign-runtime, and foreign-surface outcomes.
+
+**Explicit non-goals:** Pointer stream identity, terminal pointer cleanup,
+multi-window lifecycle, cross-surface focus, or M6 paint/hit scenes.
+
+**Proof ownership:** `SURFACE-*` runtime/publication proofs, checked adapter and
+negative isolation cases, slice-local causal trace, stable/MSRV validation, and
+exact-head CI.
+
+**Exit criteria:** Every `SURFACE-*` row is proof-complete and no accepted input
+is retargeted through another publication.
+
+**Next unblocked slice:** M4C3 after M4C2 owner acceptance and merge.
+
+#### M4C3 — Pointer lifecycle
+
+**Status:** `blocked` pending M4C2 acceptance.
+
+**Goal:** Implement pointer/device identity, physical path, pressed ownership,
+true capture, deterministic boundaries, logical scrolling, terminal unavailable-
+context cleanup, and release-inside activation.
+
+**Dependencies:** Accepted and merged M4C2 displayed-generation contexts.
+
+**Included work:** All `PTR-*`, `CAP-*`, and `BOUNDARY-*` rows plus pointer-owned
+migration and logical-scroll behavior.
+
+**Explicit non-goals:** Focus scopes/directional policy, final keyboard/text/IME,
+production scrolling mutation, native device translation, or M6 hit scenes.
+
+**Proof ownership:** Runtime/Counter/downstream pointer conformance, multi-pointer
+and stationary-geometry proofs, terminal negative cleanup, slice-local causal
+trace, stable/MSRV validation, and exact-head CI.
+
+**Exit criteria:** Every M4C3 row is proof-complete; primary activation is
+release-inside; no press-only pointer helper remains.
+
+**Next unblocked slice:** M4C4 after M4C3 owner acceptance and merge.
+
+#### M4C4 — Focus scopes and modality
+
+**Status:** `blocked` pending M4C3 acceptance.
+
+**Goal:** Implement root/nested focus scopes, next/previous and directional
+navigation, exact-generation restoration, focus transition/focus-within order,
+retained modality, and normalized-controller navigation.
+
+**Dependencies:** Accepted and merged M4C3 pointer lifecycle and current layout
+rectangles.
+
+**Included work:** All `FOCUS-*`, `DF-01`–`DF-20`, and `MOD-*` rows.
+
+**Explicit non-goals:** Raw controller/gamepad translation, accessibility tree,
+multi-window focus, keyboard/text/IME routing, or public scoring formulas.
+
+**Proof ownership:** Every directional corpus vector through the public command
+queue, scope/transition negative cases, slice-local causal trace, stable/MSRV
+validation, and exact-head CI.
+
+**Exit criteria:** Every M4C4 row and DF vector is proof-complete with no direct
+focus-command bypass.
+
+**Next unblocked slice:** M4C5 after M4C4 owner acceptance and merge.
+
+#### M4C5 — Keyboard, text, IME, automation, and M4C closure
+
+**Status:** `blocked` pending M4C4 acceptance.
+
+**Goal:** Complete keyboard activation policy, separate committed-text and IME
+streams, exact composition ownership, authored-ID automation resolution, and
+all remaining canonical-path migrations.
+
+**Dependencies:** Accepted and merged M4C4 focus scopes/modality.
+
+**Included work:** All `KEY-*`, `TEXT-*`, `IME-*`, and `AUTOMATION-*` rows;
+remaining M4C migration; complete Counter and downstream M4C conformance.
+
+**Explicit non-goals:** Editable text behavior, semantic accessibility mapping,
+native IME objects, trace export/sink, or replay.
+
+**Proof ownership:** Counter/downstream keyboard and IME proofs, automation
+ambiguity/stale cases, complete M4C causal trace, stable/MSRV validation, and
+exact-head CI.
+
+**Exit criteria:** Every M4C row is proof-complete, physical/programmatic sources
+converge on one canonical path, and direct input helpers are gone.
+
+**Next unblocked slice:** M4D1 after M4C5 owner acceptance and merge.
+
+#### M4D1 — Complete trace schema
+
+**Status:** `blocked` pending M4C5 acceptance.
+
+**Goal:** Normalize the complete event/surface/pointer/focus/composition/modality
+and scheduler trace schema with logical causality and suppressed delivery.
+
+**Dependencies:** Accepted and merged M4C5 with slice-local causal parentage.
+
+**Included work:** All `TRACE-EVENT-*` rows and complete M4 reconstruction fields.
+
+**Explicit non-goals:** Repairing missing earlier causal parents, JSONL export,
+external sink, or replay.
+
+**Proof ownership:** End-to-end causal schema/reconstruction, retention and
+redaction-boundary proofs, terminal cases, stable/MSRV validation, exact-head CI.
+
+**Exit criteria:** Every `TRACE-EVENT-*` row is proof-complete and one canonical
+trace reconstructs the complete in-memory M4 lifecycle.
+
+**Next unblocked slice:** M4D2 after M4D1 owner acceptance and merge.
+
+#### M4D2 — Export and external sink
+
+**Status:** `blocked` pending M4D1 acceptance.
+
+**Goal:** Add deterministic versioned JSONL, default text/IME redaction, optional
+application labels, and a behaviorally subordinate bounded/try external sink.
+
+**Dependencies:** Accepted and merged M4D1 complete schema.
+
+**Included work:** All `TRACE-EXPORT-*` rows, sink diagnostics, recursion guard,
+and transaction isolation.
+
+**Explicit non-goals:** A second ordering authority, unbounded/blocking delivery,
+generic `Action: Debug`, replay, or M4 completion.
+
+**Proof ownership:** Snapshot export, redaction, full/closed/failing sink,
+recursion, behavioral isolation, stable/MSRV validation, and exact-head CI.
+
+**Exit criteria:** Every `TRACE-EXPORT-*` row is proof-complete and sink state can
+change neither canonical trace nor runtime behavior.
+
+**Next unblocked slice:** M4D3 after M4D2 owner acceptance and merge.
+
+#### M4D3 — Replay and milestone closure
+
+**Status:** `blocked` pending M4D2 acceptance.
+
+**Goal:** Complete replay foundation, Counter causal reconstruction, final
+migration/current-document cleanup, and the exact M4 acceptance gate.
+
+**Dependencies:** Accepted and merged M4D2.
+
+**Included work:** `REPLAY-*`, final `MIGRATION-*`, and `M4-CLOSE-*` rows; final
+public API/status/support audit; stable/MSRV validation and exact-head CI.
+
+**Explicit non-goals:** M5 semantic/accessibility implementation, M6 scenes,
+editable text, native hosts, or later milestone work.
+
+**Proof ownership:** Counter replay, complete matrix/duplicate audit, downstream
+M4 conformance, repository truth audit, `cargo validate`, exact-head CI, owner
+review, and merge.
+
+**Exit criteria:** Every M4-gating matrix row is owner-accepted, M4 is explicitly
+accepted and merged, and no transitional authority remains.
+
+**Next unblocked slice:** M5 semantics and deterministic public testing.
 
 **Required proofs/tests:** The normative [M4 conformance matrix](architecture/m4-conformance-matrix.md) and every vector in the [directional-focus corpus](architecture/m4-directional-focus-corpus.md) must pass through public APIs. They cover exact event-family and command-default policy; current/previous/retired/foreign/missing surface generations, no retargeting, and terminal pointer cleanup; cross-pointer publication order; pointer/keyboard/normalized-controller/accessibility-stub/automation/programmatic convergence; deterministic focus/scopes/restoration; capture/composition/boundary/cancellation/release cases; exact initial work ordering, state-derived application subscriptions, and owner-local complete mounted declarations; readiness checkpoints and separate pump budgets; deterministic task/timer/subscription/host ordering; one-attempt executor start/refusal and optional failure mapping; all four same-batch keyed cancellation/start cases; exact host response-kind validation; queue limits and no-silent-drop behavior; wake/redraw races; terminal integrity; bounded canonical trace reconstruction and bounded sink backpressure/recursion behavior; and idempotent shutdown.
 

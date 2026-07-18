@@ -50,10 +50,9 @@ current implementation includes the application-work and deterministic-scheduler
 Hidden safe core construction seams do not own live state or bypass runtime validation.
 M4 adds no third crate.
 
-That corrected M4B ownership slice is implemented at the exact reviewed head and
-pending owner acceptance. M4C is
-blocked pending M4B acceptance, and M4D is blocked pending M4B acceptance and
-M4C; no additional crate boundary is implied by those blocked slices.
+That corrected M4B ownership slice is complete, owner-accepted, and
+squash-merged. M4C0 is documentation-only; M4C1–M4D3 are blocked in sequence,
+and no additional crate boundary is implied by those blocked slices.
 
 Within the crates, built-in authoring is separate from the public element/widget
 protocol. Mounted storage is divided into arena, identity, node, capability

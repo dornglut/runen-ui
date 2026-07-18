@@ -8,6 +8,20 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted the corrected M4C0 documentation and conformance authority,
+  made its migration proofs independently closable by their assigned slices,
+  reserved `ACCESS-*` for M5 semantic resolution, and queued M4C1 as the next
+  implementation slice. No M4C runtime behavior was added and M4 remains active.
+- Accepted and squash-merged PR #75's M4B scheduler result, accepted the M4C
+  delivery charter on 2026-07-18, and normalized M4 conformance ownership in
+  documentation-only M4C0.
+- Assigned every normative M4 matrix row a permanent unique ID, one primary
+  delivery slice, explicit positive/negative/trace proof ownership, an exact
+  status, and an M4 gate; accepted M4B rows are `owner-accepted`, while future
+  M4C/M4D rows remain `blocked`.
+- Split routing, surface, pointer, modality, automation, accessibility, logical
+  scrolling, and trace aggregates across M4C1–M4D3. No M4C runtime behavior or
+  API scaffolding was added, and M4 is not complete.
 - Removed the C9 wake delivery mutex from the host callback boundary. Wake
   delivery now uses explicit callback-in-flight state: each epoch is claimed
   once under wake-state synchronization, host code runs after every RunenUI
@@ -58,15 +72,15 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   facts from application transaction through request, generation commit, start,
   completion/firing/cancellation, and final action. Full trace-v2 normalization,
   export, sinks, redaction, and replay remain M4D.
-- Completed the corrective M4B conformance gates and aligned current authority
-  documents to M4A complete, M4B in review, M4C blocked by M4B, and M4D blocked
-  by M4B and M4C. This does not claim routed events or full M4 completion.
+- Completed the corrective M4B conformance gates, subsequently owner-accepted
+  and squash-merged; M4C runtime and M4D remain blocked in their accepted
+  sequence. This does not claim routed events or full M4 completion.
 - Implemented the M4B core-owned `UiApp`/host protocol, ordered effects,
   application and mounted complete-set subscriptions, generational keyed work,
   local/send tasks, deterministic timers, typed host requests, configured live
   limits, four-budget readiness pump, atomic wake, revisioned redraw,
-  lifecycle/poison shutdown integrity, and scheduler trace facts. M4B is in
-  review; routed events remain M4C and trace export/replay remains M4D.
+  lifecycle/poison shutdown integrity, and scheduler trace facts. M4B is now
+  accepted and merged; routed events remain M4C and trace export/replay M4D.
 - Corrected M4A capacity handling so configured queue and canonical-trace
   capacities remain logical saturation limits while internal storage grows only
   with accepted envelopes and retained records. Added exact stable/MSRV proofs

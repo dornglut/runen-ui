@@ -15,6 +15,12 @@ Support labels:
 | `deferred` | Accepted later target outside the first foundation or release. |
 | `unsupported` | Not available and not safe to infer from current APIs. |
 
+M4B scheduler behavior is implemented, owner-accepted, and squash-merged. M4C0
+is complete and owner-accepted. The accepted M4C charter remains target
+architecture only: M4C1 is queued as the next unimplemented runtime slice;
+M4C2–M4C5 and M4D1–M4D3 remain unimplemented and blocked in sequence. Planned
+type names are not evidence of support.
+
 ## 1. Authoring and composition
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
@@ -33,12 +39,12 @@ Support labels:
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Application-owned state | `supported` | Core-owned `UiApp::State`, Counter, queued update/reconciliation | One mounted application root | M4B implemented; pending owner acceptance |
-| Typed application actions | `supported` | `UiApp::Action`; typed widget actions; recursive mapping; non-`Clone`/non-`Send` scheduler proofs | Routed event/notification families remain M4C | M4B implemented; pending owner acceptance |
-| Explicit update | `supported` | One private processor is the sole `UiApp::update(&mut State, Action)` caller; ordered `IntoEffects` result | Synchronous by design | M4B implemented; pending owner acceptance |
+| Application-owned state | `supported` | Core-owned `UiApp::State`, Counter, queued update/reconciliation | One mounted application root | M4B complete, accepted, and merged |
+| Typed application actions | `supported` | `UiApp::Action`; typed widget actions; recursive mapping; non-`Clone`/non-`Send` scheduler proofs | Routed event/notification families remain M4C | M4B complete, accepted, and merged |
+| Explicit update | `supported` | One private processor is the sole `UiApp::update(&mut State, Action)` caller; ordered `IntoEffects` result | Synchronous by design | M4B complete, accepted, and merged |
 | Conditional root composition | `supported` | Counter/win root replacement with deterministic unmount/remount | One mounted root | M3 complete |
 | Batched/reentrant action processing | `proof` | Multiple submissions or activations queue before a bounded, iterative pump; every action reconciles before the next update | Application-action FIFO only; no general reentrant output/effect envelope contract | M4 |
-| Initial/update effects | `proof` | Core `Effects`/`IntoEffects`; one atomic initial plan orders mounted declarations, effects, application subscriptions, and mounted mount output; exact-owner activation output is conservatively admitted | Routed-event output remains M4C | M4B implemented; pending owner acceptance |
+| Initial/update effects | `proof` | Core `Effects`/`IntoEffects`; one atomic initial plan orders mounted declarations, effects, application subscriptions, and mounted mount output; exact-owner activation output is conservatively admitted | Routed-event output remains M4C | M4B complete, accepted, and merged |
 | Fine-grained signals as primary model | `deferred` | None by design | Signals may only be future adapters | Post-M3 |
 
 ## 3. Runtime identity and lifecycle
@@ -69,37 +75,37 @@ Support labels:
 | Pointer capture | `unsupported` | None | Cannot implement correct buttons, drag, sliders, or scrolling | M4 |
 | Touch/pen behavior | `unsupported` | Generic pointer vocabulary only | No device identity or device-specific facts | M4 |
 | Text input and IME events | `unsupported` | Character key variant is not text input | No composition/commit/range stream | M4, M8 |
-| Accessibility/programmatic activation | `unsupported` | Direct test activation exists only as a runtime helper | No semantic action convergence | M5 |
+| Accessibility/programmatic activation | `unsupported` | Direct test activation exists only as a transitional runtime proof helper | Exact-target routed convergence is M4C1; authored-ID automation resolution M4C5; semantic accessibility mapping M5 | M4C1, M4C5, M5 |
 | Controller/gamepad input vocabulary | `unsupported` | None; keyboard vocabulary does not imply controller support | No normalized controller-facing command or device event model | M4, M10 |
-| Abstract UI navigation commands | `unsupported` | None | No device-independent next/previous/directional/activate/cancel/menu/context commands | M4 |
+| Abstract UI navigation commands | `unsupported` | Accepted M4C target architecture only | Routed activate/cancel/menu/context are M4C1; logical scrolling M4C3; focus commands M4C4 | M4C1, M4C3–M4C4 |
 | Directional/spatial focus navigation | `unsupported` | None | Current traversal supports only linear next/previous keyboard focus | M4 |
 | Controller activation/cancel/menu commands | `unsupported` | None | Controller input cannot converge on semantic control commands | M4 |
 | Input modality tracking | `unsupported` | None | Runtime does not track pointer, keyboard, controller, accessibility, or automation modality | M4 |
-| Displayed-generation input targeting | `unsupported` | Accepted opaque `SurfaceInputContext` target contract only | No current/previous snapshot ring or retired/foreign/missing outcome contract in code | M4 |
-| Terminal pointer context cleanup | `unsupported` | Accepted same-runtime/surface integrity-only cancellation target contract only | Retired/missing pointer up/cancel cleanup is not implemented | M4 |
-| Route-only command defaults | `unsupported` | Accepted exact no-action target for unconsumed cancel/menu/context/scroll commands | No canonical semantic-command route exists | M4 |
-| Directional focus corpus | `unsupported` | Accepted public-outcome corpus only | No directional implementation or corpus test passes yet | M4 |
+| Displayed-generation input targeting | `unsupported` | Accepted opaque `SurfaceInputContext` target contract only | No current/previous snapshot ring or retired/foreign/missing outcome contract in code | M4C2 |
+| Terminal pointer context cleanup | `unsupported` | Accepted same-runtime/surface integrity-only cancellation target contract only | Retired/missing pointer up/cancel cleanup is not implemented | M4C3 |
+| Route-only command defaults | `unsupported` | Accepted exact no-action target only | Cancel/menu/context route in M4C1; logical scrolling is introduced with wheel in M4C3; neither is implemented | M4C1, M4C3 |
+| Directional focus corpus | `unsupported` | Accepted public-outcome corpus only | No directional implementation or corpus test passes yet | M4C4 |
 
 ## 5. Effects and scheduling
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Synchronous direct dispatch | `unsupported` | `AppRuntime::dispatch` and private dispatch authorities were removed | Callers must submit and explicitly pump | M4 |
-| Application action submission | `proof` | `submit_action` returns a `WorkSequence` or exact unaccepted action | Routed host-event ingress remains M4C | M4B implemented; pending owner acceptance |
-| Queue saturation | `proof` | Waiting-envelope, transaction, live-family, completion, subscription-diagnostic, and trace limits; initial and activation plans reserve complete aggregate allowance | External trace-sink limit remains M4D | M4B implemented; pending owner acceptance |
-| Action queue and ordering | `proof` | One generalized FIFO and transaction planner sequence cancellation cleanup, declaration reconciliation, ordered outputs/starts, timer firings, and final mapped actions; semantic trace order is retained separately from queue grouping | Event/notification envelopes remain M4C | M4B implemented; pending owner acceptance |
-| Effects | `proof` | Opaque ordered application descriptions plus generic mounted lifecycle/activation contexts; activation reports its whole committed batch and commits invalidation, primary action, and auxiliary exact-owner work together | Mounted host requests remain intentionally unavailable | M4B implemented; pending owner acceptance |
-| Processed-envelope pump budget | `proof` | Four-argument `PumpBudget`; exact report and outcome | None in implemented work scope | M4B implemented; pending owner acceptance |
-| Other readiness budgets | `proof` | Exact completion-import, local-poll, and timer-promotion limits/counters/exhaustion flags | None in implemented work scope | M4B implemented; pending owner acceptance |
-| Owner-local keyed cancellation | `proof` | Validated `WorkKey`, private generations, commit-bound same-batch semantics, and stale-completion rejection for application and exact mounted owners | None in implemented work scope | M4B implemented; pending owner acceptance |
-| Async tasks | `proof` | Wake-aware local futures; one-attempt send executor; bounded completion ingress; UI mapper validation | Runtime supplies adapters, not an executor implementation | M4B implemented; pending owner acceptance |
-| Timers and subscriptions | `proof` | Manual/host monotonic time; one-shot/repeating timers; current-state complete-set diffs; wake-aware local sources; one-attempt send producers with explicit start/sink outcomes | No animation system | M4B implemented; pending owner acceptance |
-| Mounted subscription declarations | `proof` | Public widget capability; queued newest-state evaluation without declaration caches; activation/update invalidation, stale-owner suppression, duplicate, and lifecycle proofs | Routed-event invalidation awaits M4C | M4B implemented; pending owner acceptance |
-| Send-executor start outcomes | `proof` | Started/unavailable/full/closed/rejected, one attempt, optional failure action | Retry requires new effect | M4B implemented; pending owner acceptance |
-| Send-subscription outcomes | `proof` | Explicit `Starting -> Running`; synchronous startup sends return exact `NotStarted`; full/closed/stale rejection returns exact item; refusal reclaims the generation | Retry requires a new declaration revision | M4B correction implemented; pending owner acceptance |
-| Host commands | `proof` | Closed application protocol, opaque token, response-kind validation, and live-only lock-protected direct/detached/cancellation response authority without terminal tombstones | Platform services remain M10 | M4B correction implemented pending acceptance; M10 |
-| Wake/redraw scheduling | `proof` | One state mutex owns coalesced wake request, transport, delivery claims, and callback-in-flight state; serialized callbacks run outside all framework synchronization guards and are claimed at most once per outstanding request; revisioned redraw remains independent | Native event-loop adapter absent | M4B correction implemented; pending owner acceptance |
-| Deterministic scheduler testing | `proof` | Manual clock, injectable executor/clock/wake transport, exact pump reports | Unified M5 harness absent | M4B implemented pending acceptance; M5 |
+| Application action submission | `proof` | `submit_action` returns a `WorkSequence` or exact unaccepted action | Routed command ingress remains M4C1 | M4B complete, accepted, and merged |
+| Queue saturation | `proof` | Waiting-envelope, transaction, live-family, completion, subscription-diagnostic, and trace limits; initial and activation plans reserve complete aggregate allowance | External trace-sink limit remains M4D2 | M4B complete, accepted, and merged |
+| Action queue and ordering | `proof` | One generalized FIFO and transaction planner sequence cancellation cleanup, declaration reconciliation, ordered outputs/starts, timer firings, and final mapped actions; semantic trace order is retained separately from queue grouping | Routed event/notification envelopes remain M4C1–M4C5 | M4B complete, accepted, and merged |
+| Effects | `proof` | Opaque ordered application descriptions plus generic mounted lifecycle/activation contexts; activation reports its whole committed batch and commits invalidation, primary action, and auxiliary exact-owner work together | Mounted host requests remain intentionally unavailable | M4B complete, accepted, and merged |
+| Processed-envelope pump budget | `proof` | Four-argument `PumpBudget`; exact report and outcome | None in implemented work scope | M4B complete, accepted, and merged |
+| Other readiness budgets | `proof` | Exact completion-import, local-poll, and timer-promotion limits/counters/exhaustion flags | None in implemented work scope | M4B complete, accepted, and merged |
+| Owner-local keyed cancellation | `proof` | Validated `WorkKey`, private generations, commit-bound same-batch semantics, and stale-completion rejection for application and exact mounted owners | None in implemented work scope | M4B complete, accepted, and merged |
+| Async tasks | `proof` | Wake-aware local futures; one-attempt send executor; bounded completion ingress; UI mapper validation | Runtime supplies adapters, not an executor implementation | M4B complete, accepted, and merged |
+| Timers and subscriptions | `proof` | Manual/host monotonic time; one-shot/repeating timers; current-state complete-set diffs; wake-aware local sources; one-attempt send producers with explicit start/sink outcomes | No animation system | M4B complete, accepted, and merged |
+| Mounted subscription declarations | `proof` | Public widget capability; queued newest-state evaluation without declaration caches; activation/update invalidation, stale-owner suppression, duplicate, and lifecycle proofs | Routed-event invalidation awaits M4C1 | M4B complete, accepted, and merged |
+| Send-executor start outcomes | `proof` | Started/unavailable/full/closed/rejected, one attempt, optional failure action | Retry requires new effect | M4B complete, accepted, and merged |
+| Send-subscription outcomes | `proof` | Explicit `Starting -> Running`; synchronous startup sends return exact `NotStarted`; full/closed/stale rejection returns exact item; refusal reclaims the generation | Retry requires a new declaration revision | M4B complete, accepted, and merged |
+| Host commands | `proof` | Closed application protocol, opaque token, response-kind validation, and live-only lock-protected direct/detached/cancellation response authority without terminal tombstones | Platform services remain M10 | M4B complete; M10 |
+| Wake/redraw scheduling | `proof` | One state mutex owns coalesced wake request, transport, delivery claims, and callback-in-flight state; serialized callbacks run outside all framework synchronization guards and are claimed at most once per outstanding request; revisioned redraw remains independent | Native event-loop adapter absent | M4B complete, accepted, and merged |
+| Deterministic scheduler testing | `proof` | Manual clock, injectable executor/clock/wake transport, exact pump reports | Unified M5 harness absent | M4B complete; M5 |
 
 ## 6. Styling
 
@@ -201,7 +207,7 @@ Support labels:
 |---|---|---|---|---|
 | Host-neutral core/runtime | `supported` | No native window, GPU, ECS, or legacy dependencies | Neutrality alone is not an embedding contract | M10 |
 | Platform host contract | `unsupported` | Application-defined typed request/response protocol and runtime wake transport are isolated seams | No platform lifecycle, service capability discovery, windows, event-loop adapter, or resource contract | M10 |
-| Closed application host protocol | `proof` | Core command/response/response-kind contract; opaque runtime-local request generations; exact kind validation, single-winner response state machine, and UI-thread mapper path | Platform service families remain M10 | M4B implemented pending acceptance; M10 |
+| Closed application host protocol | `proof` | Core command/response/response-kind contract; opaque runtime-local request generations; exact kind validation, single-winner response state machine, and UI-thread mapper path | Platform service families remain M10 | M4B complete; M10 |
 | Headless host profile | `partial` | Direct deterministic mounted runtime use with manual clock, injectable send executor, wake transport, and typed host requests | No public semantic harness or native host adapter | M4–M5 |
 | Desktop event loop/window | `unsupported` | None | No Winit or equivalent adapter | M10 |
 | Windows/macOS/Linux support | `unsupported` | Platform-independent Rust tests only | No native application proof | M10–M11 |
@@ -221,12 +227,12 @@ Support labels:
 | Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 harness and Ubuntu-only CI | M5, M11 |
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, and debug output | No stable severity/strict mode or per-surface generation | M5–M7 |
-| Runtime trace | `partial` | Checked operation-specific mandatory admission; enabled trace gives every accepted action its same-sequence acceptance parent; capacity zero changes no scheduler behavior | Schema normalization, JSONL, sink, redaction, and replay remain M4D | M4B correction implemented pending acceptance; M4D |
+| Runtime trace | `partial` | Checked operation-specific mandatory admission; enabled trace gives every accepted action its same-sequence acceptance parent; capacity zero changes no scheduler behavior | Routed causal schema begins in queued M4C1; later input schemas M4C2–M4C5; normalization M4D1; JSONL/sink/redaction M4D2; replay M4D3 | M4B complete; M4C1 queued; M4C2–M4D3 blocked |
 | Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, and exclusive dropped-before watermark | Retention foundation is not complete trace v2 | M4–M5 |
-| Bounded external trace sink | `unsupported` | Accepted bounded/try-based subordinate sink target contract only | No sink, backpressure diagnostic, or recursion guard | M4–M5 |
+| Bounded external trace sink | `unsupported` | Accepted bounded/try-based subordinate sink target contract only | No sink, backpressure diagnostic, or recursion guard | M4D2 |
 | Public headless test harness | `planned` | Current tests prove demand | No `runenui_testing` public boundary | M5 |
 | Semantic/layout/hit/paint assertions | `planned` | Layout/frame internals are inspectable | No unified public assertions | M5–M6 |
-| Deterministic time/tasks | `proof` | Manual monotonic clock, wake-aware local tasks, injectable send executor | Unified M5 harness absent | M4B implemented pending acceptance; M5 |
+| Deterministic time/tasks | `proof` | Manual monotonic clock, wake-aware local tasks, injectable send executor | Unified M5 harness absent | M4B complete; M5 |
 | Snapshot/golden/replay tests | `unsupported` | Debug string assertions only | Scene and replay protocols absent | M5–M6 |
 | Property/fuzz testing | `unsupported` | None | Production hardening work | M11 |
 | Benchmarks and budgets | `unsupported` | None | No performance gates | M11 |
@@ -253,9 +259,3 @@ Support labels:
 | Docking/workspaces | `deferred` | None | Requires drag/capture, overlays, persistence, and multi-surface behavior | M12 |
 | Advanced editor/game controls | `deferred` | None | Builds on the production control and host foundations | M12 |
 | Mobile/web profiles | `deferred` | None | Outside the first production release | Post-v1 |
-
-## 16. Repository authority and history
-
-| Capability | Current support | Current proof or API | Known limitation | Target milestone |
-|---|---|---|---|---|
-| Legacy archival and recovery | `supported` | Annotated tag `legacy-runenwerk-ui-archive-2026-07-11` preserves audited baseline `141f005`; `legacy/` is absent from active content and context profiles | Historical material is opt-in reference only and cannot be treated as current implementation | M0 |

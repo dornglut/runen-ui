@@ -6,9 +6,29 @@ This document is the canonical M4 overview. It separates current implementation
 facts from the accepted implementation contracts in
 [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md) and
 [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md). The normative proof
-inventory is the [M4 conformance matrix](m4-conformance-matrix.md). Acceptance
+inventory is the [M4 conformance matrix](m4-conformance-matrix.md), and the
+accepted [M4C delivery charter](m4c-delivery-and-routed-transaction-charter.md)
+owns implementation boundaries and sequence. Acceptance
 authorizes implementation but does not make any target implemented; support
 exists only after its public behavioral proofs pass.
+
+## Accepted delivery sequence
+
+```text
+M4B   deterministic scheduler and application work (complete and accepted)
+M4C0  conformance ownership and decision closure (documentation only)
+M4C1  routed semantic-command kernel
+M4C2  displayed-generation surface context
+M4C3  pointer lifecycle
+M4C4  focus scopes and modality
+M4C5  keyboard, text, IME, automation, and M4C closure
+M4D1  complete trace schema
+M4D2  export and sink
+M4D3  replay and milestone closure
+```
+
+M4C1–M4D3 remain unimplemented and blocked by the preceding slice. M4B's
+implemented live-only producer authority remains unchanged.
 
 ## Current application-work and scheduler implementation
 
@@ -382,16 +402,16 @@ platform-event dependency belongs in the neutral M4 runtime.
 
 ## M4 implementation gate
 
-ADR 0005 and ADR 0006 were accepted by the repository owner on 2026-07-14 as the
-M4 implementation charter. Their implementation-defining gaps are closed by the
-revised decisions and the normative
-[M4 conformance matrix](m4-conformance-matrix.md). M4 implementation may begin
-only from updated `master` after this architecture pull request is merged.
+ADR 0005 and ADR 0006 were accepted by the repository owner on 2026-07-14. ADR
+0005 remains routed-behavior authority, ADR 0006 scheduler-behavior authority,
+the accepted M4C delivery charter is implementation/delivery authority, and the
+[M4 conformance matrix](m4-conformance-matrix.md) is observable acceptance
+authority.
 
-Acceptance completes only the architecture gate. M4 remains incomplete until the
-canonical authorities are implemented, obsolete paths are removed, every
-required matrix row passes through public APIs, stable/MSRV validation succeeds,
-and current status/support records are updated.
+M4C0 acceptance completes only the documentation gate. M4 remains incomplete
+until the canonical authorities are implemented, obsolete paths are removed,
+every required matrix row passes through public APIs, stable/MSRV validation
+succeeds, and current status/support records are updated.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control

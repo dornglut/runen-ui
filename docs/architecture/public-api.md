@@ -8,12 +8,13 @@ documentation is authoritative for signatures. [ADR 0003](../adr/0003-extensible
 defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
 defines mounted ownership and reconciliation; accepted
 [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines application
-work and scheduling; the M4B implementation correction is complete at the exact
-reviewed head, pending owner acceptance. Routed events and trace export/replay
-remain later M4 slices. The review-draft
+work and scheduling; M4B is implemented, owner-accepted, and squash-merged.
+Routed events and trace export/replay remain later unimplemented M4 slices. The
+accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
-records proposed future ownership and transaction decisions but does not describe
-implemented public API until its slices are accepted.
+records target ownership and transaction decisions but does not describe
+implemented public API until each slice is accepted. The
+[M4 conformance matrix](m4-conformance-matrix.md) owns observable acceptance.
 
 ## Ownership and inventory
 
@@ -181,9 +182,10 @@ and explicit `state_changed` fact are independent, so a widget can truthfully
 report state-only mutation, action-only output, both, or neither. Action mapping
 preserves the state-change fact.
 
-The current public widget contract has no routed `event` capability or
-`WidgetEventOutput`. Those remain M4C1 target work and are described only by the
-review-draft M4C charter until accepted and implemented.
+The current public widget contract has no routed `event` capability,
+`EventContext`, `WidgetEventOutput`, `SemanticCommand`, `CommandOrigin`, or
+command submission. Those remain accepted M4C1 target architecture and are not
+implemented API.
 
 The default update invalidates `ALL` for correctness. Built-in text, button, and
 linear-container widgets implement narrower comparison-based invalidation.
@@ -242,9 +244,11 @@ invalid/vacant slot or generation mismatch is `StaleTarget`. Old IDs never
 target slot replacements, even when the deterministic arena reuses the same
 index.
 
-The proposed M4C1 migration to one hidden core-owned runtime namespace and one
-core-owned public `MountedNodeId` is target architecture only until accepted and
-implemented.
+The accepted M4C1 target moves `MountedNodeId`, `MonotonicInstant`,
+`MonotonicTimeError`, and `WorkSequence` protocol values to core ownership while
+runtime retains live namespaces, clocks, queue allocation, and timers. The
+current implementation remains runtime-owned; no future signature is current
+API.
 
 Authored `ElementId` remains a validated lookup/diagnostic handle. It does not
 affect reconciliation compatibility and may change while mounted identity
@@ -316,7 +320,12 @@ sequencing remains available. State-only interaction changes validate focus
 immediately. Accepted queue work requests the shared coalesced wake edge;
 publication-affecting invalidation requests redraw independently. Pointer and
 keyboard activation helpers use this same queue-backed proof authority, but
-remain press-based and do not imply routed events or semantic commands.
+remain transitional, press-based proofs. Direct programmatic, pointer-press,
+and keyboard activation are removed by M4C1; any explicitly retained focus-only
+helper cannot emit an action or invoke activation and has an exact M4C3/M4C4/M4C5
+removal owner. Routed semantic commands remain M4C1, release-inside pointer
+behavior M4C3, focus scopes M4C4, keyboard/text/IME M4C5, and trace export/replay
+M4D.
 
 `ActivationCapacity` identifies `WaitingEnvelopes`, `LocalTasks`, `SendTasks`, or
 `Timers`; activation never collapses those authorities into a generic queue

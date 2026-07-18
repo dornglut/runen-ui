@@ -61,9 +61,9 @@ These terms are fixed by accepted ADR 0005 and ADR 0006. Application-work and
 scheduler terms below are implemented by the application-work slice;
 routed-event terms remain M4C.
 
-Milestone status is M4A complete, M4B implemented and pending owner acceptance,
-M4C blocked pending M4B acceptance, and M4D blocked pending M4B acceptance and
-M4C. M4 is incomplete.
+Milestone status is M4A complete; M4B complete, owner-accepted, and
+squash-merged; M4C0 documentation alignment implemented pending owner
+acceptance; and M4C1–M4D3 blocked in sequence. M4 is incomplete.
 
 | Term | Meaning |
 |---|---|
