@@ -1,0 +1,150 @@
+//! Persistent runtime state, action transactions, and terminal authority.
+
+#![allow(clippy::redundant_pub_crate)]
+
+mod access;
+mod application;
+mod helpers;
+mod ingress;
+mod lifecycle;
+mod mount;
+mod routed;
+mod scheduler;
+mod surface_publication;
+
+pub(crate) use application::process_application_action;
+
+use core::fmt;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+
+use runenui_core::{
+    __runtime::{Effect, MountedEffect, SendOutput, Subscription},
+    CommandOrigin, Element, ElementKey, HostProtocol, IntoEffects, NoHostProtocol, SemanticCommand,
+    SendSubscriptionSink, SendSubscriptionStartOutcome, SendTaskStartFailure, SubscriptionSet,
+    UiApp, View,
+};
+
+use crate::trace::MandatoryTracePlan;
+use crate::{
+    CommandSubmission, FocusState, ManualClock, MonotonicClock, MonotonicInstant, MountedNodeId,
+    RuntimeConfig, SendTaskExecutor, SendTaskStartError, SendTaskStartOutcome, SubmitActionError,
+    SubmitActionResult, SubmitCommandError, SubmitCommandErrorKind, Trace, TraceRecordKind,
+    TraceSequence, TraceTarget, TraceTimerTerminalOutcome, TraceWorkIdentity, TraceWorkOwner,
+    TraceWorkStartRefusal, UnacceptedCommand, WorkSequence,
+    completion::{
+        CompletionIngress, CompletionKind, HostResponseCompletion, SendTaskJob, UnavailableExecutor,
+    },
+    mounted::{MountedIdentityExhausted, MountedTree, TargetStatus},
+    queue::{
+        ApplicationActionEnvelope, ApplicationActionOrigin, QueueCommitError, WorkEnvelope,
+        WorkQueue,
+    },
+    transaction::{
+        ApplicationTransactionInput, OwnedTransactionLedger, PlannedApplicationTransaction,
+        PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent, TransactionLedger,
+        TransactionPlanError,
+    },
+    wake::WakeState,
+    work::{
+        RegistryInsertError, WorkCancellationCounts, WorkFamily, WorkOwner, WorkRegistry,
+        WorkTraceIdentity,
+        host_request::{HostRequestRef, HostRequestToken, LiveHostRequest},
+        subscription::{LiveSubscription, LiveSubscriptionSource, SubscriptionPoll},
+        task::{LocalTask, TaskReady},
+        timer::{Timer, TimerFireOutcome, TimerStartError},
+    },
+};
+
+mod model;
+
+pub(in crate::runtime) use helpers::{
+    CommitError, mounted_effect_into_effect, public_trace_work_identity, trace_work_family,
+    trace_work_owner, with_routed_parent,
+};
+pub(in crate::runtime) use lifecycle::revoke_generation_authority;
+pub(in crate::runtime) use model::{ActionCommitError, CollectedRoutedOutput, MutationPhase};
+pub use model::{
+    HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
+    ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
+    SubscriptionDiagnostic, SubscriptionOwnerKind, TimerFiringOutcome, TimerStartOutcome,
+};
+use surface_publication::SurfacePublicationState;
+
+pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol> {
+    state: Option<State>,
+    pub(crate) tree: MountedTree<Action>,
+    queue: WorkQueue<Action>,
+    trace: Trace,
+    focus: FocusState,
+    generation: u64,
+    report: ReconciliationReport,
+    status: RuntimeStatus,
+    limits: crate::RuntimeLimits,
+    mounted_public_slot_limit: u64,
+    work: WorkRegistry<Action, Protocol>,
+    mounted_subscription_reconcile_pending: Vec<MountedNodeId>,
+    initial_mounted_subscription_owners: Vec<MountedNodeId>,
+    initial_mounted_outputs: Vec<(MountedNodeId, Vec<MountedEffect<Action>>)>,
+    subscriptions: Vec<LiveSubscription<Action>>,
+    subscription_diagnostics: Vec<SubscriptionDiagnostic>,
+    clock: ManualClock,
+    local_tasks: Vec<LocalTask<Action>>,
+    timers: Vec<Timer<Action>>,
+    completion_ingress: CompletionIngress,
+    send_executor: Box<dyn SendTaskExecutor>,
+    send_task_mappers: Vec<SendTaskMapper<Action>>,
+    last_send_task_start_outcome: Option<SendTaskStartOutcome>,
+    last_timer_start_outcome: Option<TimerStartOutcome>,
+    last_timer_firing_outcome: Option<TimerFiringOutcome>,
+    host_clock: Option<Box<dyn MonotonicClock>>,
+    host_namespace: Arc<()>,
+    host_requests: Vec<LiveHostRequest<Action, Protocol>>,
+    surface_publication: SurfacePublicationState,
+    wake: WakeState,
+    #[cfg(test)]
+    readiness_checkpoint_count: usize,
+    #[cfg(feature = "internal-test-seams")]
+    routed_callback_bridge_failure_for_test: bool,
+    #[cfg(feature = "internal-test-seams")]
+    routed_semantic_default_failure_for_test: bool,
+    #[cfg(feature = "internal-test-seams")]
+    routed_commit_failure_for_test: bool,
+}
+
+pub(crate) enum ProcessApplicationActionOutcome {
+    Completed,
+    Terminal {
+        reason: RuntimeTerminalReason,
+        cancelled: usize,
+    },
+}
+
+pub(crate) struct ReadinessCheckpointReport {
+    pub(crate) imported_completions: usize,
+    pub(crate) polled_local_work: usize,
+    pub(crate) promoted_timers: usize,
+}
+
+#[allow(clippy::struct_excessive_bools)]
+pub(crate) struct SchedulerObservation {
+    pub(crate) completion_imports_pending: bool,
+    pub(crate) due_timers_pending: bool,
+    pub(crate) local_polls_pending: bool,
+    pub(crate) mandatory_derived_work_pending: bool,
+    pub(crate) next_deadline: Option<MonotonicInstant>,
+    pub(crate) publication_dirty: bool,
+}
+
+struct SendTaskMapper<Action> {
+    generation: crate::work::WorkGeneration,
+    map: Box<dyn FnOnce(SendOutput) -> Action>,
+}
+
+struct SubscriptionDiff<Action> {
+    invalidated: Vec<crate::work::WorkGeneration>,
+    starts: Vec<Subscription<Action>>,
+    duplicate_keys: HashSet<runenui_core::WorkKey>,
+}
