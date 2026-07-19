@@ -8,6 +8,17 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and squash-merged the complete M4C1 routed semantic-command
+  kernel in PR #77. The accepted feature head is
+  `cb3c7c139304231ba3b636cf53951507f348d485`; the squash merge commit is
+  `44ceee29c73cea1237fefbd30db4baf2cd97b93d`. All 36 M4C1 conformance rows are
+  now `owner-accepted`, M4C2 is queued, and M4 remains active and incomplete.
+- Established issue-backed execution tracking through the M4 umbrella and slice
+  issues, documented the roadmap/matrix/issues/PR/status authority split, added
+  milestone-slice, architecture-debt, and bug issue forms plus a pull-request
+  template, and recorded the required contributor pickup sequence. Volatile
+  branch, head, blocker, CI, and next-action state now belongs in issues and PRs
+  rather than stable architecture documents.
 - Implemented the complete M4C1 routed semantic-command kernel: one core-owned
   runtime namespace and mounted/time/work-sequence value authority; narrow
   host-neutral command/event vocabulary; checked open widget event bridge and
@@ -41,8 +52,8 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   route snapshot and phases, propagation/default controls, widget mutation and
   invalidation, collected outputs, semantic default, admission/poison/commit,
   and causal links into later actions and delegated commands. All 36 M4C1 rows
-  are `proof-complete`; M4C2–M4D3 and M5 semantic mapping remain blocked, and M4
-  remains incomplete pending later slices.
+  are `owner-accepted`; M4C2 is queued, M4C3–M4D3 and M5 semantic mapping remain
+  blocked, and M4 remains incomplete pending later slices.
 - Owner-accepted the corrected M4C0 documentation and conformance authority,
   made its migration proofs independently closable by their assigned slices,
   reserved `ACCESS-*` for M5 semantic resolution, and at that M4C0 head queued
@@ -53,7 +64,7 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 - Assigned every normative M4 matrix row a permanent unique ID, one primary
   delivery slice, explicit positive/negative/trace proof ownership, an exact
   status, and an M4 gate; accepted M4B rows are `owner-accepted`, while future
-  M4C/M4D rows remain `blocked`.
+  M4C/M4D rows remain `blocked` until their owning slices pass acceptance.
 - Split routing, surface, pointer, modality, automation, accessibility, logical
   scrolling, and trace aggregates across M4C1–M4D3 at the documentation-only
   M4C0 head. M4 remains incomplete.

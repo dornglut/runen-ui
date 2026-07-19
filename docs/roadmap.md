@@ -2,7 +2,7 @@
 
 > **Category: Current contract**
 
-This roadmap is the gated execution authority from the current headless proof to a reviewed production release. A milestone is complete only when its behavioral exit criteria pass; types, documents, or isolated proofs are not completion.
+This roadmap is the gated execution authority from the current headless proof to a reviewed production release. A milestone is complete only when its behavioral exit criteria pass; types, documents, or isolated proofs are not completion. Volatile branch, head, pull-request, blocker, and next-action state is owned by the [work-tracking system](work-tracking.md), not by this roadmap.
 
 ## Status legend
 
@@ -284,12 +284,11 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Next slice:** M4C1 is implemented and under owner review; no later slice is unblocked.
+**Next slice:** M4C1 is complete, owner-accepted, and merged; M4C2 is queued after the governance and behavior-preserving decomposition gates.
 
 #### M4C1 — Routed semantic-command kernel
 
-**Status:** `active`; implementation and corrected proof complete at this exact
-branch head, pending owner acceptance and merge.
+**Status:** `complete`; owner-accepted and squash-merged in PR #77.
 
 **Goal:** Implement the shared runtime namespace, core-owned protocol identity
 values, one immutable routed semantic-command transaction, exact admission and
@@ -307,11 +306,12 @@ accessibility resolution; export or replay.
 
 **Proof ownership:** Public core/runtime API proofs, downstream routed-widget
 conformance, Counter programmatic activation, rejection/admission boundaries,
-slice-local causal trace, stable/MSRV validation, and exact-head CI.
+slice-local causal trace, stable/MSRV validation, exact-head CI, owner review,
+and merge.
 
 **Exit criteria:** One queued non-reentrant routed command path exists, all M4C1
-rows are proof-complete at the exact head, and no direct activation authority
-survives outside explicitly bounded focus-only transition helpers.
+rows are owner-accepted, and no direct activation authority survives outside
+explicitly bounded focus-only transition helpers.
 
 **Implementation record:** One shared core-owned runtime namespace now backs
 mounted and semantic identities; core owns the opaque mounted/time/sequence
@@ -322,21 +322,28 @@ control, conservative maximum-safe admission, ordered commit, semantic
 activation, route-only commands, structured routed-integrity diagnosis, and the
 M4C1 causal graph. Submission rejection recovers exact inputs without work/trace
 sequence consumption or a trace record. Direct runtime/pointer/keyboard
-activation authority is removed;
-Counter and a genuine downstream mapped event widget use public command APIs.
-All 36 corrected M4C1 rows are `proof-complete`, pending owner review and merge.
+activation authority is removed; Counter and a genuine downstream mapped event
+widget use public command APIs. All 36 corrected M4C1 rows are `owner-accepted`.
 
-**Next unblocked slice:** None. M4C2 remains blocked until M4C1 owner acceptance
-and merge.
+**Completion record:** The accepted feature head
+`cb3c7c139304231ba3b636cf53951507f348d485` passed canonical exact-head CI and
+was owner-accepted. PR #77 was squash-merged on 2026-07-19 as
+`44ceee29c73cea1237fefbd30db4baf2cd97b93d`.
+
+**Next unblocked slice:** M4C2 is queued after the governance closure and
+required behavior-preserving runtime/trace/surface decomposition are accepted
+and merged.
 
 #### M4C2 — Displayed-generation surface context
 
-**Status:** `blocked` pending M4C1 acceptance.
+**Status:** `queued` after the governance and behavior-preserving decomposition gates.
 
 **Goal:** Bind neutral input targeting to runtime-issued logical surface,
 coordinate revision, and exact retained displayed hit-test generation.
 
-**Dependencies:** Accepted and merged M4C1 shared namespace and routing kernel.
+**Dependencies:** Accepted and merged M4C1 shared namespace and routing kernel;
+accepted governance/work-tracking closure; accepted behavior-preserving runtime,
+trace, and surface authority decomposition.
 
 **Included work:** `SurfaceId`, `SurfaceInputContext`, current/previous and
 configurable bounded retention, exact historical targeting, and retired,

@@ -9,14 +9,16 @@ defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-run
 defines mounted ownership and reconciliation; accepted
 [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines application
 work and scheduling; M4B is implemented, owner-accepted, and squash-merged.
-M4C1 is implementation- and corrected-proof-complete at this branch head,
-pending owner acceptance and merge. Surface input through trace export/replay remains later
-blocked M4 scope. The
-accepted
+M4C1 is complete, owner-accepted, and squash-merged in PR #77. M4C2 is queued
+after the governance and required behavior-preserving runtime/trace/surface
+decomposition gates; M4C3–M4D3 remain blocked in sequence. M4 is active and
+incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
 implemented public API until each slice is accepted. The
-[M4 conformance matrix](m4-conformance-matrix.md) owns observable acceptance.
+[M4 conformance matrix](m4-conformance-matrix.md) owns observable acceptance, and
+[work tracking](../work-tracking.md) owns volatile branch, head, blocker, and
+next-action state.
 
 ## Ownership and inventory
 

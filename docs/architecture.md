@@ -40,10 +40,11 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
-M4A is complete. M4B is complete, owner-accepted, and squash-merged. M4C0 is
-complete, owner-accepted, and merged. M4C1 implementation and corrected proof
-are complete pending owner acceptance and merge. M4C2–M4C5 and M4D1–M4D3 remain
-blocked in sequence; therefore the target M4 pipeline is not complete.
+M4A, M4B, M4C0, and M4C1 are complete. M4C1 is owner-accepted and
+squash-merged in PR #77. M4C2 is queued after the governance and required
+behavior-preserving runtime/trace/surface decomposition gates; M4C3–M4C5 and
+M4D1–M4D3 remain blocked in sequence. The target M4 pipeline is therefore active
+and incomplete.
 
 ```text
 Application-owned State + Action
@@ -112,12 +113,13 @@ contract, one ordered transaction planner, state-current application and
 mounted subscription reconciliation, generational tasks/timers/host work,
 four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
 complete per-family causal scheduler trace proofs. The exact-target routed
-semantic-command kernel is implemented through M4C1; displayed-generation
-surface context, pointer, focus, keyboard/text/IME, and source-specific target
-resolution remain blocked M4C2–M4C5 target architecture. Trace-v2
-normalization/export/replay remains unimplemented M4D target architecture.
-See the [public API contract](architecture/public-api.md) and
-[ADR 0003](adr/0003-extensible-view-widget-component-protocol.md).
+semantic-command kernel is accepted through M4C1; displayed-generation surface
+context, pointer, focus, keyboard/text/IME, and source-specific target resolution
+remain unimplemented M4C2–M4C5 target architecture. Trace-v2 normalization,
+export, and replay remain unimplemented M4D target architecture. See the
+[public API contract](architecture/public-api.md),
+[ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
+[work-tracking contract](work-tracking.md).
 
 ## Ownership rules
 
@@ -294,7 +296,7 @@ Interaction-state recipes wait for mounted hover, pressed, focus, and disabled s
 
 RunenUI will use a mature text stack behind RunenUI-owned contracts; it will not implement Unicode shaping from scratch. Production text includes fallback, shaping, bidi, line breaking, wrapping, baselines, editing, selection, caret, clipboard, IME, and accessible text ranges.
 
-Accessibility is mandatory for production controls. Semantics are renderer-independent and include stable identity, role, name, state, values, relationships, actions, bounds, and text ranges. Desktop platform bridges consume this semantic product.
+Accessibility is mandatory for production controls. Semantics include stable identity, roles, labels, values, relationships, actions, bounds, hidden/inert state, and text ranges where relevant. Platform adapters such as AccessKit map from the semantic tree; renderer output is not the accessibility model.
 
 ## Hosts, surfaces, and renderers
 
@@ -331,16 +333,17 @@ surface.
 The View/Widget/type-erasure protocol and mounted reconciliation/storage
 decisions are accepted in ADR 0003 and ADR 0004. Event routing/commands and
 effects/scheduling/trace are accepted in ADR 0005 and ADR 0006 and are the active
-M4 implementation authorities. The current implementation contains only their
-bounded queue, pump, proof-activation, terminal/shutdown, and trace foundation;
-every remaining normative M4 requirement remains an implementation and
-completion gate. Public
-proof requirements are fixed in the M4 conformance matrix and directional-focus
-corpus.
+M4 implementation authorities. The current implementation contains their
+accepted queue, scheduler, routed semantic-command, terminal/shutdown, and
+in-memory trace foundations; every remaining normative M4 requirement remains an
+implementation and completion gate. Public proof requirements are fixed in the
+M4 conformance matrix and directional-focus corpus.
 
 The following later choices still require dedicated analysis and review:
 standard layout algorithm, production text stack, conventional renderer, crate
 extraction points, unsafe policy for host/backend crates, animation policy beyond
 the M4 deterministic clock, and semver strategy for extensible enums and traits.
 
-See the [roadmap](roadmap.md) for dependency gates and the [feature/support matrix](feature-support-matrix.md) for current coverage.
+See the [roadmap](roadmap.md) for dependency gates, the
+[feature/support matrix](feature-support-matrix.md) for current coverage, and
+[work tracking](work-tracking.md) for volatile execution state.

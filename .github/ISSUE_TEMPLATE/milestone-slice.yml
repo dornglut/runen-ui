@@ -1,0 +1,91 @@
+name: Milestone slice
+description: Track one accepted roadmap and conformance-matrix delivery slice.
+title: "[M?] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use one issue per delivery slice. Keep permanent behavioral requirements in the conformance matrix and volatile execution state here.
+  - type: textarea
+    id: authority
+    attributes:
+      label: Authority documents
+      description: Link the governing ADRs, charter, matrix, roadmap, and stable architecture contracts.
+    validations:
+      required: true
+  - type: input
+    id: prerequisite
+    attributes:
+      label: Exact prerequisite
+      description: Name the accepted prerequisite milestone or slice.
+    validations:
+      required: true
+  - type: input
+    id: base
+    attributes:
+      label: Exact accepted base SHA
+      description: Use the accepted master SHA, never an unmerged feature head.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Link blocking issues and accepted prerequisite PRs.
+    validations:
+      required: true
+  - type: textarea
+    id: matrix
+    attributes:
+      label: Included matrix rows
+      description: Add checkboxes for the permanent IDs owned by this slice.
+    validations:
+      required: true
+  - type: textarea
+    id: included
+    attributes:
+      label: Included work
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Explicit non-goals
+    validations:
+      required: true
+  - type: textarea
+    id: proofs
+    attributes:
+      label: Positive, negative, and trace proof owners
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation commands and audits
+    validations:
+      required: true
+  - type: input
+    id: branch
+    attributes:
+      label: Target branch
+    validations:
+      required: true
+  - type: input
+    id: pr_title
+    attributes:
+      label: Target draft PR title
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current head, blockers, and acceptance state
+    validations:
+      required: true
+  - type: textarea
+    id: next
+    attributes:
+      label: Next unblocked issue
+    validations:
+      required: true

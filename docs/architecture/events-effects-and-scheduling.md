@@ -8,28 +8,30 @@ facts from the accepted implementation contracts in
 [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md). The normative proof
 inventory is the [M4 conformance matrix](m4-conformance-matrix.md), and the
 accepted [M4C delivery charter](m4c-delivery-and-routed-transaction-charter.md)
-owns implementation boundaries and sequence. Acceptance
-authorizes implementation but does not make any target implemented; support
-exists only after its public behavioral proofs pass.
+owns implementation boundaries and sequence. Acceptance authorizes
+implementation but does not make any target implemented; support exists only
+after its public behavioral proofs pass. Volatile branch, head, blocker, and
+next-action state is owned by the [work-tracking system](../work-tracking.md).
 
 ## Accepted delivery sequence
 
 ```text
 M4B   deterministic scheduler and application work (complete and accepted)
-M4C0  conformance ownership and decision closure (documentation only)
-M4C1  routed semantic-command kernel
-M4C2  displayed-generation surface context
-M4C3  pointer lifecycle
-M4C4  focus scopes and modality
-M4C5  keyboard, text, IME, automation, and M4C closure
-M4D1  complete trace schema
-M4D2  export and sink
-M4D3  replay and milestone closure
+M4C0  conformance ownership and decision closure (complete and accepted)
+M4C1  routed semantic-command kernel (complete and accepted)
+M4C2  displayed-generation surface context (queued after prerequisite decomposition)
+M4C3  pointer lifecycle (blocked by M4C2)
+M4C4  focus scopes and modality (blocked by M4C3)
+M4C5  keyboard, text, IME, automation, and M4C closure (blocked by M4C4)
+M4D1  complete trace schema (blocked by M4C5)
+M4D2  export and sink (blocked by M4D1)
+M4D3  replay and milestone closure (blocked by M4D2)
 ```
 
-M4C1 is implementation- and corrected-proof-complete at this branch head,
-pending owner acceptance and merge. M4C2–M4D3 remain blocked in sequence. M4B's
-implemented live-only producer authority remains unchanged.
+M4C1 is owner-accepted and squash-merged in PR #77. M4C2 is queued after the
+governance and behavior-preserving runtime/trace/surface decomposition gates.
+M4C3–M4D3 remain blocked in sequence. M4B's implemented live-only producer
+authority remains unchanged, and M4 is active and incomplete.
 
 ## Current application-work and scheduler implementation
 
@@ -252,7 +254,7 @@ host capabilities.
 One lock-protected state machine owns each live response generation. Registration
 inserts `Open`; successful detached acceptance changes `Open -> DetachedQueued`;
 successful direct acceptance changes `Open -> DirectClaimed`. Full detached
-ingress leaves `Open` for exact retry. Cancellation, replacement, owner
+submission leaves `Open` for exact retry. Cancellation, replacement, owner
 revocation, completion, terminal closure, and shutdown remove the generation's
 retained response slot and any queued payload. No `Cancelled` tombstone is
 retained. A missing slot is stale authority, and competing or late completion
@@ -391,9 +393,10 @@ outcome authority; `PumpReport` remains aggregate.
 ## Ownership boundaries
 
 - `runenui_core` owns host-neutral authored/downstream protocols, including the
-  opaque mounted/surface ID value types, events/commands, action mapping,
-  `EventContext`, `UiApp`, `HostProtocol`, `WorkKey`, and effect/subscription
-  descriptions. Hidden construction seams contain no live state authority.
+  opaque mounted identity values and later surface ID value types, events/commands,
+  action mapping, `EventContext`, `UiApp`, `HostProtocol`, `WorkKey`, and
+  effect/subscription descriptions. Hidden construction seams contain no live
+  state authority.
 - `runenui_runtime` owns routing, mounted interaction state, current proof focus,
   sequenced work allocation, effects, scheduler, clock/limits, lifecycle cancellation,
   wake/redraw state, poisoning, and trace.
@@ -419,9 +422,10 @@ the accepted M4C delivery charter is implementation/delivery authority, and the
 [M4 conformance matrix](m4-conformance-matrix.md) is observable acceptance
 authority.
 
-M4C1 implements and proves its corrected 36-row exact-target command slice but remains
-pending owner acceptance and merge. M4 remains incomplete while M4C2–M4D3 and
-the other milestone gates are blocked.
+M4C1 is complete, owner-accepted, and squash-merged in PR #77. M4C2 is queued
+after the governance and required behavior-preserving runtime/trace/surface
+decomposition gates. M4C3–M4D3 remain blocked in sequence, and M4 remains active
+and incomplete.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control

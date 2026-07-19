@@ -6,11 +6,12 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M4A and M4B are complete. M4C0 documentation/conformance
-alignment is complete and owner-accepted. M4C1 implementation and its corrected
-36-row proof package are complete at this exact head, pending owner acceptance
-and merge. M4C2–M4C5 and M4D1–M4D3 remain blocked in sequence, and M4 is not
-complete. See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
+Milestone status: M4A, M4B, M4C0, and M4C1 are complete. M4C1 is
+owner-accepted and squash-merged in PR #77. M4C2 is queued after the required
+governance closure and behavior-preserving runtime/trace/surface decomposition;
+M4C3–M4C5 and M4D1–M4D3 remain blocked in sequence. M4 is active and incomplete.
+See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
+[work-tracking contract](docs/work-tracking.md),
 [accepted M4C delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md),
 and [M4 conformance matrix](docs/architecture/m4-conformance-matrix.md).
 
@@ -114,6 +115,7 @@ renderer-neutral paint and hit-test scenes begin in M6.
 - [Current status](docs/status-map.md)
 - [Feature and support matrix](docs/feature-support-matrix.md)
 - [Production roadmap](docs/roadmap.md)
+- [Work tracking](docs/work-tracking.md)
 - [Architecture](docs/architecture.md)
 - [Documentation retention and disposition](docs/documentation-retention-plan.md)
 - [Validation](docs/tooling/validation.md)
@@ -122,7 +124,7 @@ renderer-neutral paint and hit-test scenes begin in M6.
 - [API stability](docs/api-stability.md)
 - [Release policy](docs/release-policy.md)
 
-When sources disagree, the current status, support matrix, roadmap, architecture, and accepted ADRs take precedence over older incremental design documents. Historical material is not implementation authority.
+When sources disagree, accepted ADR behavior, the active execution charter, the conformance matrix, stable architecture contracts, current implementation/tests, and current status records take precedence over pull-request descriptions and historical material. See [Work tracking](docs/work-tracking.md) for the full authority split and pickup sequence.
 
 ## Current API proof
 

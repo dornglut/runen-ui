@@ -37,8 +37,8 @@ runenui_core <- runenui_runtime <- counter
 `xtask` is repository tooling and has no framework dependency.
 
 The implemented M4 ownership direction preserves this graph. `runenui_core` owns
-only public host-neutral protocol/value definitions: opaque mounted/surface
-identities, events/commands, action mapping, transaction-scoped event/work
+only public host-neutral protocol/value definitions: opaque mounted and later
+surface identities, events/commands, action mapping, transaction-scoped event/work
 contexts, `UiApp`, `HostProtocol`, `WorkKey`, and effect/subscription
 descriptions. `runenui_runtime` remains the sole live authority for namespace
 creation, arenas/topology, validation, snapshots/routes, interaction mutation,
@@ -47,14 +47,15 @@ subscriptions, host requests, wake/redraw, trace, and shutdown. Completion
 ingress owns only live `Starting`/`Running` generations; centralized revocation
 removes registry and retained producer state before lifecycle callbacks. The
 current implementation includes the application-work/deterministic-scheduler
-slice and the exact-target routed semantic-command kernel.
+slice and the accepted exact-target routed semantic-command kernel.
 Hidden safe core construction seams do not own live state or bypass runtime validation.
 M4 adds no third crate.
 
-That corrected M4B ownership slice is complete, owner-accepted, and
-squash-merged. M4C0 is complete and owner-accepted. M4C1 implementation and
-corrected proof are complete pending owner acceptance and merge; M4C2–M4D3 remain blocked,
-and no additional crate boundary is implied by those slices.
+M4B, M4C0, and M4C1 are complete and owner-accepted. M4C1 was squash-merged in
+PR #77. M4C2 is queued after the governance closure and required behavior-
+preserving runtime/trace/surface decomposition; M4C3–M4D3 remain blocked, and no
+additional crate boundary is implied by those slices. Exact execution state is
+owned by the [work-tracking system](../work-tracking.md).
 
 Within the crates, built-in authoring is separate from the public element/widget
 protocol. Mounted storage is divided into arena, identity, node, capability
@@ -73,6 +74,11 @@ invokes the immutable route, `defaults.rs` resolves semantic default,
 `commit.rs` applies the admitted transaction, and `failure.rs` records exact
 processing/integrity outcomes. Speculative milestone-named modules
 are not part of the workspace structure.
+
+The accepted pre-M4C2 decomposition may split broad runtime, trace, and surface
+files into internal modules, but it must preserve the same two production crates,
+public authority, queue, trace store, scheduler ordering, and matrix state. File
+size alone is not a crate boundary or a valid architecture decision.
 
 ## Extraction rule
 
@@ -113,7 +119,8 @@ Important direction rules remain:
 - M10 introduces host/platform/backend crates only with real implementations.
 - M11 may add the facade crate after the lower-level public surface is ready to stabilize.
 
-See the [production roadmap](../roadmap.md) for the authoritative sequence.
+See the [production roadmap](../roadmap.md) for the authoritative sequence and
+[work tracking](../work-tracking.md) for volatile execution state.
 
 The current public-surface ownership and M1/M2 construction restrictions are
 recorded in the [public API contract](public-api.md).
