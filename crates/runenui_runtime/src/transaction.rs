@@ -94,139 +94,16 @@ impl<Action, Protocol: HostProtocol> TransactionLedger<Action, Protocol> {
     }
 }
 
-pub(crate) struct PlannedTransaction<Action, Protocol: HostProtocol> {
-    pub(crate) owner: WorkOwner,
-    pub(crate) invalidated: Vec<WorkGeneration>,
-    pub(crate) starts: Vec<PlannedStart<Action, Protocol>>,
-    pub(crate) outputs: Vec<PlannedOutput<Action>>,
-    pub(crate) next_generation: Option<core::num::NonZeroU64>,
-    pub(crate) semantic_events: Vec<PlannedWorkSemanticEvent>,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PlannedWorkSemanticEvent {
     Requested(WorkGeneration),
     Invalidated(WorkGeneration),
 }
 
-pub(crate) struct PlannedStart<Action, Protocol: HostProtocol> {
-    pub(crate) generation: WorkGeneration,
-    pub(crate) family: WorkFamily,
-    pub(crate) key: Option<WorkKey>,
-    pub(crate) effect: Effect<Action, Protocol>,
-}
-
 pub(crate) enum PlannedOutput<Action> {
     Action(Action),
     Start(WorkGeneration),
     Redraw,
-}
-
-#[derive(Clone, Eq, Hash, PartialEq)]
-struct ProvisionalKey {
-    family: WorkFamily,
-    key: WorkKey,
-}
-
-impl<Action, Protocol: HostProtocol> PlannedTransaction<Action, Protocol> {
-    pub(crate) fn plan_with_additional_queue(
-        owner: WorkOwner,
-        ledger: TransactionLedger<Action, Protocol>,
-        work: &WorkRegistry<Action, Protocol>,
-        queue: &WorkQueue<Action>,
-        additional_queue_count: usize,
-    ) -> Result<Self, TransactionPlanError> {
-        let outputs = ledger.into_outputs();
-        let start_count = outputs
-            .iter()
-            .filter(|effect| effect_family(effect).is_some())
-            .count();
-        let (generations, next_generation) = work.preview_generations(start_count)?;
-        let mut generations = generations.into_iter();
-        let mut provisional = HashMap::<ProvisionalKey, WorkGeneration>::new();
-        let mut invalidated_set = HashSet::new();
-        let mut invalidated = Vec::new();
-        let mut starts = Vec::with_capacity(start_count);
-        let mut planned_outputs = Vec::with_capacity(outputs.len());
-        let mut semantic_events = Vec::with_capacity(start_count.saturating_mul(2));
-
-        for effect in outputs {
-            if let Effect::Cancel { family, key } = effect {
-                let family = family.into();
-                let identity = ProvisionalKey { family, key };
-                let target = provisional
-                    .get(&identity)
-                    .copied()
-                    .or_else(|| work.current(&owner, family, &identity.key));
-                if let Some(target) = target
-                    && insert_invalidation(target, &mut invalidated_set, &mut invalidated)
-                {
-                    semantic_events.push(PlannedWorkSemanticEvent::Invalidated(target));
-                }
-                continue;
-            }
-            if let Effect::Action(action) = effect {
-                planned_outputs.push(PlannedOutput::Action(action));
-                continue;
-            }
-            if matches!(effect, Effect::Redraw) {
-                planned_outputs.push(PlannedOutput::Redraw);
-                continue;
-            }
-
-            let generation = generations
-                .next()
-                .unwrap_or_else(|| unreachable!("start count and reservation agree"));
-            let family = effect_family(&effect)
-                .unwrap_or_else(|| unreachable!("non-control output has a work family"));
-            let key = effect_key(&effect).cloned();
-            if let Some(key) = key.as_ref() {
-                let identity = ProvisionalKey {
-                    family,
-                    key: key.clone(),
-                };
-                let replaced = provisional
-                    .get(&identity)
-                    .copied()
-                    .or_else(|| work.current(&owner, family, key));
-                if let Some(replaced) = replaced
-                    && insert_invalidation(replaced, &mut invalidated_set, &mut invalidated)
-                {
-                    semantic_events.push(PlannedWorkSemanticEvent::Invalidated(replaced));
-                }
-                provisional.insert(identity, generation);
-            }
-            semantic_events.push(PlannedWorkSemanticEvent::Requested(generation));
-            starts.push(PlannedStart {
-                generation,
-                family,
-                key,
-                effect,
-            });
-            planned_outputs.push(PlannedOutput::Start(generation));
-        }
-
-        let sequenced_count = invalidated
-            .len()
-            .checked_add(
-                planned_outputs
-                    .iter()
-                    .filter(|output| !matches!(output, PlannedOutput::Redraw))
-                    .count(),
-            )
-            .and_then(|count| count.checked_add(additional_queue_count))
-            .ok_or(TransactionPlanError::QueueFull)?;
-        queue.preflight_commit(sequenced_count)?;
-        work.preflight_records(&invalidated_set, &starts)?;
-        Ok(Self {
-            owner,
-            invalidated,
-            starts,
-            outputs: planned_outputs,
-            next_generation,
-            semantic_events,
-        })
-    }
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]

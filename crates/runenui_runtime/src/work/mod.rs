@@ -183,17 +183,6 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
         self.next_generation = NonZeroU64::new(next);
     }
 
-    pub(crate) fn preflight_records(
-        &self,
-        invalidated: &HashSet<WorkGeneration>,
-        starts: &[crate::transaction::PlannedStart<Action, Protocol>],
-    ) -> Result<(), RegistryInsertError> {
-        self.preflight_planned_families(
-            invalidated,
-            &starts.iter().map(|start| (start.generation, start.family)),
-        )
-    }
-
     pub(crate) fn preflight_planned_families(
         &self,
         invalidated: &HashSet<WorkGeneration>,

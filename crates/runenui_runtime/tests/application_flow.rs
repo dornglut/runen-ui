@@ -1,10 +1,11 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Element, NoHostProtocol, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
-    WidgetActivationOutput, WidgetSemanticProof, button, children, column, text,
+    CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp, View, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetSemanticProof, button, children, column,
+    text,
 };
-use runenui_runtime::{ActivationResult, AppRuntime, PumpBudget, TraceRecordKind};
+use runenui_runtime::{AppRuntime, PumpBudget, TraceRecordKind};
 
 #[derive(Debug, Eq, PartialEq)]
 enum Action {
@@ -69,22 +70,36 @@ fn queued_action_reconciles_without_replacing_compatible_nodes() {
 }
 
 #[test]
-fn mounted_activation_queues_fresh_non_clone_actions() {
+fn routed_activation_queues_fresh_non_clone_actions() {
     let mut runtime = AppRuntime::<App>::mount(0);
-    assert!(matches!(
-        runtime.activate("increment"),
-        ActivationResult::Queued(_)
-    ));
-    assert!(matches!(
-        runtime.activate("increment"),
-        ActivationResult::Queued(_)
-    ));
+    let authored_id = runenui_core::ElementId::new("increment")
+        .unwrap_or_else(|_| unreachable!("the test identifier is valid"));
+    let target = runtime
+        .index()
+        .node_by_authored_id(&authored_id)
+        .unwrap_or_else(|| unreachable!("the increment node is mounted"))
+        .id()
+        .clone();
+    runtime
+        .submit_command(
+            target.clone(),
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     assert_eq!(runtime.state(), &0);
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(5, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(7, usize::MAX, usize::MAX, usize::MAX))
             .processed_envelopes(),
-        5
+        7
     );
     assert_eq!(runtime.state(), &2);
 }
@@ -133,16 +148,15 @@ impl UiApp for NonCloneApp {
 fn non_clone_actions_remain_supported() {
     let mut runtime = AppRuntime::<NonCloneApp>::mount(Vec::new());
     let id = runtime.index().nodes()[0].id().clone();
-    assert!(matches!(
-        runtime.activate_node(&id),
-        ActivationResult::Queued(_)
-    ));
+    runtime
+        .submit_command(id, SemanticCommand::Activate, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     assert!(runtime.state().is_empty());
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX))
             .processed_envelopes(),
-        2
+        3
     );
     assert_eq!(runtime.state(), &["owned"]);
 }

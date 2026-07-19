@@ -1,4 +1,54 @@
 //! Genuine downstream consumer of only `RunenUI`'s public APIs.
+//!
+//! Routed command authority remains inaccessible to this downstream crate:
+//!
+//! ```compile_fail
+//! use runenui_core::{CommandOrigin, EventSource};
+//! let _ = CommandOrigin::delegated(EventSource::Controller);
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_core::EventContext;
+//! let _ = EventContext::<()>::new;
+//! let _ = EventContext::<()>::into_output;
+//! ```
+//!
+//! A widget can delegate only to its current callback target because the
+//! public output operation accepts no target argument:
+//!
+//! ```compile_fail
+//! use runenui_core::{EventContext, MountedNodeId, SemanticCommand};
+//! fn arbitrary_target(
+//!     context: &mut EventContext<'_, ()>,
+//!     target: MountedNodeId,
+//! ) {
+//!     context.emit_command(target, SemanticCommand::OpenMenu);
+//! }
+//! ```
+//!
+//! Mounted identities expose no live runtime namespace extraction:
+//!
+//! ```compile_fail
+//! use runenui_core::MountedNodeId;
+//! fn extract_namespace(target: &MountedNodeId) {
+//!     let _ = target.namespace;
+//! }
+//! ```
+//!
+//! Downstream code has no runtime callback-injection entry point, even if it
+//! already holds ordinary public event borrows:
+//!
+//! ```compile_fail
+//! use runenui_core::{EventContext, UiApp, UiEvent};
+//! use runenui_runtime::AppRuntime;
+//! fn inject<App: UiApp>(
+//!     runtime: &mut AppRuntime<App>,
+//!     event: &UiEvent,
+//!     context: &mut EventContext<'_, App::Action>,
+//! ) {
+//!     runtime.invoke_event(event, context);
+//! }
+//! ```
 
 #![forbid(unsafe_code)]
 

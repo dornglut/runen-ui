@@ -3,6 +3,7 @@ use crate::element::{
     WidgetPaintProof, WidgetSemanticProof, WidgetStateTypeId, WidgetTypeId,
 };
 use crate::widget_erasure::{ErasedWidget, WidgetBridgeError};
+use crate::{EventContext, UiEvent, WidgetEventOutput};
 use crate::{
     SubscriptionSet, WidgetActivationContext, WidgetMountContext, WidgetUnmountContext,
     WidgetUpdateContext,
@@ -112,6 +113,20 @@ where
             });
         }
         Ok(())
+    }
+    fn event_bridge_matches(&self, state: &dyn Any) -> bool {
+        self.child.event_bridge_matches(state)
+    }
+    fn event(
+        &mut self,
+        state: &mut dyn Any,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ParentAction>,
+    ) -> Result<WidgetEventOutput, WidgetBridgeError> {
+        let mut child_context = context.mapped_child();
+        let output = self.child.event(state, event, &mut child_context)?;
+        context.absorb_mapped(child_context.into_output(), &self.mapper);
+        Ok(output)
     }
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError> {
         self.child.activation(state)
@@ -226,7 +241,7 @@ parent_context_impl!(WidgetMountContext);
 parent_context_impl!(WidgetUpdateContext);
 parent_context_impl!(WidgetActivationContext);
 
-fn map_output<ChildAction: 'static, ParentAction: 'static>(
+pub fn map_output<ChildAction: 'static, ParentAction: 'static>(
     output: MountedEffect<ChildAction>,
     mapper: &Rc<dyn Fn(ChildAction) -> ParentAction>,
 ) -> MountedEffect<ParentAction> {

@@ -34,6 +34,64 @@
 //! };
 //! ```
 //!
+//! Routed protocol identities, time, sequences, origins, payloads, and callback
+//! contexts expose no public field-level construction authority:
+//!
+//! ```compile_fail
+//! use runenui_core::MountedNodeId;
+//! let _ = MountedNodeId { slot: 1, generation: 1 };
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_core::MonotonicInstant;
+//! let _ = MonotonicInstant(1);
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_core::WorkSequence;
+//! let _ = WorkSequence(1);
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_core::{CommandDerivation, CommandOrigin, EventSource};
+//! let _ = CommandOrigin {
+//!     source: EventSource::Automation,
+//!     derivation: CommandDerivation::Delegated,
+//! };
+//! ```
+//!
+//! Delegated origins are issued only by the checked core event bridge:
+//!
+//! ```compile_fail
+//! use runenui_core::{CommandOrigin, EventSource};
+//! let _ = CommandOrigin::delegated(EventSource::Automation);
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_core::{CommandOrigin, SemanticCommand, SemanticCommandEvent};
+//! let _ = SemanticCommandEvent {
+//!     command: SemanticCommand::Activate,
+//!     origin: CommandOrigin::programmatic(),
+//! };
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_core::EventContext;
+//! let _ = EventContext::<()> {};
+//! ```
+//!
+//! Event contexts cannot be constructed or consumed by downstream code:
+//!
+//! ```compile_fail
+//! use runenui_core::EventContext;
+//! let _ = EventContext::<()>::new;
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_core::EventContext;
+//! let _ = EventContext::<()>::into_output;
+//! ```
+//!
 //! Transient elements cannot execute mounted lifecycle or capabilities:
 //!
 //! ```compile_fail
@@ -96,9 +154,12 @@ mod builtins;
 mod computed_style;
 mod effects;
 mod element;
+mod event;
+mod event_context;
 mod identity;
 mod layout;
 pub mod prelude;
+mod runtime_protocol;
 mod style;
 mod style_resolution;
 mod style_tokens;
@@ -124,6 +185,11 @@ pub use element::{
     WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
     WidgetSemanticProof, WidgetStateTypeId, WidgetTextKind, WidgetTypeId,
 };
+pub use event::{
+    CommandDerivation, CommandOrigin, EventPhase, EventSource, SemanticCommand,
+    SemanticCommandEvent, UiEvent, WidgetEventOutput,
+};
+pub use event_context::EventContext;
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///
 /// This namespace is public only because core and runtime are separate Rust
@@ -132,6 +198,8 @@ pub use element::{
 #[doc(hidden)]
 pub mod __runtime {
     pub use crate::effects::{Effect, HostRequestEffect, MountedEffect};
+    pub use crate::event_context::{EventContextOutput, RoutedEventOutput};
+    pub use crate::runtime_protocol::RuntimeNamespace;
     pub use crate::subscription::{ErasedSendSubscriptionSource, Subscription, SubscriptionSource};
     pub use crate::widget_erasure::{
         ElementParts, ElementRuntimeParts, MountedWidget, MountedWidgetState, WidgetBridgeError,
@@ -142,6 +210,9 @@ pub mod __runtime {
 pub use identity::is_valid_identifier_literal;
 pub use identity::{ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey};
 pub use layout::{Axis, LayoutStyle};
+pub use runtime_protocol::{
+    MonotonicInstant, MonotonicTimeError, MountedNodeId, SemanticNodeId, WorkSequence,
+};
 pub use style::{
     Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,
     SpacingValue, StyleIntent, TokenId,

@@ -45,7 +45,7 @@ This vocabulary marks current and target terms explicitly. Target terms do not i
 | Runtime terminal state | Non-resettable running-but-inspectable state after work, reconciliation, or enabled-trace sequence exhaustion; it rejects new work and mutable callbacks until explicit shutdown closes the runtime. |
 | `TraceSequence` | Runtime-issued non-zero identity for a canonical trace record, beginning at 1 and never wrapping when tracing is enabled. |
 | Trace watermark | Exclusive `dropped_before_sequence`: `Some(S)` means every trace sequence less than `S` has been evicted from bounded retention. |
-| Bounded canonical trace | One retained record sequence for queue, activation, application/work transactions, scheduler checkpoints, wake/redraw, reconciliation/focus, terminal, cancellation, and shutdown; export/replay and full trace-v2 normalization remain M4D. |
+| Bounded canonical trace | One retained record sequence for accepted command routing, accepted-work processing rejection and routed integrity, queue, application/work transactions, scheduler checkpoints, wake/redraw, reconciliation/focus, terminal, cancellation, and shutdown; rejected submissions allocate no record or trace sequence, and export/replay and full trace-v2 normalization remain M4D. |
 | `TraceWorkIdentity` | Read-only application-or-mounted owner, family, exact private generation value, and optional authored key attached to scheduler work facts; it is diagnostic identity, not a runtime capability. |
 
 `on_press` was removed without an alias when `on_activate` became the authored
@@ -58,12 +58,14 @@ whitespace, and Unicode control characters while accepting ordinary Unicode.
 ## M4 contract terms
 
 These terms are fixed by accepted ADR 0005 and ADR 0006. Application-work and
-scheduler terms below are implemented by the application-work slice;
-routed-event terms remain M4C.
+scheduler terms below are implemented by M4B; exact-target semantic-command
+routing terms are implemented by M4C1; later surface/pointer/focus/text terms
+remain blocked.
 
 Milestone status is M4A complete; M4B complete, owner-accepted, and
-squash-merged; M4C0 documentation alignment implemented pending owner
-acceptance; and M4C1–M4D3 blocked in sequence. M4 is incomplete.
+squash-merged; M4C0 complete, owner-accepted, and merged; M4C1 implementation
+and corrected proof complete pending owner acceptance and merge; and M4C2–M4D3 blocked in
+sequence. M4 is incomplete.
 
 | Term | Meaning |
 |---|---|
@@ -74,6 +76,9 @@ acceptance; and M4C1–M4D3 blocked in sequence. M4 is incomplete.
 | `SurfaceId` | Opaque logical surface identity carried by M4 input/publication protocol even though only one surface exists until M10. |
 | `SurfaceInputContext` | Opaque runtime-issued runtime namespace, `SurfaceId`, coordinate-space revision, and exact displayed hit-test generation carried by ingress. Retained snapshots are interpreted exactly and unavailable input is never retargeted; same-runtime/surface terminal pointer integrity cleanup is separate from ordinary targeting. |
 | Semantic command | Device-independent focus, activation, cancellation, menu, context, or scroll intent shared by pointer/keyboard/controller/accessibility/automation/programmatic sources. |
+| Command origin | Source plus derivation facts: public ingress can create only a direct origin, while delegated derivation is runtime-derived solely from command output collected by the current routed callback. |
+| Submission rejection | Full, closed, terminal, foreign, stale, missing, work-sequence-exhausted, or trace-sequence-exhausted command ingress outcome that returns exact target/command/origin and consumes no queue slot, work sequence, trace sequence, trace record, callback, or wake authority. |
+| Routed integrity failure | Structured accepted-work diagnosis distinguishing broken topology, event-bridge mismatch, callback-bridge failure, output-allowance overflow, semantic-default failure, and commit-invariant failure while preserving causal command facts. |
 | Route-only semantic command | `CancelOrBack`, menu/context-menu, or logical-scroll command whose single normal route ends with no action/runtime mutation when unconsumed; delegation is explicit queued output. |
 | `PointerId` | Runtime-session identity for one active pointer stream; separate from optional device identity and mounted target identity. |
 | Pointer capture | Runtime-owned `PointerId -> MountedNodeId` routing override with staged transfer and deterministic release. |
@@ -102,6 +107,7 @@ acceptance; and M4C1–M4D3 blocked in sequence. M4 is incomplete.
 | Remaining pump budgets | Separate limits for cross-thread imports, local-task polls, and timer promotions; exhaustion preserves order, re-arms wake, and reports non-quiescent progress. |
 | Wake request | Coalesced host signal that runtime work remains, using explicit request/acknowledge/re-arm semantics; it does not imply redraw. |
 | Mandatory trace plan | Checked operation-specific exact or maximum record requirement admitted before the corresponding mutable scheduler boundary; capacity zero disables it behavior-neutrally. |
+| Conservative maximum-safe routed admission | M4C1 preflight that reserves the configured aggregate output allowance across every callback-accessible family plus queue, work, generation, reconciliation, and mandatory-trace authority before any callback; it may reject a callback that would emit nothing because callback output is not predicted. |
 | Redraw request | Independently coalesced dirty-publication signal with take/acknowledge generation; it does not own frame timing. |
 | Runtime limits | Configured waiting-envelope, transaction-output, per-family live-work, completion-ingress, and canonical-trace bounds with explicit full/closed outcomes and no silent accepted-work drop. |
 | Complete terminal integrity policy | Sequence exhaustion becomes terminal before mutation; an unrollbackable post-mutation transaction-capacity failure poisons the runtime, closes producers, and cancels queued/live work. |

@@ -7,9 +7,10 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
 Milestone status: M4A and M4B are complete. M4C0 documentation/conformance
-alignment is complete and owner-accepted. M4C1 is queued as the next
-implementation slice; M4C2–M4C5 and M4D1–M4D3 remain blocked in sequence, and
-M4 is not complete. See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
+alignment is complete and owner-accepted. M4C1 implementation and its corrected
+36-row proof package are complete at this exact head, pending owner acceptance
+and merge. M4C2–M4C5 and M4D1–M4D3 remain blocked in sequence, and M4 is not
+complete. See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
 [accepted M4C delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md),
 and [M4 conformance matrix](docs/architecture/m4-conformance-matrix.md).
 
@@ -30,6 +31,11 @@ The active workspace proves:
   unkeyed ordinal matching, retained local state/focus/interaction slots,
   deterministic mount/update/unmount/shutdown, stale/foreign target rejection,
   separate semantic identity, capability caches, and reconciliation reports;
+- core-owned opaque mounted/time/work-sequence protocol values plus a narrow
+  semantic-command event vocabulary, checked downstream event capability,
+  immutable capture/target/bubble routing, independent propagation/default
+  control, exact target/capacity rejection without sequence consumption,
+  structured routed-integrity diagnosis, and mapped non-`Clone` output;
 - the core-owned `UiApp` contract, ordered initial/update effects, declarative
   application and mounted subscriptions, keyed lifecycle work, typed host
   requests, local/send tasks, monotonic timers, and a deterministic four-budget
@@ -41,9 +47,10 @@ The active workspace proves:
   declaration evaluation, direct completion-to-action delivery, explicit send-
   subscription `Starting -> Running` start/sink outcomes, exact ownership
   recovery, and causal scheduler trace lineage;
-- deterministic queued application actions, an explicit bounded pump, mounted
-  proof activation, focus traversal, scheduler-aware bounded canonical tracing,
-  and mounted surface publication;
+- deterministic queued application actions and exact-target semantic commands,
+  routed `Activate` default and route-only cancel/menu/context commands, an
+  explicit bounded pump, focus traversal, scheduler-aware bounded canonical
+  tracing with routed causal parentage, and mounted surface publication;
 - typed style values, tokens, computed style, provenance, and diagnostics;
 - explicit layout constraints, a renderer-neutral measurement-provider seam,
   and separate one-query intrinsic/child-layout snapshots per publication;
@@ -56,9 +63,10 @@ The active workspace proves:
   and independently tested actual-execution phase reports;
 - a Counter application exercising the current public crates.
 
-Important limitations remain: input behavior is press-based and proof-level,
-text measurement is deterministic character counting, and routed events,
-pointer identity/capture, release-inside activation, complete routed events,
+Important limitations remain: physical input behavior is focus-only proof-level,
+text measurement is deterministic character counting, and surface-generation
+input context, pointer identity/capture/release-inside activation, focus scopes/
+modality, keyboard routing, text/IME, authored-ID automation resolution,
 complete trace v2 normalization, trace export/sinks/replay, production semantics/accessibility,
 paint/hit scenes, production layout/style/text, native hosts, renderer backends,
 and production controls are absent. The current runtime has one mounted root,

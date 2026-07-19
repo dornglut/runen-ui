@@ -31,7 +31,11 @@ impl<Action> MountedTree<Action> {
         }
         before_unmount(id);
         stats.unmounted_owners.push(id.clone());
-        let mismatch = if let Some(node) = self.arena.get_mut(id.slot, id.generation) {
+        let (slot, generation) = self
+            .runtime
+            .__runtime_mounted_parts(id)
+            .unwrap_or_else(|| unreachable!("unmount target belongs to mounted tree"));
+        let mismatch = if let Some(node) = self.arena.get_mut(slot as usize, generation) {
             let mut context = WidgetUnmountContext::__runtime_new(reason);
             state_is_corrupted(node) || node.widget.unmount(&mut node.state, &mut context).is_err()
         } else {
@@ -44,7 +48,7 @@ impl<Action> MountedTree<Action> {
                     path: path.to_owned(),
                 });
         }
-        if let Some(node) = self.arena.remove(id.slot, id.generation) {
+        if let Some(node) = self.arena.remove(slot as usize, generation) {
             drop(node);
             stats.unmounted += 1;
         }

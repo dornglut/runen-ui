@@ -113,6 +113,7 @@
 
 mod app;
 mod clock;
+mod command;
 mod completion;
 mod config;
 mod constraints;
@@ -134,8 +135,11 @@ mod transaction;
 mod wake;
 mod work;
 
-pub use app::{ActivationCapacity, ActivationCommit, ActivationResult, AppRuntime};
+pub use app::AppRuntime;
 pub use clock::{ManualClock, MonotonicClock, MonotonicInstant, MonotonicTimeError};
+pub use command::{
+    CommandSubmission, SubmitCommandError, SubmitCommandErrorKind, UnacceptedCommand,
+};
 pub use completion::{
     HostResponseCompletion, HostResponseCompletionError, SendTaskCompletion,
     SendTaskCompletionError, SendTaskExecutor, SendTaskJob, SendTaskStartError,
@@ -146,8 +150,8 @@ pub use constraints::{AxisConstraints, AxisLimit, LayoutConstraints};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
 pub use focus::{FocusState, FocusTargetResult};
 pub use input::{
-    InputEvent, InputIntent, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint,
-    LogicalPointError, PointerButton, PointerEvent, PointerPhase, resolve_pointer_event_target,
+    InputEvent, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint, LogicalPointError,
+    PointerButton, PointerEvent, PointerPhase, resolve_pointer_event_target,
     resolve_pointer_input_event_target,
 };
 pub use measurement::{
@@ -158,10 +162,7 @@ pub use mounted::{
     DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef, MountedNodeId, MountedNodeRef,
     MountedTreeIndex, SemanticNodeId,
 };
-pub use policy::{
-    InputEventResult, KeyboardActivationResult, KeyboardFocusResult, PointerActivationResult,
-    PointerFocusResult,
-};
+pub use policy::{KeyboardFocusResult, PointerFocusResult};
 pub use pump::{PumpBudget, PumpBudgetExhaustion, PumpOutcome, PumpReport};
 pub use queue::{SubmitActionError, SubmitActionErrorKind, SubmitActionResult, WorkSequence};
 pub use redraw::{RedrawAcknowledgeError, RedrawRequest};
@@ -176,7 +177,8 @@ pub use surface::{
     SurfaceLayoutReport, SurfaceNode, SurfacePhase, SurfacePhaseReport, SurfacePublication,
 };
 pub use trace::{
-    Trace, TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget,
+    Trace, TraceConfig, TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection,
+    TraceRoutedIntegrityFailure, TraceSequence, TraceTarget, TraceTargetRejection,
     TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
     TraceWorkStartRefusal,
 };

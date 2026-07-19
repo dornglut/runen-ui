@@ -9,9 +9,10 @@ mod app;
 mod ui;
 
 use app::{Counter, CounterApp, WIN_COUNT};
-use runenui_core::{LogicalLength, StyleTokens};
+use runenui_core::{CommandOrigin, ElementId, LogicalLength, SemanticCommand, StyleTokens};
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, render_debug_surface_frame,
+    AppRuntime, CommandSubmission, LogicalSize, MountedNodeId, PumpBudget, SubmitCommandError,
+    SurfaceBuildContext, render_debug_surface_frame,
 };
 
 const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(
@@ -46,14 +47,36 @@ fn settle_initial_work(runtime: &mut AppRuntime<CounterApp>) {
     ));
 }
 
+fn target_by_authored_id(runtime: &mut AppRuntime<CounterApp>, authored_id: &str) -> MountedNodeId {
+    let authored_id = ElementId::new(authored_id).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .node_by_authored_id(&authored_id)
+        .unwrap_or_else(|| unreachable!("counter command target is mounted"))
+        .id()
+        .clone()
+}
+
+fn submit_activate(
+    runtime: &mut AppRuntime<CounterApp>,
+    target: MountedNodeId,
+) -> Result<CommandSubmission, SubmitCommandError> {
+    runtime.submit_command(
+        target,
+        SemanticCommand::Activate,
+        CommandOrigin::programmatic(),
+    )
+}
+
 fn main() {
     let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
     settle_initial_work(&mut runtime);
 
     print_debug_surface("counter.surface.initial", &mut runtime);
 
+    let increment = target_by_authored_id(&mut runtime, "counter.increment");
     for _ in 0..WIN_COUNT {
-        runtime.activate("counter.increment");
+        submit_activate(&mut runtime, increment.clone()).unwrap_or_else(|_| unreachable!());
     }
     runtime.pump(PumpBudget::new(
         WIN_COUNT as usize,
@@ -65,8 +88,9 @@ fn main() {
 
     print_debug_surface("counter.surface.win", &mut runtime);
 
-    runtime.activate("counter.reset");
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let reset = target_by_authored_id(&mut runtime, "counter.reset");
+    submit_activate(&mut runtime, reset).unwrap_or_else(|_| unreachable!());
+    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
 
     print_debug_surface("counter.surface.reset", &mut runtime);
 
@@ -80,12 +104,12 @@ fn main() {
 mod tests {
     use runenui_core::{LogicalLength, StyleTokens};
     use runenui_runtime::{
-        ActivationResult, AppRuntime, FocusTargetResult, LogicalSize, PumpBudget, RuntimeStatus,
-        RuntimeTerminalReason, SurfaceBuildContext,
+        AppRuntime, FocusTargetResult, LogicalSize, PumpBudget, RuntimeStatus,
+        RuntimeTerminalReason, SubmitCommandErrorKind, SurfaceBuildContext,
     };
 
     use crate::app::{Counter, CounterAction, CounterApp, WIN_COUNT};
-    use crate::{debug_surface, settle_initial_work};
+    use crate::{debug_surface, settle_initial_work, submit_activate, target_by_authored_id};
 
     fn mounted_counter(counter: Counter) -> AppRuntime<CounterApp> {
         let mut runtime = AppRuntime::<CounterApp>::mount(counter);
@@ -131,12 +155,11 @@ mod tests {
     fn reset_returns_to_counter_screen() {
         let mut runtime = mounted_counter(Counter { count: 10 });
 
-        assert!(matches!(
-            runtime.activate("counter.reset"),
-            ActivationResult::Queued(_)
-        ));
+        let reset = target_by_authored_id(&mut runtime, "counter.reset");
+        submit_activate(&mut runtime, reset)
+            .unwrap_or_else(|_| unreachable!("the exact live reset target is accepted"));
         assert_eq!(runtime.state(), &Counter { count: 10 });
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.state(), &Counter { count: 0 });
         assert_eq!(published_names(runtime.into_state())[1], "Counter");
     }
@@ -145,15 +168,14 @@ mod tests {
     fn semantic_increment_activation_reaches_win_screen() {
         let mut runtime = mounted_counter(Counter::new());
 
+        let increment = target_by_authored_id(&mut runtime, "counter.increment");
         for _ in 0..WIN_COUNT {
-            assert!(matches!(
-                runtime.activate("counter.increment"),
-                ActivationResult::Queued(_)
-            ));
+            submit_activate(&mut runtime, increment.clone())
+                .unwrap_or_else(|_| unreachable!("the exact live increment target is accepted"));
         }
         assert_eq!(runtime.state(), &Counter::new());
         runtime.pump(PumpBudget::new(
-            WIN_COUNT as usize,
+            (WIN_COUNT * 2) as usize,
             usize::MAX,
             usize::MAX,
             usize::MAX,
@@ -201,10 +223,9 @@ mod tests {
         let report = runtime.reconciliation_report().clone();
         runtime.__seed_reconciliation_generation_for_test(u64::MAX);
 
-        assert_eq!(
-            runtime.activate_node(&increment),
-            ActivationResult::Terminal(RuntimeTerminalReason::ReconciliationGenerationExhausted)
-        );
+        submit_activate(&mut runtime, increment.clone())
+            .unwrap_or_else(|_| unreachable!("the exact live increment target is accepted"));
+        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(
             runtime.status(),
             RuntimeStatus::Terminal(RuntimeTerminalReason::ReconciliationGenerationExhausted)
@@ -285,11 +306,9 @@ mod tests {
             runtime.set_focus(increment.clone()),
             FocusTargetResult::Focused
         );
-        assert!(matches!(
-            runtime.activate_node(&increment),
-            ActivationResult::Queued(_)
-        ));
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        submit_activate(&mut runtime, increment.clone())
+            .unwrap_or_else(|_| unreachable!("the exact live increment target is accepted"));
+        runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
         assert_eq!(
             runtime
@@ -312,28 +331,25 @@ mod tests {
                 .contains("activations=1")
         );
         for _ in 1..WIN_COUNT {
-            assert!(matches!(
-                runtime.activate("counter.increment"),
-                ActivationResult::Queued(_)
-            ));
+            submit_activate(&mut runtime, increment.clone())
+                .unwrap_or_else(|_| unreachable!("the exact live increment target is accepted"));
         }
         runtime.pump(PumpBudget::new(
-            (WIN_COUNT - 1) as usize,
+            ((WIN_COUNT - 1) * 2) as usize,
             usize::MAX,
             usize::MAX,
             usize::MAX,
         ));
         assert_eq!(runtime.focus().focused_node(), None);
-        assert_eq!(
-            runtime.activate_node(&increment),
-            ActivationResult::StaleTarget
-        );
+        let Err(error) = submit_activate(&mut runtime, increment.clone()) else {
+            unreachable!("the replaced increment target is stale")
+        };
+        assert_eq!(error.kind(), SubmitCommandErrorKind::StaleTarget);
         settle_initial_work(&mut runtime);
-        assert!(matches!(
-            runtime.activate("counter.reset"),
-            ActivationResult::Queued(_)
-        ));
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        let reset = target_by_authored_id(&mut runtime, "counter.reset");
+        submit_activate(&mut runtime, reset)
+            .unwrap_or_else(|_| unreachable!("the exact live reset target is accepted"));
+        runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         let replacement = runtime
             .index()
             .node_by_authored_id(&authored)

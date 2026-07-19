@@ -4,8 +4,9 @@ use crate::element::{
     WidgetStateTypeId, WidgetTypeId,
 };
 use crate::{
-    ElementId, ElementKey, LayoutStyle, StyleIntent, SubscriptionSet, WidgetActivationContext,
-    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext,
+    CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, LayoutStyle, MonotonicInstant,
+    MountedNodeId, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
+    WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
@@ -34,6 +35,13 @@ pub trait ErasedWidget<Action>: fmt::Debug {
         state: &dyn Any,
         subscriptions: &mut SubscriptionSet<Action>,
     ) -> Result<(), WidgetBridgeError>;
+    fn event_bridge_matches(&self, state: &dyn Any) -> bool;
+    fn event(
+        &mut self,
+        state: &mut dyn Any,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> Result<WidgetEventOutput, WidgetBridgeError>;
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError>;
     fn activate(
         &mut self,
@@ -105,6 +113,21 @@ where
         self.0
             .subscriptions(downcast_ref::<Implementation::State>(state)?, subscriptions);
         Ok(())
+    }
+    fn event_bridge_matches(&self, state: &dyn Any) -> bool {
+        state.is::<Implementation::State>()
+    }
+    fn event(
+        &mut self,
+        state: &mut dyn Any,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> Result<WidgetEventOutput, WidgetBridgeError> {
+        Ok(self.0.event(
+            downcast_mut::<Implementation::State>(state)?,
+            event,
+            context,
+        ))
     }
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError> {
         Ok(self
@@ -197,6 +220,21 @@ where
         self.0
             .subscriptions(downcast_ref::<Implementation::State>(state)?, subscriptions);
         Ok(())
+    }
+    fn event_bridge_matches(&self, state: &dyn Any) -> bool {
+        state.is::<Implementation::State>()
+    }
+    fn event(
+        &mut self,
+        state: &mut dyn Any,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> Result<WidgetEventOutput, WidgetBridgeError> {
+        Ok(self.0.event(
+            downcast_mut::<Implementation::State>(state)?,
+            event,
+            context,
+        ))
     }
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError> {
         Ok(self
@@ -329,6 +367,56 @@ impl<Action> MountedWidget<Action> {
     ) -> Result<(), WidgetBridgeError> {
         self.inner
             .subscriptions(state.value.as_ref(), subscriptions)
+    }
+    #[must_use]
+    pub fn event_bridge_matches(&self, state: &MountedWidgetState) -> bool {
+        self.inner.event_bridge_matches(state.value.as_ref())
+    }
+    /// Invokes one event callback through the checked core-owned context bridge.
+    ///
+    /// The runtime supplies invocation facts, but cannot construct or extract
+    /// the borrowed [`EventContext`] itself. These opaque mounted values cannot
+    /// be obtained from a live runtime by downstream code.
+    #[allow(clippy::too_many_arguments)]
+    pub fn event(
+        &mut self,
+        state: &mut MountedWidgetState,
+        event: &UiEvent,
+        phase: EventPhase,
+        original_target: &MountedNodeId,
+        current_target: &MountedNodeId,
+        related_target: Option<&MountedNodeId>,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        default_cancelable: bool,
+        default_prevented: bool,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Result<
+        (
+            WidgetEventOutput,
+            crate::event_context::EventContextOutput<Action>,
+        ),
+        WidgetBridgeError,
+    > {
+        let mut context = EventContext::new(
+            phase,
+            original_target,
+            current_target,
+            related_target,
+            origin,
+            sequence,
+            instant,
+            default_cancelable,
+            default_prevented,
+            propagation_stopped,
+            output_allowance,
+        );
+        let widget = self
+            .inner
+            .event(state.value.as_mut(), event, &mut context)?;
+        Ok((widget, context.into_output()))
     }
     pub fn activation(
         &self,

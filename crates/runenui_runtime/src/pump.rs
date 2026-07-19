@@ -203,6 +203,10 @@ pub(crate) fn pump<App: UiApp>(
             WorkEnvelope::ApplicationAction(envelope) => {
                 process_application_action::<App>(runtime, envelope)
             }
+            WorkEnvelope::SemanticCommand(envelope) => {
+                runtime.process_semantic_command(envelope);
+                ProcessApplicationActionOutcome::Completed
+            }
             WorkEnvelope::EffectStart(work) => {
                 runtime.process_effect_start(work.sequence, work.generation);
                 ProcessApplicationActionOutcome::Completed

@@ -1,9 +1,7 @@
 #![allow(refining_impl_trait)]
 
-use runenui_core::{Element, NoHostProtocol, UiApp, View, button};
-use runenui_runtime::{
-    ActivationResult, AppRuntime, PumpBudget, RuntimeConfig, TraceConfig, TraceRecordKind,
-};
+use runenui_core::{CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp, View, button};
+use runenui_runtime::{AppRuntime, PumpBudget, RuntimeConfig, TraceConfig, TraceRecordKind};
 
 struct App;
 
@@ -144,29 +142,29 @@ fn direct_submission_records_work_sequence_without_a_causal_parent() {
 }
 
 #[test]
-fn activation_acceptance_links_target_and_commit_then_transaction_generations() {
+fn routed_action_acceptance_links_target_collection_and_application_transaction() {
     let mut runtime = AppRuntime::<App>::mount(0);
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     let target = runtime.index().nodes()[0].id().clone();
-    let ActivationResult::Queued(commit) = runtime.activate_node(&target) else {
-        unreachable!()
-    };
-    let work = commit
-        .primary_action_sequence
-        .unwrap_or_else(|| unreachable!("button activation queues its primary action"));
+    runtime
+        .submit_command(
+            target.clone(),
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
+    runtime.pump(PumpBudget::new(1, 0, 0, 0));
     assert_eq!(runtime.state(), &0);
     let records: Vec<_> = runtime.trace().records().collect();
-    let commit = records
-        .iter()
-        .find(|record| matches!(record.kind(), TraceRecordKind::ActivationCommitted))
-        .unwrap_or_else(|| unreachable!());
     let acceptance = records
         .iter()
-        .find(|record| {
-            matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted)
-                && record.work_sequence() == Some(work)
-        })
+        .find(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted))
         .unwrap_or_else(|| unreachable!());
-    assert_eq!(acceptance.causal_parent(), Some(commit.sequence()));
+    let collection = records
+        .iter()
+        .find(|record| matches!(record.kind(), TraceRecordKind::RoutedActionCollected))
+        .unwrap_or_else(|| unreachable!());
+    assert_eq!(acceptance.causal_parent(), Some(collection.sequence()));
     assert_eq!(
         acceptance
             .target()
@@ -174,7 +172,7 @@ fn activation_acceptance_links_target_and_commit_then_transaction_generations() 
         Some(&target)
     );
 
-    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     let started = runtime
         .trace()
         .records()

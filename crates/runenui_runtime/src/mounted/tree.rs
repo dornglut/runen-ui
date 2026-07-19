@@ -5,19 +5,17 @@
     clippy::single_match_else
 )]
 
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use runenui_core::{
-    __runtime::{ElementParts, WidgetBridgeError},
+    __runtime::{ElementParts, RuntimeNamespace, WidgetBridgeError},
     Element, ElementId, SubscriptionSet, WidgetInvalidation, WidgetMountContext,
     WidgetUnmountReason, WidgetUpdateContext,
 };
 
 use super::{
-    CapabilityCaches, DirtyPhases, InteractionState, MountedNodeId, SemanticNodeId,
-    apply_invalidation,
-    arena::MountedArena,
-    id::RuntimeInstanceMarker,
+    CapabilityCaches, DirtyPhases, InteractionState, MountedNodeId, apply_invalidation,
+    arena::{MountedArena, MountedArenaCapacityError},
     node::{MountedNode, state_is_corrupted},
     reconcile::analyze_sibling_keys,
 };
@@ -55,31 +53,57 @@ impl<Action> Default for ReconcileStats<Action> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct MountedIdentityExhausted;
+
+impl From<MountedArenaCapacityError> for MountedIdentityExhausted {
+    fn from(_: MountedArenaCapacityError) -> Self {
+        Self
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TargetStatus {
     Live,
     Stale,
+    Missing,
     Foreign,
 }
 
 pub(crate) struct MountedTree<Action> {
-    pub(super) runtime: Arc<RuntimeInstanceMarker>,
+    pub(super) runtime: RuntimeNamespace,
     pub(super) arena: MountedArena<MountedNode<Action>>,
     pub(super) root: Option<MountedNodeId>,
     pub(super) shutdown: bool,
 }
 
 impl<Action> MountedTree<Action> {
-    pub(crate) fn mount(root: Element<Action>) -> (Self, ReconcileStats<Action>) {
-        let mut tree = Self {
-            runtime: Arc::new(RuntimeInstanceMarker),
+    pub(crate) fn empty() -> Self {
+        Self {
+            runtime: RuntimeNamespace::__runtime_new(),
             arena: MountedArena::new(),
             root: None,
             shutdown: false,
-        };
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mount(root: Element<Action>) -> (Self, ReconcileStats<Action>) {
+        Self::mount_with_public_slot_limit(root, u64::from(u32::MAX) + 1)
+            .unwrap_or_else(|_| unreachable!("test tree remains within public identity capacity"))
+    }
+
+    pub(crate) fn mount_with_public_slot_limit(
+        root: Element<Action>,
+        public_slot_limit: u64,
+    ) -> Result<(Self, ReconcileStats<Action>), MountedIdentityExhausted> {
+        let required = element_node_count(&root)?;
+        let mut tree = Self::empty();
+        tree.arena
+            .preflight_live_count(required, public_slot_limit)?;
         let mut stats = ReconcileStats::default();
         let root_id = tree.mount_parts(None, root.into_runtime_parts(), &mut stats);
         tree.root = Some(root_id);
-        (tree, stats)
+        Ok((tree, stats))
     }
 
     fn mount_parts(
@@ -91,30 +115,37 @@ impl<Action> MountedTree<Action> {
         let (authored_id, key, layout, style, authoring_diagnostics, widget, children) =
             parts.into_parts();
         let widget_state = widget.create_state();
-        let runtime = Arc::clone(&self.runtime);
-        let (slot, generation) = self.arena.insert_with(|slot, generation| {
-            let id = MountedNodeId::new(&runtime, slot, generation);
-            MountedNode {
-                semantic_id: SemanticNodeId::new(&runtime, slot, generation),
-                id,
-                parent,
-                children: Vec::new(),
-                authored_id,
-                key,
-                layout,
-                style,
-                authoring_diagnostics,
-                widget,
-                state: widget_state,
-                #[cfg(test)]
-                state_corrupted: false,
-                interaction: InteractionState::default(),
-                integrity_failed: false,
-                caches: CapabilityCaches::default(),
-                dirty_phases: DirtyPhases::ALL,
-            }
-        });
-        let id = MountedNodeId::new(&self.runtime, slot, generation);
+        let runtime = self.runtime.clone();
+        let (slot, generation) = self
+            .arena
+            .insert_with(|slot, generation| {
+                let slot = checked_public_slot(slot)
+                    .unwrap_or_else(|_| unreachable!("mounted arena exceeded public slot range"));
+                let id = runtime.__runtime_mounted_id(slot, generation);
+                MountedNode {
+                    semantic_id: runtime.__runtime_semantic_id(slot, generation),
+                    id,
+                    parent,
+                    children: Vec::new(),
+                    authored_id,
+                    key,
+                    layout,
+                    style,
+                    authoring_diagnostics,
+                    widget,
+                    state: widget_state,
+                    #[cfg(any(test, feature = "internal-test-seams"))]
+                    state_corrupted: false,
+                    interaction: InteractionState::default(),
+                    integrity_failed: false,
+                    caches: CapabilityCaches::default(),
+                    dirty_phases: DirtyPhases::ALL,
+                }
+            })
+            .unwrap_or_else(|_| unreachable!("mounted identity capacity was preflighted"));
+        let public_slot = checked_public_slot(slot)
+            .unwrap_or_else(|_| unreachable!("mounted arena exceeded public slot range"));
+        let id = self.runtime.__runtime_mounted_id(public_slot, generation);
         stats.mounted += 1;
 
         let mut context = WidgetMountContext::__runtime_new();
@@ -146,11 +177,29 @@ impl<Action> MountedTree<Action> {
         self.reconcile_with_before_unmount(root, &mut before_unmount)
     }
 
+    #[cfg(test)]
     pub(crate) fn reconcile_with_before_unmount(
         &mut self,
         root: Element<Action>,
         before_unmount: &mut dyn FnMut(&MountedNodeId),
     ) -> ReconcileStats<Action> {
+        self.reconcile_with_before_unmount_and_public_slot_limit(
+            root,
+            u64::from(u32::MAX) + 1,
+            before_unmount,
+        )
+        .unwrap_or_else(|_| unreachable!("test tree remains within public identity capacity"))
+    }
+
+    pub(crate) fn reconcile_with_before_unmount_and_public_slot_limit(
+        &mut self,
+        root: Element<Action>,
+        public_slot_limit: u64,
+        before_unmount: &mut dyn FnMut(&MountedNodeId),
+    ) -> Result<ReconcileStats<Action>, MountedIdentityExhausted> {
+        let required = element_node_count(&root)?;
+        self.arena
+            .preflight_live_count(required, public_slot_limit)?;
         let mut stats = ReconcileStats::default();
         let parts = root.into_runtime_parts();
         let old_root = self
@@ -180,7 +229,7 @@ impl<Action> MountedTree<Action> {
             );
             self.root = Some(self.mount_parts(None, parts, &mut stats));
         }
-        stats
+        Ok(stats)
     }
 
     fn compatible(&self, id: &MountedNodeId, parts: &ElementParts<Action>) -> bool {
@@ -297,29 +346,52 @@ impl<Action> MountedTree<Action> {
         let old_unkeyed = sibling_matches.old_unkeyed;
         let new_keys = sibling_matches.new_keys;
 
-        let mut used = HashSet::new();
         let mut unkeyed_ordinal = 0usize;
-        let mut final_children = Vec::with_capacity(new_parts.len());
-        for (new_position, parts) in new_parts.into_iter().enumerate() {
-            let key = parts.key().cloned();
-            let candidate = if let Some(key) = key.as_ref() {
-                let old = old_keys.get(key);
-                let new = new_keys.get(key);
-                match (old, new) {
-                    (Some(old), Some(new)) if old.len() == 1 && new.len() == 1 => {
-                        Some(old[0].clone())
+        let candidates: Vec<_> = new_parts
+            .iter()
+            .map(|parts| {
+                if let Some(key) = parts.key() {
+                    let old = old_keys.get(key);
+                    let new = new_keys.get(key);
+                    match (old, new) {
+                        (Some(old), Some(new)) if old.len() == 1 && new.len() == 1 => {
+                            Some(old[0].clone())
+                        }
+                        _ => None,
                     }
-                    _ => None,
+                } else {
+                    let candidate = old_unkeyed.get(unkeyed_ordinal).cloned();
+                    unkeyed_ordinal += 1;
+                    candidate
                 }
-            } else {
-                let candidate = old_unkeyed.get(unkeyed_ordinal).cloned();
-                unkeyed_ordinal += 1;
-                candidate
-            };
+            })
+            .collect();
+        let used: HashSet<_> = candidates
+            .iter()
+            .flatten()
+            .map(|(_, id)| id.clone())
+            .collect();
 
+        // Release slots that cannot participate in the new sibling set before
+        // mounting additions. Complete live-count preflight above guarantees
+        // that subsequent insertions cannot exhaust public identity capacity.
+        for (old_position, old) in old_children.iter().enumerate() {
+            if !used.contains(old) {
+                self.unmount_subtree(
+                    old,
+                    WidgetUnmountReason::Removed,
+                    &format!("{parent_path}/{old_position}"),
+                    stats,
+                    before_unmount,
+                );
+            }
+        }
+
+        let mut final_children = Vec::with_capacity(new_parts.len());
+        for (new_position, (parts, candidate)) in new_parts.into_iter().zip(candidates).enumerate()
+        {
             let child_path = format!("{parent_path}/{new_position}");
             if let Some((old_position, old_id)) = candidate {
-                used.insert(old_id.clone());
                 if self.compatible(&old_id, &parts) {
                     match self.update_node(&old_id, parts, &child_path, stats, before_unmount) {
                         Ok(()) => {
@@ -357,40 +429,33 @@ impl<Action> MountedTree<Action> {
                 final_children.push(self.mount_parts(Some(parent.clone()), parts, stats));
             }
         }
-
-        for old in old_children {
-            if !used.contains(old) {
-                let old_position = old_children
-                    .iter()
-                    .position(|candidate| candidate == old)
-                    .unwrap_or_default();
-                self.unmount_subtree(
-                    old,
-                    WidgetUnmountReason::Removed,
-                    &format!("{parent_path}/{old_position}"),
-                    stats,
-                    before_unmount,
-                );
-            }
-        }
         final_children
     }
 
     pub(crate) fn target_status(&self, id: &MountedNodeId) -> TargetStatus {
-        if !id.belongs_to(&self.runtime) {
-            TargetStatus::Foreign
-        } else if self.arena.get(id.slot, id.generation).is_some() {
+        let Some((slot, generation)) = self.runtime.__runtime_mounted_parts(id) else {
+            return TargetStatus::Foreign;
+        };
+        let slot = slot as usize;
+        if self.arena.get(slot, generation).is_some() {
             TargetStatus::Live
-        } else {
+        } else if self.arena.contains_slot(slot) {
             TargetStatus::Stale
+        } else {
+            TargetStatus::Missing
         }
     }
 
     pub(crate) fn node(&self, id: &MountedNodeId) -> Option<&MountedNode<Action>> {
-        if !id.belongs_to(&self.runtime) {
-            return None;
-        }
-        self.arena.get(id.slot, id.generation)
+        let (slot, generation) = self.runtime.__runtime_mounted_parts(id)?;
+        self.arena.get(slot as usize, generation)
+    }
+
+    pub(crate) fn trace_target(&self, id: &MountedNodeId) -> crate::TraceTarget {
+        crate::TraceTarget::new(
+            id.clone(),
+            self.node(id).and_then(|node| node.authored_id.clone()),
+        )
     }
     pub(crate) fn declare_subscriptions(
         &self,
@@ -403,10 +468,8 @@ impl<Action> MountedTree<Action> {
         node.widget.subscriptions(&node.state, subscriptions)
     }
     pub(crate) fn node_mut(&mut self, id: &MountedNodeId) -> Option<&mut MountedNode<Action>> {
-        if !id.belongs_to(&self.runtime) {
-            return None;
-        }
-        self.arena.get_mut(id.slot, id.generation)
+        let (slot, generation) = self.runtime.__runtime_mounted_parts(id)?;
+        self.arena.get_mut(slot as usize, generation)
     }
     pub(crate) const fn live_count(&self) -> usize {
         self.arena.live_count()
@@ -432,7 +495,7 @@ impl<Action> MountedTree<Action> {
         };
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "internal-test-seams"))]
     pub(crate) fn corrupt_state_for_test(&mut self, id: &MountedNodeId) {
         let node = self
             .node_mut(id)
@@ -440,6 +503,32 @@ impl<Action> MountedTree<Action> {
         node.state_corrupted = true;
         node.caches = CapabilityCaches::default();
         node.dirty_phases = DirtyPhases::ALL;
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn missing_target_for_test(&self) -> MountedNodeId {
+        let slot = u32::try_from(self.arena.slot_count())
+            .unwrap_or_else(|_| unreachable!("mounted arena slots fit public identity"));
+        self.runtime.__runtime_mounted_id(slot, 1)
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn stale_target_for_test(&self, live: &MountedNodeId) -> MountedNodeId {
+        let (slot, generation) = self
+            .runtime
+            .__runtime_mounted_parts(live)
+            .unwrap_or_else(|| unreachable!("test target belongs to this runtime"));
+        self.runtime
+            .__runtime_mounted_id(slot, generation.saturating_add(1))
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn break_parent_link_for_test(&mut self, id: &MountedNodeId) {
+        let missing = self.missing_target_for_test();
+        let node = self
+            .node_mut(id)
+            .unwrap_or_else(|| unreachable!("test target remains live"));
+        node.parent = Some(missing);
     }
 
     pub(crate) fn pending_phases(&self) -> DirtyPhases {
@@ -467,6 +556,21 @@ impl<Action> MountedTree<Action> {
             }
         }
     }
+}
+
+fn element_node_count<Action>(root: &Element<Action>) -> Result<usize, MountedIdentityExhausted> {
+    root.children().iter().try_fold(1usize, |count, child| {
+        count
+            .checked_add(element_node_count(child)?)
+            .ok_or(MountedIdentityExhausted)
+    })
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PublicSlotOverflow;
+
+fn checked_public_slot(slot: usize) -> Result<u32, PublicSlotOverflow> {
+    u32::try_from(slot).map_err(|_| PublicSlotOverflow)
 }
 
 fn common_field_invalidation<Action>(
@@ -513,8 +617,26 @@ mod tests {
         Element, ElementId, View, Widget, WidgetUnmountContext, children, column, text,
     };
 
-    use super::{MountedNodeId, MountedTree, TargetStatus};
+    use super::{
+        MountedNodeId, MountedTree, PublicSlotOverflow, ReconcileStats, TargetStatus,
+        checked_public_slot,
+    };
     use crate::ReconciliationDiagnostic;
+
+    #[test]
+    fn public_slot_conversion_rejects_overflow_without_truncation() {
+        assert_eq!(checked_public_slot(u32::MAX as usize), Ok(u32::MAX));
+        if usize::BITS > u32::BITS {
+            assert_eq!(
+                checked_public_slot((u32::MAX as usize) + 1),
+                Err(PublicSlotOverflow)
+            );
+        }
+    }
+
+    fn mount_tree(root: Element<()>) -> (MountedTree<()>, ReconcileStats<()>) {
+        MountedTree::mount(root)
+    }
 
     fn tree(order: [&str; 2], a_key: &str, a_id: &str) -> Element<()> {
         column(
@@ -560,9 +682,8 @@ mod tests {
     #[test]
     fn owner_invalidation_callback_precedes_unmount_hook() {
         let invalidated = Rc::new(Cell::new(false));
-        let (mut mounted, _) = MountedTree::mount(
-            Element::new(UnmountOrderingProbe(Rc::clone(&invalidated))).key("probe"),
-        );
+        let (mut mounted, _) =
+            mount_tree(Element::new(UnmountOrderingProbe(Rc::clone(&invalidated))).key("probe"));
 
         mounted.reconcile_with_before_unmount(text("replacement").into_element(), &mut |_| {
             invalidated.set(true);
@@ -572,7 +693,7 @@ mod tests {
 
     #[test]
     fn every_interaction_slot_is_retained_and_replacement_starts_fresh() {
-        let (mut mounted, _) = MountedTree::mount(tree(["a", "b"], "a", "a"));
+        let (mut mounted, _) = mount_tree(tree(["a", "b"], "a", "a"));
         let a = authored_id(&mut mounted, "a");
         mounted.set_interaction_for_test(&a, true, true, true, (13.0, 21.0));
 
@@ -628,7 +749,7 @@ mod tests {
 
     #[test]
     fn removed_interaction_slots_are_cleared_before_generational_arena_reuse() {
-        let (mut mounted, _) = MountedTree::mount(tree(["a", "b"], "a", "a"));
+        let (mut mounted, _) = mount_tree(tree(["a", "b"], "a", "a"));
         let removed = authored_id(&mut mounted, "a");
         mounted.set_interaction_for_test(&removed, true, true, true, (31.0, 47.0));
 
@@ -649,8 +770,16 @@ mod tests {
             .into_element(),
         );
         let replacement = authored_id(&mut mounted, "c");
-        assert_eq!(replacement.slot, removed.slot);
-        assert!(replacement.generation > removed.generation);
+        let replacement_parts = mounted
+            .runtime
+            .__runtime_mounted_parts(&replacement)
+            .unwrap_or_else(|| unreachable!());
+        let removed_parts = mounted
+            .runtime
+            .__runtime_mounted_parts(&removed)
+            .unwrap_or_else(|| unreachable!());
+        assert_eq!(replacement_parts.0, removed_parts.0);
+        assert!(replacement_parts.1 > removed_parts.1);
         let index = mounted.index();
         let interaction = index
             .node(&replacement)
@@ -690,7 +819,7 @@ mod tests {
 
     #[test]
     fn cross_parent_remount_resets_every_interaction_slot() {
-        let (mut mounted, _) = MountedTree::mount(parented(true));
+        let (mut mounted, _) = mount_tree(parented(true));
         let old = authored_id(&mut mounted, "a");
         mounted.set_interaction_for_test(&old, true, true, true, (9.0, 12.0));
         mounted.reconcile(parented(false));
@@ -710,7 +839,7 @@ mod tests {
 
     #[test]
     fn shutdown_clears_all_lifetimes_and_is_idempotent() {
-        let (mut mounted, _) = MountedTree::mount(tree(["a", "b"], "a", "a"));
+        let (mut mounted, _) = mount_tree(tree(["a", "b"], "a", "a"));
         let ids: Vec<_> = mounted.publication_preorder_ids().into_iter().collect();
         for id in &ids {
             mounted.set_interaction_for_test(id, true, true, true, (5.0, 8.0));
@@ -730,7 +859,7 @@ mod tests {
 
     #[test]
     fn compatible_update_payload_mismatch_replaces_in_the_same_generation() {
-        let (mut mounted, _) = MountedTree::mount(tree(["a", "b"], "a", "a"));
+        let (mut mounted, _) = mount_tree(tree(["a", "b"], "a", "a"));
         let root = mounted.index().nodes()[0].id().clone();
         let old_child = authored_id(&mut mounted, "a");
         mounted.corrupt_state_for_test(&root);
@@ -768,7 +897,7 @@ mod tests {
             .key("root")
             .into_element()
         };
-        let (mut mounted, _) = MountedTree::mount(authored());
+        let (mut mounted, _) = mount_tree(authored());
         let child = authored_id(&mut mounted, "corrupted-child");
         let grandchild = authored_id(&mut mounted, "grandchild");
         mounted.corrupt_state_for_test(&child);

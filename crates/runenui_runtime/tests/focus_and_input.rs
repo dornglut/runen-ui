@@ -2,8 +2,8 @@
 
 use runenui_core::{Element, NoHostProtocol, UiApp, View, button, children, row};
 use runenui_runtime::{
-    AppRuntime, FocusTargetResult, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint,
-    PointerButton, PointerEvent, PointerPhase, PumpBudget,
+    AppRuntime, FocusTargetResult, Key, KeyModifiers, KeyPhase, KeyboardEvent, KeyboardFocusResult,
+    LogicalPoint, PointerButton, PointerEvent, PointerPhase, PumpBudget,
 };
 
 #[derive(Debug)]
@@ -30,7 +30,7 @@ impl UiApp for App {
 }
 
 #[test]
-fn mounted_focus_traversal_and_input_policy_work() {
+fn retained_focus_helpers_never_activate_or_emit_actions() {
     let mut runtime = AppRuntime::<App>::mount(0);
     let a = runtime.index().nodes()[1].id().clone();
     assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
@@ -38,10 +38,13 @@ fn mounted_focus_traversal_and_input_policy_work() {
     runtime.handle_keyboard_focus(&tab);
     assert_ne!(runtime.focus().focused_node(), Some(&a));
     let enter = KeyboardEvent::new(KeyPhase::Pressed, Key::Enter, KeyModifiers::NONE, None);
-    runtime.handle_keyboard_activation(&enter);
+    assert_eq!(
+        runtime.handle_keyboard_focus(&enter),
+        KeyboardFocusResult::Ignored
+    );
     assert_eq!(runtime.state(), &0);
     runtime.pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX));
-    assert_eq!(runtime.state(), &1);
+    assert_eq!(runtime.state(), &0);
     let pointer = PointerEvent::new(
         PointerPhase::Pressed,
         LogicalPoint::new(1.0, 1.0).unwrap_or_else(|_| unreachable!()),

@@ -6,10 +6,10 @@ use std::rc::Rc;
 use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAdapter};
 use crate::widget_mapping::MappedWidget;
 use crate::{
-    Axis, ColorValue, ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey,
-    LayoutStyle, LogicalLength, RadiusValue, SpacingValue, StyleIntent, SubscriptionSet,
-    WidgetActivationContext, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext,
+    Axis, ColorValue, ElementId, ElementKey, EventContext, IdentifierError, IntoElementId,
+    IntoElementKey, LayoutStyle, LogicalLength, RadiusValue, SpacingValue, StyleIntent,
+    SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetInvalidation,
+    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -376,6 +376,16 @@ pub trait Widget<Action>: fmt::Debug {
 
     /// Declares the complete desired subscription set for this mounted state.
     fn subscriptions(&self, _state: &Self::State, _subscriptions: &mut SubscriptionSet<Action>) {}
+
+    /// Participates once in the current mounted route phase.
+    fn event(
+        &mut self,
+        _state: &mut Self::State,
+        _event: &UiEvent,
+        _context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        WidgetEventOutput::none()
+    }
 
     /// Returns non-consuming activation/focus facts.
     fn activation(&self, _state: &Self::State) -> WidgetActivation {

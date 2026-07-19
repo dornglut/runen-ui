@@ -8,10 +8,45 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Implemented the complete M4C1 routed semantic-command kernel: one core-owned
+  runtime namespace and mounted/time/work-sequence value authority; narrow
+  host-neutral command/event vocabulary; checked open widget event bridge and
+  recursive action/work mapping; exact owned command submission recovery;
+  foreign/stale/missing distinction; immutable capture/target/bubble routing;
+  checked admission; independent propagation/default control; ordered routed,
+  default, subscription, and mounted-work commit; semantic `Activate`; and
+  route-only cancel/menu/context behavior.
+- Corrected routed construction and observation authority before M4C2–M4C5:
+  external origins are direct-only, delegated origin construction is confined
+  to callback-collected command output, `UiEvent::as_semantic_command` is
+  variant-safe, and only the checked erased widget bridge constructs and
+  extracts `EventContext` values.
+- Made all eight command-submission rejection classes recover exact inputs
+  without consuming work or trace sequences, allocating trace records, waking,
+  or invoking callbacks. Routed integrity failures now retain accepted work and
+  causal facts while distinguishing broken topology, event-bridge mismatch,
+  callback-bridge failure, output overflow, semantic-default failure, and commit
+  invariant failure.
+- Locked routed admission to the actual conservative maximum-safe policy,
+  including rejection of a no-output callback when a potentially available
+  output family cannot be reserved, and split routing into focused admission,
+  transaction, dispatch, default, commit, and failure modules.
+- Removed combined input intent and every direct runtime, pointer, and keyboard
+  activation authority. Retained pointer/keyboard helpers are focus-only
+  negative proofs. Counter now submits exact-target commands, and the genuine
+  downstream package proves routed facts, state-only/action-only events,
+  non-`Clone` mapped actions, and mapped mounted work through public APIs.
+- Extended the sole canonical trace with command acceptance, processing
+  rejection, and submission-rejection absence/non-consumption proofs,
+  route snapshot and phases, propagation/default controls, widget mutation and
+  invalidation, collected outputs, semantic default, admission/poison/commit,
+  and causal links into later actions and delegated commands. All 36 M4C1 rows
+  are `proof-complete`; M4C2–M4D3 and M5 semantic mapping remain blocked, and M4
+  remains incomplete pending later slices.
 - Owner-accepted the corrected M4C0 documentation and conformance authority,
   made its migration proofs independently closable by their assigned slices,
-  reserved `ACCESS-*` for M5 semantic resolution, and queued M4C1 as the next
-  implementation slice. No M4C runtime behavior was added and M4 remains active.
+  reserved `ACCESS-*` for M5 semantic resolution, and at that M4C0 head queued
+  M4C1 without adding runtime behavior.
 - Accepted and squash-merged PR #75's M4B scheduler result, accepted the M4C
   delivery charter on 2026-07-18, and normalized M4 conformance ownership in
   documentation-only M4C0.
@@ -20,8 +55,8 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   status, and an M4 gate; accepted M4B rows are `owner-accepted`, while future
   M4C/M4D rows remain `blocked`.
 - Split routing, surface, pointer, modality, automation, accessibility, logical
-  scrolling, and trace aggregates across M4C1–M4D3. No M4C runtime behavior or
-  API scaffolding was added, and M4 is not complete.
+  scrolling, and trace aggregates across M4C1–M4D3 at the documentation-only
+  M4C0 head. M4 remains incomplete.
 - Removed the C9 wake delivery mutex from the host callback boundary. Wake
   delivery now uses explicit callback-in-flight state: each epoch is claimed
   once under wake-state synchronization, host code runs after every RunenUI
@@ -36,9 +71,9 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 - Replaced magic trace counts with checked operation-specific admission and made
   enabled-trace action acceptance authoritative; trace capacity zero remains
   behavior-neutral, while unexpected post-mutation commit failures poison.
-- Replaced generic activation queue saturation with `ActivationCapacity`, added
-  `WidgetActivationOutput<Action>`, tightened `NoEffect`, and made each wake
-  request epoch claimable at most once.
+- Added `WidgetActivationOutput<Action>` and made each wake request epoch
+  claimable at most once; M4C1 later removed the transitional direct activation
+  result/capacity surface.
 
 - Corrected the M4B mounted activation path so subscription invalidation,
   primary action, and auxiliary exact-owner work commit through one ordered

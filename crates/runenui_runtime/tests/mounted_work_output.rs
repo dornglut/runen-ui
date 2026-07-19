@@ -11,11 +11,11 @@ use std::{
 };
 
 use runenui_core::{
-    Effects, Element, IntoEffects, NoHostProtocol, SubscriptionSet, TimerEffect, UiApp, Widget,
-    WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation,
-    WidgetMountContext, WidgetUpdateContext, WorkKey,
+    CommandOrigin, Effects, Element, IntoEffects, MountedNodeId, NoHostProtocol, SemanticCommand,
+    SubscriptionSet, TimerEffect, UiApp, Widget, WidgetActivation, WidgetActivationContext,
+    WidgetActivationOutput, WidgetInvalidation, WidgetMountContext, WidgetUpdateContext, WorkKey,
 };
-use runenui_runtime::{ActivationResult, AppRuntime, PumpBudget};
+use runenui_runtime::{AppRuntime, PumpBudget, TraceRecordKind, WorkSequence};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Action {
@@ -117,6 +117,20 @@ fn drain<Application: UiApp>(runtime: &mut AppRuntime<Application>) {
     ));
 }
 
+fn submit_activate<Application: UiApp>(
+    runtime: &mut AppRuntime<Application>,
+    target: MountedNodeId,
+) -> WorkSequence {
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"))
+        .sequence()
+}
+
 #[test]
 fn mounted_callbacks_emit_exact_owner_work_through_the_canonical_scheduler() {
     let mut runtime = AppRuntime::<App>::mount(State::default());
@@ -136,10 +150,7 @@ fn mounted_callbacks_emit_exact_owner_work_through_the_canonical_scheduler() {
     assert!(runtime.state().actions.contains(&Action::Updated));
 
     let target = runtime.index().nodes()[0].id().clone();
-    assert!(matches!(
-        runtime.activate_node(&target),
-        ActivationResult::Queued(_)
-    ));
+    submit_activate(&mut runtime, target);
     drain(&mut runtime);
     let actions = &runtime.state().actions;
     let returned = actions
@@ -213,7 +224,7 @@ impl UiApp for ActivationOrderApp {
 }
 
 #[test]
-fn activation_commits_one_subscription_first_primary_then_auxiliary_batch() {
+fn routed_activation_commits_subscription_then_primary_and_auxiliary_actions() {
     let declarations = Rc::new(RefCell::new(Vec::new()));
     let mut runtime =
         AppRuntime::<ActivationOrderApp>::mount((Rc::clone(&declarations), Vec::new()));
@@ -221,15 +232,22 @@ fn activation_commits_one_subscription_first_primary_then_auxiliary_batch() {
     assert_eq!(&*declarations.borrow(), &[0]);
 
     let target = runtime.index().nodes()[0].id().clone();
-    let ActivationResult::Queued(commit) = runtime.activate_node(&target) else {
-        unreachable!("activation must queue its primary action")
-    };
+    let command_sequence = submit_activate(&mut runtime, target);
+    assert_eq!(command_sequence.get(), 2);
+    runtime.pump(PumpBudget::new(1, usize::MAX, 0, usize::MAX));
+    let action_sequences: Vec<_> = runtime
+        .trace()
+        .records()
+        .filter(|record| matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted))
+        .filter_map(runenui_runtime::TraceRecord::work_sequence)
+        .collect();
     assert_eq!(
-        commit
-            .primary_action_sequence
-            .map(runenui_runtime::WorkSequence::get),
-        Some(3),
-        "declaration reconcile must receive sequence 2"
+        action_sequences
+            .iter()
+            .map(|sequence| sequence.get())
+            .collect::<Vec<_>>(),
+        [4, 5],
+        "subscription reconciliation receives sequence 3"
     );
     assert_eq!(&*declarations.borrow(), &[0]);
     assert!(runtime.state().1.is_empty());
@@ -251,9 +269,9 @@ fn activation_commits_one_subscription_first_primary_then_auxiliary_batch() {
 }
 
 #[derive(Debug)]
-struct ActivationResultWidget;
+struct RoutedOutputWidget;
 
-impl Widget<()> for ActivationResultWidget {
+impl Widget<()> for RoutedOutputWidget {
     type State = usize;
 
     fn create_state(&self) -> Self::State {
@@ -282,15 +300,15 @@ impl Widget<()> for ActivationResultWidget {
     }
 }
 
-struct ActivationResultApp;
+struct RoutedOutputApp;
 
-impl UiApp for ActivationResultApp {
+impl UiApp for RoutedOutputApp {
     type State = usize;
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
     fn root(_: &Self::State) -> Element<Self::Action> {
-        Element::new(ActivationResultWidget).key("activation-result")
+        Element::new(RoutedOutputWidget).key("routed-output")
     }
 
     fn update(state: &mut Self::State, (): Self::Action) {
@@ -299,8 +317,8 @@ impl UiApp for ActivationResultApp {
 }
 
 #[test]
-fn activation_result_counts_auxiliary_batches_and_separates_wake_from_redraw() {
-    let mut runtime = AppRuntime::<ActivationResultApp>::mount(0);
+fn routed_activation_separates_scheduler_wake_from_redraw() {
+    let mut runtime = AppRuntime::<RoutedOutputApp>::mount(0);
     drain(&mut runtime);
     let initial_redraw = runtime
         .take_redraw_request()
@@ -315,39 +333,35 @@ fn activation_result_counts_auxiliary_batches_and_separates_wake_from_redraw() {
     });
     let target = runtime.index().nodes()[0].id().clone();
 
-    let ActivationResult::Queued(auxiliary) = runtime.activate_node(&target) else {
-        unreachable!("auxiliary action is queued work")
-    };
-    assert_eq!(auxiliary.primary_action_sequence, None);
-    assert_eq!(auxiliary.queued_envelopes, 1);
+    let auxiliary = submit_activate(&mut runtime, target.clone());
     assert_eq!(wakes.load(Ordering::SeqCst), 1);
-    assert!(runtime.take_redraw_request().is_none());
-
-    let ActivationResult::Queued(task) = runtime.activate_node(&target) else {
-        unreachable!("task-only activation is queued work")
-    };
-    assert_eq!(task.primary_action_sequence, None);
-    assert_eq!(task.queued_envelopes, 1);
-    assert!(task.first_sequence > auxiliary.first_sequence);
-    assert_eq!(wakes.load(Ordering::SeqCst), 1);
+    runtime.pump(PumpBudget::new(1, 0, 0, 0));
     assert!(runtime.take_redraw_request().is_none());
     drain(&mut runtime);
+    let action_redraw = runtime
+        .take_redraw_request()
+        .unwrap_or_else(|| unreachable!("the routed auxiliary action updates application state"));
+    runtime
+        .acknowledge_redraw(&action_redraw)
+        .unwrap_or_else(|_| unreachable!("runtime-local redraw request is valid"));
 
-    let ActivationResult::Queued(timer) = runtime.activate_node(&target) else {
-        unreachable!("timer-only activation is queued work")
-    };
-    assert_eq!(timer.queued_envelopes, 1);
+    let task = submit_activate(&mut runtime, target.clone());
+    assert!(task > auxiliary);
+    runtime.pump(PumpBudget::new(1, 0, 0, 0));
+    assert!(runtime.take_redraw_request().is_none());
     drain(&mut runtime);
 
-    let ActivationResult::Queued(subscription) = runtime.activate_node(&target) else {
-        unreachable!("subscription invalidation queues reconciliation")
-    };
-    assert_eq!(subscription.queued_envelopes, 1);
+    submit_activate(&mut runtime, target.clone());
     drain(&mut runtime);
 
-    assert_eq!(runtime.activate_node(&target), ActivationResult::Activated);
+    submit_activate(&mut runtime, target.clone());
+    drain(&mut runtime);
+
+    submit_activate(&mut runtime, target.clone());
+    runtime.pump(PumpBudget::new(1, 0, 0, 0));
     assert!(runtime.take_redraw_request().is_some());
-    assert_eq!(runtime.activate_node(&target), ActivationResult::NoEffect);
+    submit_activate(&mut runtime, target);
+    runtime.pump(PumpBudget::new(1, 0, 0, 0));
 }
 
 #[derive(Debug)]
@@ -391,9 +405,16 @@ fn coalesced_subscription_invalidation_is_an_effect_not_no_effect() {
     let mut runtime = AppRuntime::<CoalescedInvalidationApp>::mount(());
     drain(&mut runtime);
     let target = runtime.index().nodes()[0].id().clone();
-    assert!(matches!(
-        runtime.activate_node(&target),
-        ActivationResult::Queued(_)
-    ));
-    assert_eq!(runtime.activate_node(&target), ActivationResult::Activated);
+    submit_activate(&mut runtime, target.clone());
+    submit_activate(&mut runtime, target);
+    runtime.pump(PumpBudget::new(2, 0, 0, 0));
+    assert_eq!(
+        runtime
+            .trace()
+            .kinds()
+            .filter(|kind| matches!(kind, TraceRecordKind::MountedSubscriptionInvalidated))
+            .count(),
+        2,
+        "both callbacks report invalidation while queue reconciliation coalesces"
+    );
 }

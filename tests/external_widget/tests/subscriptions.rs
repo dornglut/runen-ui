@@ -2,13 +2,14 @@
 
 use std::rc::Rc;
 
-use runenui_core::{Element, NoHostProtocol, UiApp, View, WorkKey, text};
+use runenui_core::{
+    CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp, View, WorkKey, text,
+};
 use runenui_external_widget_conformance::{
     ExternalActivationSubscriptionWidget, ExternalSubscriptionLog, ExternalSubscriptionWidget,
 };
 use runenui_runtime::{
-    ActivationResult, AppRuntime, PumpBudget, SubscriptionDiagnostic, SubscriptionOwnerKind,
-    TraceRecordKind,
+    AppRuntime, PumpBudget, SubscriptionDiagnostic, SubscriptionOwnerKind, TraceRecordKind,
 };
 
 enum Action {
@@ -192,10 +193,15 @@ fn downstream_activation_invalidates_current_declaration_before_ordered_actions(
     assert_eq!(log.observed_states(), [0]);
 
     let target = runtime.index().nodes()[0].id().clone();
-    assert!(matches!(
-        runtime.activate_node(&target),
-        ActivationResult::Queued(_)
-    ));
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(log.observed_states(), [0]);
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(log.observed_states(), [0, 1]);
     assert!(runtime.state().1.is_empty());
@@ -257,12 +263,17 @@ fn queued_mounted_reconciliation_observes_the_newest_live_widget_state() {
     let target = runtime.index().nodes()[0].id().clone();
 
     runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
+    runtime
         .submit_action(NewestAction::SetNewest)
         .unwrap_or_else(|_| unreachable!());
-    assert!(matches!(
-        runtime.activate_node(&target),
-        ActivationResult::Queued(_)
-    ));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(log.observed_states(), [0]);
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(log.observed_states(), [0]);
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
@@ -318,14 +329,17 @@ fn removed_dirty_owner_suppresses_the_declaration_callback_at_its_envelope() {
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
     let target = runtime.index().nodes()[0].id().clone();
     runtime
+        .submit_command(
+            target.clone(),
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
+    runtime
         .submit_action(RemovedDirtyAction::Remove)
         .unwrap_or_else(|_| unreachable!());
-    assert!(matches!(
-        runtime.activate_node(&target),
-        ActivationResult::Queued(_)
-    ));
 
-    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(3, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(log.declarations(), 1);
     assert!(runtime.trace().records().any(|record| {
         matches!(

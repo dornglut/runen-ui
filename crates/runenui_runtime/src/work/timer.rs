@@ -59,7 +59,7 @@ impl<Action> Timer<Action> {
         let Some(next) = self.deadline.as_nanos().checked_add(delta) else {
             return (action, TimerFireOutcome::RepeatDeadlineOverflow);
         };
-        self.deadline = MonotonicInstant::from_nanos(next);
+        self.deadline = MonotonicInstant::__runtime_from_nanos(next);
         self.promoted = false;
         (action, TimerFireOutcome::Rescheduled)
     }

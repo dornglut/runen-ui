@@ -40,10 +40,10 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
-M4A is complete. M4B is complete, owner-accepted, and squash-merged. M4C0
-documentation/conformance alignment is implemented pending owner acceptance.
-M4C1–M4C5 and M4D1–M4D3 remain blocked in sequence; therefore
-the target M4 pipeline is not complete.
+M4A is complete. M4B is complete, owner-accepted, and squash-merged. M4C0 is
+complete, owner-accepted, and merged. M4C1 implementation and corrected proof
+are complete pending owner acceptance and merge. M4C2–M4C5 and M4D1–M4D3 remain
+blocked in sequence; therefore the target M4 pipeline is not complete.
 
 ```text
 Application-owned State + Action
@@ -51,7 +51,7 @@ Application-owned State + Action
   -> sibling-local mounted reconciliation
   -> persistent generational MountedTree
   -> state-aware cached widget capabilities
-  -> mounted proof input/focus/activation policies
+  -> exact-target semantic-command capture/target/bubble routing and focus-only proof input
   -> one generalized sequenced work FIFO
   -> explicit four-budget readiness pump
   -> UiApp::update(State, Action) + complete reconciliation
@@ -111,9 +111,11 @@ M4. The current M4B implementation adds the core-owned application-work
 contract, one ordered transaction planner, state-current application and
 mounted subscription reconciliation, generational tasks/timers/host work,
 four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
-complete per-family causal scheduler trace proofs. Routed interaction is still
-unimplemented M4C target architecture, and trace-v2 normalization/export/replay
-remains unimplemented M4D target architecture.
+complete per-family causal scheduler trace proofs. The exact-target routed
+semantic-command kernel is implemented through M4C1; displayed-generation
+surface context, pointer, focus, keyboard/text/IME, and source-specific target
+resolution remain blocked M4C2–M4C5 target architecture. Trace-v2
+normalization/export/replay remains unimplemented M4D target architecture.
 See the [public API contract](architecture/public-api.md) and
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md).
 

@@ -284,11 +284,12 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Next unblocked slice:** M4C1.
+**Next slice:** M4C1 is implemented and under owner review; no later slice is unblocked.
 
 #### M4C1 — Routed semantic-command kernel
 
-**Status:** `queued`; next implementation slice.
+**Status:** `active`; implementation and corrected proof complete at this exact
+branch head, pending owner acceptance and merge.
 
 **Goal:** Implement the shared runtime namespace, core-owned protocol identity
 values, one immutable routed semantic-command transaction, exact admission and
@@ -312,7 +313,21 @@ slice-local causal trace, stable/MSRV validation, and exact-head CI.
 rows are proof-complete at the exact head, and no direct activation authority
 survives outside explicitly bounded focus-only transition helpers.
 
-**Next unblocked slice:** M4C2 after M4C1 owner acceptance and merge.
+**Implementation record:** One shared core-owned runtime namespace now backs
+mounted and semantic identities; core owns the opaque mounted/time/sequence
+protocol values and narrow routed event vocabulary. The runtime owns exact
+target validation, one canonical command envelope, immutable route snapshots,
+route-wide bridge preflight, checked transaction admission, propagation/default
+control, conservative maximum-safe admission, ordered commit, semantic
+activation, route-only commands, structured routed-integrity diagnosis, and the
+M4C1 causal graph. Submission rejection recovers exact inputs without work/trace
+sequence consumption or a trace record. Direct runtime/pointer/keyboard
+activation authority is removed;
+Counter and a genuine downstream mapped event widget use public command APIs.
+All 36 corrected M4C1 rows are `proof-complete`, pending owner review and merge.
+
+**Next unblocked slice:** None. M4C2 remains blocked until M4C1 owner acceptance
+and merge.
 
 #### M4C2 — Displayed-generation surface context
 

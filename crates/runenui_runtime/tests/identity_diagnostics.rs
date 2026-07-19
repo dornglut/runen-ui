@@ -1,6 +1,9 @@
 #![allow(refining_impl_trait)]
 
-use runenui_core::{Element, NoHostProtocol, UiApp, View, button, children, column, text};
+use runenui_core::{
+    CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp, View, button, children, column,
+    text,
+};
 use runenui_runtime::{AppRuntime, DuplicateIdentityKind};
 
 struct App;
@@ -79,11 +82,15 @@ fn authored_duplicates_are_deterministic_in_mounted_preorder() {
         ]
     );
 
+    let exact_target = index.nodes()[1].id().clone();
     drop(index);
-    assert_eq!(
-        runtime.activate("same"),
-        runenui_runtime::ActivationResult::AmbiguousId
-    );
+    runtime
+        .submit_command(
+            exact_target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     let repeated: Vec<_> = runtime
         .index()
         .diagnostics()

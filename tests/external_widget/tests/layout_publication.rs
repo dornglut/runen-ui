@@ -2,14 +2,15 @@
 
 use std::{cell::Cell, rc::Rc};
 
-use runenui_core::{Element, ElementId, NoHostProtocol, StyleTokens, UiApp};
+use runenui_core::{
+    CommandOrigin, Element, ElementId, NoHostProtocol, SemanticCommand, StyleTokens, UiApp,
+};
 use runenui_external_widget_conformance::{
     LayoutCase, LayoutConformanceApp, LayoutState, UnsupportedMeasure, counting_measurement_tree,
 };
 use runenui_runtime::{
-    ActivationResult, AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize,
-    MeasurementProvider, PumpBudget, SurfaceBuildContext, TextMeasurement, TextMeasurementKind,
-    TextMeasurementRequest,
+    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MeasurementProvider, PumpBudget,
+    SurfaceBuildContext, TextMeasurement, TextMeasurementKind, TextMeasurementRequest,
 };
 
 fn size(width: f32, height: f32) -> LogicalSize {
@@ -23,6 +24,19 @@ fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>
         usize::MAX,
         usize::MAX,
     ));
+}
+
+fn submit_layout_activate(
+    runtime: &mut AppRuntime<LayoutConformanceApp>,
+    target: runenui_core::MountedNodeId,
+) {
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
 }
 
 struct ControlLabelProvider {
@@ -255,15 +269,12 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         )
         .unwrap_or_else(|_| unreachable!());
         assert_eq!(publication.frame().hit_test_id(point), Some(action.clone()));
-        assert!(matches!(
-            runtime.activate_node(&action),
-            ActivationResult::Queued(_)
-        ));
+        submit_layout_activate(&mut runtime, action);
         assert_eq!(
             runtime
-                .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+                .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
                 .processed_envelopes(),
-            1
+            2
         );
         assert_eq!(runtime.state().activations, 1);
     }

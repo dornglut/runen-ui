@@ -7,18 +7,24 @@ use super::{
     tree::MountedTree,
 };
 
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "activation reports independent state, subscription, primary-action, and overflow facts"
+)]
 pub(crate) struct MountedActivationOutput<Action> {
     pub(crate) invalidation: WidgetInvalidation,
     pub(crate) subscription_invalidation: bool,
     pub(crate) outputs: Vec<runenui_core::__runtime::MountedEffect<Action>>,
-    pub(crate) primary_action: bool,
     pub(crate) state_changed: bool,
+    pub(crate) overflowed: bool,
+    pub(crate) remaining_outputs: usize,
 }
 
 impl<Action> MountedTree<Action> {
     pub(crate) fn activate(
         &mut self,
         id: &MountedNodeId,
+        output_allowance: usize,
     ) -> Result<MountedActivationOutput<Action>, WidgetBridgeError> {
         let node = self
             .node_mut(id)
@@ -26,7 +32,7 @@ impl<Action> MountedTree<Action> {
         if state_is_corrupted(node) {
             return Err(WidgetBridgeError::StatePayloadMismatch);
         }
-        let mut context = WidgetActivationContext::__runtime_new();
+        let mut context = WidgetActivationContext::__runtime_new_bounded(output_allowance);
         let activation = node.widget.activate(&mut node.state, &mut context)?;
         let invalidation = context.__runtime_take_invalidation();
         let subscription_invalidation = context.__runtime_take_subscription_invalidation();
@@ -34,16 +40,21 @@ impl<Action> MountedTree<Action> {
         let mut outputs = context.__runtime_take_outputs();
         let state_changed = activation.state_changed();
         let action = activation.into_action();
-        let primary_action = action.is_some();
-        if let Some(action) = action {
+        if let Some(action) = action
+            && context.__runtime_reserve_output()
+        {
             outputs.insert(0, runenui_core::__runtime::MountedEffect::Action(action));
         }
+        let remaining_outputs = context
+            .__runtime_remaining_outputs()
+            .unwrap_or_else(|| unreachable!("activation context is bounded"));
         Ok(MountedActivationOutput {
             invalidation,
             subscription_invalidation,
             outputs,
-            primary_action,
             state_changed,
+            overflowed: context.__runtime_overflowed(),
+            remaining_outputs,
         })
     }
 

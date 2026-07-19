@@ -10,12 +10,12 @@ use std::{
 };
 
 use runenui_core::{
-    Effects, Element, IntoEffects, NoHostProtocol, StyleTokens, UiApp, View, Widget,
-    WidgetMountContext, button, text,
+    ChildLayout, ChildLayoutWidget, CommandOrigin, Effects, Element, IntoEffects, NoHostProtocol,
+    SemanticCommand, StyleTokens, UiApp, View, Widget, WidgetMountContext, button, text,
 };
 use runenui_runtime::{
-    ActivationResult, AppRuntime, FocusTargetResult, LayoutConstraints, PumpBudget, PumpOutcome,
-    RuntimeStatus, RuntimeTerminalReason, SubmitActionErrorKind, SurfaceBuildContext,
+    AppRuntime, FocusTargetResult, LayoutConstraints, PumpBudget, PumpOutcome, RuntimeStatus,
+    RuntimeTerminalReason, SubmitActionErrorKind, SubmitCommandErrorKind, SurfaceBuildContext,
     TraceRecordKind,
 };
 
@@ -218,7 +218,7 @@ fn direct_work_sequence_exhaustion_returns_action_and_closes_mutation() {
 }
 
 #[test]
-fn activation_work_sequence_exhaustion_preserves_mounted_authority() {
+fn command_submission_sequence_exhaustion_recovers_inputs_and_closes_mutation() {
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(state(&calls));
     let target = runtime.index().nodes()[0].id().clone();
@@ -233,10 +233,19 @@ fn activation_work_sequence_exhaustion_preserves_mounted_authority() {
     let report_before = runtime.reconciliation_report().clone();
 
     runtime.__seed_next_work_sequence_for_test(0);
-    assert_eq!(
-        runtime.activate_node(&target),
-        ActivationResult::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
-    );
+    let Err(error) = runtime.submit_command(
+        target.clone(),
+        SemanticCommand::Activate,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("an exhausted sequence authority rejects the command")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::WorkSequenceExhausted);
+    let (recovered_target, recovered_command, recovered_origin) =
+        error.into_unaccepted().into_parts();
+    assert_eq!(recovered_target, target);
+    assert_eq!(recovered_command, SemanticCommand::Activate);
+    assert_eq!(recovered_origin, CommandOrigin::programmatic());
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
@@ -402,5 +411,137 @@ fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
             .pump(PumpBudget::new(8, usize::MAX, usize::MAX, usize::MAX))
             .processed_envelopes(),
         0
+    );
+}
+
+#[derive(Debug)]
+struct MountCountProbe(Rc<Cell<usize>>);
+
+impl Widget<()> for MountCountProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn mount(&self, (): &mut Self::State, _: &mut WidgetMountContext<()>) {
+        self.0.set(self.0.get() + 1);
+    }
+}
+
+struct InitialMountedCapacityApp;
+
+impl UiApp for InitialMountedCapacityApp {
+    type State = Rc<Cell<usize>>;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        Element::new(MountCountProbe(Rc::clone(state))).key("capacity-root")
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn initial_mounted_identity_exhaustion_runs_no_mount_callback_and_is_terminal() {
+    let mount_calls = Rc::new(Cell::new(0));
+    let config =
+        runenui_runtime::RuntimeConfig::default().__with_mounted_public_slot_limit_for_test(0);
+    let mut runtime =
+        AppRuntime::<InitialMountedCapacityApp>::mount_with_config(Rc::clone(&mount_calls), config);
+
+    assert_eq!(mount_calls.get(), 0);
+    assert!(runtime.index().nodes().is_empty());
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::MountedIdentityExhausted)
+    );
+    assert!(runtime.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::RuntimeTerminal {
+            reason: RuntimeTerminalReason::MountedIdentityExhausted
+        }
+    )));
+}
+
+#[derive(Debug)]
+struct CapacityRoot;
+
+impl Widget<()> for CapacityRoot {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+}
+
+impl ChildLayoutWidget<()> for CapacityRoot {
+    fn child_layout(&self, (): &Self::State) -> ChildLayout {
+        ChildLayout::Linear {
+            axis: runenui_core::Axis::Vertical,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct MountedCapacityState {
+    expanded: bool,
+    child_mount_calls: Rc<Cell<usize>>,
+}
+
+struct ReconcileMountedCapacityApp;
+
+impl UiApp for ReconcileMountedCapacityApp {
+    type State = MountedCapacityState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        let children = if state.expanded {
+            vec![
+                Element::new(MountCountProbe(Rc::clone(&state.child_mount_calls)))
+                    .key("capacity-child"),
+            ]
+        } else {
+            Vec::new()
+        };
+        runenui_core::container(CapacityRoot, children)
+            .key("capacity-root")
+            .into_element()
+    }
+
+    fn update(state: &mut Self::State, (): Self::Action) {
+        state.expanded = true;
+    }
+}
+
+#[test]
+fn post_update_mounted_identity_exhaustion_poisoned_without_partial_tree_mutation() {
+    let child_mount_calls = Rc::new(Cell::new(0));
+    let config =
+        runenui_runtime::RuntimeConfig::default().__with_mounted_public_slot_limit_for_test(1);
+    let mut runtime = AppRuntime::<ReconcileMountedCapacityApp>::mount_with_config(
+        MountedCapacityState {
+            expanded: false,
+            child_mount_calls: Rc::clone(&child_mount_calls),
+        },
+        config,
+    );
+    assert_eq!(runtime.index().nodes().len(), 1);
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+
+    runtime
+        .submit_action(())
+        .unwrap_or_else(|_| unreachable!("capacity transition action is accepted"));
+    runtime.pump(PumpBudget::new(1, 0, 0, 0));
+
+    assert!(runtime.state().expanded);
+    assert_eq!(child_mount_calls.get(), 0);
+    assert_eq!(runtime.index().nodes().len(), 1);
+    assert_eq!(
+        runtime.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
     );
 }

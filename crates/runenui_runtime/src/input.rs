@@ -339,22 +339,6 @@ pub enum InputEvent {
     Keyboard(KeyboardEvent),
 }
 
-/// Runtime-level intent resolved from input.
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InputIntent {
-    /// Activate an element by generated runtime node identity.
-    ActivateNode(MountedNodeId),
-}
-
-impl InputIntent {
-    /// Creates an activation intent for a runtime node.
-    #[must_use]
-    pub const fn activate_node(id: MountedNodeId) -> Self {
-        Self::ActivateNode(id)
-    }
-}
-
 /// Returns a pointer event targeted by hit testing its position against a surface frame.
 #[must_use]
 pub fn resolve_pointer_event_target(frame: &SurfaceFrame, event: PointerEvent) -> PointerEvent {

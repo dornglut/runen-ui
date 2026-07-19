@@ -27,16 +27,17 @@ impl DirtyPhases {
     pub(crate) const fn remove(&mut self, phases: Self) {
         self.0 &= !phases.0;
     }
-
-    const fn is_empty(self) -> bool {
-        self.0 == 0
-    }
 }
 
 impl core::ops::BitOrAssign for DirtyPhases {
     fn bitor_assign(&mut self, rhs: Self) {
         self.insert(rhs);
     }
+}
+
+pub(crate) const fn publication_is_dirty(invalidation: WidgetInvalidation) -> bool {
+    let phases = publication_phases(invalidation);
+    phases.0 != 0
 }
 
 pub(crate) fn apply_invalidation<Action>(
@@ -60,10 +61,6 @@ pub(crate) fn apply_invalidation<Action>(
         node.caches.diagnostics = CachedCapability::Unresolved;
     }
     node.dirty_phases.insert(publication_phases(invalidation));
-}
-
-pub(crate) const fn publication_is_dirty(invalidation: WidgetInvalidation) -> bool {
-    !publication_phases(invalidation).is_empty()
 }
 
 const fn publication_phases(invalidation: WidgetInvalidation) -> DirtyPhases {

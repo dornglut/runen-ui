@@ -46,13 +46,15 @@ reconciliation, queue sequences/checkpoints, work execution, timers/clocks,
 subscriptions, host requests, wake/redraw, trace, and shutdown. Completion
 ingress owns only live `Starting`/`Running` generations; centralized revocation
 removes registry and retained producer state before lifecycle callbacks. The
-current implementation includes the application-work and deterministic-scheduler slice.
+current implementation includes the application-work/deterministic-scheduler
+slice and the exact-target routed semantic-command kernel.
 Hidden safe core construction seams do not own live state or bypass runtime validation.
 M4 adds no third crate.
 
 That corrected M4B ownership slice is complete, owner-accepted, and
-squash-merged. M4C0 is documentation-only; M4C1–M4D3 are blocked in sequence,
-and no additional crate boundary is implied by those blocked slices.
+squash-merged. M4C0 is complete and owner-accepted. M4C1 implementation and
+corrected proof are complete pending owner acceptance and merge; M4C2–M4D3 remain blocked,
+and no additional crate boundary is implied by those slices.
 
 Within the crates, built-in authoring is separate from the public element/widget
 protocol. Mounted storage is divided into arena, identity, node, capability
@@ -62,8 +64,14 @@ measurement, arrangement, and publication code. These are module boundaries,
 not new crate boundaries.
 
 Current source boundaries follow present responsibilities: configuration,
-queue/pump, completion, clock, wake, redraw, transaction, trace, and family-
-specific live work are separate capability modules. Speculative milestone-named modules
+queue/pump, completion, clock, wake, redraw, application transaction, trace,
+and family-specific live work are separate capability modules. Routed runtime
+ownership is a focused module family: `routed/mod.rs` coordinates the slice,
+`admission.rs` computes conservative maximum-safe reservations,
+`transaction.rs` owns provisional routed state, `dispatch.rs` validates and
+invokes the immutable route, `defaults.rs` resolves semantic default,
+`commit.rs` applies the admitted transaction, and `failure.rs` records exact
+processing/integrity outcomes. Speculative milestone-named modules
 are not part of the workspace structure.
 
 ## Extraction rule

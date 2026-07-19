@@ -2,6 +2,8 @@
 
 #![allow(clippy::redundant_pub_crate)]
 
+mod routed;
+
 use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
@@ -10,34 +12,35 @@ use std::{
 
 use runenui_core::{
     __runtime::{Effect, MountedEffect, SendOutput, Subscription},
-    Element, ElementKey, HostProtocol, IntoEffects, NoHostProtocol, SendSubscriptionSink,
-    SendSubscriptionStartOutcome, SendTaskStartFailure, SubscriptionSet, UiApp, View,
+    CommandOrigin, Element, ElementKey, HostProtocol, IntoEffects, NoHostProtocol, SemanticCommand,
+    SendSubscriptionSink, SendSubscriptionStartOutcome, SendTaskStartFailure, SubscriptionSet,
+    UiApp, View,
 };
 
 use crate::trace::MandatoryTracePlan;
 use crate::{
-    ActivationCapacity, FocusState, ManualClock, MonotonicClock, MonotonicInstant, MountedNodeId,
+    CommandSubmission, FocusState, ManualClock, MonotonicClock, MonotonicInstant, MountedNodeId,
     RuntimeConfig, SendTaskExecutor, SendTaskStartError, SendTaskStartOutcome, SubmitActionError,
-    SubmitActionResult, Trace, TraceRecordKind, TraceSequence, TraceTarget,
-    TraceTimerTerminalOutcome, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
-    WorkSequence,
+    SubmitActionResult, SubmitCommandError, SubmitCommandErrorKind, Trace, TraceRecordKind,
+    TraceSequence, TraceTarget, TraceTimerTerminalOutcome, TraceWorkIdentity, TraceWorkOwner,
+    TraceWorkStartRefusal, UnacceptedCommand, WorkSequence,
     completion::{
         CompletionIngress, CompletionKind, HostResponseCompletion, SendTaskJob, UnavailableExecutor,
     },
-    mounted::{MountedTree, TargetStatus},
+    mounted::{MountedIdentityExhausted, MountedTree, TargetStatus},
     queue::{
         ApplicationActionEnvelope, ApplicationActionOrigin, QueueCommitError, WorkEnvelope,
         WorkQueue,
     },
     transaction::{
         ApplicationTransactionInput, OwnedTransactionLedger, PlannedApplicationTransaction,
-        PlannedOutput, PlannedStart, PlannedStartPayload, PlannedTransaction,
-        PlannedWorkSemanticEvent, TransactionLedger, TransactionPlanError,
+        PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent, TransactionLedger,
+        TransactionPlanError,
     },
     wake::WakeState,
     work::{
-        MountedCallbackPreflightError, RegistryInsertError, WorkCancellationCounts, WorkFamily,
-        WorkOwner, WorkRegistry, WorkTraceIdentity,
+        RegistryInsertError, WorkCancellationCounts, WorkFamily, WorkOwner, WorkRegistry,
+        WorkTraceIdentity,
         host_request::{HostRequestRef, HostRequestToken, LiveHostRequest},
         subscription::{LiveSubscription, LiveSubscriptionSource, SubscriptionPoll},
         task::{LocalTask, TaskReady},
@@ -45,16 +48,25 @@ use crate::{
     },
 };
 
-pub(crate) enum ActivationPreflightError {
-    Saturated(ActivationCapacity),
-    Status(RuntimeStatus),
-}
-
 enum ActionCommitError<Action> {
     QueueFull(Action),
     WorkSequenceExhausted(Action),
     TraceSequenceExhausted(Action),
     Integrity(Action),
+}
+
+enum CollectedRoutedOutput<Action> {
+    Action {
+        action: Action,
+        causal_parent: Option<TraceSequence>,
+        current_target: MountedNodeId,
+    },
+    Command {
+        target: MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+        causal_parent: Option<TraceSequence>,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -81,6 +93,7 @@ pub enum RuntimeTerminalReason {
     WorkSequenceExhausted,
     WorkGenerationExhausted,
     ReconciliationGenerationExhausted,
+    MountedIdentityExhausted,
     TraceSequenceExhausted,
     Poisoned,
 }
@@ -92,6 +105,9 @@ impl fmt::Display for RuntimeTerminalReason {
             Self::WorkGenerationExhausted => formatter.write_str("work generation exhausted"),
             Self::ReconciliationGenerationExhausted => {
                 formatter.write_str("reconciliation generation exhausted")
+            }
+            Self::MountedIdentityExhausted => {
+                formatter.write_str("mounted identity capacity exhausted")
             }
             Self::TraceSequenceExhausted => formatter.write_str("trace sequence exhausted"),
             Self::Poisoned => formatter.write_str("runtime integrity poisoned after mutation"),
@@ -339,6 +355,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     report: ReconciliationReport,
     status: RuntimeStatus,
     limits: crate::RuntimeLimits,
+    mounted_public_slot_limit: u64,
     work: WorkRegistry<Action, Protocol>,
     mounted_subscription_reconcile_pending: Vec<MountedNodeId>,
     initial_mounted_subscription_owners: Vec<MountedNodeId>,
@@ -363,6 +380,12 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     wake: WakeState,
     #[cfg(test)]
     readiness_checkpoint_count: usize,
+    #[cfg(feature = "internal-test-seams")]
+    routed_callback_bridge_failure_for_test: bool,
+    #[cfg(feature = "internal-test-seams")]
+    routed_semantic_default_failure_for_test: bool,
+    #[cfg(feature = "internal-test-seams")]
+    routed_commit_failure_for_test: bool,
 }
 
 pub(crate) enum ProcessApplicationActionOutcome {
@@ -407,18 +430,31 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         config: RuntimeConfig,
     ) -> Self {
         let transient = root(&state);
-        let (tree, reconcile_stats) = MountedTree::mount(transient);
+        let mounted_public_slot_limit = config.mounted_public_slot_limit();
+        let mounted =
+            MountedTree::mount_with_public_slot_limit(transient, mounted_public_slot_limit);
+        let mount_failed = mounted.is_err();
+        let (tree, reconcile_stats, generation) = match mounted {
+            Ok((tree, reconcile_stats)) => (tree, reconcile_stats, 1),
+            Err(MountedIdentityExhausted) => (
+                MountedTree::empty(),
+                crate::mounted::ReconcileStats::default(),
+                0,
+            ),
+        };
         let mut trace = Trace::new(config.trace_config());
-        trace.record(
-            TraceRecordKind::RuntimeMounted,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        if !mount_failed {
+            trace.record(
+                TraceRecordKind::RuntimeMounted,
+                None,
+                None,
+                None,
+                None,
+                None,
+            );
+        }
         let report = ReconciliationReport {
-            generation: ReconciliationGeneration(1),
+            generation: ReconciliationGeneration(generation),
             live_node_count: tree.live_count(),
             mounted_count: reconcile_stats.mounted,
             updated_count: 0,
@@ -440,16 +476,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             work.seed_next_generation_for_test(config.initial_next_work_generation());
             (queue, work)
         };
-        Self {
+        let mut runtime = Self {
             state: Some(state),
             tree,
             queue,
             trace,
             focus: FocusState::new(),
-            generation: 1,
+            generation,
             report,
             status: RuntimeStatus::Running,
             limits,
+            mounted_public_slot_limit,
             work,
             mounted_subscription_reconcile_pending: Vec::new(),
             initial_mounted_subscription_owners: mounted_owners,
@@ -474,7 +511,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             wake,
             #[cfg(test)]
             readiness_checkpoint_count: 0,
+            #[cfg(feature = "internal-test-seams")]
+            routed_callback_bridge_failure_for_test: false,
+            #[cfg(feature = "internal-test-seams")]
+            routed_semantic_default_failure_for_test: false,
+            #[cfg(feature = "internal-test-seams")]
+            routed_commit_failure_for_test: false,
+        };
+        if mount_failed {
+            runtime.enter_terminal(RuntimeTerminalReason::MountedIdentityExhausted, 0);
         }
+        runtime
     }
 
     pub(crate) fn submit_action(
@@ -589,324 +636,121 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let _ = self.wake.handle().request();
     }
 
-    pub(crate) fn activation_preflight(
+    pub(crate) fn submit_command(
         &mut self,
-        target: &TraceTarget,
-    ) -> Result<(), ActivationPreflightError> {
+        target: MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+    ) -> Result<CommandSubmission, SubmitCommandError> {
         match self.status {
             RuntimeStatus::Running => {}
-            status => return Err(ActivationPreflightError::Status(status)),
+            RuntimeStatus::Closed => {
+                return Err(Self::reject_command_submission(
+                    SubmitCommandErrorKind::Closed,
+                    target,
+                    command,
+                    origin,
+                ));
+            }
+            RuntimeStatus::Terminal(reason) => {
+                return Err(Self::reject_command_submission(
+                    SubmitCommandErrorKind::Terminal(reason),
+                    target,
+                    command,
+                    origin,
+                ));
+            }
         }
-        if self.next_generation().is_none() {
-            let reason = RuntimeTerminalReason::ReconciliationGenerationExhausted;
-            self.enter_terminal(reason, 0);
-            return Err(ActivationPreflightError::Status(RuntimeStatus::Terminal(
-                reason,
-            )));
-        }
-        let max_outputs = self.limits.transaction_outputs();
-        let Some(required_queue_slots) = max_outputs
-            .checked_mul(2)
-            .and_then(|count| count.checked_add(1))
-        else {
-            let reason = RuntimeTerminalReason::Poisoned;
-            self.enter_terminal(reason, 0);
-            return Err(ActivationPreflightError::Status(RuntimeStatus::Terminal(
-                reason,
-            )));
+        let target_error = match self.tree.target_status(&target) {
+            TargetStatus::Live => None,
+            TargetStatus::Foreign => Some(SubmitCommandErrorKind::ForeignTarget),
+            TargetStatus::Stale => Some(SubmitCommandErrorKind::StaleTarget),
+            TargetStatus::Missing => Some(SubmitCommandErrorKind::MissingTarget),
         };
-        match self.queue.preflight_commit(required_queue_slots) {
+        if let Some(kind) = target_error {
+            return Err(Self::reject_command_submission(
+                kind, target, command, origin,
+            ));
+        }
+        match self.queue.preflight_commit(1) {
             Ok(()) => {}
             Err(QueueCommitError::Full) => {
-                self.record_optional(
-                    TraceRecordKind::ActivationRejectedSaturated {
-                        capacity: ActivationCapacity::WaitingEnvelopes,
-                    },
-                    None,
-                    None,
-                    Some(target.clone()),
-                );
-                return Err(ActivationPreflightError::Saturated(
-                    ActivationCapacity::WaitingEnvelopes,
+                return Err(Self::reject_command_submission(
+                    SubmitCommandErrorKind::Full,
+                    target,
+                    command,
+                    origin,
                 ));
             }
             Err(QueueCommitError::SequenceExhausted) => {
-                let reason = RuntimeTerminalReason::WorkSequenceExhausted;
-                self.enter_terminal(reason, 0);
-                return Err(ActivationPreflightError::Status(RuntimeStatus::Terminal(
-                    reason,
-                )));
-            }
-        }
-        match self.work.preflight_mounted_callback(max_outputs) {
-            Ok(()) => {}
-            Err(MountedCallbackPreflightError::FamilyFull(family)) => {
-                let capacity = match family {
-                    WorkFamily::LocalTask => ActivationCapacity::LocalTasks,
-                    WorkFamily::SendTask => ActivationCapacity::SendTasks,
-                    WorkFamily::Timer => ActivationCapacity::Timers,
-                    WorkFamily::Subscription | WorkFamily::HostRequest => {
-                        unreachable!("mounted callback preflight exposes only mounted families")
-                    }
-                };
-                self.record_optional(
-                    TraceRecordKind::ActivationRejectedSaturated { capacity },
-                    None,
-                    None,
-                    Some(target.clone()),
+                let error = Self::reject_command_submission(
+                    SubmitCommandErrorKind::WorkSequenceExhausted,
+                    target,
+                    command,
+                    origin,
                 );
-                return Err(ActivationPreflightError::Saturated(capacity));
-            }
-            Err(MountedCallbackPreflightError::GenerationExhausted) => {
-                let reason = RuntimeTerminalReason::WorkGenerationExhausted;
-                self.enter_terminal(reason, 0);
-                return Err(ActivationPreflightError::Status(RuntimeStatus::Terminal(
-                    reason,
-                )));
+                self.enter_terminal(RuntimeTerminalReason::WorkSequenceExhausted, 0);
+                return Err(error);
             }
         }
-        let Some(trace_plan) = MandatoryTracePlan::activation_maximum(max_outputs) else {
-            let reason = RuntimeTerminalReason::TraceSequenceExhausted;
-            self.enter_terminal(reason, 0);
-            return Err(ActivationPreflightError::Status(RuntimeStatus::Terminal(
-                reason,
-            )));
+        let Some(trace_reservation) = self.trace.reserve_command_outcome() else {
+            let error = Self::reject_command_submission(
+                SubmitCommandErrorKind::TraceSequenceExhausted,
+                target,
+                command,
+                origin,
+            );
+            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
+            return Err(error);
         };
-        if !self.trace.can_admit(trace_plan) {
-            let reason = RuntimeTerminalReason::TraceSequenceExhausted;
-            self.enter_terminal(reason, 0);
-            return Err(ActivationPreflightError::Status(RuntimeStatus::Terminal(
-                reason,
-            )));
-        }
-        Ok(())
-    }
-
-    pub(crate) fn commit_activation(
-        &mut self,
-        owner: MountedNodeId,
-        output: crate::mounted::MountedActivationOutput<Action>,
-        target: &TraceTarget,
-        origin: ApplicationActionOrigin,
-    ) -> Result<Option<crate::ActivationCommit>, ()> {
-        let crate::mounted::MountedActivationOutput {
-            invalidation: _,
-            subscription_invalidation,
-            outputs,
-            primary_action,
-            state_changed: _,
-        } = output;
-        let outputs = outputs
-            .into_iter()
-            .map(mounted_effect_into_effect)
-            .collect();
-        let ledger = TransactionLedger::from_outputs(outputs, self.limits.transaction_outputs())
-            .map_err(|_| ())?;
-        let append_subscription_reconcile = subscription_invalidation
-            && !self.mounted_subscription_reconcile_pending.contains(&owner);
-        let plan = PlannedTransaction::plan_with_additional_queue(
-            WorkOwner::Mounted(owner.clone()),
-            ledger,
-            &self.work,
-            &self.queue,
-            usize::from(append_subscription_reconcile),
-        )
-        .map_err(|_| ())?;
-        let PlannedTransaction {
-            owner: work_owner,
-            invalidated,
-            starts,
-            outputs,
-            next_generation,
-            semantic_events,
-        } = plan;
-        let action_count = outputs
-            .iter()
-            .filter(|output| matches!(output, PlannedOutput::Action(_)))
-            .count();
-        let Some(trace_plan) =
-            MandatoryTracePlan::activation_commit(invalidated.len(), starts.len(), action_count)
-        else {
-            return Err(());
-        };
-        if !self.trace.can_admit(trace_plan) {
-            return Err(());
-        }
-        let queued_envelopes = invalidated
-            .len()
-            .checked_add(usize::from(append_subscription_reconcile))
-            .and_then(|count| {
-                count.checked_add(
-                    outputs
-                        .iter()
-                        .filter(|output| !matches!(output, PlannedOutput::Redraw))
-                        .count(),
-                )
-            })
-            .ok_or(())?;
-        let first_sequence = (queued_envelopes > 0)
-            .then(|| self.queue.next_sequence())
-            .flatten();
-        let causal_parent = self.trace.record(
-            TraceRecordKind::ActivationCommitted,
+        let sequence = self
+            .queue
+            .next_sequence()
+            .unwrap_or_else(|| unreachable!("command sequence was preflighted"));
+        let instant = self.now();
+        let trace_enabled = self.trace.is_enabled();
+        let causal_parent = self.trace.record_event(
+            TraceRecordKind::CommandSubmissionAccepted,
+            sequence,
             None,
+            Some(self.tree.trace_target(&target)),
+            instant,
+            &target,
             None,
-            None,
-            None,
-            Some(target.clone()),
+            origin,
         );
-        let cancellation_lineage = self.commit_planned_effect_starts(
-            &work_owner,
-            &invalidated,
-            starts,
-            next_generation,
-            semantic_events,
-            causal_parent,
-        );
-        self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
-        if append_subscription_reconcile {
-            self.queue
-                .push_mounted_subscription_reconcile(owner.clone(), causal_parent)
-                .unwrap_or_else(|_| unreachable!("activation queue was preflighted"));
-            self.mounted_subscription_reconcile_pending.push(owner);
+        if trace_enabled && causal_parent.is_none() {
+            self.trace.release_reservation(trace_reservation);
+            let error = Self::reject_command_submission(
+                SubmitCommandErrorKind::TraceSequenceExhausted,
+                target,
+                command,
+                origin,
+            );
+            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
+            return Err(error);
         }
-        let primary_action_sequence =
-            self.append_activation_outputs(outputs, primary_action, causal_parent, target, origin)?;
-        Ok(
-            first_sequence.map(|first_sequence| crate::ActivationCommit {
-                first_sequence,
-                primary_action_sequence,
-                queued_envelopes,
-            }),
-        )
-    }
-
-    fn append_activation_outputs(
-        &mut self,
-        outputs: Vec<PlannedOutput<Action>>,
-        primary_action: bool,
-        causal_parent: Option<TraceSequence>,
-        target: &TraceTarget,
-        origin: ApplicationActionOrigin,
-    ) -> Result<Option<WorkSequence>, ()> {
-        let mut primary_sequence = None;
-        for planned in outputs {
-            match planned {
-                PlannedOutput::Action(action) => {
-                    let sequence = self
-                        .commit_preflighted_action(
-                            action,
-                            causal_parent,
-                            Some(target.clone()),
-                            origin,
-                        )
-                        .map_err(|_| ())?;
-                    if primary_action && primary_sequence.is_none() {
-                        primary_sequence = Some(sequence);
-                    }
-                }
-                PlannedOutput::Start(generation) => {
-                    self.queue
-                        .push_effect_start(generation)
-                        .unwrap_or_else(|_| unreachable!("activation queue was preflighted"));
-                }
-                PlannedOutput::Redraw => self.request_redraw(),
-            }
-        }
-        Ok(primary_sequence)
-    }
-
-    fn commit_planned_effect_starts(
-        &mut self,
-        owner: &WorkOwner,
-        invalidated: &[crate::work::WorkGeneration],
-        starts: Vec<PlannedStart<Action, Protocol>>,
-        next_generation: Option<core::num::NonZeroU64>,
-        semantic_events: Vec<PlannedWorkSemanticEvent>,
-        causal_parent: Option<TraceSequence>,
-    ) -> HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)> {
-        let invalidated_set: HashSet<_> = invalidated.iter().copied().collect();
-        let mut identities: HashMap<_, _> = invalidated
-            .iter()
-            .filter_map(|generation| {
-                self.trace_work_identity(*generation)
-                    .map(|identity| (generation.get(), identity))
-            })
-            .collect();
-        identities.extend(starts.iter().map(|start| {
-            (
-                start.generation.get(),
-                TraceWorkIdentity::new(
-                    trace_work_owner(owner),
-                    trace_work_family(start.family),
-                    start.generation.get(),
-                    start.key.clone(),
-                ),
+        self.queue
+            .push_command_preflighted(
+                target,
+                command,
+                origin,
+                instant,
+                causal_parent,
+                trace_reservation,
             )
-        }));
-        self.work.commit_generation_reservation(next_generation);
-        for start in starts {
-            if !invalidated_set.contains(&start.generation) {
-                self.work.commit_record(
-                    start.generation,
-                    owner.clone(),
-                    start.family,
-                    start.key,
-                    start.effect,
-                );
-            }
-        }
-        let mut semantic_parents: HashMap<_, _> = invalidated
-            .iter()
-            .map(|generation| (generation.get(), self.work.trace_parent(*generation)))
-            .collect();
-        let mut lineage = HashMap::new();
-        for event in semantic_events {
-            let generation = match event {
-                PlannedWorkSemanticEvent::Requested(generation)
-                | PlannedWorkSemanticEvent::Invalidated(generation) => generation,
-            };
-            let identity = identities
-                .get(&generation.get())
-                .cloned()
-                .unwrap_or_else(|| unreachable!("planned semantic event has trace identity"));
-            match event {
-                PlannedWorkSemanticEvent::Requested(_) => {
-                    let requested = self.record_work_fact_with_parent(
-                        TraceRecordKind::WorkRequested,
-                        causal_parent,
-                        identity.clone(),
-                    );
-                    let committed = self.record_work_fact_with_parent(
-                        TraceRecordKind::WorkGenerationCommitted,
-                        requested,
-                        identity,
-                    );
-                    semantic_parents.insert(generation.get(), committed);
-                }
-                PlannedWorkSemanticEvent::Invalidated(_) => {
-                    let parent = semantic_parents
-                        .get(&generation.get())
-                        .copied()
-                        .flatten()
-                        .or(causal_parent);
-                    let bound = self.record_work_fact_with_parent(
-                        TraceRecordKind::WorkCancellationBound,
-                        parent,
-                        identity.clone(),
-                    );
-                    let invalidated = self.record_work_fact_with_parent(
-                        TraceRecordKind::WorkLogicallyInvalidated,
-                        bound,
-                        identity.clone(),
-                    );
-                    semantic_parents.insert(generation.get(), invalidated);
-                    lineage.insert(generation.get(), (identity, invalidated));
-                    self.invalidate_generation_now(generation);
-                }
-            }
-        }
-        lineage
+            .unwrap_or_else(|_| unreachable!("command queue was preflighted"));
+        self.external_queue_commit_accepted();
+        Ok(CommandSubmission::new(sequence))
+    }
+
+    const fn reject_command_submission(
+        kind: SubmitCommandErrorKind,
+        target: MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+    ) -> SubmitCommandError {
+        SubmitCommandError::new(kind, UnacceptedCommand::new(target, command, origin))
     }
 
     fn append_cancellation_envelopes(
@@ -2355,7 +2199,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn close_scheduling_authority(&mut self) -> (usize, WorkCancellationCounts) {
         self.completion_ingress.close();
         self.wake.close();
-        let cancelled_queued = self.queue.cancel_all();
+        let cancelled_queue = self.queue.cancel_all();
+        self.trace
+            .release_reservations(cancelled_queue.command_trace_reservations);
+        let cancelled_queued = cancelled_queue.envelopes;
         let cancelled_live = self.work.cancel_all_counts();
         self.local_tasks.clear();
         self.timers.clear();
@@ -2520,6 +2367,34 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.trace.seed_next_sequence_for_test(next);
     }
 
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn routed_sequence_state_for_test(&self) -> (Option<u64>, Option<u64>) {
+        (
+            self.queue.next_sequence().map(WorkSequence::get),
+            self.trace.next_sequence_for_test(),
+        )
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn routed_trace_reservations_for_test(&self) -> usize {
+        self.trace.reserved_records_for_test()
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn fail_routed_callback_bridge_for_test(&mut self) {
+        self.routed_callback_bridge_failure_for_test = true;
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn fail_routed_semantic_default_for_test(&mut self) {
+        self.routed_semantic_default_failure_for_test = true;
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn fail_routed_commit_for_test(&mut self) {
+        self.routed_commit_failure_for_test = true;
+    }
+
     fn take_initial_mounted_ledgers(
         &mut self,
         initial_output_count: usize,
@@ -2553,6 +2428,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     where
         App: UiApp<State = State, Action = Action, HostProtocol = Protocol>,
     {
+        if !matches!(self.status, RuntimeStatus::Running) {
+            return;
+        }
         let effects = App::initial_effects(self.state());
         let Ok(ledger) =
             TransactionLedger::collect(effects.into_effects(), self.limits.transaction_outputs())
@@ -3033,6 +2911,34 @@ fn mounted_effect_into_effect<Action, Protocol: HostProtocol>(
     }
 }
 
+fn with_routed_parent<Action>(
+    output: CollectedRoutedOutput<Action>,
+    causal_parent: Option<TraceSequence>,
+) -> CollectedRoutedOutput<Action> {
+    match output {
+        CollectedRoutedOutput::Action {
+            action,
+            current_target,
+            ..
+        } => CollectedRoutedOutput::Action {
+            action,
+            causal_parent,
+            current_target,
+        },
+        CollectedRoutedOutput::Command {
+            target,
+            command,
+            origin,
+            ..
+        } => CollectedRoutedOutput::Command {
+            target,
+            command,
+            origin,
+            causal_parent,
+        },
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 pub(crate) fn process_application_action<App: UiApp>(
     runtime: &mut Runtime<App::State, App::Action, App::HostProtocol>,
@@ -3097,6 +3003,7 @@ pub(crate) fn process_application_action<App: UiApp>(
     let previous_focus = runtime.focus.focused_node().cloned();
     let mut lifecycle_invalidated = Vec::new();
     let mut lifecycle_invalidated_identities = Vec::new();
+    let mounted_public_slot_limit = runtime.mounted_public_slot_limit;
     let reconcile_stats = {
         let (
             tree,
@@ -3117,26 +3024,35 @@ pub(crate) fn process_application_action<App: UiApp>(
             &mut runtime.subscriptions,
             &mut runtime.host_requests,
         );
-        tree.reconcile_with_before_unmount(transient, &mut |owner| {
-            let owner = WorkOwner::Mounted(owner.clone());
-            let generations = work.generations_for_owner(&owner);
-            for generation in &generations {
-                if let Some(identity) = work.trace_identity(*generation) {
-                    lifecycle_invalidated_identities.push(public_trace_work_identity(identity));
+        tree.reconcile_with_before_unmount_and_public_slot_limit(
+            transient,
+            mounted_public_slot_limit,
+            &mut |owner| {
+                let owner = WorkOwner::Mounted(owner.clone());
+                let generations = work.generations_for_owner(&owner);
+                for generation in &generations {
+                    if let Some(identity) = work.trace_identity(*generation) {
+                        lifecycle_invalidated_identities.push(public_trace_work_identity(identity));
+                    }
+                    revoke_generation_authority(
+                        *generation,
+                        work,
+                        completion_ingress,
+                        local_tasks,
+                        timers,
+                        send_task_mappers,
+                        subscriptions,
+                        host_requests,
+                    );
                 }
-                revoke_generation_authority(
-                    *generation,
-                    work,
-                    completion_ingress,
-                    local_tasks,
-                    timers,
-                    send_task_mappers,
-                    subscriptions,
-                    host_requests,
-                );
-            }
-            lifecycle_invalidated.extend(generations);
-        })
+                lifecycle_invalidated.extend(generations);
+            },
+        )
+    };
+    let Ok(reconcile_stats) = reconcile_stats else {
+        let reason = RuntimeTerminalReason::Poisoned;
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     };
     let mounted_subscription_owners = reconcile_stats.mounted_owners.clone();
     let unmounted_work_owners = reconcile_stats.unmounted_owners.clone();

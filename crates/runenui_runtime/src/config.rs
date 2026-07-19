@@ -145,6 +145,8 @@ pub struct RuntimeConfig {
     initial_next_work_sequence: u64,
     #[cfg(feature = "internal-test-seams")]
     initial_next_work_generation: u64,
+    #[cfg(feature = "internal-test-seams")]
+    mounted_public_slot_limit: u64,
 }
 
 impl RuntimeConfig {
@@ -202,6 +204,14 @@ impl RuntimeConfig {
     }
 
     #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __with_mounted_public_slot_limit_for_test(mut self, limit: u64) -> Self {
+        self.mounted_public_slot_limit = limit;
+        self
+    }
+
+    #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn initial_next_work_sequence(self) -> u64 {
         self.initial_next_work_sequence
     }
@@ -209,6 +219,16 @@ impl RuntimeConfig {
     #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn initial_next_work_generation(self) -> u64 {
         self.initial_next_work_generation
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn mounted_public_slot_limit(self) -> u64 {
+        self.mounted_public_slot_limit
+    }
+
+    #[cfg(not(feature = "internal-test-seams"))]
+    pub(crate) const fn mounted_public_slot_limit(self) -> u64 {
+        u64::from(u32::MAX) + 1
     }
 }
 
@@ -221,6 +241,8 @@ impl Default for RuntimeConfig {
             initial_next_work_sequence: 1,
             #[cfg(feature = "internal-test-seams")]
             initial_next_work_generation: 1,
+            #[cfg(feature = "internal-test-seams")]
+            mounted_public_slot_limit: u64::from(u32::MAX) + 1,
         }
     }
 }

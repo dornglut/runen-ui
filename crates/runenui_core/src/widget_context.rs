@@ -56,12 +56,121 @@ impl BitOrAssign for WidgetInvalidation {
     }
 }
 
+pub struct WidgetWorkCollector<Action> {
+    outputs: Vec<MountedEffect<Action>>,
+}
+
+impl<Action> WidgetWorkCollector<Action> {
+    pub const fn new() -> Self {
+        Self {
+            outputs: Vec::new(),
+        }
+    }
+
+    pub fn emit(&mut self, action: Action) {
+        self.outputs.push(MountedEffect::Action(action));
+    }
+
+    pub fn local_task(&mut self, future: impl Future<Output = Option<Action>> + 'static) {
+        self.outputs.push(MountedEffect::LocalTask(LocalTaskEffect {
+            key: None,
+            future: Box::pin(future),
+        }));
+    }
+
+    pub fn keyed_local_task(
+        &mut self,
+        key: WorkKey,
+        future: impl Future<Output = Option<Action>> + 'static,
+    ) {
+        self.outputs.push(MountedEffect::LocalTask(LocalTaskEffect {
+            key: Some(key),
+            future: Box::pin(future),
+        }));
+    }
+
+    pub fn send_task<Output>(
+        &mut self,
+        future: impl Future<Output = Output> + Send + 'static,
+        map: impl FnOnce(Output) -> Action + 'static,
+    ) where
+        Output: Send + 'static,
+    {
+        self.push_send_task(None, future, map, None);
+    }
+
+    pub fn keyed_send_task<Output>(
+        &mut self,
+        key: WorkKey,
+        future: impl Future<Output = Output> + Send + 'static,
+        map: impl FnOnce(Output) -> Action + 'static,
+    ) where
+        Output: Send + 'static,
+    {
+        self.push_send_task(Some(key), future, map, None);
+    }
+
+    pub fn send_task_with_failure<Output>(
+        &mut self,
+        future: impl Future<Output = Output> + Send + 'static,
+        map: impl FnOnce(Output) -> Action + 'static,
+        start_failure: impl FnOnce(SendTaskStartFailure) -> Action + 'static,
+    ) where
+        Output: Send + 'static,
+    {
+        self.push_send_task(None, future, map, Some(Box::new(start_failure)));
+    }
+
+    fn push_send_task<Output>(
+        &mut self,
+        key: Option<WorkKey>,
+        future: impl Future<Output = Output> + Send + 'static,
+        map: impl FnOnce(Output) -> Action + 'static,
+        start_failure: Option<Box<dyn FnOnce(SendTaskStartFailure) -> Action>>,
+    ) where
+        Output: Send + 'static,
+    {
+        self.outputs.push(MountedEffect::SendTask(SendTaskEffect {
+            key,
+            future: Box::pin(async move { Box::new(future.await) as crate::work::SendOutput }),
+            map: Box::new(move |output| {
+                output
+                    .downcast::<Output>()
+                    .map_or_else(|_| unreachable!(), |output| map(*output))
+            }),
+            start_failure,
+        }));
+    }
+
+    pub fn timer(&mut self, timer: TimerEffect<Action>) {
+        self.outputs.push(MountedEffect::Timer(timer));
+    }
+
+    pub fn cancel(&mut self, family: WorkFamily, key: WorkKey) {
+        self.outputs.push(MountedEffect::Cancel { family, key });
+    }
+
+    pub fn take_outputs(&mut self) -> Vec<MountedEffect<Action>> {
+        core::mem::take(&mut self.outputs)
+    }
+
+    pub fn push_output(&mut self, output: MountedEffect<Action>) {
+        self.outputs.push(output);
+    }
+
+    const fn len(&self) -> usize {
+        self.outputs.len()
+    }
+}
+
 macro_rules! work_context {
     ($name:ident) => {
         pub struct $name<Action = ()> {
             invalidation: WidgetInvalidation,
             subscription_invalidation: bool,
-            outputs: Vec<MountedEffect<Action>>,
+            work: WidgetWorkCollector<Action>,
+            remaining_outputs: Option<usize>,
+            overflowed: bool,
         }
 
         impl<Action> core::fmt::Debug for $name<Action> {
@@ -70,7 +179,7 @@ macro_rules! work_context {
                     .debug_struct(stringify!($name))
                     .field("invalidation", &self.invalidation)
                     .field("subscription_invalidation", &self.subscription_invalidation)
-                    .field("output_count", &self.outputs.len())
+                    .field("output_count", &self.work.len())
                     .finish()
             }
         }
@@ -82,19 +191,22 @@ macro_rules! work_context {
 
             /// Requests one complete owner-local subscription declaration pass.
             pub const fn invalidate_subscriptions(&mut self) {
-                self.subscription_invalidation = true;
+                if !self.subscription_invalidation && self.__runtime_reserve_output() {
+                    self.subscription_invalidation = true;
+                }
             }
 
             /// Emits one action owned by the exact mounted lifetime.
             pub fn emit(&mut self, action: Action) {
-                self.outputs.push(MountedEffect::Action(action));
+                if self.__runtime_reserve_output() {
+                    self.work.emit(action);
+                }
             }
 
             pub fn local_task(&mut self, future: impl Future<Output = Option<Action>> + 'static) {
-                self.outputs.push(MountedEffect::LocalTask(LocalTaskEffect {
-                    key: None,
-                    future: Box::pin(future),
-                }));
+                if self.__runtime_reserve_output() {
+                    self.work.local_task(future);
+                }
             }
 
             pub fn keyed_local_task(
@@ -102,10 +214,9 @@ macro_rules! work_context {
                 key: WorkKey,
                 future: impl Future<Output = Option<Action>> + 'static,
             ) {
-                self.outputs.push(MountedEffect::LocalTask(LocalTaskEffect {
-                    key: Some(key),
-                    future: Box::pin(future),
-                }));
+                if self.__runtime_reserve_output() {
+                    self.work.keyed_local_task(key, future);
+                }
             }
 
             pub fn send_task<Output>(
@@ -115,7 +226,9 @@ macro_rules! work_context {
             ) where
                 Output: Send + 'static,
             {
-                self.push_send_task(None, future, map, None);
+                if self.__runtime_reserve_output() {
+                    self.work.send_task(future, map);
+                }
             }
 
             pub fn keyed_send_task<Output>(
@@ -126,7 +239,9 @@ macro_rules! work_context {
             ) where
                 Output: Send + 'static,
             {
-                self.push_send_task(Some(key), future, map, None);
+                if self.__runtime_reserve_output() {
+                    self.work.keyed_send_task(key, future, map);
+                }
             }
 
             pub fn send_task_with_failure<Output>(
@@ -137,38 +252,21 @@ macro_rules! work_context {
             ) where
                 Output: Send + 'static,
             {
-                self.push_send_task(None, future, map, Some(Box::new(start_failure)));
-            }
-
-            fn push_send_task<Output>(
-                &mut self,
-                key: Option<WorkKey>,
-                future: impl Future<Output = Output> + Send + 'static,
-                map: impl FnOnce(Output) -> Action + 'static,
-                start_failure: Option<Box<dyn FnOnce(SendTaskStartFailure) -> Action>>,
-            ) where
-                Output: Send + 'static,
-            {
-                self.outputs.push(MountedEffect::SendTask(SendTaskEffect {
-                    key,
-                    future: Box::pin(
-                        async move { Box::new(future.await) as crate::work::SendOutput },
-                    ),
-                    map: Box::new(move |output| {
-                        output
-                            .downcast::<Output>()
-                            .map_or_else(|_| unreachable!(), |output| map(*output))
-                    }),
-                    start_failure,
-                }));
+                if self.__runtime_reserve_output() {
+                    self.work.send_task_with_failure(future, map, start_failure);
+                }
             }
 
             pub fn timer(&mut self, timer: TimerEffect<Action>) {
-                self.outputs.push(MountedEffect::Timer(timer));
+                if self.__runtime_reserve_output() {
+                    self.work.timer(timer);
+                }
             }
 
             pub fn cancel(&mut self, family: WorkFamily, key: WorkKey) {
-                self.outputs.push(MountedEffect::Cancel { family, key });
+                if self.__runtime_reserve_output() {
+                    self.work.cancel(family, key);
+                }
             }
 
             #[doc(hidden)]
@@ -177,8 +275,48 @@ macro_rules! work_context {
                 Self {
                     invalidation: WidgetInvalidation::NONE,
                     subscription_invalidation: false,
-                    outputs: Vec::new(),
+                    work: WidgetWorkCollector::new(),
+                    remaining_outputs: None,
+                    overflowed: false,
                 }
+            }
+
+            #[doc(hidden)]
+            #[must_use]
+            pub const fn __runtime_new_bounded(output_allowance: usize) -> Self {
+                Self {
+                    invalidation: WidgetInvalidation::NONE,
+                    subscription_invalidation: false,
+                    work: WidgetWorkCollector::new(),
+                    remaining_outputs: Some(output_allowance),
+                    overflowed: false,
+                }
+            }
+
+            #[doc(hidden)]
+            pub const fn __runtime_reserve_output(&mut self) -> bool {
+                let Some(remaining) = self.remaining_outputs else {
+                    return true;
+                };
+                if remaining == 0 {
+                    self.overflowed = true;
+                    false
+                } else {
+                    self.remaining_outputs = Some(remaining - 1);
+                    true
+                }
+            }
+
+            #[doc(hidden)]
+            #[must_use]
+            pub const fn __runtime_remaining_outputs(&self) -> Option<usize> {
+                self.remaining_outputs
+            }
+
+            #[doc(hidden)]
+            #[must_use]
+            pub const fn __runtime_overflowed(&self) -> bool {
+                self.overflowed
             }
 
             #[doc(hidden)]
@@ -197,12 +335,14 @@ macro_rules! work_context {
             #[doc(hidden)]
             #[must_use]
             pub fn __runtime_take_outputs(&mut self) -> Vec<MountedEffect<Action>> {
-                core::mem::take(&mut self.outputs)
+                self.work.take_outputs()
             }
 
             #[doc(hidden)]
             pub fn __runtime_push_output(&mut self, output: MountedEffect<Action>) {
-                self.outputs.push(output);
+                if self.__runtime_reserve_output() {
+                    self.work.push_output(output);
+                }
             }
         }
     };

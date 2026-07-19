@@ -25,7 +25,7 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) authoring_diagnostics: Vec<AuthoringDiagnostic>,
     pub(crate) widget: MountedWidget<Action>,
     pub(crate) state: MountedWidgetState,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "internal-test-seams"))]
     pub(crate) state_corrupted: bool,
     pub(crate) interaction: InteractionState,
     pub(crate) integrity_failed: bool,
@@ -33,12 +33,12 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) dirty_phases: DirtyPhases,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "internal-test-seams"))]
 pub(crate) const fn state_is_corrupted<Action>(node: &MountedNode<Action>) -> bool {
     node.state_corrupted
 }
 
-#[cfg(not(test))]
+#[cfg(not(any(test, feature = "internal-test-seams")))]
 pub(crate) const fn state_is_corrupted<Action>(_: &MountedNode<Action>) -> bool {
     false
 }

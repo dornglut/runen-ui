@@ -5,24 +5,12 @@
 use core::{fmt, num::NonZeroU64};
 use std::collections::VecDeque;
 
-use crate::{MountedNodeId, work::WorkGeneration};
+use runenui_core::{CommandOrigin, SemanticCommand};
+
+use crate::trace::TraceReservation;
+use crate::{MonotonicInstant, MountedNodeId, work::WorkGeneration};
 use crate::{RuntimeTerminalReason, TraceSequence, TraceTarget, TraceWorkIdentity};
-
-/// Non-wrapping sequence assigned to accepted runtime work.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct WorkSequence(NonZeroU64);
-
-impl WorkSequence {
-    /// Returns the numeric sequence value.
-    #[must_use]
-    pub const fn get(self) -> u64 {
-        self.0.get()
-    }
-
-    const fn new(value: NonZeroU64) -> Self {
-        Self(value)
-    }
-}
+pub use runenui_core::WorkSequence;
 
 /// Borrowed classification of an action-submission failure.
 #[non_exhaustive]
@@ -92,10 +80,18 @@ pub type SubmitActionResult<Action> = Result<WorkSequence, SubmitActionError<Act
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ApplicationActionOrigin {
     DirectSubmission,
-    MountedActivation,
-    KeyboardActivation,
-    PointerActivation,
+    RoutedCommand,
     ApplicationEffect,
+}
+
+pub(crate) struct SemanticCommandEnvelope {
+    pub(crate) sequence: WorkSequence,
+    pub(crate) target: MountedNodeId,
+    pub(crate) command: SemanticCommand,
+    pub(crate) origin: CommandOrigin,
+    pub(crate) instant: MonotonicInstant,
+    pub(crate) causal_parent: Option<TraceSequence>,
+    pub(crate) trace_reservation: TraceReservation,
 }
 
 pub(crate) struct ApplicationActionEnvelope<Action> {
@@ -108,6 +104,7 @@ pub(crate) struct ApplicationActionEnvelope<Action> {
 
 pub(crate) enum WorkEnvelope<Action> {
     ApplicationAction(ApplicationActionEnvelope<Action>),
+    SemanticCommand(SemanticCommandEnvelope),
     EffectStart(SequencedWork),
     WorkCancellation(CancellationEnvelope),
     TimerFiring(SequencedWork),
@@ -135,6 +132,11 @@ pub(crate) struct CancellationEnvelope {
 pub(crate) enum QueueCommitError {
     Full,
     SequenceExhausted,
+}
+
+pub(crate) struct CancelledQueue {
+    pub(crate) envelopes: usize,
+    pub(crate) command_trace_reservations: usize,
 }
 
 pub(crate) struct WorkQueue<Action> {
@@ -184,7 +186,7 @@ impl<Action> WorkQueue<Action> {
     }
 
     pub(crate) fn next_sequence(&self) -> Option<WorkSequence> {
-        self.next_sequence.map(WorkSequence::new)
+        self.next_sequence.map(WorkSequence::__runtime_new)
     }
 
     pub(crate) fn push_preflighted(
@@ -197,7 +199,7 @@ impl<Action> WorkQueue<Action> {
         let Some(next_sequence) = self.next_sequence else {
             return Err(action);
         };
-        let sequence = WorkSequence::new(next_sequence);
+        let sequence = WorkSequence::__runtime_new(next_sequence);
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         self.waiting
             .push_back(WorkEnvelope::ApplicationAction(ApplicationActionEnvelope {
@@ -218,6 +220,28 @@ impl<Action> WorkQueue<Action> {
             WorkEnvelope::EffectStart(SequencedWork {
                 sequence,
                 generation,
+            })
+        })
+    }
+
+    pub(crate) fn push_command_preflighted(
+        &mut self,
+        target: MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_control(|sequence| {
+            WorkEnvelope::SemanticCommand(SemanticCommandEnvelope {
+                sequence,
+                target,
+                command,
+                origin,
+                instant,
+                causal_parent,
+                trace_reservation,
             })
         })
     }
@@ -272,7 +296,7 @@ impl<Action> WorkQueue<Action> {
         let next = self
             .next_sequence
             .ok_or(QueueCommitError::SequenceExhausted)?;
-        let sequence = WorkSequence::new(next);
+        let sequence = WorkSequence::__runtime_new(next);
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         self.waiting.push_back(envelope(sequence));
         Ok(sequence)
@@ -290,10 +314,24 @@ impl<Action> WorkQueue<Action> {
         self.waiting.is_empty()
     }
 
-    pub(crate) fn cancel_all(&mut self) -> usize {
-        let count = self.waiting.len();
+    pub(crate) fn cancel_all(&mut self) -> CancelledQueue {
+        let command_trace_reservations = self
+            .waiting
+            .iter()
+            .filter(|envelope| {
+                matches!(
+                    envelope,
+                    WorkEnvelope::SemanticCommand(command)
+                        if command.trace_reservation.is_active()
+                )
+            })
+            .count();
+        let envelopes = self.waiting.len();
         self.waiting.clear();
-        count
+        CancelledQueue {
+            envelopes,
+            command_trace_reservations,
+        }
     }
 
     #[cfg(feature = "internal-test-seams")]

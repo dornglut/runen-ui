@@ -13,15 +13,15 @@ use std::{
 };
 
 use runenui_core::{
-    Effects, Element, IntoEffects, NoHostProtocol, SendSubscriptionSink, SendSubscriptionSinkError,
-    SendSubscriptionSource, SendSubscriptionStartOutcome, SubscriptionSet, UiApp, View, Widget,
-    WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetMountContext,
-    WidgetUnmountContext, WorkFamily, WorkKey, column, text,
+    CommandOrigin, Effects, Element, IntoEffects, NoHostProtocol, SemanticCommand,
+    SendSubscriptionSink, SendSubscriptionSinkError, SendSubscriptionSource,
+    SendSubscriptionStartOutcome, SubscriptionSet, UiApp, View, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetMountContext, WidgetUnmountContext,
+    WorkFamily, WorkKey, column, text,
 };
 use runenui_runtime::{
-    ActivationResult, AppRuntime, PumpBudget, RuntimeConfig, SendTaskCompletionError,
-    SendTaskExecutor, SendTaskJob, SendTaskStartError, TraceConfig, TraceRecordKind,
-    TraceWorkFamily, TraceWorkOwner,
+    AppRuntime, PumpBudget, RuntimeConfig, SendTaskCompletionError, SendTaskExecutor, SendTaskJob,
+    SendTaskStartError, TraceConfig, TraceRecordKind, TraceWorkFamily, TraceWorkOwner,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -329,23 +329,28 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
     runtime.pump(PumpBudget::new(2, 0, 1, 0));
     old.set(0);
     let target = runtime.index().nodes()[0].id().clone();
-    let ActivationResult::Queued(commit) = runtime.activate_node(&target) else {
-        unreachable!("mounted cancellation batch queues cleanup/output envelopes")
-    };
-    let activation_sequence = runtime
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
+    runtime.pump(PumpBudget::new(1, 0, 0, 0));
+    let routed_start_sequence = runtime
         .trace()
         .records()
-        .filter(|record| matches!(record.kind(), TraceRecordKind::ActivationCommitted))
+        .filter(|record| matches!(record.kind(), TraceRecordKind::RoutedEventStarted))
         .last()
         .map_or_else(
-            || unreachable!("activation commit is retained"),
+            || unreachable!("routed transaction start is retained"),
             |record| record.sequence().get(),
         );
     runtime.pump(PumpBudget::new(16, 0, 16, 0));
     let semantic = runtime
         .trace()
         .records()
-        .filter(|record| record.sequence().get() > activation_sequence)
+        .filter(|record| record.sequence().get() > routed_start_sequence)
         .filter_map(|record| {
             let label = match record.kind() {
                 TraceRecordKind::WorkRequested => "requested",
@@ -361,7 +366,7 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
             Some((label, identity.generation()))
         })
         .collect();
-    let cleanup_sequences = runtime
+    let cleanup_sequences: Vec<u64> = runtime
         .trace()
         .records()
         .filter(|record| matches!(record.kind(), TraceRecordKind::WorkCleanupProcessed))
@@ -369,7 +374,11 @@ fn run_mounted(action: Action) -> (Vec<(&'static str, u64)>, Vec<u64>, u64) {
         .map(runenui_runtime::WorkSequence::get)
         .collect();
     assert_eq!(old.get(), 0);
-    (semantic, cleanup_sequences, commit.first_sequence.get())
+    let first = cleanup_sequences
+        .first()
+        .copied()
+        .unwrap_or_else(|| unreachable!("cancellation queues cleanup"));
+    (semantic, cleanup_sequences, first)
 }
 
 #[test]

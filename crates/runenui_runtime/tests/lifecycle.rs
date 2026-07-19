@@ -3,10 +3,10 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, Element, NoHostProtocol, UiApp, View, Widget,
-    WidgetMountContext, WidgetUnmountContext, children, container,
+    ChildLayout, ChildLayoutWidget, CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp,
+    View, Widget, WidgetMountContext, WidgetUnmountContext, children, container,
 };
-use runenui_runtime::{AppRuntime, PumpBudget};
+use runenui_runtime::{AppRuntime, PumpBudget, SubmitCommandErrorKind};
 
 #[derive(Debug)]
 struct LifetimeState {
@@ -139,14 +139,16 @@ fn replacement_unmounts_live_postorder_then_drops_before_new_preorder_mount() {
     );
     assert_ne!(runtime.index().nodes()[0].id(), &old_root);
     assert_ne!(runtime.index().nodes()[1].id(), &old_child);
-    assert_eq!(
-        runtime.activate_node(&old_root),
-        runenui_runtime::ActivationResult::StaleTarget
-    );
-    assert_eq!(
-        runtime.activate_node(&old_child),
-        runenui_runtime::ActivationResult::StaleTarget
-    );
+    for stale in [old_root, old_child] {
+        let Err(error) = runtime.submit_command(
+            stale,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        ) else {
+            unreachable!("the replaced mounted lifetime is stale")
+        };
+        assert_eq!(error.kind(), SubmitCommandErrorKind::StaleTarget);
+    }
 
     let _state = runtime.into_state();
     assert_eq!(

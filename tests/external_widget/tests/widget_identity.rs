@@ -1,10 +1,13 @@
 #![allow(refining_impl_trait)]
 
-use runenui_core::{Element, ElementId, NoHostProtocol, UiApp, WidgetStateTypeId, WidgetTypeId};
+use runenui_core::{
+    CommandOrigin, Element, ElementId, NoHostProtocol, SemanticCommand, UiApp, WidgetStateTypeId,
+    WidgetTypeId,
+};
 use runenui_external_widget_conformance::{
     ChildAction, GenericWidget, ParentAction, PulseButton, PulseState, child_component,
 };
-use runenui_runtime::{ActivationResult, AppRuntime, PumpBudget};
+use runenui_runtime::{AppRuntime, PumpBudget};
 
 fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>) {
     let _ = runtime.pump(PumpBudget::new(
@@ -59,20 +62,21 @@ fn concrete_widget_state_and_action_mapping_identity_are_mounted_and_stable() {
     );
 
     let mounted = runtime.index().nodes()[0].id().clone();
-    assert!(matches!(
-        runtime.activate_node(&mounted),
-        ActivationResult::Queued(_)
-    ));
-    assert!(matches!(
-        runtime.activate_node(&mounted),
-        ActivationResult::Queued(_)
-    ));
+    for _ in 0..2 {
+        runtime
+            .submit_command(
+                mounted.clone(),
+                SemanticCommand::Activate,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
+    }
     assert_eq!(*runtime.state(), 0);
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX))
             .processed_envelopes(),
-        2
+        4
     );
     assert_eq!(*runtime.state(), 2);
     assert_eq!(
@@ -119,15 +123,18 @@ fn nested_recursive_mapping_preserves_non_clone_action_and_widget_state_identity
         )
     );
     let mounted = runtime.index().nodes()[0].id().clone();
-    assert!(matches!(
-        runtime.activate_node(&mounted),
-        ActivationResult::Queued(_)
-    ));
+    runtime
+        .submit_command(
+            mounted,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX))
             .processed_envelopes(),
-        1
+        2
     );
     assert_eq!(
         runtime.state(),

@@ -3,20 +3,37 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Element, LogicalLength, NoHostProtocol, StyleTokens, UiApp, View, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic, WidgetInvalidation,
-    WidgetMeasure, WidgetMountContext, WidgetPaintProof, WidgetSemanticProof, WidgetUnmountContext,
-    WidgetUpdateContext, column,
+    CommandOrigin, Element, LogicalLength, NoHostProtocol, SemanticCommand, StyleTokens, UiApp,
+    View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+    WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetMountContext, WidgetPaintProof,
+    WidgetSemanticProof, WidgetUnmountContext, WidgetUpdateContext, column,
 };
 use runenui_runtime::{
-    ActivationResult, AppRuntime, FocusTargetResult, LayoutConstraints, MountedNodeId, PumpBudget,
-    SurfaceBuildContext,
+    AppRuntime, FocusTargetResult, LayoutConstraints, MountedNodeId, PumpBudget,
+    SubmitCommandErrorKind, SurfaceBuildContext,
 };
 
 fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
     runtime
         .submit_action(action)
         .unwrap_or_else(|_| unreachable!());
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+}
+
+fn route_activate<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
+    settle_initial_mounted_declarations(runtime);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::Activate,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
@@ -179,7 +196,7 @@ fn keyed_reorder_preserves_mounted_semantic_state_focus_and_slots() {
         .semantic_id()
         .clone();
     assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
-    assert_eq!(runtime.activate_node(&a), ActivationResult::Activated);
+    route_activate(&mut runtime, a.clone());
     process_one(&mut runtime, TreeAction::Swap);
     let after = node_id(&mut runtime, "probe.a");
     assert_eq!(after, a);
@@ -232,7 +249,14 @@ fn removal_makes_ids_stale_clears_focus_and_shutdown_unmounts_once() {
     let a = node_id(&mut runtime, "probe.a");
     assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
     process_one(&mut runtime, TreeAction::RemoveA);
-    assert_eq!(runtime.activate_node(&a), ActivationResult::StaleTarget);
+    let Err(error) = runtime.submit_command(
+        a.clone(),
+        SemanticCommand::Activate,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("the removed mounted lifetime is stale")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::StaleTarget);
     assert_eq!(runtime.set_focus(a), FocusTargetResult::StaleTarget);
     assert_eq!(runtime.focus().focused_node(), None);
     let _state = runtime.into_state();
@@ -267,7 +291,14 @@ fn foreign_runtime_targets_are_rejected() {
         log,
     });
     let id = node_id(&mut first, "probe.a");
-    assert_eq!(second.activate_node(&id), ActivationResult::ForeignRuntime);
+    let Err(error) = second.submit_command(
+        id.clone(),
+        SemanticCommand::Activate,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("a target from another runtime is foreign")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::ForeignTarget);
     assert_eq!(second.set_focus(id), FocusTargetResult::ForeignRuntime);
 }
 
@@ -359,7 +390,7 @@ fn state_only_interaction_invalidation_validates_focus_immediately() {
     let mut runtime = AppRuntime::<SelfDisablingApp>::mount(());
     let id = runtime.index().nodes()[0].id().clone();
     assert_eq!(runtime.set_focus(id.clone()), FocusTargetResult::Focused);
-    assert_eq!(runtime.activate_node(&id), ActivationResult::Activated);
+    route_activate(&mut runtime, id);
     assert_eq!(runtime.focus().focused_node(), None);
     assert!(!runtime.index().nodes()[0].is_focusable());
 }
@@ -408,7 +439,7 @@ fn state_only_interaction_invalidation_preserves_still_valid_focus() {
     let mut runtime = AppRuntime::<SelfRetainingApp>::mount(());
     let id = runtime.index().nodes()[0].id().clone();
     assert_eq!(runtime.set_focus(id.clone()), FocusTargetResult::Focused);
-    assert_eq!(runtime.activate_node(&id), ActivationResult::Activated);
+    route_activate(&mut runtime, id.clone());
     assert_eq!(runtime.focus().focused_node(), Some(&id));
     assert!(runtime.index().nodes()[0].is_focusable());
 }

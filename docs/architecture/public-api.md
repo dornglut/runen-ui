@@ -3,13 +3,15 @@
 > **Category: Current contract**
 
 This document records the reviewed public surface for application work, the
-deterministic scheduler, activation, and canonical trace. Source-level Rust
+deterministic scheduler, routed semantic commands, and canonical trace. Source-level Rust
 documentation is authoritative for signatures. [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md)
 defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
 defines mounted ownership and reconciliation; accepted
 [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines application
 work and scheduling; M4B is implemented, owner-accepted, and squash-merged.
-Routed events and trace export/replay remain later unimplemented M4 slices. The
+M4C1 is implementation- and corrected-proof-complete at this branch head,
+pending owner acceptance and merge. Surface input through trace export/replay remains later
+blocked M4 scope. The
 accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
@@ -22,7 +24,10 @@ implemented public API until each slice is accepted. The
 validated authored values and identity, style intent and
 resolution, transient `View`/`Element` authoring, typed built-in views, the open
 state-aware `Widget`/`ChildLayoutWidget` contracts, proof capability values,
-lifecycle contexts, `WidgetInvalidation`, and typed recursive action mapping.
+lifecycle contexts, `WidgetInvalidation`, the shared runtime namespace and
+opaque `MountedNodeId`/`SemanticNodeId`/`MonotonicInstant`/`WorkSequence`
+protocol values, routed event/command vocabulary, `EventContext`, and typed
+recursive action mapping.
 
 `runenui_runtime` owns `AppRuntime`, the canonical generalized FIFO and pump,
 persistent mounted storage, reconciliation,
@@ -32,12 +37,14 @@ bounded trace, live work registry, clocks, completion ingress, wake/redraw, and
 mounted publication. The public runtime, mounted inspection, and integrity
 vocabulary includes:
 
-- `MountedNodeId`, `SemanticNodeId`, `MountedNodeRef`, and `MountedTreeIndex`;
+- core-owned `MountedNodeId`, `SemanticNodeId`, `MonotonicInstant`,
+  `MonotonicTimeError`, and `WorkSequence`, deliberately re-exported by runtime;
+- `MountedNodeRef` and `MountedTreeIndex`;
 - `ReconciliationGeneration` and `ReconciliationReport`;
-- `RuntimeConfig`, `WorkSequence`, `SubmitActionResult`, `PumpBudget`, and
-  `PumpReport`;
+- `RuntimeConfig`, `SubmitActionResult`, `CommandSubmission`,
+  `UnacceptedCommand`, `SubmitCommandError`, `PumpBudget`, and `PumpReport`;
 - `RuntimeStatus`, `RuntimeTerminalReason`, `ShutdownReport`,
-  `FocusTargetResult`, `ActivationCommit`, `ActivationResult`, and `RuntimeError`;
+  `FocusTargetResult` and `RuntimeError`;
 - `TraceConfig`, `TraceSequence`, `TraceRecord`, `TraceRecordKind`,
   `TraceTarget`, and `Trace`;
 - read-only frame, style-report, layout-report, and publication products.
@@ -68,6 +75,18 @@ returns a runtime-issued `WorkSequence`, beginning at 1, or a
 returns the exact owned action through `into_action` and does not consume a work
 sequence. `Action` requires no `Clone`, `Send`, or `Debug` bound.
 
+`AppRuntime::submit_command(target, command, origin)` is the sole public
+semantic-command ingress. It validates the exact core-owned `MountedNodeId`,
+appends a `SemanticCommand` envelope to the same FIFO, requests wake only after
+acceptance, and returns `CommandSubmission` with the assigned `WorkSequence`.
+`SubmitCommandError` distinguishes full, closed, exact terminal reason,
+foreign, stale, missing, work-sequence exhaustion, and enabled-trace-sequence
+exhaustion. Every rejection returns the exact owned target, command, and origin
+through `UnacceptedCommand`; it invokes no widget callback and consumes no work
+or trace sequence, allocates no trace record, and emits no wake. Accepted-then-
+stale processing rejection is instead a canonical trace outcome causally owned
+by the already accepted command.
+
 Application and mounted output batches use one provisional transaction planner.
 It resolves owner/family/key bindings for the complete batch, preflights every
 queue sequence and work generation without consuming rejected capacity, then
@@ -75,8 +94,9 @@ atomically invalidates exact cancellation/replacement targets, installs accepted
 records, and appends cleanup before ordered starts/actions.
 For an application update the accepted order is cancellation cleanup, mounted
 subscription reconciliation, update outputs, application subscription starts,
-then mounted lifecycle outputs. Activation uses cleanup, mounted subscription
-reconciliation, primary action, then auxiliary outputs.
+then mounted lifecycle outputs. Routed commands reuse the work planner while
+committing coalesced subscription reconciliation, routed outputs, semantic
+default output, then mounted work.
 
 Initial application work uses the same single-plan authority. After successful
 initial reconciliation, it atomically admits mounted subscription reconciliation
@@ -165,6 +185,7 @@ Every `Widget<Action>` declares `State: 'static` and creates it. Stateless
 widgets use `State = ()`. The runtime passes persistent state to:
 
 - `mount`, `update`, and `unmount`;
+- routed `event` callbacks;
 - immutable activation facts, measurement, paint, semantics, and diagnostics;
 - mutable activation;
 - `ChildLayoutWidget::child_layout`.
@@ -182,17 +203,30 @@ and explicit `state_changed` fact are independent, so a widget can truthfully
 report state-only mutation, action-only output, both, or neither. Action mapping
 preserves the state-change fact.
 
-The current public widget contract has no routed `event` capability,
-`EventContext`, `WidgetEventOutput`, `SemanticCommand`, `CommandOrigin`, or
-command submission. Those remain accepted M4C1 target architecture and are not
-implemented API.
+The open `Widget::event` capability receives immutable `UiEvent` data and one
+borrowed `EventContext<'_, Action>`. M4C1 exposes only semantic-command events,
+the `Capture`/`Target`/`Bubble` phases, programmatic/automation/accessibility/
+controller sources, and direct/delegated derivation. The context exposes the
+original/current/optional-related target, origin, accepted `WorkSequence`,
+`MonotonicInstant`, and propagation/default facts. It provisionally collects
+owned actions, delegated commands, exact-owner subscription invalidation,
+ordinary invalidation, mounted tasks/timers/cancellation, stop propagation, and
+prevent default. `WidgetEventOutput` reports only independent persistent-state
+mutation. Mapping moves non-`Clone` actions and recursively maps mounted work
+while preserving commands, controls, invalidation, and the state-change fact.
+Only the checked erased widget bridge constructs and extracts `EventContext`;
+runtime supplies its validated facts and output bound. Public origin
+constructors are direct-only, while `emit_command` is the sole authority that
+turns callback output into a delegated origin targeting the current node.
+`UiEvent::as_semantic_command` returns `Option<&SemanticCommandEvent>` so later
+event variants do not require a command-shaped accessor.
 
 The default update invalidates `ALL` for correctness. Built-in text, button, and
 linear-container widgets implement narrower comparison-based invalidation.
 Button callback replacement requires no `Clone`, `Copy`, `Debug`, `Eq`, or
 `PartialEq` on `Action` and does not itself invalidate visual capabilities.
 `Button::on_activate(callback: impl FnMut() -> Action + 'static)` installs an
-owned action factory invoked for every accepted proof activation. `on_press` is
+owned action factory invoked for every accepted routed semantic default. `on_press` is
 removed without an alias.
 
 `Element::map_action` replaces only action plumbing. It recursively delegates
@@ -205,12 +239,16 @@ activation factory while retaining state and mounted identity. No global
 
 Core cannot depend on runtime, so doc-hidden `runenui_core::__runtime` plumbing
 consumes an element into common fields, an erased mounted widget, and transient
-children. Erased operations use checked `Any` downcasts. The bridge is absent
-from the prelude, exposes no concrete widget downcasts, and provides no payload
-or arena construction path. It is technically public only because core and
-runtime are separate Rust crates; it is doc-hidden, unstable, unsupported for
-application use, semver-exempt before 1.0, and safe. Both crates forbid unsafe
-code.
+children. Erased operations use checked `Any` downcasts. Every node on an
+immutable route passes event-bridge validation before the first callback. The
+bridge is absent from the prelude, has opaque fields, exposes no concrete widget
+downcasts, and provides no payload or arena construction path. Its cross-crate
+entry methods are technically public where runtime integration requires them;
+that does not grant live runtime authority. Unrelated fabricated values cannot
+extract or reuse a live namespace, obtain an accepted queue/trace identity, or
+inject a fabricated context/sequence into an accepted transaction. The bridge
+is doc-hidden, unstable, unsupported for application use, semver-exempt before
+1.0, and safe. Both crates forbid unsafe code.
 
 A payload mismatch never invokes a typed callback with the wrong state and
 never panics by design. It emits
@@ -223,36 +261,38 @@ mismatch discovered by another capability replaces on the next reconciliation.
 
 ## Identity and targeting
 
-`MountedNodeId` currently privately stores:
+Core-owned `MountedNodeId` privately stores:
 
 ```text
-Arc<RuntimeInstanceMarker> + arena slot + u64 generation
+shared opaque runtime namespace + checked u32 arena slot + u64 generation
 ```
 
-It is `Clone`, `Debug`, `Eq`, and `Hash`, but not `Copy`. Equality compares
-tokens with `Arc::ptr_eq`; hashing includes `Arc::as_ptr`, slot, and generation.
+It is `Clone`, `Debug`, `Eq`, and `Hash`, but not `Copy`. Equality and hashing
+include namespace identity, slot, and generation.
 There is no global counter, random ID, serialization, or preorder identity.
 
-`SemanticNodeId` is a distinct type and namespace with the same mounted lifetime
-triplet. It survives compatible update and keyed reorder, and changes on
+`SemanticNodeId` is a distinct type using the same runtime namespace and mounted
+lifetime triplet. It survives compatible update and keyed reorder, and changes on
 replacement. It is not yet a semantic-tree node or accessibility identity
 contract.
 
 Both IDs are process-local and runtime-instance-local. Validation checks the
-runtime token first. A different token is `ForeignRuntime`; a same-runtime
-invalid/vacant slot or generation mismatch is `StaleTarget`. Old IDs never
+runtime namespace first. A different namespace is foreign; an issued slot whose
+generation/lifetime no longer matches is stale; a same-runtime slot beyond the
+addressable arena is missing. Old IDs never
 target slot replacements, even when the deterministic arena reuses the same
 index.
 
-The accepted M4C1 target moves `MountedNodeId`, `MonotonicInstant`,
-`MonotonicTimeError`, and `WorkSequence` protocol values to core ownership while
-runtime retains live namespaces, clocks, queue allocation, and timers. The
-current implementation remains runtime-owned; no future signature is current
-API.
+`MountedNodeId`, `MonotonicInstant`, `MonotonicTimeError`, and `WorkSequence`
+have one core-owned type authority. Runtime alone creates the live namespace,
+checks `usize -> u32` slot conversion, allocates non-wrapping generations and
+work sequences, advances clocks, and schedules timers. Hidden bridges carry no
+arena, clock, queue, or validation-bypass authority.
 
 Authored `ElementId` remains a validated lookup/diagnostic handle. It does not
 affect reconciliation compatibility and may change while mounted identity
-survives. Ambiguous authored-ID activation is rejected.
+survives. M4C1 command submission accepts only an exact mounted target; authored
+automation lookup is deferred to M4C5.
 
 ## Reconciliation
 
@@ -295,41 +335,56 @@ the mounted lifetime. Explicit `AppRuntime::shutdown`, `into_state`, and `Drop`
 share one idempotent postorder `RuntimeShutdown` authority; every remaining node
 receives exactly one shutdown unmount.
 
-## Activation, focus, and interaction slots
+## Routed commands, focus, and interaction slots
 
-Mounted proof activation validates runtime and target, reads checked activation
-facts, rejects disabled/non-actionable targets, then conservatively reserves the
-complete configured callback allowance before invoking the mutable widget/state
-pair: one reconciliation generation, `2 * transaction_outputs + 1` queue slots,
-`transaction_outputs` work generations plus that much free capacity in every
-mounted-accessible work family, and `4 * transaction_outputs + 1` mandatory trace
-records. A queued activation returns `Queued(ActivationCommit)` without pumping;
-the commit exposes `first_sequence`, optional `primary_action_sequence`, and
-`queued_envelopes`.
+`AppRuntime::submit_command` appends one non-reentrant semantic-command
+envelope. At the queue front runtime revalidates the exact target, snapshots one
+owned root-to-target route, validates every route node and erased event bridge,
+and admits the complete configured transaction boundary before the first
+callback. Capture visits root-to-parent, target runs once, and bubble visits
+parent-to-root. Stopping propagation affects only later callbacks; preventing
+default affects only the cancelable semantic default.
 
-Auxiliary-only work is queued, state-only mutation and coalesced subscription
-invalidation are `Activated`, and only an explicit absence of state mutation,
-invalidation, subscription invalidation, action, or auxiliary work is
-`NoEffect`. Application state does not change until a caller pumps.
-`Saturated(ActivationCapacity)`, `Closed`, `Terminal`, disabled/non-activatable,
-stale, foreign, and runtime-error outcomes are distinct. Saturation, closed,
-terminal, or known sequence exhaustion rejects before widget state, factory,
-invalidation, focus, reconciliation report, publication/cache, or application
-mutation. Rejection and terminal trace records may still be appended when trace
-sequencing remains available. State-only interaction changes validate focus
-immediately. Accepted queue work requests the shared coalesced wake edge;
-publication-affecting invalidation requests redraw independently. Pointer and
-keyboard activation helpers use this same queue-backed proof authority, but
-remain transitional, press-based proofs. Direct programmatic, pointer-press,
-and keyboard activation are removed by M4C1; any explicitly retained focus-only
-helper cannot emit an action or invoke activation and has an exact M4C3/M4C4/M4C5
-removal owner. Routed semantic commands remain M4C1, release-inside pointer
-behavior M4C3, focus scopes M4C4, keyboard/text/IME M4C5, and trace export/replay
-M4D.
+One bounded transaction ledger counts routed actions, delegated commands,
+semantic-default output, mounted effects/cancellation, and unique exact-owner
+subscription invalidation. Conservative maximum-safe admission reserves the
+configured aggregate output allowance for every callback-accessible family,
+even when a particular callback ultimately emits nothing. It also covers queue
+slots and work sequences, reconciliation and work generations, each mounted-
+accessible work family, and mandatory trace sequencing. A zero output allowance
+rejects before callback; trace retention capacity zero disables trace allocation without
+changing behavior. Unexpected failure after mutable callback entry poisons the
+runtime rather than dropping provisional output.
 
-`ActivationCapacity` identifies `WaitingEnvelopes`, `LocalTasks`, `SendTasks`, or
-`Timers`; activation never collapses those authorities into a generic queue
-result.
+Commit order is widget mutation/invalidation, coalesced subscription
+reconciliation, routed actions and delegated commands in emission order,
+semantic-default output, then mounted work. Delegated commands target the
+current routed node, preserve source, change derivation to `Delegated`, receive a
+later sequence, and never run recursively.
+
+For unprevented `Activate`, the runtime re-queries the original target after
+callback invalidation. Only a still-live enabled/actionable target invokes the
+existing widget activation capability, exactly once, as semantic default.
+Prevented activation never invokes its factory. `CancelOrBack`, `OpenMenu`, and
+`OpenContextMenu` route once and have no default action, runtime mutation, or
+second ancestor pass. Programmatic, automation, accessibility-stub, and
+normalized-controller origins use this same exact-target path; authored-ID
+automation and semantic accessibility resolution are not implemented.
+
+Direct programmatic activation and the old pointer/keyboard activation helpers
+are removed. `handle_pointer_focus` is retained only as an M4C3 proof helper
+and `handle_keyboard_focus` only as an M4C5 proof helper; both can change focus
+but cannot emit actions, invoke activation, or synthesize commands. M4C2 owns
+surface context, M4C3 pointer lifecycle/release-inside activation, M4C4 focus
+scopes/modality, M4C5 keyboard/text/IME and automation resolution, M4D trace
+normalization/export/replay, and M5 semantic accessibility mapping.
+
+Focus stores `Option<MountedNodeId>`. It survives compatible update,
+authored-ID change, and keyed reorder, and clears on removal, replacement,
+disablement, or loss of actionability/focusability. Traversal follows current
+mounted preorder. Existing hovered, pressed, capture-placeholder, and logical
+scroll-offset slots remain proof-only M4B state; M4C1 adds no pointer identity,
+capture, release-inside behavior, or modality.
 
 ## C9 public authority delta
 
@@ -337,9 +392,8 @@ result.
 |---|---|---|---|---|---|
 | Send-subscription startup could accept provisionally | `Starting` submissions return `SendSubscriptionSinkError::NotStarted(exact_item)`; only `Running` accepts | Success must mean durable ownership | ADR 0006 producer admission | Match `NotStarted` and recover with `into_item` | `subscription_scheduler::send_subscription_start_outcomes_are_once_only_reclaimed_and_explicitly_retryable` |
 | Cancelled send-task completion could enter ingress | `SendTaskCompletionError::Stale(exact_completion)` | Producer validity is exact-generation, not global | ADR 0006 cancellation | Match `Stale` separately from `Closed` | `scheduler_work::cancelled_send_completion_never_invokes_ui_mapper` |
-| Activation exposed generic `QueueFull` | `ActivationResult::Saturated(ActivationCapacity)` | Report the bounded refusing authority | ADR 0006 configured saturation | Match the exact capacity | `activation_queue::conservative_activation_admission_rejects_every_bounded_authority_before_callback` |
-| `Widget::activate` returned `Option<Action>` | It returns `WidgetActivationOutput<Action>` | State mutation is independent from action output | ADR 0003 widget protocol; ADR 0004 mounted state | Return `none`, `action`, `changed`, or `changed_with_action` | `mounted_work_output::activation_result_counts_auxiliary_batches_and_separates_wake_from_redraw` |
-| `NoEffect` meant no newly queued output | It means no state change, invalidation, subscription invalidation, action, or auxiliary work | Coalescing does not erase semantic effect | ADR 0006 transaction semantics | Report mutation explicitly | `mounted_work_output::coalesced_subscription_invalidation_is_an_effect_not_no_effect` |
+| Direct mounted activation was public runtime authority | `submit_command(exact_target, Activate, origin)` is the only semantic ingress | Every source must use routing, admission, default, FIFO, and trace | ADR 0005 canonical commands | Submit and pump; recover exact `UnacceptedCommand` on rejection | `routed_commands`, Counter, and downstream routed-event conformance |
+| `Widget::activate` returned `Option<Action>` | It returns `WidgetActivationOutput<Action>` and is invoked only by routed `Activate` default | State mutation is independent from action output | ADR 0003 widget protocol; ADR 0004 mounted state; ADR 0005 default | Return `none`, `action`, `changed`, or `changed_with_action` | `mounted_work_output::routed_activation_separates_scheduler_wake_from_redraw` |
 
 Focus stores `Option<MountedNodeId>`. It survives compatible update, authored-ID
 change, and keyed reorder, and clears on removal, replacement, disablement, or
@@ -347,8 +401,8 @@ loss of actionability/focusability. Traversal follows current mounted preorder.
 
 Each node privately owns hovered, pressed, capture-placeholder, and logical
 scroll-offset slots. They survive compatible updates and reset on replacement.
-The capture placeholder is an ownership proof only; M4 owns pointer IDs, routed
-events, true capture, and release-inside activation.
+The capture placeholder is an ownership proof only; M4C3 owns pointer IDs, true
+capture, and release-inside activation.
 
 ## Invalidation and capability caches
 
@@ -385,10 +439,10 @@ M3 does not claim a production retained layout cache.
 
 Initial mount completes reconciliation generation 1. Each successfully processed
 application action increments once using `checked_add`; the action processor and
-mutable activation preflight relevant exhaustion before application, widget,
-mounted, factory, focus, cache, or reconciliation-report mutation. Diagnostic
-rejection or terminal trace facts remain permitted when trace sequencing is
-available.
+routed transaction admission preflight relevant exhaustion before application, widget,
+mounted, factory, focus, cache, or reconciliation-report mutation. Processing-
+rejection, routed-integrity, or terminal trace facts remain permitted when trace
+sequencing is available; submission-time rejection never allocates one.
 
 `ReconciliationReport` defines counts by mounted lifetime: live nodes after
 completion, new lifetimes mounted, preserved nodes updated once, lifetimes
@@ -419,8 +473,19 @@ private generation value, and optional authored `WorkKey`; it is not a runtime
 capability. Action payloads are never stored. Scheduler records link the
 application transaction, work request, generation commit, start attempt/outcome,
 completion/firing/cancellation, and final action using causal parents and the
-actual accepted envelope `WorkSequence` where one exists. This is the M4B
-lineage foundation, not the deferred M4D export/replay contract.
+actual accepted envelope `WorkSequence` where one exists. M4C1 event records
+also expose logical instant, immutable original target, callback current target,
+and command origin. Acceptance causally parents route start and snapshot; phase,
+control, state, invalidation, output collection, default, and commit records form
+the routed chain. Collected actions and delegated commands parent their later
+accepted envelopes and transactions. Submission and processing rejection are
+distinct by observation: submission rejection has no canonical record and
+consumes no trace identity, while processing rejection after acceptance is
+recorded. Routed integrity failures classify broken topology, event-bridge
+mismatch, callback-bridge failure, output-allowance overflow, semantic-default
+failure, or commit-invariant failure without losing accepted causal facts. This
+remains an in-memory causal graph, not the deferred M4D
+normalization/export/replay contract.
 
 Transaction semantic request/invalidation records preserve callback collector
 order independently from cleanup-before-start queue grouping. Final action
@@ -432,9 +497,8 @@ exclusive watermark: `Some(S)` means every trace sequence less than `S` is no
 longer retained. Ordinary eviction cannot affect application behavior. When
 enabled mandatory trace sequencing cannot advance, the runtime becomes terminal
 before the pending mutable callback and cancels queued work. The current contract
-has no routed-event causal graph, external sink, JSONL/export/redaction contract,
-replay, or records for unimplemented routed-event, external-sink, export, or
-replay work.
+has no external sink, JSONL/export/redaction contract, replay, or M4D-normalized
+schema.
 
 ## Breaking migrations
 
@@ -447,6 +511,8 @@ Removed without aliases:
 - free `publish_surface(Element)`;
 - `AppRuntime::dispatch` and private direct-dispatch authorities;
 - `Button::on_press` and one-shot button actions;
+- direct runtime activation, activation result/capacity compatibility types,
+  combined input intent, and pointer/keyboard activation helpers;
 - duplicated, unbounded runtime-event/trace storage.
 
 Added:
@@ -459,22 +525,28 @@ Added:
 - runtime-owned `RuntimeLimits`, live work generations, manual/host monotonic
   clocks, send-executor/completion handles, typed host-request tokens,
   `PumpBudget`/`PumpReport`, wake transport, and redraw request/acknowledgment;
-- mounted/semantic identity and inspection;
+- core-owned mounted/semantic identity, monotonic time, work sequence values,
+  and runtime-owned inspection;
 - reconciliation generation/report vocabulary;
-- state-aware widget lifecycle/activation contexts and unmount reasons;
+- state-aware widget lifecycle/activation/event contexts and unmount reasons;
 - selective widget invalidation;
-- focus/activation stale and foreign results;
+- focus results and exact command foreign/stale/missing rejection;
 - public runtime integrity errors;
 - canonical action submission, work sequencing, bounded pumping, runtime status,
   terminal reasons, and explicit shutdown reports;
-- repeatable `Button::on_activate` factories and queue-accurate activation
-  outcomes;
+- repeatable `Button::on_activate` factories invoked only by routed semantic default;
 - bounded canonical trace configuration, sequences, records, targets, opaque
-  scheduler work identities/outcomes, and retention watermark.
+  scheduler work identities/outcomes, routed command causal facts, and retention
+  watermark;
+- routed event/command vocabulary, `EventContext`, `WidgetEventOutput`, checked
+  mapped event capability, and exact-target command submission with owned
+  rejection recovery.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
 in force. The current contract includes effects, subscriptions, tasks, timers,
-host requests, all four readiness budgets, and wake/redraw. It does not imply
-routed events, trace export/replay, complete trace-v2 normalization, or M4
+host requests, all four readiness budgets, wake/redraw, and M4C1 exact-target
+routed semantic commands. It does not imply M4C2 surface context, M4C3 pointer
+lifecycle, M4C4 focus scopes/modality, M4C5 keyboard/text/IME or authored-ID
+automation, M4D trace export/replay, M5 semantic accessibility mapping, or M4
 completion.

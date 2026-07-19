@@ -27,20 +27,22 @@ M4D2  export and sink
 M4D3  replay and milestone closure
 ```
 
-M4C1–M4D3 remain unimplemented and blocked by the preceding slice. M4B's
+M4C1 is implementation- and corrected-proof-complete at this branch head,
+pending owner acceptance and merge. M4C2–M4D3 remain blocked in sequence. M4B's
 implemented live-only producer authority remains unchanged.
 
 ## Current application-work and scheduler implementation
 
 The current implementation provides one bounded runtime-owned generalized FIFO,
-non-wrapping work sequences, an explicit four-budget pump, queue-backed
-proof activation, and one bounded canonical trace sequence. Each processed
+core-owned opaque non-wrapping work-sequence values, an explicit four-budget
+pump, exact-target routed semantic commands, and one bounded canonical trace
+sequence. Each processed
 action completes mounted reconciliation and focus validation before the next
 begins. Compatible nodes retain focus; stale and foreign mounted targets are
-rejected; each node owns proof interaction slots; and activation can mutate
-persistent widget state only after queue/generation/trace preflight. The proof
-input helpers still provide only typed pointer/keyboard vocabulary, linear
-traversal focus, rectangle targeting, and press-based button activation.
+rejected; each node owns proof interaction slots; and routed callbacks/default
+activation can mutate persistent widget state only after checked route-wide
+admission. Retained pointer/keyboard helpers are focus-only proofs and cannot
+emit actions, invoke activation, or synthesize commands.
 
 Core-owned initial/update effects, local/send tasks, deterministic timers,
 application and mounted complete-set subscriptions, keyed generational
@@ -50,9 +52,12 @@ facts are implemented. Scheduler callbacks preflight queue/work/trace capacity;
 send work becomes running only after executor acceptance; repeating-deadline
 overflow terminates only that timer after its current valid firing; and
 work-specific trace records carry opaque exact owner/family/generation/key
-identity. There is no routed propagation, surface-input generation
-context, pointer identity/true capture, release-inside policy, text/IME stream,
-trace sink/export/replay, or complete trace-v2 normalization.
+identity. Capture/target/bubble routing, propagation/default control, delegated
+commands, routed output mapping, and the command causal trace are implemented.
+There is no surface-input generation context, pointer identity/true capture,
+release-inside policy, focus scopes/modality, text/IME stream, authored-ID
+automation resolution, semantic accessibility mapping, trace sink/export/replay,
+or complete trace-v2 normalization.
 
 ## Canonical target path
 
@@ -80,79 +85,86 @@ changes only through queued typed actions and `UiApp::update`.
 
 ## Event and command contract
 
-The event model uses separate pointer, keyboard, committed-text, IME
-composition, semantic-command, pointer-boundary, focus-transition, and capture
-notification families. Keyboard events do not pretend to be text input.
+M4C1 implements one intentionally narrow host-neutral protocol. `runenui_core`
+owns `EventPhase::{Capture, Target, Bubble}`, the four direct
+`EventSource` classes, direct/delegated `CommandDerivation`,
+`CommandOrigin`, `SemanticCommand::{Activate, CancelOrBack, OpenMenu, OpenContextMenu}`,
+`UiEvent::SemanticCommand`, `SemanticCommandEvent`, `WidgetEventOutput`, and
+the borrowed `EventContext`. No pointer, surface, focus, keyboard, text, IME,
+modality, scrolling, or platform-controller placeholder variants were added.
+Public `CommandOrigin` constructors create direct origins only. Delegated
+derivation can be created only when the checked event bridge extracts a command
+collected through `EventContext::emit_command`; external submission cannot
+forge it. `UiEvent::as_semantic_command` returns an optional borrowed semantic
+payload so later event variants do not invalidate callers.
 
-Every publication exposes an opaque runtime-issued `SurfaceInputContext`, not
-merely a position plus unchecked mounted target. It identifies the runtime
-namespace, logical `SurfaceId`, coordinate-space revision, and exact displayed
-hit-test generation. The bounded snapshot ring retains the current and
-immediately previous generations by default and may be configured larger. Every
-retained generation is interpreted against its exact snapshot; retired,
-foreign-runtime, foreign-surface, and missing generations have distinct
-rejection outcomes and are never retargeted through current geometry. Hosts map
-platform coordinates to RunenUI logical coordinates for the supplied context
-without exposing pixel/DPI/window types in the neutral protocol.
+One public `submit_command(exact_mounted_target, command, origin)` ingress
+validates foreign/stale/missing/live target status and returns either a
+runtime-issued sequence or exact owned recovery. At processing time the runtime
+revalidates, snapshots one immutable owned root-to-target route, preflights every
+checked event bridge, and admits the whole bounded transaction before invoking
+capture root-to-parent, target once, and bubble parent-to-root. The original
+target and accepted logical time/sequence remain immutable while phase and
+current target change.
 
-A routed callback can inspect phase, original target, current target, related
-target where relevant, source/modality, logical sequence/time, surface-input
-context, and pointer physical-hit facts. Propagation control and default behavior
-are independent. Callback invalidation is re-applied before same-transaction
-default behavior reads capabilities.
+Submission-time full, closed, terminal, foreign, stale, missing, work-sequence-
+exhausted, and trace-sequence-exhausted rejection consumes no work sequence, no
+trace sequence, no trace record, and no wake authority. Accepted work that later
+finds a stale or missing target is a distinct processing rejection recorded in
+the accepted command's causal trace.
 
-Pointer events carry stable stream identity and optional device identity. The
-runtime owns per-pointer capture, retains the physical hit path separately from
-the captured route target, and releases capture on explicit release, up,
-cancellation, owner removal/replacement, and shutdown.
+`EventContext` exposes phase, original/current/optional-related target,
+origin, sequence, instant, cancelability, and current propagation/default state.
+It provisionally collects owned typed actions, delegated commands, ordinary
+invalidation, one coalesced exact-owner subscription invalidation, owner-local
+tasks/timers/cancellation, stop propagation, and prevent default. It exposes no
+application state, runtime, arena, host protocol, surface/pointer/focus/
+composition state, queue, registry, or clock mutation. `WidgetEventOutput`
+reports only explicit persistent-state mutation.
 
-Pointer ingress expands deterministic leave/enter notifications before the
-ordinary pointer event. The runtime also retains hover-capable pointer positions
-and re-hit-tests them when authoritative hit-test geometry changes, so a
-stationary pointer cannot retain stale hover or release-inside state after layout
-or visibility changes. Multiple retained pointers re-hit in registration order;
-each pointer emits leave inner-to-outer and then enter outer-to-inner. The new
-publication does not retarget an already accepted older-context transaction.
+Routed admission is conservative maximum-safe preflight: before any mutable
+callback, it reserves the complete route plus the configured aggregate output
+allowance across every callback-accessible family, queue/work/generation/
+reconciliation authority, and mandatory trace allowance. A callback that would
+emit nothing can therefore still reject when a family required by that maximum
+boundary is unavailable. This is deliberate M4C1 policy, not exact prediction
+of callback output.
 
-Pointer validation orders namespace, surface, active pointer ownership, snapshot
-generation, then target. Foreign-runtime/surface events never mutate local
-pointer state. A same-runtime/surface active pointer up with a retired or missing
-snapshot is not routed or re-hit-tested and never activates; it records the
-context rejection and performs causally traced integrity-only cancellation that
-clears pressed/capture state and closes the stream. Same-runtime/surface pointer
-cancel performs that cleanup without retained geometry. Non-terminal unavailable-
-context input remains a pure rejection.
+After acceptance, integrity trace records distinguish broken topology, event-
+bridge mismatch, callback-bridge failure, output-allowance overflow, semantic-
+default failure, and commit-invariant failure while retaining the accepted work
+sequence, causal parent, targets, instant, and origin. Route-wide bridge
+validation happens before the first callback; failures never report partial
+commit as success.
 
-Pointer, keyboard, normalized controller/navigation, accessibility-stub,
-automation, and programmatic activation converge on routed semantic commands.
-Default pointer activation is press, capture, pressed-state tracking, and
-activation only on a still-valid release inside the same mounted lifetime.
-Release outside, cancellation, removal/replacement, or disablement does not
-activate.
+Stopping propagation suppresses only later callbacks. Preventing default
+suppresses only semantic default. Routed actions and commands preserve exact
+interleaving and move non-`Clone` actions. Delegation targets the current node,
+preserves source, changes derivation, appends a later envelope, and never recurses.
 
-Focus movement and `Activate` have framework defaults. `CancelOrBack`, menu/
-context-menu, and logical-scroll commands are route-only: once capture/target/
-bubble finishes unconsumed, their exact default is no action or runtime mutation.
-There is no second ancestor pass. Explicit callback/scope delegation emits a new
-queued command/action and never recurses. An unprevented wheel emits exactly one
-logical-scroll command; a prevented wheel emits none, and unconsumed scroll never
-performs production scrolling in M4.
+Unprevented `Activate` re-queries the original target after callback
+invalidation, then invokes its still-live enabled/actionable activation
+capability exactly once. Prevented, disabled, non-actionable, stale, missing, and
+foreign targets do not invoke the factory. `CancelOrBack`, `OpenMenu`, and
+`OpenContextMenu` are route-only with no default action, runtime mutation,
+or second ancestor pass.
 
-The semantic authored callback is `on_activate`. The M1–M3 `on_press` proof term
-is removed without an alias because activation may originate from pointer
-release, keyboard, controller, accessibility, automation, or programmatic APIs.
+Programmatic, exact-target automation, exact-target accessibility-stub, and
+normalized-controller origins converge on that same queue/route/default/update/
+reconciliation/trace path. M4C1 does not resolve authored automation IDs,
+semantic accessibility identities, or raw controller types.
 
-Focus navigation includes explicit scopes, deterministic next/previous
-traversal, a beam/overlap-aware directional policy backed by the normative
-[directional-focus corpus](m4-directional-focus-corpus.md),
-and exact transition ordering. Composition cancellation precedes `FocusOut`,
-which precedes `FocusIn`. IME composition is owned by the exact focused mounted
-generation and cannot be retargeted after focus/lifetime change.
+The semantic authored callback remains `on_activate`. The old direct runtime,
+pointer-press, and keyboard activation authorities are removed. Retained
+`handle_pointer_focus` and `handle_keyboard_focus` helpers are negative
+focus-only seams owned for removal by M4C3 and M4C5 respectively.
 
-See [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md) for surface
-validation, routing facts, output order, default behavior, focus scope defaults,
-composition lifetime, pointer capture, geometry-triggered boundary updates,
-activation, and migration of overlapping proof paths.
+The accepted later contract remains blocked: M4C2 adds displayed-generation
+surface context, M4C3 pointer streams/capture/release-inside activation, M4C4
+focus scopes/modality, M4C5 keyboard/text/IME and authored automation
+resolution, M4D trace normalization/export/replay, and M5 semantic
+accessibility mapping. See [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md)
+for those later behavioral rules.
 
 ## Application, effect, and subscription contract
 
@@ -275,21 +287,21 @@ mounted tree before its outputs become visible.
 One application transaction plan assigns accepted sequences in this order:
 exact cancellation cleanup, mounted subscription reconciliation, update outputs
 in collector order, application subscription starts in declaration order, then
-mounted lifecycle outputs. Activation uses the same authority with cleanup,
-mounted subscription reconciliation, primary action, then auxiliary outputs.
+mounted lifecycle outputs. Routed command commit uses the same planner for
+mounted work while preserving subscription reconciliation, routed output,
+semantic-default output, then mounted-work order.
 Ready callback and mapper results allocate only their final application-action
 envelope; no action-producing path depends on a second unreserved sequence.
 
-Mutable activation reserves the complete configured callback allowance before
-the callback: one reconciliation generation, `2 * transaction_outputs + 1`
-queue slots, `transaction_outputs`
-work generations and free slots in every mounted-accessible family, and
-`4 * transaction_outputs + 1` mandatory trace records. A committed activation
-reports the first accepted sequence, optional primary-action sequence, and total
-queued envelope count. Auxiliary-only work is therefore `Queued`; explicit
-widget-state mutation or a coalesced subscription invalidation is `Activated`;
-only an authoritative empty `WidgetActivationOutput` with no context effect is
-`NoEffect`. Saturation returns the exact `ActivationCapacity`. Every accepted
+`RoutedTransactionAdmissionPlan` uses checked arithmetic to reserve the
+configured output ledger, queue slots/work sequences, reconciliation/work
+generations, local/send/timer capacity, subscription reconciliation envelopes,
+and mandatory trace records before the first event callback. Each routed action,
+delegated command, default output, mounted effect/cancellation, and unique
+exact-owner subscription invalidation spends one allowance; state-change facts,
+ordinary invalidation, and flow control do not. A zero allowance rejects before
+callback. Known refusal records the exact bounded authority; unexpected
+post-mutation failure poisons instead of silently dropping output. Every accepted
 external queue commit requests the coalesced wake edge, while publication-affecting
 invalidation independently requests redraw.
 
@@ -352,12 +364,16 @@ does not execute rendering inside a wake callback.
 
 The bounded trace foundation replaces the duplicate vectors with one canonical
 record sequence. Its records carry monotonic trace and actual accepted work sequences,
-causal linkage, reconciliation generations, activation targets, queue/
+causal linkage, reconciliation generations, routed targets, queue/
 transaction/focus facts, saturation, terminal cancellation, and shutdown.
 Scheduler work facts additionally expose a read-only opaque identity containing
 the application or exact mounted owner, family, private generation value, and
-optional authored key. Complete trace v2 later adds routed-event and surface
-facts, logical scheduler time, deterministic export, and replay.
+optional authored key. M4C1 adds command acceptance, accepted-work processing
+rejection, submission-rejection trace absence/non-consumption, route snapshot,
+phase targets, propagation/default controls, state/invalidation/output facts,
+semantic default, commit/poison/admission outcome, and parentage into later
+actions and delegated commands. Complete trace v2 later adds surface facts,
+normalization, deterministic export, and replay.
 
 Transaction semantic request/invalidation facts preserve callback collector
 order separately from cleanup-before-start queue grouping. Mandatory trace
@@ -368,14 +384,9 @@ behavior. The accepted final action trace fact is recorded before append and cau
 application transaction that processes that envelope.
 
 Capacity is configurable. Dropping old records advances an explicit watermark.
-Text and IME payloads are redacted by default. A versioned deterministic JSONL
-projection and optional bounded/try-based sink provide the M5 testing/replay
-foundation without requiring `Action: Debug` or authoritative wall-clock time.
-The canonical in-memory trace remains authoritative. Sink full/closed/failure
-can lose only the external copy, never blocks or changes runtime behavior, owns
-no unbounded queue, and reports a structured canonical diagnostic. A recursion
-guard records that diagnostic without sending it back through the same failing
-delivery path.
+Text/IME redaction, versioned JSONL projection, external sinks, and replay remain
+blocked M4D scope. The canonical in-memory trace is the sole current per-command
+outcome authority; `PumpReport` remains aggregate.
 
 ## Ownership boundaries
 
@@ -383,8 +394,8 @@ delivery path.
   opaque mounted/surface ID value types, events/commands, action mapping,
   `EventContext`, `UiApp`, `HostProtocol`, `WorkKey`, and effect/subscription
   descriptions. Hidden construction seams contain no live state authority.
-- `runenui_runtime` owns routing, mounted interaction state, focus/capture,
-  sequenced work, effects, scheduler, clock/limits, lifecycle cancellation,
+- `runenui_runtime` owns routing, mounted interaction state, current proof focus,
+  sequenced work allocation, effects, scheduler, clock/limits, lifecycle cancellation,
   wake/redraw state, poisoning, and trace.
 - hosts own raw platform events, native device/controller mapping, monotonic
   clock/deadline/wake integration, optional send-capable execution, and typed
@@ -408,10 +419,9 @@ the accepted M4C delivery charter is implementation/delivery authority, and the
 [M4 conformance matrix](m4-conformance-matrix.md) is observable acceptance
 authority.
 
-M4C0 acceptance completes only the documentation gate. M4 remains incomplete
-until the canonical authorities are implemented, obsolete paths are removed,
-every required matrix row passes through public APIs, stable/MSRV validation
-succeeds, and current status/support records are updated.
+M4C1 implements and proves its corrected 36-row exact-target command slice but remains
+pending owner acceptance and merge. M4 remains incomplete while M4C2–M4D3 and
+the other milestone gates are blocked.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control
