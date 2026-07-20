@@ -14,8 +14,7 @@ members = [
 
 [workspace.package]
 version = "0.1.0"
-authors = ["Crystonix"]
-repository = "https://github.com/Crystonix/RunenUI"
+repository = "https://github.com/Crystonix/runen-ui"
 license = "MIT OR Apache-2.0"
 publish = false
 edition = "2024"
