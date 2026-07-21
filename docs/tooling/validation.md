@@ -26,12 +26,24 @@ cargo +stable test --workspace --all-features --locked
 cargo +stable clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.93.0 test --workspace --all-features --locked
 # repository-relative Markdown links from the resolved workspace root
-# MIT ownership, workspace license expression, and publish=false metadata
+# deterministic fatal repository structure and authority audit
 ```
+
+The fatal repository audit reuses the checked-in matrix, workspace, authority,
+license, and canonical-runtime ownership contracts. It is network-free and
+read-only. Its architecture concentration findings are diagnostics and do not
+fail validation. See [Repository audit](repository-audit.md).
 
 The Markdown checker deliberately validates inline Markdown links to repository files. Targets resolve relative to the document containing the link. It does not fetch external URLs or validate same-document anchors, reference-style links, URL-encoded paths, or unusual Markdown constructs that are not covered by tests. It is not a complete Markdown specification parser.
 
 Install both Rust channels through `rustup`. The pinned `rust-toolchain.toml` supplies Rust 1.93.0 for reproducible defaults; latest stable with rustfmt and Clippy is also required. See the [toolchain policy](../toolchain-policy.md).
+
+Inspect the full fatal and diagnostic repository report with:
+
+```powershell
+cargo xtask audit-repository
+cargo xtask audit-repository --format json
+```
 
 Check only documentation links with the locked alias:
 

@@ -36,6 +36,7 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `docs/vocabulary.md` | Current contract | Retained active | Explicit current and target terms |
 | `docs/influences.md` | Guide | Retained active | Non-authoritative upstream lessons and candidates |
 | `docs/tooling/validation.md` | Guide | Retained active | Locked root/nested validation, stable formatting, and link-checker scope |
+| `docs/tooling/repository-audit.md` | Guide | Retained active | Deterministic fatal authority invariants, non-fatal concentration diagnostics, thresholds, and JSON schema |
 | `crates/runenui_core/README.md` | Current contract | Retained active | Actual crate ownership and limitations |
 | `crates/runenui_runtime/README.md` | Current contract | Retained active | Actual runtime proof ownership and limitations |
 | `examples/counter/README.md` | Guide | Retained active | Current headless Counter proof and non-goals |
