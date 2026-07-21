@@ -1,0 +1,12 @@
+[package]
+name = "runen-sdf-downstream-conformance"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+glam = "0.31.0"
+runen-sdf = { path = "../.." }
+
+[lints]
+workspace = true
