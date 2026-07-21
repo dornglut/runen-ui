@@ -1,6 +1,9 @@
 name: RunenSDF Candidate Validation
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - validation/runen-sdf-pt-003
