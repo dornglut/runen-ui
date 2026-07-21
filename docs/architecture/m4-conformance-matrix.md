@@ -198,7 +198,7 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 
 ## M4B — accepted application work and deterministic scheduler
 
-PR #75 was owner-accepted and squash-merged as `7a0a5786bb796aeb81d4eac3fe87d254efba540a`.
+[archive PR #75](../history/public-repository-migration.md#accepted-imported-milestone-history) was owner-accepted and squash-merged as `7a0a5786bb796aeb81d4eac3fe87d254efba540a`.
 The rows below preserve the detailed ADR 0006 acceptance inventory. M4A's
 canonical queue/activation/trace foundations are prerequisites consumed by
 M4B; the accepted rows describe the complete merged scheduler behavior and do

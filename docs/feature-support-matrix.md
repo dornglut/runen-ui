@@ -16,8 +16,10 @@ Support labels:
 | `unsupported` | Not available and not safe to infer from current APIs. |
 
 M4B, M4C0, M4C1, and M4C2 are complete and owner-accepted. M4C2 was
-squash-merged in PR #99 with the documented infrastructure-only CI waiver.
-M4C3 is the next active slice; M4C4–M4C5 and M4D1–M4D3 remain unimplemented
+squash-merged in
+[archive PR #99](history/public-repository-migration.md#accepted-imported-milestone-history)
+with the documented infrastructure-only CI waiver.
+M4C3 is the next implementation slice; M4C4–M4C5 and M4D1–M4D3 remain unimplemented
 and blocked in sequence. Planned type names are
 not evidence of support. Exact branch, head, blocker, and next-action state lives
 in the [work-tracking system](work-tracking.md).

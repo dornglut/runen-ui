@@ -58,12 +58,13 @@ No framework subsystem is currently `stable`.
 
 M0–M3, M4A, M4B, M4C0, M4C1, and M4C2 are complete. M4C2 was
 owner-accepted with an explicit infrastructure-only CI waiver and squash-merged
-in PR #99 as `9dbf2b6bc781b4e29e3e9ce10388742eccc90124`. ADR 0005 remains
+in [archive PR #99](history/public-repository-migration.md#accepted-imported-milestone-history)
+as `9dbf2b6bc781b4e29e3e9ce10388742eccc90124`. ADR 0005 remains
 routed-behavior authority, ADR 0006 scheduler-behavior authority, the accepted
 [M4C delivery charter](architecture/m4c-delivery-and-routed-transaction-charter.md)
 implementation/delivery authority, and the
 [M4 conformance matrix](architecture/m4-conformance-matrix.md) observable
-acceptance authority. M4C3 is the next active slice; M4C4–M4C5 and M4D1–M4D3
+acceptance authority. M4C3 is the next implementation slice; M4C4–M4C5 and M4D1–M4D3
 remain blocked in sequence. No pointer-capture, release-inside, focus-scope/modality,
 keyboard/text/IME, authored automation resolution, semantic accessibility mapping,
 export, sink, or replay maturity is upgraded. M4 is active and incomplete. Volatile

@@ -24,7 +24,7 @@ body:
     id: base
     attributes:
       label: Exact accepted base SHA
-      description: Use the accepted master SHA, never an unmerged feature head.
+      description: Use the accepted main SHA, never an unmerged feature head.
     validations:
       required: true
   - type: textarea

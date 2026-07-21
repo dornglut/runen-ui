@@ -19,8 +19,8 @@ next-action state is owned by the [work-tracking system](../work-tracking.md).
 M4B   deterministic scheduler and application work (complete and accepted)
 M4C0  conformance ownership and decision closure (complete and accepted)
 M4C1  routed semantic-command kernel (complete and accepted)
-M4C2  displayed-generation surface context (queued after prerequisite decomposition)
-M4C3  pointer lifecycle (blocked by M4C2)
+M4C2  displayed-generation surface context (complete and accepted)
+M4C3  pointer lifecycle (next implementation slice; operational prerequisites tracked publicly)
 M4C4  focus scopes and modality (blocked by M4C3)
 M4C5  keyboard, text, IME, automation, and M4C closure (blocked by M4C4)
 M4D1  complete trace schema (blocked by M4C5)
@@ -28,10 +28,10 @@ M4D2  export and sink (blocked by M4D1)
 M4D3  replay and milestone closure (blocked by M4D2)
 ```
 
-M4C1 is owner-accepted and squash-merged in PR #77. M4C2 is queued after the
-governance and behavior-preserving runtime/trace/surface decomposition gates.
-M4C3–M4D3 remain blocked in sequence. M4B's implemented live-only producer
-authority remains unchanged, and M4 is active and incomplete.
+M4C1 and M4C2 are complete and owner-accepted. M4C3 is the next
+implementation slice; its operational prerequisites are owned by the public
+work-tracking system. M4C4–M4D3 remain blocked in sequence. M4B's implemented
+live-only producer authority remains unchanged, and M4 is active and incomplete.
 
 ## Current application-work and scheduler implementation
 
@@ -56,7 +56,8 @@ overflow terminates only that timer after its current valid firing; and
 work-specific trace records carry opaque exact owner/family/generation/key
 identity. Capture/target/bubble routing, propagation/default control, delegated
 commands, routed output mapping, and the command causal trace are implemented.
-There is no surface-input generation context, pointer identity/true capture,
+Displayed-generation surface input context and exact current/historical target
+binding are implemented. There is no pointer identity/true capture,
 release-inside policy, focus scopes/modality, text/IME stream, authored-ID
 automation resolution, semantic accessibility mapping, trace sink/export/replay,
 or complete trace-v2 normalization.
@@ -92,8 +93,9 @@ owns `EventPhase::{Capture, Target, Bubble}`, the four direct
 `EventSource` classes, direct/delegated `CommandDerivation`,
 `CommandOrigin`, `SemanticCommand::{Activate, CancelOrBack, OpenMenu, OpenContextMenu}`,
 `UiEvent::SemanticCommand`, `SemanticCommandEvent`, `WidgetEventOutput`, and
-the borrowed `EventContext`. No pointer, surface, focus, keyboard, text, IME,
-modality, scrolling, or platform-controller placeholder variants were added.
+the borrowed `EventContext`. M4C2 separately adds core-owned surface identity
+and input-context values without adding pointer, focus, keyboard, text, IME,
+modality, scrolling, or platform-controller event placeholders.
 Public `CommandOrigin` constructors create direct origins only. Delegated
 derivation can be created only when the checked event bridge extracts a command
 collected through `EventContext::emit_command`; external submission cannot
@@ -161,10 +163,10 @@ pointer-press, and keyboard activation authorities are removed. Retained
 `handle_pointer_focus` and `handle_keyboard_focus` helpers are negative
 focus-only seams owned for removal by M4C3 and M4C5 respectively.
 
-The accepted later contract remains blocked: M4C2 adds displayed-generation
-surface context, M4C3 pointer streams/capture/release-inside activation, M4C4
-focus scopes/modality, M4C5 keyboard/text/IME and authored automation
-resolution, M4D trace normalization/export/replay, and M5 semantic
+M4C2 has added displayed-generation surface context. The accepted later
+contract remains unimplemented: M4C3 adds pointer streams/capture/release-inside
+activation, M4C4 focus scopes/modality, M4C5 keyboard/text/IME and authored
+automation resolution, M4D trace normalization/export/replay, and M5 semantic
 accessibility mapping. See [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md)
 for those later behavioral rules.
 
@@ -374,8 +376,9 @@ optional authored key. M4C1 adds command acceptance, accepted-work processing
 rejection, submission-rejection trace absence/non-consumption, route snapshot,
 phase targets, propagation/default controls, state/invalidation/output facts,
 semantic default, commit/poison/admission outcome, and parentage into later
-actions and delegated commands. Complete trace v2 later adds surface facts,
-normalization, deterministic export, and replay.
+actions and delegated commands. M4C2 adds surface-context acceptance,
+selection, binding, rejection, and causal-parent facts. Complete trace v2 later
+normalizes the full schema and adds deterministic export and replay.
 
 Transaction semantic request/invalidation facts preserve callback collector
 order separately from cleanup-before-start queue grouping. Mandatory trace
@@ -422,10 +425,10 @@ the accepted M4C delivery charter is implementation/delivery authority, and the
 [M4 conformance matrix](m4-conformance-matrix.md) is observable acceptance
 authority.
 
-M4C1 is complete, owner-accepted, and squash-merged in PR #77. M4C2 is queued
-after the governance and required behavior-preserving runtime/trace/surface
-decomposition gates. M4C3–M4D3 remain blocked in sequence, and M4 remains active
-and incomplete.
+M4C1 and M4C2 are complete and owner-accepted. M4C3 is the next
+implementation slice; its operational prerequisites are owned by the public
+work-tracking system. M4C4–M4D3 remain blocked in sequence, and M4 remains
+active and incomplete.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control

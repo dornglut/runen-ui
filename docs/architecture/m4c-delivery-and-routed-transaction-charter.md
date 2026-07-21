@@ -23,7 +23,7 @@ implementation seam may weaken a matrix observation.
 
 M4B must be owner-accepted and merged before any M4C branch begins. The first
 post-M4B branch is documentation-only M4C0. Every implementation branch starts
-from the updated `master` produced by the previous accepted pull request; M4C
+from the updated `main` produced by the previous accepted pull request; M4C
 and M4D branches are never stacked on an unmerged feature branch.
 
 ```text

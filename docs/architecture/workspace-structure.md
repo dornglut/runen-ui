@@ -47,15 +47,15 @@ subscriptions, host requests, wake/redraw, trace, and shutdown. Completion
 ingress owns only live `Starting`/`Running` generations; centralized revocation
 removes registry and retained producer state before lifecycle callbacks. The
 current implementation includes the application-work/deterministic-scheduler
-slice and the accepted exact-target routed semantic-command kernel.
+slice, the accepted exact-target routed semantic-command kernel, and accepted
+displayed-generation surface context.
 Hidden safe core construction seams do not own live state or bypass runtime validation.
 M4 adds no third crate.
 
-M4B, M4C0, and M4C1 are complete and owner-accepted. M4C1 was squash-merged in
-PR #77. M4C2 is queued after the governance closure and required behavior-
-preserving runtime/trace/surface decomposition; M4C3–M4D3 remain blocked, and no
-additional crate boundary is implied by those slices. Exact execution state is
-owned by the [work-tracking system](../work-tracking.md).
+M4B, M4C0, M4C1, and M4C2 are complete and owner-accepted. M4C3 is the next
+implementation slice; M4C4–M4D3 remain blocked in sequence, and no additional
+crate boundary is implied by those slices. Exact execution state is owned by the
+[work-tracking system](../work-tracking.md).
 
 Within the crates, built-in authoring is separate from the public element/widget
 protocol. Mounted storage is divided into arena, identity, node, capability
@@ -75,9 +75,9 @@ invokes the immutable route, `defaults.rs` resolves semantic default,
 processing/integrity outcomes. Speculative milestone-named modules
 are not part of the workspace structure.
 
-The accepted pre-M4C2 decomposition may split broad runtime, trace, and surface
-files into internal modules, but it must preserve the same two production crates,
-public authority, queue, trace store, scheduler ordering, and matrix state. File
+The accepted pre-M4C2 decomposition split broad runtime, trace, and surface
+responsibilities into internal modules while preserving the same two production
+crates, public authority, queue, trace store, scheduler ordering, and matrix state. File
 size alone is not a crate boundary or a valid architecture decision.
 
 ## Extraction rule

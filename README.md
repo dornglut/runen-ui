@@ -8,8 +8,9 @@ Today RunenUI is a coherent **headless architecture proof**. It is not a product
 
 Milestone status: M4A, M4B, M4C0, M4C1, and M4C2 are complete. M4C2 was
 owner-accepted with an explicit infrastructure-only CI waiver and squash-merged
-in PR #99. M4C3 is the next active slice; M4C4–M4C5 and M4D1–M4D3 remain
-blocked in sequence. M4 is active and incomplete.
+in [archive PR #99](docs/history/public-repository-migration.md#accepted-imported-milestone-history).
+M4C3 is the next implementation slice; M4C4–M4C5 and M4D1–M4D3 remain blocked
+in sequence. M4 is active and incomplete.
 See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
 [work-tracking contract](docs/work-tracking.md),
 [accepted M4C delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md),
@@ -121,6 +122,7 @@ renderer-neutral paint and hit-test scenes begin in M6.
 - [Production roadmap](docs/roadmap.md)
 - [Work tracking](docs/work-tracking.md)
 - [Architecture](docs/architecture.md)
+- [Public repository migration history](docs/history/public-repository-migration.md)
 - [Documentation retention and disposition](docs/documentation-retention-plan.md)
 - [Validation](docs/tooling/validation.md)
 - [API stability](docs/api-stability.md)
