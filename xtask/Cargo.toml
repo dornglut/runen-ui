@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version.workspace = true
+description = "Repository validation tasks for the RunenUI workspace"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true

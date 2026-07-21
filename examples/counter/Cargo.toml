@@ -1,0 +1,20 @@
+[package]
+name = "counter"
+version.workspace = true
+description = "Headless Counter proof for the current RunenUI application and publication model"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
+runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }
+
+[dev-dependencies]
+runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0", features = ["internal-test-seams"] }
+
+[lints]
+workspace = true

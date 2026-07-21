@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+
+members = [
+    "crates/runenui_core",
+    "crates/runenui_runtime",
+
+    "examples/counter",
+
+    "tests/external_widget",
+
+    "xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+repository = "https://github.com/Crystonix/runen-ui"
+license = "MIT OR Apache-2.0"
+publish = false
+edition = "2024"
+rust-version = "1.93.0"
+
+[workspace.dependencies]
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"

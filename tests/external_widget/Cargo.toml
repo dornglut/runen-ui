@@ -1,0 +1,17 @@
+[package]
+name = "runenui_external_widget_conformance"
+version.workspace = true
+description = "Downstream public-API conformance fixture for RunenUI widgets"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
+runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }
+
+[lints]
+workspace = true

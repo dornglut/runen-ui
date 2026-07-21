@@ -1,0 +1,18 @@
+[package]
+name = "runenui_core"
+version.workspace = true
+description = "Host-neutral authored UI vocabulary for the RunenUI architecture proof"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+
+[features]
+internal-test-seams = []
+
+[lints]
+workspace = true

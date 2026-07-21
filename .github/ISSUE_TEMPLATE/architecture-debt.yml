@@ -1,0 +1,55 @@
+name: Architecture or debt
+description: Record a concrete architecture, refactor, governance, or tooling concern.
+title: "[Architecture] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and evidence
+      description: Identify exact files, symbols, responsibilities, consumers, or observed failure modes.
+    validations:
+      required: true
+  - type: dropdown
+    id: blocking
+    attributes:
+      label: Does this block the active slice?
+      options:
+        - Required before the active slice
+        - Independent and ready
+        - Non-blocking follow-up
+        - Deferred
+    validations:
+      required: true
+  - type: textarea
+    id: authority
+    attributes:
+      label: Authority and constraints
+      description: Link applicable ADRs, architecture contracts, and dependency rules.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Required outcome
+      description: Define responsibility boundaries and acceptance, not only file movement.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Explicit non-goals
+    validations:
+      required: true
+  - type: textarea
+    id: proof
+    attributes:
+      label: Behavior-preservation or proof requirements
+    validations:
+      required: true
+  - type: textarea
+    id: execution
+    attributes:
+      label: Exact base, branch, PR, head, blockers, and next action
+      description: Keep this volatile state updated during execution.
+    validations:
+      required: true

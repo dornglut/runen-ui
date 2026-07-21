@@ -1,0 +1,19 @@
+description = "Small RunenUI authority context for normal AI startup."
+
+include = [
+  "README.md",
+  "Cargo.toml",
+  ".gitignore",
+  "tools/context/README.md",
+  "tools/context/export_repo_context.py",
+  "tools/context/profiles/*.toml",
+  "docs/**",
+  "design/**",
+  "architecture/**",
+]
+
+exclude = [
+  "Cargo.lock",
+  "legacy/**",
+  "context/**",
+]
