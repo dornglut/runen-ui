@@ -15,7 +15,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 repository = "https://github.com/Crystonix/runen-ui"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 publish = false
 edition = "2024"
 rust-version = "1.93.0"

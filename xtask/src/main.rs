@@ -8,7 +8,7 @@ use std::{
     process::{Command, ExitCode},
 };
 
-const EXPECTED_LICENSE_EXPRESSION: &str = "license = \"MIT OR Apache-2.0\"";
+const EXPECTED_LICENSE_EXPRESSION: &str = "license = \"MIT\"";
 const EXPECTED_MIT_NOTICE: &str = "Copyright (c) 2026 Crystonix";
 const VALIDATE_STEPS: &[(&str, &[&str])] = &[
     ("stable", &["fmt", "--all", "--check"]),
@@ -268,7 +268,7 @@ fn local_link_path(target: &str) -> Option<&str> {
 }
 
 fn validate_repository_metadata(root: &Path) -> Result<(), String> {
-    let mit_path = root.join("LICENSE-MIT");
+    let mit_path = root.join("LICENSE");
     let mit = fs::read_to_string(&mit_path)
         .map_err(|error| format!("failed to read {}: {error}", mit_path.display()))?;
     let notices = mit
@@ -278,14 +278,14 @@ fn validate_repository_metadata(root: &Path) -> Result<(), String> {
 
     if notices != [EXPECTED_MIT_NOTICE] {
         return Err(format!(
-            "LICENSE-MIT must contain only the RunenUI notice: {EXPECTED_MIT_NOTICE}"
+            "LICENSE must contain only the RunenUI notice: {EXPECTED_MIT_NOTICE}"
         ));
     }
 
     if !mit.contains("Permission is hereby granted, free of charge")
         || !mit.contains("THE SOFTWARE IS PROVIDED \"AS IS\"")
     {
-        return Err("LICENSE-MIT does not contain the standard MIT grant and disclaimer".into());
+        return Err("LICENSE does not contain the standard MIT grant and disclaimer".into());
     }
 
     let manifest_path = root.join("Cargo.toml");
@@ -302,7 +302,7 @@ fn validate_repository_metadata(root: &Path) -> Result<(), String> {
         return Err("workspace package publication must remain disabled".into());
     }
 
-    eprintln!("> verified MIT ownership, dual-license metadata, and publish policy");
+    eprintln!("> verified MIT license metadata and publish policy");
     Ok(())
 }
 

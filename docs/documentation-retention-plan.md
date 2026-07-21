@@ -38,17 +38,13 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `examples/counter/README.md` | Guide | Retained active | Current headless Counter proof and non-goals |
 | `tools/context/README.md` | Guide | Retained active | Context profiles, coverage, budgets, and exclusions |
 | `AGENTS.md` | Current contract | Retained active | Repository authority, architecture, workflow, and validation rules |
-| `CONTRIBUTING.md` | Guide | Retained active | Contributor workflow and quality expectations |
-| `SECURITY.md` | Current contract | Retained active | Private vulnerability reporting and current support scope |
-| `CODE_OF_CONDUCT.md` | Current contract | Retained active | Conduct scope, enforcement, private reporting, and non-retaliation |
 | `CHANGELOG.md` | Current contract | Retained active | Pre-release change record |
 | `docs/release-policy.md` | Current contract | Retained active | Publication gate, release checklist, and `1.0.0` criteria |
 | `docs/api-stability.md` | Current contract | Retained active | 0.x compatibility and public stability guidance |
 | `docs/toolchain-policy.md` | Current contract | Retained active | Stable formatter, MSRV, and toolchain-update policy |
 | `docs/dependency-policy.md` | Current contract | Retained active | Dependency, license, MSRV, and adoption review baseline |
 | `docs/unsafe-code-policy.md` | Current contract | Retained active | Safe-Rust default and future unsafe-boundary review |
-| `LICENSE-MIT` | Current contract | Retained active | Owner-approved MIT license with RunenUI copyright notice |
-| `LICENSE-APACHE` | Current contract | Retained active | Unmodified Apache License 2.0 text |
+| `LICENSE` | Current contract | Retained active | Owner-approved MIT license for the current repository |
 | `xtask/README.md` | Guide | Retained active | Shared validation task ownership and usage |
 
 ## Removed or consolidated M0 baseline documents

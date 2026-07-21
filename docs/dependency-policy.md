@@ -2,7 +2,7 @@
 
 > **Category: Current contract**
 
-Dependencies are added only for a current reviewed need. A proposal must identify ownership, public API impact, feature/target behavior, MSRV, maintenance health, security history, license compatibility with MIT/Apache-2.0 distribution, transitive cost, alternatives, and removal/upgrade implications.
+Dependencies are added only for a current reviewed need. A proposal must identify ownership, public API impact, feature/target behavior, MSRV, maintenance health, security history, license compatibility with MIT distribution, transitive cost, alternatives, and removal/upgrade implications.
 
 Architecture-defining choices—layout algorithms, text stack, renderer, windowing/host adapters, accessibility bridges, async/runtime infrastructure, serialization/source formats—require the ADR or review gate named in the roadmap. No dependency may leak its tree, vocabulary, platform ownership, or renderer semantics into RunenUI’s public contract without an explicit decision.
 

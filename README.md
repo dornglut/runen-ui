@@ -123,8 +123,6 @@ renderer-neutral paint and hit-test scenes begin in M6.
 - [Architecture](docs/architecture.md)
 - [Documentation retention and disposition](docs/documentation-retention-plan.md)
 - [Validation](docs/tooling/validation.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
 - [API stability](docs/api-stability.md)
 - [Release policy](docs/release-policy.md)
 
@@ -201,4 +199,4 @@ Normal profiles exclude historical legacy material. See [Context Export](tools/c
 
 RunenUI has not reached a stable public API or production release. All workspace packages are `0.1.0` and publication is disabled until release infrastructure and milestone gates exist. `1.0.0` is reserved for completion of the required production profiles and the M11 hardening gate.
 
-RunenUI is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+RunenUI is licensed under the [MIT License](LICENSE).
