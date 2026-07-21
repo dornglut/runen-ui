@@ -1,3 +1,5 @@
+use crate::{TraceSurfaceIngressKind, TraceSurfaceSnapshotKind};
+
 use super::{
     ActionCommitError, ApplicationActionOrigin, CommandOrigin, CommandSubmission, HashMap,
     HostProtocol, MandatoryTracePlan, MountedNodeId, QueueCommitError, Runtime, RuntimeStatus,
@@ -6,6 +8,36 @@ use super::{
     TraceRecordKind, TraceSequence, TraceTarget, TraceWorkIdentity, UnacceptedCommand,
     WorkEnvelope, WorkSequence,
 };
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct SurfaceCommandTrace {
+    ingress: TraceSurfaceIngressKind,
+    snapshot: TraceSurfaceSnapshotKind,
+    hit_test_generation: u64,
+    coordinate_revision: u64,
+}
+
+impl SurfaceCommandTrace {
+    pub(super) const fn new(
+        ingress: TraceSurfaceIngressKind,
+        snapshot: TraceSurfaceSnapshotKind,
+        hit_test_generation: u64,
+        coordinate_revision: u64,
+    ) -> Self {
+        Self {
+            ingress,
+            snapshot,
+            hit_test_generation,
+            coordinate_revision,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CommandTrace {
+    Direct,
+    Surface(SurfaceCommandTrace),
+}
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn submit_action(
@@ -126,97 +158,146 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         command: SemanticCommand,
         origin: CommandOrigin,
     ) -> Result<CommandSubmission, SubmitCommandError> {
-        match self.status {
-            RuntimeStatus::Running => {}
-            RuntimeStatus::Closed => {
-                return Err(Self::reject_command_submission(
-                    SubmitCommandErrorKind::Closed,
-                    target,
-                    command,
-                    origin,
-                ));
-            }
-            RuntimeStatus::Terminal(reason) => {
-                return Err(Self::reject_command_submission(
-                    SubmitCommandErrorKind::Terminal(reason),
-                    target,
-                    command,
-                    origin,
-                ));
+        match self.submit_command_inner(&target, command, origin, CommandTrace::Direct) {
+            Ok(submission) => Ok(submission),
+            Err(kind) => {
+                let error = Self::reject_command_submission(kind, target, command, origin);
+                self.terminalize_command_failure(kind);
+                Err(error)
             }
         }
-        let target_error = match self.tree.target_status(&target) {
-            TargetStatus::Live => None,
-            TargetStatus::Foreign => Some(SubmitCommandErrorKind::ForeignTarget),
-            TargetStatus::Stale => Some(SubmitCommandErrorKind::StaleTarget),
-            TargetStatus::Missing => Some(SubmitCommandErrorKind::MissingTarget),
-        };
-        if let Some(kind) = target_error {
-            return Err(Self::reject_command_submission(
-                kind, target, command, origin,
-            ));
+    }
+
+    pub(super) const fn command_status_preflight(&self) -> Result<(), SubmitCommandErrorKind> {
+        match self.status {
+            RuntimeStatus::Running => Ok(()),
+            RuntimeStatus::Closed => Err(SubmitCommandErrorKind::Closed),
+            RuntimeStatus::Terminal(reason) => Err(SubmitCommandErrorKind::Terminal(reason)),
+        }
+    }
+
+    pub(super) fn submit_surface_bound_command(
+        &mut self,
+        target: &MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+        trace: SurfaceCommandTrace,
+    ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
+        self.submit_command_inner(target, command, origin, CommandTrace::Surface(trace))
+    }
+
+    fn submit_command_inner(
+        &mut self,
+        target: &MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+        trace: CommandTrace,
+    ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
+        self.command_preflight(target)?;
+        self.commit_preflighted_command(target, command, origin, trace)
+    }
+
+    fn command_preflight(&self, target: &MountedNodeId) -> Result<(), SubmitCommandErrorKind> {
+        self.command_status_preflight()?;
+        match self.tree.target_status(target) {
+            TargetStatus::Live => {}
+            TargetStatus::Foreign => return Err(SubmitCommandErrorKind::ForeignTarget),
+            TargetStatus::Stale => return Err(SubmitCommandErrorKind::StaleTarget),
+            TargetStatus::Missing => return Err(SubmitCommandErrorKind::MissingTarget),
         }
         match self.queue.preflight_commit(1) {
-            Ok(()) => {}
-            Err(QueueCommitError::Full) => {
-                return Err(Self::reject_command_submission(
-                    SubmitCommandErrorKind::Full,
-                    target,
-                    command,
-                    origin,
-                ));
-            }
+            Ok(()) => Ok(()),
+            Err(QueueCommitError::Full) => Err(SubmitCommandErrorKind::Full),
             Err(QueueCommitError::SequenceExhausted) => {
-                let error = Self::reject_command_submission(
-                    SubmitCommandErrorKind::WorkSequenceExhausted,
-                    target,
-                    command,
-                    origin,
-                );
-                self.enter_terminal(RuntimeTerminalReason::WorkSequenceExhausted, 0);
-                return Err(error);
+                Err(SubmitCommandErrorKind::WorkSequenceExhausted)
             }
         }
-        let Some(trace_reservation) = self.trace.reserve_command_outcome() else {
-            let error = Self::reject_command_submission(
-                SubmitCommandErrorKind::TraceSequenceExhausted,
-                target,
-                command,
-                origin,
-            );
-            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
-            return Err(error);
-        };
+    }
+
+    fn commit_preflighted_command(
+        &mut self,
+        target: &MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+        trace: CommandTrace,
+    ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
+        let trace_reservation = match trace {
+            CommandTrace::Direct => self.trace.reserve_command_outcome(),
+            CommandTrace::Surface(_) => self.trace.reserve_surface_command_outcome(),
+        }
+        .ok_or(SubmitCommandErrorKind::TraceSequenceExhausted)?;
         let sequence = self
             .queue
             .next_sequence()
             .unwrap_or_else(|| unreachable!("command sequence was preflighted"));
         let instant = self.now();
         let trace_enabled = self.trace.is_enabled();
-        let causal_parent = self.trace.record_event(
-            TraceRecordKind::CommandSubmissionAccepted,
-            sequence,
-            None,
-            Some(self.tree.trace_target(&target)),
-            instant,
-            &target,
-            None,
-            origin,
-        );
+        let trace_target = self.tree.trace_target(target);
+        let causal_parent = match trace {
+            CommandTrace::Direct => self.trace.record_event(
+                TraceRecordKind::CommandSubmissionAccepted,
+                sequence,
+                None,
+                Some(trace_target),
+                instant,
+                target,
+                None,
+                origin,
+            ),
+            CommandTrace::Surface(surface) => {
+                let context_parent = self.trace.record(
+                    TraceRecordKind::SurfaceContextAccepted {
+                        ingress: surface.ingress,
+                        snapshot: surface.snapshot,
+                        hit_test_generation: surface.hit_test_generation,
+                        coordinate_revision: surface.coordinate_revision,
+                    },
+                    Some(sequence),
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+                if trace_enabled && context_parent.is_none() {
+                    self.trace.release_reservation(trace_reservation);
+                    return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
+                }
+                let target_parent = self.trace.record_event(
+                    TraceRecordKind::SurfaceTargetBound {
+                        ingress: surface.ingress,
+                        hit_test_generation: surface.hit_test_generation,
+                    },
+                    sequence,
+                    context_parent,
+                    Some(trace_target.clone()),
+                    instant,
+                    target,
+                    None,
+                    origin,
+                );
+                if trace_enabled && target_parent.is_none() {
+                    self.trace.release_reservation(trace_reservation);
+                    return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
+                }
+                self.trace.record_event(
+                    TraceRecordKind::CommandSubmissionAccepted,
+                    sequence,
+                    target_parent,
+                    Some(trace_target),
+                    instant,
+                    target,
+                    None,
+                    origin,
+                )
+            }
+        };
         if trace_enabled && causal_parent.is_none() {
             self.trace.release_reservation(trace_reservation);
-            let error = Self::reject_command_submission(
-                SubmitCommandErrorKind::TraceSequenceExhausted,
-                target,
-                command,
-                origin,
-            );
-            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
-            return Err(error);
+            return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
         }
         self.queue
             .push_command_preflighted(
-                target,
+                target.clone(),
                 command,
                 origin,
                 instant,
@@ -226,6 +307,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .unwrap_or_else(|_| unreachable!("command queue was preflighted"));
         self.external_queue_commit_accepted();
         Ok(CommandSubmission::new(sequence))
+    }
+
+    pub(super) fn terminalize_command_failure(&mut self, kind: SubmitCommandErrorKind) {
+        let reason = match kind {
+            SubmitCommandErrorKind::WorkSequenceExhausted => {
+                Some(RuntimeTerminalReason::WorkSequenceExhausted)
+            }
+            SubmitCommandErrorKind::TraceSequenceExhausted => {
+                Some(RuntimeTerminalReason::TraceSequenceExhausted)
+            }
+            SubmitCommandErrorKind::Full
+            | SubmitCommandErrorKind::Closed
+            | SubmitCommandErrorKind::Terminal(_)
+            | SubmitCommandErrorKind::ForeignTarget
+            | SubmitCommandErrorKind::StaleTarget
+            | SubmitCommandErrorKind::MissingTarget => None,
+        };
+        if let Some(reason) = reason {
+            self.enter_terminal(reason, 0);
+        }
     }
 
     pub(super) const fn reject_command_submission(

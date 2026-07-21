@@ -284,7 +284,7 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Next slice:** M4C1 is complete, owner-accepted, and merged; M4C2 is queued after the governance and behavior-preserving decomposition gates.
+**Next slice:** M4C1 is complete, owner-accepted, and merged; M4C2 is proof-complete in draft PR #99 and pending owner acceptance, exact-head hosted CI, and merge.
 
 #### M4C1 — Routed semantic-command kernel
 
@@ -330,13 +330,12 @@ widget use public command APIs. All 36 corrected M4C1 rows are `owner-accepted`.
 was owner-accepted. PR #77 was squash-merged on 2026-07-19 as
 `44ceee29c73cea1237fefbd30db4baf2cd97b93d`.
 
-**Next unblocked slice:** M4C2 is queued after the governance closure and
-required behavior-preserving runtime/trace/surface decomposition are accepted
-and merged.
+**Next unblocked slice:** M4C2 is proof-complete in draft PR #99 and awaits
+owner acceptance, exact-head hosted CI, and squash merge.
 
 #### M4C2 — Displayed-generation surface context
 
-**Status:** `queued` after the governance and behavior-preserving decomposition gates.
+**Status:** `active`; implementation and exact-head local proof package complete in draft PR #99, pending owner acceptance, hosted CI, and squash merge.
 
 **Goal:** Bind neutral input targeting to runtime-issued logical surface,
 coordinate revision, and exact retained displayed hit-test generation.
@@ -358,6 +357,15 @@ exact-head CI.
 
 **Exit criteria:** Every `SURFACE-*` row is proof-complete and no accepted input
 is retargeted through another publication.
+
+**Proof-complete record:** The sanitized branch implements one shared-namespace
+logical surface, fresh coordinate/display generations, configurable bounded
+immutable hit-test retention, exact current/historical targeting, checked logical
+and resolved-target ingress, owned rejection recovery, canonical FIFO convergence,
+and slice-local causal trace. Stable/MSRV local validation passed at the reviewed
+implementation head; the documentation-closure head must rerun the shared baseline.
+Hosted CI remains unavailable before step allocation because
+the account Actions budget is exhausted; owner acceptance and merge remain pending.
 
 **Next unblocked slice:** M4C3 after M4C2 owner acceptance and merge.
 

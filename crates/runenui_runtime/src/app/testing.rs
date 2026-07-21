@@ -1,3 +1,5 @@
+use runenui_core::SurfaceInputContext;
+
 use super::{AppRuntime, MountedNodeId, UiApp};
 
 impl<App: UiApp> AppRuntime<App> {
@@ -35,6 +37,36 @@ impl<App: UiApp> AppRuntime<App> {
     #[doc(hidden)]
     pub const fn __routed_trace_reservations_for_test(&self) -> usize {
         self.runtime.routed_trace_reservations_for_test()
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __surface_context_for_test(
+        &self,
+        surface_slot: u32,
+        surface_generation: u64,
+        coordinate_revision: u64,
+        hit_test_generation: u64,
+    ) -> SurfaceInputContext {
+        self.runtime.surface_context_for_test(
+            surface_slot,
+            surface_generation,
+            coordinate_revision,
+            hit_test_generation,
+        )
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    pub fn __replace_surface_snapshot_target_for_test(
+        &mut self,
+        context: &SurfaceInputContext,
+        original: &MountedNodeId,
+        replacement: MountedNodeId,
+    ) {
+        self.runtime
+            .replace_surface_snapshot_target_for_test(context, original, replacement);
     }
 
     #[cfg(feature = "internal-test-seams")]

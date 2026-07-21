@@ -16,6 +16,32 @@
 //! let _ = SemanticNodeId { slot: 7, generation: 1 };
 //! ```
 //!
+//! ```compile_fail
+//! use runenui_runtime::SurfaceId;
+//! let _ = SurfaceId { slot: 0, generation: 1 };
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_runtime::SurfaceInputContext;
+//! let _ = SurfaceInputContext {
+//!     coordinate_revision: 1,
+//!     hit_test_generation: 1,
+//! };
+//! ```
+//!
+//! Displayed-surface ingress remains logical and host-neutral:
+//!
+//! ```compile_fail
+//! use runenui_runtime::{DpiScale, MonitorId, NativeWindowId, PhysicalPoint, PhysicalSize};
+//! ```
+//!
+//! M4C2 owns one mounted root and one logical surface, not multi-window or
+//! cross-surface focus lifecycle:
+//!
+//! ```compile_fail
+//! use runenui_runtime::{CrossSurfaceFocus, SurfaceManager, WindowId};
+//! ```
+//!
 //! Mounted storage and transient publication are not public escape hatches:
 //!
 //! ```compile_fail
@@ -130,6 +156,8 @@ mod redraw;
 mod runtime;
 mod style_debug;
 mod surface;
+mod surface_command;
+mod surface_publication;
 mod trace;
 mod transaction;
 mod wake;
@@ -166,6 +194,7 @@ pub use policy::{KeyboardFocusResult, PointerFocusResult};
 pub use pump::{PumpBudget, PumpBudgetExhaustion, PumpOutcome, PumpReport};
 pub use queue::{SubmitActionError, SubmitActionErrorKind, SubmitActionResult, WorkSequence};
 pub use redraw::{RedrawAcknowledgeError, RedrawRequest};
+pub use runenui_core::{SurfaceId, SurfaceInputContext};
 pub use runtime::{
     HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
     ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
@@ -174,13 +203,17 @@ pub use runtime::{
 pub use style_debug::{SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report};
 pub use surface::{
     LayoutOverflow, LogicalRect, LogicalSize, SurfaceBuildContext, SurfaceFrame, SurfaceLayoutNode,
-    SurfaceLayoutReport, SurfaceNode, SurfacePhase, SurfacePhaseReport, SurfacePublication,
+    SurfaceLayoutReport, SurfaceNode, SurfacePhase, SurfacePhaseReport,
 };
+pub use surface_command::{
+    SubmitSurfaceCommandError, SubmitSurfaceCommandErrorKind, UnacceptedSurfaceCommand,
+};
+pub use surface_publication::SurfacePublication;
 pub use trace::{
     Trace, TraceConfig, TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceSequence, TraceTarget, TraceTargetRejection,
-    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
-    TraceWorkStartRefusal,
+    TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceIngressKind, TraceSurfaceRejection,
+    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTimerTerminalOutcome,
+    TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::host_request::{HostRequestRef, HostRequestToken};

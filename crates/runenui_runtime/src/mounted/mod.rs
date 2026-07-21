@@ -8,6 +8,7 @@ mod inspection;
 mod interaction;
 mod invalidation;
 mod lifecycle;
+mod namespace;
 mod node;
 mod reconcile;
 mod routing;

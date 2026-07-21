@@ -18,6 +18,14 @@ impl MandatoryTracePlan {
         Self::exact(1)
     }
 
+    pub(crate) const fn command_acceptance() -> Self {
+        Self::exact(1)
+    }
+
+    pub(crate) const fn surface_command_acceptance() -> Self {
+        Self::exact(3)
+    }
+
     pub(crate) const fn one_fact() -> Self {
         Self::exact(1)
     }

@@ -7,9 +7,9 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
 Milestone status: M4A, M4B, M4C0, and M4C1 are complete. M4C1 is
-owner-accepted and squash-merged in PR #77. M4C2 is queued after the required
-governance closure and behavior-preserving runtime/trace/surface decomposition;
-M4C3–M4C5 and M4D1–M4D3 remain blocked in sequence. M4 is active and incomplete.
+owner-accepted and squash-merged in PR #77. M4C2 is proof-complete in draft PR
+#99 and awaits owner acceptance, exact-head hosted CI, and squash merge. M4C3–M4C5
+and M4D1–M4D3 remain blocked in sequence. M4 is active and incomplete.
 See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
 [work-tracking contract](docs/work-tracking.md),
 [accepted M4C delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md),
@@ -52,6 +52,10 @@ The active workspace proves:
   routed `Activate` default and route-only cancel/menu/context commands, an
   explicit bounded pump, focus traversal, scheduler-aware bounded canonical
   tracing with routed causal parentage, and mounted surface publication;
+- runtime-issued opaque `SurfaceId`/`SurfaceInputContext`, fresh displayed
+  coordinate revision and hit-test generation on every publication, configurable
+  bounded immutable historical hit-test snapshots, exact checked logical/resolved
+  ingress with owned rejection recovery, and causal surface trace lineage;
 - typed style values, tokens, computed style, provenance, and diagnostics;
 - explicit layout constraints, a renderer-neutral measurement-provider seam,
   and separate one-query intrinsic/child-layout snapshots per publication;
@@ -65,13 +69,13 @@ The active workspace proves:
 - a Counter application exercising the current public crates.
 
 Important limitations remain: physical input behavior is focus-only proof-level,
-text measurement is deterministic character counting, and surface-generation
-input context, pointer identity/capture/release-inside activation, focus scopes/
-modality, keyboard routing, text/IME, authored-ID automation resolution,
-complete trace v2 normalization, trace export/sinks/replay, production semantics/accessibility,
-paint/hit scenes, production layout/style/text, native hosts, renderer backends,
-and production controls are absent. The current runtime has one mounted root,
-one focus domain, and one current publication domain. Current paint and semantic
+text measurement is deterministic character counting, and pointer identity/capture/
+release-inside activation, focus scopes/modality, keyboard routing, text/IME,
+authored-ID automation resolution, complete trace v2 normalization, trace export/
+sinks/replay, production semantics/accessibility, paint/hit scenes, production
+layout/style/text, native hosts, renderer backends, and production controls are
+absent. The current runtime has one mounted root, one focus domain, and one logical
+surface with bounded proof-level displayed hit-test history. Current paint and semantic
 facts remain deterministic extension proofs, not the M5/M6 production products.
 
 ## Production profiles

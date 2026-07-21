@@ -1,3 +1,5 @@
 //! Small ordinary application/runtime import set.
 
-pub use crate::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
+pub use crate::{
+    AppRuntime, LogicalPoint, LogicalSize, PumpBudget, SurfaceBuildContext, SurfaceInputContext,
+};

@@ -1,33 +1,138 @@
-use std::sync::Arc;
+use core::num::NonZeroUsize;
+use std::{collections::VecDeque, sync::Arc};
+
+use runenui_core::{__runtime::RuntimeNamespace, SurfaceId, SurfaceInputContext};
 
 use crate::{
-    RedrawAcknowledgeError, RedrawRequest, SurfaceBuildContext, SurfacePhase, SurfacePhaseReport,
-    SurfacePublication,
+    LogicalPoint, LogicalRect, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
+    SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication,
     mounted::MountedTree,
     surface::{SurfaceCache, publish_mounted_surface_cached},
 };
 
-/// Sole runtime-owned state for current surface publication and redraw revision.
-///
-/// This authority intentionally retains only the current publication cache. M4C2
-/// may extend this boundary with bounded displayed-generation history, but this
-/// prerequisite does not create that history or any public surface identity.
+#[derive(Clone, Debug, PartialEq)]
+struct HitTestNode {
+    id: MountedNodeId,
+    bounds: LogicalRect,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct HitTestSnapshot {
+    context: SurfaceInputContext,
+    nodes: Vec<HitTestNode>,
+}
+
+impl HitTestSnapshot {
+    fn nodes_from(publication: &crate::surface::SurfacePublication) -> Vec<HitTestNode> {
+        publication
+            .frame()
+            .nodes()
+            .iter()
+            .map(|node| HitTestNode {
+                id: node.id().clone(),
+                bounds: node.bounds(),
+            })
+            .collect()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::runtime) enum SurfaceSnapshotError {
+    ForeignSurfaceContext,
+    ForeignSurface,
+    RetiredSurfaceContext,
+    MissingSurfaceGeneration,
+    CoordinateRevisionMismatch,
+    NoTarget,
+    TargetNotInSnapshot,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::runtime) enum SurfaceSnapshotKind {
+    Current,
+    Retained,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::runtime) struct SurfaceSnapshotSelection {
+    snapshot_kind: SurfaceSnapshotKind,
+    hit_test_generation: u64,
+    coordinate_revision: u64,
+}
+
+impl SurfaceSnapshotSelection {
+    pub(in crate::runtime) const fn snapshot_kind(self) -> SurfaceSnapshotKind {
+        self.snapshot_kind
+    }
+
+    pub(in crate::runtime) const fn hit_test_generation(self) -> u64 {
+        self.hit_test_generation
+    }
+
+    pub(in crate::runtime) const fn coordinate_revision(self) -> u64 {
+        self.coordinate_revision
+    }
+}
+
+pub(in crate::runtime) struct SurfaceTargetResolution {
+    target: MountedNodeId,
+    selection: SurfaceSnapshotSelection,
+}
+
+impl SurfaceTargetResolution {
+    pub(in crate::runtime) const fn snapshot_kind(&self) -> SurfaceSnapshotKind {
+        self.selection.snapshot_kind()
+    }
+
+    pub(in crate::runtime) const fn hit_test_generation(&self) -> u64 {
+        self.selection.hit_test_generation()
+    }
+
+    pub(in crate::runtime) const fn coordinate_revision(&self) -> u64 {
+        self.selection.coordinate_revision()
+    }
+
+    pub(in crate::runtime) fn into_target(self) -> MountedNodeId {
+        self.target
+    }
+}
+
+/// Sole runtime-owned state for current surface publication, redraw revision,
+/// and bounded displayed hit-test generations.
 pub(crate) struct SurfacePublicationState {
     cache: Option<SurfaceCache>,
     phase_report: SurfacePhaseReport,
     redraw_namespace: Arc<()>,
     redraw_revision: u64,
     redraw_acknowledged: u64,
+    runtime_namespace: RuntimeNamespace,
+    surface_id: SurfaceId,
+    retained_snapshot_limit: NonZeroUsize,
+    snapshots: VecDeque<HitTestSnapshot>,
+    retired_through_generation: Option<u64>,
+    next_hit_test_generation: Option<u64>,
+    next_coordinate_revision: Option<u64>,
 }
 
 impl SurfacePublicationState {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(
+        runtime_namespace: RuntimeNamespace,
+        retained_snapshot_limit: NonZeroUsize,
+    ) -> Self {
+        let surface_id = runtime_namespace.__runtime_surface_id(0, 1);
         Self {
             cache: None,
             phase_report: SurfacePhaseReport::default(),
             redraw_namespace: Arc::new(()),
             redraw_revision: 1,
             redraw_acknowledged: 0,
+            runtime_namespace,
+            surface_id,
+            retained_snapshot_limit,
+            snapshots: VecDeque::new(),
+            retired_through_generation: None,
+            next_hit_test_generation: Some(1),
+            next_coordinate_revision: Some(1),
         }
     }
 
@@ -36,9 +141,173 @@ impl SurfacePublicationState {
         tree: &mut MountedTree<Action>,
         context: &SurfaceBuildContext<'_>,
     ) -> SurfacePublication {
-        let (publication, report) = publish_mounted_surface_cached(tree, context, &mut self.cache);
+        let (products, report) = publish_mounted_surface_cached(tree, context, &mut self.cache);
         self.phase_report = report;
-        publication
+        let nodes = HitTestSnapshot::nodes_from(&products);
+        let input_context = self.retain_new_snapshot(nodes);
+        SurfacePublication::new(input_context, products)
+    }
+
+    fn retain_new_snapshot(&mut self, nodes: Vec<HitTestNode>) -> SurfaceInputContext {
+        let hit_test_generation = self
+            .next_hit_test_generation
+            .unwrap_or_else(|| unreachable!("surface hit-test generation remains available"));
+        let coordinate_revision = self
+            .next_coordinate_revision
+            .unwrap_or_else(|| unreachable!("surface coordinate revision remains available"));
+        self.next_hit_test_generation = hit_test_generation.checked_add(1);
+        self.next_coordinate_revision = coordinate_revision.checked_add(1);
+        let context = self
+            .runtime_namespace
+            .__runtime_surface_context(
+                self.surface_id.clone(),
+                coordinate_revision,
+                hit_test_generation,
+            )
+            .unwrap_or_else(|| unreachable!("surface identity shares the runtime namespace"));
+        if self.snapshots.len() == self.retained_snapshot_limit.get()
+            && let Some(retired) = self.snapshots.pop_front()
+        {
+            self.retired_through_generation = Some(retired.context.hit_test_generation());
+        }
+        self.snapshots.push_back(HitTestSnapshot {
+            context: context.clone(),
+            nodes,
+        });
+        context
+    }
+
+    pub(in crate::runtime) fn resolve_point(
+        &self,
+        context: &SurfaceInputContext,
+        point: LogicalPoint,
+    ) -> Result<SurfaceTargetResolution, SurfaceSnapshotError> {
+        let (snapshot, snapshot_kind) = self.validate_context(context)?;
+        let target = snapshot
+            .nodes
+            .iter()
+            .rev()
+            .find(|node| node.bounds.contains(point))
+            .map(|node| node.id.clone())
+            .ok_or(SurfaceSnapshotError::NoTarget)?;
+        Ok(Self::resolution(snapshot, snapshot_kind, target))
+    }
+
+    pub(in crate::runtime) fn validate_resolved_target(
+        &self,
+        context: &SurfaceInputContext,
+        target: &MountedNodeId,
+    ) -> Result<SurfaceSnapshotSelection, SurfaceSnapshotError> {
+        let (snapshot, snapshot_kind) = self.validate_context(context)?;
+        snapshot
+            .nodes
+            .iter()
+            .any(|node| &node.id == target)
+            .then(|| Self::selection(snapshot, snapshot_kind))
+            .ok_or(SurfaceSnapshotError::TargetNotInSnapshot)
+    }
+
+    const fn selection(
+        snapshot: &HitTestSnapshot,
+        snapshot_kind: SurfaceSnapshotKind,
+    ) -> SurfaceSnapshotSelection {
+        SurfaceSnapshotSelection {
+            snapshot_kind,
+            hit_test_generation: snapshot.context.hit_test_generation(),
+            coordinate_revision: snapshot.context.coordinate_revision(),
+        }
+    }
+
+    const fn resolution(
+        snapshot: &HitTestSnapshot,
+        snapshot_kind: SurfaceSnapshotKind,
+        target: MountedNodeId,
+    ) -> SurfaceTargetResolution {
+        SurfaceTargetResolution {
+            target,
+            selection: Self::selection(snapshot, snapshot_kind),
+        }
+    }
+
+    fn validate_context(
+        &self,
+        context: &SurfaceInputContext,
+    ) -> Result<(&HitTestSnapshot, SurfaceSnapshotKind), SurfaceSnapshotError> {
+        let Some((surface_id, coordinate_revision, hit_test_generation)) = self
+            .runtime_namespace
+            .__runtime_surface_context_parts(context)
+        else {
+            return Err(SurfaceSnapshotError::ForeignSurfaceContext);
+        };
+        if surface_id != self.surface_id {
+            return Err(SurfaceSnapshotError::ForeignSurface);
+        }
+        let Some(snapshot) = self
+            .snapshots
+            .iter()
+            .find(|snapshot| snapshot.context.hit_test_generation() == hit_test_generation)
+        else {
+            return Err(
+                if self
+                    .retired_through_generation
+                    .is_some_and(|retired| hit_test_generation <= retired)
+                {
+                    SurfaceSnapshotError::RetiredSurfaceContext
+                } else {
+                    SurfaceSnapshotError::MissingSurfaceGeneration
+                },
+            );
+        };
+        if snapshot.context.coordinate_revision() != coordinate_revision {
+            return Err(SurfaceSnapshotError::CoordinateRevisionMismatch);
+        }
+        let snapshot_kind = if self
+            .snapshots
+            .back()
+            .is_some_and(|current| current.context.hit_test_generation() == hit_test_generation)
+        {
+            SurfaceSnapshotKind::Current
+        } else {
+            SurfaceSnapshotKind::Retained
+        };
+        Ok((snapshot, snapshot_kind))
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn context_for_test(
+        &self,
+        surface_slot: u32,
+        surface_generation: u64,
+        coordinate_revision: u64,
+        hit_test_generation: u64,
+    ) -> SurfaceInputContext {
+        let surface = self
+            .runtime_namespace
+            .__runtime_surface_id(surface_slot, surface_generation);
+        self.runtime_namespace
+            .__runtime_surface_context(surface, coordinate_revision, hit_test_generation)
+            .unwrap_or_else(|| unreachable!("test surface shares the runtime namespace"))
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn replace_snapshot_target_for_test(
+        &mut self,
+        context: &SurfaceInputContext,
+        original: &MountedNodeId,
+        replacement: MountedNodeId,
+    ) {
+        let generation = context.hit_test_generation();
+        let snapshot = self
+            .snapshots
+            .iter_mut()
+            .find(|snapshot| snapshot.context.hit_test_generation() == generation)
+            .unwrap_or_else(|| unreachable!("test context names one retained snapshot"));
+        let node = snapshot
+            .nodes
+            .iter_mut()
+            .find(|node| &node.id == original)
+            .unwrap_or_else(|| unreachable!("test original target is retained"));
+        node.id = replacement;
     }
 
     pub(crate) fn note_focus_validation(&mut self) {
@@ -51,6 +320,10 @@ impl SurfacePublicationState {
 
     pub(crate) fn clear_cache(&mut self) {
         self.cache = None;
+        if let Some(latest) = self.snapshots.back() {
+            self.retired_through_generation = Some(latest.context.hit_test_generation());
+        }
+        self.snapshots.clear();
     }
 
     pub(crate) fn request_redraw(&mut self) -> Option<u64> {

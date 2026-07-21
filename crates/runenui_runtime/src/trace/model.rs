@@ -88,6 +88,20 @@ pub enum TraceRecordKind {
     RuntimeMounted,
     ActionSubmissionAccepted,
     CommandSubmissionAccepted,
+    SurfaceContextAccepted {
+        ingress: TraceSurfaceIngressKind,
+        snapshot: TraceSurfaceSnapshotKind,
+        hit_test_generation: u64,
+        coordinate_revision: u64,
+    },
+    SurfaceTargetBound {
+        ingress: TraceSurfaceIngressKind,
+        hit_test_generation: u64,
+    },
+    SurfaceCommandRejected {
+        ingress: TraceSurfaceIngressKind,
+        outcome: TraceSurfaceRejection,
+    },
     CommandProcessingRejected {
         outcome: TraceTargetRejection,
     },
@@ -215,6 +229,43 @@ pub enum TraceTargetRejection {
     Foreign,
     Stale,
     Missing,
+}
+
+/// Checked displayed-surface ingress path.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceSurfaceIngressKind {
+    LogicalCoordinate,
+    ResolvedTarget,
+}
+
+/// Retained snapshot selected by a checked displayed-surface request.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceSurfaceSnapshotKind {
+    Current,
+    RetainedHistorical,
+}
+
+/// Structured rejection of one checked displayed-surface request.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceSurfaceRejection {
+    ForeignRuntime,
+    ForeignSurface,
+    RetiredGeneration,
+    MissingGeneration,
+    CoordinateRevisionMismatch,
+    NoTarget,
+    TargetNotInSnapshot,
+    ForeignTarget,
+    StaleTarget,
+    MissingTarget,
+    QueueFull,
+    RuntimeClosed,
+    RuntimeTerminal,
+    WorkSequenceExhausted,
+    TraceSequenceExhausted,
 }
 
 /// Bounded authority that refused an accepted routed transaction preflight.

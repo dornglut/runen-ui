@@ -43,6 +43,19 @@
 //! ```
 //!
 //! ```compile_fail
+//! use runenui_core::SurfaceId;
+//! let _ = SurfaceId { slot: 0, generation: 1 };
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_core::SurfaceInputContext;
+//! let _ = SurfaceInputContext {
+//!     coordinate_revision: 1,
+//!     hit_test_generation: 1,
+//! };
+//! ```
+//!
+//! ```compile_fail
 //! use runenui_core::MonotonicInstant;
 //! let _ = MonotonicInstant(1);
 //! ```
@@ -211,7 +224,8 @@ pub use identity::is_valid_identifier_literal;
 pub use identity::{ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey};
 pub use layout::{Axis, LayoutStyle};
 pub use runtime_protocol::{
-    MonotonicInstant, MonotonicTimeError, MountedNodeId, SemanticNodeId, WorkSequence,
+    MonotonicInstant, MonotonicTimeError, MountedNodeId, SemanticNodeId, SurfaceId,
+    SurfaceInputContext, WorkSequence,
 };
 pub use style::{
     Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,

@@ -1,3 +1,5 @@
+use core::num::NonZeroUsize;
+
 use super::{
     Arc, CompletionIngress, Element, FocusState, HostProtocol, ManualClock,
     MountedIdentityExhausted, MountedTree, ReconciliationGeneration, ReconciliationReport, Runtime,
@@ -24,6 +26,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 0,
             ),
         };
+        let surface_snapshot_retention = NonZeroUsize::new(config.surface_snapshot_retention())
+            .unwrap_or_else(|| unreachable!("surface snapshot retention is non-zero"));
+        let surface_publication =
+            SurfacePublicationState::new(tree.runtime_namespace(), surface_snapshot_retention);
         let mut trace = Trace::new(config.trace_config());
         if !mount_failed {
             trace.record(
@@ -87,7 +93,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             host_clock: None,
             host_namespace: Arc::new(()),
             host_requests: Vec::new(),
-            surface_publication: SurfacePublicationState::new(),
+            surface_publication,
             wake,
             #[cfg(test)]
             readiness_checkpoint_count: 0,

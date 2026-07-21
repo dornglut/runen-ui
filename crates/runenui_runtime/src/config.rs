@@ -1,9 +1,12 @@
-//! Runtime queue and trace configuration.
+//! Runtime queue, surface retention, and trace configuration.
+
+use core::num::NonZeroUsize;
 
 use crate::TraceConfig;
 
 pub const DEFAULT_RUNTIME_LIMIT: usize = 1024;
 const DEFAULT_WAITING_ENVELOPE_LIMIT: usize = DEFAULT_RUNTIME_LIMIT * 4;
+const DEFAULT_SURFACE_SNAPSHOT_RETENTION: usize = 2;
 
 /// Logical bounded capacities used by runtime-owned scheduling facilities.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -136,11 +139,12 @@ impl Default for RuntimeLimits {
     }
 }
 
-/// Runtime limits and trace configuration.
+/// Runtime limits, displayed-surface retention, and trace configuration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RuntimeConfig {
     limits: RuntimeLimits,
     trace_config: TraceConfig,
+    surface_snapshot_retention: usize,
     #[cfg(feature = "internal-test-seams")]
     initial_next_work_sequence: u64,
     #[cfg(feature = "internal-test-seams")]
@@ -170,6 +174,16 @@ impl RuntimeConfig {
         self
     }
 
+    /// Returns this configuration with a different total retained hit-test snapshot count.
+    ///
+    /// The count includes the current displayed generation. The default of two
+    /// therefore retains the current and immediately previous generations.
+    #[must_use]
+    pub const fn with_surface_snapshot_retention(mut self, retention: NonZeroUsize) -> Self {
+        self.surface_snapshot_retention = retention.get();
+        self
+    }
+
     /// Returns the maximum number of waiting envelopes.
     #[must_use]
     pub const fn queue_capacity(self) -> usize {
@@ -185,6 +199,12 @@ impl RuntimeConfig {
     #[must_use]
     pub const fn trace_config(self) -> TraceConfig {
         self.trace_config
+    }
+
+    /// Returns the total retained displayed hit-test snapshot count.
+    #[must_use]
+    pub const fn surface_snapshot_retention(self) -> usize {
+        self.surface_snapshot_retention
     }
 
     #[cfg(feature = "internal-test-seams")]
@@ -237,6 +257,7 @@ impl Default for RuntimeConfig {
         Self {
             limits: RuntimeLimits::default(),
             trace_config: TraceConfig::new(DEFAULT_RUNTIME_LIMIT),
+            surface_snapshot_retention: DEFAULT_SURFACE_SNAPSHOT_RETENTION,
             #[cfg(feature = "internal-test-seams")]
             initial_next_work_sequence: 1,
             #[cfg(feature = "internal-test-seams")]

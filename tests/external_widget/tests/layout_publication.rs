@@ -120,9 +120,17 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     assert_eq!(provider.calls.get(), 1);
     assert!((first.frame().size().width() - 144.0).abs() <= f32::EPSILON);
     assert!((first.frame().size().height() - 27.0).abs() <= f32::EPSILON);
+    let first_context = first.input_context().clone();
+    let first_products = first.into_parts();
 
     let second = runtime.publish_surface(&context);
-    assert_eq!(first, second);
+    assert_eq!(
+        second.input_context().surface_id(),
+        first_context.surface_id()
+    );
+    assert!(second.input_context().coordinate_revision() > first_context.coordinate_revision());
+    assert!(second.input_context().hit_test_generation() > first_context.hit_test_generation());
+    assert_eq!(second.into_parts(), first_products);
     assert_eq!(
         (panel.get(), text.get(), fixed.get(), layout.get()),
         (1, 1, 1, 1)

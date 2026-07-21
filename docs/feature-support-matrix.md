@@ -16,9 +16,9 @@ Support labels:
 | `unsupported` | Not available and not safe to infer from current APIs. |
 
 M4B, M4C0, and M4C1 are complete and owner-accepted. M4C1 was
-squash-merged in PR #77. M4C2 is queued after the governance and required
-behavior-preserving runtime/trace/surface decomposition gates; M4C3–M4C5 and
-M4D1–M4D3 remain unimplemented and blocked in sequence. Planned type names are
+squash-merged in PR #77. M4C2 is proof-complete in draft PR #99 and awaits owner
+acceptance, exact-head hosted CI, and squash merge; M4C3–M4C5 and M4D1–M4D3
+remain unimplemented and blocked in sequence. Planned type names are
 not evidence of support. Exact branch, head, blocker, and next-action state lives
 in the [work-tracking system](work-tracking.md).
 
@@ -52,7 +52,7 @@ in the [work-tracking system](work-tracking.md).
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Mounted runtime indexing | `supported` | Core-owned shared namespace, opaque `MountedNodeId`/distinct `SemanticNodeId`, checked public slot conversion, logical-preorder index, foreign/stale/missing validation | Runtime-local, process-local, non-serialized; surface identity waits for M4C2 | M3/M4C1 complete; M4C2 queued |
+| Mounted runtime indexing | `supported` | Core-owned shared namespace, opaque `MountedNodeId`/distinct `SemanticNodeId` plus `SurfaceId`/`SurfaceInputContext`, checked public slot conversion, logical-preorder index, foreign/stale/missing validation | Runtime-local, process-local, non-serialized; currently one logical surface | M3/M4C1 complete; M4C2 proof-complete |
 | Authored element IDs | `supported` | Validated lookup/diagnostic metadata; changes preserve mounted lifetime | Not mounted identity | M3 complete |
 | Stored element keys | `supported` | Unique sibling keys reconcile; duplicates preserve no state | Keys are sibling-local | M3 complete |
 | Persistent generational IDs | `supported` | Safe private arena, deterministic reuse, retirement at overflow | Not serialized or cross-runtime | M3 complete |
@@ -82,7 +82,7 @@ in the [work-tracking system](work-tracking.md).
 | Directional/spatial focus navigation | `unsupported` | None | Current traversal supports only linear next/previous keyboard focus | M4 |
 | Controller activation/cancel/menu commands | `proof` | Normalized controller source submits the same exact-target semantic commands without raw device vocabulary | Raw device mapping/identity/axes remain host/M10 scope | M4C1 complete; M10 |
 | Input modality tracking | `unsupported` | None | Runtime does not track pointer, keyboard, controller, accessibility, or automation modality | M4 |
-| Displayed-generation input targeting | `unsupported` | Accepted opaque `SurfaceInputContext` target contract only | No current/previous snapshot ring or retired/foreign/missing outcome contract in code | M4C2 queued |
+| Displayed-generation input targeting | `proof` | Runtime-issued `SurfaceInputContext`, exact current/historical logical-coordinate and resolved-target ingress, owned rejection recovery, and canonical queue/routing convergence | One logical surface; no pointer stream, capture, release-inside activation, or multi-window lifecycle | M4C2 proof-complete; M4C3/M10 later |
 | Terminal pointer context cleanup | `unsupported` | Accepted same-runtime/surface integrity-only cancellation target contract only | Retired/missing pointer up/cancel cleanup is not implemented | M4C3 |
 | Route-only command defaults | `proof` | Cancel/menu/context each route once with no default action, runtime mutation, or second ancestor pass | Logical scrolling is introduced with wheel in M4C3 | M4C1 complete; M4C3 blocked |
 | Directional focus corpus | `unsupported` | Accepted public-outcome corpus only | No directional implementation or corpus test passes yet | M4C4 |
@@ -133,7 +133,7 @@ in the [work-tracking system](work-tracking.md).
 | One measurement capability snapshot per node/publication | `proof` | Counter-backed downstream tests prove one query reused by measurement and arrangement | Capability facts are retained, but a dirty Layout phase remains whole-surface rather than node-granular production incremental layout | M7, M11 |
 | One child-layout snapshot per child-bearing node/publication | `proof` | Counter-backed external alternating-axis proof | Only linear M2 policy exists | M7 |
 | Unsupported measurement handling | `proof` | Explicit unsupported and cross-version-unrecognized layout diagnostics | Zero fallback geometry is proof-level only | M7 |
-| Publication alignment | `proof` | Warmed structural and compatible common-field tests prove aligned current IDs, metadata, style, layout, order, and node counts | No per-surface publication generation or production retained layout | M6–M7 |
+| Publication alignment | `proof` | Warmed structural/common-field tests plus context-bearing publication prove aligned IDs, metadata, style, layout, order, node counts, and fresh displayed-generation identity | Retained input snapshots are not production retained layout | M4C2 proof-complete; M6–M7 |
 | Row/column layout | `proof` | Intrinsic main axis; constrained cross axis; gaps/padding | No stretch, flex, alignment, wrapping, or remaining-space distribution | M7 |
 | Overflow diagnostics | `proof` | Runtime-node-aligned flags/report | No clipping or scrolling behavior | M7 |
 | Width/height/min/max/fill/shrink | `unsupported` | None | Authored sizing model absent | M7 |
@@ -160,13 +160,13 @@ in the [work-tracking system](work-tracking.md).
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Unified surface publication | `proof` | Mounted-authoritative read-only frame/style/layout products | No per-surface generation or neutral paint scene | M6 |
+| Unified surface publication | `proof` | Context-bearing publication with mounted-authoritative frame/style/layout products and explicit renderer-product equality | One logical surface; no neutral paint scene | M4C2 proof-complete; M6 |
 | Logical bounds inspection | `proof` | `SurfaceNode` rectangles and debug renderer | Bounds are not a standalone layout result | M6–M7 |
 | Rectangle hit testing | `proof` | Reverse frame order | No hit scene, stacking, clips, transforms, visibility, or pointer policy | M6 |
 | Renderer-neutral paint scene | `unsupported` | M2 deterministic per-widget paint/debug proof facts | Facts are not paint primitives, resources, clips, transforms, order, or damage | M6 |
 | Paint primitives/resources | `unsupported` | None | No shapes, strokes, glyph/image handles, clips, layers, or damage | M6 |
-| Surface/frame generation | `unsupported` | Reconciliation generation and mounted stale-target validation exist | No independent surface/scene publication generation | M6 |
-| Retained surface-input snapshots | `unsupported` | Accepted displayed-generation target contract only | No `SurfaceInputContext`, bounded snapshot ring, or no-retarget validation | M4C2 queued; M6 |
+| Surface/frame generation | `proof` | Fresh runtime-issued coordinate revision and displayed hit-test generation on every public publication | One logical surface; not a paint/scene generation or multi-window lifecycle | M4C2 proof-complete; M6/M10 later |
+| Retained surface-input snapshots | `proof` | Configurable nonzero bounded immutable hit-test snapshots, exact historical targeting, oldest-first retirement, and retired/missing/foreign/revision outcomes | Retains hit-test facts only, not production layout/paint scenes; no pointer terminal cleanup | M4C2 proof-complete; M4C3/M6 later |
 | Multi-surface publication | `unsupported` | None | No independent surface lifecycle or scale | M10 |
 | Debug semantic-frame consumer | `proof` | `DebugSurfaceRenderer` deterministically formats open paint/semantic/diagnostic widget facts | It is not a paint-scene consumer, accessibility product, or renderer backend | M5–M6 |
 | Deterministic paint-scene consumer | `planned` | None | Needs accepted paint/hit protocols | M6 |
@@ -227,8 +227,8 @@ in the [work-tracking system](work-tracking.md).
 |---|---|---|---|---|
 | Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 harness and Ubuntu-only CI | M5, M11 |
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
-| Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, and debug output | No stable severity/strict mode or per-surface generation | M5–M7 |
-| Runtime trace | `partial` | Checked admission; capacity-zero equivalence; command acceptance and processing rejection; submission-rejection absence/non-consumption; structured routed-integrity classes; route snapshot/phases/control/state/output/default/commit graph; links into later actions and delegated commands | Later input schemas M4C2–M4C5; normalization M4D1; JSONL/sink/redaction M4D2; replay M4D3 | M4B/M4C1 complete; M4C2 queued; M4D blocked |
+| Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, fresh surface generation/revision context, and debug output | No stable severity/strict mode | M4C2 proof-complete; M5–M7 |
+| Runtime trace | `partial` | Checked admission; capacity-zero equivalence; routed command graph; surface-context acceptance/current-vs-historical selection/target binding/structured rejection; links into routed outcomes, actions, and delegated commands | Pointer/focus/text schemas wait for M4C3–M4C5; normalization M4D1; JSONL/sink/redaction M4D2; replay M4D3 | M4B/M4C1 complete; M4C2 proof-complete; M4D blocked |
 | Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, and exclusive dropped-before watermark | Retention foundation is not complete trace v2 | M4–M5 |
 | Bounded external trace sink | `unsupported` | Accepted bounded/try-based subordinate sink target contract only | No sink, backpressure diagnostic, or recursion guard | M4D2 |
 | Public headless test harness | `planned` | Current tests prove demand | No `runenui_testing` public boundary | M5 |

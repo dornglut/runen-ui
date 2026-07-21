@@ -9,9 +9,9 @@ defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-run
 defines mounted ownership and reconciliation; accepted
 [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines application
 work and scheduling; M4B is implemented, owner-accepted, and squash-merged.
-M4C1 is complete, owner-accepted, and squash-merged in PR #77. M4C2 is queued
-after the governance and required behavior-preserving runtime/trace/surface
-decomposition gates; M4C3–M4D3 remain blocked in sequence. M4 is active and
+M4C1 is complete, owner-accepted, and squash-merged in PR #77. M4C2 is
+proof-complete in draft PR #99 and awaits owner acceptance, exact-head hosted CI,
+and squash merge; M4C3–M4D3 remain blocked in sequence. M4 is active and
 incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
@@ -27,8 +27,9 @@ validated authored values and identity, style intent and
 resolution, transient `View`/`Element` authoring, typed built-in views, the open
 state-aware `Widget`/`ChildLayoutWidget` contracts, proof capability values,
 lifecycle contexts, `WidgetInvalidation`, the shared runtime namespace and
-opaque `MountedNodeId`/`SemanticNodeId`/`MonotonicInstant`/`WorkSequence`
-protocol values, routed event/command vocabulary, `EventContext`, and typed
+opaque `MountedNodeId`/`SemanticNodeId`/`SurfaceId`/`SurfaceInputContext`/
+`MonotonicInstant`/`WorkSequence` protocol values, routed event/command vocabulary,
+`EventContext`, and typed
 recursive action mapping.
 
 `runenui_runtime` owns `AppRuntime`, the canonical generalized FIFO and pump,
@@ -39,16 +40,19 @@ bounded trace, live work registry, clocks, completion ingress, wake/redraw, and
 mounted publication. The public runtime, mounted inspection, and integrity
 vocabulary includes:
 
-- core-owned `MountedNodeId`, `SemanticNodeId`, `MonotonicInstant`,
-  `MonotonicTimeError`, and `WorkSequence`, deliberately re-exported by runtime;
+- core-owned `MountedNodeId`, `SemanticNodeId`, `SurfaceId`,
+  `SurfaceInputContext`, `MonotonicInstant`, `MonotonicTimeError`, and
+  `WorkSequence`, deliberately re-exported by runtime;
 - `MountedNodeRef` and `MountedTreeIndex`;
 - `ReconciliationGeneration` and `ReconciliationReport`;
 - `RuntimeConfig`, `SubmitActionResult`, `CommandSubmission`,
-  `UnacceptedCommand`, `SubmitCommandError`, `PumpBudget`, and `PumpReport`;
+  `UnacceptedCommand`, `SubmitCommandError`, `UnacceptedSurfaceCommand`,
+  `SubmitSurfaceCommandError`, `PumpBudget`, and `PumpReport`;
 - `RuntimeStatus`, `RuntimeTerminalReason`, `ShutdownReport`,
   `FocusTargetResult` and `RuntimeError`;
 - `TraceConfig`, `TraceSequence`, `TraceRecord`, `TraceRecordKind`,
-  `TraceTarget`, and `Trace`;
+  `TraceSurfaceIngressKind`, `TraceSurfaceSnapshotKind`,
+  `TraceSurfaceRejection`, `TraceTarget`, and `Trace`;
 - read-only frame, style-report, layout-report, and publication products.
 
 The ordinary preludes remain narrow. Specialist runtime/mounted/lifecycle
@@ -58,9 +62,11 @@ reports, trace records, and publication products have no public constructors.
 
 ## Queue, pump, and runtime status
 
-`RuntimeConfig::default()` selects a waiting-envelope capacity of 4096 and a
-`TraceConfig` capacity of 1024. `with_queue_capacity` and `with_trace_config`
-return adjusted values; fields remain private. Queue capacity counts waiting
+`RuntimeConfig::default()` selects a waiting-envelope capacity of 4096, a
+`TraceConfig` capacity of 1024, and displayed hit-test snapshot retention of two
+(current plus immediately previous). `with_queue_capacity`, `with_trace_config`,
+and `with_surface_snapshot_retention(NonZeroUsize)` return adjusted values; fields
+remain private. Queue capacity counts waiting
 envelopes only, and zero is valid. Queue and trace capacities are logical limits:
 internal storage grows with accepted envelopes or retained records and does not
 reserve the complete configured capacity when the runtime mounts.
@@ -88,6 +94,17 @@ through `UnacceptedCommand`; it invokes no widget callback and consumes no work
 or trace sequence, allocates no trace record, and emits no wake. Accepted-then-
 stale processing rejection is instead a canonical trace outcome causally owned
 by the already accepted command.
+
+`AppRuntime::submit_surface_command(context, logical_point, command, origin)` and
+`submit_resolved_surface_command(context, target, command, origin)` are the checked
+displayed-surface ingress paths. They validate runtime namespace, logical surface,
+retained generation, coordinate revision, exact snapshot targeting or membership,
+and current mounted target status before using the same command preflight,
+canonical FIFO, routed transaction, semantic default, update, reconciliation, and
+wake authority as direct exact-target submission. Rejection returns the exact owned
+context, logical point or resolved target, command, and origin through
+`UnacceptedSurfaceCommand`; structured kinds distinguish surface/context lifetime,
+target lifetime, queue/status, and sequence failures.
 
 Application and mounted output batches use one provisional transaction planner.
 It resolves owner/family/key bindings for the complete batch, preflights every
@@ -452,12 +469,19 @@ ended, same-parent preserved moves, retained-focus truth, and structured
 deterministic diagnostics containing complete duplicate-key old/new occurrences.
 
 `AppRuntime::publish_surface(&mut self, context)` is the only public surface
-publication authority. `MountedTreeIndex`, `SurfaceFrame`,
-`SurfaceStyleReport`, and `SurfaceLayoutReport` expose equal mounted/semantic ID,
-parent, authored-ID, and current preorder sequences with no ghost
-actionable/focusable node. A tree change rebuilds every aligned product from one
-current topology snapshot. Compatible common-field changes retain that topology
-but refresh style/layout facts from current mounted nodes. The free transient
+publication authority. Every call returns `SurfacePublication` with a fresh opaque
+`SurfaceInputContext` naming the one logical surface, a fresh coordinate revision,
+and the exact displayed hit-test generation. The runtime retains a configurable
+nonzero bounded `VecDeque` of immutable hit-test snapshots; oldest retirement is
+deterministic, and retained contexts never re-hit-test current geometry.
+`MountedTreeIndex`, `SurfaceFrame`, `SurfaceStyleReport`, and
+`SurfaceLayoutReport` expose equal mounted/semantic ID, parent, authored-ID, and
+current preorder sequences with no ghost actionable/focusable node. A tree change
+rebuilds every aligned renderer product from one current topology snapshot.
+Compatible common-field changes retain that topology but refresh style/layout facts
+from current mounted nodes. Publication equality deliberately compares only the
+renderer-facing frame/style/layout products; callers compare `input_context()`
+explicitly when exact displayed-snapshot identity matters. The free transient
 publication function is removed.
 
 ## Bounded canonical trace
@@ -477,7 +501,13 @@ application transaction, work request, generation commit, start attempt/outcome,
 completion/firing/cancellation, and final action using causal parents and the
 actual accepted envelope `WorkSequence` where one exists. M4C1 event records
 also expose logical instant, immutable original target, callback current target,
-and command origin. Acceptance causally parents route start and snapshot; phase,
+and command origin. M4C2 surface ingress adds structured context acceptance,
+current-versus-retained snapshot selection, displayed generation/revision, exact
+target binding, and rejection facts. For accepted surface commands the chain is
+`SurfaceContextAccepted -> SurfaceTargetBound -> CommandSubmissionAccepted ->
+RoutedEventStarted`; exact mandatory admission reserves the three-record surface
+prefix plus the future routed outcome. Acceptance causally parents route start and
+snapshot; phase,
 control, state, invalidation, output collection, default, and commit records form
 the routed chain. Collected actions and delegated commands parent their later
 accepted envelopes and transactions. Submission and processing rejection are
@@ -548,7 +578,8 @@ M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
 in force. The current contract includes effects, subscriptions, tasks, timers,
 host requests, all four readiness budgets, wake/redraw, and M4C1 exact-target
-routed semantic commands. It does not imply M4C2 surface context, M4C3 pointer
+routed semantic commands and M4C2 displayed-generation surface context. It does
+not imply M4C3 pointer
 lifecycle, M4C4 focus scopes/modality, M4C5 keyboard/text/IME or authored-ID
 automation, M4D trace export/replay, M5 semantic accessibility mapping, or M4
 completion.

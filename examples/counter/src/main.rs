@@ -220,6 +220,8 @@ mod tests {
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
         let before = runtime.publish_surface(&context);
+        let before_context = before.input_context().clone();
+        let before_products = before.into_parts();
         let report = runtime.reconciliation_report().clone();
         runtime.__seed_reconciliation_generation_for_test(u64::MAX);
 
@@ -241,7 +243,14 @@ mod tests {
             &semantic
         );
         assert_eq!(runtime.reconciliation_report(), &report);
-        assert_eq!(runtime.publish_surface(&context), before);
+        let after = runtime.publish_surface(&context);
+        assert_eq!(
+            after.input_context().surface_id(),
+            before_context.surface_id()
+        );
+        assert!(after.input_context().coordinate_revision() > before_context.coordinate_revision());
+        assert!(after.input_context().hit_test_generation() > before_context.hit_test_generation());
+        assert_eq!(after.into_parts(), before_products);
         assert_eq!(
             runtime
                 .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))

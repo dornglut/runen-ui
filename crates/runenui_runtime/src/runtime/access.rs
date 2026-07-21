@@ -1,3 +1,6 @@
+#[cfg(feature = "internal-test-seams")]
+use runenui_core::SurfaceInputContext;
+
 use super::{
     FocusState, HostProtocol, MandatoryTracePlan, MountedNodeId, ReconciliationReport, Runtime,
     RuntimeStatus, Trace, TraceRecordKind, TraceSequence, TraceTarget, WorkSequence,
@@ -55,6 +58,33 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     #[cfg(test)]
     pub(crate) const fn readiness_checkpoint_count_for_test(&self) -> usize {
         self.readiness_checkpoint_count
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn surface_context_for_test(
+        &self,
+        surface_slot: u32,
+        surface_generation: u64,
+        coordinate_revision: u64,
+        hit_test_generation: u64,
+    ) -> SurfaceInputContext {
+        self.surface_publication.context_for_test(
+            surface_slot,
+            surface_generation,
+            coordinate_revision,
+            hit_test_generation,
+        )
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn replace_surface_snapshot_target_for_test(
+        &mut self,
+        context: &SurfaceInputContext,
+        original: &MountedNodeId,
+        replacement: MountedNodeId,
+    ) {
+        self.surface_publication
+            .replace_snapshot_target_for_test(context, original, replacement);
     }
 
     #[cfg(feature = "internal-test-seams")]

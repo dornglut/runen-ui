@@ -61,11 +61,22 @@ impl Trace {
     }
 
     pub(crate) fn reserve_command_outcome(&mut self) -> Option<TraceReservation> {
+        self.reserve_command_outcome_with_prefix(MandatoryTracePlan::command_acceptance())
+    }
+
+    pub(crate) fn reserve_surface_command_outcome(&mut self) -> Option<TraceReservation> {
+        self.reserve_command_outcome_with_prefix(MandatoryTracePlan::surface_command_acceptance())
+    }
+
+    fn reserve_command_outcome_with_prefix(
+        &mut self,
+        prefix: MandatoryTracePlan,
+    ) -> Option<TraceReservation> {
         if !self.is_enabled() {
             return Some(TraceReservation::DISABLED);
         }
         let reserved = self.reserved_records.checked_add(1)?;
-        if !self.can_admit_with_reserved(MandatoryTracePlan::exact(0), reserved) {
+        if !self.can_admit_with_reserved(prefix, reserved) {
             return None;
         }
         self.reserved_records = reserved;
