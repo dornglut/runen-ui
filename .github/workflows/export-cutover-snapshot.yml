@@ -1,0 +1,28 @@
+name: Cutover snapshot export
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    name: Export tracked source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Archive exact tracked head
+        run: git archive --format=tar.gz --output=runen-ui-source.tar.gz HEAD
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: cutover-source
+          path: runen-ui-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
