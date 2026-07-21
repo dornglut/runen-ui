@@ -9,16 +9,16 @@ pub fn files_below(root: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn visit(root: &Path, path: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    for entry in fs::read_dir(path)
-        .map_err(|error| format!("failed to read {}: {error}", path.display()))?
+    for entry in
+        fs::read_dir(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?
     {
         let entry = entry.map_err(|error| {
             format!("failed to read an entry below {}: {error}", path.display())
         })?;
         let entry_path = entry.path();
-        let relative = entry_path.strip_prefix(root).map_err(|error| {
-            format!("failed to relativize {}: {error}", entry_path.display())
-        })?;
+        let relative = entry_path
+            .strip_prefix(root)
+            .map_err(|error| format!("failed to relativize {}: {error}", entry_path.display()))?;
 
         if is_ignored(relative) {
             continue;

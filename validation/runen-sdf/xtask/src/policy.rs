@@ -88,7 +88,9 @@ fn validate_root_manifest(root: &Path) -> Result<(), String> {
         "workspace = true",
     ] {
         if !manifest.contains(required) {
-            return Err(format!("root manifest is missing required declaration: {required}"));
+            return Err(format!(
+                "root manifest is missing required declaration: {required}"
+            ));
         }
     }
     Ok(())
@@ -103,7 +105,10 @@ fn validate_path_dependencies(root: &Path) -> Result<(), String> {
                 continue;
             };
             let parent = manifest_path.parent().ok_or_else(|| {
-                format!("manifest has no parent directory: {}", manifest_path.display())
+                format!(
+                    "manifest has no parent directory: {}",
+                    manifest_path.display()
+                )
             })?;
             let joined = parent.join(path_value);
             let canonical = joined.canonicalize().map_err(|error| {
@@ -165,7 +170,10 @@ fn validate_source_independence(root: &Path) -> Result<(), String> {
     }
 
     let lockfile = read(root.join("Cargo.lock"))?;
-    if lockfile.to_ascii_lowercase().contains("name = \"runenwerk\"") {
+    if lockfile
+        .to_ascii_lowercase()
+        .contains("name = \"runenwerk\"")
+    {
         return Err("Cargo.lock contains a Runenwerk package".to_owned());
     }
 
@@ -215,7 +223,9 @@ fn validate_provenance(root: &Path) -> Result<(), String> {
         "PT-RUNENSDF-003",
     ] {
         if !provenance.contains(required) {
-            return Err(format!("provenance is missing required authority: {required}"));
+            return Err(format!(
+                "provenance is missing required authority: {required}"
+            ));
         }
     }
     Ok(())

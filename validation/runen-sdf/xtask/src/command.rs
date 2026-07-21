@@ -1,9 +1,15 @@
 use std::process::{Command, ExitStatus};
 
 pub fn run_validation_commands() -> Result<(), String> {
-    run("cargo", &["metadata", "--format-version", "1", "--locked", "--no-deps"])?;
+    run(
+        "cargo",
+        &["metadata", "--format-version", "1", "--locked", "--no-deps"],
+    )?;
     run("cargo", &["tree", "-p", "runen-sdf", "--locked"])?;
-    run("cargo", &["tree", "-i", "runen-sdf", "--workspace", "--locked"])?;
+    run(
+        "cargo",
+        &["tree", "-i", "runen-sdf", "--workspace", "--locked"],
+    )?;
     run("cargo", &["fmt", "--all", "--", "--check"])?;
     run("cargo", &["test", "--workspace", "--locked"])?;
     run(
@@ -79,7 +85,8 @@ fn require_success(program: &str, arguments: &[&str], status: ExitStatus) -> Res
 }
 
 fn display_status(status: ExitStatus) -> String {
-    status
-        .code()
-        .map_or_else(|| "no exit code".to_owned(), |code| format!("exit code {code}"))
+    status.code().map_or_else(
+        || "no exit code".to_owned(),
+        |code| format!("exit code {code}"),
+    )
 }
