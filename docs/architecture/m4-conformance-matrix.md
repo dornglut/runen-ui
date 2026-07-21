@@ -12,12 +12,12 @@ M4C0–M4D3 delivery sequence. This matrix defines observable acceptance and pro
 ownership; neither the charter nor a private implementation seam can weaken a
 row here.
 
-Current audited state at the validated M4C2 proof-complete head:
+Current audited state after M4C2 owner acceptance and squash merge:
 
 ```text
 237 total unique rows
-120 owner-accepted
-12 proof-complete
+132 owner-accepted
+0 proof-complete
 105 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -38,7 +38,8 @@ Allowed statuses have these exact meanings:
 - `proof-complete`: the complete exact-head proof package passes, but owner
   acceptance and merge remain pending;
 - `owner-accepted`: public behavior, negative and trace proof, stable/MSRV
-  validation, exact-head CI, owner review, and merge have passed.
+  validation, owner review, and merge have passed, together with either successful
+  exact-head CI or a documented infrastructure-only owner waiver.
 
 `Required` in the M4 gate column means the row must be `owner-accepted` to close
 M4. `M5 gate` identifies the accessibility behavior that deliberately does not
@@ -92,18 +93,18 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Trace proof owner | Delivery slice | Status | M4 gate |
 |---|---|---|---|---|---|---|---|
-| SURFACE-01 | `SurfaceId` and `SurfaceInputContext` use the shared namespace and identify logical surface, coordinate revision, and exact displayed hit-test generation. | Runtime/publication context conformance | Construction and mismatched-coordinate proof | M4C2 context-acceptance trace | M4C2 | proof-complete | Required |
-| SURFACE-02 | Input against the current context uses the exact current published hit-test snapshot. | Runtime/publication integration | No unchecked target or geometry retarget proof | M4C2 generation trace | M4C2 | proof-complete | Required |
-| SURFACE-03 | Every retained previous context uses its own exact historical snapshot, including configured retention above the default. | Runtime/publication retention integration | Current-geometry retarget proof | M4C2 historical-target trace | M4C2 | proof-complete | Required |
-| SURFACE-04 | The bounded generation ring retires oldest snapshots deterministically and returns `RetiredSurfaceContext`. | Retention-boundary integration | No route, mutation, or retarget proof | M4C2 retired-context trace | M4C2 | proof-complete | Required |
-| SURFACE-05 | An unknown non-retired generation returns `MissingSurfaceGeneration`. | Runtime context integration | No route, mutation, or retarget proof | M4C2 missing-generation trace | M4C2 | proof-complete | Required |
-| SURFACE-06 | Another runtime namespace returns `ForeignSurfaceContext`. | Runtime context integration | Local-state isolation proof | M4C2 foreign-context trace | M4C2 | proof-complete | Required |
-| SURFACE-07 | Another logical surface returns `ForeignSurface`. | Runtime context integration | Local-surface isolation proof | M4C2 foreign-surface trace | M4C2 | proof-complete | Required |
-| SURFACE-08 | Coordinate-space revision is validated with the same context authority and cannot be mixed with another snapshot. | Runtime/publication integration | Revision mismatch and no-target proof | M4C2 coordinate-revision trace | M4C2 | proof-complete | Required |
-| SURFACE-09 | Hosts map only logical coordinates for the supplied context; neutral APIs expose no physical pixel, DPI, monitor, or native-window type. | Public API/host-neutral compile proof | Platform-type leakage audit | M4C2 normalized-ingress trace | M4C2 | proof-complete | Required |
-| SURFACE-10 | Low-level resolved-target injection validates namespace, surface, coordinate revision, snapshot generation, and mounted target identically to normal ingress. | Runtime test-seam conformance | Bypass and mismatched-dimension proof | M4C2 checked-adapter trace | M4C2 | proof-complete | Required |
-| SURFACE-11 | A transaction accepted with an older retained context keeps its bound target after a newer publication. | Runtime/publication ordering proof | Mid-transaction retarget proof | M4C2 accepted-generation trace | M4C2 | proof-complete | Required |
-| SURFACE-12 | One mounted root and logical surface in M4 do not imply multi-window lifecycle or cross-surface focus. | Public API/status conformance | Absence-of-premature-API proof | M4C2 surface-scope trace | M4C2 | proof-complete | Required |
+| SURFACE-01 | `SurfaceId` and `SurfaceInputContext` use the shared namespace and identify logical surface, coordinate revision, and exact displayed hit-test generation. | Runtime/publication context conformance | Construction and mismatched-coordinate proof | M4C2 context-acceptance trace | M4C2 | owner-accepted | Required |
+| SURFACE-02 | Input against the current context uses the exact current published hit-test snapshot. | Runtime/publication integration | No unchecked target or geometry retarget proof | M4C2 generation trace | M4C2 | owner-accepted | Required |
+| SURFACE-03 | Every retained previous context uses its own exact historical snapshot, including configured retention above the default. | Runtime/publication retention integration | Current-geometry retarget proof | M4C2 historical-target trace | M4C2 | owner-accepted | Required |
+| SURFACE-04 | The bounded generation ring retires oldest snapshots deterministically and returns `RetiredSurfaceContext`. | Retention-boundary integration | No route, mutation, or retarget proof | M4C2 retired-context trace | M4C2 | owner-accepted | Required |
+| SURFACE-05 | An unknown non-retired generation returns `MissingSurfaceGeneration`. | Runtime context integration | No route, mutation, or retarget proof | M4C2 missing-generation trace | M4C2 | owner-accepted | Required |
+| SURFACE-06 | Another runtime namespace returns `ForeignSurfaceContext`. | Runtime context integration | Local-state isolation proof | M4C2 foreign-context trace | M4C2 | owner-accepted | Required |
+| SURFACE-07 | Another logical surface returns `ForeignSurface`. | Runtime context integration | Local-surface isolation proof | M4C2 foreign-surface trace | M4C2 | owner-accepted | Required |
+| SURFACE-08 | Coordinate-space revision is validated with the same context authority and cannot be mixed with another snapshot. | Runtime/publication integration | Revision mismatch and no-target proof | M4C2 coordinate-revision trace | M4C2 | owner-accepted | Required |
+| SURFACE-09 | Hosts map only logical coordinates for the supplied context; neutral APIs expose no physical pixel, DPI, monitor, or native-window type. | Public API/host-neutral compile proof | Platform-type leakage audit | M4C2 normalized-ingress trace | M4C2 | owner-accepted | Required |
+| SURFACE-10 | Low-level resolved-target injection validates namespace, surface, coordinate revision, snapshot generation, and mounted target identically to normal ingress. | Runtime test-seam conformance | Bypass and mismatched-dimension proof | M4C2 checked-adapter trace | M4C2 | owner-accepted | Required |
+| SURFACE-11 | A transaction accepted with an older retained context keeps its bound target after a newer publication. | Runtime/publication ordering proof | Mid-transaction retarget proof | M4C2 accepted-generation trace | M4C2 | owner-accepted | Required |
+| SURFACE-12 | One mounted root and logical surface in M4 do not imply multi-window lifecycle or cross-surface focus. | Public API/status conformance | Absence-of-premature-API proof | M4C2 surface-scope trace | M4C2 | owner-accepted | Required |
 
 ## M4C3 — pointer lifecycle, capture, boundaries, and logical scrolling
 

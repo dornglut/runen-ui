@@ -8,14 +8,18 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
-- Completed the M4C2 displayed-generation surface-context implementation and
-  implementation-head local proof package in draft PR #99. Added shared-namespace opaque
+- Owner-accepted and squash-merged the M4C2 displayed-generation surface-context
+  implementation in PR #99. The accepted feature head is
+  `8127c6143948354f2820f4779c92d2fa9daf79ca`; the squash merge commit is
+  `9dbf2b6bc781b4e29e3e9ce10388742eccc90124`. Added shared-namespace opaque
   `SurfaceId`/`SurfaceInputContext`, fresh coordinate and displayed hit-test
   generations for every publication, configurable bounded immutable historical
   snapshots, exact checked logical/resolved ingress with owned rejection recovery,
   canonical command-queue convergence, and causal surface trace. All 12
-  `SURFACE-*` rows are `proof-complete`; owner acceptance, hosted exact-head CI,
-  and squash merge remain pending, so M4C3 stays blocked and M4 remains incomplete.
+  `SURFACE-*` rows are `owner-accepted`. Hosted CI run `29802050579` failed
+  before step 1 with no job steps; the owner recorded an explicit infrastructure-
+  only waiver after the complete exact-head local baseline and final review passed.
+  M4C3 is now the next active slice; M4 remains incomplete.
 - Owner-accepted and squash-merged the complete M4C1 routed semantic-command
   kernel in PR #77. The accepted feature head is
   `cb3c7c139304231ba3b636cf53951507f348d485`; the squash merge commit is

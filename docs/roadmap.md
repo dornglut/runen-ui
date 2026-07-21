@@ -284,7 +284,7 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Next slice:** M4C1 is complete, owner-accepted, and merged; M4C2 is proof-complete in draft PR #99 and pending owner acceptance, exact-head hosted CI, and merge.
+**Next slice:** M4C1 and M4C2 are complete, owner-accepted, and merged; M4C3 is the next active slice.
 
 #### M4C1 — Routed semantic-command kernel
 
@@ -330,12 +330,12 @@ widget use public command APIs. All 36 corrected M4C1 rows are `owner-accepted`.
 was owner-accepted. PR #77 was squash-merged on 2026-07-19 as
 `44ceee29c73cea1237fefbd30db4baf2cd97b93d`.
 
-**Next unblocked slice:** M4C2 is proof-complete in draft PR #99 and awaits
-owner acceptance, exact-head hosted CI, and squash merge.
+**Next unblocked slice:** M4C2 is complete, owner-accepted, and squash-merged;
+M4C3 is active.
 
 #### M4C2 — Displayed-generation surface context
 
-**Status:** `active`; implementation and exact-head local proof package complete in draft PR #99, pending owner acceptance, hosted CI, and squash merge.
+**Status:** `complete`; owner-accepted and squash-merged in PR #99.
 
 **Goal:** Bind neutral input targeting to runtime-issued logical surface,
 coordinate revision, and exact retained displayed hit-test generation.
@@ -355,23 +355,24 @@ multi-window lifecycle, cross-surface focus, or M6 paint/hit scenes.
 negative isolation cases, slice-local causal trace, stable/MSRV validation, and
 exact-head CI.
 
-**Exit criteria:** Every `SURFACE-*` row is proof-complete and no accepted input
+**Exit criteria:** Every `SURFACE-*` row is owner-accepted and no accepted input
 is retargeted through another publication.
 
-**Proof-complete record:** The sanitized branch implements one shared-namespace
+**Completion record:** The sanitized branch implements one shared-namespace
 logical surface, fresh coordinate/display generations, configurable bounded
 immutable hit-test retention, exact current/historical targeting, checked logical
 and resolved-target ingress, owned rejection recovery, canonical FIFO convergence,
-and slice-local causal trace. Stable/MSRV local validation passed at the reviewed
-implementation head; the documentation-closure head must rerun the shared baseline.
-Hosted CI remains unavailable before step allocation because
-the account Actions budget is exhausted; owner acceptance and merge remain pending.
+and slice-local causal trace. The accepted feature head
+`8127c6143948354f2820f4779c92d2fa9daf79ca` passed the complete exact-head local
+baseline and final review. Hosted CI run `29802050579` failed before step 1 with
+no job steps; the owner recorded the documented infrastructure-only waiver. PR
+#99 was squash-merged as `9dbf2b6bc781b4e29e3e9ce10388742eccc90124`.
 
-**Next unblocked slice:** M4C3 after M4C2 owner acceptance and merge.
+**Next unblocked slice:** M4C3 is active.
 
 #### M4C3 — Pointer lifecycle
 
-**Status:** `blocked` pending M4C2 acceptance.
+**Status:** `active`; M4C2 is accepted and merged.
 
 **Goal:** Implement pointer/device identity, physical path, pressed ownership,
 true capture, deterministic boundaries, logical scrolling, terminal unavailable-

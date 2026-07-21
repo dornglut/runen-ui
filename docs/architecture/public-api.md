@@ -9,10 +9,10 @@ defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-run
 defines mounted ownership and reconciliation; accepted
 [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines application
 work and scheduling; M4B is implemented, owner-accepted, and squash-merged.
-M4C1 is complete, owner-accepted, and squash-merged in PR #77. M4C2 is
-proof-complete in draft PR #99 and awaits owner acceptance, exact-head hosted CI,
-and squash merge; M4C3–M4D3 remain blocked in sequence. M4 is active and
-incomplete. The accepted
+M4C1 and M4C2 are complete, owner-accepted, and squash-merged in PRs #77 and
+#99. M4C2 used the documented infrastructure-only CI waiver after exact-head
+local validation and final review passed. M4C3 is the next active slice;
+M4C4–M4D3 remain blocked in sequence. M4 is active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
 implemented public API until each slice is accepted. The
