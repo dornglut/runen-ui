@@ -22,6 +22,7 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `docs/architecture/events-effects-and-scheduling.md` | Target architecture | Retained active | Canonical M4 overview distinguishing implemented application work/scheduling from routed-event and trace-export targets |
 | `docs/architecture/m4-conformance-matrix.md` | Target architecture | Retained active | Normative public behavioral proof matrix, including mounted declaration, terminal pointer, executor-refusal, and sink-backpressure cases, required before M4 can be declared complete |
 | `docs/architecture/m4-directional-focus-corpus.md` | Target architecture | Retained active | Accepted normative M4 public-outcome vectors for directional focus, scope policy, restoration, and eligibility without exposing the private scoring formula |
+| `docs/architecture/m4c-delivery-and-routed-transaction-charter.md` | Target architecture | Retained active | Accepted M4C–M4D implementation ownership, transaction, and delivery sequencing contract |
 | `docs/architecture/workspace-structure.md` | Target architecture | Retained active | Current workspace and evidence-based extraction rules |
 | `docs/adr/0001-typed-token-authoring.md` | ADR | Retained active | Accepted typed-expression token authoring decision |
 | `docs/adr/0002-keep-layout-in-runtime.md` | ADR | Retained active | Accepted layout ownership and extraction-gate decision |
@@ -30,6 +31,8 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `docs/adr/0005-canonical-event-routing-and-commands.md` | ADR | Retained active | Accepted M4 protocol ownership, routed-event and exact command-default policy, displayed-generation input plus terminal pointer cleanup, focus/composition, capture, and semantic activation contract |
 | `docs/adr/0006-effects-scheduling-and-trace-v2.md` | ADR | Retained active | Accepted M4 lifecycle work, application and dedicated mounted subscription authority, commit-bound cancellation, readiness/budgets, executor/host failure, wake/redraw, and bounded trace/sink contract |
 | `docs/history/legacy-archive.md` | Historical record | Retained active | Legacy tag, removal, recovery, and bounded salvage guidance |
+| `docs/history/public-repository-migration.md` | Historical record | Retained active | Private-to-public repository, branch, issue, pull-request, and accepted-commit mapping |
+| `docs/work-tracking.md` | Current contract | Retained active | Public issue, pull-request, status, acceptance, and pickup authority |
 | `docs/vocabulary.md` | Current contract | Retained active | Explicit current and target terms |
 | `docs/influences.md` | Guide | Retained active | Non-authoritative upstream lessons and candidates |
 | `docs/tooling/validation.md` | Guide | Retained active | Locked root/nested validation, stable formatting, and link-checker scope |
@@ -37,6 +40,8 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `crates/runenui_runtime/README.md` | Current contract | Retained active | Actual runtime proof ownership and limitations |
 | `examples/counter/README.md` | Guide | Retained active | Current headless Counter proof and non-goals |
 | `tools/context/README.md` | Guide | Retained active | Context profiles, coverage, budgets, and exclusions |
+| `tests/external_widget/README.md` | Guide | Retained active | Downstream custom-widget conformance package scope and execution |
+| `.github/pull_request_template.md` | Guide | Retained active | Required repository state, scope, validation, review, and exact-head PR record |
 | `AGENTS.md` | Current contract | Retained active | Repository authority, architecture, workflow, and validation rules |
 | `CHANGELOG.md` | Current contract | Retained active | Pre-release change record |
 | `docs/release-policy.md` | Current contract | Retained active | Publication gate, release checklist, and `1.0.0` criteria |

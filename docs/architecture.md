@@ -40,11 +40,11 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
-M4A, M4B, M4C0, and M4C1 are complete. M4C1 is owner-accepted and
-squash-merged in PR #77. M4C2 is queued after the governance and required
-behavior-preserving runtime/trace/surface decomposition gates; M4C3–M4C5 and
-M4D1–M4D3 remain blocked in sequence. The target M4 pipeline is therefore active
-and incomplete.
+M4A, M4B, M4C0, M4C1, and M4C2 are complete and owner-accepted. M4C3 is
+the next implementation slice; its public governance, tooling, and readiness
+prerequisites are recorded in the work-tracking system. M4C4–M4C5 and
+M4D1–M4D3 remain blocked in sequence. The target M4 pipeline is active and
+incomplete.
 
 ```text
 Application-owned State + Action
@@ -113,10 +113,11 @@ contract, one ordered transaction planner, state-current application and
 mounted subscription reconciliation, generational tasks/timers/host work,
 four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
 complete per-family causal scheduler trace proofs. The exact-target routed
-semantic-command kernel is accepted through M4C1; displayed-generation surface
-context, pointer, focus, keyboard/text/IME, and source-specific target resolution
-remain unimplemented M4C2–M4C5 target architecture. Trace-v2 normalization,
-export, and replay remain unimplemented M4D target architecture. See the
+semantic-command kernel is accepted through M4C1, and displayed-generation
+surface context is accepted through M4C2. Pointer, focus, keyboard/text/IME, and
+source-specific target resolution remain unimplemented M4C3–M4C5 target
+architecture. Trace-v2 normalization, export, and replay remain unimplemented
+M4D target architecture. See the
 [public API contract](architecture/public-api.md),
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
 [work-tracking contract](work-tracking.md).

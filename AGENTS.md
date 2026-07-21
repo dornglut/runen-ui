@@ -20,13 +20,13 @@ Historical tags and removed legacy material are never active implementation auth
 
 ## Work tracking and pickup
 
-The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrix, GitHub issues, pull requests, and current-status documents. The M4 operational milestone is [issue #78](https://github.com/Crystonix/runen-ui/issues/78).
+The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrix, GitHub issues, pull requests, and current-status documents. The M4 operational milestone is [public issue #3](https://github.com/Crystonix/runen-ui/issues/3).
 
 Use this pickup sequence:
 
 1. Read the umbrella issue.
 2. Open the active slice issue.
-3. Verify exact accepted `master`, branch, pull request, and head.
+3. Verify exact accepted `main`, branch, pull request, and head.
 4. Read linked ADRs, the accepted charter, matrix rows, and stable architecture contracts.
 5. Inspect current source, tests, and unresolved review findings.
 6. Execute only the active slice or explicitly linked prerequisite issue.
@@ -37,7 +37,7 @@ A future thread should need only the repository, umbrella issue, and active slic
 
 ## Preflight and scope
 
-- Start from current `master`; fetch/pull with fast-forward only and confirm branch, accepted base, merge base, head, remote head, and a clean worktree.
+- Start from current `main`; fetch/pull with fast-forward only and confirm branch, accepted base, merge base, head, remote head, and a clean worktree.
 - Read every affected implementation, test, authority document, umbrella issue, and active slice issue before editing. Verify documentation claims against code and accepted merge state.
 - Work in one coherent reviewed slice. Do not mix unrelated cleanup, architecture, and implementation.
 - Preserve unrelated user changes. Never force-push, merge a PR, or use destructive Git commands without explicit authorization.

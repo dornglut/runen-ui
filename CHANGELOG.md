@@ -8,8 +8,17 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Reconstructed the active M4 execution graph in the public repository, moved
+  operational branch authority from `master` to `main`, added durable migration
+  history for private issue and pull-request records, and made
+  [public issue #3](https://github.com/Crystonix/runen-ui/issues/3) the M4 pickup
+  authority. M4C3 remains the next implementation slice and does
+  not begin until its public governance, tooling, and readiness prerequisites
+  pass.
 - Owner-accepted and squash-merged the M4C2 displayed-generation surface-context
-  implementation in PR #99. The accepted feature head is
+  implementation in
+  [archive PR #99](docs/history/public-repository-migration.md#accepted-imported-milestone-history).
+  The accepted feature head is
   `8127c6143948354f2820f4779c92d2fa9daf79ca`; the squash merge commit is
   `9dbf2b6bc781b4e29e3e9ce10388742eccc90124`. Added shared-namespace opaque
   `SurfaceId`/`SurfaceInputContext`, fresh coordinate and displayed hit-test
@@ -19,12 +28,15 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   `SURFACE-*` rows are `owner-accepted`. Hosted CI run `29802050579` failed
   before step 1 with no job steps; the owner recorded an explicit infrastructure-
   only waiver after the complete exact-head local baseline and final review passed.
-  M4C3 is now the next active slice; M4 remains incomplete.
+  M4C3 became the next implementation slice; M4 remains incomplete.
 - Owner-accepted and squash-merged the complete M4C1 routed semantic-command
-  kernel in PR #77. The accepted feature head is
+  kernel in
+  [archive PR #77](docs/history/public-repository-migration.md#accepted-imported-milestone-history).
+  The accepted feature head is
   `cb3c7c139304231ba3b636cf53951507f348d485`; the squash merge commit is
   `44ceee29c73cea1237fefbd30db4baf2cd97b93d`. All 36 M4C1 conformance rows are
-  now `owner-accepted`, M4C2 is queued, and M4 remains active and incomplete.
+  now `owner-accepted`; at that accepted M4C1 head, M4C2 was queued and M4
+  remained active and incomplete.
 - Established issue-backed execution tracking through the M4 umbrella and slice
   issues, documented the roadmap/matrix/issues/PR/status authority split, added
   milestone-slice, architecture-debt, and bug issue forms plus a pull-request
@@ -64,14 +76,15 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   route snapshot and phases, propagation/default controls, widget mutation and
   invalidation, collected outputs, semantic default, admission/poison/commit,
   and causal links into later actions and delegated commands. All 36 M4C1 rows
-  are `owner-accepted`; M4C2 is queued, M4C3–M4D3 and M5 semantic mapping remain
-  blocked, and M4 remains incomplete pending later slices.
+  are `owner-accepted`; at that accepted M4C1 head, M4C2 was queued,
+  M4C3–M4D3 and M5 semantic mapping were blocked, and M4 remained incomplete.
 - Owner-accepted the corrected M4C0 documentation and conformance authority,
   made its migration proofs independently closable by their assigned slices,
   reserved `ACCESS-*` for M5 semantic resolution, and at that M4C0 head queued
   M4C1 without adding runtime behavior.
-- Accepted and squash-merged PR #75's M4B scheduler result, accepted the M4C
-  delivery charter on 2026-07-18, and normalized M4 conformance ownership in
+- Accepted the M4B scheduler result from
+  [archive PR #75](docs/history/public-repository-migration.md#accepted-imported-milestone-history),
+  accepted the M4C delivery charter on 2026-07-18, and normalized M4 conformance ownership in
   documentation-only M4C0.
 - Assigned every normative M4 matrix row a permanent unique ID, one primary
   delivery slice, explicit positive/negative/trace proof ownership, an exact

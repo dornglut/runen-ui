@@ -41,7 +41,7 @@ Historical foundations—typed application flow, transient element descriptions,
 
 **Explicit non-goals:** Any M1 API repair; mounted runtime; controls; renderer protocol/backend; layout expansion; production text; host implementation.
 
-**Dependencies:** Clean current `master`, recoverable Git history, and the archival tag before legacy deletion.
+**Dependencies:** A clean then-current default branch, recoverable Git history, and the archival tag before legacy deletion.
 
 **Required proofs/tests:** Full workspace format/test/Clippy/MSRV validation, `cargo validate`, Markdown relative-link check, context-profile checks, manifest metadata inspection, and critical stale-reference/diff review.
 
@@ -191,7 +191,7 @@ subsystem vocabulary, and this slice does not complete M4.
 
 #### M4B — Application work and deterministic scheduler
 
-**Status:** `complete`; owner-accepted and squash-merged in PR #75.
+**Status:** `complete`; owner-accepted and squash-merged in [archive PR #75](history/public-repository-migration.md#accepted-imported-milestone-history).
 
 **Goal:** Implement the complete ADR 0006 application-work contract and
 scheduler.
@@ -254,7 +254,7 @@ observable acceptance and proof authority.
 
 #### M4C0 — Conformance ownership and decision closure
 
-**Status:** `complete`; owner-accepted in PR #76.
+**Status:** `complete`; owner-accepted in [archive PR #76](history/public-repository-migration.md#accepted-imported-milestone-history).
 
 **Goal:** Freeze stable matrix IDs, one delivery owner per observation, explicit
 positive/negative/trace proof ownership, accepted M4B status, and repository-wide
@@ -284,11 +284,11 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Next slice:** M4C1 and M4C2 are complete, owner-accepted, and merged; M4C3 is the next active slice.
+**Next slice:** M4C1 and M4C2 are complete, owner-accepted, and merged; M4C3 is the next implementation slice.
 
 #### M4C1 — Routed semantic-command kernel
 
-**Status:** `complete`; owner-accepted and squash-merged in PR #77.
+**Status:** `complete`; owner-accepted and squash-merged in [archive PR #77](history/public-repository-migration.md#accepted-imported-milestone-history).
 
 **Goal:** Implement the shared runtime namespace, core-owned protocol identity
 values, one immutable routed semantic-command transaction, exact admission and
@@ -327,15 +327,14 @@ widget use public command APIs. All 36 corrected M4C1 rows are `owner-accepted`.
 
 **Completion record:** The accepted feature head
 `cb3c7c139304231ba3b636cf53951507f348d485` passed canonical exact-head CI and
-was owner-accepted. PR #77 was squash-merged on 2026-07-19 as
+was owner-accepted. [archive PR #77](history/public-repository-migration.md#accepted-imported-milestone-history) was squash-merged on 2026-07-19 as
 `44ceee29c73cea1237fefbd30db4baf2cd97b93d`.
 
-**Next unblocked slice:** M4C2 is complete, owner-accepted, and squash-merged;
-M4C3 is active.
+**Next implementation slice:** M4C2 is complete, owner-accepted, and squash-merged; M4C3 follows the public prerequisites recorded in the work-tracking system.
 
 #### M4C2 — Displayed-generation surface context
 
-**Status:** `complete`; owner-accepted and squash-merged in PR #99.
+**Status:** `complete`; owner-accepted and squash-merged in [archive PR #99](history/public-repository-migration.md#accepted-imported-milestone-history).
 
 **Goal:** Bind neutral input targeting to runtime-issued logical surface,
 coordinate revision, and exact retained displayed hit-test generation.
@@ -365,14 +364,14 @@ and resolved-target ingress, owned rejection recovery, canonical FIFO convergenc
 and slice-local causal trace. The accepted feature head
 `8127c6143948354f2820f4779c92d2fa9daf79ca` passed the complete exact-head local
 baseline and final review. Hosted CI run `29802050579` failed before step 1 with
-no job steps; the owner recorded the documented infrastructure-only waiver. PR
-#99 was squash-merged as `9dbf2b6bc781b4e29e3e9ce10388742eccc90124`.
+no job steps; the owner recorded the documented infrastructure-only waiver.
+[archive PR #99](history/public-repository-migration.md#accepted-imported-milestone-history) was squash-merged as `9dbf2b6bc781b4e29e3e9ce10388742eccc90124`.
 
-**Next unblocked slice:** M4C3 is active.
+**Next implementation slice:** M4C3 follows the public prerequisites recorded in the work-tracking system.
 
 #### M4C3 — Pointer lifecycle
 
-**Status:** `active`; M4C2 is accepted and merged.
+**Status:** `queued`; M4C2 is accepted and merged. Exact operational prerequisites are owned by the public M4C3 issue.
 
 **Goal:** Implement pointer/device identity, physical path, pressed ownership,
 true capture, deterministic boundaries, logical scrolling, terminal unavailable-
@@ -528,7 +527,7 @@ accepted and merged, and no transitional authority remains.
 
 **Why now:** Every production control must ship with semantics, keyboard/accessibility behavior, and stable public tests rather than retrofit them later.
 
-**Included work:** Semantic tree with stable IDs, roles, names, descriptions, values, states, relationships, actions, bounds, and text-range extensions; incremental semantic updates; AccessKit-neutral adapter foundation; public headless harness; synthetic input/actions including normalized navigation/controller commands; deterministic clock/tasks; semantic/layout/hit/paint assertions; replay foundation.
+**Included work:** Semantic tree with stable IDs, roles, names, descriptions, values, states, relationships, actions, bounds, and text-range extensions; incremental semantic updates; AccessKit-neutral adapter foundation; public headless harness; synthetic input/actions including normalized navigation/controller commands; deterministic clock/tasks; semantic/layout/hit/paint assertions; public replay and testing integration over the replay model and engine accepted in M4D3.
 
 **Explicit non-goals:** Native platform accessibility bridge, production text ranges, full control library, renderer backend.
 
