@@ -45,31 +45,5 @@ jobs:
         with:
           workspaces: validation/runen-sdf
 
-      - name: Locked metadata
-        run: cargo +stable metadata --format-version 1 --locked --no-deps
-
-      - name: Dependency direction
-        run: |
-          cargo +stable tree -p runen-sdf --locked
-          cargo +stable tree -i runen-sdf --workspace --locked
-
-      - name: Formatting
-        run: cargo +stable fmt --all -- --check
-
-      - name: Stable tests and downstream conformance
-        run: cargo +stable test --workspace --locked
-
-      - name: Denied-warning Clippy
-        run: cargo +stable clippy --workspace --all-targets --locked -- -D warnings
-
-      - name: Denied-warning rustdoc
-        env:
-          RUSTDOCFLAGS: -D warnings
-        run: cargo +stable doc --workspace --no-deps --locked
-
-      - name: MSRV tests
-        run: cargo +1.93.0 test --workspace --locked
-
-      - name: Diff hygiene
-        working-directory: .
-        run: git diff --check
+      - name: Validate through maintained repository authority
+        run: cargo +stable validate
