@@ -169,7 +169,7 @@ fn parse_workspace_members(contents: &str) -> Option<Vec<PathBuf>> {
     let mut members = Vec::new();
 
     for line in contents.lines() {
-        let trimmed = line.trim();
+        let trimmed = strip_comment(line).trim();
         if trimmed.starts_with('[') && trimmed.ends_with(']') && !collecting {
             in_workspace = trimmed == "[workspace]";
             continue;
@@ -227,15 +227,34 @@ fn parse_dependency_names(contents: &str) -> BTreeSet<String> {
         if !in_dependencies || trimmed.is_empty() {
             continue;
         }
-        if let Some((name, _)) = trimmed.split_once('=') {
+        if let Some((name, value)) = trimmed.split_once('=') {
             let name = name.trim().trim_matches('"');
             if !name.is_empty() {
-                dependencies.insert(name.to_owned());
+                dependencies.insert(dependency_package_name(name, value));
             }
         }
     }
 
     dependencies
+}
+
+fn dependency_package_name(name: &str, value: &str) -> String {
+    let package = value
+        .trim()
+        .strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+        .and_then(|fields| {
+            fields.split(',').find_map(|field| {
+                let (key, value) = field.split_once('=')?;
+                if key.trim() == "package" {
+                    quoted_values(value).into_iter().next()
+                } else {
+                    None
+                }
+            })
+        });
+
+    package.unwrap_or_else(|| name.to_owned())
 }
 
 fn dependency_section(header: &str) -> bool {
@@ -313,28 +332,58 @@ fn read(root: &Path, relative: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        documented_package_names, parse_dependency_names, parse_package_name,
-        parse_workspace_members,
+        CORE_PACKAGE, RUNTIME_PACKAGE, WorkspaceMember, documented_package_names,
+        parse_dependency_names, parse_package_name, parse_workspace_members,
+        validate_dependency_direction,
     };
 
     #[test]
     fn workspace_member_parser_preserves_declared_order() {
         let members = parse_workspace_members(
-            "[workspace]\nmembers = [\n \"crates/core\",\n \"xtask\",\n]\n",
+            "[workspace]\nmembers = [\n \"crates/core\",\n # \"crates/ignored\",\n \"xtask\",\n]\n",
         );
         assert_eq!(members, Some(vec!["crates/core".into(), "xtask".into()]));
     }
 
     #[test]
     fn manifest_parser_reads_package_and_dependency_sections() {
-        let manifest = "[package]\nname = \"runtime\"\n[dependencies]\ncore = { path = \"../core\" }\n[dev-dependencies]\nfixture = \"1\"\n";
+        let manifest = "[package]\nname = \"runtime\"\n[dependencies]\ncore_alias = { package = \"core\", path = \"../core\" }\n[dev-dependencies]\nfixture = \"1\"\n";
         assert_eq!(parse_package_name(manifest).as_deref(), Some("runtime"));
         assert_eq!(
             parse_dependency_names(manifest),
             BTreeSet::from(["core".to_owned(), "fixture".to_owned()])
+        );
+    }
+
+    #[test]
+    fn renamed_dependency_uses_canonical_identity_for_direction_checks() {
+        let core = WorkspaceMember {
+            relative: "crates/runenui_core".into(),
+            package: CORE_PACKAGE.to_owned(),
+            dependencies: parse_dependency_names(
+                "[dependencies]\nruntime_alias = { package = \"runenui_runtime\", path = \"../runenui_runtime\" }\n",
+            ),
+        };
+        let runtime = WorkspaceMember {
+            relative: "crates/runenui_runtime".into(),
+            package: RUNTIME_PACKAGE.to_owned(),
+            dependencies: BTreeSet::from([CORE_PACKAGE.to_owned()]),
+        };
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+        ]);
+        let mut findings = Vec::new();
+
+        validate_dependency_direction(&core, &members, &mut findings);
+
+        assert!(
+            findings
+                .iter()
+                .any(|finding| { finding.code == "workspace.forbidden_dependency_direction" })
         );
     }
 
