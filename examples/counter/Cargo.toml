@@ -1,7 +1,6 @@
 [package]
 name = "counter"
 version.workspace = true
-authors.workspace = true
 description = "Headless Counter proof for the current RunenUI application and publication model"
 readme = "README.md"
 repository.workspace = true

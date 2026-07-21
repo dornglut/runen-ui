@@ -1,7 +1,6 @@
 [package]
 name = "runenui_core"
 version.workspace = true
-authors.workspace = true
 description = "Host-neutral authored UI vocabulary for the RunenUI architecture proof"
 readme = "README.md"
 repository.workspace = true

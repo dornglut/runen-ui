@@ -1,7 +1,6 @@
 [package]
 name = "runenui_runtime"
 version.workspace = true
-authors.workspace = true
 description = "Deterministic headless runtime and diagnostic publication proof for RunenUI"
 readme = "README.md"
 repository.workspace = true

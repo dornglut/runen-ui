@@ -1,7 +1,6 @@
 [package]
 name = "xtask"
 version.workspace = true
-authors.workspace = true
 description = "Repository validation tasks for the RunenUI workspace"
 readme = "README.md"
 repository.workspace = true

@@ -1,7 +1,6 @@
 [package]
 name = "runenui_external_widget_conformance"
 version.workspace = true
-authors.workspace = true
 description = "Downstream public-API conformance fixture for RunenUI widgets"
 readme = "README.md"
 repository.workspace = true
