@@ -8,6 +8,10 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Added the deterministic, network-free `cargo xtask audit-repository` command
+  with stable human/JSON output, fatal matrix/workspace/dependency/authority/
+  license/canonical-runtime checks, non-fatal concentration diagnostics, and
+  integration of the fatal subset into `cargo validate`.
 - Reconstructed the active M4 execution graph in the public repository, moved
   operational branch authority from `master` to `main`, added durable migration
   history for private issue and pull-request records, and made

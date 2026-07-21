@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod repository_audit;
+
 use std::{
     env,
     ffi::OsStr,
@@ -41,6 +43,7 @@ fn main() -> ExitCode {
     match arguments.next().as_deref() {
         Some("validate") => validate(),
         Some("check-links") => check_links(),
+        Some("audit-repository") => audit_repository(arguments),
         Some("help" | "--help" | "-h") | None => {
             print_usage();
             ExitCode::SUCCESS
@@ -74,7 +77,7 @@ fn validate() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    if let Err(error) = validate_repository_metadata(&root) {
+    if let Err(error) = repository_audit::validate_fatal(&root) {
         eprintln!("{error}");
         return ExitCode::FAILURE;
     }
@@ -92,6 +95,31 @@ fn check_links() -> ExitCode {
     };
 
     match check_repository_links(&root) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn audit_repository(arguments: impl Iterator<Item = String>) -> ExitCode {
+    let format = match repository_audit::parse_output_format(arguments) {
+        Ok(format) => format,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let root = match workspace_root() {
+        Ok(root) => root,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match repository_audit::run(&root, format) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error}");
@@ -302,13 +330,13 @@ fn validate_repository_metadata(root: &Path) -> Result<(), String> {
         return Err("workspace package publication must remain disabled".into());
     }
 
-    eprintln!("> verified MIT license metadata and publish policy");
     Ok(())
 }
 
 fn print_usage() {
     eprintln!("usage: cargo validate");
     eprintln!("       cargo xtask check-links");
+    eprintln!("       cargo xtask audit-repository [--format json]");
 }
 
 #[cfg(test)]

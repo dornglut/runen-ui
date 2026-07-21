@@ -1,0 +1,502 @@
+use std::{
+    collections::BTreeSet,
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+};
+
+use super::{Finding, path_text};
+
+const LARGE_SOURCE_LINES: usize = 900;
+const HIGH_PUBLIC_ITEMS: usize = 40;
+const BROAD_REEXPORTS: usize = 10;
+const HIGH_TEST_LINES: usize = 800;
+const HIGH_TEST_COUNT: usize = 20;
+const MULTI_RESPONSIBILITY_COUNT: usize = 5;
+
+const RESPONSIBILITY_TERMS: &[&str] = &[
+    "application",
+    "command",
+    "completion",
+    "focus",
+    "identity",
+    "input",
+    "layout",
+    "lifecycle",
+    "mounted",
+    "queue",
+    "reconcile",
+    "scheduler",
+    "style",
+    "subscription",
+    "surface",
+    "timer",
+    "trace",
+    "wake",
+    "work",
+];
+
+const VOLATILE_ARCHITECTURE_PATTERNS: &[&str] = &[
+    "Current head:",
+    "Draft PR:",
+    "Exact accepted base SHA",
+    "codex/",
+    "governance/",
+    "tooling/",
+    "https://github.com/Crystonix/runen-ui/pull/",
+];
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct SourceMetrics {
+    pub(super) production_modules: usize,
+    pub(super) test_modules: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ModuleMetrics {
+    relative: PathBuf,
+    lines: usize,
+    public_items: usize,
+    reexports: usize,
+    tests: usize,
+    responsibilities: BTreeSet<&'static str>,
+}
+
+#[derive(Clone, Copy)]
+struct AuthoritySpec {
+    code: &'static str,
+    symbol: &'static str,
+    expected_path: &'static str,
+}
+
+const AUTHORITIES: &[AuthoritySpec] = &[
+    AuthoritySpec {
+        code: "source.canonical_queue_authority",
+        symbol: "WorkQueue",
+        expected_path: "crates/runenui_runtime/src/queue.rs",
+    },
+    AuthoritySpec {
+        code: "source.canonical_trace_store_authority",
+        symbol: "Trace",
+        expected_path: "crates/runenui_runtime/src/trace/store.rs",
+    },
+    AuthoritySpec {
+        code: "source.surface_publication_authority",
+        symbol: "SurfacePublicationState",
+        expected_path: "crates/runenui_runtime/src/runtime/surface_publication.rs",
+    },
+];
+
+pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMetrics, String> {
+    let production_files = collect_rust_files(root, &root.join("crates"), FileKind::Production)?;
+    let test_files = collect_test_files(root)?;
+
+    let mut production_metrics = Vec::new();
+    for relative in &production_files {
+        let contents = read_rust_file(root, relative)?;
+        let metrics = module_metrics(relative, &contents);
+        add_production_diagnostics(&metrics, findings);
+        production_metrics.push((metrics, contents));
+    }
+
+    for relative in &test_files {
+        let contents = read_rust_file(root, relative)?;
+        let metrics = module_metrics(relative, &contents);
+        add_test_diagnostics(&metrics, findings);
+    }
+
+    audit_authority_definitions(&production_metrics, findings);
+    audit_volatile_architecture_state(root, findings)?;
+
+    Ok(SourceMetrics {
+        production_modules: production_files.len(),
+        test_modules: test_files.len(),
+    })
+}
+
+fn add_production_diagnostics(metrics: &ModuleMetrics, findings: &mut Vec<Finding>) {
+    let path = path_text(&metrics.relative);
+    if metrics.lines >= LARGE_SOURCE_LINES {
+        findings.push(Finding::diagnostic(
+            "diagnostic.large_source_module",
+            Some(path.clone()),
+            format!(
+                "module has {} lines; inspect responsibility boundaries rather than treating line count as a correctness failure",
+                metrics.lines
+            ),
+        ));
+    }
+    if metrics.public_items >= HIGH_PUBLIC_ITEMS {
+        findings.push(Finding::diagnostic(
+            "diagnostic.public_item_concentration",
+            Some(path.clone()),
+            format!(
+                "module contains {} public or crate-visible item declarations",
+                metrics.public_items
+            ),
+        ));
+    }
+    if metrics.reexports >= BROAD_REEXPORTS {
+        findings.push(Finding::diagnostic(
+            "diagnostic.reexport_concentration",
+            Some(path.clone()),
+            format!("module contains {} `pub use` statements", metrics.reexports),
+        ));
+    }
+    if metrics.responsibilities.len() >= MULTI_RESPONSIBILITY_COUNT {
+        findings.push(Finding::diagnostic(
+            "diagnostic.responsibility_concentration",
+            Some(path.clone()),
+            format!(
+                "item declarations reference {} responsibility vocabularies: {}",
+                metrics.responsibilities.len(),
+                metrics
+                    .responsibilities
+                    .iter()
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ));
+    }
+    if metrics.lines >= LARGE_SOURCE_LINES
+        && (metrics.public_items >= 30
+            || metrics.responsibilities.len() >= MULTI_RESPONSIBILITY_COUNT)
+    {
+        findings.push(Finding::diagnostic(
+            "diagnostic.god_file_candidate",
+            Some(path),
+            "module crosses the composite concentration threshold; review cohesion before expanding it",
+        ));
+    }
+}
+
+fn add_test_diagnostics(metrics: &ModuleMetrics, findings: &mut Vec<Finding>) {
+    if metrics.lines >= HIGH_TEST_LINES || metrics.tests >= HIGH_TEST_COUNT {
+        findings.push(Finding::diagnostic(
+            "diagnostic.test_file_concentration",
+            Some(path_text(&metrics.relative)),
+            format!(
+                "test module contains {} lines and {} `#[test]` cases",
+                metrics.lines, metrics.tests
+            ),
+        ));
+    }
+}
+
+fn audit_authority_definitions(
+    production: &[(ModuleMetrics, String)],
+    findings: &mut Vec<Finding>,
+) {
+    for authority in AUTHORITIES {
+        let mut locations = Vec::new();
+        for (metrics, contents) in production {
+            for (index, line) in contents.lines().enumerate() {
+                if defines_struct(line, authority.symbol) {
+                    locations.push(format!("{}:{}", path_text(&metrics.relative), index + 1));
+                }
+            }
+        }
+
+        match locations.as_slice() {
+            [location] if location.starts_with(authority.expected_path) => {}
+            [location] => findings.push(Finding::fatal(
+                authority.code,
+                Some(location.clone()),
+                format!(
+                    "canonical `{}` authority must be defined in {}",
+                    authority.symbol, authority.expected_path
+                ),
+            )),
+            [] => findings.push(Finding::fatal(
+                authority.code,
+                Some(authority.expected_path.to_owned()),
+                format!(
+                    "canonical `{}` authority definition is missing",
+                    authority.symbol
+                ),
+            )),
+            _ => findings.push(Finding::fatal(
+                authority.code,
+                None::<String>,
+                format!(
+                    "canonical `{}` authority is defined multiple times: {}",
+                    authority.symbol,
+                    locations.join(", ")
+                ),
+            )),
+        }
+    }
+}
+
+fn audit_volatile_architecture_state(
+    root: &Path,
+    findings: &mut Vec<Finding>,
+) -> Result<(), String> {
+    let mut files = Vec::new();
+    let root_architecture = root.join("docs/architecture.md");
+    if root_architecture.is_file() {
+        files.push(PathBuf::from("docs/architecture.md"));
+    }
+    let architecture_directory = root.join("docs/architecture");
+    if architecture_directory.is_dir() {
+        collect_markdown_files(root, &architecture_directory, &mut files)?;
+    }
+    files.sort();
+
+    for relative in files {
+        let contents = fs::read_to_string(root.join(&relative)).map_err(|error| {
+            format!(
+                "failed to read architecture document {}: {error}",
+                relative.display()
+            )
+        })?;
+        let patterns = VOLATILE_ARCHITECTURE_PATTERNS
+            .iter()
+            .copied()
+            .filter(|pattern| contents.contains(pattern))
+            .collect::<Vec<_>>();
+        if !patterns.is_empty() {
+            findings.push(Finding::diagnostic(
+                "diagnostic.volatile_architecture_state",
+                Some(path_text(&relative)),
+                format!(
+                    "architecture document contains volatile execution markers: {}",
+                    patterns.join(", ")
+                ),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn collect_test_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    let crates = root.join("crates");
+    if crates.is_dir() {
+        collect_rust_files_from(root, &crates, FileKind::Test, &mut files)?;
+    }
+    let tests = root.join("tests");
+    if tests.is_dir() {
+        collect_rust_files_from(root, &tests, FileKind::AllRust, &mut files)?;
+    }
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
+#[derive(Clone, Copy)]
+enum FileKind {
+    Production,
+    Test,
+    AllRust,
+}
+
+fn collect_rust_files(
+    root: &Path,
+    directory: &Path,
+    kind: FileKind,
+) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    if directory.is_dir() {
+        collect_rust_files_from(root, directory, kind, &mut files)?;
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn collect_rust_files_from(
+    root: &Path,
+    directory: &Path,
+    kind: FileKind,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(directory)
+        .map_err(|error| format!("failed to read {}: {error}", directory.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to inspect an entry in {}: {error}",
+                directory.display()
+            )
+        })?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rust_files_from(root, &path, kind, files)?;
+            continue;
+        }
+        if path.extension() != Some(OsStr::new("rs")) {
+            continue;
+        }
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|error| format!("failed to relativize {}: {error}", path.display()))?;
+        let include = match kind {
+            FileKind::Production => relative
+                .components()
+                .any(|component| component.as_os_str() == "src"),
+            FileKind::Test => relative
+                .components()
+                .any(|component| component.as_os_str() == "tests"),
+            FileKind::AllRust => true,
+        };
+        if include {
+            files.push(relative.to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+fn collect_markdown_files(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(directory)
+        .map_err(|error| format!("failed to read {}: {error}", directory.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to inspect an entry in {}: {error}",
+                directory.display()
+            )
+        })?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_markdown_files(root, &path, files)?;
+        } else if path.extension() == Some(OsStr::new("md")) {
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|error| format!("failed to relativize {}: {error}", path.display()))?;
+            files.push(relative.to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+fn read_rust_file(root: &Path, relative: &Path) -> Result<String, String> {
+    fs::read_to_string(root.join(relative))
+        .map_err(|error| format!("failed to read {}: {error}", relative.display()))
+}
+
+fn module_metrics(relative: &Path, contents: &str) -> ModuleMetrics {
+    let mut responsibilities = BTreeSet::new();
+    let mut public_items = 0_usize;
+    let mut reexports = 0_usize;
+
+    for line in contents.lines() {
+        let trimmed = line.trim_start();
+        if is_public_item(trimmed) {
+            public_items += 1;
+        }
+        if trimmed.starts_with("pub use ") || trimmed.starts_with("pub(crate) use ") {
+            reexports += 1;
+        }
+        if is_item_declaration(trimmed) {
+            let lower = trimmed.to_ascii_lowercase();
+            for term in RESPONSIBILITY_TERMS {
+                if lower.contains(term) {
+                    responsibilities.insert(*term);
+                }
+            }
+        }
+    }
+
+    ModuleMetrics {
+        relative: relative.to_path_buf(),
+        lines: contents.lines().count(),
+        public_items,
+        reexports,
+        tests: contents.matches("#[test]").count(),
+        responsibilities,
+    }
+}
+
+fn is_public_item(line: &str) -> bool {
+    (line.starts_with("pub ")
+        || line.starts_with("pub(")
+        || line.starts_with("pub(crate)")
+        || line.starts_with("pub(in "))
+        && is_item_declaration(line)
+}
+
+fn is_item_declaration(line: &str) -> bool {
+    let declaration = line
+        .strip_prefix("pub(crate) ")
+        .or_else(|| line.strip_prefix("pub(super) "))
+        .or_else(|| line.strip_prefix("pub(self) "))
+        .or_else(|| line.strip_prefix("pub "))
+        .or_else(|| strip_pub_in(line))
+        .unwrap_or(line);
+
+    [
+        "async fn ",
+        "const fn ",
+        "enum ",
+        "fn ",
+        "mod ",
+        "static ",
+        "struct ",
+        "trait ",
+        "type ",
+        "use ",
+        "const ",
+    ]
+    .iter()
+    .any(|prefix| declaration.starts_with(prefix))
+}
+
+fn strip_pub_in(line: &str) -> Option<&str> {
+    let after = line.strip_prefix("pub(in ")?;
+    let end = after.find(") ")?;
+    Some(&after[end + 2..])
+}
+
+fn defines_struct(line: &str, symbol: &str) -> bool {
+    let tokens = line.split_whitespace().collect::<Vec<_>>();
+    tokens
+        .windows(2)
+        .any(|window| window[0] == "struct" && normalized_identifier(window[1]) == symbol)
+}
+
+fn normalized_identifier(token: &str) -> &str {
+    token.split(['<', '{', '(', ';']).next().unwrap_or(token)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{defines_struct, module_metrics, normalized_identifier};
+
+    #[test]
+    fn authority_definition_parser_handles_visibility_and_generics() {
+        assert!(defines_struct(
+            "pub(crate) struct WorkQueue<Action> {",
+            "WorkQueue"
+        ));
+        assert!(defines_struct("pub struct Trace;", "Trace"));
+        assert!(!defines_struct("let trace = Trace::new();", "Trace"));
+    }
+
+    #[test]
+    fn identifier_normalization_removes_declaration_suffixes() {
+        assert_eq!(normalized_identifier("WorkQueue<Action>"), "WorkQueue");
+        assert_eq!(normalized_identifier("Trace;"), "Trace");
+    }
+
+    #[test]
+    fn module_metrics_are_deterministic() {
+        let metrics = module_metrics(
+            Path::new("crates/example/src/lib.rs"),
+            "pub struct SurfaceQueue;\npub use crate::trace::Trace;\n#[test]\nfn test() {}\n",
+        );
+        assert_eq!(metrics.public_items, 2);
+        assert_eq!(metrics.reexports, 1);
+        assert_eq!(metrics.tests, 1);
+        assert!(metrics.responsibilities.contains("surface"));
+        assert!(metrics.responsibilities.contains("queue"));
+        assert!(metrics.responsibilities.contains("trace"));
+    }
+}
