@@ -13,28 +13,7 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   validate:
-    name: Repository baseline
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install latest stable Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-
-      - name: Install MSRV Rust 1.93.0
-        uses: dtolnay/rust-toolchain@1.93.0
-
-      - name: Cache Cargo data
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run shared validation baseline
-        run: cargo validate
+    name: RunenUI validation
+    uses: dornglut/github-workflows/.github/workflows/reusable-rust-cargo-validate.yml@79405c457b5b99d5cb9957c9bcdc475109e1e3bf
