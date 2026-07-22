@@ -1,6 +1,5 @@
 use runenui_core::{
-    __runtime::RoutedEventOutput, EventPhase, HostProtocol, SemanticCommandEvent, UiEvent,
-    WidgetInvalidation,
+    __runtime::RoutedEventOutput, EventPhase, HostProtocol, PointerId, UiEvent, WidgetInvalidation,
 };
 
 use super::{
@@ -9,10 +8,39 @@ use super::{
 };
 use crate::{MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure};
 
+#[derive(Clone, Copy)]
+pub(in crate::runtime) struct PointerDispatchFacts<'a> {
+    pointer_id: PointerId,
+    physical_target: Option<&'a MountedNodeId>,
+    physical_path: &'a [MountedNodeId],
+    related_target: Option<&'a MountedNodeId>,
+    default_cancelable: bool,
+}
+
+impl<'a> PointerDispatchFacts<'a> {
+    pub(in crate::runtime) const fn new(
+        pointer_id: PointerId,
+        physical_target: Option<&'a MountedNodeId>,
+        physical_path: &'a [MountedNodeId],
+        related_target: Option<&'a MountedNodeId>,
+        default_cancelable: bool,
+    ) -> Self {
+        Self {
+            pointer_id,
+            physical_target,
+            physical_path,
+            related_target,
+            default_cancelable,
+        }
+    }
+}
+
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(super) fn invoke_routed_callbacks(
+    pub(in crate::runtime) fn invoke_routed_callbacks(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
+        event: &UiEvent,
+        pointer: Option<PointerDispatchFacts<'_>>,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
         let target_index = transaction.route.len() - 1;
         let mut invocations =
@@ -31,25 +59,57 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .cloned()
                 .map(|id| (EventPhase::Bubble, id)),
         );
-        let event = UiEvent::SemanticCommand(SemanticCommandEvent::__runtime_new(
-            transaction.command,
-            transaction.origin,
-        ));
         for (phase, current) in invocations {
             if transaction.propagation_stopped {
                 break;
             }
             transaction.failure_current_target = Some(current.clone());
-            self.invoke_routed_callback(transaction, &event, phase, &current)?;
+            self.invoke_routed_callback(transaction, event, pointer, phase, &current)?;
             transaction.failure_current_target = None;
         }
         Ok(())
+    }
+
+    pub(in crate::runtime) fn invoke_target_only_pointer_callback(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        event: &UiEvent,
+        pointer: PointerDispatchFacts<'_>,
+        target: &MountedNodeId,
+    ) -> Result<(), TraceRoutedIntegrityFailure> {
+        let original_target = core::mem::replace(&mut transaction.target, target.clone());
+        let original_target_trace = core::mem::replace(
+            &mut transaction.target_trace,
+            self.tree.trace_target(target),
+        );
+        let propagation_stopped = transaction.propagation_stopped;
+        let default_prevented = transaction.default_prevented;
+        let collecting_notification_outputs = transaction.collecting_notification_outputs;
+        transaction.propagation_stopped = false;
+        transaction.default_prevented = false;
+        transaction.collecting_notification_outputs = true;
+        transaction.failure_current_target = Some(target.clone());
+        let result = self.invoke_routed_callback(
+            transaction,
+            event,
+            Some(pointer),
+            EventPhase::Target,
+            target,
+        );
+        transaction.failure_current_target = None;
+        transaction.target = original_target;
+        transaction.target_trace = original_target_trace;
+        transaction.propagation_stopped = propagation_stopped;
+        transaction.default_prevented = default_prevented;
+        transaction.collecting_notification_outputs = collecting_notification_outputs;
+        result
     }
 
     fn invoke_routed_callback(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
         event: &UiEvent,
+        pointer: Option<PointerDispatchFacts<'_>>,
         phase: EventPhase,
         current: &MountedNodeId,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
@@ -70,9 +130,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if self.routed_callback_bridge_failure_for_test {
             return Err(TraceRoutedIntegrityFailure::CallbackBridgeFailure);
         }
-        let invocation = self
-            .tree
-            .invoke_event(
+        let invocation = match pointer {
+            Some(pointer) => self.tree.invoke_pointer_event(
+                current,
+                &transaction.target,
+                pointer.related_target,
+                event,
+                phase,
+                transaction.origin,
+                transaction.sequence,
+                transaction.instant,
+                pointer.pointer_id,
+                pointer.physical_target,
+                pointer.physical_path,
+                pointer.default_cancelable,
+                transaction.default_prevented,
+                transaction.propagation_stopped,
+                transaction.output_allowance(current),
+            ),
+            None => self.tree.invoke_event(
                 current,
                 &transaction.target,
                 event,
@@ -83,13 +159,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 transaction.default_prevented,
                 transaction.propagation_stopped,
                 transaction.output_allowance(current),
-            )
-            .map_err(|_| TraceRoutedIntegrityFailure::CallbackBridgeFailure)?;
+            ),
+        }
+        .map_err(|_| TraceRoutedIntegrityFailure::CallbackBridgeFailure)?;
         transaction.remaining_outputs = invocation.output.remaining_outputs;
         transaction.propagation_stopped = invocation.output.propagation_stopped;
         transaction.default_prevented = invocation.output.default_prevented;
         if invocation.output.overflowed {
             return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
+        }
+        if let Some(request) = invocation.output.pointer_capture {
+            transaction.pointer_capture_requests.push(request);
         }
         self.record_event_mutation(
             transaction,
@@ -206,9 +286,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Some(current),
                 transaction.origin,
             );
-            transaction
-                .routed_outputs
-                .push(with_routed_parent(output, transaction.parent));
+            let output = with_routed_parent(output, transaction.parent);
+            if transaction.collecting_notification_outputs {
+                transaction.notification_outputs.push(output);
+            } else {
+                transaction.routed_outputs.push(output);
+            }
         }
     }
 

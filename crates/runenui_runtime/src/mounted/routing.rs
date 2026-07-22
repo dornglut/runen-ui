@@ -2,7 +2,8 @@
 
 use runenui_core::{
     __runtime::{EventContextOutput, WidgetBridgeError},
-    CommandOrigin, EventPhase, MonotonicInstant, UiEvent, WidgetEventOutput, WorkSequence,
+    CommandOrigin, EventPhase, MonotonicInstant, PointerId, UiEvent, WidgetEventOutput,
+    WorkSequence,
 };
 
 use super::{
@@ -91,6 +92,50 @@ impl<Action> MountedTree<Action> {
             sequence,
             instant,
             true,
+            default_prevented,
+            propagation_stopped,
+            output_allowance,
+        )?;
+        apply_invalidation(node, output.invalidation);
+        Ok(EventInvocation { widget, output })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn invoke_pointer_event(
+        &mut self,
+        current: &MountedNodeId,
+        original: &MountedNodeId,
+        related: Option<&MountedNodeId>,
+        event: &UiEvent,
+        phase: EventPhase,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        pointer_id: PointerId,
+        physical_target: Option<&MountedNodeId>,
+        physical_path: &[MountedNodeId],
+        default_cancelable: bool,
+        default_prevented: bool,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Result<EventInvocation<Action>, WidgetBridgeError> {
+        let node = self
+            .node_mut(current)
+            .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
+        let (widget, output) = node.widget.pointer_event(
+            &mut node.state,
+            event,
+            phase,
+            original,
+            current,
+            related,
+            origin,
+            sequence,
+            instant,
+            pointer_id,
+            physical_target,
+            physical_path,
+            default_cancelable,
             default_prevented,
             propagation_stopped,
             output_allowance,

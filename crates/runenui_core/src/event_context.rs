@@ -3,7 +3,7 @@
 use core::{fmt, future::Future};
 
 use crate::{
-    CommandOrigin, EventPhase, MonotonicInstant, MountedNodeId, SemanticCommand,
+    CommandOrigin, EventPhase, MonotonicInstant, MountedNodeId, PointerId, SemanticCommand,
     SendTaskStartFailure, TimerEffect, WidgetInvalidation, WorkFamily, WorkKey, WorkSequence,
     effects::MountedEffect, widget_context::WidgetWorkCollector,
 };
@@ -19,6 +19,20 @@ pub enum RoutedEventOutput<Action> {
     },
 }
 
+/// One staged current-node pointer-capture mutation request.
+#[doc(hidden)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PointerCaptureRequest {
+    Capture {
+        pointer_id: PointerId,
+        target: MountedNodeId,
+    },
+    Release {
+        pointer_id: PointerId,
+        target: MountedNodeId,
+    },
+}
+
 /// Collected provisional output returned to the runtime bridge.
 #[doc(hidden)]
 #[allow(
@@ -30,6 +44,7 @@ pub struct EventContextOutput<Action> {
     pub invalidation: WidgetInvalidation,
     pub subscription_invalidation: bool,
     pub mounted_work: Vec<MountedEffect<Action>>,
+    pub pointer_capture: Option<PointerCaptureRequest>,
     pub propagation_stopped: bool,
     pub default_prevented: bool,
     pub overflowed: bool,
@@ -49,6 +64,10 @@ pub struct EventContext<'a, Action> {
     origin: CommandOrigin,
     sequence: WorkSequence,
     instant: MonotonicInstant,
+    pointer_id: Option<PointerId>,
+    physical_target: Option<&'a MountedNodeId>,
+    physical_path: &'a [MountedNodeId],
+    pointer_capture: Option<PointerCaptureRequest>,
     default_cancelable: bool,
     default_prevented: bool,
     propagation_stopped: bool,
@@ -71,6 +90,9 @@ impl<Action> fmt::Debug for EventContext<'_, Action> {
             .field("origin", &self.origin)
             .field("sequence", &self.sequence)
             .field("instant", &self.instant)
+            .field("pointer_id", &self.pointer_id)
+            .field("physical_target", &self.physical_target)
+            .field("physical_path", &self.physical_path)
             .field("default_cancelable", &self.default_cancelable)
             .field("default_prevented", &self.default_prevented)
             .field("propagation_stopped", &self.propagation_stopped)
@@ -114,6 +136,24 @@ impl<'a, Action> EventContext<'a, Action> {
         self.instant
     }
 
+    /// Returns the current pointer-stream identity for pointer event families.
+    #[must_use]
+    pub const fn pointer_id(&self) -> Option<PointerId> {
+        self.pointer_id
+    }
+
+    /// Borrows the physical hit target independently of the routed target.
+    #[must_use]
+    pub const fn physical_target(&self) -> Option<&MountedNodeId> {
+        self.physical_target
+    }
+
+    /// Borrows the immutable physical root-to-hit path.
+    #[must_use]
+    pub const fn physical_path(&self) -> &[MountedNodeId] {
+        self.physical_path
+    }
+
     #[must_use]
     pub const fn default_is_cancelable(&self) -> bool {
         self.default_cancelable
@@ -141,6 +181,32 @@ impl<'a, Action> EventContext<'a, Action> {
                 target: self.current_target.clone(),
                 command,
                 origin: CommandOrigin::delegated(self.origin.source()),
+            });
+        }
+    }
+
+    /// Stages capture of the current pointer by the current routed node.
+    pub fn capture_pointer(&mut self) {
+        let Some(pointer_id) = self.pointer_id else {
+            return;
+        };
+        if self.reserve_output() {
+            self.pointer_capture = Some(PointerCaptureRequest::Capture {
+                pointer_id,
+                target: self.current_target.clone(),
+            });
+        }
+    }
+
+    /// Stages release of the current pointer when the current node owns capture.
+    pub fn release_pointer_capture(&mut self) {
+        let Some(pointer_id) = self.pointer_id else {
+            return;
+        };
+        if self.reserve_output() {
+            self.pointer_capture = Some(PointerCaptureRequest::Release {
+                pointer_id,
+                target: self.current_target.clone(),
             });
         }
     }
@@ -248,7 +314,7 @@ impl<'a, Action> EventContext<'a, Action> {
     }
 
     pub(crate) const fn mapped_child<ChildAction>(&self) -> EventContext<'a, ChildAction> {
-        EventContext::new(
+        EventContext::new_with_pointer_facts(
             self.phase,
             self.original_target,
             self.current_target,
@@ -256,6 +322,9 @@ impl<'a, Action> EventContext<'a, Action> {
             self.origin,
             self.sequence,
             self.instant,
+            self.pointer_id,
+            self.physical_target,
+            self.physical_path,
             self.default_cancelable,
             self.default_prevented,
             self.propagation_stopped,
@@ -272,6 +341,7 @@ impl<'a, Action> EventContext<'a, Action> {
     {
         self.invalidation |= child.invalidation;
         self.subscription_invalidation |= child.subscription_invalidation;
+        self.pointer_capture = child.pointer_capture;
         self.default_prevented = child.default_prevented;
         self.propagation_stopped = child.propagation_stopped;
         self.overflowed |= child.overflowed;
@@ -311,6 +381,77 @@ impl<'a, Action> EventContext<'a, Action> {
         propagation_stopped: bool,
         output_allowance: usize,
     ) -> Self {
+        Self::new_with_pointer_facts(
+            phase,
+            original_target,
+            current_target,
+            related_target,
+            origin,
+            sequence,
+            instant,
+            None,
+            None,
+            &[],
+            default_cancelable,
+            default_prevented,
+            propagation_stopped,
+            output_allowance,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
+    pub(crate) const fn new_pointer(
+        phase: EventPhase,
+        original_target: &'a MountedNodeId,
+        current_target: &'a MountedNodeId,
+        related_target: Option<&'a MountedNodeId>,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        pointer_id: PointerId,
+        physical_target: Option<&'a MountedNodeId>,
+        physical_path: &'a [MountedNodeId],
+        default_cancelable: bool,
+        default_prevented: bool,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Self {
+        Self::new_with_pointer_facts(
+            phase,
+            original_target,
+            current_target,
+            related_target,
+            origin,
+            sequence,
+            instant,
+            Some(pointer_id),
+            physical_target,
+            physical_path,
+            default_cancelable,
+            default_prevented,
+            propagation_stopped,
+            output_allowance,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    const fn new_with_pointer_facts(
+        phase: EventPhase,
+        original_target: &'a MountedNodeId,
+        current_target: &'a MountedNodeId,
+        related_target: Option<&'a MountedNodeId>,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        pointer_id: Option<PointerId>,
+        physical_target: Option<&'a MountedNodeId>,
+        physical_path: &'a [MountedNodeId],
+        default_cancelable: bool,
+        default_prevented: bool,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Self {
         Self {
             phase,
             original_target,
@@ -319,6 +460,10 @@ impl<'a, Action> EventContext<'a, Action> {
             origin,
             sequence,
             instant,
+            pointer_id,
+            physical_target,
+            physical_path,
+            pointer_capture: None,
             default_cancelable,
             default_prevented,
             propagation_stopped,
@@ -338,6 +483,7 @@ impl<'a, Action> EventContext<'a, Action> {
             invalidation: self.invalidation,
             subscription_invalidation: self.subscription_invalidation,
             mounted_work: self.mounted_work.take_outputs(),
+            pointer_capture: self.pointer_capture,
             propagation_stopped: self.propagation_stopped,
             default_prevented: self.default_prevented,
             overflowed: self.overflowed,
@@ -352,8 +498,8 @@ mod tests {
     use std::rc::Rc;
 
     use crate::{
-        __runtime::{MountedEffect, RoutedEventOutput, RuntimeNamespace},
-        CommandDerivation, CommandOrigin, EventPhase, EventSource, MonotonicInstant,
+        __runtime::{MountedEffect, PointerCaptureRequest, RoutedEventOutput, RuntimeNamespace},
+        CommandDerivation, CommandOrigin, EventPhase, EventSource, MonotonicInstant, PointerId,
         SemanticCommand, WidgetInvalidation, WorkSequence,
     };
 
@@ -391,6 +537,9 @@ mod tests {
         assert_eq!(context.command_origin(), origin);
         assert_eq!(context.sequence().get(), 7);
         assert_eq!(context.instant().as_nanos(), 11);
+        assert_eq!(context.pointer_id(), None);
+        assert_eq!(context.physical_target(), None);
+        assert!(context.physical_path().is_empty());
         assert!(context.default_is_cancelable());
         assert!(!context.default_is_prevented());
         assert!(!context.propagation_is_stopped());
@@ -419,9 +568,51 @@ mod tests {
             output.mounted_work.as_slice(),
             [MountedEffect::LocalTask(_)]
         ));
+        assert_eq!(output.pointer_capture, None);
         assert!(output.propagation_stopped);
         assert!(output.default_prevented);
         assert!(!output.overflowed);
+        assert_eq!(output.remaining_outputs, 0);
+    }
+
+    #[test]
+    fn pointer_context_preserves_physical_facts_and_last_capture_request() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let root = namespace.__runtime_mounted_id(0, 1);
+        let target = namespace.__runtime_mounted_id(1, 1);
+        let path = [root, target.clone()];
+        let pointer_id =
+            PointerId::new(7).unwrap_or_else(|| unreachable!("test pointer is non-zero"));
+        let mut context = EventContext::<()>::new_pointer(
+            EventPhase::Target,
+            &target,
+            &target,
+            None,
+            CommandOrigin::__runtime_pointer(),
+            sequence(2),
+            MonotonicInstant::ZERO,
+            pointer_id,
+            Some(&target),
+            &path,
+            true,
+            false,
+            false,
+            2,
+        );
+
+        assert_eq!(context.pointer_id(), Some(pointer_id));
+        assert_eq!(context.physical_target(), Some(&target));
+        assert_eq!(context.physical_path(), path.as_slice());
+        context.capture_pointer();
+        context.release_pointer_capture();
+        let output = context.into_output();
+        assert!(matches!(
+            output.pointer_capture,
+            Some(PointerCaptureRequest::Release {
+                pointer_id: requested,
+                target: requested_target,
+            }) if requested == pointer_id && requested_target == target
+        ));
         assert_eq!(output.remaining_outputs, 0);
     }
 

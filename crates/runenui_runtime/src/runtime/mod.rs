@@ -8,6 +8,7 @@ mod helpers;
 mod ingress;
 mod lifecycle;
 mod mount;
+mod pointer;
 mod routed;
 mod scheduler;
 mod surface_publication;
@@ -71,6 +72,8 @@ pub use model::{
     ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
     SubscriptionDiagnostic, SubscriptionOwnerKind, TimerFiringOutcome, TimerStartOutcome,
 };
+use pointer::PointerRegistry;
+pub(in crate::runtime) use routed::{PointerDispatchFacts, RoutedIngressFacts, RoutedTransaction};
 use surface_publication::SurfacePublicationState;
 
 pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol> {
@@ -79,6 +82,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     queue: WorkQueue<Action>,
     trace: Trace,
     focus: FocusState,
+    pointer_registry: PointerRegistry,
     generation: u64,
     report: ReconciliationReport,
     status: RuntimeStatus,

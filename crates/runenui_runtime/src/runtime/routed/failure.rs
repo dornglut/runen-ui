@@ -2,7 +2,7 @@ use runenui_core::HostProtocol;
 
 use super::{
     super::{Runtime, RuntimeTerminalReason},
-    transaction::{RoutedCommandFacts, RoutedFailureFacts, RoutedTransaction},
+    transaction::{RoutedFailureFacts, RoutedIngressFacts, RoutedTransaction},
 };
 use crate::{
     MountedNodeId, TraceRecordKind, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure,
@@ -13,7 +13,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn handle_routed_admission_rejection(
         &mut self,
         capacity: TraceRoutedAdmissionRejection,
-        facts: &RoutedCommandFacts,
+        facts: &RoutedIngressFacts,
     ) {
         self.trace.record_reserved_event(
             facts.trace_reservation,
@@ -55,7 +55,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(super) fn record_processing_target_rejection(
         &mut self,
-        facts: &RoutedCommandFacts,
+        facts: &RoutedIngressFacts,
         status: TargetStatus,
     ) {
         let outcome = match status {
@@ -79,7 +79,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(super) fn poison_routed_facts(
         &mut self,
-        facts: &RoutedCommandFacts,
+        facts: &RoutedIngressFacts,
         failure: TraceRoutedIntegrityFailure,
         current_target: Option<&MountedNodeId>,
     ) {
@@ -97,7 +97,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
     }
 
-    pub(super) fn poison_transaction(
+    pub(in crate::runtime) fn poison_transaction(
         &mut self,
         transaction: &RoutedTransaction<Action>,
         failure: TraceRoutedIntegrityFailure,
@@ -106,7 +106,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.poison_routed_event(&transaction.failure_facts(), failure, current_target);
     }
 
-    pub(super) fn poison_routed_event(
+    pub(in crate::runtime) fn poison_routed_event(
         &mut self,
         facts: &RoutedFailureFacts,
         failure: TraceRoutedIntegrityFailure,

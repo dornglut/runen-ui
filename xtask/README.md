@@ -13,6 +13,8 @@ cargo validate
 
 The first command intentionally formats with the same stable rustfmt that validation and CI enforce. `cargo validate` launches `xtask` with `--locked`, resolves the workspace root from `CARGO_MANIFEST_DIR`, and remains repository-wide when invoked from a nested workspace directory.
 
+CI invokes the same `cargo validate` implementation after explicitly checking out and verifying the pull-request head SHA. The workflow does not use a synthetic merge ref as exact-head evidence and does not mutate repository contents. A marker-owned failure comment is diagnostic only and is removed by a later green run.
+
 Inspect repository authority and architecture concentration separately:
 
 ```powershell

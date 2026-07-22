@@ -202,7 +202,7 @@ pub(crate) fn process_application_action<App: UiApp>(
         );
         lifecycle_cancellation_lineage.insert(identity.generation(), (identity, invalidated));
     }
-    runtime.trace.record(
+    let tree_reconciled = runtime.trace.record(
         TraceRecordKind::TreeReconciled,
         Some(sequence),
         causal_parent,
@@ -210,6 +210,14 @@ pub(crate) fn process_application_action<App: UiApp>(
         Some(after),
         target,
     );
+    if runtime
+        .reconcile_pointer_lifetimes(sequence, tree_reconciled, &unmounted_work_owners)
+        .is_err()
+    {
+        let reason = mutation_phase.terminal_reason(RuntimeTerminalReason::TraceSequenceExhausted);
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     for owner in unmounted_work_owners {
         runtime
             .mounted_subscription_reconcile_pending

@@ -3,7 +3,7 @@
 use runenui_core::{Element, NoHostProtocol, UiApp, View, button, children, row};
 use runenui_runtime::{
     AppRuntime, FocusTargetResult, Key, KeyModifiers, KeyPhase, KeyboardEvent, KeyboardFocusResult,
-    LogicalPoint, PointerButton, PointerEvent, PointerPhase, PumpBudget,
+    LogicalPoint, PumpBudget,
 };
 
 #[derive(Debug)]
@@ -30,7 +30,7 @@ impl UiApp for App {
 }
 
 #[test]
-fn retained_focus_helpers_never_activate_or_emit_actions() {
+fn retained_keyboard_focus_helpers_never_activate_or_emit_actions() {
     let mut runtime = AppRuntime::<App>::mount(0);
     let a = runtime.index().nodes()[1].id().clone();
     assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
@@ -45,14 +45,6 @@ fn retained_focus_helpers_never_activate_or_emit_actions() {
     assert_eq!(runtime.state(), &0);
     runtime.pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX));
     assert_eq!(runtime.state(), &0);
-    let pointer = PointerEvent::new(
-        PointerPhase::Pressed,
-        LogicalPoint::new(1.0, 1.0).unwrap_or_else(|_| unreachable!()),
-        Some(PointerButton::Primary),
-        KeyModifiers::NONE,
-        Some(a),
-    );
-    runtime.handle_pointer_focus(&pointer);
 }
 
 #[test]

@@ -97,6 +97,30 @@ impl SurfaceTargetResolution {
     }
 }
 
+/// Valid retained geometry and its optional physical hit target for pointer input.
+pub(in crate::runtime) struct SurfacePointResolution {
+    target: Option<MountedNodeId>,
+    selection: SurfaceSnapshotSelection,
+}
+
+impl SurfacePointResolution {
+    pub(in crate::runtime) const fn snapshot_kind(&self) -> SurfaceSnapshotKind {
+        self.selection.snapshot_kind()
+    }
+
+    pub(in crate::runtime) const fn hit_test_generation(&self) -> u64 {
+        self.selection.hit_test_generation()
+    }
+
+    pub(in crate::runtime) const fn coordinate_revision(&self) -> u64 {
+        self.selection.coordinate_revision()
+    }
+
+    pub(in crate::runtime) fn into_target(self) -> Option<MountedNodeId> {
+        self.target
+    }
+}
+
 /// Sole runtime-owned state for current surface publication, redraw revision,
 /// and bounded displayed hit-test generations.
 pub(crate) struct SurfacePublicationState {
@@ -177,20 +201,53 @@ impl SurfacePublicationState {
         context
     }
 
+    /// Validates only runtime namespace and logical-surface identity.
+    pub(in crate::runtime) fn validate_surface_identity(
+        &self,
+        context: &SurfaceInputContext,
+    ) -> Result<SurfaceId, SurfaceSnapshotError> {
+        let Some((surface_id, _, _)) = self
+            .runtime_namespace
+            .__runtime_surface_context_parts(context)
+        else {
+            return Err(SurfaceSnapshotError::ForeignSurfaceContext);
+        };
+        if surface_id != self.surface_id {
+            return Err(SurfaceSnapshotError::ForeignSurface);
+        }
+        Ok(surface_id)
+    }
+
     pub(in crate::runtime) fn resolve_point(
         &self,
         context: &SurfaceInputContext,
         point: LogicalPoint,
     ) -> Result<SurfaceTargetResolution, SurfaceSnapshotError> {
+        let resolution = self.resolve_pointer_point(context, point)?;
+        let target = resolution.target.ok_or(SurfaceSnapshotError::NoTarget)?;
+        Ok(SurfaceTargetResolution {
+            target,
+            selection: resolution.selection,
+        })
+    }
+
+    /// Validates retained geometry and returns an optional physical hit target.
+    pub(in crate::runtime) fn resolve_pointer_point(
+        &self,
+        context: &SurfaceInputContext,
+        point: LogicalPoint,
+    ) -> Result<SurfacePointResolution, SurfaceSnapshotError> {
         let (snapshot, snapshot_kind) = self.validate_context(context)?;
         let target = snapshot
             .nodes
             .iter()
             .rev()
             .find(|node| node.bounds.contains(point))
-            .map(|node| node.id.clone())
-            .ok_or(SurfaceSnapshotError::NoTarget)?;
-        Ok(Self::resolution(snapshot, snapshot_kind, target))
+            .map(|node| node.id.clone());
+        Ok(SurfacePointResolution {
+            target,
+            selection: Self::selection(snapshot, snapshot_kind),
+        })
     }
 
     pub(in crate::runtime) fn validate_resolved_target(
@@ -215,17 +272,6 @@ impl SurfacePublicationState {
             snapshot_kind,
             hit_test_generation: snapshot.context.hit_test_generation(),
             coordinate_revision: snapshot.context.coordinate_revision(),
-        }
-    }
-
-    const fn resolution(
-        snapshot: &HitTestSnapshot,
-        snapshot_kind: SurfaceSnapshotKind,
-        target: MountedNodeId,
-    ) -> SurfaceTargetResolution {
-        SurfaceTargetResolution {
-            target,
-            selection: Self::selection(snapshot, snapshot_kind),
         }
     }
 

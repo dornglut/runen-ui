@@ -68,11 +68,9 @@ impl<'a> SurfaceArrangementBuilder<'a> {
                 }
             }
 
-            self.push_node(
-                resolved_tree,
-                child,
-                LogicalPoint::from_finite(cursor_x, cursor_y),
-            );
+            let origin = LogicalPoint::new(cursor_x, cursor_y)
+                .unwrap_or_else(|_| unreachable!("surface arrangement coordinates remain finite"));
+            self.push_node(resolved_tree, child, origin);
 
             match axis {
                 Axis::Vertical => cursor_y = finite_sum(cursor_y, child_size.height()),

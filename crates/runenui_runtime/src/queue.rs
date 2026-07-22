@@ -5,7 +5,7 @@
 use core::{fmt, num::NonZeroU64};
 use std::collections::VecDeque;
 
-use runenui_core::{CommandOrigin, SemanticCommand};
+use runenui_core::{CommandOrigin, PointerEvent, SemanticCommand, SurfaceInputContext};
 
 use crate::trace::TraceReservation;
 use crate::{MonotonicInstant, MountedNodeId, work::WorkGeneration};
@@ -94,6 +94,19 @@ pub(crate) struct SemanticCommandEnvelope {
     pub(crate) trace_reservation: TraceReservation,
 }
 
+pub(crate) enum PointerEnvelopePayload {
+    Event(PointerEvent),
+    StationaryRehit(SurfaceInputContext),
+}
+
+pub(crate) struct PointerEnvelope {
+    pub(crate) sequence: WorkSequence,
+    pub(crate) payload: PointerEnvelopePayload,
+    pub(crate) instant: MonotonicInstant,
+    pub(crate) causal_parent: Option<TraceSequence>,
+    pub(crate) trace_reservation: TraceReservation,
+}
+
 pub(crate) struct ApplicationActionEnvelope<Action> {
     pub(crate) sequence: WorkSequence,
     pub(crate) action: Action,
@@ -105,6 +118,7 @@ pub(crate) struct ApplicationActionEnvelope<Action> {
 pub(crate) enum WorkEnvelope<Action> {
     ApplicationAction(ApplicationActionEnvelope<Action>),
     SemanticCommand(SemanticCommandEnvelope),
+    Pointer(PointerEnvelope),
     EffectStart(SequencedWork),
     WorkCancellation(CancellationEnvelope),
     TimerFiring(SequencedWork),
@@ -137,6 +151,7 @@ pub(crate) enum QueueCommitError {
 pub(crate) struct CancelledQueue {
     pub(crate) envelopes: usize,
     pub(crate) command_trace_reservations: usize,
+    pub(crate) pointer_trace_reservations: usize,
 }
 
 pub(crate) struct WorkQueue<Action> {
@@ -246,6 +261,54 @@ impl<Action> WorkQueue<Action> {
         })
     }
 
+    pub(crate) fn push_pointer_preflighted(
+        &mut self,
+        event: PointerEvent,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_pointer_payload_preflighted(
+            PointerEnvelopePayload::Event(event),
+            instant,
+            causal_parent,
+            trace_reservation,
+        )
+    }
+
+    pub(crate) fn push_pointer_rehit_preflighted(
+        &mut self,
+        context: SurfaceInputContext,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_pointer_payload_preflighted(
+            PointerEnvelopePayload::StationaryRehit(context),
+            instant,
+            causal_parent,
+            trace_reservation,
+        )
+    }
+
+    fn push_pointer_payload_preflighted(
+        &mut self,
+        payload: PointerEnvelopePayload,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_control(|sequence| {
+            WorkEnvelope::Pointer(PointerEnvelope {
+                sequence,
+                payload,
+                instant,
+                causal_parent,
+                trace_reservation,
+            })
+        })
+    }
+
     pub(crate) fn push_cancellation(
         &mut self,
         generation: WorkGeneration,
@@ -314,6 +377,12 @@ impl<Action> WorkQueue<Action> {
         self.waiting.is_empty()
     }
 
+    pub(crate) fn has_pointer_envelopes(&self) -> bool {
+        self.waiting
+            .iter()
+            .any(|envelope| matches!(envelope, WorkEnvelope::Pointer(_)))
+    }
+
     pub(crate) fn cancel_all(&mut self) -> CancelledQueue {
         let command_trace_reservations = self
             .waiting
@@ -326,11 +395,22 @@ impl<Action> WorkQueue<Action> {
                 )
             })
             .count();
+        let pointer_trace_reservations = self
+            .waiting
+            .iter()
+            .filter(|envelope| {
+                matches!(
+                    envelope,
+                    WorkEnvelope::Pointer(pointer) if pointer.trace_reservation.is_active()
+                )
+            })
+            .count();
         let envelopes = self.waiting.len();
         self.waiting.clear();
         CancelledQueue {
             envelopes,
             command_trace_reservations,
+            pointer_trace_reservations,
         }
     }
 

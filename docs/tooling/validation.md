@@ -38,6 +38,28 @@ The Markdown checker deliberately validates inline Markdown links to repository 
 
 Install both Rust channels through `rustup`. The pinned `rust-toolchain.toml` supplies Rust 1.93.0 for reproducible defaults; latest stable with rustfmt and Clippy is also required. See the [toolchain policy](../toolchain-policy.md).
 
+## Exact-head CI contract
+
+Pull-request CI explicitly checks out `github.event.pull_request.head.sha` and
+verifies that `git rev-parse HEAD` equals that SHA before validation. GitHub's
+default synthetic pull-request merge ref does **not** qualify as exact-head
+evidence. A successful run becomes stale as soon as the feature head moves.
+
+The CI workflow remains read-only with respect to repository contents. It may
+write one marker-owned diagnostic comment on the pull request when validation
+fails. That comment records the exact head, workflow run, and a bounded failure
+excerpt; a later successful exact-head run removes it. The complete Actions log
+remains the authoritative diagnostic record.
+
+Do not add branch-mutating formatter, fixer, or self-commit workflows as a
+substitute for ordinary reviewed repository edits. Automated contributors should
+apply changes through the repository connector or normal Git commits and let the
+shared CI baseline validate them. Ask the repository owner to run local commands
+only when a required operation is genuinely unavailable through the connected
+repository and CI surfaces.
+
+## Focused commands
+
 Inspect the full fatal and diagnostic repository report with:
 
 ```powershell
@@ -52,3 +74,5 @@ cargo xtask check-links
 ```
 
 To verify read-only behavior after committing a slice, run `git status --short`, `cargo validate`, then `git status --short` again. Both status outputs must be empty. Also run `git diff --check` and any slice-specific context, metadata, platform, benchmark, or release checks required by the roadmap.
+
+Local validation is useful preflight but does not replace successful exact-head CI. Conversely, connector-driven work should not be transferred to the repository owner merely to reproduce checks that GitHub Actions already runs authoritatively.

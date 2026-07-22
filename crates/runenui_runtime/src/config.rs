@@ -13,6 +13,7 @@ const DEFAULT_SURFACE_SNAPSHOT_RETENTION: usize = 2;
 pub struct RuntimeLimits {
     waiting_envelopes: usize,
     transaction_outputs: usize,
+    pointer_streams: usize,
     local_tasks: usize,
     send_tasks: usize,
     timers: usize,
@@ -32,6 +33,13 @@ impl RuntimeLimits {
     #[must_use]
     pub const fn with_transaction_outputs(mut self, limit: usize) -> Self {
         self.transaction_outputs = limit;
+        self
+    }
+
+    /// Returns these limits with a different active pointer-stream capacity.
+    #[must_use]
+    pub const fn with_pointer_streams(mut self, limit: usize) -> Self {
+        self.pointer_streams = limit;
         self
     }
 
@@ -87,6 +95,12 @@ impl RuntimeLimits {
         self.transaction_outputs
     }
 
+    /// Returns the maximum number of active pointer streams.
+    #[must_use]
+    pub const fn pointer_streams(self) -> usize {
+        self.pointer_streams
+    }
+
     #[must_use]
     pub const fn local_tasks(self) -> usize {
         self.local_tasks
@@ -128,6 +142,7 @@ impl Default for RuntimeLimits {
         Self {
             waiting_envelopes: DEFAULT_WAITING_ENVELOPE_LIMIT,
             transaction_outputs: DEFAULT_RUNTIME_LIMIT,
+            pointer_streams: DEFAULT_RUNTIME_LIMIT,
             local_tasks: DEFAULT_RUNTIME_LIMIT * 2,
             send_tasks: DEFAULT_RUNTIME_LIMIT * 2,
             timers: DEFAULT_RUNTIME_LIMIT * 2,

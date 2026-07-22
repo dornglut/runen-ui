@@ -12,13 +12,9 @@ use runenui_core::{CommandOrigin, SemanticCommand, UiApp, View};
 
 use crate::{
     FocusState, FocusTargetResult, Key, KeyPhase, KeyboardEvent, MountedNodeId, MountedTreeIndex,
-    PointerButton, PointerEvent, PointerPhase, PumpBudget, PumpReport, ReconciliationReport,
-    RuntimeConfig, RuntimeStatus, ShutdownReport, SubmitActionResult, SurfaceBuildContext,
-    SurfacePublication, Trace, WorkSequence,
-    mounted::TargetStatus,
-    policy::{KeyboardFocusResult, PointerFocusResult},
-    pump,
-    queue::ApplicationActionOrigin,
+    PumpBudget, PumpReport, ReconciliationReport, RuntimeConfig, RuntimeStatus, ShutdownReport,
+    SubmitActionResult, SurfaceBuildContext, SurfacePublication, Trace, WorkSequence,
+    mounted::TargetStatus, policy::KeyboardFocusResult, pump, queue::ApplicationActionOrigin,
     runtime::Runtime,
 };
 
@@ -76,6 +72,22 @@ impl<App: UiApp> AppRuntime<App> {
         self.runtime.submit_command(target, command, origin)
     }
 
+    /// Appends one immutable pointer event to the canonical FIFO.
+    ///
+    /// Acceptance performs no callback, hit-test mutation, focus change, or
+    /// interaction-state mutation. Processing occurs later through [`Self::pump`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact unaccepted event when the queue, work sequence, trace,
+    /// or runtime status cannot accept it.
+    pub fn submit_pointer(
+        &mut self,
+        event: crate::PointerEvent,
+    ) -> Result<crate::PointerSubmission, crate::SubmitPointerError> {
+        self.runtime.submit_pointer(event)
+    }
+
     /// Processes at most the requested number of canonical work envelopes.
     pub fn pump(&mut self, budget: PumpBudget) -> PumpReport {
         self.runtime.acknowledge_wake();
@@ -100,7 +112,7 @@ impl<App: UiApp> AppRuntime<App> {
         self.runtime.advance_time(duration)
     }
 
-    /// Replaces the send-task executor used by later start envelopes.
+    /// Replaces the send-task executor used for later start envelopes.
     pub fn set_send_task_executor(&mut self, executor: impl crate::SendTaskExecutor + 'static) {
         self.runtime.set_send_task_executor(executor);
     }

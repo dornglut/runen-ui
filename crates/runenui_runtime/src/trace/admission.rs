@@ -14,12 +14,30 @@ impl MandatoryTracePlan {
         Self { records }
     }
 
+    pub(crate) const fn none() -> Self {
+        Self::exact(0)
+    }
+
     pub(crate) const fn action_acceptance() -> Self {
         Self::exact(1)
     }
 
     pub(crate) const fn command_acceptance() -> Self {
         Self::exact(1)
+    }
+
+    pub(crate) const fn pointer_acceptance() -> Self {
+        Self::exact(1)
+    }
+
+    /// Maximum stream/context/target outcome facts before routed callbacks begin.
+    pub(crate) const fn pointer_processing() -> Self {
+        Self::exact(4)
+    }
+
+    /// Maximum stream/default/close facts committed after pointer callbacks.
+    pub(crate) const fn pointer_commit() -> Self {
+        Self::exact(4)
     }
 
     pub(crate) const fn surface_command_acceptance() -> Self {
@@ -86,9 +104,9 @@ impl MandatoryTracePlan {
     }
 }
 
-/// Private authority retained by one accepted command for exactly one future
-/// processing outcome. Disabled tracing carries a no-op reservation so command
-/// behavior remains identical when canonical retention is disabled.
+/// Private authority retained by one accepted routed ingress envelope for
+/// exactly one future processing outcome. Disabled tracing carries a no-op
+/// reservation so behavior remains identical when canonical retention is disabled.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct TraceReservation {
     active: bool,
@@ -97,6 +115,12 @@ pub(crate) struct TraceReservation {
 impl TraceReservation {
     pub(super) const DISABLED: Self = Self { active: false };
     pub(super) const ACTIVE: Self = Self { active: true };
+
+    /// Creates an unreserved continuation after an earlier processing reservation
+    /// was consumed. The next mutation boundary must still perform full admission.
+    pub(crate) const fn continuation() -> Self {
+        Self::DISABLED
+    }
 
     pub(crate) const fn is_active(self) -> bool {
         self.active

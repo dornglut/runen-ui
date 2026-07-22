@@ -1,8 +1,8 @@
 use core::num::NonZeroU64;
 
 use runenui_core::{
-    CommandOrigin, ElementId, EventPhase, MonotonicInstant, SemanticCommand, WidgetInvalidation,
-    WorkKey,
+    CommandOrigin, ElementId, EventPhase, MonotonicInstant, PointerCaptureKind, PointerId,
+    PointerPhase, SemanticCommand, WidgetInvalidation, WorkKey,
 };
 
 use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
@@ -88,6 +88,45 @@ pub enum TraceRecordKind {
     RuntimeMounted,
     ActionSubmissionAccepted,
     CommandSubmissionAccepted,
+    PointerSubmissionAccepted {
+        pointer_id: PointerId,
+        phase: PointerPhase,
+    },
+    PointerIngressRejected {
+        pointer_id: PointerId,
+        phase: PointerPhase,
+        outcome: TracePointerRejection,
+    },
+    PointerStreamRegistered {
+        pointer_id: PointerId,
+        registration_sequence: u64,
+    },
+    PointerStreamObserved {
+        pointer_id: PointerId,
+    },
+    PointerStreamClosed {
+        pointer_id: PointerId,
+    },
+    PointerPhysicalTargetResolved {
+        pointer_id: PointerId,
+        snapshot: TraceSurfaceSnapshotKind,
+        hit_test_generation: u64,
+        coordinate_revision: u64,
+    },
+    PointerCaptureRequestRejected {
+        pointer_id: PointerId,
+        outcome: TracePointerCaptureRequestRejection,
+    },
+    PointerIntegrityCleanupCommitted {
+        pointer_id: PointerId,
+        pressed: bool,
+        capture: bool,
+        physical_path: bool,
+    },
+    PointerCaptureNotificationSuppressed {
+        pointer_id: PointerId,
+        kind: PointerCaptureKind,
+    },
     SurfaceContextAccepted {
         ingress: TraceSurfaceIngressKind,
         snapshot: TraceSurfaceSnapshotKind,
@@ -229,6 +268,35 @@ pub enum TraceTargetRejection {
     Foreign,
     Stale,
     Missing,
+}
+
+/// Structured pointer rejection without route or interaction mutation.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TracePointerRejection {
+    ForeignRuntime,
+    ForeignSurface,
+    RetiredGeneration,
+    MissingGeneration,
+    CoordinateRevisionMismatch,
+    NoTarget,
+    DuplicateStream,
+    MissingStream,
+    RegistryFull,
+    RegistrationSequenceExhausted,
+    DeviceMismatch,
+    DeviceKindMismatch,
+    ForeignStreamSurface,
+}
+
+/// Structured rejection of one staged pointer-capture mutation request.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TracePointerCaptureRequestRejection {
+    PointerMismatch,
+    TargetNotInTransaction,
+    TargetUnavailable,
+    ReleaseNotOwner,
 }
 
 /// Checked displayed-surface ingress path.

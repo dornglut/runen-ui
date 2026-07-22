@@ -207,6 +207,7 @@ pub(crate) fn pump<App: UiApp>(
                 runtime.process_semantic_command(envelope);
                 ProcessApplicationActionOutcome::Completed
             }
+            WorkEnvelope::Pointer(envelope) => runtime.process_pointer_envelope(envelope),
             WorkEnvelope::EffectStart(work) => {
                 runtime.process_effect_start(work.sequence, work.generation);
                 ProcessApplicationActionOutcome::Completed

@@ -10,15 +10,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn apply_semantic_default(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
+        command: SemanticCommand,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
         let kind = if transaction.default_prevented {
-            TraceRecordKind::SemanticDefaultSuppressed {
-                command: transaction.command,
-            }
+            TraceRecordKind::SemanticDefaultSuppressed { command }
         } else {
-            TraceRecordKind::SemanticDefaultApplied {
-                command: transaction.command,
-            }
+            TraceRecordKind::SemanticDefaultApplied { command }
         };
         transaction.parent = self.trace.record_event(
             kind,
@@ -30,7 +27,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Some(&transaction.target),
             transaction.origin,
         );
-        if transaction.default_prevented || transaction.command != SemanticCommand::Activate {
+        if transaction.default_prevented || command != SemanticCommand::Activate {
             return Ok(());
         }
         transaction.failure_current_target = Some(transaction.target.clone());

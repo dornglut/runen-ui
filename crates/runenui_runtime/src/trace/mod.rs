@@ -8,9 +8,10 @@ mod store;
 
 pub(crate) use admission::{MandatoryTracePlan, TraceReservation};
 pub use model::{
-    TraceConfig, TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceIngressKind, TraceSurfaceRejection,
-    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTimerTerminalOutcome,
-    TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
+    TraceConfig, TracePointerCaptureRequestRejection, TracePointerRejection, TraceRecord,
+    TraceRecordKind, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
+    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget,
+    TraceTargetRejection, TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity,
+    TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use store::Trace;

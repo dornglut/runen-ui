@@ -17,14 +17,40 @@ use crate::{
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(super) fn commit_routed_transaction(
+    pub(in crate::runtime) fn commit_routed_transaction(
+        &mut self,
+        transaction: RoutedTransaction<Action>,
+    ) -> Result<(), ()> {
+        self.commit_routed_transaction_with(transaction, |_, transaction| {
+            if transaction.pointer_capture_requests.is_empty() {
+                Ok(())
+            } else {
+                Err(())
+            }
+        })
+    }
+
+    pub(in crate::runtime) fn commit_routed_transaction_with(
         &mut self,
         mut transaction: RoutedTransaction<Action>,
+        pre_output_commit: impl FnOnce(&mut Self, &mut RoutedTransaction<Action>) -> Result<(), ()>,
     ) -> Result<(), ()> {
         #[cfg(feature = "internal-test-seams")]
         if self.routed_commit_failure_for_test {
             return Err(());
         }
+        pre_output_commit(self, &mut transaction)?;
+        if !transaction.pointer_capture_requests.is_empty() {
+            return Err(());
+        }
+        let plan = self.plan_routed_outputs(&mut transaction)?;
+        self.commit_routed_plan(transaction, plan)
+    }
+
+    fn plan_routed_outputs(
+        &self,
+        transaction: &mut RoutedTransaction<Action>,
+    ) -> Result<PlannedApplicationTransaction<Action, Protocol>, ()> {
         let subscription_dirty: Vec<_> = core::mem::take(&mut transaction.subscription_dirty)
             .into_iter()
             .filter(|owner| !self.mounted_subscription_reconcile_pending.contains(owner))
@@ -41,7 +67,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ledger,
             });
         }
-        let plan = PlannedApplicationTransaction::plan(
+        PlannedApplicationTransaction::plan(
             ApplicationTransactionInput {
                 lifecycle_invalidated: Vec::new(),
                 mounted_subscription_dirty: subscription_dirty,
@@ -57,8 +83,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &self.work,
             &self.queue,
         )
-        .map_err(|_| ())?;
-        self.commit_routed_plan(transaction, plan)
+        .map_err(|_| ())
     }
 
     fn commit_routed_plan(
@@ -93,6 +118,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .map_err(|_| ())?;
             self.mounted_subscription_reconcile_pending.push(owner);
         }
+        self.append_collected_routed_outputs(
+            transaction.notification_outputs,
+            transaction.instant,
+        )?;
         self.append_collected_routed_outputs(transaction.routed_outputs, transaction.instant)?;
         self.append_collected_routed_outputs(transaction.default_outputs, transaction.instant)?;
         self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
