@@ -59,12 +59,118 @@ use std::{
 };
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, Container, EdgeInsets, Element, IntoEffects,
-    LogicalLength, NoHostProtocol, SubscriptionSet, UiApp, View, Views, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic, WidgetInvalidation,
-    WidgetMeasure, WidgetMountContext, WidgetPaintProof, WidgetSemanticProof, WidgetTextKind,
+    Axis, ChildLayout, ChildLayoutWidget, Container, EdgeInsets, Element, EventContext, EventPhase,
+    FocusEventKind, FocusReason, IntoEffects, LogicalLength, NoHostProtocol, SubscriptionSet,
+    UiApp, UiEvent, View, Views, Widget, WidgetActivation, WidgetActivationContext,
+    WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure,
+    WidgetMountContext, WidgetPaintProof, WidgetSemanticProof, WidgetTextKind,
     WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children, column, container, text,
 };
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternalFocusFact {
+    pub widget: &'static str,
+    pub phase: EventPhase,
+    pub kind: FocusEventKind,
+    pub reason: FocusReason,
+    pub target_is_callback_target: bool,
+    pub has_related_target: bool,
+}
+
+#[derive(Debug)]
+pub struct ExternalFocusWidget {
+    name: &'static str,
+    log: Rc<RefCell<Vec<ExternalFocusFact>>>,
+    actionable: bool,
+    prevent_focus_request: bool,
+}
+
+impl ExternalFocusWidget {
+    #[must_use]
+    pub const fn new(
+        name: &'static str,
+        log: Rc<RefCell<Vec<ExternalFocusFact>>>,
+        actionable: bool,
+    ) -> Self {
+        Self {
+            name,
+            log,
+            actionable,
+            prevent_focus_request: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn prevent_focus_request(mut self, prevent: bool) -> Self {
+        self.prevent_focus_request = prevent;
+        self
+    }
+}
+
+impl Widget<()> for ExternalFocusWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(self.actionable)
+    }
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> WidgetEventOutput {
+        if self.prevent_focus_request
+            && event
+                .as_semantic_command()
+                .is_some_and(|event| event.command() == runenui_core::SemanticCommand::RequestFocus)
+        {
+            context.prevent_default();
+        }
+        if let Some(event) = event.as_focus() {
+            self.log.borrow_mut().push(ExternalFocusFact {
+                widget: self.name,
+                phase: context.phase(),
+                kind: event.kind(),
+                reason: event.reason(),
+                target_is_callback_target: event.target() == context.current_target(),
+                has_related_target: context.related_target().is_some(),
+            });
+            context.prevent_default();
+        }
+        WidgetEventOutput::none()
+    }
+}
+
+impl ChildLayoutWidget<()> for ExternalFocusWidget {
+    fn child_layout(&self, (): &Self::State) -> ChildLayout {
+        ChildLayout::Linear {
+            axis: Axis::Horizontal,
+        }
+    }
+}
+
+#[must_use]
+pub fn external_focus_panel(log: Rc<RefCell<Vec<ExternalFocusFact>>>) -> Element<()> {
+    container(
+        ExternalFocusWidget::new("root", Rc::clone(&log), false),
+        vec![
+            Element::new(ExternalFocusWidget::new("a", Rc::clone(&log), true))
+                .id("focus.a")
+                .key("a")
+                .focusable(true),
+            Element::new(ExternalFocusWidget::new("b", log, true))
+                .id("focus.b")
+                .key("b")
+                .focusable(true),
+        ],
+    )
+    .id("focus.root")
+    .key("root")
+    .into_element()
+}
 
 /// Downstream-observable mounted-subscription lifecycle facts.
 #[derive(Debug, Default)]
