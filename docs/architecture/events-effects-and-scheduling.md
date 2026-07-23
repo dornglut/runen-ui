@@ -20,18 +20,22 @@ M4B   deterministic scheduler and application work (complete and accepted)
 M4C0  conformance ownership and decision closure (complete and accepted)
 M4C1  routed semantic-command kernel (complete and accepted)
 M4C2  displayed-generation surface context (complete and accepted)
-M4C3  pointer lifecycle (next implementation slice; operational prerequisites tracked publicly)
-M4C4  focus scopes and modality (blocked by M4C3)
+M4C3  pointer lifecycle (complete, owner-accepted, and squash-merged)
+M4C4  focus scopes and modality (next after the post-merge authority update; not started)
 M4C5  keyboard, text, IME, automation, and M4C closure (blocked by M4C4)
 M4D1  complete trace schema (blocked by M4C5)
 M4D2  export and sink (blocked by M4D1)
 M4D3  replay and milestone closure (blocked by M4D2)
 ```
 
-M4C1 and M4C2 are complete and owner-accepted. M4C3 is the next
-implementation slice; its operational prerequisites are owned by the public
-work-tracking system. M4C4–M4D3 remain blocked in sequence. M4B's implemented
-live-only producer authority remains unchanged, and M4 is active and incomplete.
+M4C1, M4C2, and M4C3 are complete and owner-accepted. M4C3's accepted feature
+head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
+`29996101708` and was squash-merged in PR #15 as
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 has not started and becomes
+the next implementation slice only after the post-merge authority update and
+its accepted `main` are recorded; M4C5–M4D3 remain blocked in sequence. M4B's
+implemented live-only producer authority remains unchanged, and M4 is active
+and incomplete.
 
 ## Current application-work and scheduler implementation
 
@@ -427,10 +431,10 @@ the accepted M4C delivery charter is implementation/delivery authority, and the
 [M4 conformance matrix](m4-conformance-matrix.md) is observable acceptance
 authority.
 
-M4C1 and M4C2 are complete and owner-accepted. M4C3 is the next
-implementation slice; its operational prerequisites are owned by the public
-work-tracking system. M4C4–M4D3 remain blocked in sequence, and M4 remains
-active and incomplete.
+M4C1, M4C2, and M4C3 are complete and owner-accepted. M4C4 has not started and
+becomes the next implementation slice only after the post-merge authority
+update and its accepted `main` are recorded. M4C5–M4D3 remain blocked in
+sequence, and M4 remains active and incomplete.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control

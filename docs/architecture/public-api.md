@@ -14,9 +14,13 @@ M4C1 and M4C2 are complete, owner-accepted, and squash-merged in
 and
 [archive PR #99](../history/public-repository-migration.md#accepted-imported-milestone-history).
 M4C2 used the documented infrastructure-only CI waiver after exact-head
-local validation and final review passed. M4C3 is proof-complete on the active
-implementation branch and awaits owner acceptance and merge; M4C4–M4D3 remain
-blocked in sequence. M4 is active and incomplete. The accepted
+local validation and final review passed. M4C3 was owner-accepted at feature
+head `01b7ae018abeaff8d316764afba5bc8cde074381` after exact-head CI run
+`29996101708` succeeded, then squash-merged in PR #15 as
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 has not started and becomes
+the next implementation slice only after the post-merge authority update and
+its accepted `main` are recorded; M4C5–M4D3 remain blocked in sequence. M4 is
+active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
 implemented public API until each slice is accepted. The

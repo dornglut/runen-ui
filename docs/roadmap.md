@@ -284,7 +284,9 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Next slice:** M4C1 and M4C2 are complete, owner-accepted, and merged; M4C3 is the next implementation slice.
+**Next slice:** M4C1, M4C2, and M4C3 are complete, owner-accepted, and merged;
+M4C4 becomes the next implementation slice only after the post-merge M4C3
+authority update and its resulting accepted `main` are recorded.
 
 #### M4C1 — Routed semantic-command kernel
 
@@ -371,9 +373,8 @@ no job steps; the owner recorded the documented infrastructure-only waiver.
 
 #### M4C3 — Pointer lifecycle
 
-**Status:** `proof-complete` on the active implementation branch; owner
-acceptance and merge remain pending. Exact operational state is owned by the
-public M4C3 issue.
+**Status:** `complete`; owner-accepted and squash-merged in
+[PR #15](https://github.com/Crystonix/runen-ui/pull/15).
 
 **Goal:** Implement pointer/device identity, physical path, pressed ownership,
 true capture, deterministic boundaries, logical scrolling, terminal unavailable-
@@ -391,21 +392,29 @@ production scrolling mutation, native device translation, or M6 hit scenes.
 and stationary-geometry proofs, terminal negative cleanup, slice-local causal
 trace, stable/MSRV validation, and exact-head CI.
 
-**Exit criteria:** Every M4C3 row is proof-complete; primary activation is
+**Exit criteria:** Every M4C3 row is owner-accepted; primary activation is
 release-inside; no press-only pointer helper remains.
 
-**Next unblocked slice:** M4C4 after M4C3 owner acceptance and merge.
+**Completion record:** The accepted feature head
+`01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
+`29996101708` and was owner-accepted. PR #15 was squash-merged as
+`2fc165b9386f55c061d61232400375b13ad175bf`. All 28 M4C3 rows are
+`owner-accepted`; M4 remains active and incomplete.
+
+**Next unblocked slice:** M4C4 after this post-merge authority update is merged
+and its resulting accepted `main` is recorded. M4C4 has not started.
 
 #### M4C4 — Focus scopes and modality
 
-**Status:** `blocked` pending M4C3 acceptance.
+**Status:** `blocked` pending merge of the post-M4C3 authority update and record
+of its resulting accepted `main`.
 
 **Goal:** Implement root/nested focus scopes, next/previous and directional
 navigation, exact-generation restoration, focus transition/focus-within order,
 retained modality, and normalized-controller navigation.
 
-**Dependencies:** Accepted and merged M4C3 pointer lifecycle and current layout
-rectangles.
+**Dependencies:** Accepted and merged M4C3 pointer lifecycle, the accepted
+post-merge authority update, and current layout rectangles.
 
 **Included work:** All `FOCUS-*`, `DF-01`–`DF-20`, and `MOD-*` rows.
 
