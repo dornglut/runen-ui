@@ -8,13 +8,19 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
-- Implemented the proof-complete M4C3 host-neutral pointer lifecycle on the
-  active branch: checked pointer/device identity and payloads, canonical queued
-  ingress, exact validation/recovery, per-pointer pressed/capture ownership,
-  ordered boundary/capture notifications, stationary re-hit, terminal-context
-  cleanup, release-inside activation, route-only logical scrolling, public
-  Counter/downstream proofs, and slice-local causal trace. Owner acceptance and
-  merge remain pending; M4C4 stays blocked.
+- Owner-accepted and squash-merged the M4C3 host-neutral pointer lifecycle in
+  [PR #15](https://github.com/Crystonix/runen-ui/pull/15): checked
+  pointer/device identity and payloads, canonical queued ingress, exact
+  validation/recovery, per-pointer pressed/capture ownership, ordered boundary/
+  capture notifications, stationary re-hit, terminal-context cleanup, release-
+  inside activation, route-only logical scrolling, public Counter/downstream
+  proofs, and slice-local causal trace. The accepted feature head
+  `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
+  `29996101708`; the squash merge commit is
+  `2fc165b9386f55c061d61232400375b13ad175bf`. All 28 M4C3 rows are
+  `owner-accepted`. M4C4 remains unstarted and becomes the next implementation
+  slice only after this authority update merges and its accepted `main` is
+  recorded; M4 remains active and incomplete.
 - Added the deterministic, network-free `cargo xtask audit-repository` command
   with stable human/JSON output, fatal matrix/workspace/dependency/authority/
   license/canonical-runtime checks, non-fatal concentration diagnostics, and

@@ -40,11 +40,13 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
-M4A, M4B, M4C0, M4C1, and M4C2 are complete and owner-accepted. M4C3 is
-the next implementation slice; its public governance, tooling, and readiness
-prerequisites are recorded in the work-tracking system. M4C4–M4C5 and
-M4D1–M4D3 remain blocked in sequence. The target M4 pipeline is active and
-incomplete.
+M4A, M4B, M4C0, M4C1, M4C2, and M4C3 are complete and owner-accepted. The
+accepted M4C3 feature head `01b7ae018abeaff8d316764afba5bc8cde074381`
+passed exact-head CI run `29996101708` and was squash-merged in PR #15 as
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 has not started and becomes
+the next implementation slice only after the post-merge authority update and
+its accepted `main` are recorded; M4C5 and M4D1–M4D3 remain blocked in sequence.
+The target M4 pipeline is active and incomplete.
 
 ```text
 Application-owned State + Action
