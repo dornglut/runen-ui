@@ -47,30 +47,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ));
             }
         };
-        if matches!(phase, PointerPhase::Down) {
-            let Some(changed_button) = work.event.changed_button() else {
-                return Err(self.reject_pointer(
-                    work.sequence,
-                    work.causal_parent,
-                    work.trace_reservation,
-                    pointer_id,
-                    phase,
-                    crate::trace::TracePointerRejection::DuplicateStream,
-                ));
-            };
-            let changed_button_was_active = existing
-                .as_ref()
-                .is_some_and(|stream| stream.buttons.contains(changed_button));
-            if changed_button_was_active || !work.event.buttons().contains(changed_button) {
-                return Err(self.reject_pointer(
-                    work.sequence,
-                    work.causal_parent,
-                    work.trace_reservation,
-                    pointer_id,
-                    phase,
-                    crate::trace::TracePointerRejection::DuplicateStream,
-                ));
-            }
+        if matches!(phase, PointerPhase::Down) && existing.is_some() {
+            return Err(self.reject_pointer(
+                work.sequence,
+                work.causal_parent,
+                work.trace_reservation,
+                pointer_id,
+                phase,
+                crate::trace::TracePointerRejection::DuplicateStream,
+            ));
         }
         if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) && existing.is_none() {
             return Err(self.reject_pointer(
