@@ -134,6 +134,12 @@
 //! let mut runtime = AppRuntime::<App>::mount(());
 //! runtime.dispatch(());
 //! ```
+//!
+//! M4C3 removes the public pointer proof helpers and unchecked target path:
+//!
+//! ```compile_fail
+//! use runenui_runtime::{InputEvent, PointerFocusResult, resolve_pointer_event_target};
+//! ```
 
 #![forbid(unsafe_code)]
 
@@ -148,6 +154,7 @@ mod focus;
 mod input;
 mod measurement;
 mod mounted;
+mod pointer;
 mod policy;
 pub mod prelude;
 mod pump;
@@ -177,11 +184,7 @@ pub use config::{RuntimeConfig, RuntimeLimits};
 pub use constraints::{AxisConstraints, AxisLimit, LayoutConstraints};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
 pub use focus::{FocusState, FocusTargetResult};
-pub use input::{
-    InputEvent, Key, KeyModifiers, KeyPhase, KeyboardEvent, LogicalPoint, LogicalPointError,
-    PointerButton, PointerEvent, PointerPhase, resolve_pointer_event_target,
-    resolve_pointer_input_event_target,
-};
+pub use input::{Key, KeyPhase, KeyboardEvent};
 pub use measurement::{
     BaselineError, DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement,
     TextMeasurementKind, TextMeasurementRequest,
@@ -190,11 +193,17 @@ pub use mounted::{
     DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef, MountedNodeId, MountedNodeRef,
     MountedTreeIndex, SemanticNodeId,
 };
-pub use policy::{KeyboardFocusResult, PointerFocusResult};
+pub use pointer::{PointerSubmission, SubmitPointerError, SubmitPointerErrorKind};
+pub use policy::KeyboardFocusResult;
 pub use pump::{PumpBudget, PumpBudgetExhaustion, PumpOutcome, PumpReport};
 pub use queue::{SubmitActionError, SubmitActionErrorKind, SubmitActionResult, WorkSequence};
 pub use redraw::{RedrawAcknowledgeError, RedrawRequest};
-pub use runenui_core::{SurfaceId, SurfaceInputContext};
+pub use runenui_core::{
+    InputDeviceId, KeyModifiers, LogicalDelta, LogicalDeltaError, LogicalPoint, LogicalPointError,
+    LogicalScrollCommand, PointerBoundaryEvent, PointerBoundaryKind, PointerButton, PointerButtons,
+    PointerCaptureEvent, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, SurfaceId, SurfaceInputContext,
+};
 pub use runtime::{
     HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
     ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
@@ -210,10 +219,11 @@ pub use surface_command::{
 };
 pub use surface_publication::SurfacePublication;
 pub use trace::{
-    Trace, TraceConfig, TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceIngressKind, TraceSurfaceRejection,
-    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTimerTerminalOutcome,
-    TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
+    Trace, TraceConfig, TracePointerCaptureRequestRejection, TracePointerRejection, TraceRecord,
+    TraceRecordKind, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
+    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget,
+    TraceTargetRejection, TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity,
+    TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::host_request::{HostRequestRef, HostRequestToken};

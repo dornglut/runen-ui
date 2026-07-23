@@ -61,14 +61,18 @@ impl Trace {
     }
 
     pub(crate) fn reserve_command_outcome(&mut self) -> Option<TraceReservation> {
-        self.reserve_command_outcome_with_prefix(MandatoryTracePlan::command_acceptance())
+        self.reserve_outcome_with_prefix(MandatoryTracePlan::command_acceptance())
+    }
+
+    pub(crate) fn reserve_pointer_outcome(&mut self) -> Option<TraceReservation> {
+        self.reserve_outcome_with_prefix(MandatoryTracePlan::pointer_acceptance())
     }
 
     pub(crate) fn reserve_surface_command_outcome(&mut self) -> Option<TraceReservation> {
-        self.reserve_command_outcome_with_prefix(MandatoryTracePlan::surface_command_acceptance())
+        self.reserve_outcome_with_prefix(MandatoryTracePlan::surface_command_acceptance())
     }
 
-    fn reserve_command_outcome_with_prefix(
+    fn reserve_outcome_with_prefix(
         &mut self,
         prefix: MandatoryTracePlan,
     ) -> Option<TraceReservation> {
@@ -102,7 +106,7 @@ impl Trace {
             self.reserved_records = self
                 .reserved_records
                 .checked_sub(1)
-                .unwrap_or_else(|| unreachable!("accepted command retains one trace reservation"));
+                .unwrap_or_else(|| unreachable!("accepted ingress retains one trace reservation"));
         }
     }
 
@@ -110,7 +114,7 @@ impl Trace {
         self.reserved_records = self
             .reserved_records
             .checked_sub(count)
-            .unwrap_or_else(|| unreachable!("queued commands retain exact trace reservations"));
+            .unwrap_or_else(|| unreachable!("queued ingress retains exact trace reservations"));
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -137,6 +141,17 @@ impl Trace {
             current_target,
             origin,
         )
+    }
+
+    pub(crate) fn record_reserved(
+        &mut self,
+        reservation: TraceReservation,
+        kind: TraceRecordKind,
+        work_sequence: WorkSequence,
+        causal_parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        self.release_reservation(reservation);
+        self.record(kind, Some(work_sequence), causal_parent, None, None, None)
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -105,6 +105,20 @@
 //! let _ = EventContext::<()>::into_output;
 //! ```
 //!
+//! Pointer ingress never exposes an unchecked mounted target field:
+//!
+//! ```compile_fail
+//! use runenui_core::PointerEvent;
+//! let _ = PointerEvent::with_target;
+//! ```
+//!
+//! Logical coordinates expose only checked public construction:
+//!
+//! ```compile_fail
+//! use runenui_core::LogicalPoint;
+//! let _ = LogicalPoint::from_finite;
+//! ```
+//!
 //! Transient elements cannot execute mounted lifecycle or capabilities:
 //!
 //! ```compile_fail
@@ -171,6 +185,7 @@ mod event;
 mod event_context;
 mod identity;
 mod layout;
+mod pointer;
 pub mod prelude;
 mod runtime_protocol;
 mod style;
@@ -211,7 +226,7 @@ pub use event_context::EventContext;
 #[doc(hidden)]
 pub mod __runtime {
     pub use crate::effects::{Effect, HostRequestEffect, MountedEffect};
-    pub use crate::event_context::{EventContextOutput, RoutedEventOutput};
+    pub use crate::event_context::{EventContextOutput, PointerCaptureRequest, RoutedEventOutput};
     pub use crate::runtime_protocol::RuntimeNamespace;
     pub use crate::subscription::{ErasedSendSubscriptionSource, Subscription, SubscriptionSource};
     pub use crate::widget_erasure::{
@@ -223,6 +238,12 @@ pub mod __runtime {
 pub use identity::is_valid_identifier_literal;
 pub use identity::{ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey};
 pub use layout::{Axis, LayoutStyle};
+pub use pointer::{
+    InputDeviceId, KeyModifiers, LogicalDelta, LogicalDeltaError, LogicalPoint, LogicalPointError,
+    LogicalScrollCommand, PointerBoundaryEvent, PointerBoundaryKind, PointerButton, PointerButtons,
+    PointerCaptureEvent, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase,
+};
 pub use runtime_protocol::{
     MonotonicInstant, MonotonicTimeError, MountedNodeId, SemanticNodeId, SurfaceId,
     SurfaceInputContext, WorkSequence,

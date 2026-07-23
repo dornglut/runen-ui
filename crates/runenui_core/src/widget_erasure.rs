@@ -5,7 +5,7 @@ use crate::element::{
 };
 use crate::{
     CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, LayoutStyle, MonotonicInstant,
-    MountedNodeId, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
+    MountedNodeId, PointerId, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
     WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
@@ -400,7 +400,7 @@ impl<Action> MountedWidget<Action> {
         ),
         WidgetBridgeError,
     > {
-        let mut context = EventContext::new(
+        let context = EventContext::new(
             phase,
             original_target,
             current_target,
@@ -413,11 +413,73 @@ impl<Action> MountedWidget<Action> {
             propagation_stopped,
             output_allowance,
         );
+        self.event_with_context(state, event, context)
+    }
+
+    /// Invokes one pointer-family callback with immutable physical routing facts.
+    #[allow(clippy::too_many_arguments)]
+    pub fn pointer_event(
+        &mut self,
+        state: &mut MountedWidgetState,
+        event: &UiEvent,
+        phase: EventPhase,
+        original_target: &MountedNodeId,
+        current_target: &MountedNodeId,
+        related_target: Option<&MountedNodeId>,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        pointer_id: PointerId,
+        physical_target: Option<&MountedNodeId>,
+        physical_path: &[MountedNodeId],
+        default_cancelable: bool,
+        default_prevented: bool,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Result<
+        (
+            WidgetEventOutput,
+            crate::event_context::EventContextOutput<Action>,
+        ),
+        WidgetBridgeError,
+    > {
+        let context = EventContext::new_pointer(
+            phase,
+            original_target,
+            current_target,
+            related_target,
+            origin,
+            sequence,
+            instant,
+            pointer_id,
+            physical_target,
+            physical_path,
+            default_cancelable,
+            default_prevented,
+            propagation_stopped,
+            output_allowance,
+        );
+        self.event_with_context(state, event, context)
+    }
+
+    fn event_with_context(
+        &mut self,
+        state: &mut MountedWidgetState,
+        event: &UiEvent,
+        mut context: EventContext<'_, Action>,
+    ) -> Result<
+        (
+            WidgetEventOutput,
+            crate::event_context::EventContextOutput<Action>,
+        ),
+        WidgetBridgeError,
+    > {
         let widget = self
             .inner
             .event(state.value.as_mut(), event, &mut context)?;
         Ok((widget, context.into_output()))
     }
+
     pub fn activation(
         &self,
         state: &MountedWidgetState,

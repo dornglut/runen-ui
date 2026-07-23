@@ -8,6 +8,13 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Implemented the proof-complete M4C3 host-neutral pointer lifecycle on the
+  active branch: checked pointer/device identity and payloads, canonical queued
+  ingress, exact validation/recovery, per-pointer pressed/capture ownership,
+  ordered boundary/capture notifications, stationary re-hit, terminal-context
+  cleanup, release-inside activation, route-only logical scrolling, public
+  Counter/downstream proofs, and slice-local causal trace. Owner acceptance and
+  merge remain pending; M4C4 stays blocked.
 - Added the deterministic, network-free `cargo xtask audit-repository` command
   with stable human/JSON output, fatal matrix/workspace/dependency/authority/
   license/canonical-runtime checks, non-fatal concentration diagnostics, and

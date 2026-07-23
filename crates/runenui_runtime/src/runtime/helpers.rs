@@ -1,7 +1,7 @@
 use super::{
     CollectedRoutedOutput, Effect, HostProtocol, MountedEffect, QueueCommitError,
-    RegistryInsertError, Runtime, TraceSequence, TraceWorkIdentity, TraceWorkOwner, WorkFamily,
-    WorkOwner, WorkTraceIdentity,
+    RegistryInsertError, TraceSequence, TraceWorkIdentity, TraceWorkOwner, WorkFamily, WorkOwner,
+    WorkTraceIdentity,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,11 +91,5 @@ pub(in crate::runtime) fn with_routed_parent<Action>(
             origin,
             causal_parent,
         },
-    }
-}
-
-impl<State, Action, Protocol: HostProtocol> Drop for Runtime<State, Action, Protocol> {
-    fn drop(&mut self) {
-        self.shutdown();
     }
 }

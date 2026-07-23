@@ -29,7 +29,9 @@ pub(super) fn layout_resolved_surface(
 
     let bounds = {
         let mut arranger = SurfaceArrangementBuilder::new(&measured_layout);
-        arranger.push_node(resolved_tree, root, LogicalPoint::from_finite(0.0, 0.0));
+        let origin = LogicalPoint::new(0.0, 0.0)
+            .unwrap_or_else(|_| unreachable!("the logical origin is finite"));
+        arranger.push_node(resolved_tree, root, origin);
         arranger.into_nodes()
     };
     (frame_size, bounds, measured_layout.into_report())

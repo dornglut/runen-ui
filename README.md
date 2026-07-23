@@ -9,8 +9,9 @@ Today RunenUI is a coherent **headless architecture proof**. It is not a product
 Milestone status: M4A, M4B, M4C0, M4C1, and M4C2 are complete. M4C2 was
 owner-accepted with an explicit infrastructure-only CI waiver and squash-merged
 in [archive PR #99](docs/history/public-repository-migration.md#accepted-imported-milestone-history).
-M4C3 is the next implementation slice; M4C4–M4C5 and M4D1–M4D3 remain blocked
-in sequence. M4 is active and incomplete.
+M4C3 is proof-complete on the active implementation branch and awaits owner
+acceptance and merge; M4C4–M4C5 and M4D1–M4D3 remain blocked in sequence. M4 is
+active and incomplete.
 See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
 [work-tracking contract](docs/work-tracking.md),
 [accepted M4C delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md),
@@ -57,6 +58,12 @@ The active workspace proves:
   coordinate revision and hit-test generation on every publication, configurable
   bounded immutable historical hit-test snapshots, exact checked logical/resolved
   ingress with owned rejection recovery, and causal surface trace lineage;
+- core-owned checked pointer/device identities and complete host-neutral
+  down/move/up/cancel/wheel payloads; canonical non-reentrant pointer ingress;
+  separate physical, routed, pressed, and captured identities; ordered boundary
+  and capture notifications; stationary publication re-hit; integrity-only
+  unavailable-context cleanup; release-inside activation; route-only logical
+  scrolling; and slice-local causal trace;
 - typed style values, tokens, computed style, provenance, and diagnostics;
 - explicit layout constraints, a renderer-neutral measurement-provider seam,
   and separate one-query intrinsic/child-layout snapshots per publication;
@@ -69,9 +76,9 @@ The active workspace proves:
   and independently tested actual-execution phase reports;
 - a Counter application exercising the current public crates.
 
-Important limitations remain: physical input behavior is focus-only proof-level,
-text measurement is deterministic character counting, and pointer identity/capture/
-release-inside activation, focus scopes/modality, keyboard routing, text/IME,
+Important limitations remain: pointer input is a deterministic logical-surface
+proof without native host translation or production scrolling; text measurement
+is deterministic character counting; and focus scopes/modality, keyboard routing, text/IME,
 authored-ID automation resolution, complete trace v2 normalization, trace export/
 sinks/replay, production semantics/accessibility, paint/hit scenes, production
 layout/style/text, native hosts, renderer backends, and production controls are

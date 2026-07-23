@@ -7,8 +7,8 @@ This non-publishable package is a genuine downstream consumer of public
 and child-layout widgets without framework registration, private imports,
 feature flags, global registries, source modification, or unsafe code.
 
-Its mounted-work and subscription proofs participate in M4B, which is in
-review; the fixture does not claim the blocked M4C routed-event surface.
+Its mounted-work and subscription proofs cover M4B. Its routed semantic-event
+and pointer proofs cover the public M4C protocol without private test seams.
 
 The fixture proves that persistent widget state is visible to activation,
 measurement, child layout, paint, semantics, and diagnostics; activation can
@@ -40,6 +40,10 @@ invalidation is committed before primary/auxiliary actions, a queued declaration
 observes newest live mounted state, and a removed dirty owner suppresses its
 declaration callback with structured trace evidence.
 
-The fixture remains proof-level. It does not claim routed events, pointer
-capture/release behavior, a production semantic tree,
-paint scene, layout engine, host, or renderer backend.
+M4C3 additionally proves that a downstream mapped widget receives public
+pointer, target-only boundary, and target-only capture notifications; observes
+physical hit facts separately from captured routing; requests capture through
+`EventContext`; and receives exactly one wheel-derived logical-scroll command.
+
+The fixture remains proof-level. It does not claim native host translation, a
+production semantic tree, paint scene, layout engine, host, or renderer backend.

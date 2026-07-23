@@ -3,7 +3,7 @@
 use super::{
     CompletionIngress, HostProtocol, LiveHostRequest, LiveSubscription, LocalTask, Runtime,
     RuntimeStatus, RuntimeTerminalReason, SendTaskMapper, ShutdownReport, Timer, TraceRecordKind,
-    WorkCancellationCounts, WorkOwner, WorkRegistry,
+    TraceSequence, WorkCancellationCounts, WorkOwner, WorkRegistry,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -26,20 +26,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !matches!(self.status, RuntimeStatus::Running) {
             return 0;
         }
-        let (cancelled_queued, cancelled_live) = self.close_scheduling_authority();
+        let (cancelled_queued, cancelled_live, pointer_parent) = self.close_scheduling_authority();
         let cancelled = cancelled_queued
             .saturating_add(cancelled_live.total())
             .saturating_add(additional_cancelled);
         self.status = RuntimeStatus::Terminal(reason);
-        self.record_optional(
+        let terminal = self.trace.record(
             TraceRecordKind::RuntimeTerminal { reason },
+            None,
+            pointer_parent,
             None,
             None,
             None,
         );
         if cancelled > 0 {
-            self.record_optional(
+            self.trace.record(
                 TraceRecordKind::QueuedWorkCancelled { count: cancelled },
+                None,
+                terminal,
                 None,
                 None,
                 None,
@@ -48,12 +52,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         cancelled
     }
 
-    pub(super) fn close_scheduling_authority(&mut self) -> (usize, WorkCancellationCounts) {
+    pub(super) fn close_scheduling_authority(
+        &mut self,
+    ) -> (usize, WorkCancellationCounts, Option<TraceSequence>) {
         self.completion_ingress.close();
         self.wake.close();
         let cancelled_queue = self.queue.cancel_all();
-        self.trace
-            .release_reservations(cancelled_queue.command_trace_reservations);
+        self.trace.release_reservations(
+            cancelled_queue
+                .command_trace_reservations
+                .saturating_add(cancelled_queue.pointer_trace_reservations),
+        );
         let cancelled_queued = cancelled_queue.envelopes;
         let cancelled_live = self.work.cancel_all_counts();
         self.local_tasks.clear();
@@ -64,7 +73,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.mounted_subscription_reconcile_pending.clear();
         self.initial_mounted_subscription_owners.clear();
         self.initial_mounted_outputs.clear();
-        (cancelled_queued, cancelled_live)
+        let (_, pointer_parent) = self.close_pointer_lifetimes(None);
+        (cancelled_queued, cancelled_live, pointer_parent)
     }
 
     pub(crate) fn shutdown(&mut self) -> ShutdownReport {
@@ -76,15 +86,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled_live_work: WorkCancellationCounts::default(),
             };
         }
-        let (cancelled_queued_envelopes, cancelled_live_work) = self.close_scheduling_authority();
+        let (cancelled_queued_envelopes, cancelled_live_work, pointer_parent) =
+            self.close_scheduling_authority();
         let stats = self.tree.shutdown();
         self.focus.clear();
         self.surface_publication.clear_cache();
-        self.record_optional(
+        self.trace.record(
             TraceRecordKind::RuntimeShutdown {
                 cancelled_queued: cancelled_queued_envelopes,
                 unmounted_lifetimes: stats.unmounted,
             },
+            None,
+            pointer_parent,
             None,
             None,
             None,
@@ -120,6 +133,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &mut self.subscriptions,
             &mut self.host_requests,
         );
+    }
+}
+
+impl<State, Action, Protocol: HostProtocol> Drop for Runtime<State, Action, Protocol> {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
     }
 }
 

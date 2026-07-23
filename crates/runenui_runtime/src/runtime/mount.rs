@@ -2,9 +2,10 @@ use core::num::NonZeroUsize;
 
 use super::{
     Arc, CompletionIngress, Element, FocusState, HostProtocol, ManualClock,
-    MountedIdentityExhausted, MountedTree, ReconciliationGeneration, ReconciliationReport, Runtime,
-    RuntimeConfig, RuntimeStatus, RuntimeTerminalReason, SurfacePublicationState, Trace,
-    TraceRecordKind, UnavailableExecutor, WakeState, WorkQueue, WorkRegistry,
+    MountedIdentityExhausted, MountedTree, PointerRegistry, ReconciliationGeneration,
+    ReconciliationReport, Runtime, RuntimeConfig, RuntimeStatus, RuntimeTerminalReason,
+    SurfacePublicationState, Trace, TraceRecordKind, UnavailableExecutor, WakeState, WorkQueue,
+    WorkRegistry,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -70,6 +71,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             queue,
             trace,
             focus: FocusState::new(),
+            pointer_registry: PointerRegistry::new(limits.pointer_streams()),
             generation,
             report,
             status: RuntimeStatus::Running,

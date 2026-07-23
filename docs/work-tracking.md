@@ -30,12 +30,17 @@ and its linked execution issues own volatile state:
 
 - exact accepted base SHA;
 - active branch and draft pull request;
-- current reviewed and remote heads;
+- current reviewed checkpoint head;
 - dependencies and blockers;
 - matrix-row checklists for the active slice;
 - latest validation and exact-head CI or an explicit infrastructure-only waiver;
 - acceptance state;
 - next action and next unblocked issue.
+
+The live branch head is read from pull-request metadata. Do not manually mirror
+every transient commit into issue or pull-request prose. Record exact heads at
+reviewed green checkpoints, readiness transitions, review corrections that
+change the accepted diff, and merge.
 
 Architecture, governance, and tooling issues own real work outside a slice's
 accepted behavior. Each issue must state whether it blocks the next
@@ -48,6 +53,11 @@ accounting, structure changes, tests, validation results, CI run, review
 findings, deferred scope, and any explicit infrastructure-only CI waiver. It
 must not redefine accepted behavior that belongs to an ADR, charter, or matrix
 row.
+
+The pull-request body should retain stable scope, accepted base, authorities,
+and merge gates. Use one updated checkpoint record for the reviewed head,
+validation run, findings, and remaining blockers rather than a stale manually
+maintained live-head field.
 
 ### Status map and support matrix
 
@@ -95,11 +105,11 @@ rather than recreated as false closed public issues.
 
 1. Read the public M4 umbrella issue.
 2. Open the execution issue it identifies as current.
-3. Verify exact accepted `main`, branch, pull request, and head.
+3. Verify exact accepted `main`, branch, pull request, and live head.
 4. Read linked ADRs, the accepted charter, matrix rows, and stable architecture contracts.
-5. Inspect current source, tests, and unresolved review findings.
+5. Inspect current source, tests, unresolved review findings, and exact-head CI.
 6. Execute only the current issue or an explicitly linked prerequisite.
-7. Update the issue after every accepted head, review correction, and merge.
+7. Update execution records after each reviewed green checkpoint, material review correction, readiness transition, and merge.
 8. Never begin the next slice from an unmerged feature branch.
 
 A new thread should need only:
@@ -110,6 +120,26 @@ Umbrella issue: #3
 Current execution issue: read from #3
 Next implementation slice: #4
 ```
+
+## Execution and branch discipline
+
+One feature branch has one active writer. Parallel analysis and review are
+allowed, but repository writes must be serialized through one execution path.
+Before every write, re-read the live pull-request head and the target file's blob
+SHA. A moved head invalidates earlier file snapshots, validation claims, and
+review conclusions until they are refreshed.
+
+Do not run multiple agents that independently commit to the same branch. That
+creates stale writes, cancelled CI runs, duplicate implementations, and
+unreviewable interleaving. When responsibility changes, record the last reviewed
+checkpoint and hand off the branch explicitly.
+
+Automated contributors should use the repository connector or normal guarded Git
+commits and let GitHub Actions perform authoritative validation. Do not transfer
+connector-capable work to the repository owner through bespoke local scripts,
+and do not add temporary branch-mutating formatter or fixer workflows. Owner
+local execution is reserved for operations unavailable through the repository
+connector and CI surfaces.
 
 ## Slice issue requirements
 
@@ -123,7 +153,7 @@ Every slice issue records:
 - positive, negative, and trace proof ownership;
 - validation commands;
 - target branch and draft PR title;
-- current head and blockers;
+- current reviewed checkpoint head and blockers;
 - acceptance state;
 - next unblocked issue.
 
@@ -138,6 +168,10 @@ Use matrix statuses exactly:
 - `implementation-complete`: public behavior exists but the complete proof package has not passed;
 - `proof-complete`: the exact-head proof package passes but owner acceptance and merge are pending;
 - `owner-accepted`: public behavior, complete proof, validation, owner review, and merge have passed, together with either successful exact-head CI or a documented infrastructure-only owner waiver satisfying the policy below.
+
+Exact-head CI means the workflow explicitly checks out and verifies the feature
+head SHA. GitHub's synthetic pull-request merge ref does not qualify. Any head
+movement invalidates the prior exact-head result.
 
 After a squash merge, record the accepted feature head and squash merge commit
 separately. Do not require feature-head ancestry from the squash commit.
@@ -173,5 +207,10 @@ Every repository pull request runs the baseline documented in
 - exact base/head/remote verification;
 - clean-worktree verification;
 - exact-head CI verification or the narrowly documented infrastructure-only waiver above.
+
+The CI workflow may maintain one marker-owned failure comment containing the
+exact head, run URL, and bounded diagnostic excerpt. It is transient diagnostic
+state and must be removed automatically after a successful exact-head run. The
+complete Actions log remains authoritative.
 
 Do not reuse validation or CI claims from an earlier head.

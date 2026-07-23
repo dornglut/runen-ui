@@ -1,7 +1,6 @@
 use super::{
     AppRuntime, FocusTargetResult, Key, KeyPhase, KeyboardEvent, KeyboardFocusResult,
-    MountedNodeId, MountedTreeIndex, PointerButton, PointerEvent, PointerFocusResult, PointerPhase,
-    RuntimeStatus, TargetStatus, UiApp,
+    MountedNodeId, MountedTreeIndex, RuntimeStatus, TargetStatus, UiApp,
 };
 
 impl<App: UiApp> AppRuntime<App> {
@@ -10,6 +9,7 @@ impl<App: UiApp> AppRuntime<App> {
         self.runtime.tree.index()
     }
 
+    /// Transitional direct focus seam owned by M4C4.
     pub fn set_focus(&mut self, id: MountedNodeId) -> FocusTargetResult {
         if !matches!(self.status(), RuntimeStatus::Running) {
             return FocusTargetResult::NotFocusable;
@@ -31,20 +31,31 @@ impl<App: UiApp> AppRuntime<App> {
         }
     }
 
+    /// Transitional linear focus seam owned by M4C4.
     pub fn focus_first(&mut self) -> Option<MountedNodeId> {
         if !matches!(self.status(), RuntimeStatus::Running) {
             return None;
         }
-        let id = self.index().first_focusable_node().map(|n| n.id().clone());
+        let id = self
+            .index()
+            .first_focusable_node()
+            .map(|node| node.id().clone());
         self.apply_focus_result(id)
     }
+
+    /// Transitional linear focus seam owned by M4C4.
     pub fn focus_last(&mut self) -> Option<MountedNodeId> {
         if !matches!(self.status(), RuntimeStatus::Running) {
             return None;
         }
-        let id = self.index().last_focusable_node().map(|n| n.id().clone());
+        let id = self
+            .index()
+            .last_focusable_node()
+            .map(|node| node.id().clone());
         self.apply_focus_result(id)
     }
+
+    /// Transitional linear focus seam owned by M4C4.
     pub fn focus_next(&mut self) -> Option<MountedNodeId> {
         if !matches!(self.status(), RuntimeStatus::Running) {
             return None;
@@ -53,17 +64,19 @@ impl<App: UiApp> AppRuntime<App> {
         let id = {
             let index = self.index();
             current.as_ref().map_or_else(
-                || index.first_focusable_node().map(|n| n.id().clone()),
+                || index.first_focusable_node().map(|node| node.id().clone()),
                 |current| {
                     index
                         .next_focusable_after(current)
                         .or_else(|| index.first_focusable_node())
-                        .map(|n| n.id().clone())
+                        .map(|node| node.id().clone())
                 },
             )
         };
         self.apply_focus_result(id)
     }
+
+    /// Transitional linear focus seam owned by M4C4.
     pub fn focus_previous(&mut self) -> Option<MountedNodeId> {
         if !matches!(self.status(), RuntimeStatus::Running) {
             return None;
@@ -72,17 +85,18 @@ impl<App: UiApp> AppRuntime<App> {
         let id = {
             let index = self.index();
             current.as_ref().map_or_else(
-                || index.last_focusable_node().map(|n| n.id().clone()),
+                || index.last_focusable_node().map(|node| node.id().clone()),
                 |current| {
                     index
                         .previous_focusable_before(current)
                         .or_else(|| index.last_focusable_node())
-                        .map(|n| n.id().clone())
+                        .map(|node| node.id().clone())
                 },
             )
         };
         self.apply_focus_result(id)
     }
+
     fn apply_focus_result(&mut self, id: Option<MountedNodeId>) -> Option<MountedNodeId> {
         if let Some(id) = id {
             self.runtime.set_focus(id.clone());
@@ -92,11 +106,15 @@ impl<App: UiApp> AppRuntime<App> {
             None
         }
     }
+
+    /// Transitional direct focus seam owned by M4C4.
     pub fn clear_focus(&mut self) {
         if matches!(self.status(), RuntimeStatus::Running) {
             self.runtime.clear_focus();
         }
     }
+
+    /// Transitional keyboard-focus proof seam owned by M4C5.
     pub fn handle_keyboard_focus(&mut self, event: &KeyboardEvent) -> KeyboardFocusResult {
         if event.phase() != KeyPhase::Pressed || !matches!(event.key(), Key::Tab) {
             return KeyboardFocusResult::Ignored;
@@ -110,21 +128,5 @@ impl<App: UiApp> AppRuntime<App> {
             KeyboardFocusResult::NoFocusableNode,
             KeyboardFocusResult::Moved,
         )
-    }
-    pub fn handle_pointer_focus(&mut self, event: &PointerEvent) -> PointerFocusResult {
-        if event.phase() != PointerPhase::Pressed || event.button() != Some(PointerButton::Primary)
-        {
-            return PointerFocusResult::Ignored;
-        }
-        let Some(id) = event.target().cloned() else {
-            return PointerFocusResult::NoTarget;
-        };
-        match self.set_focus(id.clone()) {
-            FocusTargetResult::Focused => PointerFocusResult::Moved(id),
-            FocusTargetResult::NotFocusable => PointerFocusResult::NotFocusable,
-            FocusTargetResult::StaleTarget | FocusTargetResult::ForeignRuntime => {
-                PointerFocusResult::NotFound
-            }
-        }
     }
 }
