@@ -43,10 +43,10 @@ narrower shape:
 M4A, M4B, M4C0, M4C1, M4C2, and M4C3 are complete and owner-accepted. The
 accepted M4C3 feature head `01b7ae018abeaff8d316764afba5bc8cde074381`
 passed exact-head CI run `29996101708` and was squash-merged in PR #15 as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 has not started and becomes
-the next implementation slice only after the post-merge authority update and
-its accepted `main` are recorded; M4C5 and M4D1–M4D3 remain blocked in sequence.
-The target M4 pipeline is active and incomplete.
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 is implemented and its proof
+package is complete on the active feature branch, but owner acceptance and merge
+remain pending; M4C5 and M4D1–M4D3 remain blocked in sequence. The target M4
+pipeline is active and incomplete.
 
 ```text
 Application-owned State + Action
@@ -54,7 +54,7 @@ Application-owned State + Action
   -> sibling-local mounted reconciliation
   -> persistent generational MountedTree
   -> state-aware cached widget capabilities
-  -> exact-target semantic-command capture/target/bubble routing and focus-only proof input
+  -> exact-target semantic-command, pointer, and focus capture/target/bubble routing
   -> one generalized sequenced work FIFO
   -> explicit four-budget readiness pump
   -> UiApp::update(State, Action) + complete reconciliation
@@ -115,11 +115,12 @@ contract, one ordered transaction planner, state-current application and
 mounted subscription reconciliation, generational tasks/timers/host work,
 four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
 complete per-family causal scheduler trace proofs. The exact-target routed
-semantic-command kernel is accepted through M4C1, and displayed-generation
-surface context is accepted through M4C2. Pointer, focus, keyboard/text/IME, and
-source-specific target resolution remain unimplemented M4C3–M4C5 target
-architecture. Trace-v2 normalization, export, and replay remain unimplemented
-M4D target architecture. See the
+semantic-command kernel is accepted through M4C1, displayed-generation surface
+context through M4C2, and pointer lifecycle through M4C3. M4C4 focus scopes and
+modality are implemented with owner acceptance and merge pending. Raw keyboard/
+text/IME and source-specific authored target resolution remain unimplemented
+M4C5 target architecture. Trace-v2 normalization, export, and replay remain
+unimplemented M4D target architecture. See the
 [public API contract](architecture/public-api.md),
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
 [work-tracking contract](work-tracking.md).

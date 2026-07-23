@@ -17,10 +17,9 @@ M4C2 used the documented infrastructure-only CI waiver after exact-head
 local validation and final review passed. M4C3 was owner-accepted at feature
 head `01b7ae018abeaff8d316764afba5bc8cde074381` after exact-head CI run
 `29996101708` succeeded, then squash-merged in PR #15 as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 has not started and becomes
-the next implementation slice only after the post-merge authority update and
-its accepted `main` are recorded; M4C5–M4D3 remain blocked in sequence. M4 is
-active and incomplete. The accepted
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 is implemented and locally
+proof-complete on its active feature branch, but is not owner-accepted or
+merged; M4C5–M4D3 remain blocked in sequence. M4 is active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
 implemented public API until each slice is accepted. The
@@ -56,8 +55,7 @@ vocabulary includes:
 - `RuntimeConfig`, `SubmitActionResult`, `CommandSubmission`,
   `UnacceptedCommand`, `SubmitCommandError`, `UnacceptedSurfaceCommand`,
   `SubmitSurfaceCommandError`, `PumpBudget`, and `PumpReport`;
-- `RuntimeStatus`, `RuntimeTerminalReason`, `ShutdownReport`,
-  `FocusTargetResult` and `RuntimeError`;
+- `RuntimeStatus`, `RuntimeTerminalReason`, `ShutdownReport`, and `RuntimeError`;
 - `TraceConfig`, `TraceSequence`, `TraceRecord`, `TraceRecordKind`,
   `TraceSurfaceIngressKind`, `TraceSurfaceSnapshotKind`,
   `TraceSurfaceRejection`, `TraceTarget`, and `Trace`;
@@ -403,25 +401,47 @@ second ancestor pass. Programmatic, automation, accessibility-stub, and
 normalized-controller origins use this same exact-target path; authored-ID
 automation and semantic accessibility resolution are not implemented.
 
-Direct programmatic activation and the old pointer activation/resolution helpers
-are removed. `handle_keyboard_focus` remains only as an M4C5 proof helper; it
-can change focus but cannot emit actions, invoke activation, or synthesize
-commands. M4C2 owns surface context, M4C3 implements pointer lifecycle/release-
-inside activation, M4C4 owns focus
-scopes/modality, M4C5 keyboard/text/IME and automation resolution, M4D trace
+Direct programmatic activation, direct focus mutation/traversal helpers, the
+transitional `FocusTargetResult`, and the old pointer activation/resolution
+helpers are removed. Focus changes enter through `submit_command`; normalized
+keyboard modality uses `CommandOrigin::keyboard()` without adding raw keyboard
+routing. M4C2 owns surface context, M4C3 implements pointer lifecycle/release-
+inside activation, M4C4 implements focus scopes/modality, M4C5 owns
+keyboard/text/IME and automation resolution, M4D trace
 normalization/export/replay, and M5 semantic accessibility mapping.
 
-Focus stores `Option<MountedNodeId>`. It survives compatible update,
-authored-ID change, and keyed reorder, and clears on removal, replacement,
-disablement, or loss of actionability/focusability. Traversal follows current
-mounted preorder. Pointer interaction state is runtime-owned per checked
+One runtime-owned `FocusState` retains the exact focused mounted lifetime, its
+committed focus-within route, exact-generation scope memories, last
+`FocusReason`, and last accepted `InputModality`. `Element::focusable`,
+`focus_hidden`, and `focus_scope` author participation without exposing arena or
+generation construction. `FocusScope` carries separate linear/directional
+`FocusBoundaryPolicy`: the root wraps linearly and stops directionally; nested
+defaults delegate; explicit nested policy may trap, stop, wrap, delegate, or
+derive `LogicalFocusScroll` through the canonical command queue.
+
+`FocusNext`, `FocusPrevious`, four directional commands, `RequestFocus`, and
+`RestoreFocus` use the canonical exact-target command transaction. Linear
+selection follows current mounted logical order. Directional selection reads
+the current retained publication rectangles and uses mounted order only as its
+final tie-break; its private score is not API. Remembered restoration accepts
+only the exact live, eligible generation and otherwise uses normal fallback.
+
+Committed transitions update focus and focus-within atomically, then route
+non-cancelable `FocusOut` before `FocusIn`, each Capture/Target/Bubble, before
+initiating routed/default outputs. `FocusEvent` exposes kind, reason, and exact
+target; `EventContext::related_target` exposes the opposite live endpoint.
+Removal/replacement suppresses post-unmount delivery, clears incompatible
+memory, and records the exact cleanup reason. Shutdown clears focus and memory
+with `FocusReason::Shutdown` while retaining the last accepted modality.
+
+Pointer interaction state is runtime-owned per checked
 `PointerId`: device and surface ownership, physical path, buttons, pressed
 owner/inside state, and one exact live capture owner remain distinct.
 `submit_pointer` is the sole public pointer ingress and never accepts an
 unchecked mounted target. Down/move/up/cancel/wheel use the canonical queue and
 routed transaction engine. Primary activation requires an eligible down and
 physical release inside the same exact live owner; wheel derives one route-only
-logical-scroll command. Focus scopes and modality remain M4C4.
+logical-scroll command. Raw keyboard/text/IME routing remains M4C5.
 
 ## C9 public authority delta
 
@@ -431,10 +451,6 @@ logical-scroll command. Focus scopes and modality remain M4C4.
 | Cancelled send-task completion could enter ingress | `SendTaskCompletionError::Stale(exact_completion)` | Producer validity is exact-generation, not global | ADR 0006 cancellation | Match `Stale` separately from `Closed` | `scheduler_work::cancelled_send_completion_never_invokes_ui_mapper` |
 | Direct mounted activation was public runtime authority | `submit_command(exact_target, Activate, origin)` is the only semantic ingress | Every source must use routing, admission, default, FIFO, and trace | ADR 0005 canonical commands | Submit and pump; recover exact `UnacceptedCommand` on rejection | `routed_commands`, Counter, and downstream routed-event conformance |
 | `Widget::activate` returned `Option<Action>` | It returns `WidgetActivationOutput<Action>` and is invoked only by routed `Activate` default | State mutation is independent from action output | ADR 0003 widget protocol; ADR 0004 mounted state; ADR 0005 default | Return `none`, `action`, `changed`, or `changed_with_action` | `mounted_work_output::routed_activation_separates_scheduler_wake_from_redraw` |
-
-Focus stores `Option<MountedNodeId>`. It survives compatible update, authored-ID
-change, and keyed reorder, and clears on removal, replacement, disablement, or
-loss of actionability/focusability. Traversal follows current mounted preorder.
 
 The runtime owns one bounded pointer registry rather than per-node aggregate
 interaction booleans. Removal, replacement, disablement, loss of actionability,
@@ -604,8 +620,8 @@ M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
 in force. The current contract includes effects, subscriptions, tasks, timers,
 host requests, all four readiness budgets, wake/redraw, and M4C1 exact-target
-routed semantic commands, M4C2 displayed-generation surface context, and the
-M4C3 host-neutral pointer lifecycle. It does not imply native host translation,
-production scrolling, M4C4 focus scopes/modality, M4C5 keyboard/text/IME or authored-ID
-automation, M4D trace export/replay, M5 semantic accessibility mapping, or M4
-completion.
+routed semantic commands, M4C2 displayed-generation surface context, the M4C3
+host-neutral pointer lifecycle, and the M4C4 focus-scope/modality protocol. It
+does not imply native host translation, production scrolling, M4C5 keyboard/
+text/IME or authored-ID automation, M4D trace export/replay, M5 semantic
+accessibility mapping, or M4 completion.

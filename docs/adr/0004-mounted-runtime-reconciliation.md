@@ -212,12 +212,15 @@ ownership boundary later.
 
 ### Focus, activation, and interaction slots
 
-Focus stores `Option<MountedNodeId>`. It survives compatible updates, authored
-ID changes, and keyed reorder while the same node remains enabled, actionable,
-and focusable. It clears when the node is removed, replaced, disabled, or no
-longer actionable/focusable. Traversal follows current mounted preorder.
-Deliberate focus targeting distinguishes focused, not focusable, stale, and
-foreign outcomes.
+The M4C4 refinement stores the exact focused lifetime, committed ancestor route,
+scope memories, reason, and modality in one runtime-owned focus authority. Focus
+survives compatible updates, authored-ID changes, and keyed reorder while the
+same generation remains eligible; removal, replacement, disablement, or lost
+eligibility clears it with the corresponding reason. Linear traversal follows
+current mounted preorder, while directional traversal uses current retained
+publication rectangles. Deliberate targeting enters the canonical exact-target
+semantic-command queue; foreign and stale targets are rejected without direct
+focus mutation.
 
 Activation validates a mounted target, resolves checked state-aware activation
 facts without mutating a clean cache, rejects disabled/non-actionable targets,
