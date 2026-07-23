@@ -126,6 +126,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             1,
             MandatoryTracePlan::pointer_commit(0)
                 .unwrap_or_else(|| unreachable!("zero boundary notifications fit")),
+            false,
         ) else {
             let cancelled = self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             return ProcessApplicationActionOutcome::Terminal {

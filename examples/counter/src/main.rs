@@ -103,12 +103,12 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use runenui_core::{
-        LogicalDelta, LogicalLength, LogicalPoint, PointerButton, PointerButtons,
-        PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleTokens,
+        CommandOrigin, LogicalDelta, LogicalLength, LogicalPoint, PointerButton, PointerButtons,
+        PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand, StyleTokens,
     };
     use runenui_runtime::{
-        AppRuntime, FocusTargetResult, LogicalSize, PumpBudget, RuntimeStatus,
-        RuntimeTerminalReason, SubmitCommandErrorKind, SurfaceBuildContext,
+        AppRuntime, LogicalSize, PumpBudget, RuntimeStatus, RuntimeTerminalReason,
+        SubmitCommandErrorKind, SurfaceBuildContext,
     };
 
     use crate::app::{Counter, CounterAction, CounterApp, WIN_COUNT};
@@ -277,10 +277,14 @@ mod tests {
             .unwrap_or_else(|| unreachable!())
             .semantic_id()
             .clone();
-        assert_eq!(
-            runtime.set_focus(increment.clone()),
-            FocusTargetResult::Focused
-        );
+        runtime
+            .submit_command(
+                increment.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("the exact live focus target is accepted"));
+        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
         let before = runtime.publish_surface(&context);
@@ -375,10 +379,14 @@ mod tests {
             .unwrap_or_else(|| unreachable!())
             .semantic_id()
             .clone();
-        assert_eq!(
-            runtime.set_focus(increment.clone()),
-            FocusTargetResult::Focused
-        );
+        runtime
+            .submit_command(
+                increment.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("the exact live focus target is accepted"));
+        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
         submit_activate(&mut runtime, increment.clone())
             .unwrap_or_else(|_| unreachable!("the exact live increment target is accepted"));
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));

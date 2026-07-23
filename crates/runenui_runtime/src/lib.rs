@@ -155,7 +155,6 @@ mod input;
 mod measurement;
 mod mounted;
 mod pointer;
-mod policy;
 pub mod prelude;
 mod pump;
 mod queue;
@@ -183,7 +182,7 @@ pub use completion::{
 pub use config::{RuntimeConfig, RuntimeLimits};
 pub use constraints::{AxisConstraints, AxisLimit, LayoutConstraints};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
-pub use focus::{FocusState, FocusTargetResult};
+pub use focus::FocusState;
 pub use input::{Key, KeyPhase, KeyboardEvent};
 pub use measurement::{
     BaselineError, DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement,
@@ -194,15 +193,15 @@ pub use mounted::{
     MountedTreeIndex, SemanticNodeId,
 };
 pub use pointer::{PointerSubmission, SubmitPointerError, SubmitPointerErrorKind};
-pub use policy::KeyboardFocusResult;
 pub use pump::{PumpBudget, PumpBudgetExhaustion, PumpOutcome, PumpReport};
 pub use queue::{SubmitActionError, SubmitActionErrorKind, SubmitActionResult, WorkSequence};
 pub use redraw::{RedrawAcknowledgeError, RedrawRequest};
 pub use runenui_core::{
-    InputDeviceId, KeyModifiers, LogicalDelta, LogicalDeltaError, LogicalPoint, LogicalPointError,
-    LogicalScrollCommand, PointerBoundaryEvent, PointerBoundaryKind, PointerButton, PointerButtons,
-    PointerCaptureEvent, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, SurfaceId, SurfaceInputContext,
+    FocusBoundaryPolicy, FocusDirection, FocusEvent, FocusEventKind, FocusReason, FocusScope,
+    FocusScopePolicy, Focusability, InputDeviceId, InputModality, KeyModifiers, LogicalDelta,
+    LogicalDeltaError, LogicalPoint, LogicalPointError, LogicalScrollCommand, PointerBoundaryEvent,
+    PointerBoundaryKind, PointerButton, PointerButtons, PointerCaptureEvent, PointerCaptureKind,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SurfaceId, SurfaceInputContext,
 };
 pub use runtime::{
     HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
@@ -219,11 +218,11 @@ pub use surface_command::{
 };
 pub use surface_publication::SurfacePublication;
 pub use trace::{
-    Trace, TraceConfig, TracePointerCaptureRequestRejection, TracePointerRejection, TraceRecord,
-    TraceRecordKind, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
-    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget,
-    TraceTargetRejection, TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity,
-    TraceWorkOwner, TraceWorkStartRefusal,
+    Trace, TraceConfig, TraceFocusBoundaryOutcome, TracePointerCaptureRequestRejection,
+    TracePointerRejection, TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection,
+    TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceIngressKind, TraceSurfaceRejection,
+    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTimerTerminalOutcome,
+    TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::host_request::{HostRequestRef, HostRequestToken};

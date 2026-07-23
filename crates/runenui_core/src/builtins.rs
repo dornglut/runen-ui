@@ -5,8 +5,8 @@ use crate::{
     LogicalLength, RadiusValue, SpacingValue, StyleIntent, WidgetActivationContext,
     WidgetInvalidation, WidgetUpdateContext,
     element::{
-        AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
-        WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetPaintProof,
+        AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View,
+        Views, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetPaintProof,
         WidgetSemanticProof, WidgetTextKind,
     },
     widget_erasure::{ChildLayoutWidgetAdapter, ErasedWidget, WidgetAdapter},
@@ -113,10 +113,14 @@ impl<Action> Widget<Action> for TextWidget {
 impl<Action: 'static> View<Action> for Text {
     fn into_element(self) -> Element<Action> {
         Element::from_authored_parts(
-            self.id,
-            self.key,
-            LayoutStyle::default(),
-            self.style,
+            AuthoredElementFields::new(
+                self.id,
+                self.key,
+                LayoutStyle::default(),
+                self.style,
+                crate::Focusability::Automatic,
+                None,
+            ),
             Box::new(WidgetAdapter(TextWidget {
                 content: self.content,
             })),
@@ -296,10 +300,14 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
 impl<Action: 'static> View<Action> for Button<Action> {
     fn into_element(self) -> Element<Action> {
         Element::from_authored_parts(
-            self.id,
-            self.key,
-            LayoutStyle::default(),
-            self.style,
+            AuthoredElementFields::new(
+                self.id,
+                self.key,
+                LayoutStyle::default(),
+                self.style,
+                crate::Focusability::Automatic,
+                None,
+            ),
             Box::new(WidgetAdapter(ButtonWidget {
                 label: self.label,
                 enabled: self.enabled,
@@ -394,10 +402,14 @@ impl<Action> ChildLayoutWidget<Action> for LinearContainerWidget {
 impl<Action: 'static> View<Action> for Container<Action> {
     fn into_element(self) -> Element<Action> {
         Element::from_authored_parts(
-            self.id,
-            self.key,
-            self.layout,
-            self.style,
+            AuthoredElementFields::new(
+                self.id,
+                self.key,
+                self.layout,
+                self.style,
+                crate::Focusability::Automatic,
+                None,
+            ),
             self.widget,
             self.children,
             self.diagnostics,

@@ -9,8 +9,8 @@ use runenui_core::{
     WidgetSemanticProof, WidgetUnmountContext, WidgetUpdateContext, column,
 };
 use runenui_runtime::{
-    AppRuntime, FocusTargetResult, LayoutConstraints, MountedNodeId, PumpBudget,
-    SubmitCommandErrorKind, SurfaceBuildContext,
+    AppRuntime, FocusReason, LayoutConstraints, MountedNodeId, PumpBudget, SubmitCommandErrorKind,
+    SurfaceBuildContext,
 };
 
 fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
@@ -34,6 +34,23 @@ fn route_activate<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNode
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+}
+
+fn route_focus<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
+    settle_initial_mounted_declarations(runtime);
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live focus target is accepted"));
     assert_eq!(
         runtime
             .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
@@ -195,7 +212,7 @@ fn keyed_reorder_preserves_mounted_semantic_state_focus_and_slots() {
         .unwrap_or_else(|| unreachable!())
         .semantic_id()
         .clone();
-    assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
+    route_focus(&mut runtime, a.clone());
     route_activate(&mut runtime, a.clone());
     process_one(&mut runtime, TreeAction::Swap);
     let after = node_id(&mut runtime, "probe.a");
@@ -247,7 +264,7 @@ fn removal_makes_ids_stale_clears_focus_and_shutdown_unmounts_once() {
     });
     settle_initial_mounted_declarations(&mut runtime);
     let a = node_id(&mut runtime, "probe.a");
-    assert_eq!(runtime.set_focus(a.clone()), FocusTargetResult::Focused);
+    route_focus(&mut runtime, a.clone());
     process_one(&mut runtime, TreeAction::RemoveA);
     let Err(error) = runtime.submit_command(
         a.clone(),
@@ -257,8 +274,16 @@ fn removal_makes_ids_stale_clears_focus_and_shutdown_unmounts_once() {
         unreachable!("the removed mounted lifetime is stale")
     };
     assert_eq!(error.kind(), SubmitCommandErrorKind::StaleTarget);
-    assert_eq!(runtime.set_focus(a), FocusTargetResult::StaleTarget);
+    let Err(error) = runtime.submit_command(
+        a,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("the removed focus target is stale")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::StaleTarget);
     assert_eq!(runtime.focus().focused_node(), None);
+    assert_eq!(runtime.focus().reason(), Some(FocusReason::Removal));
     let _state = runtime.into_state();
     let entries = log.borrow();
     assert_eq!(
@@ -299,7 +324,14 @@ fn foreign_runtime_targets_are_rejected() {
         unreachable!("a target from another runtime is foreign")
     };
     assert_eq!(error.kind(), SubmitCommandErrorKind::ForeignTarget);
-    assert_eq!(second.set_focus(id), FocusTargetResult::ForeignRuntime);
+    let Err(error) = second.submit_command(
+        id,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("a focus target from another runtime is foreign")
+    };
+    assert_eq!(error.kind(), SubmitCommandErrorKind::ForeignTarget);
 }
 
 #[test]
@@ -389,9 +421,10 @@ impl UiApp for SelfDisablingApp {
 fn state_only_interaction_invalidation_validates_focus_immediately() {
     let mut runtime = AppRuntime::<SelfDisablingApp>::mount(());
     let id = runtime.index().nodes()[0].id().clone();
-    assert_eq!(runtime.set_focus(id.clone()), FocusTargetResult::Focused);
+    route_focus(&mut runtime, id.clone());
     route_activate(&mut runtime, id);
     assert_eq!(runtime.focus().focused_node(), None);
+    assert_eq!(runtime.focus().reason(), Some(FocusReason::Disablement));
     assert!(!runtime.index().nodes()[0].is_focusable());
 }
 
@@ -438,7 +471,7 @@ impl UiApp for SelfRetainingApp {
 fn state_only_interaction_invalidation_preserves_still_valid_focus() {
     let mut runtime = AppRuntime::<SelfRetainingApp>::mount(());
     let id = runtime.index().nodes()[0].id().clone();
-    assert_eq!(runtime.set_focus(id.clone()), FocusTargetResult::Focused);
+    route_focus(&mut runtime, id.clone());
     route_activate(&mut runtime, id.clone());
     assert_eq!(runtime.focus().focused_node(), Some(&id));
     assert!(runtime.index().nodes()[0].is_focusable());

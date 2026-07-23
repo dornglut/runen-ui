@@ -71,6 +71,16 @@ impl<App: UiApp> AppRuntime<App> {
 
     #[cfg(feature = "internal-test-seams")]
     #[doc(hidden)]
+    pub fn __replace_current_focus_geometry_for_test(
+        &mut self,
+        geometry: &[(MountedNodeId, [f32; 4])],
+    ) {
+        self.runtime
+            .replace_current_focus_geometry_for_test(geometry);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
     #[must_use]
     pub fn __missing_target_for_test(&self) -> MountedNodeId {
         self.runtime.tree.missing_target_for_test()

@@ -2,8 +2,8 @@
 use runenui_core::SurfaceInputContext;
 
 use super::{
-    FocusState, HostProtocol, MandatoryTracePlan, MountedNodeId, ReconciliationReport, Runtime,
-    RuntimeStatus, Trace, TraceRecordKind, TraceSequence, TraceTarget, WorkSequence,
+    FocusState, HostProtocol, MandatoryTracePlan, ReconciliationReport, Runtime, RuntimeStatus,
+    Trace, TraceRecordKind, TraceSequence, TraceTarget, WorkSequence,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -34,12 +34,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     #[must_use]
     pub(crate) const fn focus(&self) -> &FocusState {
         &self.focus
-    }
-    pub(crate) fn set_focus(&mut self, id: MountedNodeId) {
-        self.focus.set(id);
-    }
-    pub(crate) fn clear_focus(&mut self) {
-        self.focus.clear();
     }
     #[must_use]
     pub(crate) const fn report(&self) -> &ReconciliationReport {
@@ -80,11 +74,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn replace_surface_snapshot_target_for_test(
         &mut self,
         context: &SurfaceInputContext,
-        original: &MountedNodeId,
-        replacement: MountedNodeId,
+        original: &crate::MountedNodeId,
+        replacement: crate::MountedNodeId,
     ) {
         self.surface_publication
             .replace_snapshot_target_for_test(context, original, replacement);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn replace_current_focus_geometry_for_test(
+        &mut self,
+        geometry: &[(crate::MountedNodeId, [f32; 4])],
+    ) {
+        self.surface_publication
+            .replace_current_focus_geometry_for_test(geometry);
     }
 
     #[cfg(feature = "internal-test-seams")]

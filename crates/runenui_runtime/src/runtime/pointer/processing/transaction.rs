@@ -98,6 +98,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &deferred_capture_targets,
             2,
             pointer_commit_trace,
+            matches!(work.event.phase(), PointerPhase::Down),
         ) else {
             return self.pointer_runtime_outcome();
         };
@@ -458,6 +459,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             physical_target,
             physical_path,
         } = plan;
+        self.commit_pending_modality(transaction);
         match kind {
             StreamCommitKind::Register => {
                 let registration_sequence = stream.registration_sequence().get();
@@ -495,7 +497,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Some(focus) = focus
             && self.validate_focus(&focus)
         {
-            self.set_focus(focus);
+            self.commit_focus_transition(
+                transaction,
+                Some(focus),
+                runenui_core::FocusReason::Pointer,
+            )
+            .map_err(|_| ())?;
         }
         self.invoke_pointer_capture_events(
             transaction,

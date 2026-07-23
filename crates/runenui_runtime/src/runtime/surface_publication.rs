@@ -356,12 +356,50 @@ impl SurfacePublicationState {
         node.id = replacement;
     }
 
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn replace_current_focus_geometry_for_test(
+        &mut self,
+        geometry: &[(MountedNodeId, [f32; 4])],
+    ) {
+        let snapshot = self
+            .snapshots
+            .back_mut()
+            .unwrap_or_else(|| unreachable!("test publishes before replacing focus geometry"));
+        for (id, [x, y, width, height]) in geometry {
+            let node = snapshot
+                .nodes
+                .iter_mut()
+                .find(|node| &node.id == id)
+                .unwrap_or_else(|| unreachable!("test geometry names a published node"));
+            node.bounds = LogicalRect::new(
+                LogicalPoint::new(*x, *y)
+                    .unwrap_or_else(|_| unreachable!("test focus origin is finite")),
+                crate::LogicalSize::try_new(*width, *height)
+                    .unwrap_or_else(|_| unreachable!("test focus size is finite and non-negative")),
+            );
+        }
+    }
+
     pub(crate) fn note_focus_validation(&mut self) {
         self.phase_report = SurfacePhaseReport::one(SurfacePhase::FocusValidation);
     }
 
     pub(crate) const fn phase_report(&self) -> &SurfacePhaseReport {
         &self.phase_report
+    }
+
+    /// Clones current published rectangles for one focus-selection transaction.
+    pub(crate) fn current_focus_geometry(&self) -> Vec<(MountedNodeId, LogicalRect)> {
+        self.snapshots
+            .back()
+            .map(|snapshot| {
+                snapshot
+                    .nodes
+                    .iter()
+                    .map(|node| (node.id.clone(), node.bounds))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub(crate) fn clear_cache(&mut self) {

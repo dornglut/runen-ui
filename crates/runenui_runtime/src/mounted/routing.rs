@@ -101,6 +101,42 @@ impl<Action> MountedTree<Action> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(crate) fn invoke_focus_event(
+        &mut self,
+        current: &MountedNodeId,
+        original: &MountedNodeId,
+        related: Option<&MountedNodeId>,
+        event: &UiEvent,
+        phase: EventPhase,
+        origin: CommandOrigin,
+        sequence: WorkSequence,
+        instant: MonotonicInstant,
+        propagation_stopped: bool,
+        output_allowance: usize,
+    ) -> Result<EventInvocation<Action>, WidgetBridgeError> {
+        let node = self
+            .node_mut(current)
+            .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
+        let (widget, output) = node.widget.event(
+            &mut node.state,
+            event,
+            phase,
+            original,
+            current,
+            related,
+            origin,
+            sequence,
+            instant,
+            false,
+            false,
+            propagation_stopped,
+            output_allowance,
+        )?;
+        apply_invalidation(node, output.invalidation);
+        Ok(EventInvocation { widget, output })
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn invoke_pointer_event(
         &mut self,
         current: &MountedNodeId,

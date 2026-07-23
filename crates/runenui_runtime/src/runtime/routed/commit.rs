@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use runenui_core::{HostProtocol, MonotonicInstant, WidgetInvalidation};
+use runenui_core::{FocusReason, HostProtocol, MonotonicInstant, WidgetInvalidation};
 
 use super::{
     super::{CollectedRoutedOutput, Runtime, mounted_effect_into_effect},
@@ -42,6 +42,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         pre_output_commit(self, &mut transaction)?;
         if !transaction.pointer_capture_requests.is_empty() {
             return Err(());
+        }
+        let focused = self.focus.focused_node().cloned();
+        if transaction
+            .invalidation
+            .contains(WidgetInvalidation::INTERACTION)
+            && focused
+                .as_ref()
+                .is_some_and(|focused| !self.validate_focus(focused))
+        {
+            self.commit_focus_transition(&mut transaction, None, FocusReason::Disablement)
+                .map_err(|_| ())?;
         }
         let plan = self.plan_routed_outputs(&mut transaction)?;
         self.commit_routed_plan(transaction, plan)
@@ -143,13 +154,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     fn finish_routed_invalidation(&mut self, invalidation: WidgetInvalidation) {
         if invalidation.contains(WidgetInvalidation::INTERACTION) {
-            let focused = self.focus.focused_node().cloned();
-            if focused
-                .as_ref()
-                .is_some_and(|focused| !self.validate_focus(focused))
-            {
-                self.focus.clear();
-            }
             self.tree.finish_focus_validation();
         }
         if crate::mounted::publication_is_dirty(invalidation) {

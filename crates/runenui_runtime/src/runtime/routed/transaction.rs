@@ -1,6 +1,6 @@
 use runenui_core::{
     __runtime::{MountedEffect, PointerCaptureRequest},
-    CommandOrigin, MonotonicInstant, WidgetInvalidation, WorkSequence,
+    CommandOrigin, InputModality, MonotonicInstant, WidgetInvalidation, WorkSequence,
 };
 
 use super::super::CollectedRoutedOutput;
@@ -65,6 +65,7 @@ pub(in crate::runtime) struct RoutedTransaction<Action> {
     pub(in crate::runtime) pointer_capture_requests: Vec<PointerCaptureRequest>,
     pub(in crate::runtime) invalidation: WidgetInvalidation,
     pub(in crate::runtime) failure_current_target: Option<MountedNodeId>,
+    pub(in crate::runtime) pending_modality: InputModality,
 }
 
 impl<Action> RoutedTransaction<Action> {

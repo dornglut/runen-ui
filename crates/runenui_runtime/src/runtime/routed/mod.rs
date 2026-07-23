@@ -5,7 +5,9 @@ mod dispatch;
 mod failure;
 mod transaction;
 
-use runenui_core::{HostProtocol, SemanticCommandEvent, UiEvent, WidgetInvalidation};
+use runenui_core::{
+    EventSource, HostProtocol, InputModality, SemanticCommandEvent, UiEvent, WidgetInvalidation,
+};
 
 use super::Runtime;
 use crate::{
@@ -34,7 +36,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
-        let Some(mut transaction) = self.begin_routed_transaction(facts) else {
+        let Some(mut transaction) = (if is_focus_command(command) {
+            self.begin_focus_routed_transaction(facts)
+        } else {
+            self.begin_routed_transaction(facts)
+        }) else {
             return;
         };
         let event = UiEvent::SemanticCommand(SemanticCommandEvent::__runtime_new(command, origin));
@@ -82,6 +88,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         deferred_target_only: &[MountedNodeId],
         deferred_invocations: usize,
         additional_trace: MandatoryTracePlan,
+        may_focus: bool,
     ) -> Option<RoutedTransaction<Action>> {
         let (route, admission) = self.prepare_pointer_routed_route(
             &facts,
@@ -90,6 +97,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             deferred_target_only,
             deferred_invocations,
             additional_trace,
+            may_focus,
         )?;
         let mut pointer_callback_targets = route.clone();
         for target in target_only {
@@ -151,6 +159,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             pointer_capture_requests: Vec::new(),
             invalidation: WidgetInvalidation::NONE,
             failure_current_target: None,
+            pending_modality: modality_for_source(facts.origin.source()),
         }
+    }
+
+    fn begin_focus_routed_transaction(
+        &mut self,
+        facts: RoutedIngressFacts,
+    ) -> Option<RoutedTransaction<Action>> {
+        let (route, admission) = self.prepare_focus_routed_route(&facts)?;
+        let pointer_callback_targets = route.clone();
+        Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
+    }
+}
+
+const fn is_focus_command(command: runenui_core::SemanticCommand) -> bool {
+    matches!(
+        command,
+        runenui_core::SemanticCommand::FocusNext
+            | runenui_core::SemanticCommand::FocusPrevious
+            | runenui_core::SemanticCommand::FocusLeft
+            | runenui_core::SemanticCommand::FocusRight
+            | runenui_core::SemanticCommand::FocusUp
+            | runenui_core::SemanticCommand::FocusDown
+            | runenui_core::SemanticCommand::RequestFocus
+            | runenui_core::SemanticCommand::RestoreFocus
+    )
+}
+
+const fn modality_for_source(source: EventSource) -> InputModality {
+    match source {
+        EventSource::Pointer => InputModality::Pointer,
+        EventSource::Keyboard => InputModality::Keyboard,
+        EventSource::Controller => InputModality::Controller,
+        EventSource::Accessibility => InputModality::Accessibility,
+        EventSource::Automation => InputModality::Automation,
+        _ => InputModality::Programmatic,
     }
 }

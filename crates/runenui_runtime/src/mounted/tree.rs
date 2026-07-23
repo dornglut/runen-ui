@@ -112,8 +112,17 @@ impl<Action> MountedTree<Action> {
         parts: ElementParts<Action>,
         stats: &mut ReconcileStats<Action>,
     ) -> MountedNodeId {
-        let (authored_id, key, layout, style, authoring_diagnostics, widget, children) =
-            parts.into_parts();
+        let (
+            authored_id,
+            key,
+            layout,
+            style,
+            focusability,
+            focus_scope,
+            authoring_diagnostics,
+            widget,
+            children,
+        ) = parts.into_parts();
         let widget_state = widget.create_state();
         let runtime = self.runtime.clone();
         let (slot, generation) = self
@@ -131,6 +140,8 @@ impl<Action> MountedTree<Action> {
                     key,
                     layout,
                     style,
+                    focusability,
+                    focus_scope,
                     authoring_diagnostics,
                     widget,
                     state: widget_state,
@@ -270,8 +281,17 @@ impl<Action> MountedTree<Action> {
                 return Err(Box::new(parts));
             }
         }
-        let (authored_id, key, layout, style, authoring_diagnostics, widget, children) =
-            parts.into_parts();
+        let (
+            authored_id,
+            key,
+            layout,
+            style,
+            focusability,
+            focus_scope,
+            authoring_diagnostics,
+            widget,
+            children,
+        ) = parts.into_parts();
         let old_children;
         let common_invalidation;
         {
@@ -285,6 +305,8 @@ impl<Action> MountedTree<Action> {
                 authored_id.as_ref(),
                 layout,
                 &style,
+                focusability,
+                focus_scope,
                 &authoring_diagnostics,
             );
             old_children = node.children.clone();
@@ -292,6 +314,8 @@ impl<Action> MountedTree<Action> {
             node.key = key;
             node.layout = layout;
             node.style = style;
+            node.focusability = focusability;
+            node.focus_scope = focus_scope;
             node.authoring_diagnostics = authoring_diagnostics;
             node.widget = widget;
             apply_invalidation(
@@ -578,6 +602,8 @@ fn common_field_invalidation<Action>(
     authored_id: Option<&ElementId>,
     layout: runenui_core::LayoutStyle,
     style: &runenui_core::StyleIntent,
+    focusability: runenui_core::Focusability,
+    focus_scope: Option<runenui_core::FocusScope>,
     diagnostics: &[runenui_core::AuthoringDiagnostic],
 ) -> WidgetInvalidation {
     let mut invalidation = WidgetInvalidation::NONE;
@@ -592,6 +618,9 @@ fn common_field_invalidation<Action>(
     }
     if node.authored_id.as_ref() != authored_id || node.authoring_diagnostics != diagnostics {
         invalidation |= WidgetInvalidation::DIAGNOSTICS;
+    }
+    if node.focusability != focusability || node.focus_scope != focus_scope {
+        invalidation |= WidgetInvalidation::INTERACTION;
     }
     invalidation
 }

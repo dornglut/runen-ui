@@ -13,11 +13,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     pub(in crate::runtime) fn validate_focus(&mut self, id: &MountedNodeId) -> bool {
-        self.tree.target_status(id) == TargetStatus::Live
-            && self
-                .tree
-                .activation(id)
-                .is_ok_and(|activation| activation.enabled() && activation.is_actionable())
+        crate::focus::is_focus_eligible(&mut self.tree, id)
     }
 }
 
@@ -83,6 +79,10 @@ pub(crate) fn process_application_action<App: UiApp>(
     );
     let transient = App::root(app_state).into_element();
     let previous_focus = runtime.focus.focused_node().cloned();
+    let previous_focus_route_len = runtime.focus.route_len();
+    let previous_focus_trace = previous_focus
+        .as_ref()
+        .map(|focused| runtime.tree.trace_target(focused));
     let mut lifecycle_invalidated = Vec::new();
     let mut lifecycle_invalidated_identities = Vec::new();
     let mounted_public_slot_limit = runtime.mounted_public_slot_limit;
@@ -146,15 +146,27 @@ pub(crate) fn process_application_action<App: UiApp>(
         .as_ref()
         .is_some_and(|id| runtime.validate_focus(id));
     if !retained_focus && previous_focus.is_some() {
-        runtime.focus.clear();
-        runtime.trace.record(
-            TraceRecordKind::FocusCleared,
-            Some(sequence),
+        let reason = if runtime.tree.target_status(
+            previous_focus
+                .as_ref()
+                .unwrap_or_else(|| unreachable!("cleared focus has a previous target")),
+        ) == TargetStatus::Live
+        {
+            runenui_core::FocusReason::Disablement
+        } else {
+            runenui_core::FocusReason::Removal
+        };
+        runtime.commit_reconciled_focus_cleanup(super::super::focus::ReconciledFocusCleanup {
+            old_target: previous_focus
+                .unwrap_or_else(|| unreachable!("invalid focus has a previous target")),
+            old_route_len: previous_focus_route_len,
+            reason,
+            sequence,
             causal_parent,
-            Some(before),
-            Some(after),
-            target.clone(),
-        );
+            before,
+            after,
+            trace_target: previous_focus_trace,
+        });
     } else if retained_focus {
         runtime.trace.record(
             TraceRecordKind::FocusRetained,
@@ -166,6 +178,7 @@ pub(crate) fn process_application_action<App: UiApp>(
         );
     }
     runtime.tree.finish_focus_validation();
+    runtime.prune_focus_memory();
     runtime.report = ReconciliationReport {
         generation: after,
         live_node_count: runtime.tree.live_count(),

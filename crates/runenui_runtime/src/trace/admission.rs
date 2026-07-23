@@ -35,10 +35,17 @@ impl MandatoryTracePlan {
         Self::exact(5)
     }
 
+    /// Selection, boundary/restoration, transition, focus-within, and two
+    /// notification-queue facts. Phase/output facts are covered separately by
+    /// the routed-event maximum.
+    pub(crate) const fn focus_commit() -> Self {
+        Self::exact(10)
+    }
+
     /// Maximum default/interaction/notification/output/close facts committed
     /// after pointer callbacks.
     pub(crate) fn pointer_commit(boundary_notifications: usize) -> Option<Self> {
-        Self::exact(8).checked_add(Self::exact(boundary_notifications))
+        Self::exact(9).checked_add(Self::exact(boundary_notifications))
     }
 
     pub(crate) const fn surface_command_acceptance() -> Self {
@@ -74,7 +81,7 @@ impl MandatoryTracePlan {
     }
 
     pub(crate) const fn application_action_base(has_focus: bool) -> Self {
-        Self::exact(if has_focus { 4 } else { 3 })
+        Self::exact(if has_focus { 6 } else { 3 })
     }
 
     pub(crate) fn lifecycle_invalidations(count: usize) -> Option<Self> {
@@ -82,7 +89,7 @@ impl MandatoryTracePlan {
     }
 
     pub(crate) fn routed_event(route_invocations: usize, max_outputs: usize) -> Option<Self> {
-        Self::exact(6)
+        Self::exact(7)
             .checked_add(Self::exact(6).checked_mul(route_invocations)?)
             .and_then(|plan| plan.checked_add(Self::exact(6).checked_mul(max_outputs)?))
             .and_then(|plan| {
