@@ -102,7 +102,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{LogicalLength, StyleTokens};
+    use runenui_core::{
+        LogicalDelta, LogicalLength, LogicalPoint, PointerButton, PointerButtons,
+        PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleTokens,
+    };
     use runenui_runtime::{
         AppRuntime, FocusTargetResult, LogicalSize, PumpBudget, RuntimeStatus,
         RuntimeTerminalReason, SubmitCommandErrorKind, SurfaceBuildContext,
@@ -131,6 +134,22 @@ mod tests {
             .iter()
             .map(|node| node.semantics().name().to_owned())
             .collect()
+    }
+
+    fn primary_pointer_event(
+        pointer_id: PointerId,
+        phase: PointerPhase,
+        point: LogicalPoint,
+        context: runenui_core::SurfaceInputContext,
+    ) -> PointerEvent {
+        PointerEvent::new(pointer_id, PointerDeviceKind::Mouse, phase, point, context)
+            .with_buttons(if phase == PointerPhase::Down {
+                PointerButtons::new([PointerButton::Primary])
+            } else {
+                PointerButtons::default()
+            })
+            .with_changed_button(PointerButton::Primary)
+            .with_movement_delta(LogicalDelta::ZERO)
     }
 
     #[test]
@@ -182,6 +201,51 @@ mod tests {
         ));
         assert_eq!(runtime.state(), &Counter { count: 10 });
         assert_eq!(published_names(runtime.into_state())[1], "You win");
+    }
+
+    #[test]
+    fn physical_primary_release_inside_increments_once() {
+        let mut runtime = mounted_counter(Counter::new());
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
+        let publication = runtime.publish_surface(&context);
+        let increment = publication
+            .frame()
+            .nodes()
+            .iter()
+            .find(|node| {
+                node.authored_id()
+                    .is_some_and(|id| id.as_str() == "counter.increment")
+            })
+            .unwrap_or_else(|| unreachable!("the increment control is published"));
+        let bounds = increment.bounds();
+        let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("published coordinates are finite"));
+        let input = publication.input_context().clone();
+        let pointer_id =
+            PointerId::new(1).unwrap_or_else(|| unreachable!("the pointer identity is non-zero"));
+
+        runtime
+            .submit_pointer(primary_pointer_event(
+                pointer_id,
+                PointerPhase::Down,
+                point,
+                input.clone(),
+            ))
+            .unwrap_or_else(|_| unreachable!("the displayed down is accepted"));
+        runtime
+            .submit_pointer(primary_pointer_event(
+                pointer_id,
+                PointerPhase::Up,
+                point,
+                input,
+            ))
+            .unwrap_or_else(|_| unreachable!("the displayed up is accepted"));
+        assert_eq!(runtime.state(), &Counter::new());
+
+        settle_initial_work(&mut runtime);
+
+        assert_eq!(runtime.state(), &Counter { count: 1 });
     }
 
     #[test]

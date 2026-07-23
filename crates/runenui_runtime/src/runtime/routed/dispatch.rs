@@ -168,9 +168,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if invocation.output.overflowed {
             return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
         }
-        if let Some(request) = invocation.output.pointer_capture {
-            transaction.pointer_capture_requests.push(request);
-        }
+        transaction
+            .pointer_capture_requests
+            .extend(invocation.output.pointer_capture);
         self.record_event_mutation(
             transaction,
             current,

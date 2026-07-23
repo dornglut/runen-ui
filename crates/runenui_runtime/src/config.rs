@@ -263,7 +263,7 @@ impl RuntimeConfig {
 
     #[cfg(not(feature = "internal-test-seams"))]
     pub(crate) const fn mounted_public_slot_limit(self) -> u64 {
-        u64::from(u32::MAX) + 1
+        u32::MAX as u64 + 1
     }
 }
 

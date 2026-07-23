@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use runenui_core::{
     InputDeviceId, LogicalPoint, MountedNodeId, PointerButtons, PointerDeviceKind, PointerId,
-    SurfaceId,
+    SurfaceId, SurfaceInputContext,
 };
 
 /// Exact state retained for one active pointer stream.
@@ -23,6 +23,7 @@ pub(in crate::runtime) struct PointerStreamState {
     pressed_owner: Option<MountedNodeId>,
     pressed_inside: bool,
     capture_owner: Option<MountedNodeId>,
+    surface_context: Option<SurfaceInputContext>,
 }
 
 impl PointerStreamState {
@@ -51,7 +52,6 @@ impl PointerStreamState {
         &self.physical_path
     }
 
-    #[cfg(test)]
     pub(in crate::runtime) const fn buttons(&self) -> &PointerButtons {
         &self.buttons
     }
@@ -67,6 +67,10 @@ impl PointerStreamState {
 
     pub(in crate::runtime) const fn capture_owner(&self) -> Option<&MountedNodeId> {
         self.capture_owner.as_ref()
+    }
+
+    pub(in crate::runtime) const fn surface_context(&self) -> Option<&SurfaceInputContext> {
+        self.surface_context.as_ref()
     }
 
     pub(in crate::runtime) fn update_observation(
@@ -91,6 +95,10 @@ impl PointerStreamState {
 
     pub(in crate::runtime) fn set_capture_owner(&mut self, owner: Option<MountedNodeId>) {
         self.capture_owner = owner;
+    }
+
+    pub(in crate::runtime) fn set_surface_context(&mut self, context: SurfaceInputContext) {
+        self.surface_context = Some(context);
     }
 
     #[cfg(test)]
@@ -205,6 +213,7 @@ impl PointerRegistry {
             pressed_owner: None,
             pressed_inside: false,
             capture_owner: None,
+            surface_context: None,
         })
     }
 
@@ -307,6 +316,10 @@ impl PointerRegistry {
         pointer_id: PointerId,
     ) -> Option<PointerStreamState> {
         self.streams.remove(&pointer_id)
+    }
+
+    pub(in crate::runtime) fn stream(&self, pointer_id: PointerId) -> Option<&PointerStreamState> {
+        self.streams.get(&pointer_id)
     }
 
     #[cfg(test)]

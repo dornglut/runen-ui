@@ -18,7 +18,10 @@ test-only generation seam proves that terminal exhaustion before action update
 preserves Counter state, mounted/semantic identity, focus, report, and cached
 publication while cancelling the failed and remaining queued actions. Multiple
 activations before one pump also prove repeatable `on_activate` factories and
-FIFO action processing.
+FIFO action processing. A public pointer-ingress proof publishes the surface,
+presses the physical Increment bounds, releases inside the same exact mounted
+lifetime, and observes exactly one increment through the normal `Activate`
+convergence path.
 
 Run it with:
 
@@ -27,8 +30,9 @@ cargo run --package counter
 ```
 
 This is a deterministic headless proof, not a desktop application, production
-control/accessibility/text example, paint scene, native host, or renderer. Input
-is still proof-level press activation routed only into the canonical queue.
+control/accessibility/text example, paint scene, native host, or renderer.
+Pointer input is a deterministic logical-surface proof routed only through the
+canonical queue; it is not native host-event translation.
 Counter intentionally proves the ergonomic `()` no-effects update with
 `NoHostProtocol`; separate runtime fixtures cover tasks, timers, subscriptions,
 host requests, and the four-budget scheduler. M4C owns routed events, capture,

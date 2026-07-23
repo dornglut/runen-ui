@@ -32,12 +32,13 @@ impl MandatoryTracePlan {
 
     /// Maximum stream/context/target outcome facts before routed callbacks begin.
     pub(crate) const fn pointer_processing() -> Self {
-        Self::exact(4)
+        Self::exact(5)
     }
 
-    /// Maximum stream/default/close facts committed after pointer callbacks.
-    pub(crate) const fn pointer_commit() -> Self {
-        Self::exact(4)
+    /// Maximum default/interaction/notification/output/close facts committed
+    /// after pointer callbacks.
+    pub(crate) fn pointer_commit(boundary_notifications: usize) -> Option<Self> {
+        Self::exact(8).checked_add(Self::exact(boundary_notifications))
     }
 
     pub(crate) const fn surface_command_acceptance() -> Self {

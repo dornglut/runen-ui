@@ -5,7 +5,6 @@ use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceRecordKind, TraceSequence,
     mounted::TargetStatus,
     runtime::{MandatoryTracePlan, ProcessApplicationActionOutcome, Runtime},
-    trace::TraceReservation,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -47,7 +46,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ));
             }
         };
-        if matches!(phase, PointerPhase::Down) && existing.is_some() {
+        if matches!(phase, PointerPhase::Down)
+            && existing.as_ref().is_some_and(|stream| {
+                work.event
+                    .changed_button()
+                    .is_none_or(|button| stream.buttons().contains(button))
+            })
+        {
             return Err(self.reject_pointer(
                 work.sequence,
                 work.causal_parent,
@@ -100,11 +105,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         stream: &super::PointerStreamState,
     ) -> Result<PointerGeometry, ProcessApplicationActionOutcome> {
         if matches!(work.event.phase(), PointerPhase::Cancel) {
+            let diagnosis = self
+                .surface_publication
+                .resolve_pointer_point(work.event.surface_context(), work.event.position())
+                .err()
+                .map(super::rejection::map_surface_error);
             let physical_path = stream.physical_path().to_vec();
             return Ok(PointerGeometry {
                 physical_target: physical_path.last().cloned(),
                 physical_path,
                 snapshot: None,
+                diagnosis,
             });
         }
         let resolution = match self
@@ -153,6 +164,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             physical_target,
             physical_path,
             snapshot: Some(snapshot),
+            diagnosis: None,
         })
     }
 
@@ -194,6 +206,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         is_new: bool,
         physical_target: Option<&MountedNodeId>,
         snapshot: Option<PointerSnapshot>,
+        diagnosis: Option<crate::TracePointerRejection>,
+        boundary_notifications: usize,
     ) -> Result<Option<TraceSequence>, ProcessApplicationActionOutcome> {
         if !self.trace.can_replace_reservation(
             work.trace_reservation,
@@ -207,21 +221,49 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             });
         }
         let pointer_id = work.event.pointer_id();
-        let mut parent = if is_new {
-            work.causal_parent
-        } else {
-            self.trace.record_reserved(
-                work.trace_reservation,
+        let mut parent = self.trace.record_reserved(
+            work.trace_reservation,
+            TraceRecordKind::PointerIngressValidated {
+                pointer_id,
+                phase: work.event.phase(),
+            },
+            work.sequence,
+            work.causal_parent,
+        );
+        parent = self.trace.record(
+            TraceRecordKind::PointerStreamResolved {
+                pointer_id,
+                new_stream: is_new,
+            },
+            Some(work.sequence),
+            parent,
+            None,
+            None,
+            None,
+        );
+        if !is_new {
+            parent = self.trace.record(
                 TraceRecordKind::PointerStreamObserved { pointer_id },
-                work.sequence,
-                work.causal_parent,
-            )
-        };
-        let continuation = if is_new {
-            work.trace_reservation
-        } else {
-            TraceReservation::continuation()
-        };
+                Some(work.sequence),
+                parent,
+                None,
+                None,
+                None,
+            );
+        }
+        if let Some(outcome) = diagnosis {
+            parent = self.trace.record(
+                TraceRecordKind::PointerContextUnavailable {
+                    pointer_id,
+                    outcome,
+                },
+                Some(work.sequence),
+                parent,
+                None,
+                None,
+                None,
+            );
+        }
         if let Some((snapshot, hit_test_generation, coordinate_revision)) = snapshot {
             let kind = TraceRecordKind::PointerPhysicalTargetResolved {
                 pointer_id,
@@ -229,22 +271,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 hit_test_generation,
                 coordinate_revision,
             };
-            parent = if is_new {
-                self.trace
-                    .record_reserved(continuation, kind, work.sequence, parent)
-            } else {
-                self.trace.record(
-                    kind,
-                    Some(work.sequence),
-                    parent,
-                    None,
-                    None,
-                    physical_target.map(|target| self.tree.trace_target(target)),
-                )
-            };
+            parent = self.trace.record(
+                kind,
+                Some(work.sequence),
+                parent,
+                None,
+                None,
+                physical_target.map(|target| self.tree.trace_target(target)),
+            );
         } else if is_new {
             unreachable!("cancel requires an existing pointer stream")
         }
+        parent = self.trace.record(
+            TraceRecordKind::PointerBoundaryBundlePlanned {
+                pointer_id,
+                notifications: boundary_notifications,
+            },
+            Some(work.sequence),
+            parent,
+            None,
+            None,
+            None,
+        );
         Ok(parent)
     }
 }

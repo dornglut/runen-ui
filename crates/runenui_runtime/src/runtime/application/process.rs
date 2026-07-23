@@ -214,7 +214,12 @@ pub(crate) fn process_application_action<App: UiApp>(
         .reconcile_pointer_lifetimes(sequence, tree_reconciled, &unmounted_work_owners)
         .is_err()
     {
-        let reason = mutation_phase.terminal_reason(RuntimeTerminalReason::TraceSequenceExhausted);
+        let reason = match runtime.status {
+            RuntimeStatus::Terminal(reason) => reason,
+            RuntimeStatus::Running | RuntimeStatus::Closed => {
+                mutation_phase.terminal_reason(RuntimeTerminalReason::Poisoned)
+            }
+        };
         let cancelled = runtime.enter_terminal(reason, 0);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     }

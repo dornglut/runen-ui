@@ -14,8 +14,9 @@ M4C1 and M4C2 are complete, owner-accepted, and squash-merged in
 and
 [archive PR #99](../history/public-repository-migration.md#accepted-imported-milestone-history).
 M4C2 used the documented infrastructure-only CI waiver after exact-head
-local validation and final review passed. M4C3 is the next implementation slice;
-M4C4–M4D3 remain blocked in sequence. M4 is active and incomplete. The accepted
+local validation and final review passed. M4C3 is proof-complete on the active
+implementation branch and awaits owner acceptance and merge; M4C4–M4D3 remain
+blocked in sequence. M4 is active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
 implemented public API until each slice is accepted. The
@@ -226,14 +227,19 @@ report state-only mutation, action-only output, both, or neither. Action mapping
 preserves the state-change fact.
 
 The open `Widget::event` capability receives immutable `UiEvent` data and one
-borrowed `EventContext<'_, Action>`. M4C1 exposes only semantic-command events,
-the `Capture`/`Target`/`Bubble` phases, programmatic/automation/accessibility/
-controller sources, and direct/delegated derivation. The context exposes the
+borrowed `EventContext<'_, Action>`. The event protocol exposes semantic-command,
+pointer, pointer-boundary, and pointer-capture families. Ordinary pointer events
+use `Capture`/`Target`/`Bubble`; boundary and capture notifications are target-
+only and non-cancelable. Programmatic/automation/accessibility/controller and
+pointer sources retain internally consistent derivation. The context exposes the
 original/current/optional-related target, origin, accepted `WorkSequence`,
-`MonotonicInstant`, and propagation/default facts. It provisionally collects
+`MonotonicInstant`, pointer identity, independent physical hit target/path, and
+propagation/default facts. It provisionally collects
 owned actions, delegated commands, exact-owner subscription invalidation,
 ordinary invalidation, mounted tasks/timers/cancellation, stop propagation, and
-prevent default. `WidgetEventOutput` reports only independent persistent-state
+prevent default plus ordered capture/release requests for the current pointer.
+Recursive mapping preserves every staged capture request. `WidgetEventOutput`
+reports only independent persistent-state
 mutation. Mapping moves non-`Clone` actions and recursively maps mounted work
 while preserving commands, controls, invalidation, and the state-change fact.
 Only the checked erased widget bridge constructs and extracts `EventContext`;
@@ -393,20 +399,25 @@ second ancestor pass. Programmatic, automation, accessibility-stub, and
 normalized-controller origins use this same exact-target path; authored-ID
 automation and semantic accessibility resolution are not implemented.
 
-Direct programmatic activation and the old pointer/keyboard activation helpers
-are removed. `handle_pointer_focus` is retained only as an M4C3 proof helper
-and `handle_keyboard_focus` only as an M4C5 proof helper; both can change focus
-but cannot emit actions, invoke activation, or synthesize commands. M4C2 owns
-surface context, M4C3 pointer lifecycle/release-inside activation, M4C4 focus
+Direct programmatic activation and the old pointer activation/resolution helpers
+are removed. `handle_keyboard_focus` remains only as an M4C5 proof helper; it
+can change focus but cannot emit actions, invoke activation, or synthesize
+commands. M4C2 owns surface context, M4C3 implements pointer lifecycle/release-
+inside activation, M4C4 owns focus
 scopes/modality, M4C5 keyboard/text/IME and automation resolution, M4D trace
 normalization/export/replay, and M5 semantic accessibility mapping.
 
 Focus stores `Option<MountedNodeId>`. It survives compatible update,
 authored-ID change, and keyed reorder, and clears on removal, replacement,
 disablement, or loss of actionability/focusability. Traversal follows current
-mounted preorder. Existing hovered, pressed, capture-placeholder, and logical
-scroll-offset slots remain proof-only M4B state; M4C1 adds no pointer identity,
-capture, release-inside behavior, or modality.
+mounted preorder. Pointer interaction state is runtime-owned per checked
+`PointerId`: device and surface ownership, physical path, buttons, pressed
+owner/inside state, and one exact live capture owner remain distinct.
+`submit_pointer` is the sole public pointer ingress and never accepts an
+unchecked mounted target. Down/move/up/cancel/wheel use the canonical queue and
+routed transaction engine. Primary activation requires an eligible down and
+physical release inside the same exact live owner; wheel derives one route-only
+logical-scroll command. Focus scopes and modality remain M4C4.
 
 ## C9 public authority delta
 
@@ -421,10 +432,10 @@ Focus stores `Option<MountedNodeId>`. It survives compatible update, authored-ID
 change, and keyed reorder, and clears on removal, replacement, disablement, or
 loss of actionability/focusability. Traversal follows current mounted preorder.
 
-Each node privately owns hovered, pressed, capture-placeholder, and logical
-scroll-offset slots. They survive compatible updates and reset on replacement.
-The capture placeholder is an ownership proof only; M4C3 owns pointer IDs, true
-capture, and release-inside activation.
+The runtime owns one bounded pointer registry rather than per-node aggregate
+interaction booleans. Removal, replacement, disablement, loss of actionability,
+cancel, up, shutdown, and drop clear incompatible exact-generation ownership.
+No production scroll-offset mutation is implied by logical-scroll intent.
 
 ## Invalidation and capability caches
 
@@ -522,6 +533,14 @@ failure, or commit-invariant failure without losing accepted causal facts. This
 remains an in-memory causal graph, not the deferred M4D
 normalization/export/replay contract.
 
+M4C3 adds pointer submission, ordered validation and stream resolution,
+physical-path and boundary-bundle planning, default applied/suppressed,
+interaction commit, capture/boundary notification, activation/logical-scroll
+collection, stationary-publication re-hit, and terminal diagnosis-to-cleanup
+facts. The accepted pointer `WorkSequence` and causal parents reconstruct the
+slice-local lineage; M4D may normalize this schema but does not own missing
+pointer parentage.
+
 Transaction semantic request/invalidation records preserve callback collector
 order independently from cleanup-before-start queue grouping. Final action
 acceptance is recorded before queue append, and the accepted action trace record
@@ -581,8 +600,8 @@ M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
 in force. The current contract includes effects, subscriptions, tasks, timers,
 host requests, all four readiness budgets, wake/redraw, and M4C1 exact-target
-routed semantic commands and M4C2 displayed-generation surface context. It does
-not imply M4C3 pointer
-lifecycle, M4C4 focus scopes/modality, M4C5 keyboard/text/IME or authored-ID
+routed semantic commands, M4C2 displayed-generation surface context, and the
+M4C3 host-neutral pointer lifecycle. It does not imply native host translation,
+production scrolling, M4C4 focus scopes/modality, M4C5 keyboard/text/IME or authored-ID
 automation, M4D trace export/replay, M5 semantic accessibility mapping, or M4
 completion.

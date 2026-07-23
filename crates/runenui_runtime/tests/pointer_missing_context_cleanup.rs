@@ -18,8 +18,14 @@ use runenui_runtime::{
 
 #[derive(Clone)]
 struct State {
-    callbacks: Rc<RefCell<Vec<PointerPhase>>>,
+    callbacks: Rc<RefCell<Vec<Observation>>>,
     activations: Rc<Cell<usize>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Observation {
+    Pointer(PointerPhase),
+    Capture(PointerCaptureKind),
 }
 
 #[derive(Clone, Copy)]
@@ -49,7 +55,7 @@ impl UiApp for App {
 
 #[derive(Debug)]
 struct Probe {
-    callbacks: Rc<RefCell<Vec<PointerPhase>>>,
+    callbacks: Rc<RefCell<Vec<Observation>>>,
 }
 
 impl Widget<Action> for Probe {
@@ -63,8 +69,16 @@ impl Widget<Action> for Probe {
         event: &UiEvent,
         _context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
-        if let UiEvent::Pointer(pointer) = event {
-            self.callbacks.borrow_mut().push(pointer.phase());
+        match event {
+            UiEvent::Pointer(pointer) => self
+                .callbacks
+                .borrow_mut()
+                .push(Observation::Pointer(pointer.phase())),
+            UiEvent::PointerCapture(capture) => self
+                .callbacks
+                .borrow_mut()
+                .push(Observation::Capture(capture.kind())),
+            _ => {}
         }
         WidgetEventOutput::none()
     }
@@ -165,7 +179,10 @@ fn missing_context_up_commits_integrity_only_cleanup_with_causal_trace() {
         .unwrap_or_else(|_| unreachable!("the up event is accepted before processing"));
     pump_all(&mut runtime);
 
-    assert!(callbacks.borrow().is_empty());
+    assert_eq!(
+        callbacks.borrow().as_slice(),
+        [Observation::Capture(PointerCaptureKind::Lost)]
+    );
     assert_eq!(activations.get(), 0);
     let records = runtime.trace().records().collect::<Vec<_>>();
     let rejected = records
@@ -197,19 +214,19 @@ fn missing_context_up_commits_integrity_only_cleanup_with_causal_trace() {
             )
         })
         .unwrap_or_else(|| unreachable!("missing-generation up commits exact cleanup"));
-    let suppressed = records
+    let capture_lost = records
         .iter()
         .rev()
         .find(|record| {
             matches!(
                 record.kind(),
-                TraceRecordKind::PointerCaptureNotificationSuppressed {
+                TraceRecordKind::PointerCaptureTransitionQueued {
                     pointer_id,
                     kind: PointerCaptureKind::Lost,
                 } if pointer_id.get() == 79
             )
         })
-        .unwrap_or_else(|| unreachable!("unavailable capture loss is diagnosed"));
+        .unwrap_or_else(|| unreachable!("live capture loss is queued"));
     let closed = records
         .iter()
         .rev()
@@ -222,6 +239,6 @@ fn missing_context_up_commits_integrity_only_cleanup_with_causal_trace() {
         .unwrap_or_else(|| unreachable!("missing-generation up closes the stream"));
 
     assert_eq!(cleanup.causal_parent(), Some(rejected.sequence()));
-    assert_eq!(suppressed.causal_parent(), Some(cleanup.sequence()));
-    assert_eq!(closed.causal_parent(), Some(suppressed.sequence()));
+    assert_eq!(capture_lost.causal_parent(), Some(cleanup.sequence()));
+    assert_eq!(closed.causal_parent(), Some(capture_lost.sequence()));
 }

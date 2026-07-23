@@ -44,7 +44,7 @@ pub struct EventContextOutput<Action> {
     pub invalidation: WidgetInvalidation,
     pub subscription_invalidation: bool,
     pub mounted_work: Vec<MountedEffect<Action>>,
-    pub pointer_capture: Option<PointerCaptureRequest>,
+    pub pointer_capture: Vec<PointerCaptureRequest>,
     pub propagation_stopped: bool,
     pub default_prevented: bool,
     pub overflowed: bool,
@@ -67,7 +67,7 @@ pub struct EventContext<'a, Action> {
     pointer_id: Option<PointerId>,
     physical_target: Option<&'a MountedNodeId>,
     physical_path: &'a [MountedNodeId],
-    pointer_capture: Option<PointerCaptureRequest>,
+    pointer_capture: Vec<PointerCaptureRequest>,
     default_cancelable: bool,
     default_prevented: bool,
     propagation_stopped: bool,
@@ -191,7 +191,7 @@ impl<'a, Action> EventContext<'a, Action> {
             return;
         };
         if self.reserve_output() {
-            self.pointer_capture = Some(PointerCaptureRequest::Capture {
+            self.pointer_capture.push(PointerCaptureRequest::Capture {
                 pointer_id,
                 target: self.current_target.clone(),
             });
@@ -204,7 +204,7 @@ impl<'a, Action> EventContext<'a, Action> {
             return;
         };
         if self.reserve_output() {
-            self.pointer_capture = Some(PointerCaptureRequest::Release {
+            self.pointer_capture.push(PointerCaptureRequest::Release {
                 pointer_id,
                 target: self.current_target.clone(),
             });
@@ -341,7 +341,7 @@ impl<'a, Action> EventContext<'a, Action> {
     {
         self.invalidation |= child.invalidation;
         self.subscription_invalidation |= child.subscription_invalidation;
-        self.pointer_capture = child.pointer_capture;
+        self.pointer_capture.append(&mut child.pointer_capture);
         self.default_prevented = child.default_prevented;
         self.propagation_stopped = child.propagation_stopped;
         self.overflowed |= child.overflowed;
@@ -463,7 +463,7 @@ impl<'a, Action> EventContext<'a, Action> {
             pointer_id,
             physical_target,
             physical_path,
-            pointer_capture: None,
+            pointer_capture: Vec::new(),
             default_cancelable,
             default_prevented,
             propagation_stopped,
@@ -568,7 +568,7 @@ mod tests {
             output.mounted_work.as_slice(),
             [MountedEffect::LocalTask(_)]
         ));
-        assert_eq!(output.pointer_capture, None);
+        assert!(output.pointer_capture.is_empty());
         assert!(output.propagation_stopped);
         assert!(output.default_prevented);
         assert!(!output.overflowed);
@@ -576,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn pointer_context_preserves_physical_facts_and_last_capture_request() {
+    fn pointer_context_preserves_physical_facts_and_capture_request_order() {
         let namespace = RuntimeNamespace::__runtime_new();
         let root = namespace.__runtime_mounted_id(0, 1);
         let target = namespace.__runtime_mounted_id(1, 1);
@@ -606,14 +606,58 @@ mod tests {
         context.capture_pointer();
         context.release_pointer_capture();
         let output = context.into_output();
-        assert!(matches!(
+        assert_eq!(
             output.pointer_capture,
-            Some(PointerCaptureRequest::Release {
-                pointer_id: requested,
-                target: requested_target,
-            }) if requested == pointer_id && requested_target == target
-        ));
+            [
+                PointerCaptureRequest::Capture {
+                    pointer_id,
+                    target: target.clone(),
+                },
+                PointerCaptureRequest::Release { pointer_id, target },
+            ]
+        );
         assert_eq!(output.remaining_outputs, 0);
+    }
+
+    #[test]
+    fn mapped_pointer_context_preserves_every_capture_request() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let target = namespace.__runtime_mounted_id(1, 1);
+        let pointer_id =
+            PointerId::new(8).unwrap_or_else(|| unreachable!("test pointer is non-zero"));
+        let mut parent = EventContext::<String>::new_pointer(
+            EventPhase::Target,
+            &target,
+            &target,
+            None,
+            CommandOrigin::__runtime_pointer(),
+            sequence(3),
+            MonotonicInstant::ZERO,
+            pointer_id,
+            Some(&target),
+            core::slice::from_ref(&target),
+            true,
+            false,
+            false,
+            2,
+        );
+        let mut child = parent.mapped_child::<()>();
+        child.capture_pointer();
+        child.release_pointer_capture();
+        let mapper: Rc<dyn Fn(()) -> String> = Rc::new(|()| String::new());
+
+        parent.absorb_mapped(child.into_output(), &mapper);
+
+        assert_eq!(
+            parent.into_output().pointer_capture,
+            [
+                PointerCaptureRequest::Capture {
+                    pointer_id,
+                    target: target.clone(),
+                },
+                PointerCaptureRequest::Release { pointer_id, target },
+            ]
+        );
     }
 
     #[test]

@@ -24,6 +24,8 @@ struct CaptureObservation {
 #[derive(Clone)]
 struct State {
     captures: Rc<RefCell<Vec<CaptureObservation>>>,
+    release_after_transfer: bool,
+    capture_root_on_down: bool,
 }
 
 struct App;
@@ -35,11 +37,15 @@ impl UiApp for App {
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
         container(
-            InvalidReleaseRoot,
+            InvalidReleaseRoot {
+                capture_on_down: state.capture_root_on_down,
+                captures: Rc::clone(&state.captures),
+            },
             children![
                 Element::new(CaptureProbe {
                     name: "left",
                     transfer_on_enter: false,
+                    release_after_transfer: false,
                     captures: Rc::clone(&state.captures),
                 })
                 .id("left")
@@ -47,6 +53,7 @@ impl UiApp for App {
                 Element::new(CaptureProbe {
                     name: "right",
                     transfer_on_enter: true,
+                    release_after_transfer: state.release_after_transfer,
                     captures: Rc::clone(&state.captures),
                 })
                 .id("right")
@@ -61,7 +68,10 @@ impl UiApp for App {
 }
 
 #[derive(Debug)]
-struct InvalidReleaseRoot;
+struct InvalidReleaseRoot {
+    capture_on_down: bool,
+    captures: Rc<RefCell<Vec<CaptureObservation>>>,
+}
 
 impl Widget<()> for InvalidReleaseRoot {
     type State = ();
@@ -74,8 +84,23 @@ impl Widget<()> for InvalidReleaseRoot {
         event: &UiEvent,
         context: &mut EventContext<'_, ()>,
     ) -> WidgetEventOutput {
-        if matches!(event, UiEvent::Pointer(pointer) if pointer.phase() == PointerPhase::Move) {
-            context.release_pointer_capture();
+        match event {
+            UiEvent::Pointer(pointer) if pointer.phase() == PointerPhase::Move => {
+                context.release_pointer_capture();
+            }
+            UiEvent::Pointer(pointer)
+                if self.capture_on_down && pointer.phase() == PointerPhase::Down =>
+            {
+                context.capture_pointer();
+            }
+            UiEvent::PointerCapture(capture) => {
+                self.captures.borrow_mut().push(CaptureObservation {
+                    widget: "root",
+                    kind: capture.kind(),
+                    related: capture.related_owner().cloned(),
+                });
+            }
+            _ => {}
         }
         WidgetEventOutput::none()
     }
@@ -93,6 +118,7 @@ impl ChildLayoutWidget<()> for InvalidReleaseRoot {
 struct CaptureProbe {
     name: &'static str,
     transfer_on_enter: bool,
+    release_after_transfer: bool,
     captures: Rc<RefCell<Vec<CaptureObservation>>>,
 }
 
@@ -112,6 +138,9 @@ impl Widget<()> for CaptureProbe {
                 if self.transfer_on_enter && boundary.kind() == PointerBoundaryKind::Enter =>
             {
                 context.capture_pointer();
+                if self.release_after_transfer {
+                    context.release_pointer_capture();
+                }
             }
             UiEvent::PointerCapture(capture) => {
                 self.captures.borrow_mut().push(CaptureObservation {
@@ -147,10 +176,12 @@ struct Harness {
     captures: Rc<RefCell<Vec<CaptureObservation>>>,
 }
 
-fn harness() -> Harness {
+fn harness(release_after_transfer: bool, capture_root_on_down: bool) -> Harness {
     let captures = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         captures: Rc::clone(&captures),
+        release_after_transfer,
+        capture_root_on_down,
     });
     let tokens = StyleTokens::default();
     let size = LogicalSize::try_new(96.0, 48.0)
@@ -233,7 +264,7 @@ fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
 
 #[test]
 fn invalid_later_releases_do_not_erase_an_earlier_valid_transfer() {
-    let mut harness = harness();
+    let mut harness = harness(false, false);
     submit_and_pump(
         &mut harness.runtime,
         pointer_event(&harness.context, harness.left_point, PointerPhase::Down),
@@ -275,4 +306,52 @@ fn invalid_later_releases_do_not_erase_an_earlier_valid_transfer() {
             .count(),
         2
     );
+}
+
+#[test]
+fn one_callback_preserves_capture_then_release_in_staging_order() {
+    let mut harness = harness(true, false);
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(&harness.context, harness.left_point, PointerPhase::Down),
+    );
+    harness.captures.borrow_mut().clear();
+
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(&harness.context, harness.right_point, PointerPhase::Move),
+    );
+
+    assert_eq!(
+        harness.captures.borrow().as_slice(),
+        [CaptureObservation {
+            widget: "left",
+            kind: PointerCaptureKind::Lost,
+            related: None,
+        }]
+    );
+}
+
+#[test]
+fn down_default_is_the_final_capture_request_after_explicit_staging() {
+    let mut harness = harness(false, true);
+
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(&harness.context, harness.left_point, PointerPhase::Down),
+    );
+
+    assert_eq!(
+        harness.captures.borrow().as_slice(),
+        [CaptureObservation {
+            widget: "left",
+            kind: PointerCaptureKind::Gained,
+            related: None,
+        }]
+    );
+    assert!(!harness.runtime.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::PointerCaptureRequestRejected { pointer_id, .. }
+            if pointer_id.get() == 61
+    )));
 }

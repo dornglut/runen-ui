@@ -159,13 +159,15 @@ reconciliation/trace path. M4C1 does not resolve authored automation IDs,
 semantic accessibility identities, or raw controller types.
 
 The semantic authored callback remains `on_activate`. The old direct runtime,
-pointer-press, and keyboard activation authorities are removed. Retained
-`handle_pointer_focus` and `handle_keyboard_focus` helpers are negative
-focus-only seams owned for removal by M4C3 and M4C5 respectively.
+pointer-press, pointer-focus, and unchecked pointer-target authorities are
+removed. The retained keyboard focus helper is a negative focus-only seam owned
+for removal by M4C5.
 
-M4C2 has added displayed-generation surface context. The accepted later
-contract remains unimplemented: M4C3 adds pointer streams/capture/release-inside
-activation, M4C4 focus scopes/modality, M4C5 keyboard/text/IME and authored
+M4C2 added displayed-generation surface context. M4C3 adds the canonical
+pointer/device protocol, pointer streams, physical/routed separation, capture,
+boundaries, terminal cleanup, logical-scroll intent, and release-inside
+activation. The accepted later contract remains unimplemented: M4C4 focus
+scopes/modality, M4C5 keyboard/text/IME and authored
 automation resolution, M4D trace normalization/export/replay, and M5 semantic
 accessibility mapping. See [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md)
 for those later behavioral rules.

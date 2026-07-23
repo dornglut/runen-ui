@@ -21,6 +21,7 @@ struct State {
     mode: Mode,
     activations: usize,
     pointer_phases: Rc<RefCell<Vec<PointerPhase>>>,
+    capture_kinds: Rc<RefCell<Vec<PointerCaptureKind>>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,6 +41,7 @@ impl UiApp for App {
         Element::new(Probe {
             mode: state.mode,
             pointer_phases: Rc::clone(&state.pointer_phases),
+            capture_kinds: Rc::clone(&state.capture_kinds),
         })
         .key("probe")
     }
@@ -56,6 +58,7 @@ impl UiApp for App {
 struct Probe {
     mode: Mode,
     pointer_phases: Rc<RefCell<Vec<PointerPhase>>>,
+    capture_kinds: Rc<RefCell<Vec<PointerCaptureKind>>>,
 }
 
 impl Widget<Action> for Probe {
@@ -69,8 +72,14 @@ impl Widget<Action> for Probe {
         event: &UiEvent,
         _context: &mut EventContext<'_, Action>,
     ) -> WidgetEventOutput {
-        if let UiEvent::Pointer(pointer) = event {
-            self.pointer_phases.borrow_mut().push(pointer.phase());
+        match event {
+            UiEvent::Pointer(pointer) => {
+                self.pointer_phases.borrow_mut().push(pointer.phase());
+            }
+            UiEvent::PointerCapture(capture) => {
+                self.capture_kinds.borrow_mut().push(capture.kind());
+            }
+            _ => {}
         }
         WidgetEventOutput::none()
     }
@@ -106,14 +115,17 @@ struct Harness {
     point: LogicalPoint,
     outside: LogicalPoint,
     pointer_phases: Rc<RefCell<Vec<PointerPhase>>>,
+    capture_kinds: Rc<RefCell<Vec<PointerCaptureKind>>>,
 }
 
 fn harness() -> Harness {
     let pointer_phases = Rc::new(RefCell::new(Vec::new()));
+    let capture_kinds = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         mode: Mode::Active,
         activations: 0,
         pointer_phases: Rc::clone(&pointer_phases),
+        capture_kinds: Rc::clone(&capture_kinds),
     });
     let tokens = StyleTokens::default();
     let size = LogicalSize::try_new(64.0, 64.0)
@@ -136,6 +148,7 @@ fn harness() -> Harness {
         point,
         outside,
         pointer_phases,
+        capture_kinds,
     }
 }
 
@@ -207,7 +220,12 @@ fn assert_capability_transition_clears_interaction(mode: Mode) {
         harness.pointer_phases.borrow().as_slice(),
         [PointerPhase::Down]
     );
+    assert_eq!(
+        harness.capture_kinds.borrow().as_slice(),
+        [PointerCaptureKind::Gained]
+    );
     harness.pointer_phases.borrow_mut().clear();
+    harness.capture_kinds.borrow_mut().clear();
 
     let cleanup_start = harness.runtime.trace().len();
     harness
@@ -234,12 +252,23 @@ fn assert_capability_transition_clears_interaction(mode: Mode) {
     )));
     assert!(cleanup_records.iter().any(|record| matches!(
         record.kind(),
+        TraceRecordKind::PointerCaptureTransitionQueued {
+            pointer_id,
+            kind: PointerCaptureKind::Lost,
+        } if pointer_id.get() == 71
+    )));
+    assert!(!cleanup_records.iter().any(|record| matches!(
+        record.kind(),
         TraceRecordKind::PointerCaptureNotificationSuppressed {
             pointer_id,
             kind: PointerCaptureKind::Lost,
         } if pointer_id.get() == 71
     )));
     assert!(harness.pointer_phases.borrow().is_empty());
+    assert_eq!(
+        harness.capture_kinds.borrow().as_slice(),
+        [PointerCaptureKind::Lost]
+    );
 
     let up = pointer_event(&harness, PointerPhase::Up, false);
     harness

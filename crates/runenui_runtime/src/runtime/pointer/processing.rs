@@ -48,6 +48,7 @@ pub(super) struct PointerGeometry {
     pub(super) physical_target: Option<MountedNodeId>,
     pub(super) physical_path: Vec<MountedNodeId>,
     pub(super) snapshot: Option<PointerSnapshot>,
+    pub(super) diagnosis: Option<crate::TracePointerRejection>,
 }
 
 pub(super) struct PreparedPointer {
@@ -74,6 +75,7 @@ pub(super) struct PointerCommitPlan {
     pub(super) kind: StreamCommitKind,
     pub(super) focus: Option<MountedNodeId>,
     pub(super) capture_events: Vec<PointerCaptureEvent>,
+    pub(super) boundary_notifications: Vec<runenui_core::PointerBoundaryKind>,
     pub(super) physical_target: Option<MountedNodeId>,
     pub(super) physical_path: Vec<MountedNodeId>,
 }
@@ -141,6 +143,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             geometry.physical_path.clone(),
             work.event.buttons().clone(),
         );
+        stream.set_surface_context(work.event.surface_context().clone());
         self.clear_non_live_pointer_owners(&mut stream);
         let routed_target = Self::pointer_routed_target(
             work.event.phase(),
@@ -152,6 +155,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             prepared_stream.is_new,
             geometry.physical_target.as_ref(),
             geometry.snapshot,
+            geometry.diagnosis,
+            boundary_events.len(),
         ) {
             Ok(parent) => parent,
             Err(outcome) => return outcome,

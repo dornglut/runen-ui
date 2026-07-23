@@ -371,7 +371,9 @@ no job steps; the owner recorded the documented infrastructure-only waiver.
 
 #### M4C3 — Pointer lifecycle
 
-**Status:** `queued`; M4C2 is accepted and merged. Exact operational prerequisites are owned by the public M4C3 issue.
+**Status:** `proof-complete` on the active implementation branch; owner
+acceptance and merge remain pending. Exact operational state is owned by the
+public M4C3 issue.
 
 **Goal:** Implement pointer/device identity, physical path, pressed ownership,
 true capture, deterministic boundaries, logical scrolling, terminal unavailable-

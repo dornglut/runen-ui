@@ -7,11 +7,14 @@ use std::{
 
 use runenui_core::{
     Element, EventContext, LogicalDelta, LogicalLength, LogicalPoint, NoHostProtocol,
-    PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
-    StyleTokens, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
-    WidgetActivationOutput, WidgetEventOutput, WidgetMeasure,
+    PointerButton, PointerButtons, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, StyleTokens, UiApp, UiEvent, View, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetMeasure,
+    WorkSequence,
 };
-use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceRecordKind};
+use runenui_runtime::{
+    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceRecord, TraceRecordKind,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PointerObservation {
@@ -191,6 +194,18 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
         usize::MAX,
     ));
     assert!(report.is_quiescent());
+}
+
+fn mandatory_pointer_record<'a>(
+    records: &[&'a TraceRecord],
+    work_sequence: WorkSequence,
+    predicate: impl Fn(&TraceRecordKind) -> bool,
+) -> &'a TraceRecord {
+    records
+        .iter()
+        .copied()
+        .find(|record| record.work_sequence() == Some(work_sequence) && predicate(record.kind()))
+        .unwrap_or_else(|| unreachable!("the mandatory pointer trace fact is retained"))
 }
 
 #[test]
@@ -381,4 +396,104 @@ fn wheel_derives_exactly_one_logical_scroll_command() {
             .count(),
         1
     );
+}
+
+#[test]
+fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
+    let mut harness = harness(false, false);
+    let submission = harness
+        .runtime
+        .submit_pointer(pointer_event(
+            &harness,
+            6,
+            PointerPhase::Down,
+            Some(PointerButton::Primary),
+            true,
+            LogicalDelta::ZERO,
+        ))
+        .unwrap_or_else(|_| unreachable!("the canonical queue accepts the event"));
+    pump_all(&mut harness.runtime);
+
+    let records = harness.runtime.trace().records().collect::<Vec<_>>();
+    let record = |predicate: &dyn Fn(&TraceRecordKind) -> bool| {
+        mandatory_pointer_record(&records, submission.sequence(), predicate)
+    };
+    let accepted = record(&|kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerSubmissionAccepted { pointer_id, phase: PointerPhase::Down }
+                if pointer_id.get() == 6
+        )
+    });
+    let validated = record(&|kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerIngressValidated { pointer_id, phase: PointerPhase::Down }
+                if pointer_id.get() == 6
+        )
+    });
+    let stream = record(&|kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerStreamResolved { pointer_id, new_stream: true }
+                if pointer_id.get() == 6
+        )
+    });
+    let physical = record(&|kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerPhysicalTargetResolved { pointer_id, .. }
+                if pointer_id.get() == 6
+        )
+    });
+    let boundary_bundle = record(&|kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerBoundaryBundlePlanned {
+                pointer_id,
+                notifications: 1,
+            } if pointer_id.get() == 6
+        )
+    });
+    let routed = record(&|kind| matches!(kind, TraceRecordKind::RoutedEventStarted));
+    let default = record(&|kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerDefaultApplied { pointer_id, phase: PointerPhase::Down }
+                if pointer_id.get() == 6
+        )
+    });
+    let registered = record(&|kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerStreamRegistered { pointer_id, .. }
+                if pointer_id.get() == 6
+        )
+    });
+    let committed = record(&|kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerInteractionCommitted { pointer_id }
+                if pointer_id.get() == 6
+        )
+    });
+    let capture = record(&|kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerCaptureTransitionQueued {
+                pointer_id,
+                kind: PointerCaptureKind::Gained,
+            } if pointer_id.get() == 6
+        )
+    });
+
+    assert_eq!(validated.causal_parent(), Some(accepted.sequence()));
+    assert_eq!(stream.causal_parent(), Some(validated.sequence()));
+    assert_eq!(physical.causal_parent(), Some(stream.sequence()));
+    assert_eq!(boundary_bundle.causal_parent(), Some(physical.sequence()));
+    assert_eq!(routed.causal_parent(), Some(boundary_bundle.sequence()));
+    assert!(default.sequence() > routed.sequence());
+    assert_eq!(registered.causal_parent(), Some(default.sequence()));
+    assert_eq!(committed.causal_parent(), Some(registered.sequence()));
+    assert_eq!(capture.causal_parent(), Some(committed.sequence()));
 }

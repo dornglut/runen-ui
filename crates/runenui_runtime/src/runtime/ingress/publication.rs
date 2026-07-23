@@ -54,16 +54,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let publication = self.surface_publication.publish(&mut self.tree, context);
         if let Some(trace_reservation) = rehit_reservation {
             let instant = self.now();
-            let committed = self.queue.push_pointer_rehit_preflighted(
-                publication.input_context().clone(),
-                instant,
-                None,
+            let input_context = publication.input_context();
+            let causal_parent = self.trace.record_reserved(
                 trace_reservation,
+                TraceRecordKind::PointerStationaryRehitQueued {
+                    hit_test_generation: input_context.hit_test_generation(),
+                    coordinate_revision: input_context.coordinate_revision(),
+                },
+                self.queue
+                    .next_sequence()
+                    .unwrap_or_else(|| unreachable!("stationary re-hit was preflighted")),
+                None,
+            );
+            let committed = self.queue.push_pointer_rehit_preflighted(
+                input_context.clone(),
+                instant,
+                causal_parent,
+                crate::trace::TraceReservation::continuation(),
             );
             match committed {
                 Ok(_) => self.external_queue_commit_accepted(),
                 Err(QueueCommitError::Full | QueueCommitError::SequenceExhausted) => {
-                    self.trace.release_reservation(trace_reservation);
                     unreachable!("stationary pointer re-hit queue admission was preflighted")
                 }
             }

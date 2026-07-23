@@ -1,26 +1,38 @@
-use runenui_core::{HostProtocol, PointerCaptureKind, PointerId, WorkSequence};
+use runenui_core::{
+    CommandOrigin, HostProtocol, PointerCaptureEvent, PointerCaptureKind, PointerId,
+    SurfaceInputContext, UiEvent, WorkSequence,
+};
 
 use super::super::PointerRegistry;
 use crate::{
-    MountedNodeId, TraceRecordKind, TraceSequence,
+    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, TraceSequence,
     mounted::TargetStatus,
-    runtime::{MandatoryTracePlan, Runtime},
+    runtime::{MandatoryTracePlan, PointerDispatchFacts, RoutedIngressFacts, Runtime},
+    trace::TraceReservation,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct PointerCleanup {
     pointer_id: PointerId,
     pressed: bool,
     capture: bool,
     physical_path: bool,
+    capture_notification: Option<PointerCaptureNotification>,
+}
+
+#[derive(Clone)]
+struct PointerCaptureNotification {
+    owner: MountedNodeId,
+    context: SurfaceInputContext,
+    physical_path: Vec<MountedNodeId>,
 }
 
 impl PointerCleanup {
-    const fn reconciliation_fact_count(self) -> usize {
+    const fn reconciliation_fact_count(&self) -> usize {
         if self.capture { 2 } else { 1 }
     }
 
-    const fn closure_fact_count(self) -> usize {
+    const fn closure_fact_count(&self) -> usize {
         if self.capture { 3 } else { 2 }
     }
 }
@@ -31,6 +43,7 @@ struct PointerReconciliationSnapshot {
     pressed_owner: Option<MountedNodeId>,
     capture_owner: Option<MountedNodeId>,
     physical_path: Vec<MountedNodeId>,
+    surface_context: Option<SurfaceInputContext>,
 }
 
 fn ordered_lifecycle_pointer_ids(registry: &PointerRegistry) -> Vec<PointerId> {
@@ -60,6 +73,7 @@ impl PointerRegistry {
                     pressed_owner: stream.pressed_owner().cloned(),
                     capture_owner: stream.capture_owner().cloned(),
                     physical_path: stream.physical_path().to_vec(),
+                    surface_context: stream.surface_context().cloned(),
                 }
             })
             .collect()
@@ -78,6 +92,7 @@ impl PointerRegistry {
                     pressed: stream.pressed_owner().is_some(),
                     capture: stream.capture_owner().is_some(),
                     physical_path: !stream.physical_path().is_empty(),
+                    capture_notification: None,
                 }
             })
             .collect()
@@ -124,7 +139,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.pointer_registry
             .commit_reconciled_target_cleanup(&cleanups);
         for cleanup in cleanups {
-            parent = self.record_pointer_cleanup(cleanup, Some(sequence), parent);
+            parent = self.record_pointer_cleanup_fact(&cleanup, Some(sequence), parent);
+            if cleanup.capture {
+                if let Some(notification) = cleanup.capture_notification.as_ref() {
+                    parent = self.trace.record(
+                        TraceRecordKind::PointerCaptureTransitionQueued {
+                            pointer_id: cleanup.pointer_id,
+                            kind: PointerCaptureKind::Lost,
+                        },
+                        Some(sequence),
+                        parent,
+                        None,
+                        None,
+                        Some(self.tree.trace_target(&notification.owner)),
+                    );
+                    if self
+                        .deliver_reconciled_capture_loss(
+                            sequence,
+                            parent,
+                            cleanup.pointer_id,
+                            notification,
+                        )
+                        .is_err()
+                    {
+                        return Err(());
+                    }
+                } else {
+                    parent = self.record_suppressed_capture_loss(
+                        cleanup.pointer_id,
+                        Some(sequence),
+                        parent,
+                    );
+                }
+            }
         }
         Ok(parent)
     }
@@ -157,11 +204,33 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .physical_path
                     .iter()
                     .any(|target| unmounted.contains(target));
+                let capture_notification = if capture {
+                    snapshot.capture_owner.as_ref().and_then(|owner| {
+                        (self.tree.target_status(owner) == TargetStatus::Live)
+                            .then(|| {
+                                snapshot.surface_context.clone().map(|context| {
+                                    PointerCaptureNotification {
+                                        owner: owner.clone(),
+                                        context,
+                                        physical_path: if physical_path {
+                                            Vec::new()
+                                        } else {
+                                            snapshot.physical_path.clone()
+                                        },
+                                    }
+                                })
+                            })
+                            .flatten()
+                    })
+                } else {
+                    None
+                };
                 (pressed || capture || physical_path).then_some(PointerCleanup {
                     pointer_id: snapshot.pointer_id,
                     pressed,
                     capture,
                     physical_path,
+                    capture_notification,
                 })
             })
             .collect()
@@ -200,7 +269,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return (closed, parent);
         }
         for cleanup in cleanups {
-            parent = self.record_pointer_cleanup(cleanup, None, parent);
+            parent = self.record_pointer_cleanup_fact(&cleanup, None, parent);
+            if cleanup.capture {
+                parent = self.record_suppressed_capture_loss(cleanup.pointer_id, None, parent);
+            }
             parent = self.trace.record(
                 TraceRecordKind::PointerStreamClosed {
                     pointer_id: cleanup.pointer_id,
@@ -215,13 +287,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         (closed, parent)
     }
 
-    fn record_pointer_cleanup(
+    fn record_pointer_cleanup_fact(
         &mut self,
-        cleanup: PointerCleanup,
+        cleanup: &PointerCleanup,
         work_sequence: Option<WorkSequence>,
-        mut parent: Option<TraceSequence>,
+        parent: Option<TraceSequence>,
     ) -> Option<TraceSequence> {
-        parent = self.trace.record(
+        self.trace.record(
             TraceRecordKind::PointerIntegrityCleanupCommitted {
                 pointer_id: cleanup.pointer_id,
                 pressed: cleanup.pressed,
@@ -233,20 +305,87 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             None,
             None,
+        )
+    }
+
+    fn record_suppressed_capture_loss(
+        &mut self,
+        pointer_id: PointerId,
+        work_sequence: Option<WorkSequence>,
+        parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        self.trace.record(
+            TraceRecordKind::PointerCaptureNotificationSuppressed {
+                pointer_id,
+                kind: PointerCaptureKind::Lost,
+            },
+            work_sequence,
+            parent,
+            None,
+            None,
+            None,
+        )
+    }
+
+    fn deliver_reconciled_capture_loss(
+        &mut self,
+        sequence: WorkSequence,
+        parent: Option<TraceSequence>,
+        pointer_id: PointerId,
+        notification: &PointerCaptureNotification,
+    ) -> Result<(), ()> {
+        let facts = RoutedIngressFacts::new(
+            sequence,
+            notification.owner.clone(),
+            CommandOrigin::__runtime_pointer(),
+            self.now(),
+            parent,
+            TraceReservation::continuation(),
         );
-        if cleanup.capture {
-            parent = self.trace.record(
-                TraceRecordKind::PointerCaptureNotificationSuppressed {
-                    pointer_id: cleanup.pointer_id,
-                    kind: PointerCaptureKind::Lost,
-                },
-                work_sequence,
-                parent,
-                None,
-                None,
-                None,
-            );
+        let Some(mut transaction) = self.begin_pointer_routed_transaction(
+            facts,
+            false,
+            core::slice::from_ref(&notification.owner),
+            &[],
+            0,
+            MandatoryTracePlan::none(),
+        ) else {
+            return Err(());
+        };
+        let capture = PointerCaptureEvent::__runtime_new(
+            pointer_id,
+            PointerCaptureKind::Lost,
+            notification.owner.clone(),
+            None,
+            notification.context.clone(),
+        );
+        let physical_target = notification.physical_path.last();
+        let dispatch = PointerDispatchFacts::new(
+            pointer_id,
+            physical_target,
+            &notification.physical_path,
+            None,
+            false,
+        );
+        if let Err(failure) = self.invoke_target_only_pointer_callback(
+            &mut transaction,
+            &UiEvent::PointerCapture(capture),
+            dispatch,
+            &notification.owner,
+        ) {
+            self.poison_transaction(&transaction, failure, Some(&notification.owner));
+            return Err(());
         }
-        parent
+        transaction.pointer_capture_requests.clear();
+        let failure = transaction.failure_facts();
+        if self.commit_routed_transaction(transaction).is_err() {
+            self.poison_routed_event(
+                &failure,
+                TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                Some(&notification.owner),
+            );
+            return Err(());
+        }
+        Ok(())
     }
 }

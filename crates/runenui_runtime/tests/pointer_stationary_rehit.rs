@@ -10,6 +10,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, PumpReport, SurfaceBuildContext, SurfacePublication,
+    TraceRecordKind,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -262,6 +263,41 @@ fn publication_rehits_stationary_streams_in_registration_order_without_move_call
             },
         ]
     );
+    let records = harness.runtime.trace().records().collect::<Vec<_>>();
+    let queued = records
+        .iter()
+        .copied()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::PointerStationaryRehitQueued {
+                    hit_test_generation,
+                    ..
+                } if *hit_test_generation == generation
+            )
+        })
+        .unwrap_or_else(|| unreachable!("publication queues one causally traced re-hit"));
+    let validated = |pointer: u64| {
+        records
+            .iter()
+            .copied()
+            .find(|record| {
+                record.sequence() > queued.sequence()
+                    && matches!(
+                        record.kind(),
+                        TraceRecordKind::PointerIngressValidated {
+                            pointer_id,
+                            phase: PointerPhase::Move,
+                        } if pointer_id.get() == pointer
+                    )
+            })
+            .unwrap_or_else(|| unreachable!("each retained pointer has a validation lineage"))
+    };
+    let first = validated(9);
+    let second = validated(2);
+    assert_eq!(first.causal_parent(), Some(queued.sequence()));
+    assert_eq!(second.causal_parent(), Some(queued.sequence()));
+    assert!(first.sequence() < second.sequence());
 }
 
 #[test]

@@ -86,12 +86,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             geometry.physical_path.clone(),
             work.event.buttons().clone(),
         );
+        stream.set_surface_context(work.event.surface_context().clone());
         self.clear_non_live_pointer_owners(&mut stream);
         let parent = match self.record_pointer_prelude(
             &work,
             false,
             geometry.physical_target.as_ref(),
             geometry.snapshot,
+            geometry.diagnosis,
+            boundary_events.len(),
         ) {
             Ok(parent) => parent,
             Err(outcome) => return outcome,

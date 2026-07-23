@@ -26,6 +26,7 @@ struct PendingPointerCommit {
     geometry: PointerGeometry,
     routed_target: Option<MountedNodeId>,
     kind: StreamCommitKind,
+    boundary_notifications: Vec<runenui_core::PointerBoundaryKind>,
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -52,11 +53,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .iter()
             .map(|event| event.target().clone())
             .collect::<Vec<_>>();
+        let boundary_notifications = Self::boundary_notification_kinds(&boundary_events);
         let deferred_capture_targets = previous_capture_owner
             .iter()
             .filter(|target| self.tree.target_status(target) == TargetStatus::Live)
             .cloned()
             .collect::<Vec<_>>();
+        let Some(pointer_commit_trace) =
+            self.plan_pointer_commit_trace(boundary_notifications.len())
+        else {
+            return self.pointer_runtime_outcome();
+        };
         let anchor = routed_target
             .clone()
             .or_else(|| boundary_targets.first().cloned());
@@ -70,6 +77,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     kind,
                     focus: None,
                     capture_events: Vec::new(),
+                    boundary_notifications,
                     physical_target: geometry.physical_target,
                     physical_path: geometry.physical_path,
                 },
@@ -89,7 +97,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &boundary_targets,
             &deferred_capture_targets,
             2,
-            MandatoryTracePlan::pointer_commit(),
+            pointer_commit_trace,
         ) else {
             return self.pointer_runtime_outcome();
         };
@@ -121,6 +129,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 geometry,
                 routed_target,
                 kind,
+                boundary_notifications,
             },
         )
     }
@@ -130,6 +139,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         mut transaction: RoutedTransaction<Action>,
         mut pending: PendingPointerCommit,
     ) -> ProcessApplicationActionOutcome {
+        self.apply_pointer_capture_requests(
+            pending.work.event.pointer_id(),
+            &mut pending.stream,
+            &mut transaction,
+        );
+        let default_outputs_before = transaction.default_outputs.len();
         let focus = match self.apply_pointer_defaults(
             &pending.work.event,
             &pending.geometry.physical_path,
@@ -145,10 +160,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 return self.pointer_runtime_outcome();
             }
         };
-        self.apply_pointer_capture_requests(
-            pending.work.event.pointer_id(),
-            &mut pending.stream,
-            &mut transaction,
+        let default_applied = match pending.work.event.phase() {
+            PointerPhase::Move | PointerPhase::Cancel => true,
+            PointerPhase::Down => {
+                !transaction.default_prevented
+                    && pending.work.event.changed_button() == Some(PointerButton::Primary)
+                    && pending
+                        .geometry
+                        .physical_target
+                        .as_ref()
+                        .is_some_and(|target| pending.stream.pressed_owner() == Some(target))
+            }
+            PointerPhase::Up | PointerPhase::Wheel => {
+                transaction.default_outputs.len() > default_outputs_before
+            }
+            _ => false,
+        };
+        transaction.parent = self.trace.record_event(
+            if default_applied {
+                TraceRecordKind::PointerDefaultApplied {
+                    pointer_id: pending.work.event.pointer_id(),
+                    phase: pending.work.event.phase(),
+                }
+            } else {
+                TraceRecordKind::PointerDefaultSuppressed {
+                    pointer_id: pending.work.event.pointer_id(),
+                    phase: pending.work.event.phase(),
+                }
+            },
+            transaction.sequence,
+            transaction.parent,
+            Some(transaction.target_trace.clone()),
+            transaction.instant,
+            &transaction.target,
+            None,
+            transaction.origin,
         );
         let final_capture_owner = if pending.kind == StreamCommitKind::Close {
             None
@@ -169,6 +215,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 kind: pending.kind,
                 focus,
                 capture_events,
+                boundary_notifications: pending.boundary_notifications,
                 physical_target: pending.geometry.physical_target,
                 physical_path: pending.geometry.physical_path,
             },
@@ -407,6 +454,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             kind,
             focus,
             capture_events,
+            boundary_notifications,
             physical_target,
             physical_path,
         } = plan;
@@ -435,16 +483,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             StreamCommitKind::Close => {
                 self.pointer_registry.close(pointer_id).ok_or(())?;
-                transaction.parent = self.trace.record(
-                    TraceRecordKind::PointerStreamClosed { pointer_id },
-                    Some(transaction.sequence),
-                    transaction.parent,
-                    None,
-                    None,
-                    None,
-                );
             }
         }
+        self.record_pointer_commit_facts(
+            transaction,
+            pointer_id,
+            kind,
+            &capture_events,
+            boundary_notifications,
+        );
         if let Some(focus) = focus
             && self.validate_focus(&focus)
         {
@@ -457,6 +504,88 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &physical_path,
             &capture_events,
         )
+    }
+
+    fn record_pointer_commit_facts(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        pointer_id: runenui_core::PointerId,
+        kind: StreamCommitKind,
+        capture_events: &[PointerCaptureEvent],
+        boundary_notifications: Vec<runenui_core::PointerBoundaryKind>,
+    ) {
+        transaction.parent = self.trace.record(
+            TraceRecordKind::PointerInteractionCommitted { pointer_id },
+            Some(transaction.sequence),
+            transaction.parent,
+            None,
+            None,
+            None,
+        );
+        for capture in capture_events {
+            transaction.parent = self.trace.record(
+                TraceRecordKind::PointerCaptureTransitionQueued {
+                    pointer_id,
+                    kind: capture.kind(),
+                },
+                Some(transaction.sequence),
+                transaction.parent,
+                None,
+                None,
+                Some(self.tree.trace_target(capture.target())),
+            );
+        }
+        for kind in boundary_notifications {
+            transaction.parent = self.trace.record(
+                TraceRecordKind::PointerBoundaryNotificationQueued { pointer_id, kind },
+                Some(transaction.sequence),
+                transaction.parent,
+                None,
+                None,
+                None,
+            );
+        }
+        for output in &transaction.default_outputs {
+            let kind = match output {
+                CollectedRoutedOutput::Command {
+                    command: SemanticCommand::Activate,
+                    ..
+                } => Some(TraceRecordKind::PointerActivateCollected { pointer_id }),
+                CollectedRoutedOutput::Command {
+                    command: SemanticCommand::LogicalScroll(_),
+                    ..
+                } => Some(TraceRecordKind::PointerLogicalScrollCollected { pointer_id }),
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                transaction.parent = self.trace.record(
+                    kind,
+                    Some(transaction.sequence),
+                    transaction.parent,
+                    None,
+                    None,
+                    None,
+                );
+            }
+        }
+        if kind == StreamCommitKind::Close {
+            transaction.parent = self.trace.record(
+                TraceRecordKind::PointerStreamClosed { pointer_id },
+                Some(transaction.sequence),
+                transaction.parent,
+                None,
+                None,
+                None,
+            );
+        }
+        for output in &mut transaction.default_outputs {
+            match output {
+                CollectedRoutedOutput::Action { causal_parent, .. }
+                | CollectedRoutedOutput::Command { causal_parent, .. } => {
+                    *causal_parent = transaction.parent;
+                }
+            }
+        }
     }
 
     fn invoke_pointer_capture_events(
@@ -497,6 +626,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         mut parent: Option<crate::TraceSequence>,
         plan: PointerCommitPlan,
     ) -> ProcessApplicationActionOutcome {
+        let Some(pointer_commit_trace) =
+            self.plan_pointer_commit_trace(plan.boundary_notifications.len())
+        else {
+            return self.pointer_runtime_outcome();
+        };
+        if !self.trace.can_admit(pointer_commit_trace) {
+            let cancelled = self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
+            return ProcessApplicationActionOutcome::Terminal {
+                reason: RuntimeTerminalReason::TraceSequenceExhausted,
+                cancelled,
+            };
+        }
         let result = match plan.kind {
             StreamCommitKind::Register => {
                 let registration_sequence = plan.stream.registration_sequence().get();
@@ -546,7 +687,47 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled,
             };
         }
+        parent = self.trace.record(
+            TraceRecordKind::PointerInteractionCommitted {
+                pointer_id: plan.pointer_id,
+            },
+            Some(sequence),
+            parent,
+            None,
+            None,
+            None,
+        );
+        for kind in plan.boundary_notifications {
+            parent = self.trace.record(
+                TraceRecordKind::PointerBoundaryNotificationQueued {
+                    pointer_id: plan.pointer_id,
+                    kind,
+                },
+                Some(sequence),
+                parent,
+                None,
+                None,
+                None,
+            );
+        }
         ProcessApplicationActionOutcome::Completed
+    }
+
+    fn plan_pointer_commit_trace(
+        &mut self,
+        boundary_notifications: usize,
+    ) -> Option<MandatoryTracePlan> {
+        let plan = MandatoryTracePlan::pointer_commit(boundary_notifications);
+        if plan.is_none() {
+            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+        }
+        plan
+    }
+
+    fn boundary_notification_kinds(
+        events: &[PointerBoundaryEvent],
+    ) -> Vec<runenui_core::PointerBoundaryKind> {
+        events.iter().map(PointerBoundaryEvent::kind).collect()
     }
 }
 

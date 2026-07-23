@@ -208,7 +208,7 @@ fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
 }
 
 #[test]
-fn retired_context_up_closes_without_route_capture_callback_or_activation() {
+fn retired_context_up_closes_without_ordinary_route_or_activation_and_notifies_capture_loss() {
     let retention =
         NonZeroUsize::new(1).unwrap_or_else(|| unreachable!("the test retention is non-zero"));
     let config = RuntimeConfig::default().with_surface_snapshot_retention(retention);
@@ -231,7 +231,10 @@ fn retired_context_up_closes_without_route_capture_callback_or_activation() {
         pointer_event(71, PointerPhase::Up, &harness.context, harness.point),
     );
 
-    assert!(harness.observations.borrow().is_empty());
+    assert_eq!(
+        harness.observations.borrow().as_slice(),
+        [Observation::Capture(PointerCaptureKind::Lost)]
+    );
     assert_eq!(harness.activations.get(), 0);
     let records = harness.runtime.trace().records().collect::<Vec<_>>();
     let rejected = records
@@ -263,19 +266,19 @@ fn retired_context_up_closes_without_route_capture_callback_or_activation() {
             )
         })
         .unwrap_or_else(|| unreachable!("retired up commits exact interaction cleanup"));
-    let suppressed = records
+    let capture_lost = records
         .iter()
         .rev()
         .find(|record| {
             matches!(
                 record.kind(),
-                TraceRecordKind::PointerCaptureNotificationSuppressed {
+                TraceRecordKind::PointerCaptureTransitionQueued {
                     pointer_id,
                     kind: PointerCaptureKind::Lost,
                 } if pointer_id.get() == 71
             )
         })
-        .unwrap_or_else(|| unreachable!("unavailable capture loss is diagnosed"));
+        .unwrap_or_else(|| unreachable!("live capture loss is queued"));
     let closed = records
         .iter()
         .rev()
@@ -287,8 +290,8 @@ fn retired_context_up_closes_without_route_capture_callback_or_activation() {
         })
         .unwrap_or_else(|| unreachable!("retired up closes the stream"));
     assert_eq!(cleanup.causal_parent(), Some(rejected.sequence()));
-    assert_eq!(suppressed.causal_parent(), Some(cleanup.sequence()));
-    assert_eq!(closed.causal_parent(), Some(suppressed.sequence()));
+    assert_eq!(capture_lost.causal_parent(), Some(cleanup.sequence()));
+    assert_eq!(closed.causal_parent(), Some(capture_lost.sequence()));
 
     submit_and_pump(
         &mut harness.runtime,
@@ -306,6 +309,47 @@ fn retired_context_up_closes_without_route_capture_callback_or_activation() {
             phase: PointerPhase::Cancel,
             outcome: TracePointerRejection::MissingStream,
         } if pointer_id.get() == 71
+    )));
+}
+
+#[test]
+fn retired_context_cancel_diagnoses_geometry_but_routes_cleanup_and_closes() {
+    let retention =
+        NonZeroUsize::new(1).unwrap_or_else(|| unreachable!("the test retention is non-zero"));
+    let config = RuntimeConfig::default().with_surface_snapshot_retention(retention);
+    let mut harness = harness(config);
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(73, PointerPhase::Down, &harness.context, harness.point),
+    );
+    let _current = publish(&mut harness.runtime);
+    pump_all(&mut harness.runtime);
+    harness.observations.borrow_mut().clear();
+    harness.activations.set(0);
+
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(73, PointerPhase::Cancel, &harness.context, harness.point),
+    );
+
+    assert_eq!(
+        harness.observations.borrow().as_slice(),
+        [
+            Observation::Pointer(PointerPhase::Cancel),
+            Observation::Capture(PointerCaptureKind::Lost),
+        ]
+    );
+    assert_eq!(harness.activations.get(), 0);
+    assert!(harness.runtime.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::PointerContextUnavailable {
+            pointer_id,
+            outcome: TracePointerRejection::RetiredGeneration,
+        } if pointer_id.get() == 73
+    )));
+    assert!(harness.runtime.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id.get() == 73
     )));
 }
 
