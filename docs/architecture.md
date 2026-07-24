@@ -40,13 +40,17 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
-M4A, M4B, M4C0, M4C1, M4C2, and M4C3 are complete and owner-accepted. The
-accepted M4C3 feature head `01b7ae018abeaff8d316764afba5bc8cde074381`
+M4A, M4B, M4C0, M4C1, M4C2, M4C3, and M4C4 are complete and owner-accepted.
+The accepted M4C3 feature head `01b7ae018abeaff8d316764afba5bc8cde074381`
 passed exact-head CI run `29996101708` and was squash-merged in PR #15 as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 is implemented and its proof
-package is complete on the active feature branch, but owner acceptance and merge
-remain pending; M4C5 and M4D1–M4D3 remain blocked in sequence. The target M4
-pipeline is active and incomplete.
+`2fc165b9386f55c061d61232400375b13ad175bf`. The accepted M4C4 feature head
+`f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
+`30006170403` and was squash-merged in
+[PR #22](https://github.com/dornglut/runen-ui/pull/22) as
+`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 becomes the next
+implementation slice only after this post-merge authority update merges and its
+resulting accepted `main` is recorded; M4D1–M4D3 remain blocked in sequence. The
+target M4 pipeline is active and incomplete.
 
 ```text
 Application-owned State + Action
@@ -116,12 +120,11 @@ mounted subscription reconciliation, generational tasks/timers/host work,
 four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
 complete per-family causal scheduler trace proofs. The exact-target routed
 semantic-command kernel is accepted through M4C1, displayed-generation surface
-context through M4C2, and pointer lifecycle through M4C3. M4C4 focus scopes and
-modality are implemented with owner acceptance and merge pending. Raw keyboard/
-text/IME and source-specific authored target resolution remain unimplemented
-M4C5 target architecture. Trace-v2 normalization, export, and replay remain
-unimplemented M4D target architecture. See the
-[public API contract](architecture/public-api.md),
+context through M4C2, pointer lifecycle through M4C3, and focus scopes/modality
+through M4C4. Raw keyboard/text/IME and source-specific authored target
+resolution remain unimplemented M4C5 target architecture. Trace-v2
+normalization, export, and replay remain unimplemented M4D target architecture.
+See the [public API contract](architecture/public-api.md),
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
 [work-tracking contract](work-tracking.md).
 
@@ -338,10 +341,11 @@ The View/Widget/type-erasure protocol and mounted reconciliation/storage
 decisions are accepted in ADR 0003 and ADR 0004. Event routing/commands and
 effects/scheduling/trace are accepted in ADR 0005 and ADR 0006 and are the active
 M4 implementation authorities. The current implementation contains their
-accepted queue, scheduler, routed semantic-command, terminal/shutdown, and
-in-memory trace foundations; every remaining normative M4 requirement remains an
-implementation and completion gate. Public proof requirements are fixed in the
-M4 conformance matrix and directional-focus corpus.
+accepted queue, scheduler, routed semantic-command, displayed-generation
+surface, pointer, focus/modality, terminal/shutdown, and in-memory trace
+foundations; every remaining normative M4 requirement remains an implementation
+and completion gate. Public proof requirements are fixed in the M4 conformance
+matrix and directional-focus corpus.
 
 The following later choices still require dedicated analysis and review:
 standard layout algorithm, production text stack, conventional renderer, crate
