@@ -860,9 +860,12 @@ mod tests {
             "https://github.com/Crystonix/runen-ui/issues/3\n",
         )?;
         let report = build_report(fixture.path())?;
-        assert!(report.findings.iter().any(|finding| {
-            finding.code == "authority.active_historical_owner_reference"
-        }));
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| { finding.code == "authority.active_historical_owner_reference" })
+        );
         Ok(())
     }
 
