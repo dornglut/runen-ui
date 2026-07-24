@@ -17,9 +17,14 @@ M4C2 used the documented infrastructure-only CI waiver after exact-head
 local validation and final review passed. M4C3 was owner-accepted at feature
 head `01b7ae018abeaff8d316764afba5bc8cde074381` after exact-head CI run
 `29996101708` succeeded, then squash-merged in PR #15 as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 is implemented and locally
-proof-complete on its active feature branch, but is not owner-accepted or
-merged; M4C5–M4D3 remain blocked in sequence. M4 is active and incomplete. The accepted
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 was owner-accepted at
+feature head `f3201a83583af0c1d148bec87cd9140ff42795b7` after exact-head CI run
+`30006170403` succeeded, then squash-merged in
+[PR #22](https://github.com/dornglut/runen-ui/pull/22) as
+`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 becomes the next
+implementation slice only after this post-merge authority update merges and its
+resulting accepted `main` is recorded; M4D1–M4D3 remain blocked in sequence. M4
+is active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
 implemented public API until each slice is accepted. The
@@ -230,26 +235,27 @@ preserves the state-change fact.
 
 The open `Widget::event` capability receives immutable `UiEvent` data and one
 borrowed `EventContext<'_, Action>`. The event protocol exposes semantic-command,
-pointer, pointer-boundary, and pointer-capture families. Ordinary pointer events
-use `Capture`/`Target`/`Bubble`; boundary and capture notifications are target-
-only and non-cancelable. Programmatic/automation/accessibility/controller and
-pointer sources retain internally consistent derivation. The context exposes the
-original/current/optional-related target, origin, accepted `WorkSequence`,
-`MonotonicInstant`, pointer identity, independent physical hit target/path, and
-propagation/default facts. It provisionally collects
-owned actions, delegated commands, exact-owner subscription invalidation,
-ordinary invalidation, mounted tasks/timers/cancellation, stop propagation, and
-prevent default plus ordered capture/release requests for the current pointer.
-Recursive mapping preserves every staged capture request. `WidgetEventOutput`
-reports only independent persistent-state
-mutation. Mapping moves non-`Clone` actions and recursively maps mounted work
-while preserving commands, controls, invalidation, and the state-change fact.
-Only the checked erased widget bridge constructs and extracts `EventContext`;
-runtime supplies its validated facts and output bound. Public origin
-constructors are direct-only, while `emit_command` is the sole authority that
-turns callback output into a delegated origin targeting the current node.
-`UiEvent::as_semantic_command` returns `Option<&SemanticCommandEvent>` so later
-event variants do not require a command-shaped accessor.
+pointer, pointer-boundary, pointer-capture, and focus families. Ordinary pointer
+and focus events use `Capture`/`Target`/`Bubble`; boundary and capture
+notifications are target-only and non-cancelable, while focus notifications are
+routed and non-cancelable. Programmatic/automation/accessibility/controller,
+keyboard, and pointer sources retain internally consistent derivation. The
+context exposes the original/current/optional-related target, origin, accepted
+`WorkSequence`, `MonotonicInstant`, optional pointer identity, independent
+physical hit target/path, and propagation/default facts. It provisionally
+collects owned actions, delegated commands, exact-owner subscription
+invalidation, ordinary invalidation, mounted tasks/timers/cancellation, stop
+propagation, and prevent default plus ordered capture/release requests for the
+current pointer. Recursive mapping preserves every staged capture request.
+`WidgetEventOutput` reports only independent persistent-state mutation. Mapping
+moves non-`Clone` actions and recursively maps mounted work while preserving
+commands, controls, invalidation, and the state-change fact. Only the checked
+erased widget bridge constructs and extracts `EventContext`; runtime supplies
+its validated facts and output bound. Public origin constructors are direct-only,
+while `emit_command` is the sole authority that turns callback output into a
+delegated origin targeting the current node. `UiEvent::as_semantic_command`
+returns `Option<&SemanticCommandEvent>` so later event variants do not require a
+command-shaped accessor.
 
 The default update invalidates `ALL` for correctness. Built-in text, button, and
 linear-container widgets implement narrower comparison-based invalidation.
@@ -561,6 +567,13 @@ facts. The accepted pointer `WorkSequence` and causal parents reconstruct the
 slice-local lineage; M4D may normalize this schema but does not own missing
 pointer parentage.
 
+M4C4 adds focus command and scope-policy evaluation, directional candidate and
+restoration outcomes, exact old/new focus targets and reasons, focus-within
+changes, routed notification queue/suppression, retained modality, reconciliation
+cleanup, and shutdown ordering. The accepted command `WorkSequence` and causal
+parents reconstruct the slice-local focus/modality lineage; M4D may normalize
+this schema but does not own missing M4C4 parentage.
+
 Transaction semantic request/invalidation records preserve callback collector
 order independently from cleanup-before-start queue grouping. Final action
 acceptance is recorded before queue append, and the accepted action trace record
@@ -587,6 +600,9 @@ Removed without aliases:
 - `Button::on_press` and one-shot button actions;
 - direct runtime activation, activation result/capacity compatibility types,
   combined input intent, and pointer/keyboard activation helpers;
+- direct focus mutation/traversal helpers, `FocusTargetResult`,
+  `KeyboardFocusResult`, `handle_keyboard_focus`, and the transitional runtime
+  policy module;
 - duplicated, unbounded runtime-event/trace storage.
 
 Added:
@@ -604,14 +620,15 @@ Added:
 - reconciliation generation/report vocabulary;
 - state-aware widget lifecycle/activation/event contexts and unmount reasons;
 - selective widget invalidation;
-- focus results and exact command foreign/stale/missing rejection;
+- one read-only `FocusState`, host-neutral focus scope/focusability/modality/reason
+  values, semantic focus commands, and routed focus notifications;
 - public runtime integrity errors;
 - canonical action submission, work sequencing, bounded pumping, runtime status,
   terminal reasons, and explicit shutdown reports;
 - repeatable `Button::on_activate` factories invoked only by routed semantic default;
 - bounded canonical trace configuration, sequences, records, targets, opaque
-  scheduler work identities/outcomes, routed command causal facts, and retention
-  watermark;
+  scheduler work identities/outcomes, routed command/surface/pointer/focus causal
+  facts, and retention watermark;
 - routed event/command vocabulary, `EventContext`, `WidgetEventOutput`, checked
   mapped event capability, and exact-target command submission with owned
   rejection recovery.
@@ -621,7 +638,7 @@ composition, protected generated products, and finite saturating geometry remain
 in force. The current contract includes effects, subscriptions, tasks, timers,
 host requests, all four readiness budgets, wake/redraw, and M4C1 exact-target
 routed semantic commands, M4C2 displayed-generation surface context, the M4C3
-host-neutral pointer lifecycle, and the M4C4 focus-scope/modality protocol. It
-does not imply native host translation, production scrolling, M4C5 keyboard/
-text/IME or authored-ID automation, M4D trace export/replay, M5 semantic
+host-neutral pointer lifecycle, and the owner-accepted M4C4 focus-scope/modality
+protocol. It does not imply native host translation, production scrolling, M4C5
+keyboard/text/IME or authored-ID automation, M4D trace export/replay, M5 semantic
 accessibility mapping, or M4 completion.

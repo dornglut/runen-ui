@@ -8,8 +8,23 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and squash-merged the complete M4C4 focus-scopes and modality
+  slice in [PR #22](https://github.com/dornglut/runen-ui/pull/22): one
+  exact-generation focus authority, root/nested scope policies, current-order
+  linear and retained-publication directional navigation, DF-01–DF-20,
+  exact-generation restoration, atomic focus/focus-within transitions, routed
+  non-cancelable `FocusOut` before `FocusIn`, retained modality, canonical
+  focus/modality trace, downstream public proof, and removal of direct focus
+  helpers and transitional result/policy authority. The accepted feature head
+  `f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
+  `30006170403`; the squash merge commit is
+  `f95571634a9c6528e5834e9589b048ad5197bd15`. All 32 M4C4 rows are
+  `owner-accepted`, producing 237 total / 192 owner-accepted / 0 proof-complete /
+  45 blocked rows. M4C5 becomes the next implementation slice only after this
+  post-merge authority reconciliation is accepted and merged; M4 remains active
+  and incomplete.
 - Owner-accepted and squash-merged the M4C3 host-neutral pointer lifecycle in
-  [PR #15](https://github.com/Crystonix/runen-ui/pull/15): checked
+  [PR #15](https://github.com/dornglut/runen-ui/pull/15): checked
   pointer/device identity and payloads, canonical queued ingress, exact
   validation/recovery, per-pointer pressed/capture ownership, ordered boundary/
   capture notifications, stationary re-hit, terminal-context cleanup, release-
@@ -18,9 +33,8 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
   `29996101708`; the squash merge commit is
   `2fc165b9386f55c061d61232400375b13ad175bf`. All 28 M4C3 rows are
-  `owner-accepted`. M4C4 remains unstarted and becomes the next implementation
-  slice only after this authority update merges and its accepted `main` is
-  recorded; M4 remains active and incomplete.
+  `owner-accepted`. M4C4 subsequently completed through the accepted slice above;
+  M4 remains active and incomplete.
 - Added the deterministic, network-free `cargo xtask audit-repository` command
   with stable human/JSON output, fatal matrix/workspace/dependency/authority/
   license/canonical-runtime checks, non-fatal concentration diagnostics, and
@@ -28,10 +42,10 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 - Reconstructed the active M4 execution graph in the public repository, moved
   operational branch authority from `master` to `main`, added durable migration
   history for private issue and pull-request records, and made
-  [public issue #3](https://github.com/Crystonix/runen-ui/issues/3) the M4 pickup
-  authority. M4C3 remains the next implementation slice and does
-  not begin until its public governance, tooling, and readiness prerequisites
-  pass.
+  [public issue #3](https://github.com/dornglut/runen-ui/issues/3) the M4 pickup
+  authority. At that public cutover M4C3 was the next implementation slice and
+  could not begin until its public governance, tooling, and readiness
+  prerequisites passed.
 - Owner-accepted and squash-merged the M4C2 displayed-generation surface-context
   implementation in
   [archive PR #99](docs/history/public-repository-migration.md#accepted-imported-milestone-history).

@@ -21,21 +21,25 @@ M4C0  conformance ownership and decision closure (complete and accepted)
 M4C1  routed semantic-command kernel (complete and accepted)
 M4C2  displayed-generation surface context (complete and accepted)
 M4C3  pointer lifecycle (complete, owner-accepted, and squash-merged)
-M4C4  focus scopes and modality (proof package complete; owner acceptance/merge pending)
-M4C5  keyboard, text, IME, automation, and M4C closure (blocked by M4C4)
+M4C4  focus scopes and modality (complete, owner-accepted, and squash-merged)
+M4C5  keyboard, text, IME, automation, and M4C closure (next after authority reconciliation)
 M4D1  complete trace schema (blocked by M4C5)
 M4D2  export and sink (blocked by M4D1)
 M4D3  replay and milestone closure (blocked by M4D2)
 ```
 
-M4C1, M4C2, and M4C3 are complete and owner-accepted. M4C3's accepted feature
-head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
+M4C1, M4C2, M4C3, and M4C4 are complete and owner-accepted. M4C3's accepted
+feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
 `29996101708` and was squash-merged in PR #15 as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 is implemented and its proof
-package is complete on the active feature branch, but owner acceptance and merge
-remain pending; M4C5–M4D3 remain blocked in sequence. M4B's
-implemented live-only producer authority remains unchanged, and M4 is active
-and incomplete.
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4's accepted feature head
+`f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
+`30006170403` and was squash-merged in
+[PR #22](https://github.com/dornglut/runen-ui/pull/22) as
+`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 becomes the next
+implementation slice only after this post-merge authority update merges and its
+resulting accepted `main` is recorded; M4D1–M4D3 remain blocked in sequence.
+M4B's implemented live-only producer authority remains unchanged, and M4 is
+active and incomplete.
 
 ## Current application-work and scheduler implementation
 
@@ -173,7 +177,7 @@ uses a neutral command origin without adding raw keyboard routing.
 M4C2 added displayed-generation surface context. M4C3 added the canonical
 pointer/device protocol, pointer streams, physical/routed separation, capture,
 boundaries, terminal cleanup, logical-scroll intent, and release-inside
-activation. M4C4 adds the single focus/scope authority, modality, current-
+activation. M4C4 added the single focus/scope authority, modality, current-
 publication directional selection, atomic focus transitions, and routed focus
 notifications. The accepted later contract remains unimplemented: M4C5
 keyboard/text/IME and authored automation resolution, M4D trace normalization/
@@ -387,8 +391,11 @@ rejection, submission-rejection trace absence/non-consumption, route snapshot,
 phase targets, propagation/default controls, state/invalidation/output facts,
 semantic default, commit/poison/admission outcome, and parentage into later
 actions and delegated commands. M4C2 adds surface-context acceptance,
-selection, binding, rejection, and causal-parent facts. Complete trace v2 later
-normalizes the full schema and adds deterministic export and replay.
+selection, binding, rejection, and causal-parent facts. M4C3 adds pointer,
+capture, boundary, terminal-cleanup, and release-inside causality. M4C4 adds
+focus command/policy/selection/restoration, transition, notification,
+focus-within, modality, and stale-delivery suppression causality. Complete trace
+v2 later normalizes the full schema and adds deterministic export and replay.
 
 Transaction semantic request/invalidation facts preserve callback collector
 order separately from cleanup-before-start queue grouping. Mandatory trace
@@ -435,10 +442,14 @@ the accepted M4C delivery charter is implementation/delivery authority, and the
 [M4 conformance matrix](m4-conformance-matrix.md) is observable acceptance
 authority.
 
-M4C1, M4C2, and M4C3 are complete and owner-accepted. M4C4 is implemented and
-its proof package is complete on the active feature branch, but owner acceptance
-and merge remain pending. M4C5–M4D3 remain blocked in sequence, and M4 remains
-active and incomplete.
+M4C1, M4C2, M4C3, and M4C4 are complete and owner-accepted. The accepted M4C4
+feature head `f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
+`30006170403` and was squash-merged in
+[PR #22](https://github.com/dornglut/runen-ui/pull/22) as
+`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 becomes the next
+implementation slice only after this post-merge authority update merges and its
+resulting accepted `main` is recorded; M4D1–M4D3 remain blocked in sequence, and
+M4 remains active and incomplete.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control

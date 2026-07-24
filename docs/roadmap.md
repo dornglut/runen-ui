@@ -284,9 +284,9 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Subsequent record:** M4C1, M4C2, and M4C3 are complete, owner-accepted, and
-merged. M4C4 is proof-complete on its active feature branch pending owner
-acceptance and merge; M4C5 remains blocked.
+**Subsequent record:** M4C1, M4C2, M4C3, and M4C4 are complete,
+owner-accepted, and merged. M4C5 becomes the next implementation slice only
+after the M4C4 post-merge authority reconciliation is accepted and merged.
 
 #### M4C1 — Routed semantic-command kernel
 
@@ -374,7 +374,7 @@ no job steps; the owner recorded the documented infrastructure-only waiver.
 #### M4C3 — Pointer lifecycle
 
 **Status:** `complete`; owner-accepted and squash-merged in
-[PR #15](https://github.com/Crystonix/runen-ui/pull/15).
+[PR #15](https://github.com/dornglut/runen-ui/pull/15).
 
 **Goal:** Implement pointer/device identity, physical path, pressed ownership,
 true capture, deterministic boundaries, logical scrolling, terminal unavailable-
@@ -401,13 +401,13 @@ release-inside; no press-only pointer helper remains.
 `2fc165b9386f55c061d61232400375b13ad175bf`. All 28 M4C3 rows are
 `owner-accepted`; M4 remains active and incomplete.
 
-**Next active slice:** M4C4 is implemented and locally proof-complete on its
-feature branch; owner acceptance and merge remain pending.
+**Next implementation slice:** M4C4 is complete and owner-accepted; M4C5 follows
+only after the M4C4 post-merge authority reconciliation is accepted and merged.
 
 #### M4C4 — Focus scopes and modality
 
-**Status:** `proof-complete` on the active feature branch; owner acceptance and
-merge remain pending.
+**Status:** `complete`; owner-accepted and squash-merged in
+[PR #22](https://github.com/dornglut/runen-ui/pull/22).
 
 **Goal:** Implement root/nested focus scopes, next/previous and directional
 navigation, exact-generation restoration, focus transition/focus-within order,
@@ -425,20 +425,28 @@ multi-window focus, keyboard/text/IME routing, or public scoring formulas.
 queue, scope/transition negative cases, slice-local causal trace, stable/MSRV
 validation, and exact-head CI.
 
-**Exit criteria:** Every M4C4 row and DF vector is proof-complete with no direct
-focus-command bypass.
+**Exit criteria:** Every M4C4 row is owner-accepted, every DF vector passes, and
+no direct focus-command bypass remains.
 
-**Next unblocked slice:** M4C5 after M4C4 owner acceptance and merge.
+**Completion record:** The accepted feature head
+`f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
+`30006170403` and was owner-accepted. PR #22 was squash-merged as
+`f95571634a9c6528e5834e9589b048ad5197bd15`. All 32 M4C4 rows are
+`owner-accepted`; M4 remains active and incomplete.
+
+**Next implementation slice:** M4C5 only after this post-merge authority update
+is accepted and merged and its resulting public `main` is recorded.
 
 #### M4C5 — Keyboard, text, IME, automation, and M4C closure
 
-**Status:** `blocked` pending M4C4 acceptance.
+**Status:** `blocked` pending the M4C4 post-merge authority reconciliation.
 
 **Goal:** Complete keyboard activation policy, separate committed-text and IME
 streams, exact composition ownership, authored-ID automation resolution, and
 all remaining canonical-path migrations.
 
-**Dependencies:** Accepted and merged M4C4 focus scopes/modality.
+**Dependencies:** Accepted and merged M4C4 focus scopes/modality plus the
+accepted M4C4 post-merge authority reconciliation.
 
 **Included work:** All `KEY-*`, `TEXT-*`, `IME-*`, and `AUTOMATION-*` rows;
 remaining M4C migration; complete Counter and downstream M4C conformance.

@@ -6,17 +6,21 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M4A, M4B, M4C0, M4C1, M4C2, and M4C3 are complete. M4C2 was
+Milestone status: M4A, M4B, M4C0, M4C1, M4C2, M4C3, and M4C4 are complete. M4C2 was
 owner-accepted with an explicit infrastructure-only CI waiver and squash-merged
 in [archive PR #99](docs/history/public-repository-migration.md#accepted-imported-milestone-history).
 M4C3 was owner-accepted at feature head
 `01b7ae018abeaff8d316764afba5bc8cde074381` after exact-head CI run
 `29996101708` succeeded, then squash-merged in
 [PR #15](https://github.com/Crystonix/runen-ui/pull/15) as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 is implemented and its proof
-package is complete on the active feature branch, but owner acceptance and merge
-remain pending; M4C5 and M4D1–M4D3 remain blocked in sequence. M4 is active and
-incomplete.
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 was owner-accepted at feature
+head `f3201a83583af0c1d148bec87cd9140ff42795b7` after exact-head CI run
+`30006170403` succeeded, then squash-merged in
+[PR #22](https://github.com/dornglut/runen-ui/pull/22) as
+`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 becomes the next
+implementation slice only after this post-merge authority update merges and its
+resulting accepted `main` is recorded; M4D1–M4D3 remain blocked in sequence. M4
+is active and incomplete.
 See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
 [work-tracking contract](docs/work-tracking.md),
 [accepted M4C delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md),
