@@ -1,0 +1,63 @@
+name: Defect
+description: Report reproducible RunenUI behavior that violates an accepted contract
+title: "[Defect] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report one reproducible defect in accepted RunenUI behavior. Do not disclose vulnerabilities, credentials, or private data here.
+  - type: input
+    id: revision
+    attributes:
+      label: Exact revision
+      description: Identify the exact commit, tag, or release where the behavior occurs.
+      placeholder: commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: accepted_contract
+    attributes:
+      label: Violated accepted contract
+      description: Link the matrix row, ADR, stable architecture contract, public API, or behavioral test that defines the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: State what happened, including exact errors or diagnostics.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: State the behavior required by the accepted contract.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest deterministic inputs, sequence, environment, and configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and impact
+      description: Add logs, traces, tests, screenshots, or relevant files and explain integrity, ownership, and user impact. Remove secrets and private data.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and pull requests.
+          required: true
+        - label: This report concerns accepted RunenUI behavior rather than an undeveloped idea or future roadmap target.
+          required: true
+        - label: This report does not disclose a security vulnerability, credential, or private data.
+          required: true
