@@ -1,0 +1,60 @@
+name: Proposal
+description: Propose a concrete RunenUI capability, architecture, documentation, tooling, or research outcome
+title: "[Proposal] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for a concrete public proposal. Undeveloped ideas should remain in the private Dornglut Inbox. Cross-repository policy or architecture belongs in dornglut/engineering.
+  - type: dropdown
+    id: proposal_type
+    attributes:
+      label: Proposal type
+      options:
+        - Capability
+        - Architecture
+        - Documentation
+        - Tooling
+        - Research
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Concrete problem
+      description: Describe the current user, framework, maintenance, or engineering problem.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: State the observable result or decision needed without prescribing unnecessary implementation details.
+    validations:
+      required: true
+  - type: textarea
+    id: authority
+    attributes:
+      label: Current authority and evidence
+      description: Link related roadmap sections, ADRs, architecture contracts, matrix rows, issues, examples, or measurements.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Scope and non-goals
+      description: Identify what belongs in this proposal, what remains excluded, and any affected crate or host boundaries.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues, roadmaps, conformance rows, and decision records.
+          required: true
+        - label: This proposal is concrete enough for public investigation or decision; it is not only a raw idea.
+          required: true
+        - label: This proposal belongs in RunenUI rather than another Dornglut repository or organization policy.
+          required: true
