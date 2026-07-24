@@ -15,10 +15,22 @@ use std::{
 use self::{matrix::MatrixMetrics, source::SourceMetrics, workspace::WorkspaceMetrics};
 
 const SCHEMA_VERSION: u32 = 1;
-const PUBLIC_ISSUE_PREFIX: &str = "https://github.com/Crystonix/runen-ui/issues/";
+const PUBLIC_ISSUE_PREFIX: &str = "https://github.com/dornglut/runen-ui/issues/";
 const PRIVATE_ARCHIVE_URL: &str = "github.com/Crystonix/runen-ui-private-archive";
+const HISTORICAL_OWNER_TOKEN: &str = "Crystonix/runen-ui";
+const CURRENT_REPOSITORY_DECLARATION: &str =
+    "repository = \"https://github.com/dornglut/runen-ui\"";
+const CURRENT_WORKFLOW_CALL: &str = "uses: dornglut/github-workflows/.github/workflows/reusable-rust-cargo-validate.yml@b6caad377102ca73794efaf734a65903b8efa829";
 const WORK_TRACKING_PATH: &str = "docs/work-tracking.md";
 const MIGRATION_HISTORY_PATH: &str = "docs/history/public-repository-migration.md";
+const ISSUE_TEMPLATE_DIRECTORY: &str = ".github/ISSUE_TEMPLATE";
+const REQUIRED_ENTRYPOINTS: &[&str] = &["README.md", "AGENTS.md", "ARCHITECTURE.md", "TESTING.md"];
+const REQUIRED_ISSUE_TEMPLATE_FILES: &[&str] = &[
+    "config.yml",
+    "defect.yml",
+    "milestone-slice.yml",
+    "proposal.yml",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OutputFormat {
@@ -333,6 +345,7 @@ fn build_report(root: &Path) -> Result<AuditReport, String> {
         ));
     }
 
+    audit_repository_governance(root, &mut report.findings)?;
     let matrix = matrix::audit(root, &mut report.findings)?;
     let workspace = workspace::audit(root, &mut report.findings)?;
     let source = source::audit(root, &mut report.findings)?;
@@ -348,6 +361,76 @@ fn build_report(root: &Path) -> Result<AuditReport, String> {
     };
     report.finalize();
     Ok(report)
+}
+
+fn audit_repository_governance(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+    let manifest = read_to_string(root, "Cargo.toml")?;
+    if !manifest.contains(CURRENT_REPOSITORY_DECLARATION) {
+        findings.push(Finding::fatal(
+            "metadata.current_repository_identity",
+            Some("Cargo.toml".to_owned()),
+            format!("workspace metadata must contain {CURRENT_REPOSITORY_DECLARATION:?}"),
+        ));
+    }
+    if manifest.contains(HISTORICAL_OWNER_TOKEN) {
+        findings.push(Finding::fatal(
+            "metadata.historical_repository_identity",
+            Some("Cargo.toml".to_owned()),
+            "active workspace metadata must use the dornglut/runen-ui repository identity",
+        ));
+    }
+
+    for relative in REQUIRED_ENTRYPOINTS {
+        if !root.join(relative).is_file() {
+            findings.push(Finding::fatal(
+                "repository.required_entrypoint_missing",
+                Some((*relative).to_owned()),
+                "required repository entrypoint is missing",
+            ));
+        }
+    }
+
+    let issue_directory = root.join(ISSUE_TEMPLATE_DIRECTORY);
+    let found_issue_files = collect_direct_file_names(&issue_directory)?;
+    let expected_issue_files = REQUIRED_ISSUE_TEMPLATE_FILES
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<BTreeSet<_>>();
+    if found_issue_files != expected_issue_files {
+        findings.push(Finding::fatal(
+            "repository.issue_template_inventory",
+            Some(ISSUE_TEMPLATE_DIRECTORY.to_owned()),
+            format!(
+                "expected issue-template files {expected_issue_files:?}, found {found_issue_files:?}"
+            ),
+        ));
+    }
+
+    let issue_config = read_to_string(root, ".github/ISSUE_TEMPLATE/config.yml")?;
+    for required in [
+        "blank_issues_enabled: false",
+        "https://github.com/dornglut/runen-ui/security/policy",
+        "https://github.com/dornglut/engineering/issues/new",
+    ] {
+        if !issue_config.contains(required) {
+            findings.push(Finding::fatal(
+                "repository.issue_template_config",
+                Some(".github/ISSUE_TEMPLATE/config.yml".to_owned()),
+                format!("issue configuration is missing required contract {required:?}"),
+            ));
+        }
+    }
+
+    let workflow = read_to_string(root, ".github/workflows/ci.yml")?;
+    if !workflow.contains(CURRENT_WORKFLOW_CALL) {
+        findings.push(Finding::fatal(
+            "repository.shared_workflow_revision",
+            Some(".github/workflows/ci.yml".to_owned()),
+            format!("CI must call the accepted reusable workflow {CURRENT_WORKFLOW_CALL:?}"),
+        ));
+    }
+
+    Ok(())
 }
 
 fn audit_authority_documents(
@@ -391,6 +474,14 @@ fn audit_authority_documents(
             ));
         }
 
+        if !is_historical_owner_exemption(relative) && contents.contains(HISTORICAL_OWNER_TOKEN) {
+            findings.push(Finding::fatal(
+                "authority.active_historical_owner_reference",
+                Some(relative_text.clone()),
+                "active authority files must use the dornglut/runen-ui repository identity",
+            ));
+        }
+
         if !is_historical_master_exemption(relative)
             && (contents.contains("`master`") || contents.contains("refs/heads/master"))
         {
@@ -403,6 +494,24 @@ fn audit_authority_documents(
     }
 
     Ok((files.len(), modeled_issues.len()))
+}
+
+fn collect_direct_file_names(directory: &Path) -> Result<BTreeSet<String>, String> {
+    let mut names = BTreeSet::new();
+    let entries = fs::read_dir(directory)
+        .map_err(|error| format!("failed to inspect {}: {error}", directory.display()))?;
+    for entry in entries {
+        let entry = entry
+            .map_err(|error| format!("failed to inspect {} entry: {error}", directory.display()))?;
+        if entry.path().is_file() {
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|_| format!("non-UTF-8 file name below {}", directory.display()))?;
+            names.insert(name);
+        }
+    }
+    Ok(names)
 }
 
 fn collect_authority_files(root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -465,6 +574,12 @@ fn issue_numbers(contents: &str) -> BTreeSet<u64> {
     }
 
     issues
+}
+
+fn is_historical_owner_exemption(relative: &Path) -> bool {
+    relative == Path::new("CHANGELOG.md")
+        || relative.starts_with("docs/adr")
+        || relative.starts_with("docs/history")
 }
 
 fn is_historical_master_exemption(relative: &Path) -> bool {
@@ -549,11 +664,29 @@ mod tests {
         fn write_baseline(&self) -> Result<(), String> {
             self.write(
                 "Cargo.toml",
-                "[workspace]\nmembers = [\n  \"crates/runenui_core\",\n  \"crates/runenui_runtime\",\n  \"xtask\",\n]\n\n[workspace.package]\nlicense = \"MIT\"\npublish = false\n",
+                "[workspace]\nmembers = [\n  \"crates/runenui_core\",\n  \"crates/runenui_runtime\",\n  \"xtask\",\n]\n\n[workspace.package]\nrepository = \"https://github.com/dornglut/runen-ui\"\nlicense = \"MIT\"\npublish = false\n",
             )?;
             self.write(
                 "LICENSE",
                 "MIT License\n\nCopyright (c) 2026 Crystonix\n\nPermission is hereby granted, free of charge\nTHE SOFTWARE IS PROVIDED \"AS IS\"\n",
+            )?;
+            self.write("README.md", "# RunenUI\n")?;
+            self.write("AGENTS.md", "Start from current `main`.\n")?;
+            self.write("ARCHITECTURE.md", "# Architecture\n")?;
+            self.write("TESTING.md", "# Testing\n")?;
+            self.write(
+                ".github/ISSUE_TEMPLATE/config.yml",
+                "blank_issues_enabled: false\ncontact_links:\n  - name: Security\n    url: https://github.com/dornglut/runen-ui/security/policy\n    about: Private security reporting.\n  - name: Engineering\n    url: https://github.com/dornglut/engineering/issues/new\n    about: Cross-repository decisions.\n",
+            )?;
+            self.write(".github/ISSUE_TEMPLATE/defect.yml", "name: Defect\n")?;
+            self.write(
+                ".github/ISSUE_TEMPLATE/milestone-slice.yml",
+                "name: Milestone slice\n",
+            )?;
+            self.write(".github/ISSUE_TEMPLATE/proposal.yml", "name: Proposal\n")?;
+            self.write(
+                ".github/workflows/ci.yml",
+                "permissions:\n  contents: read\njobs:\n  validate:\n    uses: dornglut/github-workflows/.github/workflows/reusable-rust-cargo-validate.yml@b6caad377102ca73794efaf734a65903b8efa829\n",
             )?;
             self.write(
                 "crates/runenui_core/Cargo.toml",
@@ -594,7 +727,7 @@ mod tests {
             )?;
             self.write(
                 "docs/work-tracking.md",
-                "[umbrella](https://github.com/Crystonix/runen-ui/issues/3)\n",
+                "[umbrella](https://github.com/dornglut/runen-ui/issues/3)\n",
             )?;
             self.write(
                 "docs/history/public-repository-migration.md",
@@ -626,7 +759,7 @@ mod tests {
     #[test]
     fn public_issue_parser_is_sorted_and_unique() {
         let issues = issue_numbers(
-            "https://github.com/Crystonix/runen-ui/issues/11 and https://github.com/Crystonix/runen-ui/issues/3 and https://github.com/Crystonix/runen-ui/issues/11",
+            "https://github.com/dornglut/runen-ui/issues/11 and https://github.com/dornglut/runen-ui/issues/3 and https://github.com/dornglut/runen-ui/issues/11",
         );
         assert_eq!(issues.into_iter().collect::<Vec<_>>(), [3, 11]);
     }
@@ -674,7 +807,7 @@ mod tests {
         let fixture = Fixture::new("workspace")?;
         fixture.write(
             "Cargo.toml",
-            "[workspace]\nmembers = [\n  \"crates/runenui_core\",\n  \"crates/runenui_runtime\",\n  \"crates/extra\",\n  \"xtask\",\n]\n\n[workspace.package]\nlicense = \"MIT\"\npublish = false\n",
+            "[workspace]\nmembers = [\n  \"crates/runenui_core\",\n  \"crates/runenui_runtime\",\n  \"crates/extra\",\n  \"xtask\",\n]\n\n[workspace.package]\nrepository = \"https://github.com/dornglut/runen-ui\"\nlicense = \"MIT\"\npublish = false\n",
         )?;
         fixture.write(
             "crates/extra/Cargo.toml",
@@ -720,11 +853,25 @@ mod tests {
     }
 
     #[test]
+    fn historical_owner_link_in_active_authority_is_fatal() -> Result<(), String> {
+        let fixture = Fixture::new("owner")?;
+        fixture.write(
+            "README.md",
+            "https://github.com/Crystonix/runen-ui/issues/3\n",
+        )?;
+        let report = build_report(fixture.path())?;
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == "authority.active_historical_owner_reference"
+        }));
+        Ok(())
+    }
+
+    #[test]
     fn unmodeled_public_issue_link_is_fatal() -> Result<(), String> {
         let fixture = Fixture::new("issue")?;
         fixture.write(
             "README.md",
-            "https://github.com/Crystonix/runen-ui/issues/999\n",
+            "https://github.com/dornglut/runen-ui/issues/999\n",
         )?;
         let report = build_report(fixture.path())?;
         assert!(
