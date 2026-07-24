@@ -56,26 +56,8 @@ No framework subsystem is currently `stable`.
 
 ## Current milestone
 
-M0–M3, M4A, M4B, M4C0, M4C1, M4C2, M4C3, and M4C4 are complete. M4C2 was
-owner-accepted with an explicit infrastructure-only CI waiver and squash-merged
-in [archive PR #99](history/public-repository-migration.md#accepted-imported-milestone-history)
-as `9dbf2b6bc781b4e29e3e9ce10388742eccc90124`. ADR 0005 remains
-routed-behavior authority, ADR 0006 scheduler-behavior authority, the accepted
-[M4C delivery charter](architecture/m4c-delivery-and-routed-transaction-charter.md)
-implementation/delivery authority, and the
-[M4 conformance matrix](architecture/m4-conformance-matrix.md) observable
-acceptance authority. M4C3's accepted feature head
-`01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
-`29996101708` and was squash-merged in
-[PR #15](https://github.com/dornglut/runen-ui/pull/15) as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4's accepted feature head
-`f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
-`30006170403` and was squash-merged in
-[PR #22](https://github.com/dornglut/runen-ui/pull/22) as
-`f95571634a9c6528e5834e9589b048ad5197bd15`. All 32 M4C4 rows are
-`owner-accepted`. M4C5 becomes the next implementation slice only after this
-post-merge authority update merges and its resulting accepted `main` is recorded;
-M4D1–M4D3 remain blocked in sequence. No keyboard/text/IME, authored automation
-resolution, semantic accessibility mapping, export, sink, or replay maturity is
-upgraded. M4 is active and incomplete. Volatile branch, head, blocker, and
-next-action state lives in the [work-tracking system](work-tracking.md).
+M0–M3, M4A, M4B, and M4C0–M4C4 are complete. ADR 0005 remains routed-behavior authority, ADR 0006 remains scheduler-behavior authority, the accepted [M4C delivery charter](architecture/m4c-delivery-and-routed-transaction-charter.md) owns implementation and delivery constraints, and the [M4 conformance matrix](architecture/m4-conformance-matrix.md) owns observable acceptance.
+
+M4C5 is the next implementation slice. M4D1–M4D3 remain blocked in sequence. No keyboard/text/IME, authored automation resolution, semantic accessibility mapping, export, sink, or replay maturity is upgraded. M4 remains active and incomplete.
+
+Merged acceptance evidence belongs in pull requests and the [public repository migration history](history/public-repository-migration.md). Volatile branch, head, blocker, and next-action state belongs in the [work-tracking system](work-tracking.md) and GitHub issues.

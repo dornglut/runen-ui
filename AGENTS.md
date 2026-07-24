@@ -20,7 +20,7 @@ Historical tags and removed legacy material are never active implementation auth
 
 ## Work tracking and pickup
 
-The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrix, GitHub issues, pull requests, and current-status documents. The M4 operational milestone is [public issue #3](https://github.com/Crystonix/runen-ui/issues/3).
+The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrix, GitHub issues, pull requests, and current-status documents. The M4 operational milestone is [public issue #3](https://github.com/dornglut/runen-ui/issues/3).
 
 Use this pickup sequence:
 
@@ -57,4 +57,4 @@ A future thread should need only the repository, umbrella issue, and active slic
 
 Format intentional Rust changes with `cargo +stable fmt --all`. Run `cargo validate` before every commit and again before handoff. It is the locked, read-only shared local/CI baseline and includes stable formatting checks, locked tests, Clippy with denied warnings, MSRV tests, repository metadata checks, and workspace-root Markdown relative-link checks. Also run slice-specific checks, the matrix uniqueness/status/schema/count audit, public API and removed-symbol audits, unsafe-code audit, cross-document truth audit, exact base/head/remote verification, clean-worktree verification, and `git diff --check`.
 
-Do not reuse validation or exact-head CI claims from an earlier head. Critically review the complete diff for stale references, broken links, false support claims, accidental scope, duplicate authority, premature later-slice APIs, and missing migrations. Commit coherent slices separately. Open draft PRs unless the owner explicitly requests ready-for-review, and never merge them yourself.
+Do not reuse validation or exact-head CI claims from an earlier head. Critically review the complete diff for stale references, broken links, false support claims, accidental scope, duplicate authority, premature later-slice APIs, and missing migrations. Commit coherent slices separately. Open draft PRs unless the owner explicitly requests ready-for-review, and never merge them without explicit owner authorization.

@@ -15,23 +15,7 @@ Support labels:
 | `deferred` | Accepted later target outside the first foundation or release. |
 | `unsupported` | Not available and not safe to infer from current APIs. |
 
-M4B, M4C0, M4C1, M4C2, M4C3, and M4C4 are complete and owner-accepted. M4C2 was
-squash-merged in
-[archive PR #99](history/public-repository-migration.md#accepted-imported-milestone-history)
-with the documented infrastructure-only CI waiver.
-M4C3's accepted feature head `01b7ae018abeaff8d316764afba5bc8cde074381`
-passed exact-head CI run `29996101708` and was squash-merged in
-[PR #15](https://github.com/Crystonix/runen-ui/pull/15) as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4's accepted feature head
-`f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
-`30006170403` and was squash-merged in
-[PR #22](https://github.com/dornglut/runen-ui/pull/22) as
-`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 becomes the next
-implementation slice only after this post-merge authority update merges and its
-resulting accepted `main` is recorded; M4D1–M4D3 remain unimplemented and
-blocked in sequence. Planned type names are not evidence of support. Exact
-branch, head, blocker, and next-action state lives in the
-[work-tracking system](work-tracking.md).
+M4B, M4C0, M4C1, M4C2, M4C3, and M4C4 are complete and owner-accepted. M4C5 is the next implementation slice; M4D1–M4D3 remain unimplemented and blocked in sequence. Planned type names are not evidence of support. Exact branch, head, blocker, validation, and next-action state belongs in the [work-tracking system](work-tracking.md), GitHub issues, and pull requests. Historical acceptance evidence remains in the [public repository migration history](history/public-repository-migration.md).
 
 ## 1. Authoring and composition
 

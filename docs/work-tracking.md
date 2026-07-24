@@ -25,7 +25,7 @@ Matrix rows are not GitHub issues. One slice issue may own many matrix rows.
 
 ### GitHub umbrella and execution issues
 
-The [public M4 umbrella issue](https://github.com/Crystonix/runen-ui/issues/3)
+The [public M4 umbrella issue](https://github.com/dornglut/runen-ui/issues/3)
 and its linked execution issues own volatile state:
 
 - exact accepted base SHA;
@@ -76,26 +76,27 @@ as archive references. They are never active execution authority.
 ## M4 operational milestone
 
 The public operational milestone is
-[issue #3](https://github.com/Crystonix/runen-ui/issues/3). A formal GitHub
+[issue #3](https://github.com/dornglut/runen-ui/issues/3). A formal GitHub
 milestone should be named `M4 — Events, Effects, Scheduling, and Trace v2`.
-Until that milestone is configured through GitHub UI or CLI, the umbrella issue
-remains the pickup surface and dependency graph.
+Until that milestone is configured through GitHub UI or another reviewed
+administration surface, the umbrella issue remains the pickup surface and
+dependency graph.
 
 The public execution graph is:
 
-- [#2 — public RunenUI authority cutover](https://github.com/Crystonix/runen-ui/issues/2);
-- [#11 — deterministic repository structure and authority audit](https://github.com/Crystonix/runen-ui/issues/11), after #2;
-- [#4 — M4C3 pointer lifecycle](https://github.com/Crystonix/runen-ui/issues/4), after #11 and its readiness freeze;
-- [#5 — M4C4 focus scopes and modality](https://github.com/Crystonix/runen-ui/issues/5), after #4;
-- [#6 — M4C5 keyboard, text, IME, automation, and M4C closure](https://github.com/Crystonix/runen-ui/issues/6), after #5;
-- [#7 — M4D1 complete trace schema and causality](https://github.com/Crystonix/runen-ui/issues/7), after #6;
-- [#8 — M4D2 export, redaction, and bounded sink](https://github.com/Crystonix/runen-ui/issues/8), after #7;
-- [#9 — M4D3 replay and M4 closure](https://github.com/Crystonix/runen-ui/issues/9), after #8.
+- [#2 — public RunenUI authority cutover](https://github.com/dornglut/runen-ui/issues/2);
+- [#11 — deterministic repository structure and authority audit](https://github.com/dornglut/runen-ui/issues/11), after #2;
+- [#4 — M4C3 pointer lifecycle](https://github.com/dornglut/runen-ui/issues/4), after #11 and its readiness freeze;
+- [#5 — M4C4 focus scopes and modality](https://github.com/dornglut/runen-ui/issues/5), after #4;
+- [#6 — M4C5 keyboard, text, IME, automation, and M4C closure](https://github.com/dornglut/runen-ui/issues/6), after #5;
+- [#7 — M4D1 complete trace schema and causality](https://github.com/dornglut/runen-ui/issues/7), after #6;
+- [#8 — M4D2 export, redaction, and bounded sink](https://github.com/dornglut/runen-ui/issues/8), after #7;
+- [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8.
 
 Architecture and tooling follow-up:
 
-- [#10 — review core Element and Widget protocol concentration](https://github.com/Crystonix/runen-ui/issues/10), non-blocking unless the M4C3 readiness audit proves otherwise;
-- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/Crystonix/runen-ui/issues/12), explicitly deferred until after M4.
+- [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10), non-blocking unless a later readiness audit proves otherwise;
+- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12), explicitly deferred until after M4.
 
 M4A through M4C2 are accepted imported history. They are recorded in the
 [public-repository migration history](history/public-repository-migration.md)
@@ -115,10 +116,9 @@ rather than recreated as false closed public issues.
 A new thread should need only:
 
 ```text
-Repository: Crystonix/runen-ui
+Repository: dornglut/runen-ui
 Umbrella issue: #3
 Current execution issue: read from #3
-Next implementation slice: #4
 ```
 
 ## Execution and branch discipline
@@ -134,12 +134,16 @@ creates stale writes, cancelled CI runs, duplicate implementations, and
 unreviewable interleaving. When responsibility changes, record the last reviewed
 checkpoint and hand off the branch explicitly.
 
-Automated contributors should use the repository connector or normal guarded Git
-commits and let GitHub Actions perform authoritative validation. Do not transfer
-connector-capable work to the repository owner through bespoke local scripts,
-and do not add temporary branch-mutating formatter or fixer workflows. Owner
-local execution is reserved for operations unavailable through the repository
-connector and CI surfaces.
+Use the smallest suitable execution path:
+
+- structured GitHub state changes and bounded text edits may use the connected GitHub interface;
+- broad, generated, binary, or validation-heavy changes use a checked-out repository executor;
+- native GitHub Projects and settings use the GitHub interface when no reviewed automation surface exists.
+
+All paths publish ordinary task branches and pull requests. CI remains
+independently read-only. Do not add temporary branch-mutating formatter, fixer,
+source-export, or self-authoring workflows to compensate for an execution-tool
+limitation.
 
 ## Slice issue requirements
 
@@ -203,7 +207,7 @@ Every repository pull request runs the baseline documented in
 - public API and removed-symbol audit;
 - unsafe-code audit;
 - cross-document truth audit;
-- repository structure and authority audit after #11 is accepted;
+- repository structure and authority audit;
 - exact base/head/remote verification;
 - clean-worktree verification;
 - exact-head CI verification or the narrowly documented infrastructure-only waiver above.

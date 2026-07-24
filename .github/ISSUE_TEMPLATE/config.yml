@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Security vulnerability
-    url: https://github.com/Crystonix/runen-ui/security/advisories/new
-    about: Report security vulnerabilities privately. Do not disclose vulnerability details in a public issue.
+  - name: Security reporting policy
+    url: https://github.com/dornglut/runen-ui/security/policy
+    about: Review the private reporting instructions before disclosing a vulnerability.
+  - name: Cross-repository governance and architecture
+    url: https://github.com/dornglut/engineering/issues/new
+    about: Use Dornglut Engineering when a proposal changes organization policy or spans multiple repositories.

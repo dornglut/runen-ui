@@ -6,25 +6,7 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M4A, M4B, M4C0, M4C1, M4C2, M4C3, and M4C4 are complete. M4C2 was
-owner-accepted with an explicit infrastructure-only CI waiver and squash-merged
-in [archive PR #99](docs/history/public-repository-migration.md#accepted-imported-milestone-history).
-M4C3 was owner-accepted at feature head
-`01b7ae018abeaff8d316764afba5bc8cde074381` after exact-head CI run
-`29996101708` succeeded, then squash-merged in
-[PR #15](https://github.com/Crystonix/runen-ui/pull/15) as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 was owner-accepted at feature
-head `f3201a83583af0c1d148bec87cd9140ff42795b7` after exact-head CI run
-`30006170403` succeeded, then squash-merged in
-[PR #22](https://github.com/dornglut/runen-ui/pull/22) as
-`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 becomes the next
-implementation slice only after this post-merge authority update merges and its
-resulting accepted `main` is recorded; M4D1–M4D3 remain blocked in sequence. M4
-is active and incomplete.
-See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
-[work-tracking contract](docs/work-tracking.md),
-[accepted M4C delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md),
-and [M4 conformance matrix](docs/architecture/m4-conformance-matrix.md).
+Milestone status: M4A through M4C4 are complete and owner-accepted. M4C5 is the next implementation slice; M4D1–M4D3 follow in sequence. M4 remains active and incomplete. Current maturity, durable sequence, work ownership, and historical acceptance evidence live in the [status map](docs/status-map.md), [roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and [public repository migration history](docs/history/public-repository-migration.md).
 
 ## What exists today
 
@@ -136,14 +118,16 @@ renderer-neutral paint and hit-test scenes begin in M6.
 
 ## Canonical project documents
 
+- [Architecture entrypoint](ARCHITECTURE.md)
+- [Testing and validation entrypoint](TESTING.md)
 - [Current status](docs/status-map.md)
 - [Feature and support matrix](docs/feature-support-matrix.md)
 - [Production roadmap](docs/roadmap.md)
 - [Work tracking](docs/work-tracking.md)
-- [Architecture](docs/architecture.md)
+- [Detailed architecture](docs/architecture.md)
 - [Public repository migration history](docs/history/public-repository-migration.md)
 - [Documentation retention and disposition](docs/documentation-retention-plan.md)
-- [Validation](docs/tooling/validation.md)
+- [Validation details](docs/tooling/validation.md)
 - [API stability](docs/api-stability.md)
 - [Release policy](docs/release-policy.md)
 
@@ -206,7 +190,7 @@ cargo +stable fmt --all
 cargo validate
 ```
 
-Format intentional changes with latest stable rustfmt, matching CI. `cargo validate` is the locked, read-only shared local/CI implementation. It runs stable formatting checks, locked tests, Clippy with denied warnings, Rust 1.93.0 MSRV tests, repository metadata checks, and repository-relative Markdown link validation from the resolved workspace root. Also run `git diff --check` and slice-specific checks. See [Validation](docs/tooling/validation.md).
+Format intentional changes with latest stable rustfmt, matching CI. `cargo validate` is the locked, read-only shared local/CI implementation. It runs stable formatting checks, locked tests, Clippy with denied warnings, Rust 1.93.0 MSRV tests, repository metadata checks, and repository-relative Markdown link validation from the resolved workspace root. Also run `git diff --check` and slice-specific checks. See [Testing and validation](TESTING.md).
 
 Generated context exports are written to the ignored `context/` directory:
 
