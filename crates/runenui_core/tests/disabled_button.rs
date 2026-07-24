@@ -12,7 +12,7 @@ fn disabled_button_preserves_action_and_can_be_reenabled() {
         .disabled()
         .enabled(true)
         .into_element();
-    let (_, _, _, _, _, mut widget, _) = element.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, mut widget, _) = element.into_runtime_parts().into_parts();
     let mut state = widget.create_state();
     assert!(
         widget
@@ -46,12 +46,12 @@ fn nested_mapping_preserves_non_clone_action_and_state_identity() {
     let original = button("Submit")
         .on_activate(|| Child::Submit)
         .into_element();
-    let original_type = original.into_runtime_parts().into_parts().5.state_type_id();
+    let original_type = original.into_runtime_parts().into_parts().7.state_type_id();
     let mapped = button("Submit")
         .on_activate(|| Child::Submit)
         .into_element()
         .map_action(Parent::Child);
-    let (_, _, _, _, _, mut widget, _) = mapped.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, mut widget, _) = mapped.into_runtime_parts().into_parts();
     assert_eq!(widget.state_type_id(), original_type);
     let mut state = widget.create_state();
     let first = widget

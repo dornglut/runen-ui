@@ -13,10 +13,10 @@ M4C3 was owner-accepted at feature head
 `01b7ae018abeaff8d316764afba5bc8cde074381` after exact-head CI run
 `29996101708` succeeded, then squash-merged in
 [PR #15](https://github.com/Crystonix/runen-ui/pull/15) as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 has not started and becomes
-the next implementation slice only after this authority update merges and its
-accepted `main` is recorded; M4C5 and M4D1–M4D3 remain blocked in sequence. M4
-is active and incomplete.
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 is implemented and its proof
+package is complete on the active feature branch, but owner acceptance and merge
+remain pending; M4C5 and M4D1–M4D3 remain blocked in sequence. M4 is active and
+incomplete.
 See the [roadmap](docs/roadmap.md), [status map](docs/status-map.md),
 [work-tracking contract](docs/work-tracking.md),
 [accepted M4C delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md),
@@ -59,6 +59,9 @@ The active workspace proves:
   routed `Activate` default and route-only cancel/menu/context commands, an
   explicit bounded pump, focus traversal, scheduler-aware bounded canonical
   tracing with routed causal parentage, and mounted surface publication;
+- one runtime-owned exact-generation focus authority with nested scope policies,
+  retained modality, current-publication directional geometry, remembered
+  restoration, atomic focus-within transitions, and routed `FocusOut`/`FocusIn`;
 - runtime-issued opaque `SurfaceId`/`SurfaceInputContext`, fresh displayed
   coordinate revision and hit-test generation on every publication, configurable
   bounded immutable historical hit-test snapshots, exact checked logical/resolved
@@ -83,7 +86,7 @@ The active workspace proves:
 
 Important limitations remain: pointer input is a deterministic logical-surface
 proof without native host translation or production scrolling; text measurement
-is deterministic character counting; and focus scopes/modality, keyboard routing, text/IME,
+is deterministic character counting; and raw keyboard routing, text/IME,
 authored-ID automation resolution, complete trace v2 normalization, trace export/
 sinks/replay, production semantics/accessibility, paint/hit scenes, production
 layout/style/text, native hosts, renderer backends, and production controls are

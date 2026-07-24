@@ -14,10 +14,26 @@ use runenui_core::{
     SemanticCommand, StyleTokens, UiApp, View, Widget, WidgetMountContext, button, text,
 };
 use runenui_runtime::{
-    AppRuntime, FocusTargetResult, LayoutConstraints, PumpBudget, PumpOutcome, RuntimeStatus,
+    AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, PumpOutcome, RuntimeStatus,
     RuntimeTerminalReason, SubmitActionErrorKind, SubmitCommandErrorKind, SurfaceBuildContext,
     TraceRecordKind,
 };
+
+fn focus<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
+    runtime
+        .submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("the exact live focus target is accepted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+}
 
 #[derive(Debug, Eq, PartialEq)]
 struct Action(u32);
@@ -222,10 +238,7 @@ fn command_submission_sequence_exhaustion_recovers_inputs_and_closes_mutation() 
     let calls = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(state(&calls));
     let target = runtime.index().nodes()[0].id().clone();
-    assert_eq!(
-        runtime.set_focus(target.clone()),
-        FocusTargetResult::Focused
-    );
+    focus(&mut runtime, target.clone());
 
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
@@ -359,10 +372,7 @@ fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
         usize::MAX,
     ));
     let target = runtime.index().nodes()[0].id().clone();
-    assert_eq!(
-        runtime.set_focus(target.clone()),
-        FocusTargetResult::Focused
-    );
+    focus(&mut runtime, target.clone());
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
     let publication_before = runtime.publish_surface(&context);

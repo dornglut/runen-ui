@@ -12,6 +12,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: &mut RoutedTransaction<Action>,
         command: SemanticCommand,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
+        self.commit_pending_modality(transaction);
         let kind = if transaction.default_prevented {
             TraceRecordKind::SemanticDefaultSuppressed { command }
         } else {
@@ -27,8 +28,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Some(&transaction.target),
             transaction.origin,
         );
-        if transaction.default_prevented || command != SemanticCommand::Activate {
+        if transaction.default_prevented {
             return Ok(());
+        }
+        if command != SemanticCommand::Activate {
+            return self.apply_focus_default(transaction, command);
         }
         transaction.failure_current_target = Some(transaction.target.clone());
         #[cfg(feature = "internal-test-seams")]

@@ -88,8 +88,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let (cancelled_queued_envelopes, cancelled_live_work, pointer_parent) =
             self.close_scheduling_authority();
+        let shutdown_parent = self.clear_focus_for_shutdown(pointer_parent);
         let stats = self.tree.shutdown();
-        self.focus.clear();
         self.surface_publication.clear_cache();
         self.trace.record(
             TraceRecordKind::RuntimeShutdown {
@@ -97,7 +97,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 unmounted_lifetimes: stats.unmounted,
             },
             None,
-            pointer_parent,
+            shutdown_parent,
             None,
             None,
             None,

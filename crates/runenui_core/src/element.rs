@@ -6,10 +6,11 @@ use std::rc::Rc;
 use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAdapter};
 use crate::widget_mapping::MappedWidget;
 use crate::{
-    Axis, ColorValue, ElementId, ElementKey, EventContext, IdentifierError, IntoElementId,
-    IntoElementKey, LayoutStyle, LogicalLength, RadiusValue, SpacingValue, StyleIntent,
-    SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetInvalidation,
-    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext,
+    Axis, ColorValue, ElementId, ElementKey, EventContext, FocusScope, Focusability,
+    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, LogicalLength, RadiusValue,
+    SpacingValue, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
+    WidgetEventOutput, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -437,9 +438,40 @@ pub struct Element<Action> {
     key: Option<ElementKey>,
     layout: LayoutStyle,
     style: StyleIntent,
+    focusability: Focusability,
+    focus_scope: Option<FocusScope>,
     widget: Box<dyn ErasedWidget<Action>>,
     children: Vec<Self>,
     authoring_diagnostics: Vec<AuthoringDiagnostic>,
+}
+
+pub struct AuthoredElementFields {
+    pub id: Option<ElementId>,
+    pub key: Option<ElementKey>,
+    pub layout: LayoutStyle,
+    pub style: StyleIntent,
+    pub focusability: Focusability,
+    pub focus_scope: Option<FocusScope>,
+}
+
+impl AuthoredElementFields {
+    pub const fn new(
+        id: Option<ElementId>,
+        key: Option<ElementKey>,
+        layout: LayoutStyle,
+        style: StyleIntent,
+        focusability: Focusability,
+        focus_scope: Option<FocusScope>,
+    ) -> Self {
+        Self {
+            id,
+            key,
+            layout,
+            style,
+            focusability,
+            focus_scope,
+        }
+    }
 }
 
 impl<Action> fmt::Debug for Element<Action> {
@@ -450,6 +482,8 @@ impl<Action> fmt::Debug for Element<Action> {
             .field("key", &self.key)
             .field("layout", &self.layout)
             .field("style", &self.style)
+            .field("focusability", &self.focusability)
+            .field("focus_scope", &self.focus_scope)
             .field("widget_type", &self.widget.widget_type_name())
             .field("children", &self.children)
             .field("authoring_diagnostics", &self.authoring_diagnostics)
@@ -469,10 +503,14 @@ impl<Action> Element<Action> {
 
     fn from_parts(widget: Box<dyn ErasedWidget<Action>>, children: Vec<Self>) -> Self {
         Self::from_authored_parts(
-            None,
-            None,
-            LayoutStyle::default(),
-            StyleIntent::EMPTY,
+            AuthoredElementFields::new(
+                None,
+                None,
+                LayoutStyle::default(),
+                StyleIntent::EMPTY,
+                Focusability::Automatic,
+                None,
+            ),
             widget,
             children,
             Vec::new(),
@@ -480,19 +518,18 @@ impl<Action> Element<Action> {
     }
 
     pub(crate) fn from_authored_parts(
-        id: Option<ElementId>,
-        key: Option<ElementKey>,
-        layout: LayoutStyle,
-        style: StyleIntent,
+        fields: AuthoredElementFields,
         widget: Box<dyn ErasedWidget<Action>>,
         children: Vec<Self>,
         authoring_diagnostics: Vec<AuthoringDiagnostic>,
     ) -> Self {
         Self {
-            id,
-            key,
-            layout,
-            style,
+            id: fields.id,
+            key: fields.key,
+            layout: fields.layout,
+            style: fields.style,
+            focusability: fields.focusability,
+            focus_scope: fields.focus_scope,
             widget,
             children,
             authoring_diagnostics,
@@ -535,6 +572,37 @@ impl<Action> Element<Action> {
         self
     }
 
+    /// Declares explicit participation in mounted focus selection.
+    #[must_use]
+    pub const fn focusable(mut self, focusable: bool) -> Self {
+        self.focusability = if focusable {
+            Focusability::Focusable
+        } else {
+            Focusability::NotFocusable
+        };
+        self
+    }
+
+    /// Excludes this mounted node from focus selection as focus-hidden.
+    ///
+    /// This is a focus eligibility fact, not a renderer visibility contract.
+    #[must_use]
+    pub const fn focus_hidden(mut self, hidden: bool) -> Self {
+        self.focusability = if hidden {
+            Focusability::Hidden
+        } else {
+            Focusability::Automatic
+        };
+        self
+    }
+
+    /// Declares this mounted node as a nested focus-scope boundary.
+    #[must_use]
+    pub const fn focus_scope(mut self, scope: FocusScope) -> Self {
+        self.focus_scope = Some(scope);
+        self
+    }
+
     /// Maps every typed widget action in this subtree into a parent action.
     #[must_use]
     pub fn map_action<ParentAction>(
@@ -562,6 +630,8 @@ impl<Action> Element<Action> {
             key: self.key,
             layout: self.layout,
             style: self.style,
+            focusability: self.focusability,
+            focus_scope: self.focus_scope,
             widget: Box::new(MappedWidget {
                 child: self.widget,
                 mapper: Rc::clone(mapper),
@@ -592,6 +662,14 @@ impl<Action> Element<Action> {
         &self.style
     }
     #[must_use]
+    pub const fn focusability(&self) -> Focusability {
+        self.focusability
+    }
+    #[must_use]
+    pub const fn focus_scope_config(&self) -> Option<FocusScope> {
+        self.focus_scope
+    }
+    #[must_use]
     pub const fn children(&self) -> &[Self] {
         self.children.as_slice()
     }
@@ -604,10 +682,14 @@ impl<Action> Element<Action> {
     #[must_use]
     pub fn into_runtime_parts(self) -> ElementParts<Action> {
         ElementParts::new(
-            self.id,
-            self.key,
-            self.layout,
-            self.style,
+            AuthoredElementFields::new(
+                self.id,
+                self.key,
+                self.layout,
+                self.style,
+                self.focusability,
+                self.focus_scope,
+            ),
             MountedWidget::from_erased(self.widget),
             self.children,
             self.authoring_diagnostics,

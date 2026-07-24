@@ -88,6 +88,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.prepare_routed_invocations(facts, true, &[], &[], 0, additional_trace)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn prepare_pointer_routed_route(
         &mut self,
         facts: &RoutedIngressFacts,
@@ -96,14 +97,72 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         deferred_target_only: &[MountedNodeId],
         deferred_invocations: usize,
         additional_trace: MandatoryTracePlan,
+        may_focus: bool,
     ) -> Option<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan)> {
+        let mut deferred_targets = deferred_target_only.to_vec();
+        let (deferred_invocations, additional_trace) = if may_focus {
+            let focus_targets = self.tree.publication_preorder_ids();
+            for target in focus_targets.iter().cloned() {
+                if !deferred_targets.contains(&target) {
+                    deferred_targets.push(target);
+                }
+            }
+            let Some(focus_invocations) = focus_notification_invocations(focus_targets.len())
+            else {
+                self.handle_routed_admission_rejection(
+                    TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                    facts,
+                );
+                return None;
+            };
+            let Some(invocations) = deferred_invocations.checked_add(focus_invocations) else {
+                self.handle_routed_admission_rejection(
+                    TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                    facts,
+                );
+                return None;
+            };
+            let Some(trace) = additional_trace.checked_add(MandatoryTracePlan::focus_commit())
+            else {
+                self.handle_routed_admission_rejection(
+                    TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                    facts,
+                );
+                return None;
+            };
+            (invocations, trace)
+        } else {
+            (deferred_invocations, additional_trace)
+        };
         self.prepare_routed_invocations(
             facts,
             include_ordinary_route,
             target_only,
-            deferred_target_only,
+            &deferred_targets,
             deferred_invocations,
             additional_trace,
+        )
+    }
+
+    pub(super) fn prepare_focus_routed_route(
+        &mut self,
+        facts: &RoutedIngressFacts,
+    ) -> Option<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan)> {
+        let targets = self.tree.publication_preorder_ids();
+        let Some(deferred_invocations) = focus_notification_invocations(targets.len()) else {
+            self.handle_routed_admission_rejection(
+                TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                facts,
+            );
+            return None;
+        };
+        self.prepare_routed_invocations(
+            facts,
+            true,
+            &[],
+            &targets,
+            deferred_invocations,
+            MandatoryTracePlan::focus_commit(),
         )
     }
 
@@ -283,5 +342,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         self.trace.release_reservation(facts.trace_reservation);
         Some(admission)
+    }
+}
+
+fn focus_notification_invocations(live_nodes: usize) -> Option<usize> {
+    live_nodes
+        .checked_mul(4)
+        .and_then(|count| count.checked_sub(2))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::focus_notification_invocations;
+
+    #[test]
+    fn focus_notification_admission_count_is_checked() {
+        assert_eq!(focus_notification_invocations(1), Some(2));
+        assert_eq!(focus_notification_invocations(3), Some(10));
+        assert_eq!(focus_notification_invocations(usize::MAX), None);
     }
 }

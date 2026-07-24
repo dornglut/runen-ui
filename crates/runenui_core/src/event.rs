@@ -1,6 +1,9 @@
 //! Host-neutral routed event and semantic-command protocol.
 
-use crate::{LogicalScrollCommand, PointerBoundaryEvent, PointerCaptureEvent, PointerEvent};
+use crate::{
+    FocusDirection, FocusEvent, LogicalScrollCommand, PointerBoundaryEvent, PointerCaptureEvent,
+    PointerEvent,
+};
 
 /// Phase of one mounted route invocation.
 #[non_exhaustive]
@@ -20,6 +23,7 @@ pub enum EventSource {
     Accessibility,
     Controller,
     Pointer,
+    Keyboard,
 }
 
 /// How one semantic command was derived.
@@ -59,6 +63,12 @@ impl CommandOrigin {
         Self::direct(EventSource::Controller)
     }
 
+    /// Creates a normalized keyboard origin without introducing raw key routing.
+    #[must_use]
+    pub const fn keyboard() -> Self {
+        Self::direct(EventSource::Keyboard)
+    }
+
     const fn direct(source: EventSource) -> Self {
         Self {
             source,
@@ -91,6 +101,16 @@ impl CommandOrigin {
         }
     }
 
+    /// Creates the origin used for a command emitted by semantic default policy.
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_semantic_default(source: EventSource) -> Self {
+        Self {
+            source,
+            derivation: CommandDerivation::SemanticDefault,
+        }
+    }
+
     #[must_use]
     pub const fn source(self) -> EventSource {
         self.source
@@ -111,6 +131,15 @@ pub enum SemanticCommand {
     OpenMenu,
     OpenContextMenu,
     LogicalScroll(LogicalScrollCommand),
+    FocusNext,
+    FocusPrevious,
+    FocusLeft,
+    FocusRight,
+    FocusUp,
+    FocusDown,
+    RequestFocus,
+    RestoreFocus,
+    LogicalFocusScroll(FocusDirection),
 }
 
 /// Immutable event delivered to one mounted widget callback.
@@ -121,6 +150,7 @@ pub enum UiEvent {
     Pointer(PointerEvent),
     PointerBoundary(PointerBoundaryEvent),
     PointerCapture(PointerCaptureEvent),
+    Focus(FocusEvent),
 }
 
 impl UiEvent {
@@ -129,7 +159,10 @@ impl UiEvent {
     pub const fn as_semantic_command(&self) -> Option<&SemanticCommandEvent> {
         match self {
             Self::SemanticCommand(command) => Some(command),
-            Self::Pointer(_) | Self::PointerBoundary(_) | Self::PointerCapture(_) => None,
+            Self::Pointer(_)
+            | Self::PointerBoundary(_)
+            | Self::PointerCapture(_)
+            | Self::Focus(_) => None,
         }
     }
 
@@ -138,7 +171,10 @@ impl UiEvent {
     pub const fn as_pointer(&self) -> Option<&PointerEvent> {
         match self {
             Self::Pointer(event) => Some(event),
-            Self::SemanticCommand(_) | Self::PointerBoundary(_) | Self::PointerCapture(_) => None,
+            Self::SemanticCommand(_)
+            | Self::PointerBoundary(_)
+            | Self::PointerCapture(_)
+            | Self::Focus(_) => None,
         }
     }
 
@@ -147,7 +183,10 @@ impl UiEvent {
     pub const fn as_pointer_boundary(&self) -> Option<&PointerBoundaryEvent> {
         match self {
             Self::PointerBoundary(event) => Some(event),
-            Self::SemanticCommand(_) | Self::Pointer(_) | Self::PointerCapture(_) => None,
+            Self::SemanticCommand(_)
+            | Self::Pointer(_)
+            | Self::PointerCapture(_)
+            | Self::Focus(_) => None,
         }
     }
 
@@ -156,7 +195,22 @@ impl UiEvent {
     pub const fn as_pointer_capture(&self) -> Option<&PointerCaptureEvent> {
         match self {
             Self::PointerCapture(event) => Some(event),
-            Self::SemanticCommand(_) | Self::Pointer(_) | Self::PointerBoundary(_) => None,
+            Self::SemanticCommand(_)
+            | Self::Pointer(_)
+            | Self::PointerBoundary(_)
+            | Self::Focus(_) => None,
+        }
+    }
+
+    /// Borrows the routed focus notification payload when present.
+    #[must_use]
+    pub const fn as_focus(&self) -> Option<&FocusEvent> {
+        match self {
+            Self::Focus(event) => Some(event),
+            Self::SemanticCommand(_)
+            | Self::Pointer(_)
+            | Self::PointerBoundary(_)
+            | Self::PointerCapture(_) => None,
         }
     }
 }

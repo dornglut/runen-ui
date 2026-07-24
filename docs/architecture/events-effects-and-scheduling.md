@@ -21,7 +21,7 @@ M4C0  conformance ownership and decision closure (complete and accepted)
 M4C1  routed semantic-command kernel (complete and accepted)
 M4C2  displayed-generation surface context (complete and accepted)
 M4C3  pointer lifecycle (complete, owner-accepted, and squash-merged)
-M4C4  focus scopes and modality (next after the post-merge authority update; not started)
+M4C4  focus scopes and modality (proof package complete; owner acceptance/merge pending)
 M4C5  keyboard, text, IME, automation, and M4C closure (blocked by M4C4)
 M4D1  complete trace schema (blocked by M4C5)
 M4D2  export and sink (blocked by M4D1)
@@ -31,9 +31,9 @@ M4D3  replay and milestone closure (blocked by M4D2)
 M4C1, M4C2, and M4C3 are complete and owner-accepted. M4C3's accepted feature
 head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
 `29996101708` and was squash-merged in PR #15 as
-`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 has not started and becomes
-the next implementation slice only after the post-merge authority update and
-its accepted `main` are recorded; M4C5–M4D3 remain blocked in sequence. M4B's
+`2fc165b9386f55c061d61232400375b13ad175bf`. M4C4 is implemented and its proof
+package is complete on the active feature branch, but owner acceptance and merge
+remain pending; M4C5–M4D3 remain blocked in sequence. M4B's
 implemented live-only producer authority remains unchanged, and M4 is active
 and incomplete.
 
@@ -47,8 +47,8 @@ action completes mounted reconciliation and focus validation before the next
 begins. Compatible nodes retain focus; stale and foreign mounted targets are
 rejected; each node owns proof interaction slots; and routed callbacks/default
 activation can mutate persistent widget state only after checked route-wide
-admission. Retained pointer/keyboard helpers are focus-only proofs and cannot
-emit actions, invoke activation, or synthesize commands.
+admission. Retired direct pointer/focus helpers are absent; semantic focus work
+uses the same canonical command queue and routed transaction.
 
 Core-owned initial/update effects, local/send tasks, deterministic timers,
 application and mounted complete-set subscriptions, keyed generational
@@ -61,10 +61,10 @@ work-specific trace records carry opaque exact owner/family/generation/key
 identity. Capture/target/bubble routing, propagation/default control, delegated
 commands, routed output mapping, and the command causal trace are implemented.
 Displayed-generation surface input context and exact current/historical target
-binding are implemented. There is no pointer identity/true capture,
-release-inside policy, focus scopes/modality, text/IME stream, authored-ID
-automation resolution, semantic accessibility mapping, trace sink/export/replay,
-or complete trace-v2 normalization.
+binding, pointer identity/capture/release-inside behavior, and focus scopes with
+retained modality are implemented. There is no raw keyboard/text/IME stream,
+authored-ID automation resolution, semantic accessibility mapping, trace
+sink/export/replay, or complete trace-v2 normalization.
 
 ## Canonical target path
 
@@ -100,6 +100,9 @@ owns `EventPhase::{Capture, Target, Bubble}`, the four direct
 the borrowed `EventContext`. M4C2 separately adds core-owned surface identity
 and input-context values without adding pointer, focus, keyboard, text, IME,
 modality, scrolling, or platform-controller event placeholders.
+M4C4 extends that neutral protocol with normalized keyboard origin, focus
+commands, `FocusEvent`, scope/policy/reason/modality values, and no raw keyboard
+or controller platform type.
 Public `CommandOrigin` constructors create direct origins only. Delegated
 derivation can be created only when the checked event bridge extracts a command
 collected through `EventContext::emit_command`; external submission cannot
@@ -163,17 +166,18 @@ reconciliation/trace path. M4C1 does not resolve authored automation IDs,
 semantic accessibility identities, or raw controller types.
 
 The semantic authored callback remains `on_activate`. The old direct runtime,
-pointer-press, pointer-focus, and unchecked pointer-target authorities are
-removed. The retained keyboard focus helper is a negative focus-only seam owned
-for removal by M4C5.
+pointer-press, pointer-focus, unchecked pointer-target, direct focus traversal,
+and keyboard-focus helper authorities are removed. Normalized keyboard modality
+uses a neutral command origin without adding raw keyboard routing.
 
-M4C2 added displayed-generation surface context. M4C3 adds the canonical
+M4C2 added displayed-generation surface context. M4C3 added the canonical
 pointer/device protocol, pointer streams, physical/routed separation, capture,
 boundaries, terminal cleanup, logical-scroll intent, and release-inside
-activation. The accepted later contract remains unimplemented: M4C4 focus
-scopes/modality, M4C5 keyboard/text/IME and authored
-automation resolution, M4D trace normalization/export/replay, and M5 semantic
-accessibility mapping. See [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md)
+activation. M4C4 adds the single focus/scope authority, modality, current-
+publication directional selection, atomic focus transitions, and routed focus
+notifications. The accepted later contract remains unimplemented: M4C5
+keyboard/text/IME and authored automation resolution, M4D trace normalization/
+export/replay, and M5 semantic accessibility mapping. See [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md)
 for those later behavioral rules.
 
 ## Application, effect, and subscription contract
@@ -431,10 +435,10 @@ the accepted M4C delivery charter is implementation/delivery authority, and the
 [M4 conformance matrix](m4-conformance-matrix.md) is observable acceptance
 authority.
 
-M4C1, M4C2, and M4C3 are complete and owner-accepted. M4C4 has not started and
-becomes the next implementation slice only after the post-merge authority
-update and its accepted `main` are recorded. M4C5–M4D3 remain blocked in
-sequence, and M4 remains active and incomplete.
+M4C1, M4C2, and M4C3 are complete and owner-accepted. M4C4 is implemented and
+its proof package is complete on the active feature branch, but owner acceptance
+and merge remain pending. M4C5–M4D3 remain blocked in sequence, and M4 remains
+active and incomplete.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control

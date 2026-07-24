@@ -1,8 +1,9 @@
 use core::num::NonZeroU64;
 
 use runenui_core::{
-    CommandOrigin, ElementId, EventPhase, MonotonicInstant, PointerBoundaryKind,
-    PointerCaptureKind, PointerId, PointerPhase, SemanticCommand, WidgetInvalidation, WorkKey,
+    CommandOrigin, ElementId, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason,
+    InputModality, MonotonicInstant, PointerBoundaryKind, PointerCaptureKind, PointerId,
+    PointerPhase, SemanticCommand, WidgetInvalidation, WorkKey,
 };
 
 use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
@@ -227,7 +228,35 @@ pub enum TraceRecordKind {
     ApplicationStateUpdated,
     TreeReconciled,
     FocusRetained,
-    FocusCleared,
+    FocusCommandEvaluated {
+        command: SemanticCommand,
+        linear_policy: FocusBoundaryPolicy,
+        directional_policy: FocusBoundaryPolicy,
+    },
+    FocusCandidateSelected {
+        outcome: TraceFocusBoundaryOutcome,
+    },
+    FocusRestorationAccepted,
+    FocusRestorationRejected,
+    FocusTransitionCommitted {
+        reason: FocusReason,
+        old_target: Option<MountedNodeId>,
+        new_target: Option<MountedNodeId>,
+    },
+    FocusNotificationQueued {
+        kind: FocusEventKind,
+    },
+    FocusNotificationSuppressed {
+        kind: FocusEventKind,
+    },
+    FocusWithinInvalidated {
+        left: usize,
+        entered: usize,
+    },
+    ModalityChanged {
+        previous: Option<InputModality>,
+        current: InputModality,
+    },
     PumpBudgetExhausted,
     InitialEffectsCommitted {
         count: usize,
@@ -292,6 +321,19 @@ pub enum TraceRecordKind {
         cancelled_queued: usize,
         unmounted_lifetimes: usize,
     },
+}
+
+/// Observable focus-scope boundary outcome without exposing scoring details.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceFocusBoundaryOutcome {
+    Candidate,
+    Delegated,
+    Trapped,
+    Stopped,
+    Wrapped,
+    LogicalScroll,
+    Empty,
 }
 
 /// Exact routed integrity boundary that failed after command acceptance.

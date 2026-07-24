@@ -64,7 +64,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 break;
             }
             transaction.failure_current_target = Some(current.clone());
-            self.invoke_routed_callback(transaction, event, pointer, phase, &current)?;
+            self.invoke_routed_callback(transaction, event, pointer, None, phase, &current)?;
             transaction.failure_current_target = None;
         }
         Ok(())
@@ -93,6 +93,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             transaction,
             event,
             Some(pointer),
+            None,
             EventPhase::Target,
             target,
         );
@@ -110,6 +111,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: &mut RoutedTransaction<Action>,
         event: &UiEvent,
         pointer: Option<PointerDispatchFacts<'_>>,
+        focus_related: Option<&MountedNodeId>,
         phase: EventPhase,
         current: &MountedNodeId,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
@@ -145,6 +147,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 pointer.physical_path,
                 pointer.default_cancelable,
                 transaction.default_prevented,
+                transaction.propagation_stopped,
+                transaction.output_allowance(current),
+            ),
+            None if matches!(event, UiEvent::Focus(_)) => self.tree.invoke_focus_event(
+                current,
+                &transaction.target,
+                focus_related,
+                event,
+                phase,
+                transaction.origin,
+                transaction.sequence,
+                transaction.instant,
                 transaction.propagation_stopped,
                 transaction.output_allowance(current),
             ),
@@ -189,6 +203,69 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         self.record_control_changes(transaction, current, was_stopped, was_prevented);
         Ok(())
+    }
+
+    pub(in crate::runtime) fn invoke_focus_callbacks(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        event: &UiEvent,
+        route: Vec<MountedNodeId>,
+        related: Option<&MountedNodeId>,
+    ) -> Result<(), TraceRoutedIntegrityFailure> {
+        let target = route
+            .last()
+            .cloned()
+            .ok_or(TraceRoutedIntegrityFailure::BrokenTopology)?;
+        let saved_target = core::mem::replace(&mut transaction.target, target.clone());
+        let saved_route = core::mem::replace(&mut transaction.route, route);
+        let saved_trace = core::mem::replace(
+            &mut transaction.target_trace,
+            self.tree.trace_target(&target),
+        );
+        let saved_stopped = transaction.propagation_stopped;
+        let saved_prevented = transaction.default_prevented;
+        let saved_notifications = transaction.collecting_notification_outputs;
+        transaction.propagation_stopped = false;
+        transaction.default_prevented = false;
+        transaction.collecting_notification_outputs = true;
+
+        let target_index = transaction.route.len() - 1;
+        let mut invocations =
+            Vec::with_capacity(transaction.route.len().saturating_mul(2).saturating_sub(1));
+        invocations.extend(
+            transaction.route[..target_index]
+                .iter()
+                .cloned()
+                .map(|id| (EventPhase::Capture, id)),
+        );
+        invocations.push((EventPhase::Target, target));
+        invocations.extend(
+            transaction.route[..target_index]
+                .iter()
+                .rev()
+                .cloned()
+                .map(|id| (EventPhase::Bubble, id)),
+        );
+        let mut result = Ok(());
+        for (phase, current) in invocations {
+            if transaction.propagation_stopped {
+                break;
+            }
+            if let Err(error) =
+                self.invoke_routed_callback(transaction, event, None, related, phase, &current)
+            {
+                result = Err(error);
+                break;
+            }
+        }
+
+        transaction.target = saved_target;
+        transaction.route = saved_route;
+        transaction.target_trace = saved_trace;
+        transaction.propagation_stopped = saved_stopped;
+        transaction.default_prevented = saved_prevented;
+        transaction.collecting_notification_outputs = saved_notifications;
+        result
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -12,16 +12,14 @@ M4C0–M4D3 delivery sequence. This matrix defines observable acceptance and pro
 ownership; neither the charter nor a private implementation seam can weaken a
 row here.
 
-Current audited state after owner acceptance and the squash merge of M4C3. The
-accepted feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed
-exact-head CI run `29996101708`; PR #15 was squash-merged as
-`2fc165b9386f55c061d61232400375b13ad175bf`:
+Current audited state after M4C3 owner acceptance/merge and completion of the
+local M4C4 proof package. M4C4 is not owner-accepted or merged:
 
 ```text
 237 total unique rows
 160 owner-accepted
-0 proof-complete
-77 blocked
+32 proof-complete
+45 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -145,38 +143,38 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Trace proof owner | Delivery slice | Status | M4 gate |
 |---|---|---|---|---|---|---|---|
-| FOCUS-01 | The mounted root is the initial focus scope and every focusable node belongs to its nearest live scope. | Headless focus-scope conformance | Removed/disabled/ineligible scope membership proof | M4C4 scope trace | M4C4 | blocked | Required |
-| FOCUS-02 | `FocusNext` and `FocusPrevious` traverse current mounted logical order and wrap at the root. | Headless linear-focus corpus | Empty/ineligible and boundary proof | M4C4 focus-command trace | M4C4 | blocked | Required |
-| FOCUS-03 | Directional commands use current published rectangles, eligibility, active scope, and the accepted DF corpus without exposing a public scoring formula. | Directional corpus | Half-plane/ineligible/tie negative vectors | M4C4 directional trace | M4C4 | blocked | Required |
-| FOCUS-04 | Nested default scope delegates at its boundary; explicit policy may wrap, trap, stop, delegate, or request logical scrolling. | Headless nested-scope corpus | No unauthorized escape/wrap proof | M4C4 scope-policy trace | M4C4 | blocked | Required |
-| FOCUS-05 | Remembered focus restores only the exact live eligible generation; stale restoration falls back to normal traversal without retargeting. | DF-15/DF-16 restoration proof | Replacement-generation and ineligible-target proof | M4C4 restoration trace | M4C4 | blocked | Required |
-| FOCUS-06 | Focus changes commit atomically after the initiating route and queue `FocusOut` before `FocusIn`. | Runtime + downstream transition proof | Prevented/failed transition and stale target proof | M4C4 focus-order trace | M4C4 | blocked | Required |
-| FOCUS-07 | Focus out/in route C/T/B on the committed live old/new routes and are non-cancelable. | Downstream focus-event proof | Removed-target suppression and prevention proof | M4C4 routed-focus trace | M4C4 | blocked | Required |
-| FOCUS-08 | Old/new ancestor routes derive exact focus-within invalidation without post-removal mutation. | Runtime focus-within proof | Removal/replacement and stale-route proof | M4C4 focus-within trace | M4C4 | blocked | Required |
-| FOCUS-09 | Focus reasons distinguish pointer, linear/directional navigation, programmatic request, removal, disablement, restoration, and shutdown. | Runtime/downstream reason proof | No source conflation proof | M4C4 focus-reason trace | M4C4 | blocked | Required |
-| FOCUS-10 | Commit-derived focus notifications precede initiating event/update application outputs; removed nodes receive no post-unmount callback. | Runtime ordering proof | Already-removed target suppression proof | M4C4 suppressed-delivery trace | M4C4 | blocked | Required |
-| MOD-01 | Last accepted modality is retained as pointer, keyboard, controller, accessibility, automation, or programmatic without changing command semantics. | Runtime modality integration | Rejected-input and semantic-equivalence proof | M4C4 modality-transition trace | M4C4 | blocked | Required |
-| MOD-02 | Modality changes are retained state and trace facts, never a widget event family. | Public API/downstream absence proof | No callback-delivery proof | M4C4 modality trace | M4C4 | blocked | Required |
-| DF-01 | Direct Right selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-02 | Direct Left selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-03 | Direct Up selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-04 | Direct Down selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-05 | In-beam `A` beats nearer off-beam `B`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-06 | Partial-overlap `A` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-07 | Unequal-size in-beam `A` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-08 | Eligible overlapping-bounds `A` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-09 | Mounted-order tie selects `B`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-10 | Nested default delegates to parent `P`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-11 | Nested trap returns `None`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-12 | Nested directional wrap selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-13 | Root linear Next wraps from `B` to `O`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-14 | Root directional boundary returns `None`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-15 | Exact live remembered generation `A@7` restores. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-16 | Stale `A@7` is not retargeted; fallback selects `B@3`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-17 | Disabled nearer `A` is excluded; `B` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-18 | Hidden nearer `A` is excluded; `B` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-19 | All candidates outside the half-plane return `None`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
-| DF-20 | Zero-gap edge-touching `A` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | blocked | Required |
+| FOCUS-01 | The mounted root is the initial focus scope and every focusable node belongs to its nearest live scope. | `downstream_focus_scope_events_reasons_and_focus_within_use_only_public_apis` | `empty_scope_has_no_candidate_and_cannot_escape_or_wrap`; removed/disabled scope proofs | M4C4 scope-policy/selection trace assertions | M4C4 | proof-complete | Required |
+| FOCUS-02 | `FocusNext` and `FocusPrevious` traverse current mounted logical order and wrap at the root. | DF-13 in `df_01_through_df_09_and_df_13_df_14_df_17_through_df_20_use_public_commands` | `empty_scope_has_no_candidate_and_cannot_escape_or_wrap`; DF-14 | `FocusCommandEvaluated` corpus assertions | M4C4 | proof-complete | Required |
+| FOCUS-03 | Directional commands use current published rectangles, eligibility, active scope, and the accepted DF corpus without exposing a public scoring formula. | DF-01–DF-20 executable cases in `focus_scopes` | DF-17–DF-20 disabled/hidden/half-plane/edge cases | Per-vector `FocusCommandEvaluated` and selection assertions | M4C4 | proof-complete | Required |
+| FOCUS-04 | Nested default scope delegates at its boundary; explicit policy may wrap, trap, stop, delegate, or request logical scrolling. | `df_10_df_11_and_df_12_enforce_nested_scope_boundaries`; `logical_scroll_boundary_delegates_through_the_canonical_command_queue` | `empty_scope_has_no_candidate_and_cannot_escape_or_wrap` | `FocusCandidateSelected` boundary-outcome assertions | M4C4 | proof-complete | Required |
+| FOCUS-05 | Remembered focus restores only the exact live eligible generation; stale restoration falls back to normal traversal without retargeting. | `df_15_and_df_16_restore_only_exact_live_remembered_generations` | DF-16 replacement-generation proof | Restoration accepted/rejected trace records | M4C4 | proof-complete | Required |
+| FOCUS-06 | Focus changes commit atomically after the initiating route and queue `FocusOut` before `FocusIn`. | `downstream_focus_scope_events_reasons_and_focus_within_use_only_public_apis` | `processing_admission_exhaustion_commits_no_partial_focus_or_modality`; prevented request proof | `assert_transition_trace` exact ordering | M4C4 | proof-complete | Required |
+| FOCUS-07 | Focus out/in route C/T/B on the committed live old/new routes and are non-cancelable. | `downstream_focus_scope_events_reasons_and_focus_within_use_only_public_apis` | `removed_scope_clears_exact_focus_and_suppresses_stale_delivery`; downstream prevention calls | `FocusNotificationQueued` order assertions | M4C4 | proof-complete | Required |
+| FOCUS-08 | Old/new ancestor routes derive exact focus-within invalidation without post-removal mutation. | `downstream_focus_scope_events_reasons_and_focus_within_use_only_public_apis` | `removed_scope_clears_exact_focus_and_suppresses_stale_delivery` | Exact `left: 1, entered: 1` trace assertion | M4C4 | proof-complete | Required |
+| FOCUS-09 | Focus reasons distinguish pointer, linear/directional navigation, programmatic request, removal, disablement, restoration, and shutdown. | `focus_scopes`, `focus_and_input`, pointer lifecycle, and downstream reason assertions | Controller modality/navigation-reason separation | Transition reason trace records | M4C4 | proof-complete | Required |
+| FOCUS-10 | Commit-derived focus notifications precede initiating event/update application outputs; removed nodes receive no post-unmount callback. | `focus_notification_outputs_precede_the_initiating_command_output` | `removed_scope_clears_exact_focus_and_suppresses_stale_delivery`; removal conformance | Notification queue and suppression trace assertions | M4C4 | proof-complete | Required |
+| MOD-01 | Last accepted modality is retained as pointer, keyboard, controller, accessibility, automation, or programmatic without changing command semantics. | `normalized_command_modalities_are_retained_only_after_accepted_processing`; pointer lifecycle | Rejected submission/admission and prevented request proofs | `ModalityChanged` pointer/routed trace assertions | M4C4 | proof-complete | Required |
+| MOD-02 | Modality changes are retained state and trace facts, never a widget event family. | `prevented_initiating_command_changes_modality_but_commits_no_focus_notification` | Public event/downstream absence audit | `ModalityChanged` canonical trace assertions | M4C4 | proof-complete | Required |
+| DF-01 | Direct Right selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-02 | Direct Left selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-03 | Direct Up selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-04 | Direct Down selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-05 | In-beam `A` beats nearer off-beam `B`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-06 | Partial-overlap `A` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-07 | Unequal-size in-beam `A` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-08 | Eligible overlapping-bounds `A` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-09 | Mounted-order tie selects `B`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-10 | Nested default delegates to parent `P`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-11 | Nested trap returns `None`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-12 | Nested directional wrap selects `A`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-13 | Root linear Next wraps from `B` to `O`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-14 | Root directional boundary returns `None`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-15 | Exact live remembered generation `A@7` restores. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-16 | Stale `A@7` is not retargeted; fallback selects `B@3`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-17 | Disabled nearer `A` is excluded; `B` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-18 | Hidden nearer `A` is excluded; `B` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-19 | All candidates outside the half-plane return `None`. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
+| DF-20 | Zero-gap edge-touching `A` wins. | Directional corpus test | Exact vector mismatch proof | M4C4 focus trace | M4C4 | proof-complete | Required |
 
 ## M4C5 — keyboard, committed text, IME, automation, and M4C closure
 

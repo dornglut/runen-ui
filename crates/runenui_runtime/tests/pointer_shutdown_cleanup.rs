@@ -9,7 +9,8 @@ use runenui_core::{
     WidgetEventOutput, WidgetMeasure,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, SurfacePublication, TraceRecordKind,
+    AppRuntime, FocusEventKind, FocusReason, LogicalSize, PumpBudget, SurfaceBuildContext,
+    SurfacePublication, TraceRecordKind,
 };
 
 #[derive(Clone)]
@@ -149,6 +150,31 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
     assert!(runtime.pump(full_budget()).is_quiescent());
 }
 
+fn assert_focus_shutdown_chain(records: &[&runenui_runtime::TraceRecord]) {
+    assert!(matches!(
+        records[5].kind(),
+        TraceRecordKind::FocusTransitionCommitted {
+            reason: FocusReason::Shutdown,
+            old_target: Some(_),
+            new_target: None,
+        }
+    ));
+    assert!(matches!(
+        records[6].kind(),
+        TraceRecordKind::FocusWithinInvalidated { entered: 0, .. }
+    ));
+    assert!(matches!(
+        records[7].kind(),
+        TraceRecordKind::FocusNotificationSuppressed {
+            kind: FocusEventKind::Out,
+        }
+    ));
+    assert!(matches!(
+        records[8].kind(),
+        TraceRecordKind::RuntimeShutdown { .. }
+    ));
+}
+
 fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
     runtime
         .submit_pointer(event)
@@ -192,11 +218,14 @@ fn shutdown_drains_pointer_streams_in_registration_order_without_callbacks() {
                 TraceRecordKind::PointerIntegrityCleanupCommitted { .. }
                     | TraceRecordKind::PointerCaptureNotificationSuppressed { .. }
                     | TraceRecordKind::PointerStreamClosed { .. }
+                    | TraceRecordKind::FocusTransitionCommitted { .. }
+                    | TraceRecordKind::FocusWithinInvalidated { .. }
+                    | TraceRecordKind::FocusNotificationSuppressed { .. }
                     | TraceRecordKind::RuntimeShutdown { .. }
             )
         })
         .collect::<Vec<_>>();
-    assert_eq!(records.len(), 6);
+    assert_eq!(records.len(), 9);
     assert!(matches!(
         records[0].kind(),
         TraceRecordKind::PointerIntegrityCleanupCommitted {
@@ -230,10 +259,7 @@ fn shutdown_drains_pointer_streams_in_registration_order_without_callbacks() {
         records[4].kind(),
         TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id == &hovered
     ));
-    assert!(matches!(
-        records[5].kind(),
-        TraceRecordKind::RuntimeShutdown { .. }
-    ));
+    assert_focus_shutdown_chain(&records);
     for pair in records.windows(2) {
         assert_eq!(pair[1].causal_parent(), Some(pair[0].sequence()));
     }

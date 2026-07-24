@@ -183,6 +183,7 @@ mod effects;
 mod element;
 mod event;
 mod event_context;
+mod focus;
 mod identity;
 mod layout;
 mod pointer;
@@ -218,6 +219,10 @@ pub use event::{
     SemanticCommandEvent, UiEvent, WidgetEventOutput,
 };
 pub use event_context::EventContext;
+pub use focus::{
+    FocusBoundaryPolicy, FocusDirection, FocusEvent, FocusEventKind, FocusReason, FocusScope,
+    FocusScopePolicy, Focusability, InputModality,
+};
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///
 /// This namespace is public only because core and runtime are separate Rust

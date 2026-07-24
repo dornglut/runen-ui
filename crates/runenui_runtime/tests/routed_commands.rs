@@ -1166,6 +1166,7 @@ fn routed_trace_links_acceptance_route_default_commit_and_later_action() {
         "start",
         "snapshot",
         "phase",
+        "modality",
         "default",
         "collected",
         "commit",
@@ -1179,6 +1180,7 @@ fn routed_trace_links_acceptance_route_default_commit_and_later_action() {
                         ("start", TraceRecordKind::RoutedEventStarted)
                             | ("snapshot", TraceRecordKind::RouteSnapshotCreated { .. })
                             | ("phase", TraceRecordKind::EventPhaseInvoked { .. })
+                            | ("modality", TraceRecordKind::ModalityChanged { .. })
                             | ("default", TraceRecordKind::SemanticDefaultApplied { .. })
                             | ("collected", TraceRecordKind::RoutedActionCollected)
                             | ("commit", TraceRecordKind::RoutedEventCommitted)

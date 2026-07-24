@@ -1,12 +1,13 @@
 use crate::element::{
-    AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, Widget, WidgetActivation,
-    WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetSemanticProof,
-    WidgetStateTypeId, WidgetTypeId,
+    AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, Widget,
+    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
+    WidgetSemanticProof, WidgetStateTypeId, WidgetTypeId,
 };
 use crate::{
-    CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, LayoutStyle, MonotonicInstant,
-    MountedNodeId, PointerId, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
-    WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
+    CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, FocusScope, Focusability,
+    LayoutStyle, MonotonicInstant, MountedNodeId, PointerId, StyleIntent, SubscriptionSet, UiEvent,
+    WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
@@ -526,6 +527,8 @@ pub struct ElementParts<Action> {
     key: Option<ElementKey>,
     layout: LayoutStyle,
     style: StyleIntent,
+    focusability: Focusability,
+    focus_scope: Option<FocusScope>,
     widget: MountedWidget<Action>,
     children: Vec<Element<Action>>,
     authoring_diagnostics: Vec<AuthoringDiagnostic>,
@@ -537,26 +540,27 @@ pub type ElementRuntimeParts<Action> = (
     Option<ElementKey>,
     LayoutStyle,
     StyleIntent,
+    Focusability,
+    Option<FocusScope>,
     Vec<AuthoringDiagnostic>,
     MountedWidget<Action>,
     Vec<Element<Action>>,
 );
 
 impl<Action> ElementParts<Action> {
-    pub(crate) const fn new(
-        id: Option<ElementId>,
-        key: Option<ElementKey>,
-        layout: LayoutStyle,
-        style: StyleIntent,
+    pub(crate) fn new(
+        fields: AuthoredElementFields,
         widget: MountedWidget<Action>,
         children: Vec<Element<Action>>,
         authoring_diagnostics: Vec<AuthoringDiagnostic>,
     ) -> Self {
         Self {
-            id,
-            key,
-            layout,
-            style,
+            id: fields.id,
+            key: fields.key,
+            layout: fields.layout,
+            style: fields.style,
+            focusability: fields.focusability,
+            focus_scope: fields.focus_scope,
             widget,
             children,
             authoring_diagnostics,
@@ -579,6 +583,14 @@ impl<Action> ElementParts<Action> {
         &self.style
     }
     #[must_use]
+    pub const fn focusability(&self) -> Focusability {
+        self.focusability
+    }
+    #[must_use]
+    pub const fn focus_scope(&self) -> Option<FocusScope> {
+        self.focus_scope
+    }
+    #[must_use]
     pub const fn authoring_diagnostics(&self) -> &[AuthoringDiagnostic] {
         self.authoring_diagnostics.as_slice()
     }
@@ -597,6 +609,8 @@ impl<Action> ElementParts<Action> {
             self.key,
             self.layout,
             self.style,
+            self.focusability,
+            self.focus_scope,
             self.authoring_diagnostics,
             self.widget,
             self.children,
@@ -630,7 +644,7 @@ mod tests {
     fn corrupted_erased_payload_never_invokes_typed_callback() {
         let calls = Rc::new(Cell::new(0));
         let parts = Element::new(Probe(Rc::clone(&calls))).into_runtime_parts();
-        let (_, _, _, _, _, widget, _) = parts.into_parts();
+        let (_, _, _, _, _, _, _, widget, _) = parts.into_parts();
         let mut state = widget.create_state();
         state.value = Box::new(String::from("wrong"));
         assert_eq!(

@@ -284,9 +284,9 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Next slice:** M4C1, M4C2, and M4C3 are complete, owner-accepted, and merged;
-M4C4 becomes the next implementation slice only after the post-merge M4C3
-authority update and its resulting accepted `main` are recorded.
+**Subsequent record:** M4C1, M4C2, and M4C3 are complete, owner-accepted, and
+merged. M4C4 is proof-complete on its active feature branch pending owner
+acceptance and merge; M4C5 remains blocked.
 
 #### M4C1 — Routed semantic-command kernel
 
@@ -401,13 +401,13 @@ release-inside; no press-only pointer helper remains.
 `2fc165b9386f55c061d61232400375b13ad175bf`. All 28 M4C3 rows are
 `owner-accepted`; M4 remains active and incomplete.
 
-**Next unblocked slice:** M4C4 after this post-merge authority update is merged
-and its resulting accepted `main` is recorded. M4C4 has not started.
+**Next active slice:** M4C4 is implemented and locally proof-complete on its
+feature branch; owner acceptance and merge remain pending.
 
 #### M4C4 — Focus scopes and modality
 
-**Status:** `blocked` pending merge of the post-M4C3 authority update and record
-of its resulting accepted `main`.
+**Status:** `proof-complete` on the active feature branch; owner acceptance and
+merge remain pending.
 
 **Goal:** Implement root/nested focus scopes, next/previous and directional
 navigation, exact-generation restoration, focus transition/focus-within order,

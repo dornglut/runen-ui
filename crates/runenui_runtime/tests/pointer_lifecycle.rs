@@ -13,7 +13,8 @@ use runenui_core::{
     WorkSequence,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceRecord, TraceRecordKind,
+    AppRuntime, FocusReason, InputModality, LogicalSize, PumpBudget, SurfaceBuildContext,
+    TraceRecord, TraceRecordKind,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -196,6 +197,18 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
     assert!(report.is_quiescent());
 }
 
+fn assert_pointer_focus(harness: &Harness) {
+    assert_eq!(
+        harness.runtime.focus().focused_node(),
+        Some(&harness.target)
+    );
+    assert_eq!(harness.runtime.focus().reason(), Some(FocusReason::Pointer));
+    assert_eq!(
+        harness.runtime.focus().modality(),
+        Some(InputModality::Pointer)
+    );
+}
+
 fn mandatory_pointer_record<'a>(
     records: &[&'a TraceRecord],
     work_sequence: WorkSequence,
@@ -227,6 +240,8 @@ fn pointer_submission_is_non_reentrant_and_exposes_physical_facts() {
     assert!(harness.observations.borrow().is_empty());
 
     pump_all(&mut harness.runtime);
+
+    assert_pointer_focus(&harness);
 
     let observations = harness.observations.borrow();
     assert_eq!(observations.len(), 1);
@@ -463,6 +478,7 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
                 if pointer_id.get() == 6
         )
     });
+    let modality = record(&|kind| matches!(kind, TraceRecordKind::ModalityChanged { .. }));
     let registered = record(&|kind| {
         matches!(
             kind,
@@ -493,7 +509,8 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
     assert_eq!(boundary_bundle.causal_parent(), Some(physical.sequence()));
     assert_eq!(routed.causal_parent(), Some(boundary_bundle.sequence()));
     assert!(default.sequence() > routed.sequence());
-    assert_eq!(registered.causal_parent(), Some(default.sequence()));
+    assert_eq!(modality.causal_parent(), Some(default.sequence()));
+    assert_eq!(registered.causal_parent(), Some(modality.sequence()));
     assert_eq!(committed.causal_parent(), Some(registered.sequence()));
     assert_eq!(capture.causal_parent(), Some(committed.sequence()));
 }

@@ -4,8 +4,8 @@ use core::fmt;
 
 use runenui_core::{
     __runtime::{MountedWidget, MountedWidgetState},
-    AuthoringDiagnostic, ElementId, ElementKey, LayoutStyle, StyleIntent, WidgetActivation,
-    WidgetStateTypeId, WidgetTypeId,
+    AuthoringDiagnostic, ElementId, ElementKey, FocusScope, Focusability, LayoutStyle, StyleIntent,
+    WidgetActivation, WidgetStateTypeId, WidgetTypeId,
 };
 
 use super::{
@@ -22,6 +22,8 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) key: Option<ElementKey>,
     pub(crate) layout: LayoutStyle,
     pub(crate) style: StyleIntent,
+    pub(crate) focusability: Focusability,
+    pub(crate) focus_scope: Option<FocusScope>,
     pub(crate) authoring_diagnostics: Vec<AuthoringDiagnostic>,
     pub(crate) widget: MountedWidget<Action>,
     pub(crate) state: MountedWidgetState,
@@ -113,7 +115,20 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
     #[must_use]
     pub fn is_focusable(&self) -> bool {
         let a = self.activation();
-        a.enabled() && a.is_actionable()
+        a.enabled()
+            && match self.node.focusability {
+                Focusability::Automatic => a.is_actionable(),
+                Focusability::Focusable => true,
+                _ => false,
+            }
+    }
+    #[must_use]
+    pub const fn focusability(&self) -> Focusability {
+        self.node.focusability
+    }
+    #[must_use]
+    pub const fn focus_scope(&self) -> Option<FocusScope> {
+        self.node.focus_scope
     }
     #[must_use]
     pub const fn interaction(&self) -> InteractionStateRef<'a> {

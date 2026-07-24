@@ -349,6 +349,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &[],
             0,
             MandatoryTracePlan::none(),
+            false,
         ) else {
             return Err(());
         };

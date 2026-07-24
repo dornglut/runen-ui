@@ -183,6 +183,7 @@ fn queue_full_rejection_recovers_event_and_consumes_no_sequence_or_trace() {
     assert_eq!(error.kind(), SubmitPointerErrorKind::Full);
     assert_eq!(error.into_event(), event);
     assert_eq!(harness.runtime.trace().len(), trace_len);
+    assert_eq!(harness.runtime.focus().modality(), None);
 
     pump_all(&mut harness.runtime);
     let accepted = harness
