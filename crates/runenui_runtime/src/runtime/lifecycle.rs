@@ -26,7 +26,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !matches!(self.status, RuntimeStatus::Running) {
             return 0;
         }
-        self.retire_composition_for_terminal(runenui_core::CompositionCancelReason::Shutdown);
+        self.cancel_composition_while_live(runenui_core::CompositionCancelReason::Shutdown);
         self.space_ownership = None;
         let (cancelled_queued, cancelled_live, pointer_parent) = self.close_scheduling_authority();
         let cancelled = cancelled_queued
@@ -89,7 +89,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled_live_work: WorkCancellationCounts::default(),
             };
         }
-        self.retire_composition_for_terminal(runenui_core::CompositionCancelReason::Shutdown);
+        self.cancel_composition_while_live(runenui_core::CompositionCancelReason::Shutdown);
         let (cancelled_queued_envelopes, cancelled_live_work, pointer_parent) =
             self.close_scheduling_authority();
         self.space_ownership = None;

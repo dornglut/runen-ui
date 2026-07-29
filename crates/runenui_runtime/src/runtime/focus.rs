@@ -12,6 +12,7 @@ use crate::{
         select_focus,
     },
     mounted::{RouteBuildError, TargetStatus},
+    trace::TraceReservation,
 };
 
 pub(in crate::runtime) struct ReconciledFocusCleanup {
@@ -26,6 +27,40 @@ pub(in crate::runtime) struct ReconciledFocusCleanup {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    /// Uses the existing routed-event authority to notify a live composition
+    /// owner during terminal cleanup. The start sequence is the composition
+    /// lifetime's canonical sequence; this path never creates a second queue.
+    pub(crate) fn cancel_composition_while_live(&mut self, reason: CompositionCancelReason) {
+        let (Some(owner), Some(sequence)) = (
+            self.composition.owner().cloned(),
+            self.composition.start_sequence(),
+        ) else {
+            return;
+        };
+        let facts = super::RoutedIngressFacts::new(
+            sequence,
+            owner.clone(),
+            CommandOrigin::__runtime_keyboard(),
+            self.now(),
+            None,
+            TraceReservation::continuation(),
+        );
+        let Some(mut transaction) = self.begin_routed_transaction(facts) else {
+            self.composition = crate::input::CompositionState::None;
+            return;
+        };
+        if self
+            .cancel_composition_in_transaction(&mut transaction, &owner, reason)
+            .and_then(|()| {
+                self.commit_routed_transaction(transaction)
+                    .map_err(|()| TraceRoutedIntegrityFailure::CommitInvariantFailure)
+            })
+            .is_err()
+        {
+            self.composition = crate::input::CompositionState::None;
+        }
+    }
+
     /// Routes composition cancellation through the current transaction before
     /// its old focus owner can receive `FocusOut` or become stale.
     fn cancel_composition_in_transaction(

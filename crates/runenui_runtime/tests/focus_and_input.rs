@@ -21,7 +21,7 @@ impl runenui_core::Widget<CompositionAction> for CompositionProbe {
 
     fn event(
         &mut self,
-        _: &mut Self::State,
+        (): &mut Self::State,
         event: &runenui_core::UiEvent,
         context: &mut runenui_core::EventContext<'_, CompositionAction>,
     ) -> runenui_core::WidgetEventOutput {
@@ -36,11 +36,11 @@ impl runenui_core::Widget<CompositionAction> for CompositionProbe {
         runenui_core::WidgetEventOutput::none()
     }
 
-    fn activation(&self, _: &Self::State) -> runenui_core::WidgetActivation {
+    fn activation(&self, (): &Self::State) -> runenui_core::WidgetActivation {
         runenui_core::WidgetActivation::actionable(true)
     }
 
-    fn text_input(&self, _: &Self::State) -> runenui_core::WidgetTextInput {
+    fn text_input(&self, (): &Self::State) -> runenui_core::WidgetTextInput {
         runenui_core::WidgetTextInput::new(true, true)
     }
 }
@@ -375,7 +375,7 @@ fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generat
     let kinds: Vec<_> = runtime
         .trace()
         .records()
-        .map(|record| record.kind())
+        .map(runenui_runtime::TraceRecord::kind)
         .collect();
     let cancellation = kinds
         .iter()
@@ -400,4 +400,62 @@ fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generat
         })
         .unwrap_or_else(|| unreachable!("focus departure is traced"));
     assert!(cancellation < focus_out);
+}
+
+#[test]
+fn composition_shutdown_routes_cancel_while_the_tree_is_still_live() {
+    let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<CompositionApp>::mount(std::rc::Rc::clone(&log));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let a = composition_target(&mut runtime, "a");
+    runtime
+        .submit_command(
+            a,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus request is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("composition start is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    runtime.shutdown();
+
+    assert_eq!(log.borrow().as_slice(), ["a:Target:Shutdown"]);
+    let kinds: Vec<_> = runtime
+        .trace()
+        .records()
+        .map(runenui_runtime::TraceRecord::kind)
+        .collect();
+    let cancellation = kinds
+        .iter()
+        .position(|kind| {
+            matches!(
+                kind,
+                TraceRecordKind::CompositionCancelled {
+                    reason: runenui_runtime::CompositionCancelReason::Shutdown
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("shutdown cancellation is traced"));
+    let focus_departure = kinds
+        .iter()
+        .position(|kind| {
+            matches!(
+                kind,
+                TraceRecordKind::FocusTransitionCommitted {
+                    reason: runenui_runtime::FocusReason::Shutdown,
+                    ..
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("shutdown focus departure is traced"));
+    assert!(cancellation < focus_departure);
 }

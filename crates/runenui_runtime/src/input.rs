@@ -252,6 +252,17 @@ impl CompositionState {
             Self::Pending { owner, .. } | Self::Active { owner, .. } => Some(owner),
         }
     }
+
+    pub(crate) const fn start_sequence(&self) -> Option<WorkSequence> {
+        match self {
+            Self::None => None,
+            Self::Pending { start_sequence, .. }
+            | Self::Active {
+                _start_sequence: start_sequence,
+                ..
+            } => Some(*start_sequence),
+        }
+    }
 }
 impl TextSubmission {
     pub(crate) const fn new(sequence: WorkSequence) -> Self {
@@ -335,40 +346,6 @@ impl AutomationSubmission {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(crate) fn retire_composition_for_owner(
-        &mut self,
-        owner: &crate::MountedNodeId,
-        reason: CompositionCancelReason,
-    ) {
-        if self.composition.owner() != Some(owner) {
-            return;
-        }
-        self.composition = CompositionState::None;
-        self.trace.record(
-            TraceRecordKind::CompositionCancelled { reason },
-            None,
-            None,
-            None,
-            None,
-            Some(self.tree.trace_target(owner)),
-        );
-        self.trace.record(
-            TraceRecordKind::CompositionRetired,
-            None,
-            None,
-            None,
-            None,
-            Some(self.tree.trace_target(owner)),
-        );
-    }
-
-    pub(crate) fn retire_composition_for_terminal(&mut self, reason: CompositionCancelReason) {
-        let owner = self.composition.owner().cloned();
-        if let Some(owner) = owner {
-            self.retire_composition_for_owner(&owner, reason);
-        }
-    }
-
     pub(crate) fn submit_automation_command(
         &mut self,
         authored_id: ElementId,
