@@ -1,6 +1,6 @@
 use runenui_core::{
-    CommandOrigin, FocusEvent, FocusEventKind, FocusReason, HostProtocol, SemanticCommand, UiEvent,
-    WidgetInvalidation,
+    CommandOrigin, CompositionCancel, CompositionCancelReason, CompositionEvent, FocusEvent,
+    FocusEventKind, FocusReason, HostProtocol, SemanticCommand, UiEvent, WidgetInvalidation,
 };
 
 use super::{CollectedRoutedOutput, RoutedTransaction, Runtime};
@@ -26,6 +26,49 @@ pub(in crate::runtime) struct ReconciledFocusCleanup {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    /// Routes composition cancellation through the current transaction before
+    /// its old focus owner can receive `FocusOut` or become stale.
+    fn cancel_composition_in_transaction(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        owner: &MountedNodeId,
+        reason: CompositionCancelReason,
+    ) -> Result<(), TraceRoutedIntegrityFailure> {
+        let Some(generation) = self.composition.generation().cloned() else {
+            return Ok(());
+        };
+        if self.composition.owner() != Some(owner) {
+            return Ok(());
+        }
+        let route = self.checked_focus_route(owner)?;
+        let event = UiEvent::Composition(CompositionEvent::Cancel(
+            CompositionCancel::__runtime_new(generation, reason),
+        ));
+        self.invoke_focus_callbacks(transaction, &event, route, None)?;
+        self.composition = crate::input::CompositionState::None;
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::CompositionCancelled { reason },
+            transaction.sequence,
+            transaction.parent,
+            Some(self.tree.trace_target(owner)),
+            transaction.instant,
+            &transaction.target,
+            Some(owner),
+            transaction.origin,
+        );
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::CompositionRetired,
+            transaction.sequence,
+            transaction.parent,
+            Some(self.tree.trace_target(owner)),
+            transaction.instant,
+            &transaction.target,
+            Some(owner),
+            transaction.origin,
+        );
+        Ok(())
+    }
+
     pub(in crate::runtime) fn commit_pending_modality(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -199,10 +242,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.space_ownership = None;
         }
         if let Some(old) = old_target.as_ref() {
-            self.retire_composition_for_owner(
+            self.cancel_composition_in_transaction(
+                transaction,
                 old,
                 runenui_core::CompositionCancelReason::FocusTransfer,
-            );
+            )?;
         }
         let old_route = match old_target.as_ref() {
             Some(old) if self.tree.target_status(old) == TargetStatus::Live => {

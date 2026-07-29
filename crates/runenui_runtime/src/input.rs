@@ -239,14 +239,14 @@ pub enum CompositionState {
 }
 
 impl CompositionState {
-    const fn generation(&self) -> Option<&CompositionGeneration> {
+    pub(crate) const fn generation(&self) -> Option<&CompositionGeneration> {
         match self {
             Self::None => None,
             Self::Pending { generation, .. } | Self::Active { generation, .. } => Some(generation),
         }
     }
 
-    const fn owner(&self) -> Option<&crate::MountedNodeId> {
+    pub(crate) const fn owner(&self) -> Option<&crate::MountedNodeId> {
         match self {
             Self::None => None,
             Self::Pending { owner, .. } | Self::Active { owner, .. } => Some(owner),
@@ -537,6 +537,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             device_id,
             start_sequence: sequence,
         };
+        self.trace.record(
+            TraceRecordKind::CompositionPendingBound,
+            Some(sequence),
+            accepted,
+            None,
+            None,
+            Some(self.tree.trace_target(&target)),
+        );
         self.next_composition_generation = next
             .get()
             .checked_add(1)

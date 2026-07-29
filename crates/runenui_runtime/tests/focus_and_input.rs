@@ -9,6 +9,92 @@ use runenui_runtime::{
 };
 
 #[derive(Debug)]
+struct CompositionProbe {
+    name: &'static str,
+    log: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+}
+
+impl runenui_core::Widget<CompositionAction> for CompositionProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        _: &mut Self::State,
+        event: &runenui_core::UiEvent,
+        context: &mut runenui_core::EventContext<'_, CompositionAction>,
+    ) -> runenui_core::WidgetEventOutput {
+        if let Some(runenui_core::CompositionEvent::Cancel(cancel)) = event.as_composition() {
+            self.log.borrow_mut().push(format!(
+                "{}:{:?}:{:?}",
+                self.name,
+                context.phase(),
+                cancel.reason()
+            ));
+        }
+        runenui_core::WidgetEventOutput::none()
+    }
+
+    fn activation(&self, _: &Self::State) -> runenui_core::WidgetActivation {
+        runenui_core::WidgetActivation::actionable(true)
+    }
+
+    fn text_input(&self, _: &Self::State) -> runenui_core::WidgetTextInput {
+        runenui_core::WidgetTextInput::new(true, true)
+    }
+}
+
+#[derive(Debug)]
+enum CompositionAction {}
+
+struct CompositionApp;
+
+impl UiApp for CompositionApp {
+    type State = std::rc::Rc<std::cell::RefCell<Vec<String>>>;
+    type Action = CompositionAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(log: &Self::State) -> Element<Self::Action> {
+        row(children![
+            Element::new(CompositionProbe {
+                name: "a",
+                log: std::rc::Rc::clone(log),
+            })
+            .id("a")
+            .key("a")
+            .focusable(true),
+            Element::new(CompositionProbe {
+                name: "b",
+                log: std::rc::Rc::clone(log),
+            })
+            .id("b")
+            .key("b")
+            .focusable(true),
+        ])
+        .key("root")
+        .into_element()
+    }
+
+    fn update(_: &mut Self::State, _: Self::Action) {}
+}
+
+fn composition_target(
+    runtime: &mut AppRuntime<CompositionApp>,
+    authored: &str,
+) -> runenui_runtime::MountedNodeId {
+    let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
+    runtime
+        .index()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("mounted test node is present"))
+        .id()
+        .clone()
+}
+
+#[derive(Debug)]
 enum Action {
     A,
     B,
@@ -247,4 +333,71 @@ fn focus_trace_admission_exhaustion_commits_no_partial_focus_or_modality() {
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
     );
+}
+
+#[test]
+fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generation() {
+    let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<CompositionApp>::mount(std::rc::Rc::clone(&log));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    let a = composition_target(&mut runtime, "a");
+    runtime
+        .submit_command(
+            a.clone(),
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus request is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    let start = runtime
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("composition start is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime
+        .submit_command(a, SemanticCommand::FocusNext, CommandOrigin::programmatic())
+        .unwrap_or_else(|_| unreachable!("focus navigation is accepted"));
+    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+
+    assert_eq!(
+        log.borrow().as_slice(),
+        ["a:Target:FocusTransfer"],
+        "the old owner observes cancellation while it is still routable"
+    );
+    assert!(matches!(
+        runtime.submit_composition_end(start.generation().clone()),
+        Err(error) if error.kind() == runenui_runtime::SubmitCompositionErrorKind::MissingGeneration
+    ));
+    let kinds: Vec<_> = runtime
+        .trace()
+        .records()
+        .map(|record| record.kind())
+        .collect();
+    let cancellation = kinds
+        .iter()
+        .position(|kind| {
+            matches!(
+                kind,
+                TraceRecordKind::CompositionCancelled {
+                    reason: runenui_runtime::CompositionCancelReason::FocusTransfer
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("cancellation is traced"));
+    let focus_out = kinds
+        .iter()
+        .position(|kind| {
+            matches!(
+                kind,
+                TraceRecordKind::FocusNotificationQueued {
+                    kind: runenui_runtime::FocusEventKind::Out
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("focus departure is traced"));
+    assert!(cancellation < focus_out);
 }
