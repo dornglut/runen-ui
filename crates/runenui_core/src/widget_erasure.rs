@@ -1,7 +1,7 @@
 use crate::element::{
     AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, Widget,
     WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
-    WidgetSemanticProof, WidgetStateTypeId, WidgetTypeId,
+    WidgetSemanticProof, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
 use crate::{
     CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, FocusScope, Focusability,
@@ -44,6 +44,7 @@ pub trait ErasedWidget<Action>: fmt::Debug {
         context: &mut EventContext<'_, Action>,
     ) -> Result<WidgetEventOutput, WidgetBridgeError>;
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError>;
+    fn text_input(&self, state: &dyn Any) -> Result<WidgetTextInput, WidgetBridgeError>;
     fn activate(
         &mut self,
         state: &mut dyn Any,
@@ -134,6 +135,11 @@ where
         Ok(self
             .0
             .activation(downcast_ref::<Implementation::State>(state)?))
+    }
+    fn text_input(&self, state: &dyn Any) -> Result<WidgetTextInput, WidgetBridgeError> {
+        Ok(self
+            .0
+            .text_input(downcast_ref::<Implementation::State>(state)?))
     }
     fn activate(
         &mut self,
@@ -241,6 +247,11 @@ where
         Ok(self
             .0
             .activation(downcast_ref::<Implementation::State>(state)?))
+    }
+    fn text_input(&self, state: &dyn Any) -> Result<WidgetTextInput, WidgetBridgeError> {
+        Ok(self
+            .0
+            .text_input(downcast_ref::<Implementation::State>(state)?))
     }
     fn activate(
         &mut self,
@@ -486,6 +497,12 @@ impl<Action> MountedWidget<Action> {
         state: &MountedWidgetState,
     ) -> Result<WidgetActivation, WidgetBridgeError> {
         self.inner.activation(state.value.as_ref())
+    }
+    pub fn text_input(
+        &self,
+        state: &MountedWidgetState,
+    ) -> Result<WidgetTextInput, WidgetBridgeError> {
+        self.inner.text_input(state.value.as_ref())
     }
     pub fn activate(
         &mut self,

@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(in crate::runtime) fn commit_routed_transaction(
+    pub(crate) fn commit_routed_transaction(
         &mut self,
         transaction: RoutedTransaction<Action>,
     ) -> Result<(), ()> {

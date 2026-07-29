@@ -1,8 +1,8 @@
 //! Host-neutral routed event and semantic-command protocol.
 
 use crate::{
-    FocusDirection, FocusEvent, LogicalScrollCommand, PointerBoundaryEvent, PointerCaptureEvent,
-    PointerEvent,
+    CommittedTextEvent, CompositionEvent, FocusDirection, FocusEvent, KeyboardEvent,
+    LogicalScrollCommand, PointerBoundaryEvent, PointerCaptureEvent, PointerEvent,
 };
 
 /// Phase of one mounted route invocation.
@@ -63,12 +63,6 @@ impl CommandOrigin {
         Self::direct(EventSource::Controller)
     }
 
-    /// Creates a normalized keyboard origin without introducing raw key routing.
-    #[must_use]
-    pub const fn keyboard() -> Self {
-        Self::direct(EventSource::Keyboard)
-    }
-
     const fn direct(source: EventSource) -> Self {
         Self {
             source,
@@ -97,6 +91,23 @@ impl CommandOrigin {
     pub const fn __runtime_pointer_default() -> Self {
         Self {
             source: EventSource::Pointer,
+            derivation: CommandDerivation::SemanticDefault,
+        }
+    }
+
+    /// Creates the direct origin used while routing raw keyboard ingress.
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_keyboard() -> Self {
+        Self::direct(EventSource::Keyboard)
+    }
+
+    /// Creates the origin used for a semantic command derived from keyboard default policy.
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_keyboard_default() -> Self {
+        Self {
+            source: EventSource::Keyboard,
             derivation: CommandDerivation::SemanticDefault,
         }
     }
@@ -151,6 +162,9 @@ pub enum UiEvent {
     PointerBoundary(PointerBoundaryEvent),
     PointerCapture(PointerCaptureEvent),
     Focus(FocusEvent),
+    Keyboard(KeyboardEvent),
+    CommittedText(CommittedTextEvent),
+    Composition(CompositionEvent),
 }
 
 impl UiEvent {
@@ -162,7 +176,10 @@ impl UiEvent {
             Self::Pointer(_)
             | Self::PointerBoundary(_)
             | Self::PointerCapture(_)
-            | Self::Focus(_) => None,
+            | Self::Focus(_)
+            | Self::Keyboard(_)
+            | Self::CommittedText(_)
+            | Self::Composition(_) => None,
         }
     }
 
@@ -174,7 +191,10 @@ impl UiEvent {
             Self::SemanticCommand(_)
             | Self::PointerBoundary(_)
             | Self::PointerCapture(_)
-            | Self::Focus(_) => None,
+            | Self::Focus(_)
+            | Self::Keyboard(_)
+            | Self::CommittedText(_)
+            | Self::Composition(_) => None,
         }
     }
 
@@ -186,7 +206,10 @@ impl UiEvent {
             Self::SemanticCommand(_)
             | Self::Pointer(_)
             | Self::PointerCapture(_)
-            | Self::Focus(_) => None,
+            | Self::Focus(_)
+            | Self::Keyboard(_)
+            | Self::CommittedText(_)
+            | Self::Composition(_) => None,
         }
     }
 
@@ -198,7 +221,10 @@ impl UiEvent {
             Self::SemanticCommand(_)
             | Self::Pointer(_)
             | Self::PointerBoundary(_)
-            | Self::Focus(_) => None,
+            | Self::Focus(_)
+            | Self::Keyboard(_)
+            | Self::CommittedText(_)
+            | Self::Composition(_) => None,
         }
     }
 
@@ -210,7 +236,35 @@ impl UiEvent {
             Self::SemanticCommand(_)
             | Self::Pointer(_)
             | Self::PointerBoundary(_)
-            | Self::PointerCapture(_) => None,
+            | Self::PointerCapture(_)
+            | Self::Keyboard(_)
+            | Self::CommittedText(_)
+            | Self::Composition(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_keyboard(&self) -> Option<&KeyboardEvent> {
+        if let Self::Keyboard(event) = self {
+            Some(event)
+        } else {
+            None
+        }
+    }
+    #[must_use]
+    pub const fn as_committed_text(&self) -> Option<&CommittedTextEvent> {
+        if let Self::CommittedText(event) = self {
+            Some(event)
+        } else {
+            None
+        }
+    }
+    #[must_use]
+    pub const fn as_composition(&self) -> Option<&CompositionEvent> {
+        if let Self::Composition(event) = self {
+            Some(event)
+        } else {
+            None
         }
     }
 }

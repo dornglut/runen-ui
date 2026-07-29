@@ -9,7 +9,7 @@ use super::{
 use crate::{MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure};
 
 #[derive(Clone, Copy)]
-pub(in crate::runtime) struct PointerDispatchFacts<'a> {
+pub(crate) struct PointerDispatchFacts<'a> {
     pointer_id: PointerId,
     physical_target: Option<&'a MountedNodeId>,
     physical_path: &'a [MountedNodeId],
@@ -36,7 +36,7 @@ impl<'a> PointerDispatchFacts<'a> {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(in crate::runtime) fn invoke_routed_callbacks(
+    pub(crate) fn invoke_routed_callbacks(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
         event: &UiEvent,

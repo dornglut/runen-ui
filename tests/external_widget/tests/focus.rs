@@ -37,7 +37,9 @@ fn id(runtime: &mut AppRuntime<App>, authored: &str) -> MountedNodeId {
     let authored = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
     runtime
         .index()
-        .node_by_authored_id(&authored)
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
         .unwrap_or_else(|| unreachable!("downstream-authored node is mounted"))
         .id()
         .clone()

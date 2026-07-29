@@ -8,7 +8,7 @@ mod testing;
 use core::marker::PhantomData;
 use std::time::Duration;
 
-use runenui_core::{CommandOrigin, SemanticCommand, UiApp, View};
+use runenui_core::{CommandOrigin, ElementId, SemanticCommand, UiApp, View};
 
 use crate::{
     FocusState, MountedNodeId, MountedTreeIndex, PumpBudget, PumpReport, ReconciliationReport,
@@ -85,6 +85,94 @@ impl<App: UiApp> AppRuntime<App> {
         event: crate::PointerEvent,
     ) -> Result<crate::PointerSubmission, crate::SubmitPointerError> {
         self.runtime.submit_pointer(event)
+    }
+
+    /// Appends a host-neutral keyboard event bound to the current focused lifetime.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact event when ingress cannot be admitted.
+    pub fn submit_keyboard(
+        &mut self,
+        event: crate::KeyboardEvent,
+    ) -> Result<crate::KeyboardSubmission, crate::SubmitKeyboardError> {
+        self.runtime.submit_keyboard(event)
+    }
+
+    /// Appends committed Unicode text bound to the current text-capable focused lifetime.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact event when focus or ingress admission rejects it.
+    pub fn submit_text(
+        &mut self,
+        event: crate::CommittedTextEvent,
+    ) -> Result<crate::TextSubmission, crate::SubmitTextError> {
+        self.runtime.submit_text(event)
+    }
+
+    /// Starts a composition lifetime bound to the current composition-capable focus.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured composition rejection without allocating a generation.
+    pub fn start_composition(
+        &mut self,
+        device_id: Option<crate::InputDeviceId>,
+    ) -> Result<crate::CompositionStartSubmission, crate::SubmitCompositionError> {
+        self.runtime.start_composition(device_id)
+    }
+
+    /// Queues a preedit update for an active or pending composition generation.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact event when its generation or ingress is rejected.
+    pub fn submit_composition_update(
+        &mut self,
+        generation: crate::CompositionGeneration,
+        preedit: String,
+        range: Option<crate::CompositionRange>,
+    ) -> Result<crate::CompositionSubmission, crate::SubmitCompositionError> {
+        self.runtime
+            .submit_composition_update(generation, preedit, range)
+    }
+
+    /// Queues lifecycle closure for an active or pending composition generation.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact event when its generation or ingress is rejected.
+    pub fn submit_composition_end(
+        &mut self,
+        generation: crate::CompositionGeneration,
+    ) -> Result<crate::CompositionSubmission, crate::SubmitCompositionError> {
+        self.runtime.submit_composition_end(generation)
+    }
+
+    /// Queues explicit cancellation for an active or pending composition generation.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact event when its generation or ingress is rejected.
+    pub fn cancel_composition(
+        &mut self,
+        generation: crate::CompositionGeneration,
+    ) -> Result<crate::CompositionSubmission, crate::SubmitCompositionError> {
+        self.runtime.cancel_composition(generation)
+    }
+
+    /// Resolves a unique authored ID in logical preorder and queues its command.
+    ///
+    /// # Errors
+    ///
+    /// Returns the original authored request when resolution or command ingress rejects it.
+    pub fn submit_automation_command(
+        &mut self,
+        authored_id: ElementId,
+        command: SemanticCommand,
+    ) -> Result<crate::AutomationSubmission, crate::SubmitAutomationError> {
+        self.runtime.submit_automation_command(authored_id, command)
     }
 
     /// Processes at most the requested number of canonical work envelopes.

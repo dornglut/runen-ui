@@ -53,7 +53,7 @@ fn normalized_keyboard_focus_commands_never_activate_or_emit_actions() {
         .submit_command(
             a.clone(),
             SemanticCommand::FocusNext,
-            CommandOrigin::keyboard(),
+            CommandOrigin::__runtime_keyboard(),
         )
         .unwrap_or_else(|_| unreachable!("normalized keyboard command is accepted"));
     runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
@@ -84,7 +84,7 @@ fn normalized_command_modalities_are_retained_only_after_accepted_processing() {
     let target = runtime.index().nodes()[1].id().clone();
     let cases = [
         (CommandOrigin::programmatic(), InputModality::Programmatic),
-        (CommandOrigin::keyboard(), InputModality::Keyboard),
+        (CommandOrigin::__runtime_keyboard(), InputModality::Keyboard),
         (CommandOrigin::controller(), InputModality::Controller),
         (CommandOrigin::accessibility(), InputModality::Accessibility),
         (CommandOrigin::automation(), InputModality::Automation),

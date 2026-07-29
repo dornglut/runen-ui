@@ -51,7 +51,9 @@ fn target_by_authored_id(runtime: &mut AppRuntime<CounterApp>, authored_id: &str
     let authored_id = ElementId::new(authored_id).unwrap_or_else(|_| unreachable!());
     runtime
         .index()
-        .node_by_authored_id(&authored_id)
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored_id))
         .unwrap_or_else(|| unreachable!("counter command target is mounted"))
         .id()
         .clone()
@@ -267,7 +269,9 @@ mod tests {
             runenui_core::ElementId::new("counter.increment").unwrap_or_else(|_| unreachable!());
         let increment = runtime
             .index()
-            .node_by_authored_id(&authored)
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
             .unwrap_or_else(|| unreachable!())
             .id()
             .clone();
@@ -369,7 +373,9 @@ mod tests {
             runenui_core::ElementId::new("counter.increment").unwrap_or_else(|_| unreachable!());
         let increment = runtime
             .index()
-            .node_by_authored_id(&authored)
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
             .unwrap_or_else(|| unreachable!())
             .id()
             .clone();
@@ -394,7 +400,9 @@ mod tests {
         assert_eq!(
             runtime
                 .index()
-                .node_by_authored_id(&authored)
+                .nodes()
+                .iter()
+                .find(|node| node.authored_id() == Some(&authored))
                 .unwrap_or_else(|| unreachable!())
                 .semantic_id(),
             &semantic
@@ -433,7 +441,9 @@ mod tests {
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         let replacement = runtime
             .index()
-            .node_by_authored_id(&authored)
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
             .unwrap_or_else(|| unreachable!())
             .id()
             .clone();

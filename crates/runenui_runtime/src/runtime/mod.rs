@@ -62,6 +62,7 @@ use crate::{
 
 mod model;
 
+use crate::input::{CompositionState, SpaceOwnership};
 pub(in crate::runtime) use helpers::{
     CommitError, mounted_effect_into_effect, public_trace_work_identity, trace_work_family,
     trace_work_owner, with_routed_parent,
@@ -74,19 +75,23 @@ pub use model::{
     SubscriptionDiagnostic, SubscriptionOwnerKind, TimerFiringOutcome, TimerStartOutcome,
 };
 use pointer::PointerRegistry;
-pub(in crate::runtime) use routed::{PointerDispatchFacts, RoutedIngressFacts, RoutedTransaction};
+pub(crate) use routed::PointerDispatchFacts;
+pub(crate) use routed::{RoutedIngressFacts, RoutedTransaction};
 use surface_publication::SurfacePublicationState;
 
 pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol> {
     state: Option<State>,
     pub(crate) tree: MountedTree<Action>,
-    queue: WorkQueue<Action>,
-    trace: Trace,
-    focus: FocusState,
+    pub(crate) queue: WorkQueue<Action>,
+    pub(crate) trace: Trace,
+    pub(crate) focus: FocusState,
     pointer_registry: PointerRegistry,
+    pub(crate) space_ownership: Option<SpaceOwnership>,
+    pub(crate) composition: CompositionState,
+    pub(crate) next_composition_generation: Option<core::num::NonZeroU64>,
     generation: u64,
     report: ReconciliationReport,
-    status: RuntimeStatus,
+    pub(crate) status: RuntimeStatus,
     limits: crate::RuntimeLimits,
     mounted_public_slot_limit: u64,
     work: WorkRegistry<Action, Protocol>,

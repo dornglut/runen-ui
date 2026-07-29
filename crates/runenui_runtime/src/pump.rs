@@ -208,6 +208,10 @@ pub(crate) fn pump<App: UiApp>(
                 ProcessApplicationActionOutcome::Completed
             }
             WorkEnvelope::Pointer(envelope) => runtime.process_pointer_envelope(envelope),
+            WorkEnvelope::Input(envelope) => {
+                runtime.process_input_envelope(envelope);
+                ProcessApplicationActionOutcome::Completed
+            }
             WorkEnvelope::EffectStart(work) => {
                 runtime.process_effect_start(work.sequence, work.generation);
                 ProcessApplicationActionOutcome::Completed

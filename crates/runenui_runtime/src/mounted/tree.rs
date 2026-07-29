@@ -69,6 +69,13 @@ pub(crate) enum TargetStatus {
     Foreign,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum AutomationResolution {
+    Unique(MountedNodeId),
+    Missing,
+    Ambiguous { matches: usize },
+}
+
 pub(crate) struct MountedTree<Action> {
     pub(super) runtime: RuntimeNamespace,
     pub(super) arena: MountedArena<MountedNode<Action>>,
@@ -470,6 +477,35 @@ impl<Action> MountedTree<Action> {
         }
     }
 
+    pub(crate) fn composition_generation(&self, value: u64) -> runenui_core::CompositionGeneration {
+        self.runtime.__runtime_composition_generation(value)
+    }
+
+    pub(crate) fn composition_generation_is_local(
+        &self,
+        generation: &runenui_core::CompositionGeneration,
+    ) -> bool {
+        self.runtime
+            .__runtime_composition_generation_is_local(generation)
+    }
+
+    pub(crate) fn resolve_authored_id(&self, authored_id: &ElementId) -> AutomationResolution {
+        let matches: Vec<_> = self
+            .preorder_ids()
+            .into_iter()
+            .filter(|id| {
+                self.node(id).and_then(|node| node.authored_id.as_ref()) == Some(authored_id)
+            })
+            .collect();
+        match matches.as_slice() {
+            [] => AutomationResolution::Missing,
+            [id] => AutomationResolution::Unique(id.clone()),
+            many => AutomationResolution::Ambiguous {
+                matches: many.len(),
+            },
+        }
+    }
+
     pub(crate) fn node(&self, id: &MountedNodeId) -> Option<&MountedNode<Action>> {
         let (slot, generation) = self.runtime.__runtime_mounted_parts(id)?;
         self.arena.get(slot as usize, generation)
@@ -647,8 +683,8 @@ mod tests {
     };
 
     use super::{
-        MountedNodeId, MountedTree, PublicSlotOverflow, ReconcileStats, TargetStatus,
-        checked_public_slot,
+        AutomationResolution, MountedNodeId, MountedTree, PublicSlotOverflow, ReconcileStats,
+        TargetStatus, checked_public_slot,
     };
     use crate::ReconciliationDiagnostic;
 
@@ -683,13 +719,14 @@ mod tests {
         .into_element()
     }
 
-    fn authored_id(tree: &mut MountedTree<()>, authored: &str) -> MountedNodeId {
+    fn authored_id(tree: &MountedTree<()>, authored: &str) -> MountedNodeId {
         let authored = ElementId::new(authored).unwrap_or_else(|_| unreachable!());
-        tree.index()
-            .node_by_authored_id(&authored)
-            .unwrap_or_else(|| unreachable!())
-            .id()
-            .clone()
+        match tree.resolve_authored_id(&authored) {
+            AutomationResolution::Unique(id) => id,
+            AutomationResolution::Missing | AutomationResolution::Ambiguous { .. } => {
+                unreachable!()
+            }
+        }
     }
 
     #[derive(Debug)]
@@ -723,11 +760,11 @@ mod tests {
     #[test]
     fn every_interaction_slot_is_retained_and_replacement_starts_fresh() {
         let (mut mounted, _) = mount_tree(tree(["a", "b"], "a", "a"));
-        let a = authored_id(&mut mounted, "a");
+        let a = authored_id(&mounted, "a");
         mounted.set_interaction_for_test(&a, true, true, true, (13.0, 21.0));
 
         mounted.reconcile(tree(["b", "a"], "a", "renamed-a"));
-        let retained = authored_id(&mut mounted, "renamed-a");
+        let retained = authored_id(&mounted, "renamed-a");
         assert_eq!(retained, a);
         let index = mounted.index();
         let interaction = index
@@ -741,7 +778,7 @@ mod tests {
         drop(index);
 
         mounted.reconcile(tree(["b", "a"], "replacement", "renamed-a"));
-        let replacement = authored_id(&mut mounted, "renamed-a");
+        let replacement = authored_id(&mounted, "renamed-a");
         assert_ne!(replacement, retained);
         let index = mounted.index();
         let interaction = index
@@ -779,7 +816,7 @@ mod tests {
     #[test]
     fn removed_interaction_slots_are_cleared_before_generational_arena_reuse() {
         let (mut mounted, _) = mount_tree(tree(["a", "b"], "a", "a"));
-        let removed = authored_id(&mut mounted, "a");
+        let removed = authored_id(&mounted, "a");
         mounted.set_interaction_for_test(&removed, true, true, true, (31.0, 47.0));
 
         mounted.reconcile(
@@ -798,7 +835,7 @@ mod tests {
             .key("root")
             .into_element(),
         );
-        let replacement = authored_id(&mut mounted, "c");
+        let replacement = authored_id(&mounted, "c");
         let replacement_parts = mounted
             .runtime
             .__runtime_mounted_parts(&replacement)
@@ -849,10 +886,10 @@ mod tests {
     #[test]
     fn cross_parent_remount_resets_every_interaction_slot() {
         let (mut mounted, _) = mount_tree(parented(true));
-        let old = authored_id(&mut mounted, "a");
+        let old = authored_id(&mounted, "a");
         mounted.set_interaction_for_test(&old, true, true, true, (9.0, 12.0));
         mounted.reconcile(parented(false));
-        let remounted = authored_id(&mut mounted, "a");
+        let remounted = authored_id(&mounted, "a");
         assert_ne!(remounted, old);
         assert_eq!(mounted.target_status(&old), TargetStatus::Stale);
         let index = mounted.index();
@@ -890,12 +927,12 @@ mod tests {
     fn compatible_update_payload_mismatch_replaces_in_the_same_generation() {
         let (mut mounted, _) = mount_tree(tree(["a", "b"], "a", "a"));
         let root = mounted.index().nodes()[0].id().clone();
-        let old_child = authored_id(&mut mounted, "a");
+        let old_child = authored_id(&mounted, "a");
         mounted.corrupt_state_for_test(&root);
 
         let stats = mounted.reconcile(tree(["a", "b"], "a", "a"));
         let new_root = mounted.index().nodes()[0].id().clone();
-        let new_child = authored_id(&mut mounted, "a");
+        let new_child = authored_id(&mounted, "a");
         assert_ne!(new_root, root);
         assert_ne!(new_child, old_child);
         assert_eq!(stats.mounted, 3);
@@ -927,13 +964,13 @@ mod tests {
             .into_element()
         };
         let (mut mounted, _) = mount_tree(authored());
-        let child = authored_id(&mut mounted, "corrupted-child");
-        let grandchild = authored_id(&mut mounted, "grandchild");
+        let child = authored_id(&mounted, "corrupted-child");
+        let grandchild = authored_id(&mounted, "grandchild");
         mounted.corrupt_state_for_test(&child);
 
         let stats = mounted.reconcile(authored());
-        let replacement_child = authored_id(&mut mounted, "corrupted-child");
-        let replacement_grandchild = authored_id(&mut mounted, "grandchild");
+        let replacement_child = authored_id(&mounted, "corrupted-child");
+        let replacement_grandchild = authored_id(&mounted, "grandchild");
         assert_ne!(replacement_child, child);
         assert_ne!(replacement_grandchild, grandchild);
         assert_eq!(stats.mounted, 2);

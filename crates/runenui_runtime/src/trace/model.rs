@@ -93,6 +93,30 @@ pub enum TraceRecordKind {
         pointer_id: PointerId,
         phase: PointerPhase,
     },
+    KeyboardSubmissionAccepted,
+    KeyboardSubmissionRejected,
+    CommittedTextSubmissionAccepted {
+        bytes: usize,
+        scalars: usize,
+    },
+    CommittedTextSubmissionRejected,
+    CompositionGenerationAllocated,
+    CompositionPendingBound,
+    CompositionActiveBound,
+    CompositionUpdated {
+        has_range: bool,
+    },
+    CompositionEnded,
+    CompositionCancelled {
+        reason: runenui_core::CompositionCancelReason,
+    },
+    CompositionRetired,
+    CompositionSubmissionRejected,
+    AutomationResolutionUnique,
+    AutomationResolutionMissing,
+    AutomationResolutionAmbiguous {
+        matches: usize,
+    },
     PointerIngressRejected {
         pointer_id: PointerId,
         phase: PointerPhase,

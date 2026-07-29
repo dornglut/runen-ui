@@ -26,6 +26,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !matches!(self.status, RuntimeStatus::Running) {
             return 0;
         }
+        self.retire_composition_for_terminal(runenui_core::CompositionCancelReason::Shutdown);
+        self.space_ownership = None;
         let (cancelled_queued, cancelled_live, pointer_parent) = self.close_scheduling_authority();
         let cancelled = cancelled_queued
             .saturating_add(cancelled_live.total())
@@ -61,7 +63,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.trace.release_reservations(
             cancelled_queue
                 .command_trace_reservations
-                .saturating_add(cancelled_queue.pointer_trace_reservations),
+                .saturating_add(cancelled_queue.pointer_trace_reservations)
+                .saturating_add(cancelled_queue.input_trace_reservations),
         );
         let cancelled_queued = cancelled_queue.envelopes;
         let cancelled_live = self.work.cancel_all_counts();
@@ -86,8 +89,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled_live_work: WorkCancellationCounts::default(),
             };
         }
+        self.retire_composition_for_terminal(runenui_core::CompositionCancelReason::Shutdown);
         let (cancelled_queued_envelopes, cancelled_live_work, pointer_parent) =
             self.close_scheduling_authority();
+        self.space_ownership = None;
         let shutdown_parent = self.clear_focus_for_shutdown(pointer_parent);
         let stats = self.tree.shutdown();
         self.surface_publication.clear_cache();

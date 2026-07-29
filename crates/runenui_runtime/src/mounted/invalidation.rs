@@ -46,6 +46,7 @@ pub(crate) fn apply_invalidation<Action>(
 ) {
     if invalidation.contains(WidgetInvalidation::INTERACTION) {
         node.caches.activation = CachedCapability::Unresolved;
+        node.caches.text_input = CachedCapability::Unresolved;
     }
     if invalidation.contains(WidgetInvalidation::LAYOUT) {
         node.caches.measurement = CachedCapability::Unresolved;

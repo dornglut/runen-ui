@@ -14,8 +14,8 @@ use crate::{
     MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, queue::SemanticCommandEnvelope,
     trace::MandatoryTracePlan,
 };
-pub(in crate::runtime) use dispatch::PointerDispatchFacts;
-pub(in crate::runtime) use transaction::{RoutedIngressFacts, RoutedTransaction};
+pub(crate) use dispatch::PointerDispatchFacts;
+pub(crate) use transaction::{RoutedIngressFacts, RoutedTransaction};
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn process_semantic_command(&mut self, envelope: SemanticCommandEnvelope) {
@@ -62,7 +62,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    pub(in crate::runtime) fn begin_routed_transaction(
+    pub(crate) fn begin_routed_transaction(
         &mut self,
         facts: RoutedIngressFacts,
     ) -> Option<RoutedTransaction<Action>> {

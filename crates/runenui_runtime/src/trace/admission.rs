@@ -30,6 +30,10 @@ impl MandatoryTracePlan {
         Self::exact(1)
     }
 
+    pub(crate) const fn input_acceptance() -> Self {
+        Self::exact(1)
+    }
+
     /// Maximum stream/context/target outcome facts before routed callbacks begin.
     pub(crate) const fn pointer_processing() -> Self {
         Self::exact(5)

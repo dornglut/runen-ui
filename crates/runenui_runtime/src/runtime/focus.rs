@@ -191,6 +191,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if old_target == new_target {
             return Ok(());
         }
+        if self
+            .space_ownership
+            .as_ref()
+            .is_some_and(|owner| old_target.as_ref() == Some(&owner.target))
+        {
+            self.space_ownership = None;
+        }
+        if let Some(old) = old_target.as_ref() {
+            self.retire_composition_for_owner(
+                old,
+                runenui_core::CompositionCancelReason::FocusTransfer,
+            );
+        }
         let old_route = match old_target.as_ref() {
             Some(old) if self.tree.target_status(old) == TargetStatus::Live => {
                 self.checked_focus_route(old)?

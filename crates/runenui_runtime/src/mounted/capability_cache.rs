@@ -1,6 +1,6 @@
 use runenui_core::{
     ChildLayout, WidgetActivation, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
-    WidgetSemanticProof,
+    WidgetSemanticProof, WidgetTextInput,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -23,6 +23,7 @@ impl<T: Clone> CachedCapability<T> {
 #[derive(Debug, Default)]
 pub(crate) struct CapabilityCaches {
     pub(crate) activation: CachedCapability<WidgetActivation>,
+    pub(crate) text_input: CachedCapability<WidgetTextInput>,
     pub(crate) measurement: CachedCapability<WidgetMeasure>,
     pub(crate) child_layout: CachedCapability<Option<ChildLayout>>,
     pub(crate) paint: CachedCapability<WidgetPaintProof>,

@@ -190,7 +190,9 @@ fn node_id(runtime: &mut AppRuntime<TreeApp>, authored: &str) -> MountedNodeId {
     let id = runenui_core::ElementId::new(authored).unwrap_or_else(|_| unreachable!());
     runtime
         .index()
-        .node_by_authored_id(&id)
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&id))
         .unwrap_or_else(|| unreachable!())
         .id()
         .clone()

@@ -1,5 +1,6 @@
 use runenui_core::{
     __runtime::WidgetBridgeError, WidgetActivation, WidgetActivationContext, WidgetInvalidation,
+    WidgetTextInput,
 };
 
 use super::{
@@ -21,6 +22,34 @@ pub(crate) struct MountedActivationOutput<Action> {
 }
 
 impl<Action> MountedTree<Action> {
+    pub(crate) fn text_input_probe(
+        &mut self,
+        id: &MountedNodeId,
+    ) -> Result<WidgetTextInput, WidgetBridgeError> {
+        let Some(node) = self.node_mut(id) else {
+            return Ok(WidgetTextInput::NONE);
+        };
+        if state_is_corrupted(node) {
+            node.integrity_failed = true;
+            node.caches.text_input = CachedCapability::StatePayloadMismatch;
+            return Err(WidgetBridgeError::StatePayloadMismatch);
+        }
+        match node.caches.text_input {
+            CachedCapability::Ready(value) => Ok(value),
+            CachedCapability::StatePayloadMismatch => Err(WidgetBridgeError::StatePayloadMismatch),
+            CachedCapability::Unresolved => match node.widget.text_input(&node.state) {
+                Ok(value) => {
+                    node.caches.text_input = CachedCapability::Ready(value);
+                    Ok(value)
+                }
+                Err(error) => {
+                    node.integrity_failed = true;
+                    node.caches.text_input = CachedCapability::StatePayloadMismatch;
+                    Err(error)
+                }
+            },
+        }
+    }
     pub(crate) fn activate(
         &mut self,
         id: &MountedNodeId,

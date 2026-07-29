@@ -5,7 +5,10 @@
 use core::{fmt, num::NonZeroU64};
 use std::collections::VecDeque;
 
-use runenui_core::{CommandOrigin, PointerEvent, SemanticCommand, SurfaceInputContext};
+use runenui_core::{
+    CommandOrigin, CommittedTextEvent, CompositionEvent, KeyboardEvent, PointerEvent,
+    SemanticCommand, SurfaceInputContext,
+};
 
 use crate::trace::TraceReservation;
 use crate::{MonotonicInstant, MountedNodeId, work::WorkGeneration};
@@ -107,6 +110,21 @@ pub(crate) struct PointerEnvelope {
     pub(crate) trace_reservation: TraceReservation,
 }
 
+pub(crate) enum InputEnvelopePayload {
+    Keyboard(KeyboardEvent),
+    CommittedText(CommittedTextEvent),
+    Composition(CompositionEvent),
+}
+
+pub(crate) struct InputEnvelope {
+    pub(crate) sequence: WorkSequence,
+    pub(crate) target: MountedNodeId,
+    pub(crate) payload: InputEnvelopePayload,
+    pub(crate) instant: MonotonicInstant,
+    pub(crate) causal_parent: Option<TraceSequence>,
+    pub(crate) trace_reservation: TraceReservation,
+}
+
 pub(crate) struct ApplicationActionEnvelope<Action> {
     pub(crate) sequence: WorkSequence,
     pub(crate) action: Action,
@@ -119,6 +137,7 @@ pub(crate) enum WorkEnvelope<Action> {
     ApplicationAction(ApplicationActionEnvelope<Action>),
     SemanticCommand(SemanticCommandEnvelope),
     Pointer(PointerEnvelope),
+    Input(InputEnvelope),
     EffectStart(SequencedWork),
     WorkCancellation(CancellationEnvelope),
     TimerFiring(SequencedWork),
@@ -152,6 +171,7 @@ pub(crate) struct CancelledQueue {
     pub(crate) envelopes: usize,
     pub(crate) command_trace_reservations: usize,
     pub(crate) pointer_trace_reservations: usize,
+    pub(crate) input_trace_reservations: usize,
 }
 
 pub(crate) struct WorkQueue<Action> {
@@ -309,6 +329,26 @@ impl<Action> WorkQueue<Action> {
         })
     }
 
+    pub(crate) fn push_input_preflighted(
+        &mut self,
+        target: MountedNodeId,
+        payload: InputEnvelopePayload,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_control(|sequence| {
+            WorkEnvelope::Input(InputEnvelope {
+                sequence,
+                target,
+                payload,
+                instant,
+                causal_parent,
+                trace_reservation,
+            })
+        })
+    }
+
     pub(crate) fn push_cancellation(
         &mut self,
         generation: WorkGeneration,
@@ -405,12 +445,16 @@ impl<Action> WorkQueue<Action> {
                 )
             })
             .count();
+        let input_trace_reservations = self.waiting.iter().filter(|envelope| {
+            matches!(envelope, WorkEnvelope::Input(input) if input.trace_reservation.is_active())
+        }).count();
         let envelopes = self.waiting.len();
         self.waiting.clear();
         CancelledQueue {
             envelopes,
             command_trace_reservations,
             pointer_trace_reservations,
+            input_trace_reservations,
         }
     }
 

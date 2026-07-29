@@ -76,7 +76,9 @@ fn routed_activation_queues_fresh_non_clone_actions() {
         .unwrap_or_else(|_| unreachable!("the test identifier is valid"));
     let target = runtime
         .index()
-        .node_by_authored_id(&authored_id)
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored_id))
         .unwrap_or_else(|| unreachable!("the increment node is mounted"))
         .id()
         .clone();

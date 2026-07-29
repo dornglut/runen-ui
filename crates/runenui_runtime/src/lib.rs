@@ -183,7 +183,12 @@ pub use config::{RuntimeConfig, RuntimeLimits};
 pub use constraints::{AxisConstraints, AxisLimit, LayoutConstraints};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
 pub use focus::FocusState;
-pub use input::{Key, KeyPhase, KeyboardEvent};
+pub use input::{
+    AutomationSubmission, CompositionStartSubmission, CompositionSubmission, KeyboardSubmission,
+    SubmitAutomationError, SubmitAutomationErrorKind, SubmitCompositionError,
+    SubmitCompositionErrorKind, SubmitKeyboardError, SubmitKeyboardErrorKind, SubmitTextError,
+    SubmitTextErrorKind, TextSubmission,
+};
 pub use measurement::{
     BaselineError, DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement,
     TextMeasurementKind, TextMeasurementRequest,
@@ -197,11 +202,16 @@ pub use pump::{PumpBudget, PumpBudgetExhaustion, PumpOutcome, PumpReport};
 pub use queue::{SubmitActionError, SubmitActionErrorKind, SubmitActionResult, WorkSequence};
 pub use redraw::{RedrawAcknowledgeError, RedrawRequest};
 pub use runenui_core::{
-    FocusBoundaryPolicy, FocusDirection, FocusEvent, FocusEventKind, FocusReason, FocusScope,
-    FocusScopePolicy, Focusability, InputDeviceId, InputModality, KeyModifiers, LogicalDelta,
-    LogicalDeltaError, LogicalPoint, LogicalPointError, LogicalScrollCommand, PointerBoundaryEvent,
-    PointerBoundaryKind, PointerButton, PointerButtons, PointerCaptureEvent, PointerCaptureKind,
-    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SurfaceId, SurfaceInputContext,
+    CommittedTextError, CommittedTextEvent, CompositionCancel, CompositionCancelReason,
+    CompositionEnd, CompositionEvent, CompositionGeneration, CompositionRange,
+    CompositionRangeError, CompositionStart, CompositionUpdate, FocusBoundaryPolicy,
+    FocusDirection, FocusEvent, FocusEventKind, FocusReason, FocusScope, FocusScopePolicy,
+    Focusability, InputDeviceId, InputModality, KeyLocation, KeyModifiers,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalDelta, LogicalDeltaError,
+    LogicalKey, LogicalPoint, LogicalPointError, LogicalScrollCommand, PhysicalKey,
+    PointerBoundaryEvent, PointerBoundaryKind, PointerButton, PointerButtons, PointerCaptureEvent,
+    PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SurfaceId,
+    SurfaceInputContext,
 };
 pub use runtime::{
     HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,

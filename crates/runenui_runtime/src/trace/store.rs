@@ -68,6 +68,10 @@ impl Trace {
         self.reserve_outcome_with_prefix(MandatoryTracePlan::pointer_acceptance())
     }
 
+    pub(crate) fn reserve_input_outcome(&mut self) -> Option<TraceReservation> {
+        self.reserve_outcome_with_prefix(MandatoryTracePlan::input_acceptance())
+    }
+
     pub(crate) fn reserve_surface_command_outcome(&mut self) -> Option<TraceReservation> {
         self.reserve_outcome_with_prefix(MandatoryTracePlan::surface_command_acceptance())
     }

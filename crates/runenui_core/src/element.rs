@@ -229,6 +229,36 @@ pub struct WidgetActivation {
     actionable: bool,
 }
 
+/// Explicit opt-in to committed-text and composition routing.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct WidgetTextInput {
+    committed_text: bool,
+    composition: bool,
+}
+
+impl WidgetTextInput {
+    /// The default: neither text-input event family is accepted.
+    pub const NONE: Self = Self {
+        committed_text: false,
+        composition: false,
+    };
+    #[must_use]
+    pub const fn new(committed_text: bool, composition: bool) -> Self {
+        Self {
+            committed_text,
+            composition,
+        }
+    }
+    #[must_use]
+    pub const fn accepts_committed_text(self) -> bool {
+        self.committed_text
+    }
+    #[must_use]
+    pub const fn accepts_composition(self) -> bool {
+        self.composition
+    }
+}
+
 /// Explicit semantic result of one accepted mutable widget activation.
 ///
 /// The action and persistent-state mutation facts are independent: an
@@ -391,6 +421,11 @@ pub trait Widget<Action>: fmt::Debug {
     /// Returns non-consuming activation/focus facts.
     fn activation(&self, _state: &Self::State) -> WidgetActivation {
         WidgetActivation::NONE
+    }
+
+    /// Declares host text-input protocol capability; it does not imply editing.
+    fn text_input(&self, _state: &Self::State) -> WidgetTextInput {
+        WidgetTextInput::NONE
     }
 
     /// Reports the action and persistent-state effects of one accepted activation.

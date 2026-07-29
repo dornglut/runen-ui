@@ -18,14 +18,16 @@ fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>
     ));
 }
 
-fn node_by_authored_id<App: UiApp>(
+fn widget_identity_for_authored<App: UiApp>(
     runtime: &mut AppRuntime<App>,
     authored_id: &str,
 ) -> (WidgetTypeId, WidgetStateTypeId) {
     let authored_id = ElementId::new(authored_id).unwrap_or_else(|_| unreachable!());
     let index = runtime.index();
     let node = index
-        .node_by_authored_id(&authored_id)
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored_id))
         .unwrap_or_else(|| unreachable!());
     (node.widget_type_id(), node.widget_state_type_id())
 }
@@ -54,7 +56,7 @@ fn concrete_widget_state_and_action_mapping_identity_are_mounted_and_stable() {
     let mut runtime = AppRuntime::<PulseApp>::mount(0);
     settle_initial_mounted_declarations(&mut runtime);
     assert_eq!(
-        node_by_authored_id(&mut runtime, "external.pulse"),
+        widget_identity_for_authored(&mut runtime, "external.pulse"),
         (
             WidgetTypeId::of::<PulseButton>(),
             WidgetStateTypeId::of::<PulseState>(),
@@ -80,7 +82,7 @@ fn concrete_widget_state_and_action_mapping_identity_are_mounted_and_stable() {
     );
     assert_eq!(*runtime.state(), 2);
     assert_eq!(
-        node_by_authored_id(&mut runtime, "external.pulse"),
+        widget_identity_for_authored(&mut runtime, "external.pulse"),
         (
             WidgetTypeId::of::<PulseButton>(),
             WidgetStateTypeId::of::<PulseState>(),
@@ -116,7 +118,7 @@ fn nested_recursive_mapping_preserves_non_clone_action_and_widget_state_identity
     let mut runtime = AppRuntime::<NestedMappingApp>::mount(None);
     settle_initial_mounted_declarations(&mut runtime);
     assert_eq!(
-        node_by_authored_id(&mut runtime, "external.pulse"),
+        widget_identity_for_authored(&mut runtime, "external.pulse"),
         (
             WidgetTypeId::of::<PulseButton>(),
             WidgetStateTypeId::of::<PulseState>(),
@@ -161,8 +163,8 @@ impl<T: core::fmt::Debug + Default + 'static> UiApp for GenericApp<T> {
 fn generic_external_widget_instantiations_have_distinct_mounted_type_identity() {
     let mut u8_runtime = AppRuntime::<GenericApp<u8>>::mount(());
     let mut u16_runtime = AppRuntime::<GenericApp<u16>>::mount(());
-    let u8_identity = node_by_authored_id(&mut u8_runtime, "generic");
-    let u16_identity = node_by_authored_id(&mut u16_runtime, "generic");
+    let u8_identity = widget_identity_for_authored(&mut u8_runtime, "generic");
+    let u16_identity = widget_identity_for_authored(&mut u16_runtime, "generic");
 
     assert_eq!(u8_identity.0, WidgetTypeId::of::<GenericWidget<u8>>());
     assert_eq!(u16_identity.0, WidgetTypeId::of::<GenericWidget<u16>>());

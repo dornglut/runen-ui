@@ -22,4 +22,6 @@ pub(crate) use invalidation::{DirtyPhases, apply_invalidation, publication_is_di
 pub use node::{MountedNodeRef, MountedTreeIndex};
 pub(crate) use routing::RouteBuildError;
 pub use runenui_core::{MountedNodeId, SemanticNodeId};
-pub(crate) use tree::{MountedIdentityExhausted, MountedTree, ReconcileStats, TargetStatus};
+pub(crate) use tree::{
+    AutomationResolution, MountedIdentityExhausted, MountedTree, ReconcileStats, TargetStatus,
+};
