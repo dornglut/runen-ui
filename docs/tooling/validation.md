@@ -44,12 +44,19 @@ Pull-request CI explicitly checks out `github.event.pull_request.head.sha` and
 verifies that `git rev-parse HEAD` equals that SHA before validation. GitHub's
 default synthetic pull-request merge ref does **not** qualify as exact-head
 evidence. A successful run becomes stale as soon as the feature head moves.
+Final review still verifies the accepted base, mergeability, scope, and unresolved
+findings. Record the reviewed feature head and accepted squash merge separately,
+then inspect accepted-main push validation at the exact squash commit when required.
 
-The CI workflow remains read-only with respect to repository contents. It may
-write one marker-owned diagnostic comment on the pull request when validation
-fails. That comment records the exact head, workflow run, and a bounded failure
-excerpt; a later successful exact-head run removes it. The complete Actions log
-remains the authoritative diagnostic record.
+The shared CI workflow is read-only and requires no repository write permission.
+Successful validation prints a compact evidence summary rather than the complete
+command output. Failed validation preserves the canonical command's real exit
+status, prints a bounded excerpt and tail, and uploads the complete failed-command
+log from runner-temporary storage outside the checkout with short retention.
+Temporary diagnostics are removed. Successful runs create no diagnostic artifact
+and CI does not create, update, or remove pull-request comments. The Actions log
+remains useful evidence; the failure-only artifact retains the complete failed
+command log.
 
 Do not add branch-mutating formatter, fixer, or self-commit workflows as a
 substitute for ordinary reviewed repository edits. Automated contributors should
