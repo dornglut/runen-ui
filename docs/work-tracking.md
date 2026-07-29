@@ -212,9 +212,13 @@ Every repository pull request runs the baseline documented in
 - clean-worktree verification;
 - exact-head CI verification or the narrowly documented infrastructure-only waiver above.
 
-The CI workflow may maintain one marker-owned failure comment containing the
-exact head, run URL, and bounded diagnostic excerpt. It is transient diagnostic
-state and must be removed automatically after a successful exact-head run. The
-complete Actions log remains authoritative.
+PR CI validates the exact reviewed feature head, and head movement invalidates
+prior evidence. CI is read-only and does not maintain pull-request comments.
+Successful output is compact; failed output is bounded while complete
+failed-command output is retained through a short-retention failure-only artifact
+outside the checkout. Temporary diagnostics are removed and successful runs create
+no diagnostic artifact. Reviewed feature head, synthetic merge result when
+separately used, squash merge, and accepted-main push validation are distinct
+evidence objects.
 
 Do not reuse validation or CI claims from an earlier head.

@@ -20,7 +20,12 @@ const PRIVATE_ARCHIVE_URL: &str = "github.com/Crystonix/runen-ui-private-archive
 const HISTORICAL_OWNER_TOKEN: &str = "Crystonix/runen-ui";
 const CURRENT_REPOSITORY_DECLARATION: &str =
     "repository = \"https://github.com/dornglut/runen-ui\"";
-const CURRENT_WORKFLOW_CALL: &str = "uses: dornglut/github-workflows/.github/workflows/reusable-rust-cargo-validate.yml@b6caad377102ca73794efaf734a65903b8efa829";
+const ACCEPTED_REUSABLE_WORKFLOW_REVISION: &str = "624cb41adeed21a6461eb838bc7330bd0a5079fd";
+const REUSABLE_WORKFLOW_OWNER_AND_DIRECTORY: &str = "dornglut/github-workflows/.github/workflows";
+const REUSABLE_RUST_WORKFLOW: &str = "reusable-rust-cargo-validate.yml";
+const ACTIVE_WORKFLOW_DIRECTORY: &str = ".github/workflows";
+const CI_WORKFLOW_PATH: &str = ".github/workflows/ci.yml";
+const EXPECTED_ACTIVE_WORKFLOW_FILES: &[&str] = &["ci.yml"];
 const WORK_TRACKING_PATH: &str = "docs/work-tracking.md";
 const MIGRATION_HISTORY_PATH: &str = "docs/history/public-repository-migration.md";
 const ISSUE_TEMPLATE_DIRECTORY: &str = ".github/ISSUE_TEMPLATE";
@@ -31,6 +36,36 @@ const REQUIRED_ISSUE_TEMPLATE_FILES: &[&str] = &[
     "milestone-slice.yml",
     "proposal.yml",
 ];
+
+fn accepted_reusable_workflow_reference() -> String {
+    format!(
+        "{REUSABLE_WORKFLOW_OWNER_AND_DIRECTORY}/{REUSABLE_RUST_WORKFLOW}@{ACCEPTED_REUSABLE_WORKFLOW_REVISION}"
+    )
+}
+
+fn accepted_reusable_workflow_call() -> String {
+    format!("uses: {}", accepted_reusable_workflow_reference())
+}
+
+fn expected_ci_workflow_lines() -> Vec<String> {
+    vec![
+        "name: CI".to_owned(),
+        "on:".to_owned(),
+        "  pull_request:".to_owned(),
+        "  push:".to_owned(),
+        "    branches:".to_owned(),
+        "      - main".to_owned(),
+        "permissions:".to_owned(),
+        "  contents: read".to_owned(),
+        "concurrency:".to_owned(),
+        "  group: ci-${{ github.workflow }}-${{ github.ref }}".to_owned(),
+        "  cancel-in-progress: true".to_owned(),
+        "jobs:".to_owned(),
+        "  validate:".to_owned(),
+        "    name: RunenUI validation".to_owned(),
+        format!("    {}", accepted_reusable_workflow_call()),
+    ]
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OutputFormat {
@@ -421,14 +456,8 @@ fn audit_repository_governance(root: &Path, findings: &mut Vec<Finding>) -> Resu
         }
     }
 
-    let workflow = read_to_string(root, ".github/workflows/ci.yml")?;
-    if !workflow.contains(CURRENT_WORKFLOW_CALL) {
-        findings.push(Finding::fatal(
-            "repository.shared_workflow_revision",
-            Some(".github/workflows/ci.yml".to_owned()),
-            format!("CI must call the accepted reusable workflow {CURRENT_WORKFLOW_CALL:?}"),
-        ));
-    }
+    audit_active_workflow_inventory(root, findings)?;
+    audit_ci_workflow_contract(root, findings)?;
 
     Ok(())
 }
@@ -512,6 +541,231 @@ fn collect_direct_file_names(directory: &Path) -> Result<BTreeSet<String>, Strin
         }
     }
     Ok(names)
+}
+
+fn collect_active_workflow_files(root: &Path) -> Result<BTreeSet<String>, String> {
+    let directory = root.join(ACTIVE_WORKFLOW_DIRECTORY);
+    let entries = fs::read_dir(&directory)
+        .map_err(|error| format!("failed to inspect {}: {error}", directory.display()))?;
+    let mut names = BTreeSet::new();
+
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to inspect an entry in {}: {error}",
+                directory.display()
+            )
+        })?;
+        let path = entry.path();
+        let is_workflow = path.is_file()
+            && matches!(
+                path.extension().and_then(OsStr::to_str),
+                Some("yml" | "yaml")
+            );
+        if is_workflow {
+            let name = entry.file_name().into_string().map_err(|_| {
+                format!("non-UTF-8 workflow file name below {}", directory.display())
+            })?;
+            names.insert(name);
+        }
+    }
+
+    Ok(names)
+}
+
+fn normalize_workflow_lines(contents: &str) -> Vec<&str> {
+    contents
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+fn is_full_lowercase_commit_sha(value: &str) -> bool {
+    value.len() == 40
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+}
+
+fn audit_active_workflow_inventory(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+    let found = collect_active_workflow_files(root)?;
+    let expected = EXPECTED_ACTIVE_WORKFLOW_FILES
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<BTreeSet<_>>();
+    if found != expected {
+        findings.push(Finding::fatal(
+            "repository.workflow_inventory",
+            Some(ACTIVE_WORKFLOW_DIRECTORY.to_owned()),
+            format!("expected active workflow files {expected:?}, found {found:?}"),
+        ));
+    }
+    Ok(())
+}
+
+fn audit_ci_workflow_contract(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+    let path = root.join(CI_WORKFLOW_PATH);
+    if !path.is_file() {
+        return Ok(());
+    }
+
+    let contents = read_to_string(root, CI_WORKFLOW_PATH)?;
+    let lines = normalize_workflow_lines(&contents);
+    let expected = expected_ci_workflow_lines();
+
+    audit_ci_identity_and_events(&lines, &expected, findings);
+    audit_ci_permissions_concurrency_and_job(&lines, &expected, findings);
+    audit_ci_reusable_reference(&lines, findings);
+    audit_ci_unexpected_fields(&lines, &expected, findings);
+
+    Ok(())
+}
+
+fn audit_ci_identity_and_events(lines: &[&str], expected: &[String], findings: &mut Vec<Finding>) {
+    if lines.first().copied() != Some(expected[0].as_str()) {
+        findings.push(Finding::fatal(
+            "repository.workflow_identity",
+            Some(CI_WORKFLOW_PATH.to_owned()),
+            "workflow name must be exactly `CI`",
+        ));
+    }
+
+    let permissions_index = workflow_header_index(lines, "permissions:");
+    let concurrency_index = workflow_header_index(lines, "concurrency:");
+    let jobs_index = workflow_header_index(lines, "jobs:");
+    let event_end = [permissions_index, concurrency_index, jobs_index]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(lines.len());
+    let expected_events = expected[1..6]
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if lines.get(1..event_end) != Some(expected_events.as_slice()) {
+        findings.push(Finding::fatal(
+            "repository.workflow_trigger",
+            Some(CI_WORKFLOW_PATH.to_owned()),
+            "workflow must contain only unconfigured pull_request and push triggers",
+        ));
+        if !lines.iter().any(|line| *line == expected[5]) {
+            findings.push(Finding::fatal(
+                "repository.workflow_branch",
+                Some(CI_WORKFLOW_PATH.to_owned()),
+                "push trigger must be restricted to main",
+            ));
+        }
+    }
+}
+
+fn audit_ci_permissions_concurrency_and_job(
+    lines: &[&str],
+    expected: &[String],
+    findings: &mut Vec<Finding>,
+) {
+    let permissions_index = workflow_header_index(lines, "permissions:");
+    let concurrency_index = workflow_header_index(lines, "concurrency:");
+    let jobs_index = workflow_header_index(lines, "jobs:");
+    let permission_end = [concurrency_index, jobs_index]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(lines.len());
+    let expected_permissions = expected[6..8]
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if permissions_index.and_then(|start| lines.get(start..permission_end))
+        != Some(expected_permissions.as_slice())
+    {
+        findings.push(Finding::fatal(
+            "repository.workflow_permission",
+            Some(CI_WORKFLOW_PATH.to_owned()),
+            "workflow must declare only top-level contents: read permission",
+        ));
+    }
+    let expected_concurrency = expected[8..11]
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if concurrency_index.and_then(|start| lines.get(start..jobs_index.unwrap_or(lines.len())))
+        != Some(expected_concurrency.as_slice())
+    {
+        findings.push(Finding::fatal(
+            "repository.workflow_concurrency",
+            Some(CI_WORKFLOW_PATH.to_owned()),
+            "workflow must preserve the exact CI concurrency group and cancellation policy",
+        ));
+    }
+    let expected_jobs = expected[11..]
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if jobs_index.and_then(|start| lines.get(start..)) != Some(expected_jobs.as_slice()) {
+        findings.push(Finding::fatal(
+            "repository.workflow_job",
+            Some(CI_WORKFLOW_PATH.to_owned()),
+            "workflow must contain only the named reusable validate job",
+        ));
+    }
+}
+
+fn audit_ci_reusable_reference(lines: &[&str], findings: &mut Vec<Finding>) {
+    let reusable_calls = lines
+        .iter()
+        .filter_map(|line| line.trim_start().strip_prefix("uses: "))
+        .collect::<Vec<_>>();
+    let accepted_call = accepted_reusable_workflow_call();
+    let accepted_reference = accepted_reusable_workflow_reference();
+    if reusable_calls != [accepted_reference.as_str()] {
+        for call in &reusable_calls {
+            match call.rsplit_once('@') {
+                Some((_, revision)) if !is_full_lowercase_commit_sha(revision) => findings.push(
+                    Finding::fatal(
+                        "repository.workflow_profile_revision",
+                        Some(CI_WORKFLOW_PATH.to_owned()),
+                        format!("reusable workflow must use a full lowercase commit SHA, found {revision:?}"),
+                    ),
+                ),
+                None => findings.push(Finding::fatal(
+                    "repository.workflow_profile_revision",
+                    Some(CI_WORKFLOW_PATH.to_owned()),
+                    "reusable workflow reference must include an immutable revision",
+                )),
+                Some(_) => {}
+            }
+        }
+        findings.push(Finding::fatal(
+            "repository.workflow_profile_revision",
+            Some(CI_WORKFLOW_PATH.to_owned()),
+            format!(
+                "expected accepted reusable workflow {accepted_call:?}, found {reusable_calls:?}"
+            ),
+        ));
+    }
+}
+
+fn audit_ci_unexpected_fields(lines: &[&str], expected: &[String], findings: &mut Vec<Finding>) {
+    let expected_lines = expected.iter().map(String::as_str).collect::<Vec<_>>();
+    if lines != expected_lines {
+        let unexpected = lines
+            .iter()
+            .filter(|line| !expected_lines.contains(line))
+            .copied()
+            .collect::<Vec<_>>();
+        if !unexpected.is_empty() {
+            findings.push(Finding::fatal(
+                "repository.workflow_unexpected_field",
+                Some(CI_WORKFLOW_PATH.to_owned()),
+                format!("unexpected workflow field or ordering drift: {unexpected:?}"),
+            ));
+        }
+    }
+}
+
+fn workflow_header_index(lines: &[&str], header: &str) -> Option<usize> {
+    lines.iter().position(|line| *line == header)
 }
 
 fn collect_authority_files(root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -623,8 +877,8 @@ mod tests {
     };
 
     use super::{
-        OutputFormat, PRIVATE_ARCHIVE_URL, build_report, issue_numbers, json_escape,
-        parse_output_format,
+        AuditReport, OutputFormat, PRIVATE_ARCHIVE_URL, audit_active_workflow_inventory,
+        build_report, expected_ci_workflow_lines, issue_numbers, json_escape, parse_output_format,
     };
 
     static NEXT_TEMP_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
@@ -661,6 +915,19 @@ mod tests {
                 .map_err(|error| format!("failed to write {}: {error}", path.display()))
         }
 
+        fn remove(&self, relative: &str) -> Result<(), String> {
+            fs::remove_file(self.path.join(relative))
+                .map_err(|error| format!("failed to remove {relative}: {error}"))
+        }
+
+        fn write_ci_workflow(&self, contents: &str) -> Result<(), String> {
+            self.write(".github/workflows/ci.yml", contents)
+        }
+
+        fn write_additional_workflow(&self, name: &str) -> Result<(), String> {
+            self.write(&format!(".github/workflows/{name}"), "name: Extra\n")
+        }
+
         fn write_baseline(&self) -> Result<(), String> {
             self.write(
                 "Cargo.toml",
@@ -684,10 +951,7 @@ mod tests {
                 "name: Milestone slice\n",
             )?;
             self.write(".github/ISSUE_TEMPLATE/proposal.yml", "name: Proposal\n")?;
-            self.write(
-                ".github/workflows/ci.yml",
-                "permissions:\n  contents: read\njobs:\n  validate:\n    uses: dornglut/github-workflows/.github/workflows/reusable-rust-cargo-validate.yml@b6caad377102ca73794efaf734a65903b8efa829\n",
-            )?;
+            self.write_ci_workflow(&accepted_ci_workflow())?;
             self.write(
                 "crates/runenui_core/Cargo.toml",
                 "[package]\nname = \"runenui_core\"\n\n[dependencies]\n",
@@ -743,6 +1007,30 @@ mod tests {
         }
     }
 
+    fn accepted_ci_workflow() -> String {
+        format!("{}\n", expected_ci_workflow_lines().join("\n"))
+    }
+
+    fn replace_once(contents: &str, from: &str, to: &str) -> String {
+        assert!(contents.contains(from), "missing mutation anchor {from:?}");
+        contents.replacen(from, to, 1)
+    }
+
+    fn assert_fatal_code(report: &AuditReport, label: &str, expected: &str) {
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.code == expected),
+            "{label}: expected fatal code {expected:?}, got {:?}",
+            report
+                .findings
+                .iter()
+                .map(|finding| finding.code)
+                .collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn output_format_contract_is_exact() {
         assert_eq!(
@@ -772,10 +1060,472 @@ mod tests {
     #[test]
     fn baseline_fixture_passes_and_json_is_deterministic() -> Result<(), String> {
         let fixture = Fixture::new("baseline")?;
+        let mut inventory_findings = Vec::new();
+        audit_active_workflow_inventory(fixture.path(), &mut inventory_findings)?;
+        assert!(inventory_findings.is_empty());
         let first = build_report(fixture.path())?;
         let second = build_report(fixture.path())?;
         assert!(first.is_success(), "{}", first.render_failure());
         assert_eq!(first.render_json(), second.render_json());
+        Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)] // One table keeps every required workflow mutation visible together.
+    fn ci_workflow_contract_rejects_prohibited_mutations() -> Result<(), String> {
+        let accepted = accepted_ci_workflow();
+        let accepted_revision = "624cb41adeed21a6461eb838bc7330bd0a5079fd";
+        let job_anchor = "    name: RunenUI validation\n";
+        let mutations = vec![
+            (
+                "predecessor revision",
+                replace_once(
+                    &accepted,
+                    accepted_revision,
+                    "b6caad377102ca73794efaf734a65903b8efa829",
+                ),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "older revision",
+                replace_once(
+                    &accepted,
+                    accepted_revision,
+                    "79405c457b5b99d5cb9957c9bcdc475109e1e3bf",
+                ),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "alternate full SHA",
+                replace_once(
+                    &accepted,
+                    accepted_revision,
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                ),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "mutable main revision",
+                replace_once(&accepted, accepted_revision, "main"),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "mutable tag revision",
+                replace_once(&accepted, accepted_revision, "v1"),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "shortened revision",
+                replace_once(&accepted, accepted_revision, "624cb41adeed"),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "missing revision",
+                replace_once(&accepted, accepted_revision, ""),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "uppercase revision",
+                replace_once(
+                    &accepted,
+                    accepted_revision,
+                    "624CB41ADEED21A6461EB838BC7330BD0A5079FD",
+                ),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "wrong workflow owner",
+                replace_once(
+                    &accepted,
+                    "dornglut/github-workflows",
+                    "other/github-workflows",
+                ),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "wrong workflow repository",
+                replace_once(&accepted, "github-workflows", "other-workflows"),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "wrong workflow filename",
+                replace_once(&accepted, "reusable-rust-cargo-validate.yml", "other.yml"),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "Python profile swap",
+                replace_once(
+                    &accepted,
+                    "reusable-rust-cargo-validate.yml",
+                    "reusable-python-repository-validate.yml",
+                ),
+                "repository.workflow_profile_revision",
+            ),
+            (
+                "missing pull request",
+                replace_once(&accepted, "  pull_request:\n", ""),
+                "repository.workflow_trigger",
+            ),
+            (
+                "missing push",
+                replace_once(&accepted, "  push:\n", ""),
+                "repository.workflow_trigger",
+            ),
+            (
+                "workflow dispatch",
+                replace_once(
+                    &accepted,
+                    "  pull_request:\n",
+                    "  workflow_dispatch:\n  pull_request:\n",
+                ),
+                "repository.workflow_trigger",
+            ),
+            (
+                "schedule",
+                replace_once(
+                    &accepted,
+                    "  pull_request:\n",
+                    "  schedule:\n    - cron: weekly\n  pull_request:\n",
+                ),
+                "repository.workflow_trigger",
+            ),
+            (
+                "pull request target",
+                replace_once(
+                    &accepted,
+                    "  pull_request:\n",
+                    "  pull_request_target:\n  pull_request:\n",
+                ),
+                "repository.workflow_trigger",
+            ),
+            (
+                "pull request branch filter",
+                replace_once(
+                    &accepted,
+                    "  pull_request:\n",
+                    "  pull_request:\n    branches:\n      - main\n",
+                ),
+                "repository.workflow_trigger",
+            ),
+            (
+                "pull request path filter",
+                replace_once(
+                    &accepted,
+                    "  pull_request:\n",
+                    "  pull_request:\n    paths:\n      - crates/**\n",
+                ),
+                "repository.workflow_trigger",
+            ),
+            (
+                "pull request type filter",
+                replace_once(
+                    &accepted,
+                    "  pull_request:\n",
+                    "  pull_request:\n    types:\n      - opened\n",
+                ),
+                "repository.workflow_trigger",
+            ),
+            (
+                "push branch drift",
+                replace_once(&accepted, "      - main", "      - trunk"),
+                "repository.workflow_branch",
+            ),
+            (
+                "additional push branch",
+                replace_once(&accepted, "      - main", "      - main\n      - release"),
+                "repository.workflow_trigger",
+            ),
+            (
+                "missing permissions",
+                replace_once(&accepted, "permissions:\n  contents: read\n", ""),
+                "repository.workflow_permission",
+            ),
+            (
+                "write permission",
+                replace_once(&accepted, "  contents: read", "  contents: write"),
+                "repository.workflow_permission",
+            ),
+            (
+                "expanded permission",
+                replace_once(
+                    &accepted,
+                    "  contents: read",
+                    "  contents: read\n  actions: read",
+                ),
+                "repository.workflow_permission",
+            ),
+            (
+                "job permission",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    permissions:\n      contents: read\n    name: RunenUI validation\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "workflow name",
+                replace_once(&accepted, "name: CI", "name: Validation"),
+                "repository.workflow_identity",
+            ),
+            (
+                "concurrency group",
+                replace_once(
+                    &accepted,
+                    "  group: ci-${{ github.workflow }}-${{ github.ref }}",
+                    "  group: other",
+                ),
+                "repository.workflow_concurrency",
+            ),
+            (
+                "missing concurrency",
+                replace_once(
+                    &accepted,
+                    "concurrency:\n  group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n",
+                    "",
+                ),
+                "repository.workflow_concurrency",
+            ),
+            (
+                "cancellation false",
+                replace_once(
+                    &accepted,
+                    "  cancel-in-progress: true",
+                    "  cancel-in-progress: false",
+                ),
+                "repository.workflow_concurrency",
+            ),
+            (
+                "missing cancellation",
+                replace_once(&accepted, "  cancel-in-progress: true\n", ""),
+                "repository.workflow_concurrency",
+            ),
+            (
+                "job key",
+                replace_once(&accepted, "  validate:\n", "  check:\n"),
+                "repository.workflow_job",
+            ),
+            (
+                "job name",
+                replace_once(&accepted, "    name: RunenUI validation", "    name: Other"),
+                "repository.workflow_job",
+            ),
+            (
+                "second job",
+                format!(
+                    "{accepted}\n  second:\n    uses: dornglut/github-workflows/.github/workflows/reusable-rust-cargo-validate.yml@{accepted_revision}\n"
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "with",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    with:\n      mode: strict\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "secrets",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    secrets:\n      token: value\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "inherited secrets",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    secrets: inherit\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "local steps",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    steps:\n      - run: true\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "runner",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    runs-on: ubuntu-latest\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "condition",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    if: always()\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "dependency",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    needs: other\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "continue on error",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    continue-on-error: true\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "strategy",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    strategy: {}\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "matrix",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    matrix: {}\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "environment",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    environment: production\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "container",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    container: rust\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "services",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    services: {}\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "timeout",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    timeout-minutes: 5\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "duplicated cargo validate",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    steps:\n      - run: cargo validate\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "other repository command",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    steps:\n      - run: cargo xtask audit-repository\n",
+                ),
+                "repository.workflow_job",
+            ),
+            (
+                "unexpected top-level field",
+                format!("{accepted}\ndescription: extra\n"),
+                "repository.workflow_unexpected_field",
+            ),
+            (
+                "unexpected job field",
+                replace_once(
+                    &accepted,
+                    job_anchor,
+                    "    name: RunenUI validation\n    custom: true\n",
+                ),
+                "repository.workflow_unexpected_field",
+            ),
+            (
+                "reordered sections",
+                replace_once(
+                    &accepted,
+                    "permissions:\n  contents: read\nconcurrency:\n  group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n",
+                    "concurrency:\n  group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\npermissions:\n  contents: read\n",
+                ),
+                "repository.workflow_permission",
+            ),
+            (
+                "altered indentation",
+                replace_once(&accepted, "  pull_request:", "   pull_request:"),
+                "repository.workflow_trigger",
+            ),
+            (
+                "added comment",
+                format!("{accepted}\n# comment\n"),
+                "repository.workflow_unexpected_field",
+            ),
+        ];
+
+        for (label, workflow, expected_code) in mutations {
+            let fixture = Fixture::new(label)?;
+            fixture.write_ci_workflow(&workflow)?;
+            let report = build_report(fixture.path())?;
+            assert!(!report.is_success(), "{label}: mutation was accepted");
+            assert_fatal_code(&report, label, expected_code);
+        }
+
+        for (label, action) in [
+            ("missing active workflow", 0_u8),
+            ("additional yml workflow", 1_u8),
+            ("additional yaml workflow", 2_u8),
+            ("renamed active workflow", 3_u8),
+        ] {
+            let fixture = Fixture::new(label)?;
+            match action {
+                0 => fixture.remove(".github/workflows/ci.yml")?,
+                1 => fixture.write_additional_workflow("extra.yml")?,
+                2 => fixture.write_additional_workflow("extra.yaml")?,
+                3 => {
+                    fixture.remove(".github/workflows/ci.yml")?;
+                    fixture.write_additional_workflow("renamed.yml")?;
+                }
+                _ => unreachable!(),
+            }
+            let report = build_report(fixture.path())?;
+            assert!(!report.is_success(), "{label}: mutation was accepted");
+            assert_fatal_code(&report, label, "repository.workflow_inventory");
+        }
+
         Ok(())
     }
 
