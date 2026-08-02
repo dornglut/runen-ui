@@ -7,8 +7,9 @@ This map reports the maturity of the active implementation at the current revisi
 M4C5 is proof-complete on this review branch for its fifteen owned conformance
 rows, but it is not owner-accepted or merged. The entries below describe that
 implemented proof without promoting it to accepted support; independent review,
-exact-head CI, owner acceptance, and merge remain required before M4D1 can
-begin.
+owner acceptance, merge, and the separate M4C5 authority-reconciliation PR
+remain required before M4D1 can begin. Exact branch-head validation evidence
+belongs in the pull request and work-tracking system.
 
 ## Maturity states
 
@@ -67,8 +68,8 @@ M0–M3, M4A, M4B, and M4C0–M4C4 are complete. ADR 0005 remains routed-behavio
 M4C5's fifteen owned rows are proof-complete on the implementation review
 branch, not owner-accepted. Keyboard, committed-text, composition, and
 authored-ID automation behavior therefore remains pending independent review,
-exact-head CI, owner acceptance, and merge. M4D1–M4D3 remain blocked in
-sequence; semantic accessibility mapping, export, sink, and replay are not
-upgraded. M4 remains active and incomplete.
+owner acceptance, merge, and the separate M4C5 authority-reconciliation PR.
+M4D1–M4D3 remain blocked in sequence; semantic accessibility mapping, export,
+sink, and replay are not upgraded. M4 remains active and incomplete.
 
 Merged acceptance evidence belongs in pull requests and the [public repository migration history](history/public-repository-migration.md). Volatile branch, head, blocker, and next-action state belongs in the [work-tracking system](work-tracking.md) and GitHub issues.
