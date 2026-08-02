@@ -5,6 +5,7 @@ use super::{
     RuntimeStatus, RuntimeTerminalReason, SendTaskMapper, ShutdownReport, Timer, TraceRecordKind,
     TraceSequence, WorkCancellationCounts, WorkOwner, WorkRegistry,
 };
+use crate::TraceSpaceCleanupReason;
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn cancel_owner_work(&mut self, owner: &WorkOwner) {
@@ -27,7 +28,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return 0;
         }
         self.cancel_composition_while_live(runenui_core::CompositionCancelReason::Shutdown);
-        self.space_ownership = None;
+        self.revoke_space_ownership(TraceSpaceCleanupReason::Terminal);
         let (cancelled_queued, cancelled_live, pointer_parent) = self.close_scheduling_authority();
         let cancelled = cancelled_queued
             .saturating_add(cancelled_live.total())
@@ -90,10 +91,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             };
         }
         self.cancel_composition_while_live(runenui_core::CompositionCancelReason::Shutdown);
-        let (cancelled_queued_envelopes, cancelled_live_work, pointer_parent) =
-            self.close_scheduling_authority();
-        self.space_ownership = None;
+        // Pointer cleanup is independent of queue closure, but its accepted
+        // M4C3 trace/lifetime ordering precedes shutdown focus suppression.
+        // Closing the registry here leaves actual scheduling authority open
+        // until all input and focus cleanup is complete.
+        let (_, pointer_parent) = self.close_pointer_lifetimes(None);
+        self.revoke_space_ownership(TraceSpaceCleanupReason::Shutdown);
         let shutdown_parent = self.clear_focus_for_shutdown(pointer_parent);
+        let (cancelled_queued_envelopes, cancelled_live_work, _) =
+            self.close_scheduling_authority();
         let stats = self.tree.shutdown();
         self.surface_publication.clear_cache();
         self.trace.record(

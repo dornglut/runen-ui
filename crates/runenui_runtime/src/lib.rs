@@ -230,9 +230,10 @@ pub use surface_publication::SurfacePublication;
 pub use trace::{
     Trace, TraceConfig, TraceFocusBoundaryOutcome, TracePointerCaptureRequestRejection,
     TracePointerRejection, TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceIngressKind, TraceSurfaceRejection,
-    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTimerTerminalOutcome,
-    TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
+    TraceRoutedIntegrityFailure, TraceSequence, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
+    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
+    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
+    TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::host_request::{HostRequestRef, HostRequestToken};

@@ -34,6 +34,28 @@ impl MandatoryTracePlan {
         Self::exact(1)
     }
 
+    /// Validation, family-specific outcomes, and the possible derived command
+    /// lineage recorded while processing one admitted raw input envelope.
+    pub(crate) const fn input_processing() -> Self {
+        Self::exact(6)
+    }
+
+    /// Allocation plus pending binding are committed before a composition
+    /// start envelope enters the canonical FIFO.
+    pub(crate) const fn composition_start_acceptance() -> Self {
+        Self::exact(2)
+    }
+
+    /// Cancellation records cancellation and retirement before the focus or
+    /// reconciliation transition that caused it.
+    pub(crate) const fn composition_cleanup() -> Self {
+        Self::exact(3)
+    }
+
+    pub(crate) const fn automation_resolution() -> Self {
+        Self::exact(1)
+    }
+
     /// Maximum stream/context/target outcome facts before routed callbacks begin.
     pub(crate) const fn pointer_processing() -> Self {
         Self::exact(5)

@@ -45,14 +45,14 @@ pub(in crate::runtime) struct RoutedFailureFacts {
 }
 
 pub(crate) struct RoutedTransaction<Action> {
-    pub(in crate::runtime) sequence: WorkSequence,
-    pub(in crate::runtime) target: MountedNodeId,
-    pub(in crate::runtime) origin: CommandOrigin,
-    pub(in crate::runtime) instant: MonotonicInstant,
+    pub(crate) sequence: WorkSequence,
+    pub(crate) target: MountedNodeId,
+    pub(crate) origin: CommandOrigin,
+    pub(crate) instant: MonotonicInstant,
     pub(in crate::runtime) route: Vec<MountedNodeId>,
     pub(in crate::runtime) pointer_callback_targets: Vec<MountedNodeId>,
-    pub(in crate::runtime) target_trace: TraceTarget,
-    pub(in crate::runtime) parent: Option<TraceSequence>,
+    pub(crate) target_trace: TraceTarget,
+    pub(crate) parent: Option<TraceSequence>,
     pub(in crate::runtime) remaining_outputs: usize,
     pub(in crate::runtime) propagation_stopped: bool,
     pub(crate) default_prevented: bool,

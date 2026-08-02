@@ -1,4 +1,4 @@
-use runenui_core::HostProtocol;
+use runenui_core::{EventSource, HostProtocol};
 
 use super::{
     super::{Runtime, RuntimeTerminalReason},
@@ -64,9 +64,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TargetStatus::Missing => TraceTargetRejection::Missing,
             TargetStatus::Live => return,
         };
+        let kind = if outcome == TraceTargetRejection::Stale
+            && facts.origin.source() == EventSource::Automation
+        {
+            TraceRecordKind::AutomationTargetStaleAfterResolution
+        } else {
+            TraceRecordKind::CommandProcessingRejected { outcome }
+        };
         self.trace.record_reserved_event(
             facts.trace_reservation,
-            TraceRecordKind::CommandProcessingRejected { outcome },
+            kind,
             facts.sequence,
             facts.causal_parent,
             Some(TraceTarget::new(facts.target.clone(), None)),

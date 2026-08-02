@@ -69,7 +69,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.begin_routed_transaction_with_trace(facts, MandatoryTracePlan::none())
     }
 
-    pub(in crate::runtime) fn begin_routed_transaction_with_trace(
+    pub(crate) fn begin_routed_transaction_with_trace(
         &mut self,
         facts: RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,

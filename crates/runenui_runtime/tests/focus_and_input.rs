@@ -1,7 +1,9 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp, View, button, children, row,
+    CommandOrigin, Element, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
+    KeyboardPhase, LogicalKey, NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, View, button,
+    children, row,
 };
 use runenui_runtime::{
     AppRuntime, InputModality, LogicalPoint, PumpBudget, RuntimeConfig, RuntimeLimits,
@@ -118,7 +120,7 @@ impl UiApp for App {
 }
 
 #[test]
-fn normalized_keyboard_focus_commands_never_activate_or_emit_actions() {
+fn raw_keyboard_focus_commands_never_activate_or_emit_actions() {
     let mut runtime = AppRuntime::<App>::mount(0);
     runtime.pump(PumpBudget::new(
         usize::MAX,
@@ -134,15 +136,20 @@ fn normalized_keyboard_focus_commands_never_activate_or_emit_actions() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("live focus target is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
     runtime
-        .submit_command(
-            a.clone(),
-            SemanticCommand::FocusNext,
-            CommandOrigin::__runtime_keyboard(),
-        )
-        .unwrap_or_else(|_| unreachable!("normalized keyboard command is accepted"));
-    runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Tab,
+            LogicalKey::Tab,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("focused keyboard event is accepted"));
+    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
     assert_ne!(runtime.focus().focused_node(), Some(&a));
     assert_eq!(runtime.focus().modality(), Some(InputModality::Keyboard));
     assert_eq!(
@@ -159,7 +166,7 @@ fn non_finite_pointer_positions_are_rejected() {
 }
 
 #[test]
-fn normalized_command_modalities_are_retained_only_after_accepted_processing() {
+fn command_modalities_are_retained_only_after_accepted_processing() {
     let mut runtime = AppRuntime::<App>::mount(0);
     runtime.pump(PumpBudget::new(
         usize::MAX,
@@ -170,7 +177,6 @@ fn normalized_command_modalities_are_retained_only_after_accepted_processing() {
     let target = runtime.index().nodes()[1].id().clone();
     let cases = [
         (CommandOrigin::programmatic(), InputModality::Programmatic),
-        (CommandOrigin::__runtime_keyboard(), InputModality::Keyboard),
         (CommandOrigin::controller(), InputModality::Controller),
         (CommandOrigin::accessibility(), InputModality::Accessibility),
         (CommandOrigin::automation(), InputModality::Automation),
@@ -370,7 +376,7 @@ fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generat
     );
     assert!(matches!(
         runtime.submit_composition_end(start.generation().clone()),
-        Err(error) if error.kind() == runenui_runtime::SubmitCompositionErrorKind::MissingGeneration
+        Err(error) if error.kind() == runenui_runtime::SubmitCompositionErrorKind::StaleGeneration
     ));
     let kinds: Vec<_> = runtime
         .trace()

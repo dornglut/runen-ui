@@ -23,6 +23,19 @@ impl<App: UiApp> AppRuntime<App> {
 
     #[cfg(feature = "internal-test-seams")]
     #[doc(hidden)]
+    pub const fn __seed_next_composition_generation_for_test(&mut self, next: Option<u64>) {
+        self.runtime.seed_next_composition_generation_for_test(next);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __composition_generation_for_test(&self, value: u64) -> crate::CompositionGeneration {
+        self.runtime.composition_generation_for_test(value)
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
     pub const fn __seed_next_trace_sequence_for_test(&mut self, next: u64) {
         self.runtime.seed_next_trace_sequence_for_test(next);
     }

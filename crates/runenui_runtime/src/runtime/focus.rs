@@ -6,13 +6,13 @@ use runenui_core::{
 use super::{CollectedRoutedOutput, RoutedTransaction, Runtime};
 use crate::{
     MountedNodeId, ReconciliationGeneration, TraceFocusBoundaryOutcome, TraceRecordKind,
-    TraceRoutedIntegrityFailure, TraceSequence, TraceTarget, WorkSequence,
+    TraceRoutedIntegrityFailure, TraceSequence, TraceSpaceCleanupReason, TraceTarget, WorkSequence,
     focus::{
         FocusBoundaryOutcome, FocusNavigation, FocusSelection, is_focus_eligible, nearest_scope,
         select_focus,
     },
-    mounted::{RouteBuildError, TargetStatus},
-    trace::TraceReservation,
+    mounted::{PlannedInvalidation, PlannedLifetimeReason, RouteBuildError, TargetStatus},
+    trace::{MandatoryTracePlan, TraceReservation},
 };
 
 pub(in crate::runtime) struct ReconciledFocusCleanup {
@@ -27,6 +27,76 @@ pub(in crate::runtime) struct ReconciledFocusCleanup {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    /// Applies input-lifetime revocation selected by the sole reconciliation
+    /// plan while every old route is still live. The plan has already expanded
+    /// subtree invalidation, so same-slot reuse can never be mistaken for the
+    /// old owner.
+    pub(in crate::runtime) fn cleanup_planned_input_lifetimes(
+        &mut self,
+        invalidated: &[PlannedInvalidation],
+    ) {
+        let composition_reason = self.composition.owner().and_then(|owner| {
+            invalidated
+                .iter()
+                .find(|planned| planned.id() == owner)
+                .map(|planned| match planned.reason() {
+                    PlannedLifetimeReason::Removal => CompositionCancelReason::Removal,
+                    PlannedLifetimeReason::Replacement => CompositionCancelReason::Replacement,
+                })
+        });
+        if let Some(reason) = composition_reason {
+            self.cancel_composition_while_live(reason);
+        }
+        let space_reason = self.space_ownership.as_ref().and_then(|ownership| {
+            invalidated
+                .iter()
+                .find(|planned| planned.id() == &ownership.target)
+                .map(|planned| match planned.reason() {
+                    PlannedLifetimeReason::Removal => TraceSpaceCleanupReason::Removal,
+                    PlannedLifetimeReason::Replacement => TraceSpaceCleanupReason::Replacement,
+                })
+        });
+        if let Some(reason) = space_reason {
+            self.revoke_space_ownership(reason);
+        }
+    }
+
+    /// A compatible update leaves a lifetime live, but may still revoke its
+    /// interaction or text-input capability. Recheck those facts before focus
+    /// cleanup can route or suppress `FocusOut`.
+    pub(in crate::runtime) fn cleanup_lost_input_capabilities(&mut self) {
+        let composition_lost = self.composition.owner().cloned().is_some_and(|owner| {
+            self.tree.target_status(&owner) != TargetStatus::Live
+                || self.tree.refresh_input_capabilities(&owner).map_or(
+                    true,
+                    |(activation, text_input)| {
+                        !activation.enabled()
+                            || !text_input.accepts_committed_text()
+                            || !text_input.accepts_composition()
+                    },
+                )
+        });
+        if composition_lost {
+            self.cancel_composition_while_live(CompositionCancelReason::Disablement);
+        }
+        let space_lost = self
+            .space_ownership
+            .as_ref()
+            .map(|ownership| ownership.target.clone())
+            .is_some_and(|owner| {
+                self.tree.target_status(&owner) != TargetStatus::Live
+                    || self
+                        .tree
+                        .refresh_input_capabilities(&owner)
+                        .map_or(true, |(activation, _)| {
+                            !activation.enabled() || !activation.is_actionable()
+                        })
+            });
+        if space_lost {
+            self.revoke_space_ownership(TraceSpaceCleanupReason::Disablement);
+        }
+    }
+
     /// Uses the existing routed-event authority to notify a live composition
     /// owner during terminal cleanup. The start sequence is the composition
     /// lifetime's canonical sequence; this path never creates a second queue.
@@ -45,7 +115,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             TraceReservation::continuation(),
         );
-        let Some(mut transaction) = self.begin_routed_transaction(facts) else {
+        let Some(mut transaction) = self
+            .begin_routed_transaction_with_trace(facts, MandatoryTracePlan::composition_cleanup())
+        else {
             self.composition = crate::input::CompositionState::None;
             return;
         };
@@ -269,19 +341,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if old_target == new_target {
             return Ok(());
         }
-        if self
-            .space_ownership
-            .as_ref()
-            .is_some_and(|owner| old_target.as_ref() == Some(&owner.target))
-        {
-            self.space_ownership = None;
-        }
         if let Some(old) = old_target.as_ref() {
             self.cancel_composition_in_transaction(
                 transaction,
                 old,
                 runenui_core::CompositionCancelReason::FocusTransfer,
             )?;
+        }
+        if self
+            .space_ownership
+            .as_ref()
+            .is_some_and(|owner| old_target.as_ref() == Some(&owner.target))
+        {
+            self.revoke_space_ownership(TraceSpaceCleanupReason::FocusTransfer);
         }
         let old_route = match old_target.as_ref() {
             Some(old) if self.tree.target_status(old) == TargetStatus::Live => {
