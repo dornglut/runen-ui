@@ -8,6 +8,18 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Implemented the M4C5 keyboard, committed-text, composition, and deterministic
+  authored-ID automation slice on its review branch. The fifteen owned matrix
+  rows (`KEY-01`–`KEY-04`, `TEXT-01`, `IME-01`–`IME-05`,
+  `AUTOMATION-01`–`AUTOMATION-04`, and `MIGRATION-07`) are
+  `proof-complete`, not owner-accepted. The branch adds canonical raw input
+  ingress, exact focused-lifetime binding, Enter/Space activation policy,
+  opaque composition generations with cancellation before focus loss and
+  unmount, deterministic no-fallback automation resolution, redacted input
+  trace facts, Counter/downstream proof, and removal of transitional input
+  authorities. Independent review, exact-head CI, owner acceptance/merge, and
+  the separate authority-reconciliation pull request remain pending; M4D1 is
+  still blocked.
 - Owner-accepted and squash-merged the complete M4C4 focus-scopes and modality
   slice in [PR #22](https://github.com/dornglut/runen-ui/pull/22): one
   exact-generation focus authority, root/nested scope policies, current-order
@@ -20,9 +32,9 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   `30006170403`; the squash merge commit is
   `f95571634a9c6528e5834e9589b048ad5197bd15`. All 32 M4C4 rows are
   `owner-accepted`, producing 237 total / 192 owner-accepted / 0 proof-complete /
-  45 blocked rows. M4C5 becomes the next implementation slice only after this
-  post-merge authority reconciliation is accepted and merged; M4 remains active
-  and incomplete.
+  45 blocked rows at that acceptance checkpoint. M4C5's later proof-complete
+  review-branch implementation is recorded above; M4 remains active and
+  incomplete.
 - Owner-accepted and squash-merged the M4C3 host-neutral pointer lifecycle in
   [PR #15](https://github.com/dornglut/runen-ui/pull/15): checked
   pointer/device identity and payloads, canonical queued ingress, exact

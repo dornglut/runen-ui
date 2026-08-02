@@ -45,5 +45,13 @@ pointer, target-only boundary, and target-only capture notifications; observes
 physical hit facts separately from captured routing; requests capture through
 `EventContext`; and receives exactly one wheel-derived logical-scroll command.
 
+M4C5 additionally proves that the same downstream public widget can opt into
+committed text and composition, receive keyboard/committed-text/composition
+Capture/Target/Bubble events, observe opaque exact composition generations, and
+map resulting actions without private input helpers. Its integration test also
+uses only public runtime ingress and verifies that text/preedit payloads do not
+appear in the canonical trace. This is a proof-complete branch package pending
+independent review and owner acceptance, not editable text or native IME support.
+
 The fixture remains proof-level. It does not claim native host translation, a
 production semantic tree, paint scene, layout engine, host, or renderer backend.

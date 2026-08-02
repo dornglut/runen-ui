@@ -21,10 +21,11 @@ head `01b7ae018abeaff8d316764afba5bc8cde074381` after exact-head CI run
 feature head `f3201a83583af0c1d148bec87cd9140ff42795b7` after exact-head CI run
 `30006170403` succeeded, then squash-merged in
 [PR #22](https://github.com/dornglut/runen-ui/pull/22) as
-`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 becomes the next
-implementation slice only after this post-merge authority update merges and its
-resulting accepted `main` is recorded; M4D1–M4D3 remain blocked in sequence. M4
-is active and incomplete. The accepted
+`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5's implementation proof
+package is complete on its review branch, but independent review, owner
+acceptance, and merge remain pending. Its post-merge authority reconciliation is
+a separate follow-up; M4D1–M4D3 remain blocked in sequence. M4 is active and
+incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
 implemented public API until each slice is accepted. The
@@ -60,6 +61,10 @@ vocabulary includes:
 - `RuntimeConfig`, `SubmitActionResult`, `CommandSubmission`,
   `UnacceptedCommand`, `SubmitCommandError`, `UnacceptedSurfaceCommand`,
   `SubmitSurfaceCommandError`, `PumpBudget`, and `PumpReport`;
+- host-neutral `KeyboardEvent`, `CommittedTextEvent`, `CompositionEvent`,
+  opaque `CompositionGeneration`, checked `CompositionRange`, and explicit
+  `WidgetTextInput` capability values, plus input/automation submission
+  receipts and owned recovery errors;
 - `RuntimeStatus`, `RuntimeTerminalReason`, `ShutdownReport`, and `RuntimeError`;
 - `TraceConfig`, `TraceSequence`, `TraceRecord`, `TraceRecordKind`,
   `TraceSurfaceIngressKind`, `TraceSurfaceSnapshotKind`,
@@ -327,8 +332,10 @@ arena, clock, queue, or validation-bypass authority.
 
 Authored `ElementId` remains a validated lookup/diagnostic handle. It does not
 affect reconciliation compatibility and may change while mounted identity
-survives. M4C1 command submission accepts only an exact mounted target; authored
-automation lookup is deferred to M4C5.
+survives. M4C1 command submission accepts only an exact mounted target. M4C5's
+proof-complete implementation adds deterministic logical-preorder authored-ID
+resolution for automation only; it never changes mounted identity or creates a
+first-match fallback.
 
 ## Reconciliation
 
@@ -404,17 +411,19 @@ existing widget activation capability, exactly once, as semantic default.
 Prevented activation never invokes its factory. `CancelOrBack`, `OpenMenu`, and
 `OpenContextMenu` route once and have no default action, runtime mutation, or
 second ancestor pass. Programmatic, automation, accessibility-stub, and
-normalized-controller origins use this same exact-target path; authored-ID
-automation and semantic accessibility resolution are not implemented.
+normalized-controller origins use this same exact-target path. M4C5 automation
+resolves exactly one authored ID before this command ingress; semantic
+accessibility resolution remains unimplemented.
 
 Direct programmatic activation, direct focus mutation/traversal helpers, the
-transitional `FocusTargetResult`, and the old pointer activation/resolution
-helpers are removed. Focus changes enter through `submit_command`; normalized
-keyboard modality uses `CommandOrigin::keyboard()` without adding raw keyboard
-routing. M4C2 owns surface context, M4C3 implements pointer lifecycle/release-
-inside activation, M4C4 implements focus scopes/modality, M4C5 owns
-keyboard/text/IME and automation resolution, M4D trace
-normalization/export/replay, and M5 semantic accessibility mapping.
+transitional `FocusTargetResult`, and the old pointer/keyboard
+activation/resolution helpers are removed. Focus changes enter through
+`submit_command`; keyboard modality now follows accepted raw keyboard ingress,
+not a public `CommandOrigin::keyboard()` constructor. M4C2 owns surface context,
+M4C3 implements pointer lifecycle/release-inside activation, M4C4 implements
+focus scopes/modality, M4C5 implements keyboard/text/composition and automation
+resolution, M4D trace normalization/export/replay, and M5 semantic accessibility
+mapping.
 
 One runtime-owned `FocusState` retains the exact focused mounted lifetime, its
 committed focus-within route, exact-generation scope memories, last
@@ -447,7 +456,46 @@ owner/inside state, and one exact live capture owner remain distinct.
 unchecked mounted target. Down/move/up/cancel/wheel use the canonical queue and
 routed transaction engine. Primary activation requires an eligible down and
 physical release inside the same exact live owner; wheel derives one route-only
-logical-scroll command. Raw keyboard/text/IME routing remains M4C5.
+logical-scroll command.
+
+## Keyboard, committed text, composition, and automation
+
+The M4C5 proof-complete implementation exposes `AppRuntime::submit_keyboard`,
+`submit_text`, `start_composition`, `submit_composition_update`,
+`submit_composition_end`, `cancel_composition`, and
+`submit_automation_command`. Each returns a runtime-issued receipt on admission
+or a structured error that retains the exact unaccepted input or automation
+request. The public APIs are host-neutral and require callers to pump; they do
+not synchronously dispatch callbacks or actions.
+
+`KeyboardEvent` separates physical and logical key identity and carries phase,
+modifiers, repeat, location, composition state, and optional device identity.
+It binds to the exact focused lifetime and routes Capture/Target/Bubble. An
+eligible non-repeated Enter down appends one canonical `Activate`; a repeated
+down never duplicates it. Space down records exact focused ownership and a
+matching live eligible Space up appends `Activate`. Unmatched ups and ownership
+lost to focus/lifetime/eligibility cleanup cannot activate a replacement.
+
+`CommittedTextEvent` is nonempty Unicode input, not a `LogicalKey::Character`
+shortcut. It routes only to a focused `WidgetTextInput` that opts into committed
+text and has no editable-text default. That capability separately opts into
+composition. `start_composition` allocates an opaque runtime-local generation
+only after focused-capability and mandatory-admission checks. Update, end, and
+explicit cancellation require that exact generation; the pending-to-active
+lifetime rejects foreign, missing, stale, invalid-range, duplicate-close, and
+replacement attempts without retargeting.
+
+Composition cancellation routes while the exact owner is live and precedes
+`FocusOut` on focus transfer. Removal/replacement, disablement, text-capability
+loss, shutdown, and drop also cancel before unmount. No composition operation
+performs editable-text mutation or an implicit committed-text default. Trace
+facts record lifecycle/causal metadata but never raw committed text or preedit.
+
+Automation resolves a unique authored ID in logical preorder and submits the
+ordinary semantic command with automation origin. Missing or ambiguous IDs
+return structured outcomes without command submission; a target made stale
+between resolution and processing is rejected without fallback. The old
+first-match lookup, direct activation path, and compatibility aliases are gone.
 
 ## C9 public authority delta
 
@@ -574,6 +622,13 @@ cleanup, and shutdown ordering. The accepted command `WorkSequence` and causal
 parents reconstruct the slice-local focus/modality lineage; M4D may normalize
 this schema but does not own missing M4C4 parentage.
 
+M4C5 adds accepted/processed keyboard, committed-text, composition, Space
+cleanup, and automation-resolution facts to the same trace. Text and preedit are
+redacted: records expose event/lifecycle kind, scalar-count and range facts, and
+opaque owner/generation causality, never raw payload content. The M4C5 mandatory
+admission plans reserve every required input trace sequence before mutation;
+trace capacity zero preserves input behavior without allocation.
+
 Transaction semantic request/invalidation records preserve callback collector
 order independently from cleanup-before-start queue grouping. Final action
 acceptance is recorded before queue append, and the accepted action trace record
@@ -584,8 +639,8 @@ exclusive watermark: `Some(S)` means every trace sequence less than `S` is no
 longer retained. Ordinary eviction cannot affect application behavior. When
 enabled mandatory trace sequencing cannot advance, the runtime becomes terminal
 before the pending mutable callback and cancels queued work. The current contract
-has no external sink, JSONL/export/redaction contract, replay, or M4D-normalized
-schema.
+has no external sink, JSONL/export, replay, or M4D-normalized schema; M4C5's
+in-memory text/preedit redaction is not an export contract.
 
 ## Breaking migrations
 
@@ -599,7 +654,9 @@ Removed without aliases:
 - `AppRuntime::dispatch` and private direct-dispatch authorities;
 - `Button::on_press` and one-shot button actions;
 - direct runtime activation, activation result/capacity compatibility types,
-  combined input intent, and pointer/keyboard activation helpers;
+  combined input intent, pointer/keyboard activation helpers, old key phase/key
+  vocabulary, optional-target keyboard events, and public
+  `CommandOrigin::keyboard()`;
 - direct focus mutation/traversal helpers, `FocusTargetResult`,
   `KeyboardFocusResult`, `handle_keyboard_focus`, and the transitional runtime
   policy module;
@@ -632,13 +689,18 @@ Added:
 - routed event/command vocabulary, `EventContext`, `WidgetEventOutput`, checked
   mapped event capability, and exact-target command submission with owned
   rejection recovery.
+- host-neutral keyboard, committed-text, and composition protocol values;
+  `WidgetTextInput`; canonical input ingress/owned recovery; opaque runtime-local
+  composition generations; deterministic authored-ID automation resolution; and
+  redacted input trace facts.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
 in force. The current contract includes effects, subscriptions, tasks, timers,
 host requests, all four readiness budgets, wake/redraw, and M4C1 exact-target
 routed semantic commands, M4C2 displayed-generation surface context, the M4C3
-host-neutral pointer lifecycle, and the owner-accepted M4C4 focus-scope/modality
-protocol. It does not imply native host translation, production scrolling, M4C5
-keyboard/text/IME or authored-ID automation, M4D trace export/replay, M5 semantic
-accessibility mapping, or M4 completion.
+host-neutral pointer lifecycle, the owner-accepted M4C4 focus-scope/modality
+protocol, and M4C5's proof-complete keyboard/text/composition and authored-ID
+automation implementation. It does not imply owner acceptance of M4C5, native
+host translation, production scrolling, editable text, platform IME objects,
+M4D trace export/replay, M5 semantic accessibility mapping, or M4 completion.

@@ -47,10 +47,11 @@ passed exact-head CI run `29996101708` and was squash-merged in PR #15 as
 `f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
 `30006170403` and was squash-merged in
 [PR #22](https://github.com/dornglut/runen-ui/pull/22) as
-`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 becomes the next
-implementation slice only after this post-merge authority update merges and its
-resulting accepted `main` is recorded; M4D1–M4D3 remain blocked in sequence. The
-target M4 pipeline is active and incomplete.
+`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5's implementation proof
+package is complete on its review branch, pending independent review, owner
+acceptance, and merge; its authority-reconciliation follow-up remains separate.
+M4D1–M4D3 remain blocked in sequence. The target M4 pipeline is active and
+incomplete.
 
 ```text
 Application-owned State + Action
@@ -58,7 +59,7 @@ Application-owned State + Action
   -> sibling-local mounted reconciliation
   -> persistent generational MountedTree
   -> state-aware cached widget capabilities
-  -> exact-target semantic-command, pointer, and focus capture/target/bubble routing
+  -> exact-target semantic-command, pointer, focus, keyboard, text, and composition capture/target/bubble routing
   -> one generalized sequenced work FIFO
   -> explicit four-budget readiness pump
   -> UiApp::update(State, Action) + complete reconciliation
@@ -121,8 +122,9 @@ four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
 complete per-family causal scheduler trace proofs. The exact-target routed
 semantic-command kernel is accepted through M4C1, displayed-generation surface
 context through M4C2, pointer lifecycle through M4C3, and focus scopes/modality
-through M4C4. Raw keyboard/text/IME and source-specific authored target
-resolution remain unimplemented M4C5 target architecture. Trace-v2
+through M4C4. M4C5's proof-complete review branch adds raw keyboard,
+committed-text/composition, and deterministic authored-ID automation resolution
+without editable text, native IME objects, or a platform host. Trace-v2
 normalization, export, and replay remain unimplemented M4D target architecture.
 See the [public API contract](architecture/public-api.md),
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and

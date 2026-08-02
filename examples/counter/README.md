@@ -23,6 +23,14 @@ presses the physical Increment bounds, releases inside the same exact mounted
 lifetime, and observes exactly one increment through the normal `Activate`
 convergence path.
 
+M4C5 additionally proves the public raw-input path without a Counter target
+helper: deterministic authored-ID automation requests focus and activation,
+non-repeated raw Enter queues one `Activate`, and matched raw Space down/up
+queues one more through the same FIFO, route, default, update, reconciliation,
+and trace path. These are proof-complete branch behaviors pending independent
+review and owner acceptance; they are not native keyboard translation or a
+production control contract.
+
 Run it with:
 
 ```powershell
