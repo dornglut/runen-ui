@@ -465,8 +465,9 @@ native IME objects, trace export/sink, or replay.
 
 **Proof ownership:** Counter/downstream keyboard and IME proofs, automation
 ambiguity/stale cases, complete M4C causal trace, stable/MSRV validation, and
-exact-head CI. The local proof package is complete; exact-head CI, independent
-review, owner acceptance, and merge remain delivery gates.
+exact-head CI. The proof package and reviewed exact-head validation are complete;
+independent review, owner acceptance, and merge remain delivery gates. Exact
+branch-head evidence belongs in PR #27 and the work-tracking system.
 
 **Exit criteria:** Every M4C row is proof-complete, physical/programmatic sources
 converge on one canonical path, and direct input helpers are gone.
