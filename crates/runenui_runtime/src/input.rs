@@ -4,8 +4,8 @@ use core::fmt;
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, CompositionCancel, CompositionCancelReason, CompositionEnd,
     CompositionEvent, CompositionGeneration, CompositionRange, CompositionStart, CompositionUpdate,
-    ElementId, HostProtocol, InputDeviceId, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
-    SemanticCommand, UiEvent, WorkSequence,
+    ElementId, HostProtocol, InputDeviceId, KeyboardEvent, KeyboardPhase, LogicalKey,
+    MonotonicInstant, PhysicalKey, SemanticCommand, UiEvent, WorkSequence,
 };
 
 use crate::{
@@ -150,6 +150,29 @@ impl CompositionStartSubmission {
     }
 }
 
+/// Caller-owned facts for a requested composition start.
+///
+/// A generation is intentionally absent: one exists only after the request has
+/// passed every admission check and entered the canonical input FIFO.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CompositionStartRequest {
+    device_id: Option<InputDeviceId>,
+}
+
+impl CompositionStartRequest {
+    /// Creates a request for the host input device, when one is known.
+    #[must_use]
+    pub const fn new(device_id: Option<InputDeviceId>) -> Self {
+        Self { device_id }
+    }
+
+    /// Returns the host input device associated with this request.
+    #[must_use]
+    pub const fn device_id(self) -> Option<InputDeviceId> {
+        self.device_id
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CompositionSubmission {
     sequence: WorkSequence,
@@ -217,6 +240,53 @@ impl fmt::Display for SubmitCompositionError {
 }
 impl std::error::Error for SubmitCompositionError {}
 
+/// Rejection of a composition-start request before a generation exists.
+#[must_use]
+pub struct SubmitCompositionStartError {
+    kind: SubmitCompositionErrorKind,
+    request: CompositionStartRequest,
+}
+
+impl SubmitCompositionStartError {
+    const fn new(kind: SubmitCompositionErrorKind, request: CompositionStartRequest) -> Self {
+        Self { kind, request }
+    }
+
+    /// Returns the structural or admission reason for the rejection.
+    #[must_use]
+    pub const fn kind(&self) -> SubmitCompositionErrorKind {
+        self.kind
+    }
+
+    /// Returns the original caller-owned request facts.
+    #[must_use]
+    pub const fn request(&self) -> CompositionStartRequest {
+        self.request
+    }
+
+    /// Consumes this error and returns the original caller-owned request facts.
+    #[must_use]
+    pub const fn into_request(self) -> CompositionStartRequest {
+        self.request
+    }
+}
+
+impl fmt::Debug for SubmitCompositionStartError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SubmitCompositionStartError")
+            .field("kind", &self.kind)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Display for SubmitCompositionStartError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "composition start rejected: {:?}", self.kind)
+    }
+}
+
+impl std::error::Error for SubmitCompositionStartError {}
+
 /// Runtime-owned pressed-Space authority for one exact focused lifetime.
 pub struct SpaceOwnership {
     pub(crate) target: crate::MountedNodeId,
@@ -277,10 +347,12 @@ impl TextSubmission {
 }
 
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SubmitAutomationErrorKind {
     MissingAuthoredId,
-    AmbiguousAuthoredId { matches: usize },
+    AmbiguousAuthoredId {
+        candidates: Vec<crate::AutomationMatchDiagnostic>,
+    },
     Command(crate::SubmitCommandErrorKind),
 }
 
@@ -303,8 +375,8 @@ impl SubmitAutomationError {
         }
     }
     #[must_use]
-    pub const fn kind(&self) -> SubmitAutomationErrorKind {
-        self.kind
+    pub const fn kind(&self) -> &SubmitAutomationErrorKind {
+        &self.kind
     }
     #[must_use]
     pub const fn authored_id(&self) -> &ElementId {
@@ -411,9 +483,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 );
                 (target, parent)
             }
-            AutomationResolution::Ambiguous { matches } => {
+            AutomationResolution::Ambiguous { candidates } => {
                 self.trace.record(
-                    TraceRecordKind::AutomationResolutionAmbiguous { matches },
+                    TraceRecordKind::AutomationResolutionAmbiguous {
+                        candidates: candidates.clone(),
+                    },
                     None,
                     None,
                     None,
@@ -421,7 +495,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     None,
                 );
                 return Err(SubmitAutomationError::new(
-                    SubmitAutomationErrorKind::AmbiguousAuthoredId { matches },
+                    SubmitAutomationErrorKind::AmbiguousAuthoredId { candidates },
                     authored_id,
                     command,
                 ));
@@ -497,43 +571,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn start_composition(
         &mut self,
         device_id: Option<InputDeviceId>,
-    ) -> Result<CompositionStartSubmission, SubmitCompositionError> {
-        let target = self.composition_start_target()?;
+    ) -> Result<CompositionStartSubmission, SubmitCompositionStartError> {
+        let request = CompositionStartRequest::new(device_id);
+        let target = self.composition_start_target(request)?;
         let Some(next) = self.next_composition_generation else {
-            return Err(SubmitCompositionError::new(
+            return Err(SubmitCompositionStartError::new(
                 SubmitCompositionErrorKind::CompositionGenerationExhausted,
-                CompositionEvent::Start(CompositionStart::__runtime_new(
-                    self.tree.composition_generation(u64::MAX),
-                    device_id,
-                )),
+                request,
             ));
         };
         let trace_plan = MandatoryTracePlan::composition_start_acceptance()
             .checked_add(MandatoryTracePlan::input_acceptance())
             .unwrap_or_else(|| unreachable!("composition trace plan has a fixed bounded size"));
         if !self.trace.can_admit(trace_plan) {
-            return Err(self.composition_start_error(
+            return Err(Self::composition_start_error(
                 SubmitCompositionErrorKind::TraceSequenceExhausted,
-                device_id,
+                request,
             ));
         }
         let Some(reservation) = self.trace.reserve_input_outcome() else {
-            return Err(self.composition_start_error(
+            return Err(Self::composition_start_error(
                 SubmitCompositionErrorKind::TraceSequenceExhausted,
-                device_id,
+                request,
             ));
         };
         let Some(sequence) = self.queue.next_sequence() else {
             self.trace.release_reservation(reservation);
-            return Err(self.composition_start_error(
+            return Err(Self::composition_start_error(
                 SubmitCompositionErrorKind::WorkSequenceExhausted,
-                device_id,
+                request,
             ));
         };
         let generation = self.tree.composition_generation(next.get());
         let event = CompositionEvent::Start(CompositionStart::__runtime_new(
             generation.clone(),
-            device_id,
+            request.device_id(),
         ));
         let accepted = self.trace.record(
             TraceRecordKind::CompositionGenerationAllocated,
@@ -543,17 +615,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             Some(self.tree.trace_target(&target)),
         );
-        if self.trace.is_enabled() && accepted.is_none() {
-            self.trace.release_reservation(reservation);
-            return Err(SubmitCompositionError::new(
-                SubmitCompositionErrorKind::TraceSequenceExhausted,
-                event,
-            ));
-        }
+        debug_assert!(accepted.is_some() || !self.trace.is_enabled());
         self.composition = CompositionState::Pending {
             generation: generation.clone(),
             owner: target.clone(),
-            device_id,
+            device_id: request.device_id(),
             start_sequence: sequence,
         };
         let pending_bound = self.trace.record(
@@ -564,14 +630,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             Some(self.tree.trace_target(&target)),
         );
-        if self.trace.is_enabled() && pending_bound.is_none() {
-            self.composition = CompositionState::None;
-            self.trace.release_reservation(reservation);
-            return Err(SubmitCompositionError::new(
-                SubmitCompositionErrorKind::TraceSequenceExhausted,
-                event,
-            ));
-        }
+        debug_assert!(pending_bound.is_some() || !self.trace.is_enabled());
         self.next_composition_generation = next
             .get()
             .checked_add(1)
@@ -586,6 +645,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 reservation,
             )
             .unwrap_or_else(|_| unreachable!("composition queue was preflighted"));
+        self.last_issued_composition_generation = Some(next);
         self.external_queue_commit_accepted();
         Ok(CompositionStartSubmission::new(committed, generation))
     }
@@ -628,59 +688,66 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         ))
     }
 
-    fn composition_start_target(&mut self) -> Result<crate::MountedNodeId, SubmitCompositionError> {
+    fn composition_start_target(
+        &mut self,
+        request: CompositionStartRequest,
+    ) -> Result<crate::MountedNodeId, SubmitCompositionStartError> {
         match self.status {
             RuntimeStatus::Running => {}
             RuntimeStatus::Closed => {
-                return Err(self.composition_start_error(SubmitCompositionErrorKind::Closed, None));
+                return Err(Self::composition_start_error(
+                    SubmitCompositionErrorKind::Closed,
+                    request,
+                ));
             }
             RuntimeStatus::Terminal(reason) => {
-                return Err(self
-                    .composition_start_error(SubmitCompositionErrorKind::Terminal(reason), None));
+                return Err(Self::composition_start_error(
+                    SubmitCompositionErrorKind::Terminal(reason),
+                    request,
+                ));
             }
         }
         if !matches!(self.composition, CompositionState::None) {
-            return Err(
-                self.composition_start_error(SubmitCompositionErrorKind::StaleGeneration, None)
-            );
+            return Err(Self::composition_start_error(
+                SubmitCompositionErrorKind::StaleGeneration,
+                request,
+            ));
         }
         let target = self.focus.focused_node().cloned().ok_or_else(|| {
-            self.composition_start_error(SubmitCompositionErrorKind::NoFocusedTarget, None)
+            Self::composition_start_error(SubmitCompositionErrorKind::NoFocusedTarget, request)
         })?;
         let capability = self.tree.text_input_probe(&target).map_err(|_| {
-            self.composition_start_error(
+            Self::composition_start_error(
                 SubmitCompositionErrorKind::FocusedTargetNotCompositionCapable,
-                None,
+                request,
             )
         })?;
         if !capability.accepts_composition() {
-            return Err(self.composition_start_error(
+            return Err(Self::composition_start_error(
                 SubmitCompositionErrorKind::FocusedTargetNotCompositionCapable,
-                None,
+                request,
             ));
         }
         match self.queue.preflight_commit(1) {
             Ok(()) => Ok(target),
-            Err(crate::queue::QueueCommitError::Full) => {
-                Err(self.composition_start_error(SubmitCompositionErrorKind::Full, None))
+            Err(crate::queue::QueueCommitError::Full) => Err(Self::composition_start_error(
+                SubmitCompositionErrorKind::Full,
+                request,
+            )),
+            Err(crate::queue::QueueCommitError::SequenceExhausted) => {
+                Err(Self::composition_start_error(
+                    SubmitCompositionErrorKind::WorkSequenceExhausted,
+                    request,
+                ))
             }
-            Err(crate::queue::QueueCommitError::SequenceExhausted) => Err(self
-                .composition_start_error(SubmitCompositionErrorKind::WorkSequenceExhausted, None)),
         }
     }
 
-    fn composition_start_error(
-        &self,
+    const fn composition_start_error(
         kind: SubmitCompositionErrorKind,
-        device_id: Option<InputDeviceId>,
-    ) -> SubmitCompositionError {
-        SubmitCompositionError::new(
-            kind,
-            CompositionEvent::Start(CompositionStart::__runtime_new(
-                self.tree.composition_generation(0),
-                device_id,
-            )),
-        )
+        request: CompositionStartRequest,
+    ) -> SubmitCompositionStartError {
+        SubmitCompositionStartError::new(kind, request)
     }
 
     fn submit_existing_composition(
@@ -787,8 +854,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     fn composition_generation_was_issued(&self, generation: &CompositionGeneration) -> bool {
-        self.next_composition_generation
-            .is_none_or(|next| generation.get() < next.get())
+        self.last_issued_composition_generation
+            .is_some_and(|last| generation.get() != 0 && generation.get() <= last.get())
     }
 
     fn composition_generation_error_kind(
@@ -921,6 +988,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
+        let mandatory_default_commands = match &payload {
+            InputEnvelopePayload::Keyboard(event) => {
+                usize::from(Self::keyboard_default_command_is_possible(event))
+            }
+            InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_) => 0,
+        };
         if let InputEnvelopePayload::Composition(event) = &payload
             && !self.composition_processing_matches(&target, event)
         {
@@ -937,9 +1010,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             return;
         }
-        let Some(mut transaction) =
-            self.begin_routed_transaction_with_trace(facts, MandatoryTracePlan::input_processing())
-        else {
+        let Some(mut transaction) = self.begin_routed_transaction_with_trace_and_default_commands(
+            facts,
+            MandatoryTracePlan::input_processing(),
+            mandatory_default_commands,
+        ) else {
             self.retire_failed_composition(&target, &payload, sequence, causal_parent);
             return;
         };
@@ -949,43 +1024,40 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             InputEnvelopePayload::CommittedText(event) => UiEvent::CommittedText(event.clone()),
             InputEnvelopePayload::Composition(event) => UiEvent::Composition(event.clone()),
         };
-        if self
-            .invoke_routed_callbacks(&mut transaction, &event, None)
-            .is_err()
-        {
+        if let Err(failure) = self.invoke_routed_callbacks(&mut transaction, &event, None) {
             self.retire_failed_composition(&target, &payload, sequence, causal_parent);
+            let current = transaction.failure_current_target.clone();
+            self.poison_transaction(&transaction, failure, current.as_ref());
             return;
         }
-        let default_prevented = transaction.default_prevented;
-        if default_prevented {
-            let kind = match &payload {
-                InputEnvelopePayload::Keyboard(_) => TraceRecordKind::KeyboardDefaultPrevented,
-                InputEnvelopePayload::CommittedText(_) => {
-                    TraceRecordKind::CommittedTextDefaultPrevented
-                }
-                InputEnvelopePayload::Composition(_) => TraceRecordKind::DefaultPrevented,
-            };
-            transaction.parent = self.trace.record_event(
-                kind,
-                transaction.sequence,
-                transaction.parent,
-                Some(transaction.target_trace.clone()),
-                transaction.instant,
-                &transaction.target,
-                Some(&transaction.target),
-                transaction.origin,
-            );
+        if let Err(failure) = self.collect_input_default(&mut transaction, &payload) {
+            let current = transaction.failure_current_target.clone();
+            self.poison_transaction(&transaction, failure, current.as_ref());
+            return;
         }
+        let completion_parent = transaction.parent;
+        let completion_instant = transaction.instant;
+        let completion_origin = transaction.origin;
+        let failure_facts = transaction.failure_facts();
         if self.commit_routed_transaction(transaction).is_err() {
             self.retire_failed_composition(&target, &payload, sequence, causal_parent);
+            self.poison_routed_event(
+                &failure_facts,
+                crate::TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                Some(&target),
+            );
             return;
         }
         match payload {
-            InputEnvelopePayload::Keyboard(keyboard) if !default_prevented => {
-                self.derive_keyboard_default(&target, &keyboard, sequence);
-            }
             InputEnvelopePayload::Composition(event) => {
-                self.finish_composition_event(&target, &event);
+                self.finish_composition_event(
+                    &target,
+                    &event,
+                    sequence,
+                    completion_parent,
+                    completion_instant,
+                    completion_origin,
+                );
             }
             InputEnvelopePayload::Keyboard(_) | InputEnvelopePayload::CommittedText(_) => {}
         }
@@ -1061,6 +1133,37 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
     }
 
+    fn collect_input_default(
+        &mut self,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        payload: &InputEnvelopePayload,
+    ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
+        if transaction.default_prevented {
+            let kind = match payload {
+                InputEnvelopePayload::Keyboard(_) => TraceRecordKind::KeyboardDefaultPrevented,
+                InputEnvelopePayload::CommittedText(_) => {
+                    TraceRecordKind::CommittedTextDefaultPrevented
+                }
+                InputEnvelopePayload::Composition(_) => TraceRecordKind::DefaultPrevented,
+            };
+            transaction.parent = self.trace.record_event(
+                kind,
+                transaction.sequence,
+                transaction.parent,
+                Some(transaction.target_trace.clone()),
+                transaction.instant,
+                &transaction.target,
+                Some(&transaction.target),
+                transaction.origin,
+            );
+            return Ok(());
+        }
+        if let InputEnvelopePayload::Keyboard(keyboard) = payload {
+            self.collect_keyboard_default(transaction, keyboard)?;
+        }
+        Ok(())
+    }
+
     fn retire_failed_composition(
         &mut self,
         target: &crate::MountedNodeId,
@@ -1091,6 +1194,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         target: &crate::MountedNodeId,
         event: &CompositionEvent,
+        sequence: WorkSequence,
+        causal_parent: Option<crate::TraceSequence>,
+        instant: MonotonicInstant,
+        origin: CommandOrigin,
     ) {
         let generation = event.generation();
         if self.composition.generation() != Some(generation)
@@ -1108,13 +1215,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         device_id,
                         start_sequence,
                     } => {
-                        self.trace.record(
+                        self.trace.record_event(
                             TraceRecordKind::CompositionActiveBound,
-                            None,
-                            None,
-                            None,
-                            None,
+                            sequence,
+                            causal_parent,
                             Some(self.tree.trace_target(&owner)),
+                            instant,
+                            target,
+                            Some(&owner),
+                            origin,
                         );
                         CompositionState::Active {
                             generation,
@@ -1128,90 +1237,137 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             CompositionEvent::End(_) | CompositionEvent::Cancel(_) => {
                 self.composition = CompositionState::None;
-                self.trace.record(
+                self.trace.record_event(
                     TraceRecordKind::CompositionRetired,
-                    None,
-                    None,
-                    None,
-                    None,
+                    sequence,
+                    causal_parent,
                     Some(self.tree.trace_target(target)),
+                    instant,
+                    target,
+                    Some(target),
+                    origin,
                 );
             }
             _ => {}
         }
     }
 
-    fn derive_keyboard_default(
+    const fn keyboard_default_command_is_possible(event: &KeyboardEvent) -> bool {
+        if matches!(event.physical_key(), PhysicalKey::Space) {
+            return matches!(event.phase(), KeyboardPhase::Up) && !event.is_repeat();
+        }
+        if !matches!(event.phase(), KeyboardPhase::Down) {
+            return false;
+        }
+        matches!(
+            event.logical_key(),
+            LogicalKey::Tab
+                | LogicalKey::ArrowLeft
+                | LogicalKey::ArrowRight
+                | LogicalKey::ArrowUp
+                | LogicalKey::ArrowDown
+                | LogicalKey::Escape
+        ) || (matches!(event.logical_key(), LogicalKey::Enter) && !event.is_repeat())
+    }
+
+    fn collect_keyboard_default(
         &mut self,
-        target: &crate::MountedNodeId,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
         event: &KeyboardEvent,
-        sequence: WorkSequence,
-    ) {
+    ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
+        let target = transaction.target.clone();
         if matches!(event.phase(), KeyboardPhase::Cancel) {
-            self.revoke_space_ownership(TraceSpaceCleanupReason::KeyboardCancel);
-            return;
+            if matches!(event.physical_key(), PhysicalKey::Space)
+                && self.space_ownership.as_ref().is_some_and(|ownership| {
+                    ownership.target == target && ownership.device_id == event.device_id()
+                })
+            {
+                self.revoke_space_ownership_in_transaction(
+                    transaction,
+                    TraceSpaceCleanupReason::KeyboardCancel,
+                );
+            }
+            return Ok(());
         }
         if matches!(event.physical_key(), PhysicalKey::Space) {
             match event.phase() {
                 KeyboardPhase::Down
                     if !event.is_repeat()
                         && self.space_ownership.is_none()
-                        && self.keyboard_activation_eligible(target) =>
+                        && self.keyboard_activation_eligible(&target) =>
                 {
                     self.space_ownership = Some(SpaceOwnership {
                         target: target.clone(),
                         device_id: event.device_id(),
-                        down_sequence: sequence,
+                        down_sequence: transaction.sequence,
                     });
-                    self.trace.record(
+                    transaction.parent = self.trace.record_event(
                         TraceRecordKind::KeyboardSpaceOwnershipEstablished,
-                        Some(sequence),
-                        None,
-                        None,
-                        None,
-                        Some(self.tree.trace_target(target)),
+                        transaction.sequence,
+                        transaction.parent,
+                        Some(self.tree.trace_target(&target)),
+                        transaction.instant,
+                        &transaction.target,
+                        Some(&target),
+                        transaction.origin,
                     );
                 }
                 KeyboardPhase::Up => {
-                    let eligible = self.keyboard_activation_eligible(target);
+                    let eligible = self.keyboard_activation_eligible(&target);
                     let matches = !event.is_repeat()
                         && self.space_ownership.as_ref().is_some_and(|owner| {
-                            owner.target == *target
+                            owner.target == target
                                 && owner.device_id == event.device_id()
                                 && owner.down_sequence.get() > 0
                                 && eligible
                         });
-                    self.trace.record(
+                    transaction.parent = self.trace.record_event(
                         TraceRecordKind::KeyboardSpaceReleaseMatched { matched: matches },
-                        Some(sequence),
-                        None,
-                        None,
-                        None,
-                        Some(self.tree.trace_target(target)),
+                        transaction.sequence,
+                        transaction.parent,
+                        Some(self.tree.trace_target(&target)),
+                        transaction.instant,
+                        &transaction.target,
+                        Some(&target),
+                        transaction.origin,
                     );
-                    self.revoke_space_ownership(TraceSpaceCleanupReason::Release);
                     if matches {
-                        self.trace.record(
+                        self.revoke_space_ownership_in_transaction(
+                            transaction,
+                            TraceSpaceCleanupReason::Release,
+                        );
+                        transaction.parent = self.trace.record_event(
                             TraceRecordKind::KeyboardSpaceActivationDerived,
-                            Some(sequence),
-                            None,
-                            None,
-                            None,
-                            Some(self.tree.trace_target(target)),
+                            transaction.sequence,
+                            transaction.parent,
+                            Some(self.tree.trace_target(&target)),
+                            transaction.instant,
+                            &transaction.target,
+                            Some(&target),
+                            transaction.origin,
                         );
-                        let _ = self.submit_command(
-                            target.clone(),
+                        Self::collect_keyboard_default_command(
+                            transaction,
+                            target,
                             SemanticCommand::Activate,
-                            CommandOrigin::__runtime_keyboard_default(),
-                        );
+                        )?;
                     }
                 }
                 _ => {}
             }
-            return;
+            return Ok(());
         }
+        self.collect_non_space_keyboard_default(transaction, event, target)
+    }
+
+    fn collect_non_space_keyboard_default(
+        &mut self,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        event: &KeyboardEvent,
+        target: crate::MountedNodeId,
+    ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
         if event.phase() != KeyboardPhase::Down {
-            return;
+            return Ok(());
         }
         let command = match event.logical_key() {
             LogicalKey::Tab if event.modifiers().shift() => Some(SemanticCommand::FocusPrevious),
@@ -1225,27 +1381,66 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             _ => None,
         };
         if matches!(command, Some(SemanticCommand::Activate))
-            && !self.keyboard_activation_eligible(target)
+            && !self.keyboard_activation_eligible(&target)
         {
-            return;
+            return Ok(());
         }
         if matches!(command, Some(SemanticCommand::Activate)) {
-            self.trace.record(
+            transaction.parent = self.trace.record_event(
                 TraceRecordKind::KeyboardEnterActivationDerived,
-                Some(sequence),
-                None,
-                None,
-                None,
-                Some(self.tree.trace_target(target)),
+                transaction.sequence,
+                transaction.parent,
+                Some(self.tree.trace_target(&target)),
+                transaction.instant,
+                &transaction.target,
+                Some(&target),
+                transaction.origin,
             );
         }
         if let Some(command) = command {
-            let _ = self.submit_command(
-                target.clone(),
-                command,
-                CommandOrigin::__runtime_keyboard_default(),
-            );
+            Self::collect_keyboard_default_command(transaction, target, command)?;
         }
+        Ok(())
+    }
+
+    fn collect_keyboard_default_command(
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        target: crate::MountedNodeId,
+        command: SemanticCommand,
+    ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
+        if let Err(failure) = transaction.consume_mandatory_default_command() {
+            transaction.failure_current_target = Some(target);
+            return Err(failure);
+        }
+        transaction
+            .default_outputs
+            .push(crate::runtime::CollectedRoutedOutput::Command {
+                target,
+                command,
+                origin: CommandOrigin::__runtime_keyboard_default(),
+                causal_parent: transaction.parent,
+            });
+        Ok(())
+    }
+
+    fn revoke_space_ownership_in_transaction(
+        &mut self,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        reason: TraceSpaceCleanupReason,
+    ) {
+        let Some(ownership) = self.space_ownership.take() else {
+            return;
+        };
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::KeyboardSpaceOwnershipCleared { reason },
+            transaction.sequence,
+            transaction.parent,
+            Some(self.tree.trace_target(&ownership.target)),
+            transaction.instant,
+            &transaction.target,
+            Some(&ownership.target),
+            transaction.origin,
+        );
     }
 
     fn keyboard_activation_eligible(&mut self, target: &crate::MountedNodeId) -> bool {

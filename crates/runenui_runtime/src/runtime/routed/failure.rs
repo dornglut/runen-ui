@@ -104,7 +104,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
     }
 
-    pub(in crate::runtime) fn poison_transaction(
+    pub(crate) fn poison_transaction(
         &mut self,
         transaction: &RoutedTransaction<Action>,
         failure: TraceRoutedIntegrityFailure,
@@ -113,7 +113,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.poison_routed_event(&transaction.failure_facts(), failure, current_target);
     }
 
-    pub(in crate::runtime) fn poison_routed_event(
+    pub(crate) fn poison_routed_event(
         &mut self,
         facts: &RoutedFailureFacts,
         failure: TraceRoutedIntegrityFailure,

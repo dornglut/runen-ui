@@ -118,18 +118,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(mut transaction) = self
             .begin_routed_transaction_with_trace(facts, MandatoryTracePlan::composition_cleanup())
         else {
-            self.composition = crate::input::CompositionState::None;
+            // A required cleanup callback could not be admitted. Do not erase
+            // the live lifetime and continue toward focus or tree teardown:
+            // terminalization is the explicit integrity boundary instead.
+            self.enter_terminal(crate::RuntimeTerminalReason::Poisoned, 0);
             return;
         };
-        if self
-            .cancel_composition_in_transaction(&mut transaction, &owner, reason)
-            .and_then(|()| {
-                self.commit_routed_transaction(transaction)
-                    .map_err(|()| TraceRoutedIntegrityFailure::CommitInvariantFailure)
-            })
-            .is_err()
+        if let Err(failure) =
+            self.cancel_composition_in_transaction(&mut transaction, &owner, reason)
         {
-            self.composition = crate::input::CompositionState::None;
+            let current = transaction.failure_current_target.clone();
+            self.poison_transaction(&transaction, failure, current.as_ref());
+            return;
+        }
+        let failure_facts = transaction.failure_facts();
+        if self.commit_routed_transaction(transaction).is_err() {
+            self.poison_routed_event(
+                &failure_facts,
+                TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                Some(&owner),
+            );
         }
     }
 

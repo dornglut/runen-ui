@@ -23,6 +23,7 @@ pub use node::{MountedNodeRef, MountedTreeIndex};
 pub(crate) use reconcile::{PlannedInvalidation, PlannedLifetimeReason};
 pub(crate) use routing::RouteBuildError;
 pub use runenui_core::{MountedNodeId, SemanticNodeId};
+pub use tree::AutomationMatchDiagnostic;
 pub(crate) use tree::{
     AutomationResolution, MountedIdentityExhausted, MountedTree, ReconcileStats, TargetStatus,
 };

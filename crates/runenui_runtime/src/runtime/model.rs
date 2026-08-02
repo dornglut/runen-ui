@@ -12,7 +12,7 @@ pub(in crate::runtime) enum ActionCommitError<Action> {
     Integrity(Action),
 }
 
-pub(in crate::runtime) enum CollectedRoutedOutput<Action> {
+pub(crate) enum CollectedRoutedOutput<Action> {
     Action {
         action: Action,
         causal_parent: Option<TraceSequence>,

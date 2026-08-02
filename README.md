@@ -9,7 +9,8 @@ Today RunenUI is a coherent **headless architecture proof**. It is not a product
 Milestone status: M4A through M4C4 are complete and owner-accepted. M4C5 is
 proof-complete on its review branch, pending independent review, owner
 acceptance, and merge; its separate authority-reconciliation follow-up is not
-part of that implementation. M4D1–M4D3 remain blocked in sequence. M4 remains
+part of that implementation: the follow-up is the M4C5 authority-reconciliation
+PR. M4D1–M4D3 remain blocked in sequence. M4 remains
 active and incomplete. Current maturity, durable sequence, work ownership, and
 historical acceptance evidence live in the [status map](docs/status-map.md),
 [roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and

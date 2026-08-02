@@ -75,6 +75,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             space_ownership: None,
             composition: crate::input::CompositionState::None,
             next_composition_generation: core::num::NonZeroU64::new(1),
+            last_issued_composition_generation: None,
             generation,
             report,
             status: RuntimeStatus::Running,

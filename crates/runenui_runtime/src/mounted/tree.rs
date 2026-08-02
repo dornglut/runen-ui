@@ -66,11 +66,45 @@ pub(crate) enum TargetStatus {
     Foreign,
 }
 
+/// Redacted deterministic evidence for one authored-ID automation match.
+///
+/// The logical preorder is stable for one mounted tree and the mounted identity
+/// is opaque and generation-scoped. Neither field exposes widget state or input
+/// content.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutomationMatchDiagnostic {
+    logical_preorder: usize,
+    mounted_node_id: MountedNodeId,
+}
+
+impl AutomationMatchDiagnostic {
+    pub(crate) const fn new(logical_preorder: usize, mounted_node_id: MountedNodeId) -> Self {
+        Self {
+            logical_preorder,
+            mounted_node_id,
+        }
+    }
+
+    /// Returns this candidate's stable logical preorder position.
+    #[must_use]
+    pub const fn logical_preorder(&self) -> usize {
+        self.logical_preorder
+    }
+
+    /// Returns the opaque exact mounted lifetime that matched.
+    #[must_use]
+    pub const fn mounted_node_id(&self) -> &MountedNodeId {
+        &self.mounted_node_id
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AutomationResolution {
     Unique(MountedNodeId),
     Missing,
-    Ambiguous { matches: usize },
+    Ambiguous {
+        candidates: Vec<AutomationMatchDiagnostic>,
+    },
 }
 
 pub(crate) struct MountedTree<Action> {
@@ -172,15 +206,17 @@ impl<Action> MountedTree<Action> {
         let matches: Vec<_> = self
             .preorder_ids()
             .into_iter()
+            .enumerate()
             .filter(|id| {
-                self.node(id).and_then(|node| node.authored_id.as_ref()) == Some(authored_id)
+                self.node(&id.1).and_then(|node| node.authored_id.as_ref()) == Some(authored_id)
             })
+            .map(|(logical_preorder, id)| AutomationMatchDiagnostic::new(logical_preorder, id))
             .collect();
         match matches.as_slice() {
             [] => AutomationResolution::Missing,
-            [id] => AutomationResolution::Unique(id.clone()),
-            many => AutomationResolution::Ambiguous {
-                matches: many.len(),
+            [candidate] => AutomationResolution::Unique(candidate.mounted_node_id.clone()),
+            _ => AutomationResolution::Ambiguous {
+                candidates: matches,
             },
         }
     }

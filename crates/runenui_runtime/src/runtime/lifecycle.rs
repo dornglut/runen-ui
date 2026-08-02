@@ -27,13 +27,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !matches!(self.status, RuntimeStatus::Running) {
             return 0;
         }
+        // Mark terminal before attempting best-effort live-owner cleanup. If
+        // that required cancellation cannot route or commit, teardown is
+        // already stopped at the terminal authority boundary rather than
+        // continuing after a silent lifetime clear.
+        self.status = RuntimeStatus::Terminal(reason);
         self.cancel_composition_while_live(runenui_core::CompositionCancelReason::Shutdown);
         self.revoke_space_ownership(TraceSpaceCleanupReason::Terminal);
         let (cancelled_queued, cancelled_live, pointer_parent) = self.close_scheduling_authority();
         let cancelled = cancelled_queued
             .saturating_add(cancelled_live.total())
             .saturating_add(additional_cancelled);
-        self.status = RuntimeStatus::Terminal(reason);
         let terminal = self.trace.record(
             TraceRecordKind::RuntimeTerminal { reason },
             None,

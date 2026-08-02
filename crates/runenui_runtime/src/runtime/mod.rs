@@ -68,7 +68,8 @@ pub(in crate::runtime) use helpers::{
     trace_work_owner, with_routed_parent,
 };
 pub(in crate::runtime) use lifecycle::revoke_generation_authority;
-pub(in crate::runtime) use model::{ActionCommitError, CollectedRoutedOutput, MutationPhase};
+pub(crate) use model::CollectedRoutedOutput;
+pub(in crate::runtime) use model::{ActionCommitError, MutationPhase};
 pub use model::{
     HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
     ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
@@ -89,6 +90,11 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     pub(crate) space_ownership: Option<SpaceOwnership>,
     pub(crate) composition: CompositionState,
     pub(crate) next_composition_generation: Option<core::num::NonZeroU64>,
+    /// Highest generation successfully committed to the canonical input FIFO.
+    ///
+    /// This is deliberately distinct from the next allocator value: exhaustion
+    /// alone must not make a fabricated generation appear to have been issued.
+    pub(crate) last_issued_composition_generation: Option<core::num::NonZeroU64>,
     generation: u64,
     report: ReconciliationReport,
     pub(crate) status: RuntimeStatus,

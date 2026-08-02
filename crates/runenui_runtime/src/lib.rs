@@ -184,18 +184,19 @@ pub use constraints::{AxisConstraints, AxisLimit, LayoutConstraints};
 pub use debug::{DebugSurfaceRenderer, render_debug_surface_frame};
 pub use focus::FocusState;
 pub use input::{
-    AutomationSubmission, CompositionStartSubmission, CompositionSubmission, KeyboardSubmission,
-    SubmitAutomationError, SubmitAutomationErrorKind, SubmitCompositionError,
-    SubmitCompositionErrorKind, SubmitKeyboardError, SubmitKeyboardErrorKind, SubmitTextError,
-    SubmitTextErrorKind, TextSubmission,
+    AutomationSubmission, CompositionStartRequest, CompositionStartSubmission,
+    CompositionSubmission, KeyboardSubmission, SubmitAutomationError, SubmitAutomationErrorKind,
+    SubmitCompositionError, SubmitCompositionErrorKind, SubmitCompositionStartError,
+    SubmitKeyboardError, SubmitKeyboardErrorKind, SubmitTextError, SubmitTextErrorKind,
+    TextSubmission,
 };
 pub use measurement::{
     BaselineError, DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement,
     TextMeasurementKind, TextMeasurementRequest,
 };
 pub use mounted::{
-    DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef, MountedNodeId, MountedNodeRef,
-    MountedTreeIndex, SemanticNodeId,
+    AutomationMatchDiagnostic, DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef,
+    MountedNodeId, MountedNodeRef, MountedTreeIndex, SemanticNodeId,
 };
 pub use pointer::{PointerSubmission, SubmitPointerError, SubmitPointerErrorKind};
 pub use pump::{PumpBudget, PumpBudgetExhaustion, PumpOutcome, PumpReport};

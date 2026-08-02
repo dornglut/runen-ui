@@ -636,15 +636,6 @@ fn key_03_space_ownership_requires_the_exact_focused_lifetime_and_device() {
 
     runtime
         .submit_keyboard(keyboard(
-            KeyboardPhase::Down,
-            PhysicalKey::Space,
-            LogicalKey::Space,
-            false,
-            Some(device_a),
-        ))
-        .unwrap_or_else(|_| unreachable!());
-    runtime
-        .submit_keyboard(keyboard(
             KeyboardPhase::Up,
             PhysicalKey::Space,
             LogicalKey::Space,
@@ -657,7 +648,7 @@ fn key_03_space_ownership_requires_the_exact_focused_lifetime_and_device() {
     assert_eq!(
         runtime.state().activations,
         1,
-        "matched release queues activation once"
+        "the original device-A release still consumes the lifetime after device-B misses"
     );
 
     runtime
@@ -792,6 +783,140 @@ fn key_04_keyboard_rejections_preserve_the_owned_event_and_runtime_state() {
 #[test]
 #[allow(
     clippy::too_many_lines,
+    reason = "this one conformance row keeps Enter, matched Space, and exact admission-boundary proof together"
+)]
+fn key_05_keyboard_defaults_reserve_queue_trace_and_command_lineage_before_callbacks() {
+    let config = RuntimeConfig::default().with_limits(
+        RuntimeLimits::default()
+            .with_waiting_envelopes(4)
+            .with_transaction_outputs(1),
+    );
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut enter = mounted_with_config(InputState::standard(Rc::clone(&log)), config);
+    focus(&mut enter, "target");
+    clear_log(&enter);
+    let key = enter
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Enter,
+            LogicalKey::Enter,
+            false,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("Enter ingress is accepted"));
+    let report = enter.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(report.processed_envelopes(), 1);
+    assert_eq!(report.remaining_queued_envelopes(), 1);
+    assert_eq!(enter.state().activations, 0, "activation remains queued");
+    let derived = enter
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::KeyboardEnterActivationDerived
+            ) && record.work_sequence() == Some(key.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("Enter derivation is canonical trace work"));
+    let accepted = enter
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CommandSubmissionAccepted)
+                && record.command_origin() == Some(CommandOrigin::__runtime_keyboard_default())
+        })
+        .unwrap_or_else(|| unreachable!("derived command uses canonical command ingress"));
+    assert_ne!(accepted.work_sequence(), Some(key.sequence()));
+    assert_eq!(accepted.causal_parent(), Some(derived.sequence()));
+    settle(&mut enter);
+    assert_eq!(enter.state().activations, 1);
+
+    let mut space = mounted_with_config(InputState::standard(log), config);
+    focus(&mut space, "target");
+    space
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Space,
+            LogicalKey::Space,
+            false,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("Space-down ingress is accepted"));
+    settle(&mut space);
+    let release = space
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Up,
+            PhysicalKey::Space,
+            LogicalKey::Space,
+            false,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("Space-up ingress is accepted"));
+    let report = space.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(report.remaining_queued_envelopes(), 1);
+    let derived = space
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::KeyboardSpaceActivationDerived
+            ) && record.work_sequence() == Some(release.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("matched Space release derives activation"));
+    let accepted = space
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CommandSubmissionAccepted)
+                && record.command_origin() == Some(CommandOrigin::__runtime_keyboard_default())
+                && record.causal_parent() == Some(derived.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("Space derivation keeps its command parent"));
+    assert_ne!(accepted.work_sequence(), Some(release.sequence()));
+    settle(&mut space);
+    assert_eq!(space.state().activations, 1);
+
+    let boundary_log = Rc::new(RefCell::new(Vec::new()));
+    let mut boundary = mounted_with_config(InputState::standard(Rc::clone(&boundary_log)), config);
+    focus(&mut boundary, "target");
+    clear_log(&boundary);
+    // With this two-node route and one regular output credit, the old input
+    // admission fit exactly at this boundary. Reserving the possible Enter
+    // command makes the entire raw route reject before any callback runs.
+    boundary.__seed_next_trace_sequence_for_test(u64::MAX - 38);
+    boundary
+        .submit_keyboard(keyboard(
+            KeyboardPhase::Down,
+            PhysicalKey::Enter,
+            LogicalKey::Enter,
+            false,
+            None,
+        ))
+        .unwrap_or_else(|_| unreachable!("raw ingress still reserves its rejection outcome"));
+    let _ = boundary.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(
+        boundary.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
+    );
+    assert!(boundary_log.borrow().is_empty());
+    assert_eq!(boundary.state().activations, 0);
+    assert!(kinds(&boundary).iter().any(|kind| matches!(
+        kind,
+        TraceRecordKind::RoutedEventAdmissionRejected {
+            capacity: runenui_runtime::TraceRoutedAdmissionRejection::TraceSequenceExhausted
+        }
+    )));
+    assert!(
+        !kinds(&boundary)
+            .iter()
+            .any(|kind| matches!(kind, TraceRecordKind::KeyboardEnterActivationDerived))
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
     reason = "this one conformance row keeps committed-text routing, rejection, and redaction evidence together"
 )]
 fn text_01_committed_text_routes_to_the_exact_capable_focus_and_is_redacted_in_trace() {
@@ -904,6 +1029,10 @@ fn text_01_committed_text_routes_to_the_exact_capable_focus_and_is_redacted_in_t
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "this one conformance row keeps composition lifecycle, payload redaction, and causal-parent proof together"
+)]
 fn ime_01_composition_start_update_end_and_explicit_cancel_are_exact_and_redacted() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = mounted(InputState::standard(Rc::clone(&log)));
@@ -921,7 +1050,7 @@ fn ime_01_composition_start_update_end_and_explicit_cancel_are_exact_and_redacte
             Some(range),
         )
         .unwrap_or_else(|_| unreachable!("pending generation accepts queued update"));
-    runtime
+    let end = runtime
         .submit_composition_end(start.generation().clone())
         .unwrap_or_else(|_| unreachable!("pending generation accepts queued end"));
     settle(&mut runtime);
@@ -978,6 +1107,34 @@ fn ime_01_composition_start_update_end_and_explicit_cancel_are_exact_and_redacte
         !format!("{:?}", runtime.trace().records().collect::<Vec<_>>()).contains("preedit-secret"),
         "the trace never retains preedit text"
     );
+    let active = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CompositionActiveBound)
+                && record.work_sequence() == Some(start.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("active binding retains the start work sequence"));
+    let active_parent = active
+        .causal_parent()
+        .unwrap_or_else(|| unreachable!("active binding retains routed lineage"));
+    assert!(runtime.trace().records().any(|record| {
+        record.sequence() == active_parent && record.work_sequence() == Some(start.sequence())
+    }));
+    let retired = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CompositionRetired)
+                && record.work_sequence() == Some(end.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("end retirement retains the end work sequence"));
+    let retired_parent = retired
+        .causal_parent()
+        .unwrap_or_else(|| unreachable!("end retirement retains routed lineage"));
+    assert!(runtime.trace().records().any(|record| {
+        record.sequence() == retired_parent && record.work_sequence() == Some(end.sequence())
+    }));
     assert!(matches!(
         runtime.submit_composition_end(start.generation().clone()),
         Err(error) if error.kind() == SubmitCompositionErrorKind::StaleGeneration
@@ -1005,13 +1162,16 @@ fn ime_01_composition_start_update_end_and_explicit_cancel_are_exact_and_redacte
     clippy::too_many_lines,
     reason = "this one conformance row keeps exact composition rejection ownership and failed-start retirement evidence together"
 )]
-fn ime_02_composition_rejections_keep_owned_events_and_authority_unchanged() {
+fn ime_02_composition_rejections_keep_owned_requests_and_authority_unchanged() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut no_focus = mounted(InputState::standard(Rc::clone(&log)));
-    assert!(matches!(
-        no_focus.start_composition(None),
-        Err(error) if error.kind() == SubmitCompositionErrorKind::NoFocusedTarget
-    ));
+    let requested_device = InputDeviceId::new(73).unwrap_or_else(|| unreachable!("nonzero"));
+    let Err(error) = no_focus.start_composition(Some(requested_device)) else {
+        unreachable!("missing focus rejects the caller-owned start request");
+    };
+    assert_eq!(error.kind(), SubmitCompositionErrorKind::NoFocusedTarget);
+    assert_eq!(error.request().device_id(), Some(requested_device));
+    assert_eq!(error.into_request().device_id(), Some(requested_device));
 
     let mut no_capability_state = InputState::standard(Rc::clone(&log));
     no_capability_state.composition_capable = false;
@@ -1076,9 +1236,39 @@ fn ime_02_composition_rejections_keep_owned_events_and_authority_unchanged() {
     let mut exhausted = mounted(InputState::standard(Rc::clone(&log)));
     focus(&mut exhausted, "target");
     exhausted.__seed_next_composition_generation_for_test(None);
+    let Err(error) = exhausted.start_composition(Some(requested_device)) else {
+        unreachable!("exhausted allocation rejects the request before generating an event");
+    };
+    assert_eq!(
+        error.kind(),
+        SubmitCompositionErrorKind::CompositionGenerationExhausted
+    );
+    assert_eq!(error.into_request().device_id(), Some(requested_device));
+    let never_issued_zero = exhausted.__composition_generation_for_test(0);
     assert!(matches!(
-        exhausted.start_composition(None),
-        Err(error) if error.kind() == SubmitCompositionErrorKind::CompositionGenerationExhausted
+        exhausted.submit_composition_end(never_issued_zero),
+        Err(error) if error.kind() == SubmitCompositionErrorKind::MissingGeneration
+    ));
+    let never_issued_max = exhausted.__composition_generation_for_test(u64::MAX);
+    assert!(matches!(
+        exhausted.submit_composition_end(never_issued_max),
+        Err(error) if error.kind() == SubmitCompositionErrorKind::MissingGeneration
+    ));
+
+    let mut issued_max = mounted(InputState::standard(Rc::clone(&log)));
+    focus(&mut issued_max, "target");
+    issued_max.__seed_next_composition_generation_for_test(Some(u64::MAX));
+    let max_start = issued_max
+        .start_composition(Some(requested_device))
+        .unwrap_or_else(|_| unreachable!("the final allocatable generation is still issued"));
+    settle(&mut issued_max);
+    issued_max
+        .submit_composition_end(max_start.generation().clone())
+        .unwrap_or_else(|_| unreachable!("the actually issued maximum generation remains live"));
+    settle(&mut issued_max);
+    assert!(matches!(
+        issued_max.submit_composition_end(max_start.generation().clone()),
+        Err(error) if error.kind() == SubmitCompositionErrorKind::StaleGeneration
     ));
 
     let mut sequence_exhausted = mounted(InputState::standard(Rc::clone(&log)));
@@ -1111,16 +1301,28 @@ fn ime_02_composition_rejections_keep_owned_events_and_authority_unchanged() {
         .submit_composition_update(failed_generation.clone(), String::from("queued"), None)
         .unwrap_or_else(|_| unreachable!("pending authority accepts later owned work"));
     failed_start.__fail_routed_callback_bridge_for_test();
-    settle(&mut failed_start);
+    let _ = failed_start.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(
+        failed_start.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+    );
     assert!(matches!(
         failed_start.submit_composition_end(failed_generation),
-        Err(error) if error.kind() == SubmitCompositionErrorKind::StaleGeneration
+        Err(error)
+            if error.kind()
+                == SubmitCompositionErrorKind::Terminal(RuntimeTerminalReason::Poisoned)
     ));
-    assert!(
-        kinds(&failed_start)
-            .iter()
-            .any(|kind| matches!(kind, TraceRecordKind::CompositionProcessingStaleGeneration))
-    );
+    assert!(kinds(&failed_start).iter().any(|kind| matches!(
+        kind,
+        TraceRecordKind::RoutedIntegrityFailed {
+            failure: runenui_runtime::TraceRoutedIntegrityFailure::CallbackBridgeFailure
+        }
+    )));
 }
 
 #[test]
@@ -1134,7 +1336,15 @@ fn ime_03_focus_transfer_cancels_the_live_owner_before_focus_out() {
     settle(&mut runtime);
     clear_log(&runtime);
 
-    focus(&mut runtime, "other");
+    let other = target(&mut runtime, "other");
+    let focus_submission = runtime
+        .submit_command(
+            other,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("focus transfer is queued"));
+    settle(&mut runtime);
     let log = log.borrow();
     let cancellation = log
         .iter()
@@ -1180,6 +1390,28 @@ fn ime_03_focus_transfer_cancels_the_live_owner_before_focus_out() {
         })
         .unwrap_or_else(|| unreachable!("focus departure is traced"));
     assert!(cancellation < focus_out);
+    let cancelled = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CompositionCancelled {
+                    reason: CompositionCancelReason::FocusTransfer
+                }
+            ) && record.work_sequence() == Some(focus_submission.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("focus cleanup cancellation retains command work"));
+    assert!(cancelled.causal_parent().is_some());
+    let retired = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CompositionRetired)
+                && record.work_sequence() == Some(focus_submission.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("focus cleanup retirement retains command work"));
+    assert_eq!(retired.causal_parent(), Some(cancelled.sequence()));
 }
 
 #[test]
@@ -1191,11 +1423,10 @@ fn ime_04_reconciliation_cancels_before_removal_replacement_and_capability_loss(
     let remove_log = Rc::new(RefCell::new(Vec::new()));
     let mut removal = mounted(InputState::standard(Rc::clone(&remove_log)));
     focus(&mut removal, "target");
-    let generation = removal
+    let removal_start = removal
         .start_composition(None)
-        .unwrap_or_else(|_| unreachable!())
-        .generation()
-        .clone();
+        .unwrap_or_else(|_| unreachable!());
+    let generation = removal_start.generation().clone();
     settle(&mut removal);
     clear_log(&removal);
     removal
@@ -1237,6 +1468,28 @@ fn ime_04_reconciliation_cancels_before_removal_replacement_and_capability_loss(
         .position(|kind| matches!(kind, TraceRecordKind::TreeReconciled))
         .unwrap_or_else(|| unreachable!("reconciliation is traced"));
     assert!(cancellation < reconciled);
+    let cancelled = removal
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CompositionCancelled {
+                    reason: CompositionCancelReason::Removal
+                }
+            ) && record.work_sequence() == Some(removal_start.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("reconciliation cleanup retains start work"));
+    assert!(cancelled.causal_parent().is_some());
+    let retired = removal
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CompositionRetired)
+                && record.work_sequence() == Some(removal_start.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("reconciliation cleanup retires with the same work"));
+    assert_eq!(retired.causal_parent(), Some(cancelled.sequence()));
 
     let replacement_log = Rc::new(RefCell::new(Vec::new()));
     let mut replacement = mounted(InputState::standard(Rc::clone(&replacement_log)));
@@ -1338,6 +1591,83 @@ fn ime_05_pending_shutdown_cleans_the_live_owner_and_trace_is_optional() {
         .unwrap_or_else(|_| unreachable!("disabled tracing preserves cancellation"));
     settle(&mut disabled);
     assert_eq!(disabled.trace().len(), 0);
+}
+
+#[test]
+fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown() {
+    let bounded_log = Rc::new(RefCell::new(Vec::new()));
+    let bounded_config = RuntimeConfig::default().with_limits(
+        RuntimeLimits::default()
+            .with_waiting_envelopes(3)
+            .with_transaction_outputs(1),
+    );
+    let mut bounded = mounted_with_config(
+        InputState::standard(Rc::clone(&bounded_log)),
+        bounded_config,
+    );
+    focus(&mut bounded, "target");
+    bounded
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("live composition starts before bounded cleanup"));
+    settle(&mut bounded);
+    clear_log(&bounded);
+    bounded
+        .submit_action(InputAction::Remove)
+        .unwrap_or_else(|_| unreachable!("removal occupies the FIFO head"));
+    for _ in 0..2 {
+        bounded
+            .submit_action(InputAction::Activated)
+            .unwrap_or_else(|_| unreachable!("filler occupies cancellation capacity"));
+    }
+    let _ = bounded.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(
+        bounded.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+    );
+    assert!(
+        !bounded_log
+            .borrow()
+            .iter()
+            .any(|fact| fact.input == ObservedInput::Unmounted),
+        "the reconciliation plan never applies after required cancellation admission fails"
+    );
+    assert!(bounded.index().nodes().iter().any(|node| {
+        node.authored_id()
+            == Some(
+                &runenui_core::ElementId::new("target")
+                    .unwrap_or_else(|_| unreachable!("valid authored id")),
+            )
+    }));
+
+    let bridge_log = Rc::new(RefCell::new(Vec::new()));
+    let mut bridge = mounted(InputState::standard(Rc::clone(&bridge_log)));
+    focus(&mut bridge, "target");
+    bridge
+        .start_composition(None)
+        .unwrap_or_else(|_| unreachable!("live composition starts before bridge failure"));
+    settle(&mut bridge);
+    clear_log(&bridge);
+    bridge.__fail_routed_callback_bridge_for_test();
+    bridge
+        .submit_action(InputAction::Remove)
+        .unwrap_or_else(|_| unreachable!("removal is queued before bridge failure"));
+    let _ = bridge.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert_eq!(
+        bridge.status(),
+        RuntimeStatus::Terminal(RuntimeTerminalReason::Poisoned)
+    );
+    assert!(
+        !bridge_log
+            .borrow()
+            .iter()
+            .any(|fact| fact.input == ObservedInput::Unmounted),
+        "a bridge failure terminalizes before the invalidated owner can unmount"
+    );
 }
 
 #[test]
@@ -1548,7 +1878,7 @@ fn automation_02_missing_ambiguous_and_underlying_rejections_preserve_requests()
     else {
         unreachable!("missing authored id is structurally rejected");
     };
-    assert_eq!(error.kind(), SubmitAutomationErrorKind::MissingAuthoredId);
+    assert_eq!(error.kind(), &SubmitAutomationErrorKind::MissingAuthoredId);
     assert_eq!(error.into_request(), (authored, SemanticCommand::Activate));
     assert_eq!(missing.__routed_sequence_state_for_test().0, before.0);
     assert!(
@@ -1568,16 +1898,39 @@ fn automation_02_missing_ambiguous_and_underlying_rejections_preserve_requests()
     else {
         unreachable!("ambiguous authored id is structurally rejected");
     };
+    let candidates = match error.kind() {
+        SubmitAutomationErrorKind::AmbiguousAuthoredId { candidates } => candidates.clone(),
+        SubmitAutomationErrorKind::MissingAuthoredId | SubmitAutomationErrorKind::Command(_) => {
+            unreachable!("duplicate authored ID returns deterministic candidates")
+        }
+        _ => unreachable!("future automation rejection kinds cannot resolve a duplicate"),
+    };
     assert_eq!(
-        error.kind(),
-        SubmitAutomationErrorKind::AmbiguousAuthoredId { matches: 2 }
+        candidates
+            .iter()
+            .map(runenui_runtime::AutomationMatchDiagnostic::logical_preorder)
+            .collect::<Vec<_>>(),
+        [1, 3],
+        "logical preorder is stable and excludes widget state or content"
+    );
+    assert_ne!(
+        candidates[0].mounted_node_id(),
+        candidates[1].mounted_node_id(),
+        "diagnostics retain only distinct opaque mounted lifetimes"
     );
     assert_eq!(error.into_request(), (authored, SemanticCommand::Activate));
     assert_eq!(ambiguous.__routed_sequence_state_for_test().0, before.0);
-    assert!(kinds(&ambiguous).iter().any(|kind| matches!(
-        kind,
-        TraceRecordKind::AutomationResolutionAmbiguous { matches: 2 }
-    )));
+    let traced_candidates = ambiguous
+        .trace()
+        .records()
+        .find_map(|record| match record.kind() {
+            TraceRecordKind::AutomationResolutionAmbiguous { candidates } => {
+                Some(candidates.clone())
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| unreachable!("ambiguous resolution is traced"));
+    assert_eq!(traced_candidates, candidates);
 
     let config = RuntimeConfig::default().with_limits(
         RuntimeLimits::default()
@@ -1597,7 +1950,7 @@ fn automation_02_missing_ambiguous_and_underlying_rejections_preserve_requests()
     };
     assert_eq!(
         error.kind(),
-        SubmitAutomationErrorKind::Command(SubmitCommandErrorKind::Full)
+        &SubmitAutomationErrorKind::Command(SubmitCommandErrorKind::Full)
     );
     assert_eq!(error.into_request(), (authored, SemanticCommand::Activate));
 }

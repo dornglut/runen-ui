@@ -287,7 +287,8 @@ introduced.
 **Subsequent record:** M4C1, M4C2, M4C3, and M4C4 are complete,
 owner-accepted, and merged. M4C5's implementation proof package is complete
 on its review branch; independent review, owner acceptance, merge, and the
-separate M4C4 post-merge authority reconciliation remain pending.
+separate M4C5 authority-reconciliation PR remain pending. M4C4 reconciliation
+is already complete.
 
 #### M4C1 — Routed semantic-command kernel
 
@@ -404,7 +405,8 @@ release-inside; no press-only pointer helper remains.
 
 **Next implementation slice:** M4C4 is complete and owner-accepted. M4C5 has a
 proof-complete implementation pending independent review, owner acceptance, and
-merge; the M4C4 post-merge authority reconciliation remains a separate follow-up.
+merge; M4C4 reconciliation is complete, while the M4C5
+authority-reconciliation PR remains a separate follow-up.
 
 #### M4C4 — Focus scopes and modality
 
@@ -437,22 +439,23 @@ no direct focus-command bypass remains.
 `owner-accepted`; M4 remains active and incomplete.
 
 **Implementation record:** M4C5 is proof-complete on its review branch. It has
-not received owner acceptance or merged; the post-merge authority update remains
-a separate follow-up and M4D1 remains blocked.
+not received owner acceptance or merged; M4C4 reconciliation is complete and
+the M4C5 authority-reconciliation PR remains a separate follow-up. M4D1 remains
+blocked.
 
 #### M4C5 — Keyboard, text, IME, automation, and M4C closure
 
 **Status:** `proof-complete` on the implementation review branch; independent
-review, owner acceptance, merge, and the separate M4C4 post-merge authority
-reconciliation remain pending.
+review, owner acceptance, merge, and the separate M4C5 authority-reconciliation
+PR remain pending. M4C4 reconciliation is complete.
 
 **Goal:** Complete keyboard activation policy, separate committed-text and IME
 streams, exact composition ownership, authored-ID automation resolution, and
 all remaining canonical-path migrations.
 
-**Dependencies:** Accepted and merged M4C4 focus scopes/modality. The M4C4
-post-merge authority reconciliation is deliberately outside this implementation
-PR and remains a separate governance follow-up.
+**Dependencies:** Accepted and merged M4C4 focus scopes/modality. M4C4
+reconciliation is complete. The M4C5 authority-reconciliation PR is deliberately
+outside this implementation PR and remains a separate governance follow-up.
 
 **Included work:** All `KEY-*`, `TEXT-*`, `IME-*`, and `AUTOMATION-*` rows;
 remaining M4C migration; complete Counter and downstream M4C conformance.

@@ -13,6 +13,7 @@ use crate::{
 pub(super) struct RoutedTransactionAdmissionPlan {
     pub(super) route_invocations: usize,
     pub(super) max_outputs: usize,
+    pub(super) mandatory_default_commands: usize,
     queue_slots: usize,
     pub(super) trace: MandatoryTracePlan,
 }
@@ -22,15 +23,20 @@ impl RoutedTransactionAdmissionPlan {
         route_invocations: usize,
         admitted_invocations: usize,
         max_outputs: usize,
+        mandatory_default_commands: usize,
     ) -> Result<Self, TraceRoutedAdmissionRejection> {
-        let queue_slots = max_outputs
+        let total_output_envelopes = max_outputs
+            .checked_add(mandatory_default_commands)
+            .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
+        let queue_slots = total_output_envelopes
             .checked_mul(2)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
-        let trace = MandatoryTracePlan::routed_event(admitted_invocations, max_outputs)
+        let trace = MandatoryTracePlan::routed_event(admitted_invocations, total_output_envelopes)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         Ok(Self {
             route_invocations,
             max_outputs,
+            mandatory_default_commands,
             queue_slots,
             trace,
         })
@@ -80,12 +86,21 @@ impl RoutedTransactionAdmissionPlan {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(super) fn prepare_routed_route(
+    pub(super) fn prepare_routed_route_with_default_commands(
         &mut self,
         facts: &RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
+        mandatory_default_commands: usize,
     ) -> Option<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan)> {
-        self.prepare_routed_invocations(facts, true, &[], &[], 0, additional_trace)
+        self.prepare_routed_invocations(
+            facts,
+            true,
+            &[],
+            &[],
+            0,
+            additional_trace,
+            mandatory_default_commands,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -141,6 +156,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &deferred_targets,
             deferred_invocations,
             additional_trace,
+            0,
         )
     }
 
@@ -163,6 +179,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &targets,
             deferred_invocations,
             MandatoryTracePlan::focus_commit(),
+            0,
         )
     }
 
@@ -175,6 +192,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         deferred_target_only: &[MountedNodeId],
         deferred_invocations: usize,
         additional_trace: MandatoryTracePlan,
+        mandatory_default_commands: usize,
     ) -> Option<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan)> {
         let route = self.prepare_invocation_route(facts, include_ordinary_route)?;
         if !self.preflight_target_only_bridges(facts, target_only)
@@ -207,6 +225,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             route_invocations,
             admitted_invocations,
             additional_trace,
+            mandatory_default_commands,
         )?;
         Some((route, admission))
     }
@@ -306,11 +325,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         route_invocations: usize,
         admitted_invocations: usize,
         additional_trace: MandatoryTracePlan,
+        mandatory_default_commands: usize,
     ) -> Option<RoutedTransactionAdmissionPlan> {
         let admission = RoutedTransactionAdmissionPlan::checked(
             route_invocations,
             admitted_invocations,
             self.limits.transaction_outputs(),
+            mandatory_default_commands,
         )
         .and_then(|plan| {
             plan.preflight(self)?;

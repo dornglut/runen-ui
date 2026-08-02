@@ -1,3 +1,5 @@
+use runenui_core::MonotonicInstant;
+
 use crate::{TraceSurfaceIngressKind, TraceSurfaceSnapshotKind};
 
 use super::{
@@ -216,7 +218,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         trace: CommandTrace,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
-        self.commit_preflighted_command(target, command, origin, trace)
+        self.commit_preflighted_command(target, command, origin, self.now(), trace)
     }
 
     fn command_preflight(&self, target: &MountedNodeId) -> Result<(), SubmitCommandErrorKind> {
@@ -236,11 +238,35 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    /// Commits a routed command through the same canonical command ingress used
+    /// by direct and automation submissions. The enclosing routed admission has
+    /// already reserved its queue and trace capacity.
+    pub(in crate::runtime) fn commit_preflighted_routed_command(
+        &mut self,
+        target: &MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+        causal_parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+    ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
+        self.command_preflight(target)?;
+        self.commit_preflighted_command(
+            target,
+            command,
+            origin,
+            instant,
+            CommandTrace::Direct {
+                parent: causal_parent,
+            },
+        )
+    }
+
     fn commit_preflighted_command(
         &mut self,
         target: &MountedNodeId,
         command: SemanticCommand,
         origin: CommandOrigin,
+        instant: MonotonicInstant,
         trace: CommandTrace,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         let trace_reservation = match trace {
@@ -252,7 +278,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .queue
             .next_sequence()
             .unwrap_or_else(|| unreachable!("command sequence was preflighted"));
-        let instant = self.now();
         let trace_enabled = self.trace.is_enabled();
         let trace_target = self.tree.trace_target(target);
         let causal_parent = match trace {

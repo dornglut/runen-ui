@@ -119,7 +119,7 @@ impl<App: UiApp> AppRuntime<App> {
     pub fn start_composition(
         &mut self,
         device_id: Option<crate::InputDeviceId>,
-    ) -> Result<crate::CompositionStartSubmission, crate::SubmitCompositionError> {
+    ) -> Result<crate::CompositionStartSubmission, crate::SubmitCompositionStartError> {
         self.runtime.start_composition(device_id)
     }
 

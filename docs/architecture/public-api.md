@@ -23,9 +23,9 @@ feature head `f3201a83583af0c1d148bec87cd9140ff42795b7` after exact-head CI run
 [PR #22](https://github.com/dornglut/runen-ui/pull/22) as
 `f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5's implementation proof
 package is complete on its review branch, but independent review, owner
-acceptance, and merge remain pending. Its post-merge authority reconciliation is
-a separate follow-up; M4D1–M4D3 remain blocked in sequence. M4 is active and
-incomplete. The accepted
+acceptance, and merge remain pending. M4C4 authority reconciliation is already
+complete; the separate follow-up is the M4C5 authority-reconciliation PR.
+M4D1–M4D3 remain blocked in sequence. M4 is active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions but does not describe
 implemented public API until each slice is accepted. The
@@ -465,16 +465,23 @@ The M4C5 proof-complete implementation exposes `AppRuntime::submit_keyboard`,
 `submit_composition_end`, `cancel_composition`, and
 `submit_automation_command`. Each returns a runtime-issued receipt on admission
 or a structured error that retains the exact unaccepted input or automation
-request. The public APIs are host-neutral and require callers to pump; they do
-not synchronously dispatch callbacks or actions.
+request. A rejected `start_composition` instead returns
+`SubmitCompositionStartError` with a `CompositionStartRequest`: it has no
+generation because generations exist only in successful
+`CompositionStartSubmission` receipts. The public APIs are host-neutral and
+require callers to pump; they do not synchronously dispatch callbacks or
+actions.
 
 `KeyboardEvent` separates physical and logical key identity and carries phase,
 modifiers, repeat, location, composition state, and optional device identity.
 It binds to the exact focused lifetime and routes Capture/Target/Bubble. An
-eligible non-repeated Enter down appends one canonical `Activate`; a repeated
-down never duplicates it. Space down records exact focused ownership and a
-matching live eligible Space up appends `Activate`. Unmatched ups and ownership
-lost to focus/lifetime/eligibility cleanup cannot activate a replacement.
+eligible non-repeated Enter down atomically reserves and appends one canonical
+`Activate`; a repeated down never duplicates it. Space down records exact
+focused ownership and a matching live eligible Space up atomically reserves and
+appends `Activate`. These possible semantic defaults are admitted before routed
+callbacks, and their derived command acceptance retains causal trace lineage.
+An unmatched Space up never clears another device or lifetime's ownership;
+explicit focus/lifetime/eligibility cleanup remains the other revocation path.
 
 `CommittedTextEvent` is nonempty Unicode input, not a `LogicalKey::Character`
 shortcut. It routes only to a focused `WidgetTextInput` that opts into committed
@@ -487,15 +494,19 @@ replacement attempts without retargeting.
 
 Composition cancellation routes while the exact owner is live and precedes
 `FocusOut` on focus transfer. Removal/replacement, disablement, text-capability
-loss, shutdown, and drop also cancel before unmount. No composition operation
-performs editable-text mutation or an implicit committed-text default. Trace
-facts record lifecycle/causal metadata but never raw committed text or preedit.
+loss, shutdown, and drop also cancel before unmount; if this required routing or
+commit cannot complete, the runtime terminalizes before teardown continues. No
+composition operation performs editable-text mutation or an implicit
+committed-text default. Trace facts record lifecycle/causal metadata but never
+raw committed text or preedit.
 
 Automation resolves a unique authored ID in logical preorder and submits the
-ordinary semantic command with automation origin. Missing or ambiguous IDs
-return structured outcomes without command submission; a target made stale
-between resolution and processing is rejected without fallback. The old
-first-match lookup, direct activation path, and compatibility aliases are gone.
+ordinary semantic command with automation origin. Missing IDs return a
+structured outcome; ambiguous IDs return stable logical-preorder positions and
+opaque mounted identities without widget state or user input. Neither submits a
+command, and a target made stale between resolution and processing is rejected
+without fallback. The old first-match lookup, direct activation path, and
+compatibility aliases are gone.
 
 ## C9 public authority delta
 
@@ -623,11 +634,14 @@ parents reconstruct the slice-local focus/modality lineage; M4D may normalize
 this schema but does not own missing M4C4 parentage.
 
 M4C5 adds accepted/processed keyboard, committed-text, composition, Space
-cleanup, and automation-resolution facts to the same trace. Text and preedit are
-redacted: records expose event/lifecycle kind, scalar-count and range facts, and
-opaque owner/generation causality, never raw payload content. The M4C5 mandatory
-admission plans reserve every required input trace sequence before mutation;
-trace capacity zero preserves input behavior without allocation.
+cleanup, and automation-resolution facts to the same trace. Keyboard default
+derivation, canonical derived-command acceptance, composition activation and
+retirement, and cleanup cancellation/retirement retain their work sequence and
+causal parent. Text and preedit are redacted: records expose event/lifecycle
+kind, scalar-count and range facts, and opaque owner/generation causality, never
+raw payload content. The M4C5 mandatory admission plans reserve every required
+input trace sequence before mutation; trace capacity zero preserves input
+behavior without allocation.
 
 Transaction semantic request/invalidation records preserve callback collector
 order independently from cleanup-before-start queue grouping. Final action

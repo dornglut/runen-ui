@@ -6,7 +6,10 @@ use runenui_core::{
     PointerPhase, SemanticCommand, WidgetInvalidation, WorkKey,
 };
 
-use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
+use crate::{
+    AutomationMatchDiagnostic, MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason,
+    WorkSequence,
+};
 
 /// Non-wrapping identity of one canonical trace record.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -133,7 +136,7 @@ pub enum TraceRecordKind {
     AutomationResolutionUnique,
     AutomationResolutionMissing,
     AutomationResolutionAmbiguous {
-        matches: usize,
+        candidates: Vec<AutomationMatchDiagnostic>,
     },
     AutomationTargetStaleAfterResolution,
     PointerIngressRejected {

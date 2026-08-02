@@ -37,8 +37,9 @@ feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
 [PR #22](https://github.com/dornglut/runen-ui/pull/22) as
 `f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5's implementation proof
 package is complete on its review branch, but independent review, owner
-acceptance, and merge remain pending. The M4C4 post-merge authority
-reconciliation is a separate follow-up, not part of the M4C5 implementation.
+acceptance, and merge remain pending. M4C4 authority reconciliation is already
+complete; the separate follow-up is the M4C5 authority-reconciliation PR, not
+part of the M4C5 implementation.
 M4D1–M4D3 remain blocked in sequence. M4B's implemented live-only producer
 authority remains unchanged, and M4 is active and incomplete.
 
@@ -496,9 +497,10 @@ feature head `f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
 `30006170403` and was squash-merged in
 [PR #22](https://github.com/dornglut/runen-ui/pull/22) as
 `f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 is proof-complete on its
-implementation review branch, not owner-accepted or merged. Its separate
-post-merge authority reconciliation remains outside this pull request. M4D1–
-M4D3 remain blocked in sequence, and M4 remains active and incomplete.
+implementation review branch, not owner-accepted or merged. M4C4 authority
+reconciliation is complete; the separate M4C5 authority-reconciliation PR
+remains outside this pull request. M4D1–M4D3 remain blocked in sequence, and
+M4 remains active and incomplete.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control
