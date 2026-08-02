@@ -19,12 +19,12 @@ M4B, M4C0, M4C1, M4C2, M4C3, and M4C4 are complete and owner-accepted. The
 M4C5 implementation branch has a proof-complete package for its fifteen owned
 rows, but it is not owner-accepted or merged; this document does not promote it
 to accepted support. Its proof labels identify the reviewed implementation and
-its stated limitations, while independent review, exact-head CI, owner
-acceptance, and merge remain required. M4D1–M4D3 remain unimplemented and
-blocked in sequence. Exact branch, head, blocker, validation, and next-action
-state belongs in the [work-tracking system](work-tracking.md), GitHub issues,
-and pull requests. Historical acceptance evidence remains in the [public
-repository migration history](history/public-repository-migration.md).
+its stated limitations, while independent review, owner acceptance, merge, and
+the separate M4C5 authority-reconciliation PR remain required. Exact branch,
+head, blocker, validation, and next-action state belongs in the
+[work-tracking system](work-tracking.md), GitHub issues, and pull requests.
+Historical acceptance evidence remains in the [public repository migration
+history](history/public-repository-migration.md).
 
 ## 1. Authoring and composition
 
@@ -174,7 +174,7 @@ repository migration history](history/public-repository-migration.md).
 | Multi-surface publication | `unsupported` | None | No independent surface lifecycle or scale | M10 |
 | Debug semantic-frame consumer | `proof` | `DebugSurfaceRenderer` deterministically formats open paint/semantic/diagnostic widget facts | It is not a paint-scene consumer, accessibility product, or renderer backend | M5–M6 |
 | Deterministic paint-scene consumer | `planned` | None | Needs accepted paint/hit protocols | M6 |
-| Conventional renderer backend | `unsupported` | None | Protocol must stabilize first | M10 |
+| Conventional renderer backend | `unsupported` | Protocol must stabilize first | None | M10 |
 | Embedded/SDF renderer consumer | `deferred` | None | Follows neutral protocol and conventional proof | M10 or M12 |
 
 ## 10. Text
