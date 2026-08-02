@@ -17,8 +17,9 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   opaque composition generations with cancellation before focus loss and
   unmount, deterministic no-fallback automation resolution, redacted input
   trace facts, Counter/downstream proof, and removal of transitional input
-  authorities. Independent review, exact-head CI, owner acceptance/merge, and
-  the separate authority-reconciliation pull request remain pending; M4D1 is
+  authorities. Independent review, owner acceptance/merge, and the separate
+  authority-reconciliation pull request remain pending; exact branch-head
+  validation evidence belongs in PR #27 and the work-tracking system. M4D1 is
   still blocked.
 - Owner-accepted and squash-merged the complete M4C4 focus-scopes and modality
   slice in [PR #22](https://github.com/dornglut/runen-ui/pull/22): one
