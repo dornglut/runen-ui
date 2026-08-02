@@ -49,6 +49,41 @@
 //!     runtime.invoke_event(event, context);
 //! }
 //! ```
+//!
+//! Composition generations are opaque runtime-issued values, not downstream
+//! constructors:
+//!
+//! ```compile_fail
+//! use runenui_core::CompositionGeneration;
+//! let _ = CompositionGeneration { generation: 1 };
+//! ```
+//!
+//! Runtime namespace internals are not part of the public core vocabulary:
+//!
+//! ```compile_fail
+//! use runenui_core::RuntimeNamespace;
+//! let _ = RuntimeNamespace::__runtime_new();
+//! ```
+//!
+//! Raw keyboard ingress replaced the former public normalized-keyboard origin:
+//!
+//! ```compile_fail
+//! use runenui_core::CommandOrigin;
+//! let _ = CommandOrigin::keyboard();
+//! ```
+//!
+//! Mounted inspection has no first-match automation lookup or direct activation
+//! escape hatch:
+//!
+//! ```compile_fail
+//! use runenui_runtime::MountedTreeIndex;
+//! let _ = MountedTreeIndex::node_by_authored_id;
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_runtime::MountedNodeRef;
+//! let _ = MountedNodeRef::activate;
+//! ```
 
 #![forbid(unsafe_code)]
 
@@ -59,12 +94,13 @@ use std::{
 };
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, Container, EdgeInsets, Element, EventContext, EventPhase,
-    FocusEventKind, FocusReason, IntoEffects, LogicalLength, NoHostProtocol, SubscriptionSet,
-    UiApp, UiEvent, View, Views, Widget, WidgetActivation, WidgetActivationContext,
-    WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure,
-    WidgetMountContext, WidgetPaintProof, WidgetSemanticProof, WidgetTextKind,
-    WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children, column, container, text,
+    Axis, ChildLayout, ChildLayoutWidget, CompositionCancelReason, CompositionEvent, Container,
+    EdgeInsets, Element, EventContext, EventPhase, FocusEventKind, FocusReason, IntoEffects,
+    KeyboardPhase, LogicalLength, NoHostProtocol, SubscriptionSet, UiApp, UiEvent, View, Views,
+    Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic,
+    WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetMountContext, WidgetPaintProof,
+    WidgetSemanticProof, WidgetTextKind, WidgetUnmountContext, WidgetUpdateContext, WorkKey,
+    button, children, column, container, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -170,6 +206,196 @@ pub fn external_focus_panel(log: Rc<RefCell<Vec<ExternalFocusFact>>>) -> Element
     .id("focus.root")
     .key("root")
     .into_element()
+}
+
+/// Redacted facts a downstream widget can observe for the M4C5 input families.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExternalInputKind {
+    Keyboard(KeyboardPhase),
+    CommittedText { bytes: usize, scalars: usize },
+    CompositionStart,
+    CompositionUpdate { has_range: bool },
+    CompositionEnd,
+    CompositionCancel(CompositionCancelReason),
+}
+
+/// One downstream callback observation without retaining raw user text.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternalInputFact {
+    phase: EventPhase,
+    kind: ExternalInputKind,
+    cancelable: bool,
+    prevented_before_callback: bool,
+}
+
+impl ExternalInputFact {
+    #[must_use]
+    pub const fn phase(&self) -> EventPhase {
+        self.phase
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> &ExternalInputKind {
+        &self.kind
+    }
+
+    #[must_use]
+    pub const fn default_is_cancelable(&self) -> bool {
+        self.cancelable
+    }
+
+    #[must_use]
+    pub const fn default_was_prevented(&self) -> bool {
+        self.prevented_before_callback
+    }
+}
+
+/// Child-owned action used to prove public action mapping retains input facts.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExternalInputAction {
+    Observed(ExternalInputKind),
+}
+
+/// Downstream ancestor used to observe Capture and Bubble input phases.
+#[derive(Debug)]
+pub struct ExternalInputAncestor {
+    facts: Rc<RefCell<Vec<ExternalInputFact>>>,
+}
+
+impl ExternalInputAncestor {
+    #[must_use]
+    pub const fn new(facts: Rc<RefCell<Vec<ExternalInputFact>>>) -> Self {
+        Self { facts }
+    }
+}
+
+impl<Action> Widget<Action> for ExternalInputAncestor {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, Action>,
+    ) -> WidgetEventOutput {
+        let Some(kind) = external_input_kind(event) else {
+            return WidgetEventOutput::none();
+        };
+        self.facts.borrow_mut().push(ExternalInputFact {
+            phase: context.phase(),
+            kind,
+            cancelable: context.default_is_cancelable(),
+            prevented_before_callback: context.default_is_prevented(),
+        });
+        WidgetEventOutput::none()
+    }
+}
+
+impl<Action> ChildLayoutWidget<Action> for ExternalInputAncestor {
+    fn child_layout(&self, (): &Self::State) -> ChildLayout {
+        ChildLayout::Linear {
+            axis: Axis::Vertical,
+        }
+    }
+}
+
+/// Genuine downstream text and composition-capable widget.
+#[derive(Debug)]
+pub struct ExternalInputWidget {
+    facts: Rc<RefCell<Vec<ExternalInputFact>>>,
+    prevent_keyboard: bool,
+    prevent_text: bool,
+}
+
+impl ExternalInputWidget {
+    #[must_use]
+    pub const fn new(facts: Rc<RefCell<Vec<ExternalInputFact>>>) -> Self {
+        Self {
+            facts,
+            prevent_keyboard: false,
+            prevent_text: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn prevent_keyboard(mut self, prevent: bool) -> Self {
+        self.prevent_keyboard = prevent;
+        self
+    }
+
+    #[must_use]
+    pub const fn prevent_text(mut self, prevent: bool) -> Self {
+        self.prevent_text = prevent;
+        self
+    }
+}
+
+impl Widget<ExternalInputAction> for ExternalInputWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ExternalInputAction>,
+    ) -> WidgetEventOutput {
+        if self.prevent_keyboard
+            && context.phase() == EventPhase::Target
+            && matches!(event, UiEvent::Keyboard(_))
+        {
+            context.prevent_default();
+        }
+        if self.prevent_text
+            && context.phase() == EventPhase::Target
+            && matches!(event, UiEvent::CommittedText(_))
+        {
+            context.prevent_default();
+        }
+        let Some(kind) = external_input_kind(event) else {
+            return WidgetEventOutput::none();
+        };
+        self.facts.borrow_mut().push(ExternalInputFact {
+            phase: context.phase(),
+            kind: kind.clone(),
+            cancelable: context.default_is_cancelable(),
+            prevented_before_callback: context.default_is_prevented(),
+        });
+        if context.phase() == EventPhase::Target {
+            context.emit(ExternalInputAction::Observed(kind));
+        }
+        WidgetEventOutput::none()
+    }
+
+    fn text_input(&self, (): &Self::State) -> runenui_core::WidgetTextInput {
+        runenui_core::WidgetTextInput::new(true, true)
+    }
+}
+
+fn external_input_kind(event: &UiEvent) -> Option<ExternalInputKind> {
+    match event {
+        UiEvent::Keyboard(event) => Some(ExternalInputKind::Keyboard(event.phase())),
+        UiEvent::CommittedText(event) => Some(ExternalInputKind::CommittedText {
+            bytes: event.text().len(),
+            scalars: event.text().chars().count(),
+        }),
+        UiEvent::Composition(CompositionEvent::Start(_)) => {
+            Some(ExternalInputKind::CompositionStart)
+        }
+        UiEvent::Composition(CompositionEvent::Update(event)) => {
+            Some(ExternalInputKind::CompositionUpdate {
+                has_range: event.range().is_some(),
+            })
+        }
+        UiEvent::Composition(CompositionEvent::End(_)) => Some(ExternalInputKind::CompositionEnd),
+        UiEvent::Composition(CompositionEvent::Cancel(event)) => {
+            Some(ExternalInputKind::CompositionCancel(event.reason()))
+        }
+        _ => None,
+    }
 }
 
 /// Downstream-observable mounted-subscription lifecycle facts.
