@@ -102,7 +102,7 @@ history](history/public-repository-migration.md).
 | Effects | `proof` | Opaque ordered application descriptions plus mounted lifecycle/activation/event contexts; routed event/default output commits invalidation, actions/commands, and exact-owner work atomically | Mounted host requests remain intentionally unavailable | M4B/M4C1 complete |
 | Processed-envelope pump budget | `proof` | Four-argument `PumpBudget`; exact report and outcome | None in implemented work scope | M4B complete, accepted, and merged |
 | Other readiness budgets | `proof` | Exact completion-import, local-poll, and timer-promotion limits/counters/exhaustion flags | None in implemented work scope | M4B complete, accepted, and merged |
-| Owner-local keyed cancellation | `proof` | Validated `WorkKey`, private generations, commit-bound same-batch semantics, and stale-completion rejection for application and exact mounted owners | None in implemented work scope | M4B complete, accepted, and merged |
+| Owner-local keyed cancellation | `proof` | Validated `WorkKey`, private generations, commit-bound same-batch semantics, and stale-completion rejection for application and exact mounted owners | None in implemented declaration scope | M4B complete, accepted, and merged |
 | Async tasks | `proof` | Wake-aware local futures; one-attempt send executor; bounded completion ingress; UI mapper validation | Runtime supplies adapters, not an executor implementation | M4B complete, accepted, and merged |
 | Timers and subscriptions | `proof` | Manual/host monotonic time; one-shot/repeating timers; current-state complete-set diffs; wake-aware local sources; one-attempt send producers with explicit start/sink outcomes | No animation system | M4B complete, accepted, and merged |
 | Mounted subscription declarations | `proof` | Public widget capability; queued newest-state evaluation without declaration caches; routed-event/activation/update invalidation, coalescing, stale-owner suppression, duplicate, and lifecycle proofs | None in implemented declaration scope | M4B/M4C1 complete |
@@ -174,7 +174,7 @@ history](history/public-repository-migration.md).
 | Multi-surface publication | `unsupported` | None | No independent surface lifecycle or scale | M10 |
 | Debug semantic-frame consumer | `proof` | `DebugSurfaceRenderer` deterministically formats open paint/semantic/diagnostic widget facts | It is not a paint-scene consumer, accessibility product, or renderer backend | M5–M6 |
 | Deterministic paint-scene consumer | `planned` | None | Needs accepted paint/hit protocols | M6 |
-| Conventional renderer backend | `unsupported` | Protocol must stabilize first | None | M10 |
+| Conventional renderer backend | `unsupported` | None | Protocol must stabilize first | M10 |
 | Embedded/SDF renderer consumer | `deferred` | None | Follows neutral protocol and conventional proof | M10 or M12 |
 
 ## 10. Text
@@ -197,7 +197,7 @@ history](history/public-repository-migration.md).
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Text/label | `proof` | Static text element | No production text, semantics, or control contract | M8–M9 |
-| Button | `proof` | Label, enabled/actionable state, repeatable `on_activate` action factory, persistent local activation state and interaction slots | No routed press/capture/release behavior, production semantics, recipes, or accessibility | M4–M9 |
+| Button | `proof` | Label, enabled/actionable state, repeatable typed `on_activate` action factory, persistent local activation state and interaction slots | No routed press/capture/release behavior, production semantics, recipes, or accessibility | M4–M9 |
 | Checkbox/radio/toggle | `unsupported` | None | Standard control foundation absent | M9 |
 | Slider/progress | `unsupported` | None | Events, semantics, and layout prerequisites absent | M9 |
 | Text field | `unsupported` | None | Production text/editing prerequisites absent | M8–M9 |
@@ -229,7 +229,7 @@ history](history/public-repository-migration.md).
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
-| Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 harness and Ubuntu-only CI | M5, M11 |
+| Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 public harness, stable semantic queries, replay, snapshots, fuzzing, property tests, benchmarks, or platform tests | M4–M5, M11 |
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, fresh surface generation/revision context, and debug output | No stable severity/strict mode | M4C2 owner-accepted; M5–M7 |
 | Runtime trace | `partial` | Checked admission; capacity-zero equivalence; scheduler/routed/surface/pointer/focus graphs plus M4C5 keyboard/text/composition/automation causal facts and in-memory text/preedit redaction | M4C5 proof remains unaccepted; normalization M4D1; JSONL/sink/export/replay M4D2–M4D3 | M4B/M4C1 complete; M4C2/M4C3/M4C4 owner-accepted; M4C5 proof-complete; M4D blocked |
