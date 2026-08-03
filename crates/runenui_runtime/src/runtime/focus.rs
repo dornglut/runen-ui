@@ -73,9 +73,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Some(reason) = composition_reason
             && self.cancel_composition_while_live(reason, cause).is_err()
         {
-            self.suppress_composition_cleanup(reason, cause);
+            let retirement_parent = self.suppress_composition_cleanup(reason, cause);
             if matches!(self.status, RuntimeStatus::Running) {
-                self.enter_terminal(crate::RuntimeTerminalReason::Poisoned, 0);
+                self.enter_terminal_with_parent(
+                    crate::RuntimeTerminalReason::Poisoned,
+                    0,
+                    retirement_parent,
+                );
             }
             return;
         }
@@ -139,9 +143,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .cancel_composition_while_live(CompositionCancelReason::Disablement, cause)
                 .is_err()
         {
-            self.suppress_composition_cleanup(CompositionCancelReason::Disablement, cause);
+            let retirement_parent =
+                self.suppress_composition_cleanup(CompositionCancelReason::Disablement, cause);
             if matches!(self.status, RuntimeStatus::Running) {
-                self.enter_terminal(crate::RuntimeTerminalReason::Poisoned, 0);
+                self.enter_terminal_with_parent(
+                    crate::RuntimeTerminalReason::Poisoned,
+                    0,
+                    retirement_parent,
+                );
             }
             return;
         }
