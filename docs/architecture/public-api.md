@@ -21,14 +21,15 @@ head `01b7ae018abeaff8d316764afba5bc8cde074381` after exact-head CI run
 feature head `f3201a83583af0c1d148bec87cd9140ff42795b7` after exact-head CI run
 `30006170403` succeeded, then squash-merged in
 [PR #22](https://github.com/dornglut/runen-ui/pull/22) as
-`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5's implementation proof
-package is complete on its review branch, but independent review, owner
-acceptance, and merge remain pending. M4C4 authority reconciliation is already
-complete; the separate follow-up is the M4C5 authority-reconciliation PR.
-M4D1–M4D3 remain blocked in sequence. M4 is active and incomplete. The accepted
+`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 was owner-accepted at
+feature head `d0d2ef1d53a8ab1d940beb4155f5f991229f042e` after exact-head CI run
+`30843238697` succeeded and independent rereview found no blocking defect. It
+was squash-merged in [PR #27](https://github.com/dornglut/runen-ui/pull/27) as
+`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. Its separate post-merge authority
+reconciliation remains the final predecessor gate for M4D1. M4D1–M4D3 remain
+blocked in sequence, and M4 is active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
-records target ownership and transaction decisions but does not describe
-implemented public API until each slice is accepted. The
+records target ownership and transaction decisions. The
 [M4 conformance matrix](m4-conformance-matrix.md) owns observable acceptance, and
 [work tracking](../work-tracking.md) owns volatile branch, head, blocker, and
 next-action state.
@@ -165,13 +166,17 @@ Neither refusal path retries implicitly. The send-side item may be `Send` while
 the UI mapper and resulting application action remain non-`Send`.
 
 `AppRuntime::status()` reports `Running`, `Terminal(reason)`, or `Closed`.
-Work-sequence, work-generation, reconciliation-generation, or enabled-trace-sequence exhaustion
-is terminal and non-resettable: no later mutable callback runs, queued envelopes
-are cancelled, new submissions return their actions, and inspection/state
-extraction remain available. `shutdown()` is explicit and idempotent; its report
-exposes whether shutdown was already complete plus cancelled-envelope and
-unmounted-lifetime counts. `into_state` and `Drop` invoke the same shutdown
-authority.
+Work-sequence, work-generation, reconciliation-generation, or enabled-trace-
+sequence exhaustion in direct command or already-accepted mutable work is
+terminal and non-resettable: no later mutable callback runs, queued envelopes are
+cancelled, new submissions return their actions, and inspection/state extraction
+remain available. Public authored-ID automation resolution is the deliberate
+exception: work-sequence or enabled-trace-sequence exhaustion returns the exact
+automation request without terminalizing, enqueuing work, invoking callbacks,
+changing focus/widget/application state, or requesting wake. `shutdown()` is
+explicit and idempotent; its report exposes whether shutdown was already complete
+plus cancelled-envelope and unmounted-lifetime counts. `into_state` and `Drop`
+invoke the same shutdown authority.
 
 `WakeTransport::request_wake` executes only after the runtime has claimed one
 eligible request epoch and released every RunenUI synchronization guard. Request
@@ -221,7 +226,8 @@ widgets use `State = ()`. The runtime passes persistent state to:
 
 - `mount`, `update`, and `unmount`;
 - routed `event` callbacks;
-- immutable activation facts, measurement, paint, semantics, and diagnostics;
+- immutable activation facts, text-input facts, measurement, paint, semantics,
+  and diagnostics;
 - mutable activation;
 - `ChildLayoutWidget::child_layout`.
 
@@ -240,26 +246,28 @@ preserves the state-change fact.
 
 The open `Widget::event` capability receives immutable `UiEvent` data and one
 borrowed `EventContext<'_, Action>`. The event protocol exposes semantic-command,
-pointer, pointer-boundary, pointer-capture, and focus families. Ordinary pointer
-and focus events use `Capture`/`Target`/`Bubble`; boundary and capture
-notifications are target-only and non-cancelable, while focus notifications are
-routed and non-cancelable. Programmatic/automation/accessibility/controller,
-keyboard, and pointer sources retain internally consistent derivation. The
-context exposes the original/current/optional-related target, origin, accepted
-`WorkSequence`, `MonotonicInstant`, optional pointer identity, independent
-physical hit target/path, and propagation/default facts. It provisionally
-collects owned actions, delegated commands, exact-owner subscription
-invalidation, ordinary invalidation, mounted tasks/timers/cancellation, stop
-propagation, and prevent default plus ordered capture/release requests for the
-current pointer. Recursive mapping preserves every staged capture request.
-`WidgetEventOutput` reports only independent persistent-state mutation. Mapping
-moves non-`Clone` actions and recursively maps mounted work while preserving
-commands, controls, invalidation, and the state-change fact. Only the checked
-erased widget bridge constructs and extracts `EventContext`; runtime supplies
-its validated facts and output bound. Public origin constructors are direct-only,
-while `emit_command` is the sole authority that turns callback output into a
-delegated origin targeting the current node. `UiEvent::as_semantic_command`
-returns `Option<&SemanticCommandEvent>` so later event variants do not require a
+pointer, pointer-boundary, pointer-capture, focus, keyboard, committed-text, and
+composition families. Ordinary pointer, focus, keyboard, committed-text, and
+composition events use checked Capture/Target/Bubble routing where their family
+contract requires it; boundary and capture notifications are target-only and
+non-cancelable, while focus notifications are routed and non-cancelable.
+Programmatic/automation/accessibility/controller, keyboard, and pointer sources
+retain internally consistent derivation. The context exposes the
+original/current/optional-related target, origin, accepted `WorkSequence`,
+`MonotonicInstant`, optional pointer identity, independent physical hit
+target/path, and propagation/default facts. It provisionally collects owned
+actions, delegated commands, exact-owner subscription invalidation, ordinary
+invalidation, mounted tasks/timers/cancellation, stop propagation, and prevent
+default plus ordered capture/release requests for the current pointer. Recursive
+mapping preserves every staged capture request. `WidgetEventOutput` reports only
+independent persistent-state mutation. Mapping moves non-`Clone` actions and
+recursively maps mounted work while preserving commands, controls, invalidation,
+and the state-change fact. Only the checked erased widget bridge constructs and
+extracts `EventContext`; runtime supplies its validated facts and output bound.
+Public origin constructors are direct-only, while `emit_command` is the sole
+authority that turns callback output into a delegated origin targeting the
+current node. `UiEvent::as_semantic_command` returns
+`Option<&SemanticCommandEvent>` so later event variants do not require a
 command-shaped accessor.
 
 The default update invalidates `ALL` for correctness. Built-in text, button, and
@@ -332,10 +340,10 @@ arena, clock, queue, or validation-bypass authority.
 
 Authored `ElementId` remains a validated lookup/diagnostic handle. It does not
 affect reconciliation compatibility and may change while mounted identity
-survives. M4C1 command submission accepts only an exact mounted target. M4C5's
-proof-complete implementation adds deterministic logical-preorder authored-ID
-resolution for automation only; it never changes mounted identity or creates a
-first-match fallback.
+survives. M4C1 command submission accepts only an exact mounted target. The
+owner-accepted M4C5 implementation adds deterministic logical-preorder
+authored-ID resolution for automation only; it never changes mounted identity or
+creates a first-match fallback.
 
 ## Reconciliation
 
@@ -460,7 +468,7 @@ logical-scroll command.
 
 ## Keyboard, committed text, composition, and automation
 
-The M4C5 proof-complete implementation exposes `AppRuntime::submit_keyboard`,
+The owner-accepted M4C5 implementation exposes `AppRuntime::submit_keyboard`,
 `submit_text`, `start_composition`, `submit_composition_update`,
 `submit_composition_end`, `cancel_composition`, and
 `submit_automation_command`. Each returns a runtime-issued receipt on admission
@@ -494,18 +502,22 @@ replacement attempts without retargeting.
 
 Composition cancellation routes while the exact owner is live and precedes
 `FocusOut` on focus transfer. Removal/replacement, disablement, text-capability
-loss, shutdown, and drop also cancel before unmount; if this required routing or
-commit cannot complete, the runtime terminalizes before teardown continues. No
-composition operation performs editable-text mutation or an implicit
-committed-text default. Trace facts record lifecycle/causal metadata but never
-raw committed text or preedit.
+loss, shutdown, and drop also cancel before unmount. If required cleanup cannot
+be routed or committed because integrity/admission is no longer available, the
+runtime records causal suppression, retires the exact composition lifetime
+without falsely claiming callback delivery, terminalizes, and preserves the
+terminal-to-shutdown causal chain. No composition operation performs editable-
+text mutation or an implicit committed-text default. Trace facts record
+lifecycle/causal metadata but never raw committed text or preedit.
 
 Automation resolves a unique authored ID in logical preorder and submits the
 ordinary semantic command with automation origin. Missing IDs return a
 structured outcome; ambiguous IDs return stable logical-preorder positions and
 opaque mounted identities without widget state or user input. Neither submits a
 command, and a target made stale between resolution and processing is rejected
-without fallback. The old first-match lookup, direct activation path, and
+without fallback. Public automation work-sequence or enabled-trace-sequence
+exhaustion returns the exact authored request without terminalizing or mutating
+the runtime. The old first-match lookup, direct activation path, and
 compatibility aliases are gone.
 
 ## C9 public authority delta
@@ -516,6 +528,8 @@ compatibility aliases are gone.
 | Cancelled send-task completion could enter ingress | `SendTaskCompletionError::Stale(exact_completion)` | Producer validity is exact-generation, not global | ADR 0006 cancellation | Match `Stale` separately from `Closed` | `scheduler_work::cancelled_send_completion_never_invokes_ui_mapper` |
 | Direct mounted activation was public runtime authority | `submit_command(exact_target, Activate, origin)` is the only semantic ingress | Every source must use routing, admission, default, FIFO, and trace | ADR 0005 canonical commands | Submit and pump; recover exact `UnacceptedCommand` on rejection | `routed_commands`, Counter, and downstream routed-event conformance |
 | `Widget::activate` returned `Option<Action>` | It returns `WidgetActivationOutput<Action>` and is invoked only by routed `Activate` default | State mutation is independent from action output | ADR 0003 widget protocol; ADR 0004 mounted state; ADR 0005 default | Return `none`, `action`, `changed`, or `changed_with_action` | `mounted_work_output::routed_activation_separates_scheduler_wake_from_redraw` |
+| Rejected composition start could imply a generation | `SubmitCompositionStartError` recovers a generation-free `CompositionStartRequest`; only accepted `CompositionStartSubmission` carries a runtime-issued generation | Rejected ingress must not fabricate accepted lifetime authority | ADR 0005 exact ingress ownership | Match the start error and recover its request; retain generations only from successful receipts | `input_m4c5` composition-start rejection proofs |
+| Public authored-ID automation reused ordinary terminal sequence-exhaustion policy | Automation work/trace-sequence exhaustion returns the exact authored request without terminalizing; direct commands and accepted work retain ordinary terminal policy | Resolution is provisional until the canonical command is admitted | ADR 0005 canonical command convergence and rejection non-mutation | Recover `AutomationRequest` and retry only under new capacity | `automation_rejection` sequence-exhaustion proofs |
 
 The runtime owns one bounded pointer registry rather than per-node aggregate
 interaction booleans. Removal, replacement, disablement, loss of actionability,
@@ -530,7 +544,7 @@ emptiness, `BitOr`, and `BitOrAssign`.
 
 | Invalidation | Cleared widget caches | Scheduled dependent output |
 |---|---|---|
-| `INTERACTION` | activation | focus validation, interaction, semantics, paint |
+| `INTERACTION` | activation and text-input capability | focus/input validation, interaction, semantics, paint |
 | `LAYOUT` | measurement, child layout | layout, hit testing, semantic bounds, paint placement |
 | `PAINT` | paint | paint output |
 | `SEMANTICS` | semantics | semantic output |
@@ -636,12 +650,14 @@ this schema but does not own missing M4C4 parentage.
 M4C5 adds accepted/processed keyboard, committed-text, composition, Space
 cleanup, and automation-resolution facts to the same trace. Keyboard default
 derivation, canonical derived-command acceptance, composition activation and
-retirement, and cleanup cancellation/retirement retain their work sequence and
-causal parent. Text and preedit are redacted: records expose event/lifecycle
-kind, scalar-count and range facts, and opaque owner/generation causality, never
-raw payload content. The M4C5 mandatory admission plans reserve every required
-input trace sequence before mutation; trace capacity zero preserves input
-behavior without allocation.
+retirement, cleanup cancellation/retirement, and suppressed-delivery terminal
+cleanup retain their work sequence and causal parent. Text and preedit are
+redacted: records expose event/lifecycle kind, scalar-count and range facts, and
+opaque owner/generation causality, never raw payload content. The M4C5 mandatory
+admission plans reserve every required input trace sequence before mutation;
+trace capacity zero preserves input behavior without allocation. Automation
+resolution records unique/missing/ambiguous outcomes and parents accepted
+commands; sequence-exhaustion rejection remains trace-free and non-mutating.
 
 Transaction semantic request/invalidation records preserve callback collector
 order independently from cleanup-before-start queue grouping. Final action
@@ -651,10 +667,11 @@ is the causal parent of the application transaction that later processes it.
 Oldest records are evicted at capacity. `dropped_before_sequence()` is an
 exclusive watermark: `Some(S)` means every trace sequence less than `S` is no
 longer retained. Ordinary eviction cannot affect application behavior. When
-enabled mandatory trace sequencing cannot advance, the runtime becomes terminal
-before the pending mutable callback and cancels queued work. The current contract
-has no external sink, JSONL/export, replay, or M4D-normalized schema; M4C5's
-in-memory text/preedit redaction is not an export contract.
+enabled mandatory trace sequencing cannot advance for direct commands or
+already-accepted mutable work, the runtime becomes terminal before the pending
+mutable callback and cancels queued work. The current contract has no external
+sink, JSONL/export, replay, or M4D-normalized schema; M4C5's in-memory
+text/preedit redaction is not an export contract.
 
 ## Breaking migrations
 
@@ -674,6 +691,7 @@ Removed without aliases:
 - direct focus mutation/traversal helpers, `FocusTargetResult`,
   `KeyboardFocusResult`, `handle_keyboard_focus`, and the transitional runtime
   policy module;
+- first-match `MountedTreeIndex::node_by_authored_id` lookup authority;
 - duplicated, unbounded runtime-event/trace storage.
 
 Added:
@@ -688,7 +706,8 @@ Added:
   `PumpBudget`/`PumpReport`, wake transport, and redraw request/acknowledgment;
 - core-owned mounted/semantic identity, monotonic time, work sequence values,
   and runtime-owned inspection;
-- reconciliation generation/report vocabulary;
+- reconciliation generation/report vocabulary and one private reconciliation
+  plan/apply authority;
 - state-aware widget lifecycle/activation/event contexts and unmount reasons;
 - selective widget invalidation;
 - one read-only `FocusState`, host-neutral focus scope/focusability/modality/reason
@@ -702,7 +721,7 @@ Added:
   facts, and retention watermark;
 - routed event/command vocabulary, `EventContext`, `WidgetEventOutput`, checked
   mapped event capability, and exact-target command submission with owned
-  rejection recovery.
+  rejection recovery;
 - host-neutral keyboard, committed-text, and composition protocol values;
   `WidgetTextInput`; canonical input ingress/owned recovery; opaque runtime-local
   composition generations; deterministic authored-ID automation resolution; and
@@ -714,7 +733,8 @@ in force. The current contract includes effects, subscriptions, tasks, timers,
 host requests, all four readiness budgets, wake/redraw, and M4C1 exact-target
 routed semantic commands, M4C2 displayed-generation surface context, the M4C3
 host-neutral pointer lifecycle, the owner-accepted M4C4 focus-scope/modality
-protocol, and M4C5's proof-complete keyboard/text/composition and authored-ID
-automation implementation. It does not imply owner acceptance of M4C5, native
-host translation, production scrolling, editable text, platform IME objects,
-M4D trace export/replay, M5 semantic accessibility mapping, or M4 completion.
+protocol, and the owner-accepted M4C5 keyboard/text/composition and authored-ID
+automation implementation. It does not imply native host translation,
+production scrolling, editable text, platform IME objects, M4D trace
+normalization/export/replay, M5 semantic accessibility mapping, or M4
+completion.
