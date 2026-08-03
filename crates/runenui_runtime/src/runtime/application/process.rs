@@ -1,10 +1,10 @@
 use super::{
-    ApplicationActionEnvelope, ApplicationTransactionInput, HashMap, HashSet, HostProtocol,
-    IntoEffects, MandatoryTracePlan, MountedNodeId, MutationPhase, OwnedTransactionLedger,
-    ProcessApplicationActionOutcome, ReconciliationGeneration, ReconciliationReport, Runtime,
-    RuntimeStatus, RuntimeTerminalReason, SubscriptionDiff, SubscriptionSet, TargetStatus,
-    TraceRecordKind, TransactionLedger, UiApp, View, WorkOwner, mounted_effect_into_effect,
-    public_trace_work_identity, revoke_generation_authority,
+    ApplicationActionEnvelope, ApplicationTransactionInput, CommandOrigin, HashMap, HashSet,
+    HostProtocol, IntoEffects, MandatoryTracePlan, MountedNodeId, MutationPhase,
+    OwnedTransactionLedger, ProcessApplicationActionOutcome, ReconciliationGeneration,
+    ReconciliationReport, Runtime, RuntimeStatus, RuntimeTerminalReason, SubscriptionDiff,
+    SubscriptionSet, TargetStatus, TraceRecordKind, TransactionLedger, UiApp, View, WorkOwner,
+    mounted_effect_into_effect, public_trace_work_identity, revoke_generation_authority,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -95,7 +95,16 @@ pub(crate) fn process_application_action<App: UiApp>(
         let cancelled = runtime.enter_terminal(reason, 0);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     };
-    runtime.cleanup_planned_input_lifetimes(reconciliation_plan.invalidated_lifetimes());
+    let input_cleanup_cause = super::super::focus::InputLifetimeCleanupCause::new(
+        Some(sequence),
+        transaction_parent,
+        runtime.now(),
+        CommandOrigin::programmatic(),
+    );
+    runtime.cleanup_planned_input_lifetimes(
+        reconciliation_plan.invalidated_lifetimes(),
+        input_cleanup_cause,
+    );
     if let RuntimeStatus::Terminal(reason) = runtime.status {
         return ProcessApplicationActionOutcome::Terminal {
             reason,
@@ -154,7 +163,7 @@ pub(crate) fn process_application_action<App: UiApp>(
     let mounted_outputs = reconcile_stats.mounted_outputs;
     runtime.generation = next;
     let after = ReconciliationGeneration(next);
-    runtime.cleanup_lost_input_capabilities();
+    runtime.cleanup_lost_input_capabilities(input_cleanup_cause);
     if let RuntimeStatus::Terminal(reason) = runtime.status {
         return ProcessApplicationActionOutcome::Terminal {
             reason,
