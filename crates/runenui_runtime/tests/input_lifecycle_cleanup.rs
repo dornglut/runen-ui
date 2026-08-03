@@ -313,6 +313,7 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
         terminal.causal_parent(),
         retired.sequence()
     ));
+    let terminal_sequence = terminal.sequence();
 
     let report = runtime.shutdown();
     assert_eq!(report.unmounted_lifetimes(), 2);
@@ -336,6 +337,6 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
     assert!(ancestry_contains_sequence(
         &runtime,
         shutdown.causal_parent(),
-        terminal.sequence()
+        terminal_sequence
     ));
 }
