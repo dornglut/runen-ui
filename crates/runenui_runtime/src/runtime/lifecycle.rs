@@ -1,9 +1,12 @@
 //! Owner revocation, terminal transition, shutdown, and scheduling closure.
 
+use runenui_core::CommandOrigin;
+
 use super::{
     CompletionIngress, HostProtocol, LiveHostRequest, LiveSubscription, LocalTask, Runtime,
     RuntimeStatus, RuntimeTerminalReason, SendTaskMapper, ShutdownReport, Timer, TraceRecordKind,
     TraceSequence, WorkCancellationCounts, WorkOwner, WorkRegistry,
+    focus::InputLifetimeCleanupCause,
 };
 use crate::TraceSpaceCleanupReason;
 
@@ -27,13 +30,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !matches!(self.status, RuntimeStatus::Running) {
             return 0;
         }
-        // Mark terminal before attempting best-effort live-owner cleanup. If
-        // that required cancellation cannot route or commit, teardown is
-        // already stopped at the terminal authority boundary rather than
-        // continuing after a silent lifetime clear.
+        // Stop ordinary mutation first. Cleanup still uses the checked live
+        // route; if that route or its bounded admission is irrecoverable, the
+        // exact lifetime is retired without falsely claiming callback delivery.
         self.status = RuntimeStatus::Terminal(reason);
-        self.cancel_composition_while_live(runenui_core::CompositionCancelReason::Shutdown);
-        self.revoke_space_ownership(TraceSpaceCleanupReason::Terminal);
+        let cleanup_cause = InputLifetimeCleanupCause::new(
+            None,
+            None,
+            self.now(),
+            CommandOrigin::programmatic(),
+        );
+        if !self.cancel_composition_while_live(
+            runenui_core::CompositionCancelReason::Shutdown,
+            cleanup_cause,
+        ) {
+            self.suppress_composition_cleanup(
+                runenui_core::CompositionCancelReason::Shutdown,
+                cleanup_cause,
+            );
+        }
+        let space_parent = self.revoke_space_ownership_with_cause(
+            TraceSpaceCleanupReason::Terminal,
+            cleanup_cause,
+        );
         let (cancelled_queued, cancelled_live, pointer_parent) = self.close_scheduling_authority();
         let cancelled = cancelled_queued
             .saturating_add(cancelled_live.total())
@@ -41,7 +60,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let terminal = self.trace.record(
             TraceRecordKind::RuntimeTerminal { reason },
             None,
-            pointer_parent,
+            pointer_parent.or(space_parent),
             None,
             None,
             None,
@@ -94,14 +113,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled_live_work: WorkCancellationCounts::default(),
             };
         }
-        self.cancel_composition_while_live(runenui_core::CompositionCancelReason::Shutdown);
+        let cleanup_cause = InputLifetimeCleanupCause::new(
+            None,
+            None,
+            self.now(),
+            CommandOrigin::programmatic(),
+        );
+        if !self.cancel_composition_while_live(
+            runenui_core::CompositionCancelReason::Shutdown,
+            cleanup_cause,
+        ) {
+            self.suppress_composition_cleanup(
+                runenui_core::CompositionCancelReason::Shutdown,
+                cleanup_cause,
+            );
+            if matches!(self.status, RuntimeStatus::Running) {
+                self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            }
+        }
         // Pointer cleanup is independent of queue closure, but its accepted
         // M4C3 trace/lifetime ordering precedes shutdown focus suppression.
         // Closing the registry here leaves actual scheduling authority open
         // until all input and focus cleanup is complete.
         let (_, pointer_parent) = self.close_pointer_lifetimes(None);
-        self.revoke_space_ownership(TraceSpaceCleanupReason::Shutdown);
-        let shutdown_parent = self.clear_focus_for_shutdown(pointer_parent);
+        let space_parent = self.revoke_space_ownership_with_cause(
+            TraceSpaceCleanupReason::Shutdown,
+            InputLifetimeCleanupCause::new(
+                None,
+                pointer_parent,
+                self.now(),
+                CommandOrigin::programmatic(),
+            ),
+        );
+        let shutdown_parent = self.clear_focus_for_shutdown(space_parent);
         let (cancelled_queued_envelopes, cancelled_live_work, _) =
             self.close_scheduling_authority();
         let stats = self.tree.shutdown();
