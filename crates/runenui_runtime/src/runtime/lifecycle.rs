@@ -36,18 +36,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.status = RuntimeStatus::Terminal(reason);
         let cleanup_cause =
             InputLifetimeCleanupCause::new(None, None, self.now(), CommandOrigin::programmatic());
-        if !self.cancel_composition_while_live(
-            runenui_core::CompositionCancelReason::Shutdown,
-            cleanup_cause,
-        ) {
-            self.suppress_composition_cleanup(
+        let composition_parent = self
+            .cancel_composition_while_live(
                 runenui_core::CompositionCancelReason::Shutdown,
                 cleanup_cause,
-            );
-        }
-        let space_parent = self
-            .revoke_space_ownership_with_cause(TraceSpaceCleanupReason::Terminal, cleanup_cause);
-        let (cancelled_queued, cancelled_live, pointer_parent) = self.close_scheduling_authority();
+            )
+            .unwrap_or_else(|()| {
+                self.suppress_composition_cleanup(
+                    runenui_core::CompositionCancelReason::Shutdown,
+                    cleanup_cause,
+                )
+            });
+        let space_parent = self.revoke_space_ownership_with_cause(
+            TraceSpaceCleanupReason::Terminal,
+            InputLifetimeCleanupCause::new(
+                None,
+                composition_parent,
+                self.now(),
+                CommandOrigin::programmatic(),
+            ),
+        );
+        let (cancelled_queued, cancelled_live, pointer_parent) =
+            self.close_scheduling_authority(space_parent);
         let cancelled = cancelled_queued
             .saturating_add(cancelled_live.total())
             .saturating_add(additional_cancelled);
@@ -74,6 +84,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(super) fn close_scheduling_authority(
         &mut self,
+        causal_parent: Option<TraceSequence>,
     ) -> (usize, WorkCancellationCounts, Option<TraceSequence>) {
         self.completion_ingress.close();
         self.wake.close();
@@ -94,7 +105,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.mounted_subscription_reconcile_pending.clear();
         self.initial_mounted_subscription_owners.clear();
         self.initial_mounted_outputs.clear();
-        let (_, pointer_parent) = self.close_pointer_lifetimes(None);
+        let (_, pointer_parent) = self.close_pointer_lifetimes(causal_parent);
         (cancelled_queued, cancelled_live, pointer_parent)
     }
 
@@ -109,23 +120,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let cleanup_cause =
             InputLifetimeCleanupCause::new(None, None, self.now(), CommandOrigin::programmatic());
-        if !self.cancel_composition_while_live(
-            runenui_core::CompositionCancelReason::Shutdown,
-            cleanup_cause,
-        ) {
-            self.suppress_composition_cleanup(
+        let composition_parent = self
+            .cancel_composition_while_live(
                 runenui_core::CompositionCancelReason::Shutdown,
                 cleanup_cause,
-            );
-            if matches!(self.status, RuntimeStatus::Running) {
-                self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
-            }
-        }
+            )
+            .unwrap_or_else(|()| {
+                let parent = self.suppress_composition_cleanup(
+                    runenui_core::CompositionCancelReason::Shutdown,
+                    cleanup_cause,
+                );
+                if matches!(self.status, RuntimeStatus::Running) {
+                    self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                }
+                parent
+            });
         // Pointer cleanup is independent of queue closure, but its accepted
         // M4C3 trace/lifetime ordering precedes shutdown focus suppression.
         // Closing the registry here leaves actual scheduling authority open
         // until all input and focus cleanup is complete.
-        let (_, pointer_parent) = self.close_pointer_lifetimes(None);
+        let (_, pointer_parent) = self.close_pointer_lifetimes(composition_parent);
         let space_parent = self.revoke_space_ownership_with_cause(
             TraceSpaceCleanupReason::Shutdown,
             InputLifetimeCleanupCause::new(
@@ -136,8 +150,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ),
         );
         let shutdown_parent = self.clear_focus_for_shutdown(space_parent);
-        let (cancelled_queued_envelopes, cancelled_live_work, _) =
-            self.close_scheduling_authority();
+        let (cancelled_queued_envelopes, cancelled_live_work, final_parent) =
+            self.close_scheduling_authority(shutdown_parent);
         let stats = self.tree.shutdown();
         self.surface_publication.clear_cache();
         self.trace.record(
@@ -146,7 +160,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 unmounted_lifetimes: stats.unmounted,
             },
             None,
-            shutdown_parent,
+            final_parent.or(shutdown_parent),
             None,
             None,
             None,
