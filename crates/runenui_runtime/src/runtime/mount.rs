@@ -79,6 +79,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             generation,
             report,
             status: RuntimeStatus::Running,
+            automation_rejection_is_inert: false,
             limits,
             mounted_public_slot_limit,
             work,
