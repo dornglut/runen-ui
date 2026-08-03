@@ -3,9 +3,9 @@
 use runenui_core::CommandOrigin;
 
 use super::{
-    CompletionIngress, HostProtocol, LiveHostRequest, LiveSubscription, LocalTask, Runtime,
-    RuntimeStatus, RuntimeTerminalReason, SendTaskMapper, ShutdownReport, Timer, TraceRecordKind,
-    TraceSequence, WorkCancellationCounts, WorkOwner, WorkRegistry,
+    AutomationSubmissionPolicy, CompletionIngress, HostProtocol, LiveHostRequest, LiveSubscription,
+    LocalTask, Runtime, RuntimeStatus, RuntimeTerminalReason, SendTaskMapper, ShutdownReport, Timer,
+    TraceRecordKind, TraceSequence, WorkCancellationCounts, WorkOwner, WorkRegistry,
     focus::InputLifetimeCleanupCause,
 };
 use crate::TraceSpaceCleanupReason;
@@ -36,7 +36,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         additional_cancelled: usize,
         causal_parent: Option<TraceSequence>,
     ) -> usize {
-        if self.automation_rejection_is_inert
+        if self.automation_submission_policy == AutomationSubmissionPolicy::InertRejection
             && matches!(
                 reason,
                 RuntimeTerminalReason::WorkSequenceExhausted
