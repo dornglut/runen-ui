@@ -149,9 +149,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let space_lost = space_owner.is_some()
             && space_capabilities
                 .flatten()
-                .is_none_or(|(activation, _)| {
-                    !activation.enabled() || !activation.is_actionable()
-                });
+                .is_none_or(|(activation, _)| !activation.enabled() || !activation.is_actionable());
         if space_lost {
             self.revoke_space_ownership_with_cause(TraceSpaceCleanupReason::Disablement, cause);
         }
