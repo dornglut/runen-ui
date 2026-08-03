@@ -15,13 +15,16 @@ Support labels:
 | `deferred` | Accepted later target outside the first foundation or release. |
 | `unsupported` | Not available and not safe to infer from current APIs. |
 
-M4B, M4C0, M4C1, M4C2, M4C3, and M4C4 are complete and owner-accepted. The
-M4C5 implementation branch has a proof-complete package for its fifteen owned
-rows, but it is not owner-accepted or merged; this document does not promote it
-to accepted support. Its proof labels identify the reviewed implementation and
-its stated limitations, while independent review, owner acceptance, merge, and
-the separate M4C5 authority-reconciliation PR remain required. Exact branch,
-head, blocker, validation, and next-action state belongs in the
+M4B and M4C0–M4C5 are complete and owner-accepted. The accepted M4C5 feature
+head `d0d2ef1d53a8ab1d940beb4155f5f991229f042e` passed exact-head CI run
+`30843238697` and was squash-merged in
+[PR #27](https://github.com/dornglut/runen-ui/pull/27) as
+`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. This document promotes only the
+accepted host-neutral proof behavior; editable text, native host translation,
+semantic accessibility resolution, and M4D normalization/export/replay remain
+outside M4C5. M4D1 becomes the next implementation slice only after this
+post-merge authority reconciliation is accepted and merged. Exact branch, head,
+blocker, validation, and next-action state belongs in the
 [work-tracking system](work-tracking.md), GitHub issues, and pull requests.
 Historical acceptance evidence remains in the [public repository migration
 history](history/public-repository-migration.md).
@@ -35,7 +38,7 @@ history](history/public-repository-migration.md).
 | `element!` authoring | `supported` | One ordinary builder/view expression lowered through `View` | Thin convenience only; no property DSL | M2 complete |
 | Composite function components | `supported` | Ordinary Rust functions return typed views/elements | Components are not mounted state owners | M2 complete |
 | Component action mapping | `supported` | Recursive `Element::map_action(ChildAction -> ParentAction)` | Stored mapping closure is operation-local `'static`; no string/`Any` action conversion | M2 complete |
-| External custom widgets | `supported` | State-aware public widgets, checked routed bridge, non-`Clone` mapping, pointer/focus C/T/B, and M4C5 keyboard/text/composition public conformance | M4C5 proof remains unaccepted; production semantic/paint/layout and editable-text contracts remain blocked | M3/M4C1 complete; M4C2/M4C3/M4C4 owner-accepted; M4C5 proof-complete |
+| External custom widgets | `supported` | State-aware public widgets, checked routed bridge, non-`Clone` mapping, pointer/focus C/T/B, and owner-accepted keyboard/text/composition public conformance | Production semantic/paint/layout and editable-text contracts remain blocked | M3/M4C1 complete; M4C2–M4C5 owner-accepted |
 | Child-layout authoring | `supported` | Canonical `Container<Action>`/`container`, `ChildLayout::Linear`, arbitrary children, container-only gaps | M2 proof policy only; M7 owns production custom layout | M2 complete; M7 |
 | Typed control-specific builders | `supported` | Kind-specific builders; shared identity/style only where behavior is shared | Broader control vocabulary waits for M2/M9 | M2, M9 |
 | Arbitrary child counts | `supported` | Iterator/collection `Views` plus arity-free heterogeneous `children!` | None within the current transient protocol | M2 complete |
@@ -45,10 +48,10 @@ history](history/public-repository-migration.md).
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Application-owned state | `supported` | Core-owned `UiApp::State`, Counter, queued update/reconciliation | One mounted application root | M4B complete, accepted, and merged |
-| Typed application actions | `supported` | `UiApp::Action`; typed widget actions; recursive mapping including routed event/work output; non-`Clone`/non-`Send` proofs | Later event/notification families remain M4C2–M4C5 | M4B/M4C1 complete |
+| Typed application actions | `supported` | `UiApp::Action`; typed widget actions; recursive mapping including routed event/work output; non-`Clone`/non-`Send` proofs | Native host and production semantic families remain later work | M4B/M4C1–M4C5 owner-accepted |
 | Explicit update | `supported` | One private processor is the sole `UiApp::update(&mut State, Action)` caller; ordered `IntoEffects` result | Synchronous by design | M4B complete, accepted, and merged |
 | Conditional root composition | `supported` | Counter/win root replacement with deterministic unmount/remount | One mounted root | M3 complete |
-| Batched/reentrant action processing | `proof` | Multiple action/command submissions queue before a bounded iterative pump; delegated commands and routed actions append later and never recurse; every action reconciles before the next update | Later physical input families remain blocked | M4B/M4C1 complete |
+| Batched/reentrant action processing | `proof` | Multiple action/command submissions queue before a bounded iterative pump; delegated commands and routed actions append later and never recurse; every action reconciles before the next update | Recursive execution is intentionally unsupported | M4B/M4C1–M4C5 owner-accepted |
 | Initial/update effects | `proof` | Core `Effects`/`IntoEffects`; one atomic initial plan; routed event/default exact-owner work reuses the planner | Mounted host requests remain intentionally unavailable | M4B/M4C1 complete |
 | Fine-grained signals as primary model | `deferred` | None by design | Signals may only be future adapters | Post-M3 |
 
@@ -71,21 +74,21 @@ history](history/public-repository-migration.md).
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Typed pointer vocabulary | `proof` | Checked `PointerId`/optional `InputDeviceId`, neutral device kind, finite logical position/movement/scroll, normalized buttons/modifiers, down/move/up/cancel/wheel, and opaque surface context; no unchecked target | No pressure, tilt, twist, click count, or native host-event type | M4C3 owner-accepted |
-| Typed keyboard vocabulary | `proof` | Host-neutral `KeyboardEvent` carries phase, physical/logical identity, modifiers, repeat, location, composition state, and optional device identity | M4C5 proof is pending owner acceptance; no native host translation or broad shortcut policy | M4C5 proof-complete |
+| Typed keyboard vocabulary | `proof` | Host-neutral `KeyboardEvent` carries phase, physical/logical identity, modifiers, repeat, location, composition state, and optional device identity | No native host translation or broad shortcut policy | M4C5 owner-accepted |
 | Pointer hit targeting | `proof` | Current/retained frame rectangle targeting produces generation-safe physical paths kept separate from routed/captured owners | No explicit hit scene, stacking, clips, transforms, visibility, or M6 pointer policy | M4C2/M4C3 owner-accepted; M6 |
 | Pointer activation | `proof` | Canonical down/move/up/cancel lifecycle; eligible primary release inside the exact live pressed owner derives one routed `Activate`; Counter proves public physical convergence | No native host translation or broader production control policy | M4C3 owner-accepted; M9/M10 later |
-| Keyboard activation | `proof` | Exact focused keyboard ingress routes C/T/B; non-repeated Enter down and matched Space down/up append canonical `Activate` | M4C5 proof is pending owner acceptance; no native host translation or production control policy | M4C5 proof-complete |
+| Keyboard activation | `proof` | Exact focused keyboard ingress routes C/T/B; non-repeated Enter down and matched Space down/up append canonical `Activate` | No native host translation or production control policy | M4C5 owner-accepted |
 | Focus traversal | `proof` | Root/nested scopes; current-order next/previous; published-geometry direction; explicit boundary policy; exact restoration | Cross-surface transfer and M5 semantic accessibility mapping are absent | M4C4 owner-accepted; M5 later |
-| Event capture/target/bubble | `proof` | Immutable exact-mounted C/T/B semantic-command, pointer, focus, keyboard, committed-text, and composition routes; checked bridges; independent propagation/default control | M4C5 input proof remains unaccepted; no native event translation | M4C1 complete; M4C3/M4C4 owner-accepted; M4C5 proof-complete |
+| Event capture/target/bubble | `proof` | Immutable exact-mounted C/T/B semantic-command, pointer, focus, keyboard, committed-text, and composition routes; checked bridges; independent propagation/default control | No native event translation | M4C1/M4C3/M4C4/M4C5 owner-accepted |
 | Pointer capture | `proof` | One exact live capture owner per active pointer; ordered staged capture/release/transfer; loss before gain; deterministic lifecycle cleanup and stale-owner suppression | Proof is host-neutral runtime behavior, not drag/control policy | M4C3 owner-accepted |
 | Touch/pen behavior | `unsupported` | Checked device identity and neutral touch/pen categories share the pointer stream protocol | No contact, pressure, tilt, twist, eraser, or host translation contract | M4C3 protocol; later host/control work |
-| Text input and IME events | `proof` | Nonempty committed Unicode text and opaque generation-scoped composition start/update/end/cancel route to exact focused opt-in capability | M4C5 proof remains unaccepted; no editable text, native IME object, selection, or text-layout contract | M4C5 proof-complete; M8–M10 later |
-| Accessibility/programmatic activation | `proof` | Exact-mounted programmatic/accessibility-stub/controller origins converge through `submit_command`; automation resolves exactly one authored ID before the same path | M4C5 automation proof remains unaccepted; semantic accessibility mapping waits for M5 | M4C1 complete; M4C5 proof-complete; M5 blocked |
+| Text input and IME events | `proof` | Nonempty committed Unicode text and opaque generation-scoped composition start/update/end/cancel route to exact focused opt-in capability | No editable text, native IME object, selection, or text-layout contract | M4C5 owner-accepted; M8–M10 later |
+| Accessibility/programmatic activation | `proof` | Exact-mounted programmatic/accessibility-stub/controller origins converge through `submit_command`; automation resolves exactly one authored ID before the same path | Semantic accessibility mapping waits for M5 | M4C1/M4C5 owner-accepted; M5 blocked |
 | Controller/gamepad input vocabulary | `unsupported` | None; keyboard vocabulary does not imply controller support | No normalized controller-facing command or device event model | M4, M10 |
 | Abstract UI navigation commands | `partial` | Existing commands plus `FocusNext`/`Previous`/four directions, exact request/restore, and canonical `LogicalFocusScroll`, with consistent origins | Logical scroll remains route-only; raw source mapping is later | M4C1 complete; M4C3/M4C4 owner-accepted |
 | Directional/spatial focus navigation | `proof` | Current publication geometry and mounted-order final tie-break satisfy DF-01–DF-20 through public submission | Private score is intentionally not API | M4C4 owner-accepted |
 | Controller activation/cancel/menu commands | `proof` | Normalized controller source submits the same exact-target semantic commands without raw device vocabulary | Raw device mapping/identity/axes remain host/M10 scope | M4C1 complete; M10 |
-| Input modality tracking | `proof` | Last accepted pointer/keyboard/controller/accessibility/automation/programmatic source is retained and traced without widget-event delivery | M4C5 keyboard/automation proof remains unaccepted; controller and accessibility resolution remain later | M4C4 owner-accepted; M4C5 proof-complete |
+| Input modality tracking | `proof` | Last accepted pointer/keyboard/controller/accessibility/automation/programmatic source is retained and traced without widget-event delivery | Raw controller translation and semantic accessibility resolution remain later | M4C4/M4C5 owner-accepted; M5/M10 later |
 | Displayed-generation input targeting | `proof` | Runtime-issued `SurfaceInputContext`, exact current/historical logical/resolved command ingress, and pointer validation against retained generation/revision with no current-geometry fallback | One logical surface; no multi-window lifecycle | M4C2/M4C3 owner-accepted; M10 later |
 | Terminal pointer context cleanup | `proof` | Retired/missing active `Up` performs no ordinary route/re-hit/activation but clears pressed/path/capture, notifies a live capture owner, and closes; cancel treats unavailable geometry as diagnosis only | Foreign runtime/surface cannot mutate local streams | M4C3 owner-accepted |
 | Route-only command defaults | `proof` | Cancel/menu/context each route once; eligible wheel derives exactly one logical-scroll command with no production offset mutation | Production scrolling mutation is later work | M4C1 complete; M4C3 owner-accepted |
@@ -96,9 +99,9 @@ history](history/public-repository-migration.md).
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Synchronous direct dispatch | `unsupported` | `AppRuntime::dispatch` and private dispatch authorities were removed | Callers must submit and explicitly pump | M4 |
-| Application action and command submission | `proof` | `submit_action` returns exact action recovery; `submit_command` returns `CommandSubmission` or exact owned target/command/origin recovery with distinct foreign/stale/missing/terminal/capacity outcomes | Later source-specific target resolution remains blocked | M4B/M4C1 complete |
+| Application action and command submission | `proof` | `submit_action` returns exact action recovery; `submit_command` returns `CommandSubmission` or exact owned target/command/origin recovery with distinct foreign/stale/missing/terminal/capacity outcomes; authored-ID automation resolves uniquely before the same command path | Semantic accessibility resolution remains M5 | M4B/M4C1/M4C5 owner-accepted |
 | Queue saturation | `proof` | Waiting-envelope, transaction output, live-family, completion, subscription-diagnostic, and trace limits; initial plans reserve aggregate allowance, while routed plans conservatively reserve the configured maximum-safe callback/output boundary before mutation | Exact callback-declared capacity is not an M4C1 API; external trace-sink limit remains M4D2 | M4B/M4C1 complete |
-| Action queue and ordering | `proof` | One generalized FIFO sequences actions, commands, pointer/input bundles, focus notifications, reconciliation, work, timers, and mapped results; notification/initiating/default output order is explicit | M4C5 input proof remains unaccepted | M4B/M4C1 complete; M4C3/M4C4 owner-accepted; M4C5 proof-complete |
+| Action queue and ordering | `proof` | One generalized FIFO sequences actions, commands, pointer/input bundles, focus notifications, reconciliation, work, timers, and mapped results; notification/initiating/default output order is explicit | Native host translation remains absent | M4B/M4C1/M4C3/M4C4/M4C5 owner-accepted |
 | Effects | `proof` | Opaque ordered application descriptions plus mounted lifecycle/activation/event contexts; routed event/default output commits invalidation, actions/commands, and exact-owner work atomically | Mounted host requests remain intentionally unavailable | M4B/M4C1 complete |
 | Processed-envelope pump budget | `proof` | Four-argument `PumpBudget`; exact report and outcome | None in implemented work scope | M4B complete, accepted, and merged |
 | Other readiness budgets | `proof` | Exact completion-import, local-poll, and timer-promotion limits/counters/exhaustion flags | None in implemented work scope | M4B complete, accepted, and merged |
@@ -170,7 +173,7 @@ history](history/public-repository-migration.md).
 | Renderer-neutral paint scene | `unsupported` | M2 deterministic per-widget paint/debug proof facts | Facts are not paint primitives, resources, clips, transforms, order, or damage | M6 |
 | Paint primitives/resources | `unsupported` | None | No shapes, strokes, glyph/image handles, clips, layers, or damage | M6 |
 | Surface/frame generation | `proof` | Fresh runtime-issued coordinate revision and displayed hit-test generation on every public publication | One logical surface; not a paint/scene generation or multi-window lifecycle | M4C2 owner-accepted; M6/M10 later |
-| Retained surface-input snapshots | `proof` | Configurable nonzero bounded immutable hit-test snapshots, exact historical targeting, oldest-first retirement, and retired/missing/foreign/revision outcomes | Retains hit-test facts only, not production layout/paint scenes; no pointer terminal cleanup | M4C2 owner-accepted; M4C3/M6 later |
+| Retained surface-input snapshots | `proof` | Configurable nonzero bounded immutable hit-test snapshots, exact historical targeting, oldest-first retirement, and retired/missing/foreign/revision outcomes | Retains hit-test facts only, not production layout/paint scenes | M4C2 owner-accepted; M4C3/M6 later |
 | Multi-surface publication | `unsupported` | None | No independent surface lifecycle or scale | M10 |
 | Debug semantic-frame consumer | `proof` | `DebugSurfaceRenderer` deterministically formats open paint/semantic/diagnostic widget facts | It is not a paint-scene consumer, accessibility product, or renderer backend | M5–M6 |
 | Deterministic paint-scene consumer | `planned` | None | Needs accepted paint/hit protocols | M6 |
@@ -189,15 +192,15 @@ history](history/public-repository-migration.md).
 | Line breaking/wrapping | `unsupported` | None | Layout does not negotiate paragraphs | M8 |
 | Emoji/combining marks | `unsupported` | Scalar count only | Geometry is not grapheme/glyph aware | M8 |
 | Baselines | `partial` | Optional measurement fields | Not consumed or published in layout | M8 |
-| Editable text | `unsupported` | None | No editing state, event, semantics, or text layout | M8–M9 |
-| Selection/caret/clipboard/IME | `unsupported` | None | Required contracts absent | M8–M10 |
+| Editable text | `unsupported` | Host-neutral committed-text/composition events only | No editing state, selection, caret, clipboard, or text-layout behavior | M8–M9 |
+| Selection/caret/clipboard/native IME | `unsupported` | None | Required production contracts absent | M8–M10 |
 
 ## 11. Controls
 
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Text/label | `proof` | Static text element | No production text, semantics, or control contract | M8–M9 |
-| Button | `proof` | Label, enabled/actionable state, repeatable `on_activate` action factory, persistent local activation state and interaction slots | No routed press/capture/release behavior, production semantics, recipes, or accessibility | M4–M9 |
+| Button | `proof` | Label, enabled/actionable state, repeatable `on_activate` action factory, persistent local activation state and interaction slots; pointer, Enter, Space, programmatic, and authored automation paths converge through routed `Activate` | No production semantics, recipes, or accessibility | M4C1/M4C3/M4C5 owner-accepted; M9 |
 | Checkbox/radio/toggle | `unsupported` | None | Standard control foundation absent | M9 |
 | Slider/progress | `unsupported` | None | Events, semantics, and layout prerequisites absent | M9 |
 | Text field | `unsupported` | None | Production text/editing prerequisites absent | M8–M9 |
@@ -213,12 +216,12 @@ history](history/public-repository-migration.md).
 | Host-neutral core/runtime | `supported` | No native window, GPU, ECS, or legacy dependencies | Neutrality alone is not an embedding contract | M10 |
 | Platform host contract | `unsupported` | Application-defined typed request/response protocol and runtime wake transport are isolated seams | No platform lifecycle, service capability discovery, windows, event-loop adapter, or resource contract | M10 |
 | Closed application host protocol | `proof` | Core command/response/response-kind contract; opaque runtime-local request generations; exact kind validation, single-winner response state machine, and UI-thread mapper path | Platform service families remain M10 | M4B complete; M10 |
-| Headless host profile | `partial` | Direct deterministic mounted runtime use with manual clock, injectable send executor, wake transport, and typed host requests | No public semantic harness or native host adapter | M4–M5 |
+| Headless host profile | `partial` | Direct deterministic mounted runtime use with manual clock, injectable send executor, wake transport, typed host requests, and accepted synthetic input ingress | No public semantic harness or native host adapter | M4–M5 |
 | Desktop event loop/window | `unsupported` | None | No Winit or equivalent adapter | M10 |
 | Windows/macOS/Linux support | `unsupported` | Platform-independent Rust tests only | No native application proof | M10–M11 |
 | DPI and resize | `unsupported` | Logical geometry only | No scale/surface lifecycle | M10 |
 | Clipboard/cursor/drag-drop/file dialogs | `unsupported` | None | Host services absent | M10 |
-| IME | `unsupported` | M4C5 supplies only host-neutral committed-text/composition event ingress | No native platform IME object, host adapter, editable text, selection, clipboard, or text layout | M8–M10 |
+| IME | `unsupported` | M4C5 supplies only owner-accepted host-neutral committed-text/composition event ingress | No native platform IME object, host adapter, editable text, selection, clipboard, or text layout | M8–M10 |
 | Multi-window | `unsupported` | None | Runtime surface ownership absent | M10 |
 | Embedded external-host proof | `unsupported` | None | No host and scene protocols | M10 |
 | Controller connection/disconnection | `unsupported` | None | No host device lifecycle or stable controller identity | M10 |
@@ -232,7 +235,7 @@ history](history/public-repository-migration.md).
 | Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 harness and Ubuntu-only CI | M5, M11 |
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, fresh surface generation/revision context, and debug output | No stable severity/strict mode | M4C2 owner-accepted; M5–M7 |
-| Runtime trace | `partial` | Checked admission; capacity-zero equivalence; scheduler/routed/surface/pointer/focus graphs plus M4C5 keyboard/text/composition/automation causal facts and in-memory text/preedit redaction | M4C5 proof remains unaccepted; normalization M4D1; JSONL/sink/export/replay M4D2–M4D3 | M4B/M4C1 complete; M4C2/M4C3/M4C4 owner-accepted; M4C5 proof-complete; M4D blocked |
+| Runtime trace | `partial` | Checked admission; capacity-zero equivalence; scheduler/routed/surface/pointer/focus graphs plus owner-accepted M4C5 keyboard/text/composition/automation causal facts and in-memory text/preedit redaction | Normalization M4D1; JSONL/sink/export/replay M4D2–M4D3 | M4B/M4C1–M4C5 owner-accepted; M4D blocked |
 | Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, and exclusive dropped-before watermark | Retention foundation is not complete trace v2 | M4–M5 |
 | Bounded external trace sink | `unsupported` | Accepted bounded/try-based subordinate sink target contract only | No sink, backpressure diagnostic, or recursion guard | M4D2 |
 | Public headless test harness | `planned` | Current tests prove demand | No `runenui_testing` public boundary | M5 |
