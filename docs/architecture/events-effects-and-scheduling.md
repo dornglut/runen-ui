@@ -22,26 +22,27 @@ M4C1  routed semantic-command kernel (complete and accepted)
 M4C2  displayed-generation surface context (complete and accepted)
 M4C3  pointer lifecycle (complete, owner-accepted, and squash-merged)
 M4C4  focus scopes and modality (complete, owner-accepted, and squash-merged)
-M4C5  keyboard, text, IME, automation, and M4C closure (proof-complete implementation; review pending)
-M4D1  complete trace schema (blocked by M4C5)
+M4C5  keyboard, text, IME, automation, and M4C closure (complete, owner-accepted, and squash-merged)
+M4D1  complete trace schema (blocked pending M4C5 authority reconciliation)
 M4D2  export and sink (blocked by M4D1)
 M4D3  replay and milestone closure (blocked by M4D2)
 ```
 
-M4C1, M4C2, M4C3, and M4C4 are complete and owner-accepted. M4C3's accepted
-feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
+M4C1–M4C5 are complete and owner-accepted. M4C3's accepted feature head
+`01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
 `29996101708` and was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`. M4C4's accepted feature head
 `f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
 `30006170403` and was squash-merged in
 [PR #22](https://github.com/dornglut/runen-ui/pull/22) as
-`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5's implementation proof
-package is complete on its review branch, but independent review, owner
-acceptance, and merge remain pending. M4C4 authority reconciliation is already
-complete; the separate follow-up is the M4C5 authority-reconciliation PR, not
-part of the M4C5 implementation.
-M4D1–M4D3 remain blocked in sequence. M4B's implemented live-only producer
-authority remains unchanged, and M4 is active and incomplete.
+`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5's accepted feature head
+`d0d2ef1d53a8ab1d940beb4155f5f991229f042e` passed exact-head CI run
+`30843238697`, passed independent rereview, and was squash-merged in
+[PR #27](https://github.com/dornglut/runen-ui/pull/27) as
+`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. Its separate post-merge authority
+reconciliation remains the final predecessor gate for M4D1. M4D1–M4D3 remain
+blocked in sequence. M4B's implemented live-only producer authority remains
+unchanged, and M4 is active and incomplete.
 
 ## Current application-work and scheduler implementation
 
@@ -67,12 +68,11 @@ work-specific trace records carry opaque exact owner/family/generation/key
 identity. Capture/target/bubble routing, propagation/default control, delegated
 commands, routed output mapping, and the command causal trace are implemented.
 Displayed-generation surface input context and exact current/historical target
-binding, pointer identity/capture/release-inside behavior, and focus scopes with
-retained modality are implemented. M4C5 adds raw keyboard, committed-text, and
-composition streams bound to exact focused lifetimes, plus deterministic
-authored-ID automation resolution. Its complete proof package is pending review
-and owner acceptance; semantic accessibility mapping, trace sink/export/replay,
-and complete trace-v2 normalization remain unimplemented.
+binding, pointer identity/capture/release-inside behavior, focus scopes with
+retained modality, raw keyboard, committed-text and composition streams bound to
+exact focused lifetimes, and deterministic authored-ID automation resolution are
+implemented and owner-accepted. Semantic accessibility mapping, trace
+sink/export/replay, and complete trace-v2 normalization remain unimplemented.
 
 ## Canonical target path
 
@@ -185,10 +185,9 @@ pointer/device protocol, pointer streams, physical/routed separation, capture,
 boundaries, terminal cleanup, logical-scroll intent, and release-inside
 activation. M4C4 added the single focus/scope authority, modality, current-
 publication directional selection, atomic focus transitions, and routed focus
-notifications. M4C5 adds keyboard/text/composition ingress and authored
-automation resolution; its proof-complete branch remains pending review and
-owner acceptance. M4D trace normalization/export/replay and M5 semantic
-accessibility mapping remain later work. See
+notifications. M4C5 adds owner-accepted keyboard/text/composition ingress and
+authored automation resolution. M4D trace normalization/export/replay and M5
+semantic accessibility mapping remain later work. See
 [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md) for the
 accepted behavioral rules.
 
@@ -211,23 +210,32 @@ never synthesizes text from a keyboard character. `WidgetTextInput` separately
 opts into composition. `start_composition` creates an opaque runtime-local
 `CompositionGeneration` only after exact focused-capability and mandatory
 admission checks; update, end, and explicit cancellation accept that exact
-generation only. A generation is pending until its start is processed, then
-active; stale, foreign, missing, invalid-range, duplicate-close, and replacement
-completion paths never retarget a later focus lifetime.
+generation only. A rejected start recovers a generation-free
+`CompositionStartRequest`; only an accepted `CompositionStartSubmission` owns a
+runtime-issued generation. A generation is pending until its start is processed,
+then active; stale, foreign, missing, invalid-range, duplicate-close, and
+replacement completion paths never retarget a later focus lifetime.
 
 Composition cancellation is non-cancelable and is routed while its owner is
 live. Focus transfer queues it before `FocusOut`; planned removal/replacement,
 disablement or text-capability loss, explicit cancellation, shutdown, and drop
-also close the generation before unmount. No composition operation mutates an
-editable text model or commits text.
+also close the generation before unmount. If required cleanup cannot be routed
+or committed because integrity or admission is unavailable, the runtime records
+causal suppression, retires the exact generation without falsely claiming
+callback delivery, terminalizes, and preserves the terminal-to-shutdown causal
+chain. No composition operation mutates an editable text model or commits text.
 
 `AppRuntime::submit_automation_command` resolves an authored `ElementId` in
 logical preorder before submitting the ordinary canonical semantic command.
 Exactly one live match produces the command with automation origin; missing and
 ambiguous matches return structured recovery and submit nothing. A target that
 becomes stale after resolution is rejected during ordinary command processing
-without fallback or retargeting. The first-match lookup and direct activation
-paths are absent.
+without fallback or retargeting. Public automation work-sequence or enabled-
+trace-sequence exhaustion returns the exact authored request without
+terminalizing, enqueuing work, invoking callbacks, changing focus/widget/
+application state, or requesting wake. Direct commands and already-accepted
+mutable work retain the ordinary terminal exhaustion policy. The first-match
+lookup and direct activation paths are absent.
 
 ## Application, effect, and subscription contract
 
@@ -393,11 +401,16 @@ returns exact `NotStarted`. Cancellation, replacement, unmount, completion,
 terminal closure, and shutdown centrally remove the generation and every
 retained payload, source, and mapper.
 
-Recoverable stale/full/closed outcomes leave the runtime coherent. If an
-unexpected integrity failure occurs after unrollbackable application mutation,
-the runtime enters a terminal poisoned state: no provisional external work
-starts, all work is invalidated, and only inspection, trace export, state
-extraction, and shutdown remain available.
+Recoverable stale/full/closed outcomes leave the runtime coherent. The accepted
+public authored-ID automation path also treats work/trace-sequence exhaustion as
+recoverable before canonical command admission, returns its exact request, and
+leaves runtime status and observable state unchanged. Ordinary direct command
+sequence exhaustion and sequence exhaustion encountered by already-accepted
+mutable work retain the terminal policy. If an unexpected integrity failure
+occurs after unrollbackable application mutation, the runtime enters a terminal
+poisoned state: no provisional external work starts, all work is invalidated,
+and only inspection, trace export, state extraction, and shutdown remain
+available.
 
 ## Wake and redraw
 
@@ -441,10 +454,13 @@ capture, boundary, terminal-cleanup, and release-inside causality. M4C4 adds
 focus command/policy/selection/restoration, transition, notification,
 focus-within, modality, and stale-delivery suppression causality. Complete trace
 v2 later normalizes the full schema and adds deterministic export and replay.
-M4C5 adds keyboard, committed-text, composition-lifecycle, Space-cleanup, and
-automation-resolution causal facts. Committed text and composition preedit are
-never retained in a trace record: the input facts are redacted to event kind,
-scalar-count/range status, lifecycle state, and exact opaque lifetime facts.
+M4C5 adds owner-accepted keyboard, committed-text, composition-lifecycle,
+Space-cleanup, automation-resolution, and cleanup-suppression causal facts.
+Committed text and composition preedit are never retained in a trace record: the
+input facts are redacted to event kind, scalar-count/range status, lifecycle
+state, and exact opaque lifetime facts. Automation resolution records unique,
+missing, and ambiguous outcomes, parents an accepted ordinary command, and
+retains no rejection record when provisional sequence admission fails.
 
 Transaction semantic request/invalidation facts preserve callback collector
 order separately from cleanup-before-start queue grouping. Mandatory trace
@@ -492,15 +508,14 @@ the accepted M4C delivery charter is implementation/delivery authority, and the
 [M4 conformance matrix](m4-conformance-matrix.md) is observable acceptance
 authority.
 
-M4C1, M4C2, M4C3, and M4C4 are complete and owner-accepted. The accepted M4C4
-feature head `f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
-`30006170403` and was squash-merged in
-[PR #22](https://github.com/dornglut/runen-ui/pull/22) as
-`f95571634a9c6528e5834e9589b048ad5197bd15`. M4C5 is proof-complete on its
-implementation review branch, not owner-accepted or merged. M4C4 authority
-reconciliation is complete; the separate M4C5 authority-reconciliation PR
-remains outside this pull request. M4D1–M4D3 remain blocked in sequence, and
-M4 remains active and incomplete.
+M4C1–M4C5 are complete and owner-accepted. The accepted M4C5 feature head
+`d0d2ef1d53a8ab1d940beb4155f5f991229f042e` passed exact-head CI run
+`30843238697`, passed independent rereview, and was squash-merged in
+[PR #27](https://github.com/dornglut/runen-ui/pull/27) as
+`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. Its separate post-merge authority
+reconciliation remains outside the implementation PR and is the final
+predecessor gate for M4D1. M4D1–M4D3 remain blocked in sequence, and M4 remains
+active and incomplete.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control

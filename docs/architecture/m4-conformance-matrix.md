@@ -12,17 +12,17 @@ M4C0–M4D3 delivery sequence. This matrix defines observable acceptance and pro
 ownership; neither the charter nor a private implementation seam can weaken a
 row here.
 
-Current audited branch state after M4C4 owner acceptance and squash merge. The
-accepted feature head `f3201a83583af0c1d148bec87cd9140ff42795b7` passed
-exact-head CI run `30006170403`; [PR #22](https://github.com/dornglut/runen-ui/pull/22)
-was squash-merged as `f95571634a9c6528e5834e9589b048ad5197bd15`. The M4C5
-implementation proof package is complete on its review branch; independent
-review, owner acceptance, and merge remain pending:
+Current audited branch state after M4C5 owner acceptance and squash merge. The
+accepted feature head `d0d2ef1d53a8ab1d940beb4155f5f991229f042e` passed
+exact-head CI run `30843238697`; [PR #27](https://github.com/dornglut/runen-ui/pull/27)
+was squash-merged as `284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`.
+All fifteen M4C5-owned rows are owner-accepted. M4D1 remains blocked until this
+post-merge authority reconciliation is accepted and merged:
 
 ```text
 237 total unique rows
-192 owner-accepted
-15 proof-complete
+207 owner-accepted
+0 proof-complete
 30 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -184,20 +184,20 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Trace proof owner | Delivery slice | Status | M4 gate |
 |---|---|---|---|---|---|---|---|
-| KEY-01 | Keyboard down routes C/T/B with physical/logical identity, modifiers, repeat, location, composition state, and cancelable defaults. | Runtime + downstream keyboard proof | Rejected target and prevention proof | M4C5 keyboard-down trace | M4C5 | proof-complete | Required |
-| KEY-02 | Keyboard up routes C/T/B and completes only matching Space ownership on the same live eligible focus target. | Runtime + Counter keyboard proof | Focus/lifetime/eligibility loss and unmatched-up proof | M4C5 keyboard-up trace | M4C5 | proof-complete | Required |
-| KEY-03 | Enter enqueues `Activate` on accepted non-repeated key down; repeated down does not duplicate activation. | Counter keyboard proof | Repeat/focus/disabled/stale proof | M4C5 Enter-to-command trace | M4C5 | proof-complete | Required |
-| KEY-04 | Space down establishes pressed ownership and matching key up enqueues `Activate`; cleanup occurs on cancellation or focus/lifetime loss. | Counter + runtime Space proof | Unmatched/lost-owner and direct-activation proof | M4C5 Space lifecycle trace | M4C5 | proof-complete | Required |
-| TEXT-01 | Committed Unicode text routes C/T/B to the focused text-capable node, is cancelable, and claims no editable-text default in M4. | Downstream text-event proof | Keyboard-character synthesis and non-text target proof | M4C5 redacted text trace | M4C5 | proof-complete | Required |
-| IME-01 | Composition start routes C/T/B and binds a session to the exact focused mounted generation that accepts it. | Runtime + downstream IME proof | No-focus/ineligible/stale-owner proof | M4C5 composition-start trace | M4C5 | proof-complete | Required |
-| IME-02 | Composition update routes to the exact live owner and maintains supplied preedit/range bookkeeping without editable-text behavior. | Runtime + downstream IME proof | Mismatched generation and retarget proof | M4C5 redacted composition-update trace | M4C5 | proof-complete | Required |
-| IME-03 | Focus transfer, removal/replacement, disablement, explicit cancel, or shutdown queues composition cancellation before `FocusOut`. | Runtime transition-order proof | Prevention and post-unmount callback proof | M4C5 composition-before-focus trace | M4C5 | proof-complete | Required |
-| IME-04 | Late update or commit for an invalidated composition generation is stale and never retargeted to new focus. | Runtime stale-composition proof | Replacement-generation proof | M4C5 stale-composition trace | M4C5 | proof-complete | Required |
-| IME-05 | Composition end routes to the exact live owner, closes that generation, and claims no editable-text commit behavior. | Runtime + downstream IME proof | Duplicate end, stale owner, and retarget proof | M4C5 redacted composition-end trace | M4C5 | proof-complete | Required |
-| AUTOMATION-01 | Automation resolves a unique authored ID to its current exact mounted target before submitting the canonical command. | Public automation integration | Direct activation bypass proof | M4C5 resolution-to-command trace | M4C5 | proof-complete | Required |
-| AUTOMATION-02 | Missing authored identity returns a structured outcome and submits no command. | Public automation integration | No sequence/callback/mutation proof | M4C5 missing-identity trace | M4C5 | proof-complete | Required |
-| AUTOMATION-03 | Ambiguous authored identity is diagnosed deterministically and preserves no arbitrary target. | Public automation integration | First/last-match rejection proof | M4C5 ambiguity trace | M4C5 | proof-complete | Required |
-| AUTOMATION-04 | A resolved target that becomes stale is rejected without retargeting to a replacement. | Public/runtime automation proof | Generation-reuse proof | M4C5 stale-target trace | M4C5 | proof-complete | Required |
+| KEY-01 | Keyboard down routes C/T/B with physical/logical identity, modifiers, repeat, location, composition state, and cancelable defaults. | Runtime + downstream keyboard proof | Rejected target and prevention proof | M4C5 keyboard-down trace | M4C5 | owner-accepted | Required |
+| KEY-02 | Keyboard up routes C/T/B and completes only matching Space ownership on the same live eligible focus target. | Runtime + Counter keyboard proof | Focus/lifetime/eligibility loss and unmatched-up proof | M4C5 keyboard-up trace | M4C5 | owner-accepted | Required |
+| KEY-03 | Enter enqueues `Activate` on accepted non-repeated key down; repeated down does not duplicate activation. | Counter keyboard proof | Repeat/focus/disabled/stale proof | M4C5 Enter-to-command trace | M4C5 | owner-accepted | Required |
+| KEY-04 | Space down establishes pressed ownership and matching key up enqueues `Activate`; cleanup occurs on cancellation or focus/lifetime loss. | Counter + runtime Space proof | Unmatched/lost-owner and direct-activation proof | M4C5 Space lifecycle trace | M4C5 | owner-accepted | Required |
+| TEXT-01 | Committed Unicode text routes C/T/B to the focused text-capable node, is cancelable, and claims no editable-text default in M4. | Downstream text-event proof | Keyboard-character synthesis and non-text target proof | M4C5 redacted text trace | M4C5 | owner-accepted | Required |
+| IME-01 | Composition start routes C/T/B and binds a session to the exact focused mounted generation that accepts it. | Runtime + downstream IME proof | No-focus/ineligible/stale-owner proof | M4C5 composition-start trace | M4C5 | owner-accepted | Required |
+| IME-02 | Composition update routes to the exact live owner and maintains supplied preedit/range bookkeeping without editable-text behavior. | Runtime + downstream IME proof | Mismatched generation and retarget proof | M4C5 redacted composition-update trace | M4C5 | owner-accepted | Required |
+| IME-03 | Focus transfer, removal/replacement, disablement, explicit cancel, or shutdown queues composition cancellation before `FocusOut`. | Runtime transition-order proof | Prevention and post-unmount callback proof | M4C5 composition-before-focus trace | M4C5 | owner-accepted | Required |
+| IME-04 | Late update or commit for an invalidated composition generation is stale and never retargeted to new focus. | Runtime stale-composition proof | Replacement-generation proof | M4C5 stale-composition trace | M4C5 | owner-accepted | Required |
+| IME-05 | Composition end routes to the exact live owner, closes that generation, and claims no editable-text commit behavior. | Runtime + downstream IME proof | Duplicate end, stale owner, and retarget proof | M4C5 redacted composition-end trace | M4C5 | owner-accepted | Required |
+| AUTOMATION-01 | Automation resolves a unique authored ID to its current exact mounted target before submitting the canonical command. | Public automation integration | Direct activation bypass proof | M4C5 resolution-to-command trace | M4C5 | owner-accepted | Required |
+| AUTOMATION-02 | Missing authored identity returns a structured outcome and submits no command. | Public automation integration | No sequence/callback/mutation proof | M4C5 missing-identity trace | M4C5 | owner-accepted | Required |
+| AUTOMATION-03 | Ambiguous authored identity is diagnosed deterministically and preserves no arbitrary target. | Public automation integration | First/last-match rejection proof | M4C5 ambiguity trace | M4C5 | owner-accepted | Required |
+| AUTOMATION-04 | A resolved target that becomes stale is rejected without retargeting to a replacement. | Public/runtime automation proof | Generation-reuse proof | M4C5 stale-target trace | M4C5 | owner-accepted | Required |
 | ACCESS-01 | A unique live semantic identity resolves to its exact mounted target and submits the canonical semantic command without direct activation. | M5 semantic/accessibility conformance | Direct-activation bypass, foreign identity, and wrong-target proof | M5 resolution-to-command trace | M5 | blocked | M5 gate |
 | ACCESS-02 | Missing, stale, foreign, or ambiguous semantic identity returns a structured outcome, submits no command, and never retargets a replacement. | M5 semantic/accessibility rejection conformance | Replacement-generation and first/last-match rejection proof | M5 semantic-rejection trace | M5 | blocked | M5 gate |
 
@@ -333,7 +333,7 @@ not imply routed-event or M4D support.
 | MIGRATION-04 | Direct keyboard activation is removed; the legacy keyboard path emits no action, invokes no activation capability, and submits no semantic command. Enter/Space policy is introduced separately by M4C5. | Counter/public API migration | Keyboard-helper no-action/no-activation and repository bypass audit | M4C1 legacy-keyboard no-bypass trace proof | M4C1 | owner-accepted | Required |
 | MIGRATION-05 | Any temporarily retained focus-only helper emits no action, invokes no activation, and names its exact M4C3/M4C4/M4C5 removal owner. | Transitional API conformance | Action/activation bypass proof | Focus-helper trace absence/command trace proof | M4C1 | owner-accepted | Required |
 | MIGRATION-06 | Remaining pointer proof helpers are removed after the M4C3 public pointer path lands. | Public API/compile migration | Repository symbol audit | M4C3 canonical pointer trace | M4C3 | owner-accepted | Required |
-| MIGRATION-07 | Remaining keyboard/input proof helpers and transitional result types are removed after M4C5 convergence. | Public API/compile migration | Repository symbol audit | M4C5 canonical input trace | M4C5 | proof-complete | Required |
+| MIGRATION-07 | Remaining keyboard/input proof helpers and transitional result types are removed after M4C5 convergence. | Public API/compile migration | Repository symbol audit | M4C5 canonical input trace | M4C5 | owner-accepted | Required |
 | MIGRATION-08 | Final M1–M3/M4A compatibility stores, bypasses, and transitional public authority are absent before M4 closes. | Repository API and symbol audit | Downstream compile-fail and no-parallel-path proof | M4D3 reconstruction audit | M4D3 | blocked | Required |
 | M4-CLOSE-01 | Counter completes pointer, keyboard, controller, accessibility-stub, automation, and programmatic interaction through public canonical paths. | Counter M4 conformance | Cancellation/stale/disabled source proofs | End-to-end Counter trace | M4D3 | blocked | Required |
 | M4-CLOSE-02 | A downstream widget completes routing, defaults, focus/capture/composition, work output, and action mapping through public APIs. | Downstream M4 conformance | No privileged bridge/registry/bypass proof | Downstream causal trace | M4D3 | blocked | Required |
