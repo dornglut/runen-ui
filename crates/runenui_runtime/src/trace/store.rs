@@ -250,6 +250,14 @@ impl Trace {
         Some(sequence)
     }
 
+    pub(crate) fn latest_runtime_terminal_sequence(&self) -> Option<TraceSequence> {
+        self.records
+            .iter()
+            .rev()
+            .find(|record| matches!(record.kind(), TraceRecordKind::RuntimeTerminal { .. }))
+            .map(TraceRecord::sequence)
+    }
+
     /// Borrows canonical records from oldest retained to newest.
     #[must_use]
     pub fn records(&self) -> impl ExactSizeIterator<Item = &TraceRecord> {
