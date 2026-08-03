@@ -28,10 +28,6 @@ pub struct TraceEventContext {
 }
 
 impl TraceEventContext {
-    pub(crate) const fn new(family: TraceEventFamily, cancelable: bool) -> Self {
-        Self { family, cancelable }
-    }
-
     /// Returns the normalized event family.
     #[must_use]
     pub const fn family(self) -> TraceEventFamily {
@@ -55,20 +51,6 @@ pub struct TraceSurfaceContext {
 }
 
 impl TraceSurfaceContext {
-    pub(crate) fn new(
-        surface_id: SurfaceId,
-        coordinate_revision: u64,
-        hit_test_generation: u64,
-        snapshot: Option<TraceSurfaceSnapshotKind>,
-    ) -> Self {
-        Self {
-            surface_id,
-            coordinate_revision,
-            hit_test_generation,
-            snapshot,
-        }
-    }
-
     /// Returns the exact logical surface identity.
     #[must_use]
     pub const fn surface_id(&self) -> &SurfaceId {
@@ -104,20 +86,6 @@ pub struct TracePointerContext {
 }
 
 impl TracePointerContext {
-    pub(crate) fn new(
-        pointer_id: PointerId,
-        device_id: Option<InputDeviceId>,
-        device_kind: PointerDeviceKind,
-        phase: Option<PointerPhase>,
-    ) -> Self {
-        Self {
-            pointer_id,
-            device_id,
-            device_kind,
-            phase,
-        }
-    }
-
     /// Returns the exact pointer-stream identity.
     #[must_use]
     pub const fn pointer_id(&self) -> &PointerId {
@@ -151,13 +119,6 @@ pub struct TraceCompositionContext {
 }
 
 impl TraceCompositionContext {
-    pub(crate) fn new(generation: CompositionGeneration, device_id: Option<InputDeviceId>) -> Self {
-        Self {
-            generation,
-            device_id,
-        }
-    }
-
     /// Returns the opaque exact composition generation.
     #[must_use]
     pub const fn generation(&self) -> &CompositionGeneration {
@@ -179,10 +140,6 @@ pub struct TraceCompositionRange {
 }
 
 impl TraceCompositionRange {
-    pub(crate) const fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
-    }
-
     /// Returns the inclusive UTF-8 byte start.
     #[must_use]
     pub const fn start(self) -> usize {
@@ -213,10 +170,6 @@ pub struct TraceActionIdentity {
 }
 
 impl TraceActionIdentity {
-    pub(crate) const fn new(type_name: &'static str, origin: TraceActionOrigin) -> Self {
-        Self { type_name, origin }
-    }
-
     /// Returns the Rust action type name without retaining a payload.
     #[must_use]
     pub const fn type_name(self) -> &'static str {
@@ -238,10 +191,6 @@ pub struct TraceRouteSnapshot {
 }
 
 impl TraceRouteSnapshot {
-    pub(crate) fn new(event: TraceEventContext, targets: Vec<TraceTarget>) -> Self {
-        Self { event, targets }
-    }
-
     /// Returns the event family and cancelability facts.
     #[must_use]
     pub const fn event(&self) -> TraceEventContext {
@@ -250,7 +199,7 @@ impl TraceRouteSnapshot {
 
     /// Returns the immutable root-to-target route.
     #[must_use]
-    pub fn targets(&self) -> &[TraceTarget] {
+    pub const fn targets(&self) -> &[TraceTarget] {
         self.targets.as_slice()
     }
 }
@@ -262,13 +211,9 @@ pub struct TracePointerPath {
 }
 
 impl TracePointerPath {
-    pub(crate) fn new(targets: Vec<TraceTarget>) -> Self {
-        Self { targets }
-    }
-
     /// Returns the immutable root-to-physical-target path.
     #[must_use]
-    pub fn targets(&self) -> &[TraceTarget] {
+    pub const fn targets(&self) -> &[TraceTarget] {
         self.targets.as_slice()
     }
 }
@@ -283,20 +228,6 @@ pub struct TracePublicationContext {
 }
 
 impl TracePublicationContext {
-    pub(crate) fn new(
-        surface: TraceSurfaceContext,
-        reconciliation_generation: ReconciliationGeneration,
-        node_count: usize,
-        executed_phases: Vec<SurfacePhase>,
-    ) -> Self {
-        Self {
-            surface,
-            reconciliation_generation,
-            node_count,
-            executed_phases,
-        }
-    }
-
     /// Returns the exact displayed-surface identity.
     #[must_use]
     pub const fn surface(&self) -> &TraceSurfaceContext {
@@ -317,7 +248,7 @@ impl TracePublicationContext {
 
     /// Returns the phases that actually executed for this publication.
     #[must_use]
-    pub fn executed_phases(&self) -> &[SurfacePhase] {
+    pub const fn executed_phases(&self) -> &[SurfacePhase] {
         self.executed_phases.as_slice()
     }
 }
