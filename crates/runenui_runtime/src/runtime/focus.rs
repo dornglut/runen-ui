@@ -129,7 +129,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let composition_lost = composition_owner.is_some()
             && composition_capabilities
                 .flatten()
-                .map_or(true, |(activation, text_input)| {
+                .is_none_or(|(activation, text_input)| {
                     !activation.enabled()
                         || !text_input.accepts_committed_text()
                         || !text_input.accepts_composition()
@@ -149,7 +149,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let space_lost = space_owner.is_some()
             && space_capabilities
                 .flatten()
-                .map_or(true, |(activation, _)| {
+                .is_none_or(|(activation, _)| {
                     !activation.enabled() || !activation.is_actionable()
                 });
         if space_lost {
@@ -471,21 +471,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 runenui_core::CompositionCancelReason::FocusTransfer,
             )?;
         }
-        if self
-            .space_ownership
-            .as_ref()
-            .is_some_and(|owner| old_target.as_ref() == Some(&owner.target))
-        {
-            transaction.parent = self.revoke_space_ownership_with_cause(
-                TraceSpaceCleanupReason::FocusTransfer,
-                InputLifetimeCleanupCause::new(
-                    Some(transaction.sequence),
-                    transaction.parent,
-                    transaction.instant,
-                    transaction.origin,
-                ),
-            );
-        }
+        self.revoke_space_for_focus_transfer(transaction, old_target.as_ref());
         let old_route = match old_target.as_ref() {
             Some(old) if self.tree.target_status(old) == TargetStatus::Live => {
                 self.checked_focus_route(old)?
@@ -565,6 +551,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             )?;
         }
         Ok(())
+    }
+
+    fn revoke_space_for_focus_transfer(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        old_target: Option<&MountedNodeId>,
+    ) {
+        if self
+            .space_ownership
+            .as_ref()
+            .is_some_and(|owner| old_target == Some(&owner.target))
+        {
+            transaction.parent = self.revoke_space_ownership_with_cause(
+                TraceSpaceCleanupReason::FocusTransfer,
+                InputLifetimeCleanupCause::new(
+                    Some(transaction.sequence),
+                    transaction.parent,
+                    transaction.instant,
+                    transaction.origin,
+                ),
+            );
+        }
     }
 
     fn record_focus_commit(
