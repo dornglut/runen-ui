@@ -6,7 +6,8 @@ use runenui_core::{CommandOrigin, MonotonicInstant};
 use super::{
     admission::{MandatoryTracePlan, TraceReservation},
     model::{
-        TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget, TraceWorkIdentity,
+        TraceConfig, TraceContext, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget,
+        TraceWorkIdentity,
     },
 };
 use crate::{MountedNodeId, ReconciliationGeneration, WorkSequence};
@@ -199,6 +200,7 @@ impl Trace {
             original_target: None,
             current_target: None,
             command_origin: None,
+            context: TraceContext::empty(),
         });
         Some(sequence)
     }
