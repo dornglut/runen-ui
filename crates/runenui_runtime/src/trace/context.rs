@@ -151,10 +151,7 @@ pub struct TraceCompositionContext {
 }
 
 impl TraceCompositionContext {
-    pub(crate) fn new(
-        generation: CompositionGeneration,
-        device_id: Option<InputDeviceId>,
-    ) -> Self {
+    pub(crate) fn new(generation: CompositionGeneration, device_id: Option<InputDeviceId>) -> Self {
         Self {
             generation,
             device_id,
