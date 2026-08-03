@@ -4,12 +4,10 @@ use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
     CommandOrigin, CompositionCancelReason, CompositionEvent, Element, EventContext, EventPhase,
-    NoHostProtocol, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
+    NoHostProtocol, SemanticCommand, UiApp, UiEvent, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetTextInput,
 };
-use runenui_runtime::{
-    AppRuntime, PumpBudget, SubmitCompositionErrorKind, TraceRecordKind, TraceTargetRejection,
-};
+use runenui_runtime::{AppRuntime, PumpBudget, SubmitCompositionErrorKind, TraceRecordKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Action {
@@ -291,8 +289,6 @@ fn accepted_automation_target_never_retargets_a_same_slot_replacement() {
     );
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
-        TraceRecordKind::CommandProcessingRejected {
-            outcome: TraceTargetRejection::Stale
-        }
+        TraceRecordKind::AutomationTargetStaleAfterResolution
     )));
 }
