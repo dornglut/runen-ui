@@ -4,6 +4,7 @@
 
 mod access;
 mod application;
+mod automation;
 mod focus;
 mod helpers;
 mod ingress;
@@ -98,6 +99,10 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     generation: u64,
     report: ReconciliationReport,
     pub(crate) status: RuntimeStatus,
+    /// Synchronous public automation ingress returns exhaustion as rejection
+    /// rather than changing global runtime status. No callback or pump work can
+    /// observe this scope because automation submission is non-reentrant.
+    automation_rejection_is_inert: bool,
     limits: crate::RuntimeLimits,
     mounted_public_slot_limit: u64,
     work: WorkRegistry<Action, Protocol>,
