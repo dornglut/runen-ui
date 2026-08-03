@@ -55,10 +55,7 @@ impl<App: UiApp> AppRuntime<App> {
     #[cfg(feature = "internal-test-seams")]
     #[doc(hidden)]
     #[must_use]
-    pub fn __mounted_identity_parts_for_test(
-        &self,
-        id: &MountedNodeId,
-    ) -> Option<(u32, u64)> {
+    pub fn __mounted_identity_parts_for_test(&self, id: &MountedNodeId) -> Option<(u32, u64)> {
         self.runtime
             .tree
             .runtime_namespace()
