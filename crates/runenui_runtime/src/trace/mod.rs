@@ -9,9 +9,10 @@ mod store;
 
 pub(crate) use admission::{MandatoryTracePlan, TraceReservation};
 pub use context::{
-    TraceActionIdentity, TraceActionOrigin, TraceCompositionContext, TraceCompositionRange,
-    TraceEventContext, TraceEventFamily, TracePointerContext, TracePointerPath,
-    TracePublicationContext, TraceRouteSnapshot, TraceSurfaceContext,
+    TraceActionCategory, TraceActionIdentity, TraceCompositionContext, TraceCompositionRange,
+    TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily, TracePointerContext,
+    TracePointerPath, TracePublicationContext, TraceRouteSnapshot, TraceSurfaceContext,
+    TraceTargetTransition, TraceTextMetrics,
 };
 pub use model::{
     TraceConfig, TraceFocusBoundaryOutcome, TracePointerCaptureRequestRejection,
