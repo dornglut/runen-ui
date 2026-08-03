@@ -318,7 +318,7 @@ impl TracePublicationContext {
 }
 
 /// Typed normalized context attached to one canonical trace record.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceContext {
     event: Option<TraceEventContext>,
     surface: Option<TraceSurfaceContext>,
@@ -335,6 +335,23 @@ pub struct TraceContext {
 }
 
 impl TraceContext {
+    pub(crate) const fn empty() -> Self {
+        Self {
+            event: None,
+            surface: None,
+            pointer: None,
+            composition: None,
+            text_metrics: None,
+            composition_range: None,
+            route: None,
+            physical_path: None,
+            target_transition: None,
+            action: None,
+            publication: None,
+            delivery: None,
+        }
+    }
+
     /// Returns normalized event family and cancelability facts.
     #[must_use]
     pub const fn event(&self) -> Option<TraceEventContext> {
