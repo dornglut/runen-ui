@@ -71,7 +71,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 })
         });
         if let Some(reason) = composition_reason
-            && !self.cancel_composition_while_live(reason, cause)
+            && self.cancel_composition_while_live(reason, cause).is_err()
         {
             self.suppress_composition_cleanup(reason, cause);
             if matches!(self.status, RuntimeStatus::Running) {
@@ -135,7 +135,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         || !text_input.accepts_composition()
                 });
         if composition_lost
-            && !self.cancel_composition_while_live(CompositionCancelReason::Disablement, cause)
+            && self
+                .cancel_composition_while_live(CompositionCancelReason::Disablement, cause)
+                .is_err()
         {
             self.suppress_composition_cleanup(CompositionCancelReason::Disablement, cause);
             if matches!(self.status, RuntimeStatus::Running) {
@@ -162,12 +164,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         reason: CompositionCancelReason,
         cause: InputLifetimeCleanupCause,
-    ) -> bool {
+    ) -> Result<Option<TraceSequence>, ()> {
         let (Some(owner), Some(start_sequence)) = (
             self.composition.owner().cloned(),
             self.composition.start_sequence(),
         ) else {
-            return true;
+            return Ok(cause.causal_parent);
         };
         let facts = super::RoutedIngressFacts::new(
             start_sequence,
@@ -180,15 +182,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(mut transaction) = self
             .begin_routed_transaction_with_trace(facts, MandatoryTracePlan::composition_cleanup())
         else {
-            return false;
+            return Err(());
         };
         if let Err(failure) =
             self.cancel_composition_in_transaction(&mut transaction, &owner, reason)
         {
             let current = transaction.failure_current_target.clone();
             self.poison_transaction(&transaction, failure, current.as_ref());
-            return false;
+            return Err(());
         }
+        let cleanup_parent = transaction.parent;
         let failure_facts = transaction.failure_facts();
         if self.commit_routed_transaction(transaction).is_err() {
             self.poison_routed_event(
@@ -196,9 +199,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 TraceRoutedIntegrityFailure::CommitInvariantFailure,
                 Some(&owner),
             );
-            return false;
+            return Err(());
         }
-        true
+        Ok(cleanup_parent)
     }
 
     /// Retires a composition that could not deliver its required cleanup after
@@ -209,12 +212,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         _reason: CompositionCancelReason,
         cause: InputLifetimeCleanupCause,
-    ) {
+    ) -> Option<TraceSequence> {
         let (Some(owner), Some(start_sequence)) = (
             self.composition.owner().cloned(),
             self.composition.start_sequence(),
         ) else {
-            return;
+            return cause.causal_parent;
         };
         self.composition = crate::input::CompositionState::None;
         self.trace.record_event(
@@ -226,7 +229,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &owner,
             Some(&owner),
             cause.origin,
-        );
+        )
     }
 
     pub(crate) fn revoke_space_ownership_with_cause(
