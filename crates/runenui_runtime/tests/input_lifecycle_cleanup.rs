@@ -121,10 +121,7 @@ fn settle(runtime: &mut AppRuntime<App>) {
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
 }
 
-fn mount_with_config(
-    log: Rc<RefCell<Vec<Fact>>>,
-    config: RuntimeConfig,
-) -> AppRuntime<App> {
+fn mount_with_config(log: Rc<RefCell<Vec<Fact>>>, config: RuntimeConfig) -> AppRuntime<App> {
     let mut runtime = AppRuntime::<App>::mount_with_config(
         State {
             log,
@@ -284,12 +281,7 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
             .submit_action(Action::Noop)
             .unwrap_or_else(|_| unreachable!("filler occupies cleanup capacity"));
     }
-    let _ = runtime.pump(PumpBudget::new(
-        1,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    let _ = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
 
     assert_eq!(
         runtime.status(),
@@ -332,10 +324,11 @@ fn failed_cleanup_retires_without_false_delivery_and_shutdown_unmounts_once() {
             .count(),
         1
     );
-    assert!(!log
-        .borrow()
-        .iter()
-        .any(|fact| matches!(fact, Fact::Cancel(_))));
+    assert!(
+        !log.borrow()
+            .iter()
+            .any(|fact| matches!(fact, Fact::Cancel(_)))
+    );
 
     let shutdown = find_record(&runtime, |record| {
         matches!(record.kind(), TraceRecordKind::RuntimeShutdown { .. })
