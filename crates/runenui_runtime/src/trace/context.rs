@@ -55,7 +55,7 @@ pub struct TraceSurfaceContext {
 }
 
 impl TraceSurfaceContext {
-    pub(crate) const fn new(
+    pub(crate) fn new(
         surface_id: SurfaceId,
         coordinate_revision: u64,
         hit_test_generation: u64,
@@ -104,7 +104,7 @@ pub struct TracePointerContext {
 }
 
 impl TracePointerContext {
-    pub(crate) const fn new(
+    pub(crate) fn new(
         pointer_id: PointerId,
         device_id: Option<InputDeviceId>,
         device_kind: PointerDeviceKind,
@@ -151,7 +151,7 @@ pub struct TraceCompositionContext {
 }
 
 impl TraceCompositionContext {
-    pub(crate) const fn new(
+    pub(crate) fn new(
         generation: CompositionGeneration,
         device_id: Option<InputDeviceId>,
     ) -> Self {
@@ -241,7 +241,7 @@ pub struct TraceRouteSnapshot {
 }
 
 impl TraceRouteSnapshot {
-    pub(crate) const fn new(event: TraceEventContext, targets: Vec<TraceTarget>) -> Self {
+    pub(crate) fn new(event: TraceEventContext, targets: Vec<TraceTarget>) -> Self {
         Self { event, targets }
     }
 
@@ -253,7 +253,7 @@ impl TraceRouteSnapshot {
 
     /// Returns the immutable root-to-target route.
     #[must_use]
-    pub const fn targets(&self) -> &[TraceTarget] {
+    pub fn targets(&self) -> &[TraceTarget] {
         self.targets.as_slice()
     }
 }
@@ -265,13 +265,13 @@ pub struct TracePointerPath {
 }
 
 impl TracePointerPath {
-    pub(crate) const fn new(targets: Vec<TraceTarget>) -> Self {
+    pub(crate) fn new(targets: Vec<TraceTarget>) -> Self {
         Self { targets }
     }
 
     /// Returns the immutable root-to-physical-target path.
     #[must_use]
-    pub const fn targets(&self) -> &[TraceTarget] {
+    pub fn targets(&self) -> &[TraceTarget] {
         self.targets.as_slice()
     }
 }
@@ -286,7 +286,7 @@ pub struct TracePublicationContext {
 }
 
 impl TracePublicationContext {
-    pub(crate) const fn new(
+    pub(crate) fn new(
         surface: TraceSurfaceContext,
         reconciliation_generation: ReconciliationGeneration,
         node_count: usize,
@@ -308,7 +308,7 @@ impl TracePublicationContext {
 
     /// Returns the mounted reconciliation generation consumed by publication.
     #[must_use]
-    pub const fn reconciliation_generation(self) -> ReconciliationGeneration {
+    pub const fn reconciliation_generation(&self) -> ReconciliationGeneration {
         self.reconciliation_generation
     }
 
@@ -320,7 +320,7 @@ impl TracePublicationContext {
 
     /// Returns the phases that actually executed for this publication.
     #[must_use]
-    pub const fn executed_phases(&self) -> &[SurfacePhase] {
+    pub fn executed_phases(&self) -> &[SurfacePhase] {
         self.executed_phases.as_slice()
     }
 }
