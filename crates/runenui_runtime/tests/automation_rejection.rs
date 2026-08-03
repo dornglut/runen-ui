@@ -103,14 +103,18 @@ fn work_sequence_exhaustion_rejects_after_resolution_without_terminalizing() {
     assert_eq!(error.into_request(), (authored, SemanticCommand::Activate));
     assert_eq!(runtime.status(), RuntimeStatus::Running);
     assert_eq!(runtime.state(), &0);
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::AutomationResolutionUnique
-    )));
-    assert!(!runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::CommandSubmissionAccepted
-    )));
+    assert!(
+        runtime
+            .trace()
+            .records()
+            .any(|record| matches!(record.kind(), TraceRecordKind::AutomationResolutionUnique))
+    );
+    assert!(
+        !runtime
+            .trace()
+            .records()
+            .any(|record| matches!(record.kind(), TraceRecordKind::CommandSubmissionAccepted))
+    );
     assert!(
         runtime
             .pump(PumpBudget::new(
