@@ -64,6 +64,7 @@ use crate::{
 mod model;
 
 use crate::input::{CompositionState, SpaceOwnership};
+use automation::AutomationSubmissionPolicy;
 pub(in crate::runtime) use helpers::{
     CommitError, mounted_effect_into_effect, public_trace_work_identity, trace_work_family,
     trace_work_owner, with_routed_parent,
@@ -102,7 +103,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     /// Synchronous public automation ingress returns exhaustion as rejection
     /// rather than changing global runtime status. No callback or pump work can
     /// observe this scope because automation submission is non-reentrant.
-    automation_rejection_is_inert: bool,
+    automation_submission_policy: AutomationSubmissionPolicy,
     limits: crate::RuntimeLimits,
     mounted_public_slot_limit: u64,
     work: WorkRegistry<Action, Protocol>,
