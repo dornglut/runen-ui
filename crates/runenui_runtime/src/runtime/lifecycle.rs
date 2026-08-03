@@ -36,6 +36,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         additional_cancelled: usize,
         causal_parent: Option<TraceSequence>,
     ) -> usize {
+        if self.automation_rejection_is_inert
+            && matches!(
+                reason,
+                RuntimeTerminalReason::WorkSequenceExhausted
+                    | RuntimeTerminalReason::TraceSequenceExhausted
+            )
+        {
+            return 0;
+        }
         if !matches!(self.status, RuntimeStatus::Running) {
             return 0;
         }
