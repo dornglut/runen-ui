@@ -131,8 +131,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled_live_work: WorkCancellationCounts::default(),
             };
         }
-        let cleanup_cause =
-            InputLifetimeCleanupCause::new(None, None, self.now(), CommandOrigin::programmatic());
+        let initial_parent = if matches!(self.status, RuntimeStatus::Terminal(_)) {
+            self.trace.latest_runtime_terminal_sequence()
+        } else {
+            None
+        };
+        let cleanup_cause = InputLifetimeCleanupCause::new(
+            None,
+            initial_parent,
+            self.now(),
+            CommandOrigin::programmatic(),
+        );
         let composition_parent = self
             .cancel_composition_while_live(
                 runenui_core::CompositionCancelReason::Shutdown,
