@@ -34,12 +34,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // route; if that route or its bounded admission is irrecoverable, the
         // exact lifetime is retired without falsely claiming callback delivery.
         self.status = RuntimeStatus::Terminal(reason);
-        let cleanup_cause = InputLifetimeCleanupCause::new(
-            None,
-            None,
-            self.now(),
-            CommandOrigin::programmatic(),
-        );
+        let cleanup_cause =
+            InputLifetimeCleanupCause::new(None, None, self.now(), CommandOrigin::programmatic());
         if !self.cancel_composition_while_live(
             runenui_core::CompositionCancelReason::Shutdown,
             cleanup_cause,
@@ -49,10 +45,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cleanup_cause,
             );
         }
-        let space_parent = self.revoke_space_ownership_with_cause(
-            TraceSpaceCleanupReason::Terminal,
-            cleanup_cause,
-        );
+        let space_parent = self
+            .revoke_space_ownership_with_cause(TraceSpaceCleanupReason::Terminal, cleanup_cause);
         let (cancelled_queued, cancelled_live, pointer_parent) = self.close_scheduling_authority();
         let cancelled = cancelled_queued
             .saturating_add(cancelled_live.total())
@@ -113,12 +107,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled_live_work: WorkCancellationCounts::default(),
             };
         }
-        let cleanup_cause = InputLifetimeCleanupCause::new(
-            None,
-            None,
-            self.now(),
-            CommandOrigin::programmatic(),
-        );
+        let cleanup_cause =
+            InputLifetimeCleanupCause::new(None, None, self.now(), CommandOrigin::programmatic());
         if !self.cancel_composition_while_live(
             runenui_core::CompositionCancelReason::Shutdown,
             cleanup_cause,
