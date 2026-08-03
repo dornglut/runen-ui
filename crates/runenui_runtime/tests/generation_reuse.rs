@@ -238,7 +238,10 @@ fn late_composition_never_retargets_a_same_slot_replacement() {
         Err(error) if error.kind() == SubmitCompositionErrorKind::StaleGeneration
     ));
     settle(&mut runtime);
-    assert!(log.borrow().is_empty(), "replacement receives no late IME event");
+    assert!(
+        log.borrow().is_empty(),
+        "replacement receives no late IME event"
+    );
 }
 
 #[test]
@@ -280,10 +283,12 @@ fn accepted_automation_target_never_retargets_a_same_slot_replacement() {
         0,
         "accepted command remains bound to the stale old generation"
     );
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::AutomationResolutionUnique
-    )));
+    assert!(
+        runtime
+            .trace()
+            .records()
+            .any(|record| matches!(record.kind(), TraceRecordKind::AutomationResolutionUnique))
+    );
     assert!(runtime.trace().records().any(|record| matches!(
         record.kind(),
         TraceRecordKind::CommandProcessingRejected {
