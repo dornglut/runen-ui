@@ -1,12 +1,17 @@
 use core::num::NonZeroUsize;
 
 use super::{
-    Arc, CompletionIngress, Element, FocusState, HostProtocol, ManualClock,
-    MountedIdentityExhausted, MountedTree, PointerRegistry, ReconciliationGeneration,
-    ReconciliationReport, Runtime, RuntimeConfig, RuntimeStatus, RuntimeTerminalReason,
-    SurfacePublicationState, Trace, TraceRecordKind, UnavailableExecutor, WakeState, WorkQueue,
-    WorkRegistry,
+    Arc, AutomationSubmissionPolicy, CompletionIngress, Element, FocusState, HostProtocol,
+    ManualClock, MountedIdentityExhausted, MountedTree, PointerRegistry,
+    ReconciliationGeneration, ReconciliationReport, Runtime, RuntimeConfig, RuntimeStatus,
+    RuntimeTerminalReason, SurfacePublicationState, Trace, TraceRecordKind, UnavailableExecutor,
+    WakeState, WorkQueue, WorkRegistry,
 };
+
+fn checked_surface_snapshot_retention(retention: usize) -> NonZeroUsize {
+    NonZeroUsize::new(retention)
+        .unwrap_or_else(|| unreachable!("surface snapshot retention is non-zero"))
+}
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn mount(
@@ -27,8 +32,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 0,
             ),
         };
-        let surface_snapshot_retention = NonZeroUsize::new(config.surface_snapshot_retention())
-            .unwrap_or_else(|| unreachable!("surface snapshot retention is non-zero"));
+        let surface_snapshot_retention =
+            checked_surface_snapshot_retention(config.surface_snapshot_retention());
         let surface_publication =
             SurfacePublicationState::new(tree.runtime_namespace(), surface_snapshot_retention);
         let mut trace = Trace::new(config.trace_config());
@@ -79,7 +84,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             generation,
             report,
             status: RuntimeStatus::Running,
-            automation_rejection_is_inert: false,
+            automation_submission_policy: AutomationSubmissionPolicy::Ordinary,
             limits,
             mounted_public_slot_limit,
             work,
