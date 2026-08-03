@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy)]
-pub(in crate::runtime) struct InputLifetimeCleanupCause {
+pub(crate) struct InputLifetimeCleanupCause {
     pub sequence: Option<WorkSequence>,
     pub causal_parent: Option<TraceSequence>,
     pub instant: MonotonicInstant,
@@ -25,7 +25,7 @@ pub(in crate::runtime) struct InputLifetimeCleanupCause {
 }
 
 impl InputLifetimeCleanupCause {
-    pub(in crate::runtime) const fn new(
+    pub(crate) const fn new(
         sequence: Option<WorkSequence>,
         causal_parent: Option<TraceSequence>,
         instant: MonotonicInstant,
@@ -130,7 +130,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             && composition_capabilities
                 .flatten()
                 .map_or(true, |(activation, text_input)| {
-                    !activation.enabled() || !text_input.accepts_composition()
+                    !activation.enabled()
+                        || !text_input.accepts_committed_text()
+                        || !text_input.accepts_composition()
                 });
         if composition_lost
             && !self.cancel_composition_while_live(CompositionCancelReason::Disablement, cause)
@@ -156,8 +158,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     /// Uses the existing routed-event authority to notify a still-live
-    /// composition owner. The causing lifecycle sequence is preferred; the
-    /// composition start sequence remains the fallback for shutdown/drop.
+    /// composition owner. The composition lifetime keeps its canonical start
+    /// sequence while the causing lifecycle operation is retained as parent.
     pub(crate) fn cancel_composition_while_live(
         &mut self,
         reason: CompositionCancelReason,
@@ -169,9 +171,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         ) else {
             return true;
         };
-        let sequence = cause.sequence.unwrap_or(start_sequence);
         let facts = super::RoutedIngressFacts::new(
-            sequence,
+            start_sequence,
             owner.clone(),
             cause.origin,
             cause.instant,
@@ -218,10 +219,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return;
         };
         self.composition = crate::input::CompositionState::None;
-        let sequence = cause.sequence.unwrap_or(start_sequence);
         self.trace.record_event(
             TraceRecordKind::CompositionRetired,
-            sequence,
+            start_sequence,
             cause.causal_parent,
             Some(self.tree.trace_target(&owner)),
             cause.instant,
@@ -236,6 +236,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         reason: TraceSpaceCleanupReason,
         cause: InputLifetimeCleanupCause,
     ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            self.revoke_space_ownership(reason);
+            return cause.causal_parent;
+        }
         let Some(ownership) = self.space_ownership.take() else {
             return cause.causal_parent;
         };
