@@ -172,7 +172,8 @@ impl<App: UiApp> AppRuntime<App> {
         authored_id: ElementId,
         command: SemanticCommand,
     ) -> Result<crate::AutomationSubmission, crate::SubmitAutomationError> {
-        self.runtime.submit_automation_command(authored_id, command)
+        self.runtime
+            .submit_public_automation_command(authored_id, command)
     }
 
     /// Processes at most the requested number of canonical work envelopes.
