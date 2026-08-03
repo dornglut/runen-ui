@@ -8,19 +8,28 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
-- Implemented the M4C5 keyboard, committed-text, composition, and deterministic
-  authored-ID automation slice on its review branch. The fifteen owned matrix
-  rows (`KEY-01`–`KEY-04`, `TEXT-01`, `IME-01`–`IME-05`,
+- Owner-accepted and squash-merged the complete M4C5 keyboard,
+  committed-text, composition, and deterministic authored-ID automation slice
+  in [PR #27](https://github.com/dornglut/runen-ui/pull/27). The accepted
+  feature head `d0d2ef1d53a8ab1d940beb4155f5f991229f042e` passed exact-head CI
+  run `30843238697` and independent rereview; the squash merge commit is
+  `284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. All fifteen owned rows
+  (`KEY-01`–`KEY-04`, `TEXT-01`, `IME-01`–`IME-05`,
   `AUTOMATION-01`–`AUTOMATION-04`, and `MIGRATION-07`) are
-  `proof-complete`, not owner-accepted. The branch adds canonical raw input
-  ingress, exact focused-lifetime binding, Enter/Space activation policy,
+  `owner-accepted`, producing 237 total / 207 owner-accepted / 0
+  proof-complete / 30 blocked rows. The accepted implementation adds canonical
+  raw input ingress, exact focused-lifetime binding, Enter/Space activation,
   opaque composition generations with cancellation before focus loss and
-  unmount, deterministic no-fallback automation resolution, redacted input
-  trace facts, Counter/downstream proof, and removal of transitional input
-  authorities. Independent review, owner acceptance/merge, and the separate
-  authority-reconciliation pull request remain pending; exact branch-head
-  validation evidence belongs in PR #27 and the work-tracking system. M4D1 is
-  still blocked.
+  unmount, deterministic no-fallback automation resolution, redacted causal
+  input trace, Counter/downstream proof, and removal of transitional input
+  authorities. Rejected composition starts recover a generation-free
+  `CompositionStartRequest`; public authored-ID automation work/trace-sequence
+  exhaustion is inert and recoverable, while direct commands and accepted work
+  retain ordinary terminal exhaustion policy. Undeliverable mandatory
+  composition cleanup records causal suppression, retires the exact lifetime,
+  terminalizes, and preserves shutdown lineage. The separate post-merge
+  authority-reconciliation pull request remains the final predecessor gate for
+  M4D1; M4 remains active and incomplete.
 - Owner-accepted and squash-merged the complete M4C4 focus-scopes and modality
   slice in [PR #22](https://github.com/dornglut/runen-ui/pull/22): one
   exact-generation focus authority, root/nested scope policies, current-order
@@ -33,9 +42,8 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   `30006170403`; the squash merge commit is
   `f95571634a9c6528e5834e9589b048ad5197bd15`. All 32 M4C4 rows are
   `owner-accepted`, producing 237 total / 192 owner-accepted / 0 proof-complete /
-  45 blocked rows at that acceptance checkpoint. M4C5's later proof-complete
-  review-branch implementation is recorded above; M4 remains active and
-  incomplete.
+  45 blocked rows at that acceptance checkpoint. M4C5 subsequently completed
+  through the accepted slice above; M4 remains active and incomplete.
 - Owner-accepted and squash-merged the M4C3 host-neutral pointer lifecycle in
   [PR #15](https://github.com/dornglut/runen-ui/pull/15): checked
   pointer/device identity and payloads, canonical queued ingress, exact
