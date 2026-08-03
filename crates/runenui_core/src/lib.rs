@@ -185,6 +185,7 @@ mod event;
 mod event_context;
 mod focus;
 mod identity;
+mod input;
 mod layout;
 mod pointer;
 pub mod prelude;
@@ -212,7 +213,7 @@ pub use effects::{Effects, IntoEffects};
 pub use element::{
     AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
     WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
-    WidgetSemanticProof, WidgetStateTypeId, WidgetTextKind, WidgetTypeId,
+    WidgetSemanticProof, WidgetStateTypeId, WidgetTextInput, WidgetTextKind, WidgetTypeId,
 };
 pub use event::{
     CommandDerivation, CommandOrigin, EventPhase, EventSource, SemanticCommand,
@@ -222,6 +223,12 @@ pub use event_context::EventContext;
 pub use focus::{
     FocusBoundaryPolicy, FocusDirection, FocusEvent, FocusEventKind, FocusReason, FocusScope,
     FocusScopePolicy, Focusability, InputModality,
+};
+pub use input::{
+    CommittedTextError, CommittedTextEvent, CompositionCancel, CompositionCancelReason,
+    CompositionEnd, CompositionEvent, CompositionGeneration, CompositionRange,
+    CompositionRangeError, CompositionStart, CompositionUpdate, KeyLocation,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
 };
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///

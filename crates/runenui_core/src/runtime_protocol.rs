@@ -33,6 +33,17 @@ impl RuntimeNamespace {
 
     #[doc(hidden)]
     #[must_use]
+    pub fn __runtime_same_as(&self, other: &Self) -> bool {
+        self.same_as(other)
+    }
+
+    #[doc(hidden)]
+    pub fn __runtime_hash<H: Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.marker).hash(state);
+    }
+
+    #[doc(hidden)]
+    #[must_use]
     pub fn __runtime_mounted_id(&self, slot: u32, generation: u64) -> MountedNodeId {
         MountedNodeId {
             namespace: self.clone(),

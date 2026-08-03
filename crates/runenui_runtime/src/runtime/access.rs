@@ -136,6 +136,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn seed_next_composition_generation_for_test(&mut self, next: Option<u64>) {
+        self.next_composition_generation = match next {
+            Some(next) => core::num::NonZeroU64::new(next),
+            None => None,
+        };
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn composition_generation_for_test(
+        &self,
+        value: u64,
+    ) -> runenui_core::CompositionGeneration {
+        self.tree.composition_generation(value)
+    }
+
+    #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn seed_next_trace_sequence_for_test(&mut self, next: u64) {
         self.trace.seed_next_sequence_for_test(next);
     }

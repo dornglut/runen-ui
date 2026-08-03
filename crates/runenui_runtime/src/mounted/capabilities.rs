@@ -1,5 +1,6 @@
 use runenui_core::{
     __runtime::WidgetBridgeError, WidgetActivation, WidgetActivationContext, WidgetInvalidation,
+    WidgetTextInput,
 };
 
 use super::{
@@ -21,6 +22,64 @@ pub(crate) struct MountedActivationOutput<Action> {
 }
 
 impl<Action> MountedTree<Action> {
+    /// Refreshes the input-facing capability cache after a compatible update.
+    /// Reconciliation cannot assume that a widget remembered to invalidate
+    /// interaction state when its enablement or text-input declaration changed.
+    pub(crate) fn refresh_input_capabilities(
+        &mut self,
+        id: &MountedNodeId,
+    ) -> Result<(WidgetActivation, WidgetTextInput), WidgetBridgeError> {
+        let Some(node) = self.node_mut(id) else {
+            return Ok((WidgetActivation::NONE, WidgetTextInput::NONE));
+        };
+        if state_is_corrupted(node) {
+            node.integrity_failed = true;
+            node.caches.activation = CachedCapability::StatePayloadMismatch;
+            node.caches.text_input = CachedCapability::StatePayloadMismatch;
+            return Err(WidgetBridgeError::StatePayloadMismatch);
+        }
+        let activation = node.widget.activation(&node.state);
+        let text_input = node.widget.text_input(&node.state);
+        if let (Ok(activation), Ok(text_input)) = (activation, text_input) {
+            node.caches.activation = CachedCapability::Ready(activation);
+            node.caches.text_input = CachedCapability::Ready(text_input);
+            Ok((activation, text_input))
+        } else {
+            node.integrity_failed = true;
+            node.caches.activation = CachedCapability::StatePayloadMismatch;
+            node.caches.text_input = CachedCapability::StatePayloadMismatch;
+            Err(WidgetBridgeError::StatePayloadMismatch)
+        }
+    }
+
+    pub(crate) fn text_input_probe(
+        &mut self,
+        id: &MountedNodeId,
+    ) -> Result<WidgetTextInput, WidgetBridgeError> {
+        let Some(node) = self.node_mut(id) else {
+            return Ok(WidgetTextInput::NONE);
+        };
+        if state_is_corrupted(node) {
+            node.integrity_failed = true;
+            node.caches.text_input = CachedCapability::StatePayloadMismatch;
+            return Err(WidgetBridgeError::StatePayloadMismatch);
+        }
+        match node.caches.text_input {
+            CachedCapability::Ready(value) => Ok(value),
+            CachedCapability::StatePayloadMismatch => Err(WidgetBridgeError::StatePayloadMismatch),
+            CachedCapability::Unresolved => match node.widget.text_input(&node.state) {
+                Ok(value) => {
+                    node.caches.text_input = CachedCapability::Ready(value);
+                    Ok(value)
+                }
+                Err(error) => {
+                    node.integrity_failed = true;
+                    node.caches.text_input = CachedCapability::StatePayloadMismatch;
+                    Err(error)
+                }
+            },
+        }
+    }
     pub(crate) fn activate(
         &mut self,
         id: &MountedNodeId,

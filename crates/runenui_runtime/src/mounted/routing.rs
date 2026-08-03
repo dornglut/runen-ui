@@ -91,7 +91,10 @@ impl<Action> MountedTree<Action> {
             origin,
             sequence,
             instant,
-            true,
+            // Composition lifecycle is runtime-owned. In particular, a
+            // cancellation that protects an exact live owner cannot be
+            // prevented or retargeted by widget code.
+            !matches!(event, UiEvent::Composition(_)),
             default_prevented,
             propagation_stopped,
             output_allowance,

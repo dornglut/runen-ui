@@ -274,7 +274,9 @@ fn target(runtime: &mut AppRuntime<App>) -> runenui_core::MountedNodeId {
         .unwrap_or_else(|_| unreachable!("the test identifier is valid"));
     runtime
         .index()
-        .node_by_authored_id(&authored_id)
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored_id))
         .unwrap_or_else(|| unreachable!("the routed target is mounted"))
         .id()
         .clone()

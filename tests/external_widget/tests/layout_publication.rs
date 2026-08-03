@@ -262,7 +262,9 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         let authored = ElementId::new("layout.action").unwrap_or_else(|_| unreachable!());
         let action = runtime
             .index()
-            .node_by_authored_id(&authored)
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))
             .unwrap_or_else(|| unreachable!())
             .id()
             .clone();

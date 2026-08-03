@@ -7,17 +7,17 @@ use super::super::CollectedRoutedOutput;
 use crate::trace::TraceReservation;
 use crate::{MountedNodeId, TraceSequence, TraceTarget};
 
-pub(in crate::runtime) struct RoutedIngressFacts {
-    pub(in crate::runtime) sequence: WorkSequence,
-    pub(in crate::runtime) target: MountedNodeId,
-    pub(in crate::runtime) origin: CommandOrigin,
-    pub(in crate::runtime) instant: MonotonicInstant,
-    pub(in crate::runtime) causal_parent: Option<TraceSequence>,
-    pub(in crate::runtime) trace_reservation: TraceReservation,
+pub(crate) struct RoutedIngressFacts {
+    pub(crate) sequence: WorkSequence,
+    pub(crate) target: MountedNodeId,
+    pub(crate) origin: CommandOrigin,
+    pub(crate) instant: MonotonicInstant,
+    pub(crate) causal_parent: Option<TraceSequence>,
+    pub(crate) trace_reservation: TraceReservation,
 }
 
 impl RoutedIngressFacts {
-    pub(in crate::runtime) const fn new(
+    pub(crate) const fn new(
         sequence: WorkSequence,
         target: MountedNodeId,
         origin: CommandOrigin,
@@ -36,7 +36,7 @@ impl RoutedIngressFacts {
     }
 }
 
-pub(in crate::runtime) struct RoutedFailureFacts {
+pub(crate) struct RoutedFailureFacts {
     pub(in crate::runtime) sequence: WorkSequence,
     pub(in crate::runtime) target: MountedNodeId,
     pub(in crate::runtime) origin: CommandOrigin,
@@ -44,32 +44,33 @@ pub(in crate::runtime) struct RoutedFailureFacts {
     pub(in crate::runtime) causal_parent: Option<TraceSequence>,
 }
 
-pub(in crate::runtime) struct RoutedTransaction<Action> {
-    pub(in crate::runtime) sequence: WorkSequence,
-    pub(in crate::runtime) target: MountedNodeId,
-    pub(in crate::runtime) origin: CommandOrigin,
-    pub(in crate::runtime) instant: MonotonicInstant,
+pub(crate) struct RoutedTransaction<Action> {
+    pub(crate) sequence: WorkSequence,
+    pub(crate) target: MountedNodeId,
+    pub(crate) origin: CommandOrigin,
+    pub(crate) instant: MonotonicInstant,
     pub(in crate::runtime) route: Vec<MountedNodeId>,
     pub(in crate::runtime) pointer_callback_targets: Vec<MountedNodeId>,
-    pub(in crate::runtime) target_trace: TraceTarget,
-    pub(in crate::runtime) parent: Option<TraceSequence>,
+    pub(crate) target_trace: TraceTarget,
+    pub(crate) parent: Option<TraceSequence>,
     pub(in crate::runtime) remaining_outputs: usize,
+    pub(crate) remaining_default_commands: usize,
     pub(in crate::runtime) propagation_stopped: bool,
-    pub(in crate::runtime) default_prevented: bool,
+    pub(crate) default_prevented: bool,
     pub(in crate::runtime) collecting_notification_outputs: bool,
     pub(in crate::runtime) notification_outputs: Vec<CollectedRoutedOutput<Action>>,
     pub(in crate::runtime) routed_outputs: Vec<CollectedRoutedOutput<Action>>,
-    pub(in crate::runtime) default_outputs: Vec<CollectedRoutedOutput<Action>>,
+    pub(crate) default_outputs: Vec<CollectedRoutedOutput<Action>>,
     pub(in crate::runtime) mounted_work: Vec<(MountedNodeId, MountedEffect<Action>)>,
     pub(in crate::runtime) subscription_dirty: Vec<MountedNodeId>,
     pub(in crate::runtime) pointer_capture_requests: Vec<PointerCaptureRequest>,
     pub(in crate::runtime) invalidation: WidgetInvalidation,
-    pub(in crate::runtime) failure_current_target: Option<MountedNodeId>,
+    pub(crate) failure_current_target: Option<MountedNodeId>,
     pub(in crate::runtime) pending_modality: InputModality,
 }
 
 impl<Action> RoutedTransaction<Action> {
-    pub(in crate::runtime) fn failure_facts(&self) -> RoutedFailureFacts {
+    pub(crate) fn failure_facts(&self) -> RoutedFailureFacts {
         RoutedFailureFacts {
             sequence: self.sequence,
             target: self.target.clone(),
@@ -87,5 +88,15 @@ impl<Action> RoutedTransaction<Action> {
         self.remaining_outputs
             .checked_add(self.subscription_credit(owner))
             .unwrap_or_else(|| unreachable!("one coalescing credit fits"))
+    }
+
+    pub(crate) const fn consume_mandatory_default_command(
+        &mut self,
+    ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
+        let Some(remaining) = self.remaining_default_commands.checked_sub(1) else {
+            return Err(crate::TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
+        };
+        self.remaining_default_commands = remaining;
+        Ok(())
     }
 }

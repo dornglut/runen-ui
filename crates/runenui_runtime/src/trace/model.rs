@@ -6,7 +6,10 @@ use runenui_core::{
     PointerPhase, SemanticCommand, WidgetInvalidation, WorkKey,
 };
 
-use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
+use crate::{
+    AutomationMatchDiagnostic, MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason,
+    WorkSequence,
+};
 
 /// Non-wrapping identity of one canonical trace record.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -93,6 +96,49 @@ pub enum TraceRecordKind {
         pointer_id: PointerId,
         phase: PointerPhase,
     },
+    KeyboardSubmissionAccepted,
+    KeyboardSubmissionRejected,
+    KeyboardProcessingValidated,
+    KeyboardDefaultPrevented,
+    KeyboardEnterActivationDerived,
+    KeyboardSpaceOwnershipEstablished,
+    KeyboardSpaceReleaseMatched {
+        matched: bool,
+    },
+    KeyboardSpaceActivationDerived,
+    KeyboardSpaceOwnershipCleared {
+        reason: TraceSpaceCleanupReason,
+    },
+    CommittedTextSubmissionAccepted {
+        bytes: usize,
+        scalars: usize,
+    },
+    CommittedTextSubmissionRejected,
+    CommittedTextProcessingValidated {
+        bytes: usize,
+        scalars: usize,
+    },
+    CommittedTextDefaultPrevented,
+    CompositionGenerationAllocated,
+    CompositionPendingBound,
+    CompositionActiveBound,
+    CompositionProcessingValidated,
+    CompositionUpdated {
+        has_range: bool,
+    },
+    CompositionEnded,
+    CompositionCancelled {
+        reason: runenui_core::CompositionCancelReason,
+    },
+    CompositionRetired,
+    CompositionProcessingStaleGeneration,
+    CompositionSubmissionRejected,
+    AutomationResolutionUnique,
+    AutomationResolutionMissing,
+    AutomationResolutionAmbiguous {
+        candidates: Vec<AutomationMatchDiagnostic>,
+    },
+    AutomationTargetStaleAfterResolution,
     PointerIngressRejected {
         pointer_id: PointerId,
         phase: PointerPhase,
@@ -355,6 +401,22 @@ pub enum TraceTargetRejection {
     Foreign,
     Stale,
     Missing,
+}
+
+/// Why runtime-owned pressed-Space authority was revoked without activation.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceSpaceCleanupReason {
+    KeyboardCancel,
+    FocusTransfer,
+    Removal,
+    Replacement,
+    Disablement,
+    CapabilityLoss,
+    Terminal,
+    Shutdown,
+    Drop,
+    Release,
 }
 
 /// Structured pointer rejection without route or interaction mutation.

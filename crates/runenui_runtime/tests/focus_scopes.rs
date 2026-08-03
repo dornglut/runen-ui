@@ -141,7 +141,9 @@ fn id(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
     let authored = runenui_core::ElementId::new(name).unwrap_or_else(|_| unreachable!());
     runtime
         .index()
-        .node_by_authored_id(&authored)
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
         .unwrap_or_else(|| unreachable!("named corpus node is mounted"))
         .id()
         .clone()

@@ -20,6 +20,10 @@ pub(crate) use interaction::InteractionState;
 pub use interaction::InteractionStateRef;
 pub(crate) use invalidation::{DirtyPhases, apply_invalidation, publication_is_dirty};
 pub use node::{MountedNodeRef, MountedTreeIndex};
+pub(crate) use reconcile::{PlannedInvalidation, PlannedLifetimeReason};
 pub(crate) use routing::RouteBuildError;
 pub use runenui_core::{MountedNodeId, SemanticNodeId};
-pub(crate) use tree::{MountedIdentityExhausted, MountedTree, ReconcileStats, TargetStatus};
+pub use tree::AutomationMatchDiagnostic;
+pub(crate) use tree::{
+    AutomationResolution, MountedIdentityExhausted, MountedTree, ReconcileStats, TargetStatus,
+};

@@ -1,14 +1,23 @@
 use core::num::NonZeroUsize;
 
 use super::{
-    Arc, CompletionIngress, Element, FocusState, HostProtocol, ManualClock,
-    MountedIdentityExhausted, MountedTree, PointerRegistry, ReconciliationGeneration,
+    Arc, AutomationSubmissionPolicy, CompletionIngress, Element, FocusState, HostProtocol,
+    ManualClock, MountedIdentityExhausted, MountedTree, PointerRegistry, ReconciliationGeneration,
     ReconciliationReport, Runtime, RuntimeConfig, RuntimeStatus, RuntimeTerminalReason,
     SurfacePublicationState, Trace, TraceRecordKind, UnavailableExecutor, WakeState, WorkQueue,
     WorkRegistry,
 };
 
+fn checked_surface_snapshot_retention(retention: usize) -> NonZeroUsize {
+    NonZeroUsize::new(retention)
+        .unwrap_or_else(|| unreachable!("surface snapshot retention is non-zero"))
+}
+
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "runtime construction enumerates every bounded authority explicitly"
+    )]
     pub(crate) fn mount(
         state: State,
         root: impl FnOnce(&State) -> Element<Action>,
@@ -27,8 +36,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 0,
             ),
         };
-        let surface_snapshot_retention = NonZeroUsize::new(config.surface_snapshot_retention())
-            .unwrap_or_else(|| unreachable!("surface snapshot retention is non-zero"));
+        let surface_snapshot_retention =
+            checked_surface_snapshot_retention(config.surface_snapshot_retention());
         let surface_publication =
             SurfacePublicationState::new(tree.runtime_namespace(), surface_snapshot_retention);
         let mut trace = Trace::new(config.trace_config());
@@ -72,9 +81,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             trace,
             focus: FocusState::new(),
             pointer_registry: PointerRegistry::new(limits.pointer_streams()),
+            space_ownership: None,
+            composition: crate::input::CompositionState::None,
+            next_composition_generation: core::num::NonZeroU64::new(1),
+            last_issued_composition_generation: None,
             generation,
             report,
             status: RuntimeStatus::Running,
+            automation_submission_policy: AutomationSubmissionPolicy::Ordinary,
             limits,
             mounted_public_slot_limit,
             work,

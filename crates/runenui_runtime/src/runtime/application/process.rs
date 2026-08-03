@@ -1,3 +1,5 @@
+use runenui_core::CommandOrigin;
+
 use super::{
     ApplicationActionEnvelope, ApplicationTransactionInput, HashMap, HashSet, HostProtocol,
     IntoEffects, MandatoryTracePlan, MountedNodeId, MutationPhase, OwnedTransactionLedger,
@@ -86,6 +88,31 @@ pub(crate) fn process_application_action<App: UiApp>(
     let mut lifecycle_invalidated = Vec::new();
     let mut lifecycle_invalidated_identities = Vec::new();
     let mounted_public_slot_limit = runtime.mounted_public_slot_limit;
+    let Ok(reconciliation_plan) = runtime
+        .tree
+        .plan_reconciliation(transient, mounted_public_slot_limit)
+    else {
+        let reason =
+            mutation_phase.terminal_reason(RuntimeTerminalReason::MountedIdentityExhausted);
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    };
+    let input_cleanup_cause = super::super::focus::InputLifetimeCleanupCause::new(
+        Some(sequence),
+        transaction_parent,
+        runtime.now(),
+        CommandOrigin::programmatic(),
+    );
+    runtime.cleanup_planned_input_lifetimes(
+        reconciliation_plan.invalidated_lifetimes(),
+        input_cleanup_cause,
+    );
+    if let RuntimeStatus::Terminal(reason) = runtime.status {
+        return ProcessApplicationActionOutcome::Terminal {
+            reason,
+            cancelled: 0,
+        };
+    }
     let reconcile_stats = {
         let (
             tree,
@@ -106,33 +133,29 @@ pub(crate) fn process_application_action<App: UiApp>(
             &mut runtime.subscriptions,
             &mut runtime.host_requests,
         );
-        tree.reconcile_with_before_unmount_and_public_slot_limit(
-            transient,
-            mounted_public_slot_limit,
-            &mut |owner| {
-                let owner = WorkOwner::Mounted(owner.clone());
-                let generations = work.generations_for_owner(&owner);
-                for generation in &generations {
-                    if let Some(identity) = work.trace_identity(*generation) {
-                        lifecycle_invalidated_identities.push(public_trace_work_identity(identity));
-                    }
-                    revoke_generation_authority(
-                        *generation,
-                        work,
-                        completion_ingress,
-                        local_tasks,
-                        timers,
-                        send_task_mappers,
-                        subscriptions,
-                        host_requests,
-                    );
+        tree.apply_reconciliation(reconciliation_plan, &mut |owner| {
+            let owner = WorkOwner::Mounted(owner.clone());
+            let generations = work.generations_for_owner(&owner);
+            for generation in &generations {
+                if let Some(identity) = work.trace_identity(*generation) {
+                    lifecycle_invalidated_identities.push(public_trace_work_identity(identity));
                 }
-                lifecycle_invalidated.extend(generations);
-            },
-        )
+                revoke_generation_authority(
+                    *generation,
+                    work,
+                    completion_ingress,
+                    local_tasks,
+                    timers,
+                    send_task_mappers,
+                    subscriptions,
+                    host_requests,
+                );
+            }
+            lifecycle_invalidated.extend(generations);
+        })
     };
     let Ok(reconcile_stats) = reconcile_stats else {
-        let reason = RuntimeTerminalReason::Poisoned;
+        let reason = mutation_phase.terminal_reason(RuntimeTerminalReason::Poisoned);
         let cancelled = runtime.enter_terminal(reason, 0);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     };
@@ -142,6 +165,13 @@ pub(crate) fn process_application_action<App: UiApp>(
     let mounted_outputs = reconcile_stats.mounted_outputs;
     runtime.generation = next;
     let after = ReconciliationGeneration(next);
+    runtime.cleanup_lost_input_capabilities(input_cleanup_cause);
+    if let RuntimeStatus::Terminal(reason) = runtime.status {
+        return ProcessApplicationActionOutcome::Terminal {
+            reason,
+            cancelled: 0,
+        };
+    }
     let retained_focus = previous_focus
         .as_ref()
         .is_some_and(|id| runtime.validate_focus(id));

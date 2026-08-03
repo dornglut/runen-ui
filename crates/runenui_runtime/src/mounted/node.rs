@@ -179,10 +179,6 @@ impl<'a, Action> MountedTreeIndex<'a, Action> {
         self.nodes.iter().find(|n| n.id() == id)
     }
     #[must_use]
-    pub fn node_by_authored_id(&self, id: &ElementId) -> Option<&MountedNodeRef<'a, Action>> {
-        self.nodes.iter().find(|n| n.authored_id() == Some(id))
-    }
-    #[must_use]
     pub fn next_focusable_after(&self, id: &MountedNodeId) -> Option<&MountedNodeRef<'a, Action>> {
         self.nodes
             .iter()

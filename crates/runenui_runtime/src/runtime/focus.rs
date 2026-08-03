@@ -1,18 +1,44 @@
 use runenui_core::{
-    CommandOrigin, FocusEvent, FocusEventKind, FocusReason, HostProtocol, SemanticCommand, UiEvent,
+    CommandOrigin, CompositionCancel, CompositionCancelReason, CompositionEvent, FocusEvent,
+    FocusEventKind, FocusReason, HostProtocol, MonotonicInstant, SemanticCommand, UiEvent,
     WidgetInvalidation,
 };
 
-use super::{CollectedRoutedOutput, RoutedTransaction, Runtime};
+use super::{CollectedRoutedOutput, RoutedTransaction, Runtime, RuntimeStatus};
 use crate::{
     MountedNodeId, ReconciliationGeneration, TraceFocusBoundaryOutcome, TraceRecordKind,
-    TraceRoutedIntegrityFailure, TraceSequence, TraceTarget, WorkSequence,
+    TraceRoutedIntegrityFailure, TraceSequence, TraceSpaceCleanupReason, TraceTarget, WorkSequence,
     focus::{
         FocusBoundaryOutcome, FocusNavigation, FocusSelection, is_focus_eligible, nearest_scope,
         select_focus,
     },
-    mounted::{RouteBuildError, TargetStatus},
+    mounted::{PlannedInvalidation, PlannedLifetimeReason, RouteBuildError, TargetStatus},
+    trace::{MandatoryTracePlan, TraceReservation},
 };
+
+#[derive(Clone, Copy)]
+pub(crate) struct InputLifetimeCleanupCause {
+    pub sequence: Option<WorkSequence>,
+    pub causal_parent: Option<TraceSequence>,
+    pub instant: MonotonicInstant,
+    pub origin: CommandOrigin,
+}
+
+impl InputLifetimeCleanupCause {
+    pub(crate) const fn new(
+        sequence: Option<WorkSequence>,
+        causal_parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+        origin: CommandOrigin,
+    ) -> Self {
+        Self {
+            sequence,
+            causal_parent,
+            instant,
+            origin,
+        }
+    }
+}
 
 pub(in crate::runtime) struct ReconciledFocusCleanup {
     pub old_target: MountedNodeId,
@@ -26,6 +52,263 @@ pub(in crate::runtime) struct ReconciledFocusCleanup {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    /// Applies input-lifetime revocation selected by the sole reconciliation
+    /// plan while every old route is still live. The plan has already expanded
+    /// subtree invalidation, so same-slot reuse can never be mistaken for the
+    /// old owner.
+    pub(in crate::runtime) fn cleanup_planned_input_lifetimes(
+        &mut self,
+        invalidated: &[PlannedInvalidation],
+        cause: InputLifetimeCleanupCause,
+    ) {
+        let composition_reason = self.composition.owner().and_then(|owner| {
+            invalidated
+                .iter()
+                .find(|planned| planned.id() == owner)
+                .map(|planned| match planned.reason() {
+                    PlannedLifetimeReason::Removal => CompositionCancelReason::Removal,
+                    PlannedLifetimeReason::Replacement => CompositionCancelReason::Replacement,
+                })
+        });
+        if let Some(reason) = composition_reason
+            && self.cancel_composition_while_live(reason, cause).is_err()
+        {
+            let retirement_parent = self.suppress_composition_cleanup(reason, cause);
+            if matches!(self.status, RuntimeStatus::Running) {
+                self.enter_terminal_with_parent(
+                    crate::RuntimeTerminalReason::Poisoned,
+                    0,
+                    retirement_parent,
+                );
+            }
+            return;
+        }
+        if matches!(self.status, RuntimeStatus::Terminal(_)) {
+            return;
+        }
+        let space_reason = self.space_ownership.as_ref().and_then(|ownership| {
+            invalidated
+                .iter()
+                .find(|planned| planned.id() == &ownership.target)
+                .map(|planned| match planned.reason() {
+                    PlannedLifetimeReason::Removal => TraceSpaceCleanupReason::Removal,
+                    PlannedLifetimeReason::Replacement => TraceSpaceCleanupReason::Replacement,
+                })
+        });
+        if let Some(reason) = space_reason {
+            self.revoke_space_ownership_with_cause(reason, cause);
+        }
+    }
+
+    /// A compatible update leaves a lifetime live, but may still revoke its
+    /// interaction or text-input capability. Recheck each affected owner once
+    /// before focus cleanup can route or suppress `FocusOut`.
+    pub(in crate::runtime) fn cleanup_lost_input_capabilities(
+        &mut self,
+        cause: InputLifetimeCleanupCause,
+    ) {
+        let composition_owner = self.composition.owner().cloned();
+        let space_owner = self
+            .space_ownership
+            .as_ref()
+            .map(|ownership| ownership.target.clone());
+
+        let composition_capabilities = composition_owner.as_ref().map(|owner| {
+            if self.tree.target_status(owner) == TargetStatus::Live {
+                self.tree.refresh_input_capabilities(owner).ok()
+            } else {
+                None
+            }
+        });
+        let space_capabilities = match (space_owner.as_ref(), composition_owner.as_ref()) {
+            (Some(space), Some(composition)) if space == composition => composition_capabilities,
+            (Some(space), _) => Some(if self.tree.target_status(space) == TargetStatus::Live {
+                self.tree.refresh_input_capabilities(space).ok()
+            } else {
+                None
+            }),
+            (None, _) => None,
+        };
+
+        let composition_lost = composition_owner.is_some()
+            && composition_capabilities
+                .flatten()
+                .is_none_or(|(activation, text_input)| {
+                    !activation.enabled()
+                        || !text_input.accepts_committed_text()
+                        || !text_input.accepts_composition()
+                });
+        if composition_lost
+            && self
+                .cancel_composition_while_live(CompositionCancelReason::Disablement, cause)
+                .is_err()
+        {
+            let retirement_parent =
+                self.suppress_composition_cleanup(CompositionCancelReason::Disablement, cause);
+            if matches!(self.status, RuntimeStatus::Running) {
+                self.enter_terminal_with_parent(
+                    crate::RuntimeTerminalReason::Poisoned,
+                    0,
+                    retirement_parent,
+                );
+            }
+            return;
+        }
+        if matches!(self.status, RuntimeStatus::Terminal(_)) {
+            return;
+        }
+        let space_lost = space_owner.is_some()
+            && space_capabilities
+                .flatten()
+                .is_none_or(|(activation, _)| !activation.enabled() || !activation.is_actionable());
+        if space_lost {
+            self.revoke_space_ownership_with_cause(TraceSpaceCleanupReason::Disablement, cause);
+        }
+    }
+
+    /// Uses the existing routed-event authority to notify a still-live
+    /// composition owner. The composition lifetime keeps its canonical start
+    /// sequence while the causing lifecycle operation is retained as parent.
+    pub(crate) fn cancel_composition_while_live(
+        &mut self,
+        reason: CompositionCancelReason,
+        cause: InputLifetimeCleanupCause,
+    ) -> Result<Option<TraceSequence>, ()> {
+        let (Some(owner), Some(start_sequence)) = (
+            self.composition.owner().cloned(),
+            self.composition.start_sequence(),
+        ) else {
+            return Ok(cause.causal_parent);
+        };
+        let facts = super::RoutedIngressFacts::new(
+            start_sequence,
+            owner.clone(),
+            cause.origin,
+            cause.instant,
+            cause.causal_parent,
+            TraceReservation::continuation(),
+        );
+        let Some(mut transaction) = self
+            .begin_routed_transaction_with_trace(facts, MandatoryTracePlan::composition_cleanup())
+        else {
+            return Err(());
+        };
+        if let Err(failure) =
+            self.cancel_composition_in_transaction(&mut transaction, &owner, reason)
+        {
+            let current = transaction.failure_current_target.clone();
+            self.poison_transaction(&transaction, failure, current.as_ref());
+            return Err(());
+        }
+        let cleanup_parent = transaction.parent;
+        let failure_facts = transaction.failure_facts();
+        if self.commit_routed_transaction(transaction).is_err() {
+            self.poison_routed_event(
+                &failure_facts,
+                TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                Some(&owner),
+            );
+            return Err(());
+        }
+        Ok(cleanup_parent)
+    }
+
+    /// Retires a composition that could not deliver its required cleanup after
+    /// the runtime crossed an explicit terminal integrity boundary. The trace
+    /// contains the preceding routed admission or integrity failure, but never
+    /// falsely claims that a cancellation callback was delivered.
+    pub(crate) fn suppress_composition_cleanup(
+        &mut self,
+        _reason: CompositionCancelReason,
+        cause: InputLifetimeCleanupCause,
+    ) -> Option<TraceSequence> {
+        let (Some(owner), Some(start_sequence)) = (
+            self.composition.owner().cloned(),
+            self.composition.start_sequence(),
+        ) else {
+            return cause.causal_parent;
+        };
+        self.composition = crate::input::CompositionState::None;
+        self.trace.record_event(
+            TraceRecordKind::CompositionRetired,
+            start_sequence,
+            cause.causal_parent,
+            Some(self.tree.trace_target(&owner)),
+            cause.instant,
+            &owner,
+            Some(&owner),
+            cause.origin,
+        )
+    }
+
+    pub(crate) fn revoke_space_ownership_with_cause(
+        &mut self,
+        reason: TraceSpaceCleanupReason,
+        cause: InputLifetimeCleanupCause,
+    ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            self.revoke_space_ownership(reason);
+            return cause.causal_parent;
+        }
+        let Some(ownership) = self.space_ownership.take() else {
+            return cause.causal_parent;
+        };
+        let sequence = cause.sequence.unwrap_or(ownership.down_sequence);
+        self.trace.record_event(
+            TraceRecordKind::KeyboardSpaceOwnershipCleared { reason },
+            sequence,
+            cause.causal_parent,
+            Some(self.tree.trace_target(&ownership.target)),
+            cause.instant,
+            &ownership.target,
+            Some(&ownership.target),
+            cause.origin,
+        )
+    }
+
+    /// Routes composition cancellation through the current transaction before
+    /// its old focus owner can receive `FocusOut` or become stale.
+    fn cancel_composition_in_transaction(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        owner: &MountedNodeId,
+        reason: CompositionCancelReason,
+    ) -> Result<(), TraceRoutedIntegrityFailure> {
+        let Some(generation) = self.composition.generation().cloned() else {
+            return Ok(());
+        };
+        if self.composition.owner() != Some(owner) {
+            return Ok(());
+        }
+        let route = self.checked_focus_route(owner)?;
+        let event = UiEvent::Composition(CompositionEvent::Cancel(
+            CompositionCancel::__runtime_new(generation, reason),
+        ));
+        self.invoke_focus_callbacks(transaction, &event, route, None)?;
+        self.composition = crate::input::CompositionState::None;
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::CompositionCancelled { reason },
+            transaction.sequence,
+            transaction.parent,
+            Some(self.tree.trace_target(owner)),
+            transaction.instant,
+            &transaction.target,
+            Some(owner),
+            transaction.origin,
+        );
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::CompositionRetired,
+            transaction.sequence,
+            transaction.parent,
+            Some(self.tree.trace_target(owner)),
+            transaction.instant,
+            &transaction.target,
+            Some(owner),
+            transaction.origin,
+        );
+        Ok(())
+    }
+
     pub(in crate::runtime) fn commit_pending_modality(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -191,6 +474,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if old_target == new_target {
             return Ok(());
         }
+        if let Some(old) = old_target.as_ref() {
+            self.cancel_composition_in_transaction(
+                transaction,
+                old,
+                runenui_core::CompositionCancelReason::FocusTransfer,
+            )?;
+        }
+        self.revoke_space_for_focus_transfer(transaction, old_target.as_ref());
         let old_route = match old_target.as_ref() {
             Some(old) if self.tree.target_status(old) == TargetStatus::Live => {
                 self.checked_focus_route(old)?
@@ -270,6 +561,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             )?;
         }
         Ok(())
+    }
+
+    fn revoke_space_for_focus_transfer(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        old_target: Option<&MountedNodeId>,
+    ) {
+        if self
+            .space_ownership
+            .as_ref()
+            .is_some_and(|owner| old_target == Some(&owner.target))
+        {
+            transaction.parent = self.revoke_space_ownership_with_cause(
+                TraceSpaceCleanupReason::FocusTransfer,
+                InputLifetimeCleanupCause::new(
+                    Some(transaction.sequence),
+                    transaction.parent,
+                    transaction.instant,
+                    transaction.origin,
+                ),
+            );
+        }
     }
 
     fn record_focus_commit(

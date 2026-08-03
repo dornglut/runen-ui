@@ -23,6 +23,19 @@ impl<App: UiApp> AppRuntime<App> {
 
     #[cfg(feature = "internal-test-seams")]
     #[doc(hidden)]
+    pub const fn __seed_next_composition_generation_for_test(&mut self, next: Option<u64>) {
+        self.runtime.seed_next_composition_generation_for_test(next);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __composition_generation_for_test(&self, value: u64) -> crate::CompositionGeneration {
+        self.runtime.composition_generation_for_test(value)
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
     pub const fn __seed_next_trace_sequence_for_test(&mut self, next: u64) {
         self.runtime.seed_next_trace_sequence_for_test(next);
     }
@@ -37,6 +50,16 @@ impl<App: UiApp> AppRuntime<App> {
     #[doc(hidden)]
     pub const fn __routed_trace_reservations_for_test(&self) -> usize {
         self.runtime.routed_trace_reservations_for_test()
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __mounted_identity_parts_for_test(&self, id: &MountedNodeId) -> Option<(u32, u64)> {
+        self.runtime
+            .tree
+            .runtime_namespace()
+            .__runtime_mounted_parts(id)
     }
 
     #[cfg(feature = "internal-test-seams")]

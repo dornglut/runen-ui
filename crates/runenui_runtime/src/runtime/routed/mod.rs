@@ -14,8 +14,8 @@ use crate::{
     MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, queue::SemanticCommandEnvelope,
     trace::MandatoryTracePlan,
 };
-pub(in crate::runtime) use dispatch::PointerDispatchFacts;
-pub(in crate::runtime) use transaction::{RoutedIngressFacts, RoutedTransaction};
+pub(crate) use dispatch::PointerDispatchFacts;
+pub(crate) use transaction::{RoutedIngressFacts, RoutedTransaction};
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn process_semantic_command(&mut self, envelope: SemanticCommandEnvelope) {
@@ -62,19 +62,32 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    pub(in crate::runtime) fn begin_routed_transaction(
+    pub(crate) fn begin_routed_transaction(
         &mut self,
         facts: RoutedIngressFacts,
     ) -> Option<RoutedTransaction<Action>> {
         self.begin_routed_transaction_with_trace(facts, MandatoryTracePlan::none())
     }
 
-    pub(in crate::runtime) fn begin_routed_transaction_with_trace(
+    pub(crate) fn begin_routed_transaction_with_trace(
         &mut self,
         facts: RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
     ) -> Option<RoutedTransaction<Action>> {
-        let (route, admission) = self.prepare_routed_route(&facts, additional_trace)?;
+        self.begin_routed_transaction_with_trace_and_default_commands(facts, additional_trace, 0)
+    }
+
+    pub(crate) fn begin_routed_transaction_with_trace_and_default_commands(
+        &mut self,
+        facts: RoutedIngressFacts,
+        additional_trace: MandatoryTracePlan,
+        mandatory_default_commands: usize,
+    ) -> Option<RoutedTransaction<Action>> {
+        let (route, admission) = self.prepare_routed_route_with_default_commands(
+            &facts,
+            additional_trace,
+            mandatory_default_commands,
+        )?;
         let pointer_callback_targets = route.clone();
         Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
@@ -148,6 +161,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target_trace,
             parent,
             remaining_outputs: admission.max_outputs,
+            remaining_default_commands: admission.mandatory_default_commands,
             propagation_stopped: false,
             default_prevented: false,
             collecting_notification_outputs: false,

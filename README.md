@@ -6,7 +6,15 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M4A through M4C4 are complete and owner-accepted. M4C5 is the next implementation slice; M4D1–M4D3 follow in sequence. M4 remains active and incomplete. Current maturity, durable sequence, work ownership, and historical acceptance evidence live in the [status map](docs/status-map.md), [roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and [public repository migration history](docs/history/public-repository-migration.md).
+Milestone status: M4A through M4C4 are complete and owner-accepted. M4C5 is
+proof-complete on its review branch, pending independent review, owner
+acceptance, and merge; its separate authority-reconciliation follow-up is not
+part of that implementation: the follow-up is the M4C5 authority-reconciliation
+PR. M4D1–M4D3 remain blocked in sequence. M4 remains
+active and incomplete. Current maturity, durable sequence, work ownership, and
+historical acceptance evidence live in the [status map](docs/status-map.md),
+[roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and
+[public repository migration history](docs/history/public-repository-migration.md).
 
 ## What exists today
 
@@ -72,13 +80,15 @@ The active workspace proves:
 
 Important limitations remain: pointer input is a deterministic logical-surface
 proof without native host translation or production scrolling; text measurement
-is deterministic character counting; and raw keyboard routing, text/IME,
-authored-ID automation resolution, complete trace v2 normalization, trace export/
-sinks/replay, production semantics/accessibility, paint/hit scenes, production
+is deterministic character counting; M4C5's raw keyboard, committed-text,
+composition, and authored-ID automation implementation is proof-complete but
+not owner-accepted; and complete trace-v2 normalization, trace export/sinks/
+replay, production semantics/accessibility, paint/hit scenes, production
 layout/style/text, native hosts, renderer backends, and production controls are
-absent. The current runtime has one mounted root, one focus domain, and one logical
-surface with bounded proof-level displayed hit-test history. Current paint and semantic
-facts remain deterministic extension proofs, not the M5/M6 production products.
+absent. The current runtime has one mounted root, one focus domain, and one
+logical surface with bounded proof-level displayed hit-test history. Current
+paint and semantic facts remain deterministic extension proofs, not the M5/M6
+production products.
 
 ## Production profiles
 

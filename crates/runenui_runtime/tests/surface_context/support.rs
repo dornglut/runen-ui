@@ -171,7 +171,9 @@ pub fn mounted_target(runtime: &mut AppRuntime<SurfaceApp>, authored: &str) -> M
     let authored = ElementId::new(authored).unwrap_or_else(|_| unreachable!());
     runtime
         .index()
-        .node_by_authored_id(&authored)
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
         .unwrap_or_else(|| unreachable!("authored target is mounted"))
         .id()
         .clone()

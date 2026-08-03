@@ -285,8 +285,10 @@ repository owner accepted M4C0, and no runtime implementation or API scaffold wa
 introduced.
 
 **Subsequent record:** M4C1, M4C2, M4C3, and M4C4 are complete,
-owner-accepted, and merged. M4C5 becomes the next implementation slice only
-after the M4C4 post-merge authority reconciliation is accepted and merged.
+owner-accepted, and merged. M4C5's implementation proof package is complete
+on its review branch; independent review, owner acceptance, merge, and the
+separate M4C5 authority-reconciliation PR remain pending. M4C4 reconciliation
+is already complete.
 
 #### M4C1 — Routed semantic-command kernel
 
@@ -401,8 +403,10 @@ release-inside; no press-only pointer helper remains.
 `2fc165b9386f55c061d61232400375b13ad175bf`. All 28 M4C3 rows are
 `owner-accepted`; M4 remains active and incomplete.
 
-**Next implementation slice:** M4C4 is complete and owner-accepted; M4C5 follows
-only after the M4C4 post-merge authority reconciliation is accepted and merged.
+**Next implementation slice:** M4C4 is complete and owner-accepted. M4C5 has a
+proof-complete implementation pending independent review, owner acceptance, and
+merge; M4C4 reconciliation is complete, while the M4C5
+authority-reconciliation PR remains a separate follow-up.
 
 #### M4C4 — Focus scopes and modality
 
@@ -434,19 +438,24 @@ no direct focus-command bypass remains.
 `f95571634a9c6528e5834e9589b048ad5197bd15`. All 32 M4C4 rows are
 `owner-accepted`; M4 remains active and incomplete.
 
-**Next implementation slice:** M4C5 only after this post-merge authority update
-is accepted and merged and its resulting public `main` is recorded.
+**Implementation record:** M4C5 is proof-complete on its review branch. It has
+not received owner acceptance or merged; M4C4 reconciliation is complete and
+the M4C5 authority-reconciliation PR remains a separate follow-up. M4D1 remains
+blocked.
 
 #### M4C5 — Keyboard, text, IME, automation, and M4C closure
 
-**Status:** `blocked` pending the M4C4 post-merge authority reconciliation.
+**Status:** `proof-complete` on the implementation review branch; independent
+review, owner acceptance, merge, and the separate M4C5 authority-reconciliation
+PR remain pending. M4C4 reconciliation is complete.
 
 **Goal:** Complete keyboard activation policy, separate committed-text and IME
 streams, exact composition ownership, authored-ID automation resolution, and
 all remaining canonical-path migrations.
 
-**Dependencies:** Accepted and merged M4C4 focus scopes/modality plus the
-accepted M4C4 post-merge authority reconciliation.
+**Dependencies:** Accepted and merged M4C4 focus scopes/modality. M4C4
+reconciliation is complete. The M4C5 authority-reconciliation PR is deliberately
+outside this implementation PR and remains a separate governance follow-up.
 
 **Included work:** All `KEY-*`, `TEXT-*`, `IME-*`, and `AUTOMATION-*` rows;
 remaining M4C migration; complete Counter and downstream M4C conformance.
@@ -456,16 +465,19 @@ native IME objects, trace export/sink, or replay.
 
 **Proof ownership:** Counter/downstream keyboard and IME proofs, automation
 ambiguity/stale cases, complete M4C causal trace, stable/MSRV validation, and
-exact-head CI.
+exact-head CI. The proof package and reviewed exact-head validation are complete;
+independent review, owner acceptance, and merge remain delivery gates. Exact
+branch-head evidence belongs in PR #27 and the work-tracking system.
 
 **Exit criteria:** Every M4C row is proof-complete, physical/programmatic sources
 converge on one canonical path, and direct input helpers are gone.
 
-**Next unblocked slice:** M4D1 after M4C5 owner acceptance and merge.
+**Next unblocked slice:** M4D1 only after M4C5 owner acceptance and merge. It
+remains blocked; this implementation does not authorize M4D1.
 
 #### M4D1 — Complete trace schema
 
-**Status:** `blocked` pending M4C5 acceptance.
+**Status:** `blocked` pending M4C5 owner acceptance and merge.
 
 **Goal:** Normalize the complete event/surface/pointer/focus/composition/modality
 and scheduler trace schema with logical causality and suppressed delivery.

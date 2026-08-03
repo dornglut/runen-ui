@@ -229,7 +229,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(now)
     }
 
-    pub(in crate::runtime) fn now(&self) -> MonotonicInstant {
+    pub(crate) fn now(&self) -> MonotonicInstant {
         self.host_clock
             .as_ref()
             .map_or_else(|| self.clock.now(), |clock| clock.now())

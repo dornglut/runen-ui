@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(in crate::runtime) fn commit_routed_transaction(
+    pub(crate) fn commit_routed_transaction(
         &mut self,
         transaction: RoutedTransaction<Action>,
     ) -> Result<(), ()> {
@@ -187,37 +187,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     origin,
                     causal_parent,
                 } => {
-                    let command_sequence = self.queue.next_sequence().ok_or(())?;
-                    let trace_reservation = self.trace.reserve_command_outcome().ok_or(())?;
-                    let accepted = self.trace.record_event(
-                        TraceRecordKind::CommandSubmissionAccepted,
-                        command_sequence,
-                        causal_parent,
-                        Some(self.tree.trace_target(&target)),
-                        instant,
+                    self.commit_preflighted_routed_command(
                         &target,
-                        None,
+                        command,
                         origin,
-                    );
-                    if self.trace.is_enabled() && accepted.is_none() {
-                        self.trace.release_reservation(trace_reservation);
-                        return Err(());
-                    }
-                    if self
-                        .queue
-                        .push_command_preflighted(
-                            target,
-                            command,
-                            origin,
-                            instant,
-                            accepted,
-                            trace_reservation,
-                        )
-                        .is_err()
-                    {
-                        self.trace.release_reservation(trace_reservation);
-                        return Err(());
-                    }
+                        causal_parent,
+                        instant,
+                    )
+                    .map_err(|_| ())?;
                 }
             }
         }

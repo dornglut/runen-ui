@@ -68,6 +68,10 @@ impl Trace {
         self.reserve_outcome_with_prefix(MandatoryTracePlan::pointer_acceptance())
     }
 
+    pub(crate) fn reserve_input_outcome(&mut self) -> Option<TraceReservation> {
+        self.reserve_outcome_with_prefix(MandatoryTracePlan::input_acceptance())
+    }
+
     pub(crate) fn reserve_surface_command_outcome(&mut self) -> Option<TraceReservation> {
         self.reserve_outcome_with_prefix(MandatoryTracePlan::surface_command_acceptance())
     }
@@ -244,6 +248,14 @@ impl Trace {
             record.work = Some(work);
         }
         Some(sequence)
+    }
+
+    pub(crate) fn latest_runtime_terminal_sequence(&self) -> Option<TraceSequence> {
+        self.records
+            .iter()
+            .rev()
+            .find(|record| matches!(record.kind(), TraceRecordKind::RuntimeTerminal { .. }))
+            .map(TraceRecord::sequence)
     }
 
     /// Borrows canonical records from oldest retained to newest.

@@ -1,6 +1,6 @@
 use crate::element::{
     ChildLayout, WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure,
-    WidgetPaintProof, WidgetSemanticProof, WidgetStateTypeId, WidgetTypeId,
+    WidgetPaintProof, WidgetSemanticProof, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
 use crate::widget_erasure::{ErasedWidget, WidgetBridgeError};
 use crate::{EventContext, UiEvent, WidgetEventOutput};
@@ -130,6 +130,9 @@ where
     }
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError> {
         self.child.activation(state)
+    }
+    fn text_input(&self, state: &dyn Any) -> Result<WidgetTextInput, WidgetBridgeError> {
+        self.child.text_input(state)
     }
     fn activate(
         &mut self,

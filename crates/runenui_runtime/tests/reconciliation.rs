@@ -30,7 +30,9 @@ fn id_by_authored<App: UiApp>(
     let authored = ElementId::new(authored).unwrap_or_else(|_| unreachable!());
     runtime
         .index()
-        .node_by_authored_id(&authored)
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
         .unwrap_or_else(|| unreachable!())
         .id()
         .clone()

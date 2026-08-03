@@ -4,6 +4,7 @@
 
 mod access;
 mod application;
+mod automation;
 mod focus;
 mod helpers;
 mod ingress;
@@ -62,31 +63,47 @@ use crate::{
 
 mod model;
 
+use crate::input::{CompositionState, SpaceOwnership};
+use automation::AutomationSubmissionPolicy;
 pub(in crate::runtime) use helpers::{
     CommitError, mounted_effect_into_effect, public_trace_work_identity, trace_work_family,
     trace_work_owner, with_routed_parent,
 };
 pub(in crate::runtime) use lifecycle::revoke_generation_authority;
-pub(in crate::runtime) use model::{ActionCommitError, CollectedRoutedOutput, MutationPhase};
+pub(crate) use model::CollectedRoutedOutput;
+pub(in crate::runtime) use model::{ActionCommitError, MutationPhase};
 pub use model::{
     HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
     ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
     SubscriptionDiagnostic, SubscriptionOwnerKind, TimerFiringOutcome, TimerStartOutcome,
 };
 use pointer::PointerRegistry;
-pub(in crate::runtime) use routed::{PointerDispatchFacts, RoutedIngressFacts, RoutedTransaction};
+pub(crate) use routed::PointerDispatchFacts;
+pub(crate) use routed::{RoutedIngressFacts, RoutedTransaction};
 use surface_publication::SurfacePublicationState;
 
 pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol> {
     state: Option<State>,
     pub(crate) tree: MountedTree<Action>,
-    queue: WorkQueue<Action>,
-    trace: Trace,
-    focus: FocusState,
+    pub(crate) queue: WorkQueue<Action>,
+    pub(crate) trace: Trace,
+    pub(crate) focus: FocusState,
     pointer_registry: PointerRegistry,
+    pub(crate) space_ownership: Option<SpaceOwnership>,
+    pub(crate) composition: CompositionState,
+    pub(crate) next_composition_generation: Option<core::num::NonZeroU64>,
+    /// Highest generation successfully committed to the canonical input FIFO.
+    ///
+    /// This is deliberately distinct from the next allocator value: exhaustion
+    /// alone must not make a fabricated generation appear to have been issued.
+    pub(crate) last_issued_composition_generation: Option<core::num::NonZeroU64>,
     generation: u64,
     report: ReconciliationReport,
-    status: RuntimeStatus,
+    pub(crate) status: RuntimeStatus,
+    /// Synchronous public automation ingress returns exhaustion as rejection
+    /// rather than changing global runtime status. No callback or pump work can
+    /// observe this scope because automation submission is non-reentrant.
+    automation_submission_policy: AutomationSubmissionPolicy,
     limits: crate::RuntimeLimits,
     mounted_public_slot_limit: u64,
     work: WorkRegistry<Action, Protocol>,

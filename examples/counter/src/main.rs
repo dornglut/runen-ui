@@ -9,10 +9,12 @@ mod app;
 mod ui;
 
 use app::{Counter, CounterApp, WIN_COUNT};
-use runenui_core::{CommandOrigin, ElementId, LogicalLength, SemanticCommand, StyleTokens};
+use runenui_core::{
+    ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
+    LogicalKey, LogicalLength, PhysicalKey, SemanticCommand, StyleTokens,
+};
 use runenui_runtime::{
-    AppRuntime, CommandSubmission, LogicalSize, MountedNodeId, PumpBudget, SubmitCommandError,
-    SurfaceBuildContext, render_debug_surface_frame,
+    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, render_debug_surface_frame,
 };
 
 const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(
@@ -47,24 +49,24 @@ fn settle_initial_work(runtime: &mut AppRuntime<CounterApp>) {
     ));
 }
 
-fn target_by_authored_id(runtime: &mut AppRuntime<CounterApp>, authored_id: &str) -> MountedNodeId {
-    let authored_id = ElementId::new(authored_id).unwrap_or_else(|_| unreachable!());
-    runtime
-        .index()
-        .node_by_authored_id(&authored_id)
-        .unwrap_or_else(|| unreachable!("counter command target is mounted"))
-        .id()
-        .clone()
+fn authored_id(value: &str) -> ElementId {
+    ElementId::new(value).unwrap_or_else(|_| unreachable!("counter authored id is valid"))
 }
 
-fn submit_activate(
-    runtime: &mut AppRuntime<CounterApp>,
-    target: MountedNodeId,
-) -> Result<CommandSubmission, SubmitCommandError> {
-    runtime.submit_command(
-        target,
-        SemanticCommand::Activate,
-        CommandOrigin::programmatic(),
+const fn keyboard_event(
+    phase: KeyboardPhase,
+    physical: PhysicalKey,
+    logical: LogicalKey,
+) -> KeyboardEvent {
+    KeyboardEvent::new(
+        phase,
+        physical,
+        logical,
+        KeyModifiers::NONE,
+        false,
+        KeyLocation::Standard,
+        KeyboardCompositionState::Inactive,
+        None,
     )
 }
 
@@ -74,9 +76,44 @@ fn main() {
 
     print_debug_surface("counter.surface.initial", &mut runtime);
 
-    let increment = target_by_authored_id(&mut runtime, "counter.increment");
-    for _ in 0..WIN_COUNT {
-        submit_activate(&mut runtime, increment.clone()).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_automation_command(
+            authored_id("counter.increment"),
+            SemanticCommand::RequestFocus,
+        )
+        .unwrap_or_else(|_| unreachable!("automation resolves the increment control"));
+    settle_initial_work(&mut runtime);
+    runtime
+        .submit_keyboard(keyboard_event(
+            KeyboardPhase::Down,
+            PhysicalKey::Enter,
+            LogicalKey::Enter,
+        ))
+        .unwrap_or_else(|_| unreachable!("raw Enter is accepted for focused increment"));
+    runtime
+        .submit_keyboard(keyboard_event(
+            KeyboardPhase::Down,
+            PhysicalKey::Space,
+            LogicalKey::Space,
+        ))
+        .unwrap_or_else(|_| unreachable!("raw Space down is accepted"));
+    runtime
+        .submit_keyboard(keyboard_event(
+            KeyboardPhase::Up,
+            PhysicalKey::Space,
+            LogicalKey::Space,
+        ))
+        .unwrap_or_else(|_| unreachable!("raw Space release is accepted"));
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    for _ in 2..WIN_COUNT {
+        runtime
+            .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
+            .unwrap_or_else(|_| unreachable!("automation resolves the increment control"));
     }
     runtime.pump(PumpBudget::new(
         WIN_COUNT as usize,
@@ -88,8 +125,9 @@ fn main() {
 
     print_debug_surface("counter.surface.win", &mut runtime);
 
-    let reset = target_by_authored_id(&mut runtime, "counter.reset");
-    submit_activate(&mut runtime, reset).unwrap_or_else(|_| unreachable!());
+    runtime
+        .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
+        .unwrap_or_else(|_| unreachable!("automation resolves reset"));
     runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
 
     print_debug_surface("counter.surface.reset", &mut runtime);
@@ -103,16 +141,17 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use runenui_core::{
-        CommandOrigin, LogicalDelta, LogicalLength, LogicalPoint, PointerButton, PointerButtons,
-        PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand, StyleTokens,
+        LogicalDelta, LogicalKey, LogicalLength, LogicalPoint, PhysicalKey, PointerButton,
+        PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand,
+        StyleTokens,
     };
     use runenui_runtime::{
         AppRuntime, LogicalSize, PumpBudget, RuntimeStatus, RuntimeTerminalReason,
-        SubmitCommandErrorKind, SurfaceBuildContext,
+        SurfaceBuildContext,
     };
 
     use crate::app::{Counter, CounterAction, CounterApp, WIN_COUNT};
-    use crate::{debug_surface, settle_initial_work, submit_activate, target_by_authored_id};
+    use crate::{authored_id, debug_surface, keyboard_event, settle_initial_work};
 
     fn mounted_counter(counter: Counter) -> AppRuntime<CounterApp> {
         let mut runtime = AppRuntime::<CounterApp>::mount(counter);
@@ -174,9 +213,9 @@ mod tests {
     fn reset_returns_to_counter_screen() {
         let mut runtime = mounted_counter(Counter { count: 10 });
 
-        let reset = target_by_authored_id(&mut runtime, "counter.reset");
-        submit_activate(&mut runtime, reset)
-            .unwrap_or_else(|_| unreachable!("the exact live reset target is accepted"));
+        runtime
+            .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
+            .unwrap_or_else(|_| unreachable!("automation resolves the live reset target"));
         assert_eq!(runtime.state(), &Counter { count: 10 });
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.state(), &Counter { count: 0 });
@@ -184,13 +223,16 @@ mod tests {
     }
 
     #[test]
-    fn semantic_increment_activation_reaches_win_screen() {
+    fn automation_increment_activation_reaches_win_screen() {
         let mut runtime = mounted_counter(Counter::new());
 
-        let increment = target_by_authored_id(&mut runtime, "counter.increment");
         for _ in 0..WIN_COUNT {
-            submit_activate(&mut runtime, increment.clone())
-                .unwrap_or_else(|_| unreachable!("the exact live increment target is accepted"));
+            runtime
+                .submit_automation_command(
+                    authored_id("counter.increment"),
+                    SemanticCommand::Activate,
+                )
+                .unwrap_or_else(|_| unreachable!("automation resolves live increment target"));
         }
         assert_eq!(runtime.state(), &Counter::new());
         runtime.pump(PumpBudget::new(
@@ -249,6 +291,42 @@ mod tests {
     }
 
     #[test]
+    fn raw_enter_and_space_activate_the_focused_counter_through_the_fifo() {
+        let mut runtime = mounted_counter(Counter::new());
+        runtime
+            .submit_automation_command(
+                authored_id("counter.increment"),
+                SemanticCommand::RequestFocus,
+            )
+            .unwrap_or_else(|_| unreachable!("automation resolves the focus target"));
+        settle_initial_work(&mut runtime);
+        for event in [
+            keyboard_event(
+                runenui_core::KeyboardPhase::Down,
+                PhysicalKey::Enter,
+                LogicalKey::Enter,
+            ),
+            keyboard_event(
+                runenui_core::KeyboardPhase::Down,
+                PhysicalKey::Space,
+                LogicalKey::Space,
+            ),
+            keyboard_event(
+                runenui_core::KeyboardPhase::Up,
+                PhysicalKey::Space,
+                LogicalKey::Space,
+            ),
+        ] {
+            runtime
+                .submit_keyboard(event)
+                .unwrap_or_else(|_| unreachable!("focused raw keyboard event is accepted"));
+        }
+        assert_eq!(runtime.state(), &Counter::new());
+        settle_initial_work(&mut runtime);
+        assert_eq!(runtime.state(), &Counter { count: 2 });
+    }
+
+    #[test]
     fn submitted_action_waits_for_the_explicit_pump() {
         let mut runtime = mounted_counter(Counter::new());
 
@@ -263,28 +341,24 @@ mod tests {
     #[test]
     fn generation_exhaustion_preserves_counter_and_mounted_state() {
         let mut runtime = mounted_counter(Counter::new());
-        let authored =
-            runenui_core::ElementId::new("counter.increment").unwrap_or_else(|_| unreachable!());
+        runtime
+            .submit_automation_command(
+                authored_id("counter.increment"),
+                SemanticCommand::RequestFocus,
+            )
+            .unwrap_or_else(|_| unreachable!("automation resolves focus target"));
+        settle_initial_work(&mut runtime);
         let increment = runtime
-            .index()
-            .node_by_authored_id(&authored)
-            .unwrap_or_else(|| unreachable!())
-            .id()
-            .clone();
+            .focus()
+            .focused_node()
+            .cloned()
+            .unwrap_or_else(|| unreachable!("automation focus committed"));
         let semantic = runtime
             .index()
             .node(&increment)
             .unwrap_or_else(|| unreachable!())
             .semantic_id()
             .clone();
-        runtime
-            .submit_command(
-                increment.clone(),
-                SemanticCommand::RequestFocus,
-                CommandOrigin::programmatic(),
-            )
-            .unwrap_or_else(|_| unreachable!("the exact live focus target is accepted"));
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
         let before = runtime.publish_surface(&context);
@@ -293,8 +367,9 @@ mod tests {
         let report = runtime.reconciliation_report().clone();
         runtime.__seed_reconciliation_generation_for_test(u64::MAX);
 
-        submit_activate(&mut runtime, increment.clone())
-            .unwrap_or_else(|_| unreachable!("the exact live increment target is accepted"));
+        runtime
+            .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
+            .unwrap_or_else(|_| unreachable!("automation resolves increment"));
         runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(
             runtime.status(),
@@ -365,14 +440,18 @@ mod tests {
     #[test]
     fn mounted_identity_focus_state_and_screen_replacement_are_proven() {
         let mut runtime = mounted_counter(Counter::new());
-        let authored =
-            runenui_core::ElementId::new("counter.increment").unwrap_or_else(|_| unreachable!());
+        runtime
+            .submit_automation_command(
+                authored_id("counter.increment"),
+                SemanticCommand::RequestFocus,
+            )
+            .unwrap_or_else(|_| unreachable!("automation resolves the focus target"));
+        settle_initial_work(&mut runtime);
         let increment = runtime
-            .index()
-            .node_by_authored_id(&authored)
-            .unwrap_or_else(|| unreachable!())
-            .id()
-            .clone();
+            .focus()
+            .focused_node()
+            .cloned()
+            .unwrap_or_else(|| unreachable!("automation focus committed"));
         let semantic = runtime
             .index()
             .node(&increment)
@@ -380,21 +459,14 @@ mod tests {
             .semantic_id()
             .clone();
         runtime
-            .submit_command(
-                increment.clone(),
-                SemanticCommand::RequestFocus,
-                CommandOrigin::programmatic(),
-            )
-            .unwrap_or_else(|_| unreachable!("the exact live focus target is accepted"));
-        runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
-        submit_activate(&mut runtime, increment.clone())
-            .unwrap_or_else(|_| unreachable!("the exact live increment target is accepted"));
+            .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
+            .unwrap_or_else(|_| unreachable!("automation resolves increment"));
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
         assert_eq!(
             runtime
                 .index()
-                .node_by_authored_id(&authored)
+                .node(&increment)
                 .unwrap_or_else(|| unreachable!())
                 .semantic_id(),
             &semantic
@@ -412,8 +484,12 @@ mod tests {
                 .contains("activations=1")
         );
         for _ in 1..WIN_COUNT {
-            submit_activate(&mut runtime, increment.clone())
-                .unwrap_or_else(|_| unreachable!("the exact live increment target is accepted"));
+            runtime
+                .submit_automation_command(
+                    authored_id("counter.increment"),
+                    SemanticCommand::Activate,
+                )
+                .unwrap_or_else(|_| unreachable!("automation resolves increment"));
         }
         runtime.pump(PumpBudget::new(
             ((WIN_COUNT - 1) * 2) as usize,
@@ -422,21 +498,11 @@ mod tests {
             usize::MAX,
         ));
         assert_eq!(runtime.focus().focused_node(), None);
-        let Err(error) = submit_activate(&mut runtime, increment.clone()) else {
-            unreachable!("the replaced increment target is stale")
-        };
-        assert_eq!(error.kind(), SubmitCommandErrorKind::StaleTarget);
         settle_initial_work(&mut runtime);
-        let reset = target_by_authored_id(&mut runtime, "counter.reset");
-        submit_activate(&mut runtime, reset)
-            .unwrap_or_else(|_| unreachable!("the exact live reset target is accepted"));
+        runtime
+            .submit_automation_command(authored_id("counter.reset"), SemanticCommand::Activate)
+            .unwrap_or_else(|_| unreachable!("automation resolves reset on win screen"));
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
-        let replacement = runtime
-            .index()
-            .node_by_authored_id(&authored)
-            .unwrap_or_else(|| unreachable!())
-            .id()
-            .clone();
-        assert_ne!(replacement, increment);
+        assert_eq!(runtime.state(), &Counter::new());
     }
 }
