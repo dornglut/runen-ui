@@ -158,10 +158,10 @@ fn focus_target(runtime: &mut AppRuntime<App>) {
     settle(runtime);
 }
 
-fn find_record<'a>(
-    runtime: &'a AppRuntime<App>,
+fn find_record(
+    runtime: &AppRuntime<App>,
     predicate: impl Fn(&TraceRecord) -> bool,
-) -> &'a TraceRecord {
+) -> &TraceRecord {
     runtime
         .trace()
         .records()
