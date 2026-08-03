@@ -27,6 +27,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         reason: RuntimeTerminalReason,
         additional_cancelled: usize,
     ) -> usize {
+        self.enter_terminal_with_parent(reason, additional_cancelled, None)
+    }
+
+    pub(crate) fn enter_terminal_with_parent(
+        &mut self,
+        reason: RuntimeTerminalReason,
+        additional_cancelled: usize,
+        causal_parent: Option<TraceSequence>,
+    ) -> usize {
         if !matches!(self.status, RuntimeStatus::Running) {
             return 0;
         }
@@ -34,8 +43,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         // route; if that route or its bounded admission is irrecoverable, the
         // exact lifetime is retired without falsely claiming callback delivery.
         self.status = RuntimeStatus::Terminal(reason);
-        let cleanup_cause =
-            InputLifetimeCleanupCause::new(None, None, self.now(), CommandOrigin::programmatic());
+        let cleanup_cause = InputLifetimeCleanupCause::new(
+            None,
+            causal_parent,
+            self.now(),
+            CommandOrigin::programmatic(),
+        );
         let composition_parent = self
             .cancel_composition_while_live(
                 runenui_core::CompositionCancelReason::Shutdown,
@@ -131,7 +144,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     cleanup_cause,
                 );
                 if matches!(self.status, RuntimeStatus::Running) {
-                    self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                    self.enter_terminal_with_parent(RuntimeTerminalReason::Poisoned, 0, parent);
                 }
                 parent
             });
