@@ -132,31 +132,66 @@ impl TraceCompositionContext {
     }
 }
 
-/// Redacted checked byte range into one composition preedit value.
+/// Redacted size facts for committed text or composition preedit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TraceTextMetrics {
+    bytes: usize,
+    scalars: usize,
+}
+
+impl TraceTextMetrics {
+    /// Returns the UTF-8 byte length without retaining text.
+    #[must_use]
+    pub const fn bytes(self) -> usize {
+        self.bytes
+    }
+
+    /// Returns the Unicode scalar count without retaining text.
+    #[must_use]
+    pub const fn scalars(self) -> usize {
+        self.scalars
+    }
+}
+
+/// Redacted checked byte and scalar range into one composition preedit value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TraceCompositionRange {
-    start: usize,
-    end: usize,
+    byte_start: usize,
+    byte_end: usize,
+    scalar_start: usize,
+    scalar_end: usize,
 }
 
 impl TraceCompositionRange {
     /// Returns the inclusive UTF-8 byte start.
     #[must_use]
-    pub const fn start(self) -> usize {
-        self.start
+    pub const fn byte_start(self) -> usize {
+        self.byte_start
     }
 
     /// Returns the exclusive UTF-8 byte end.
     #[must_use]
-    pub const fn end(self) -> usize {
-        self.end
+    pub const fn byte_end(self) -> usize {
+        self.byte_end
+    }
+
+    /// Returns the inclusive Unicode scalar start.
+    #[must_use]
+    pub const fn scalar_start(self) -> usize {
+        self.scalar_start
+    }
+
+    /// Returns the exclusive Unicode scalar end.
+    #[must_use]
+    pub const fn scalar_end(self) -> usize {
+        self.scalar_end
     }
 }
 
-/// Origin category of one accepted application action.
+/// Queue-source classification of one accepted application action.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TraceActionOrigin {
+pub enum TraceActionCategory {
     DirectSubmission,
     RoutedCommand,
     ApplicationEffect,
@@ -166,7 +201,7 @@ pub enum TraceActionOrigin {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TraceActionIdentity {
     type_name: &'static str,
-    origin: TraceActionOrigin,
+    category: TraceActionCategory,
 }
 
 impl TraceActionIdentity {
@@ -178,29 +213,29 @@ impl TraceActionIdentity {
 
     /// Returns how the action entered the canonical queue.
     #[must_use]
-    pub const fn origin(self) -> TraceActionOrigin {
-        self.origin
+    pub const fn category(self) -> TraceActionCategory {
+        self.category
     }
 }
 
-/// Ordered exact route snapshot owned by one canonical trace record.
+/// Ordered exact routed path and related endpoint owned by one trace record.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceRouteSnapshot {
-    event: TraceEventContext,
     targets: Vec<TraceTarget>,
+    related_target: Option<TraceTarget>,
 }
 
 impl TraceRouteSnapshot {
-    /// Returns the event family and cancelability facts.
-    #[must_use]
-    pub const fn event(&self) -> TraceEventContext {
-        self.event
-    }
-
     /// Returns the immutable root-to-target route.
     #[must_use]
     pub const fn targets(&self) -> &[TraceTarget] {
         self.targets.as_slice()
+    }
+
+    /// Returns the exact related endpoint for boundary-style delivery.
+    #[must_use]
+    pub const fn related_target(&self) -> Option<&TraceTarget> {
+        self.related_target.as_ref()
     }
 }
 
@@ -216,6 +251,35 @@ impl TracePointerPath {
     pub const fn targets(&self) -> &[TraceTarget] {
         self.targets.as_slice()
     }
+}
+
+/// Exact previous/current target endpoints for one interaction transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TraceTargetTransition {
+    previous: Option<TraceTarget>,
+    current: Option<TraceTarget>,
+}
+
+impl TraceTargetTransition {
+    /// Returns the previous exact target endpoint.
+    #[must_use]
+    pub const fn previous(&self) -> Option<&TraceTarget> {
+        self.previous.as_ref()
+    }
+
+    /// Returns the current exact target endpoint.
+    #[must_use]
+    pub const fn current(&self) -> Option<&TraceTarget> {
+        self.current.as_ref()
+    }
+}
+
+/// Whether a required routed notification reached callbacks or was suppressed.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TraceDeliveryOutcome {
+    Delivered,
+    Suppressed,
 }
 
 /// Renderer-facing publication identity that closes an M4 causal chain.
@@ -250,5 +314,96 @@ impl TracePublicationContext {
     #[must_use]
     pub const fn executed_phases(&self) -> &[SurfacePhase] {
         self.executed_phases.as_slice()
+    }
+}
+
+/// Typed normalized context attached to one canonical trace record.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TraceContext {
+    event: Option<TraceEventContext>,
+    surface: Option<TraceSurfaceContext>,
+    pointer: Option<TracePointerContext>,
+    composition: Option<TraceCompositionContext>,
+    text_metrics: Option<TraceTextMetrics>,
+    composition_range: Option<TraceCompositionRange>,
+    route: Option<TraceRouteSnapshot>,
+    physical_path: Option<TracePointerPath>,
+    target_transition: Option<TraceTargetTransition>,
+    action: Option<TraceActionIdentity>,
+    publication: Option<TracePublicationContext>,
+    delivery: Option<TraceDeliveryOutcome>,
+}
+
+impl TraceContext {
+    /// Returns normalized event family and cancelability facts.
+    #[must_use]
+    pub const fn event(&self) -> Option<TraceEventContext> {
+        self.event
+    }
+
+    /// Returns exact displayed-surface facts.
+    #[must_use]
+    pub const fn surface(&self) -> Option<&TraceSurfaceContext> {
+        self.surface.as_ref()
+    }
+
+    /// Returns exact pointer/device facts.
+    #[must_use]
+    pub const fn pointer(&self) -> Option<&TracePointerContext> {
+        self.pointer.as_ref()
+    }
+
+    /// Returns exact composition lifetime facts.
+    #[must_use]
+    pub const fn composition(&self) -> Option<&TraceCompositionContext> {
+        self.composition.as_ref()
+    }
+
+    /// Returns redacted text or preedit size facts.
+    #[must_use]
+    pub const fn text_metrics(&self) -> Option<TraceTextMetrics> {
+        self.text_metrics
+    }
+
+    /// Returns the checked redacted composition range.
+    #[must_use]
+    pub const fn composition_range(&self) -> Option<TraceCompositionRange> {
+        self.composition_range
+    }
+
+    /// Returns the ordered routed path and related endpoint.
+    #[must_use]
+    pub const fn route(&self) -> Option<&TraceRouteSnapshot> {
+        self.route.as_ref()
+    }
+
+    /// Returns the ordered physical pointer path.
+    #[must_use]
+    pub const fn physical_path(&self) -> Option<&TracePointerPath> {
+        self.physical_path.as_ref()
+    }
+
+    /// Returns exact previous/current transition endpoints.
+    #[must_use]
+    pub const fn target_transition(&self) -> Option<&TraceTargetTransition> {
+        self.target_transition.as_ref()
+    }
+
+    /// Returns redacted application-action identity.
+    #[must_use]
+    pub const fn action(&self) -> Option<TraceActionIdentity> {
+        self.action
+    }
+
+    /// Returns renderer-facing publication identity.
+    #[must_use]
+    pub const fn publication(&self) -> Option<&TracePublicationContext> {
+        self.publication.as_ref()
+    }
+
+    /// Returns explicit delivery or suppression outcome.
+    #[must_use]
+    pub const fn delivery(&self) -> Option<TraceDeliveryOutcome> {
+        self.delivery
     }
 }
