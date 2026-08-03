@@ -14,6 +14,10 @@ fn checked_surface_snapshot_retention(retention: usize) -> NonZeroUsize {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "runtime construction enumerates every bounded authority explicitly"
+    )]
     pub(crate) fn mount(
         state: State,
         root: impl FnOnce(&State) -> Element<Action>,
