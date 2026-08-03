@@ -11,6 +11,8 @@ use crate::{
     WorkSequence,
 };
 
+use super::TraceContext;
+
 /// Non-wrapping identity of one canonical trace record.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TraceSequence(NonZeroU64);
@@ -607,6 +609,7 @@ pub struct TraceRecord {
     pub(super) original_target: Option<MountedNodeId>,
     pub(super) current_target: Option<MountedNodeId>,
     pub(super) command_origin: Option<CommandOrigin>,
+    pub(super) context: TraceContext,
 }
 
 impl TraceRecord {
@@ -680,5 +683,11 @@ impl TraceRecord {
     #[must_use]
     pub const fn command_origin(&self) -> Option<CommandOrigin> {
         self.command_origin
+    }
+
+    /// Returns the normalized read-only context owned by this record.
+    #[must_use]
+    pub const fn context(&self) -> &TraceContext {
+        &self.context
     }
 }
