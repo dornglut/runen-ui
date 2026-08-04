@@ -283,20 +283,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 origin,
             ),
             CommandTrace::Surface(surface) => {
-                let snapshot = surface
-                    .surface
-                    .snapshot()
-                    .unwrap_or_else(|| unreachable!("accepted surface context has a snapshot"));
-                let hit_test_generation = surface.surface.hit_test_generation();
-                let coordinate_revision = surface.surface.coordinate_revision();
                 let context_parent = if trace_enabled {
                     self.trace.record_draft(
                         TraceRecordDraft::surface_fact(
                             TraceRecordKind::SurfaceContextAccepted {
                                 ingress: surface.ingress,
-                                snapshot,
-                                hit_test_generation,
-                                coordinate_revision,
                             },
                             instant,
                             surface.surface,
@@ -311,10 +302,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
                 }
                 let target_parent = self.trace.record_event(
-                    TraceRecordKind::SurfaceTargetBound {
-                        ingress: surface.ingress,
-                        hit_test_generation,
-                    },
+                    TraceRecordKind::SurfaceTargetBound,
                     sequence,
                     context_parent,
                     Some(trace_target.clone()),
