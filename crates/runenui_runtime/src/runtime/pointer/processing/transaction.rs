@@ -740,10 +740,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 }
 
-const fn pointer_event_context(
-    has_routed_target: bool,
-    phase: PointerPhase,
-) -> TraceEventContext {
+const fn pointer_event_context(has_routed_target: bool, phase: PointerPhase) -> TraceEventContext {
     if has_routed_target {
         TraceEventContext::new(
             TraceEventFamily::Pointer,
