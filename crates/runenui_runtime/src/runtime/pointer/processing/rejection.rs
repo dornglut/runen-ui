@@ -111,15 +111,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         owner: &crate::MountedNodeId,
     ) -> ProcessApplicationActionOutcome {
         let pointer_id = work.event.pointer_id();
-        let facts = RoutedIngressFacts::new(
-            work.sequence,
-            owner.clone(),
-            CommandOrigin::__runtime_pointer(),
-            work.instant,
-            TraceEventContext::new(TraceEventFamily::PointerCapture, false),
-            rejected,
-            TraceReservation::continuation(),
-        );
+        let facts = Self::rejected_capture_ingress_facts(work, owner, rejected);
         let Some(transaction) = self.begin_pointer_routed_transaction(
             facts,
             false,
@@ -211,6 +203,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
         }
         self.pointer_runtime_outcome()
+    }
+
+    fn rejected_capture_ingress_facts(
+        work: &PointerWork,
+        owner: &crate::MountedNodeId,
+        rejected: Option<TraceSequence>,
+    ) -> RoutedIngressFacts {
+        RoutedIngressFacts::new(
+            work.sequence,
+            owner.clone(),
+            CommandOrigin::__runtime_pointer(),
+            work.instant,
+            TraceEventContext::new(TraceEventFamily::PointerCapture, false),
+            rejected,
+            TraceReservation::continuation(),
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
