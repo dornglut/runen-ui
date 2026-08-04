@@ -5,13 +5,14 @@ use runenui_core::{
 
 use super::super::CollectedRoutedOutput;
 use crate::trace::TraceReservation;
-use crate::{MountedNodeId, TraceSequence, TraceTarget};
+use crate::{MountedNodeId, TraceEventContext, TraceSequence, TraceTarget};
 
 pub(crate) struct RoutedIngressFacts {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,
     pub(crate) origin: CommandOrigin,
     pub(crate) instant: MonotonicInstant,
+    pub(crate) event: TraceEventContext,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
 }
@@ -22,6 +23,7 @@ impl RoutedIngressFacts {
         target: MountedNodeId,
         origin: CommandOrigin,
         instant: MonotonicInstant,
+        event: TraceEventContext,
         causal_parent: Option<TraceSequence>,
         trace_reservation: TraceReservation,
     ) -> Self {
@@ -30,6 +32,7 @@ impl RoutedIngressFacts {
             target,
             origin,
             instant,
+            event,
             causal_parent,
             trace_reservation,
         }
