@@ -170,7 +170,6 @@ pub enum TraceRecordKind {
     },
     PointerPhysicalTargetResolved,
     PointerBoundaryBundlePlanned {
-        pointer_id: PointerId,
         notifications: usize,
     },
     PointerDefaultApplied {
@@ -188,8 +187,7 @@ pub enum TraceRecordKind {
         pointer_id: PointerId,
         kind: PointerCaptureKind,
     },
-    PointerBoundaryNotificationQueued {
-        pointer_id: PointerId,
+    PointerBoundaryNotificationResolved {
         kind: PointerBoundaryKind,
     },
     PointerActivateCollected {
