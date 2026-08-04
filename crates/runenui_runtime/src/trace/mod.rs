@@ -3,6 +3,7 @@
 #![allow(clippy::redundant_pub_crate)]
 
 mod admission;
+mod construction;
 mod context;
 mod model;
 mod store;
