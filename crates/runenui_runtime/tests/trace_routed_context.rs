@@ -78,7 +78,7 @@ fn settle(runtime: &mut AppRuntime<RouteApp>) {
     assert!(report.is_quiescent(), "fixture did not settle: {report:?}");
 }
 
-fn authored_target(runtime: &AppRuntime<RouteApp>, authored_id: &str) -> MountedNodeId {
+fn authored_target(runtime: &mut AppRuntime<RouteApp>, authored_id: &str) -> MountedNodeId {
     let authored_id =
         runenui_core::ElementId::new(authored_id).unwrap_or_else(|_| unreachable!("valid id"));
     runtime
@@ -95,8 +95,8 @@ fn authored_target(runtime: &AppRuntime<RouteApp>, authored_id: &str) -> Mounted
 fn semantic_command_retains_event_family_and_exact_ordered_route() {
     let mut runtime = AppRuntime::<RouteApp>::mount_with_config((), RuntimeConfig::default());
     settle(&mut runtime);
-    let root = authored_target(&runtime, "root");
-    let target = authored_target(&runtime, "target");
+    let root = authored_target(&mut runtime, "root");
+    let target = authored_target(&mut runtime, "target");
     let retained_before = runtime.trace().len();
 
     runtime
