@@ -8,8 +8,8 @@ mod rejection;
 mod transaction;
 
 use runenui_core::{
-    HostProtocol, MonotonicInstant, PointerCaptureEvent, PointerEvent, PointerId, PointerPhase,
-    SurfaceInputContext, WorkSequence,
+    HostProtocol, InputDeviceId, MonotonicInstant, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, SurfaceInputContext, WorkSequence,
 };
 
 use super::{PointerCommitError, PointerRegistrationError, PointerStreamError, PointerStreamState};
@@ -20,7 +20,10 @@ use crate::{
     runtime::{ProcessApplicationActionOutcome, Runtime},
     trace::TraceReservation,
 };
-use notifications::{PointerBoundaryNotification, PointerBoundaryPlan};
+use notifications::{
+    PointerBoundaryNotification, PointerBoundaryPlan, PointerCaptureNotification,
+    PointerCapturePlan,
+};
 
 pub(super) struct PointerWork {
     pub(super) sequence: WorkSequence,
@@ -68,14 +71,23 @@ pub(super) enum StreamCommitKind {
     Close,
 }
 
-pub(super) struct PointerCommitPlan {
-    pub(super) pointer_id: PointerId,
-    pub(super) stream: PointerStreamState,
-    pub(super) kind: StreamCommitKind,
-    pub(super) focus: Option<MountedNodeId>,
-    pub(super) capture_events: Vec<PointerCaptureEvent>,
-    pub(super) physical_target: Option<MountedNodeId>,
-    pub(super) physical_path: Vec<MountedNodeId>,
+struct PointerCaptureTrace {
+    device_id: Option<InputDeviceId>,
+    device_kind: PointerDeviceKind,
+    phase: PointerPhase,
+    surface_context: SurfaceInputContext,
+    surface_snapshot: Option<TraceSurfaceSnapshotKind>,
+}
+
+struct PointerCommitPlan {
+    pointer_id: PointerId,
+    stream: PointerStreamState,
+    kind: StreamCommitKind,
+    focus: Option<MountedNodeId>,
+    capture_plan: PointerCapturePlan,
+    capture_trace: PointerCaptureTrace,
+    physical_target: Option<MountedNodeId>,
+    physical_path: Vec<MountedNodeId>,
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
