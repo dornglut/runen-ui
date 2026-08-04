@@ -234,15 +234,17 @@ pub(crate) fn process_application_action<App: UiApp>(
     }
     let mut lifecycle_cancellation_lineage = HashMap::new();
     for identity in lifecycle_invalidated_identities {
-        let bound = runtime.record_work_fact_with_parent(
+        let bound = runtime.record_work_fact_with_parent_at(
             TraceRecordKind::WorkCancellationBound,
             transaction_parent,
             identity.clone(),
+            trace_transaction.logical_time(),
         );
-        let invalidated = runtime.record_work_fact_with_parent(
+        let invalidated = runtime.record_work_fact_with_parent_at(
             TraceRecordKind::WorkLogicallyInvalidated,
             bound,
             identity.clone(),
+            trace_transaction.logical_time(),
         );
         lifecycle_cancellation_lineage.insert(identity.generation(), (identity, invalidated));
     }
