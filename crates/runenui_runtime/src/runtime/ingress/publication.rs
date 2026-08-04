@@ -98,10 +98,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .with_causal_parent(causal_parent),
             );
         }
-        self.surface_trace.clear_if_acknowledged(
-            request.revision(),
-            self.surface_publication.is_dirty(),
-        );
+        self.surface_trace
+            .clear_if_acknowledged(request.revision(), self.surface_publication.is_dirty());
         Ok(())
     }
 
@@ -119,7 +117,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let publication = self.surface_publication.publish(&mut self.tree, context);
         let published = self.record_surface_publication(
             publication_reservation,
-            redraw.as_ref().and_then(crate::RedrawRequest::request_parent),
+            redraw
+                .as_ref()
+                .and_then(crate::RedrawRequest::request_parent),
             instant,
             &publication,
         );

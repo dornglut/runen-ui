@@ -108,10 +108,7 @@ impl TraceRecordDraft {
 
     /// Constructs one redraw-control fact at the owning dirty/publication instant.
     #[must_use]
-    pub(crate) const fn redraw_fact(
-        kind: TraceRecordKind,
-        logical_time: MonotonicInstant,
-    ) -> Self {
+    pub(crate) const fn redraw_fact(kind: TraceRecordKind, logical_time: MonotonicInstant) -> Self {
         let mut draft = Self::new(kind);
         draft.logical_time = Some(logical_time);
         draft

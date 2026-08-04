@@ -161,6 +161,7 @@ pub(crate) struct SchedulerObservation {
     pub(crate) publication_dirty: bool,
 }
 
+
 struct SurfaceTraceState {
     latest_redraw_revision: Option<u64>,
     latest_redraw_request: Option<TraceSequence>,
@@ -194,7 +195,11 @@ impl SurfaceTraceState {
     }
 
     fn clear_if_acknowledged(&mut self, revision: u64, still_dirty: bool) {
-        if !still_dirty && self.latest_redraw_revision.is_some_and(|current| current <= revision) {
+        if !still_dirty
+            && self
+                .latest_redraw_revision
+                .is_some_and(|current| current <= revision)
+        {
             self.latest_redraw_revision = None;
             self.latest_redraw_request = None;
         }

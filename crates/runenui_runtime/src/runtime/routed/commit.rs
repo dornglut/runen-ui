@@ -148,11 +148,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             transaction.origin,
         );
-        self.finish_routed_invalidation(
-            transaction.invalidation,
-            committed,
-            transaction.instant,
-        );
+        self.finish_routed_invalidation(transaction.invalidation, committed, transaction.instant);
         Ok(())
     }
 
