@@ -165,7 +165,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[cfg(feature = "internal-test-seams")]
-    pub(crate) const fn routed_trace_reservations_for_test(&self) -> usize {
+    pub(crate) fn routed_trace_reservations_for_test(&self) -> usize {
         let publication = if self.surface_trace.publication_reservation.is_active() {
             1
         } else {
