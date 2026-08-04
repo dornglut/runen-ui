@@ -14,7 +14,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, FocusReason, InputModality, LogicalSize, PumpBudget, SurfaceBuildContext,
-    TraceRecord, TraceRecordKind,
+    TraceEventFamily, TraceRecord, TraceRecordKind, TraceSurfaceSnapshotKind,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -454,13 +454,7 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
                 if pointer_id.get() == 6
         )
     });
-    let physical = record(&|kind| {
-        matches!(
-            kind,
-            TraceRecordKind::PointerPhysicalTargetResolved { pointer_id, .. }
-                if pointer_id.get() == 6
-        )
-    });
+    let physical = record(&|kind| matches!(kind, TraceRecordKind::PointerPhysicalTargetResolved));
     let boundary_bundle = record(&|kind| {
         matches!(
             kind,
@@ -503,9 +497,52 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
         )
     });
 
+    let event = physical
+        .context()
+        .event()
+        .unwrap_or_else(|| unreachable!("physical observation owns its event context"));
+    assert_eq!(event.family(), TraceEventFamily::Pointer);
+    assert!(event.is_cancelable());
+    let pointer = physical
+        .context()
+        .pointer()
+        .unwrap_or_else(|| unreachable!("physical observation owns pointer identity"));
+    assert_eq!(pointer.pointer_id().get(), 6);
+    assert_eq!(pointer.device_id(), None);
+    assert_eq!(pointer.device_kind(), PointerDeviceKind::Mouse);
+    assert_eq!(pointer.phase(), Some(PointerPhase::Down));
+    let surface = physical
+        .context()
+        .surface()
+        .unwrap_or_else(|| unreachable!("physical observation owns displayed surface identity"));
+    assert_eq!(surface.surface_id(), harness.context.surface_id());
+    assert_eq!(
+        surface.coordinate_revision(),
+        harness.context.coordinate_revision()
+    );
+    assert_eq!(
+        surface.hit_test_generation(),
+        harness.context.hit_test_generation()
+    );
+    assert_eq!(surface.snapshot(), Some(TraceSurfaceSnapshotKind::Current));
+    let physical_path = physical
+        .context()
+        .physical_path()
+        .unwrap_or_else(|| unreachable!("physical observation owns the exact physical path"));
+    assert_eq!(physical_path.targets().len(), 1);
+    assert_eq!(
+        physical_path.targets()[0].mounted_node_id(),
+        &harness.target
+    );
+    assert_eq!(
+        physical.target().map(|target| target.mounted_node_id()),
+        Some(&harness.target)
+    );
+
     assert_eq!(validated.causal_parent(), Some(accepted.sequence()));
     assert_eq!(stream.causal_parent(), Some(validated.sequence()));
     assert_eq!(physical.causal_parent(), Some(stream.sequence()));
+    assert_eq!(physical.instant(), routed.instant());
     assert_eq!(boundary_bundle.causal_parent(), Some(physical.sequence()));
     assert_eq!(routed.causal_parent(), Some(boundary_bundle.sequence()));
     assert!(default.sequence() > routed.sequence());
