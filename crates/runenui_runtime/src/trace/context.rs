@@ -328,6 +328,20 @@ pub struct TracePublicationContext {
 }
 
 impl TracePublicationContext {
+    pub(crate) const fn new(
+        surface: TraceSurfaceContext,
+        reconciliation_generation: ReconciliationGeneration,
+        node_count: usize,
+        executed_phases: Vec<SurfacePhase>,
+    ) -> Self {
+        Self {
+            surface,
+            reconciliation_generation,
+            node_count,
+            executed_phases,
+        }
+    }
+
     /// Returns the exact displayed-surface identity.
     #[must_use]
     pub const fn surface(&self) -> &TraceSurfaceContext {
@@ -437,6 +451,12 @@ impl TraceContext {
     pub(crate) fn surface_record(surface: TraceSurfaceContext) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Surface(surface))),
+        }
+    }
+
+    pub(crate) fn publication_record(publication: TracePublicationContext) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Publication(publication))),
         }
     }
 
