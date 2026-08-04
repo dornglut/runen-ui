@@ -1,8 +1,8 @@
 use super::{
-    ApplicationTransactionInput, HashMap, HostProtocol, IntoEffects, MandatoryTracePlan,
-    OwnedTransactionLedger, PlannedApplicationTransaction, Runtime, RuntimeStatus,
-    RuntimeTerminalReason, SubscriptionDiff, SubscriptionSet, TraceRecordKind, TransactionLedger,
-    TransactionPlanError, UiApp, WorkOwner, mounted_effect_into_effect,
+    ApplicationTraceTransaction, ApplicationTransactionInput, HashMap, HostProtocol, IntoEffects,
+    MandatoryTracePlan, OwnedTransactionLedger, PlannedApplicationTransaction, Runtime,
+    RuntimeStatus, RuntimeTerminalReason, SubscriptionDiff, SubscriptionSet, TraceRecordKind,
+    TransactionLedger, TransactionPlanError, UiApp, WorkOwner, mounted_effect_into_effect,
     required_application_transaction_trace_records,
 };
 
@@ -109,13 +109,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
             return;
         }
-        let transaction_parent = self.trace.record(
-            TraceRecordKind::InitialApplicationTransactionStarted,
-            None,
-            None,
-            None,
-            None,
-            None,
+        let trace_transaction = ApplicationTraceTransaction::new(self.now());
+        let transaction_parent = self.trace.record_draft(
+            trace_transaction.fact(TraceRecordKind::InitialApplicationTransactionStarted),
         );
         if self
             .commit_planned_application_transaction(
@@ -124,19 +120,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled,
                 transaction_parent,
                 HashMap::new(),
+                trace_transaction,
             )
             .is_err()
         {
             self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             return;
         }
-        self.record_optional(
+        self.trace.record_draft(trace_transaction.fact(
             TraceRecordKind::InitialEffectsCommitted {
                 count: initial_output_count,
             },
-            None,
-            None,
-            None,
-        );
+        ));
     }
 }
