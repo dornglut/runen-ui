@@ -23,4 +23,5 @@ pub(in crate::runtime) use helpers::{
     required_application_transaction_trace_records_from_parts,
 };
 pub(crate) use process::process_application_action;
-pub(super) use trace::ApplicationTraceTransaction;
+use trace::ApplicationTraceTransaction;
+pub(in crate::runtime) use transaction::PlannedWorkTrace;
