@@ -14,7 +14,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, FocusReason, InputModality, LogicalSize, PumpBudget, SurfaceBuildContext,
-    TraceEventFamily, TraceRecord, TraceRecordKind, TraceSurfaceSnapshotKind, TraceTarget,
+    TraceDeliveryOutcome, TraceEventFamily, TraceRecord, TraceRecordKind,
+    TraceSurfaceSnapshotKind, TraceTarget,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -264,6 +265,50 @@ fn assert_physical_pointer_observation(physical: &TraceRecord, harness: &Harness
     );
     assert_eq!(
         physical.target().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+}
+
+fn assert_gained_capture(capture: &TraceRecord, harness: &Harness) {
+    let context = capture.context();
+    assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Delivered));
+    assert_eq!(
+        context.event().map(|event| event.family()),
+        Some(TraceEventFamily::PointerCapture)
+    );
+    let pointer = context
+        .pointer()
+        .unwrap_or_else(|| unreachable!("capture resolution owns pointer identity"));
+    assert_eq!(pointer.pointer_id().get(), 6);
+    assert_eq!(pointer.device_id(), None);
+    assert_eq!(pointer.device_kind(), PointerDeviceKind::Mouse);
+    assert_eq!(pointer.phase(), Some(PointerPhase::Down));
+    let surface = context
+        .surface()
+        .unwrap_or_else(|| unreachable!("capture resolution owns surface identity"));
+    assert_eq!(surface.surface_id(), harness.context.surface_id());
+    assert_eq!(surface.snapshot(), Some(TraceSurfaceSnapshotKind::Current));
+    let route = context
+        .route()
+        .unwrap_or_else(|| unreachable!("capture resolution owns its target-only route"));
+    assert_eq!(route.targets().len(), 1);
+    assert_eq!(route.targets()[0].mounted_node_id(), &harness.target);
+    assert_eq!(route.related_target(), None);
+    let path = context
+        .physical_path()
+        .unwrap_or_else(|| unreachable!("capture resolution owns the physical path"));
+    assert_eq!(path.targets().len(), 1);
+    assert_eq!(path.targets()[0].mounted_node_id(), &harness.target);
+    let transition = context
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("capture resolution owns exact owners"));
+    assert_eq!(transition.previous(), None);
+    assert_eq!(
+        transition.current().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(
+        capture.target().map(TraceTarget::mounted_node_id),
         Some(&harness.target)
     );
 }
@@ -533,14 +578,14 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
     let capture = record(&|kind| {
         matches!(
             kind,
-            TraceRecordKind::PointerCaptureTransitionQueued {
-                pointer_id,
+            TraceRecordKind::PointerCaptureNotificationResolved {
                 kind: PointerCaptureKind::Gained,
-            } if pointer_id.get() == 6
+            }
         )
     });
 
     assert_physical_pointer_observation(physical, &harness);
+    assert_gained_capture(capture, &harness);
     assert_eq!(
         boundary_bundle
             .context()
@@ -558,5 +603,6 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
     assert_eq!(modality.causal_parent(), Some(default.sequence()));
     assert_eq!(registered.causal_parent(), Some(modality.sequence()));
     assert_eq!(committed.causal_parent(), Some(registered.sequence()));
-    assert_eq!(capture.causal_parent(), Some(committed.sequence()));
+    assert!(capture.sequence() > committed.sequence());
+    assert_eq!(capture.instant(), committed.instant());
 }
