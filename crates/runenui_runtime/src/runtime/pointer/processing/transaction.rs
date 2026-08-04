@@ -5,8 +5,9 @@ use runenui_core::{
 
 use super::{
     PointerBoundaryNotification, PointerBoundaryPlan, PointerCaptureNotification,
-    PointerCapturePlan, PointerCaptureTrace, PointerCommitPlan, PointerGeometry, PointerStreamState,
-    PointerWork, PreparedPointer, StreamCommitKind, pointer_default_is_cancelable,
+    PointerCapturePlan, PointerCaptureTrace, PointerCommitPlan, PointerGeometry,
+    PointerStreamState, PointerWork, PreparedPointer, StreamCommitKind,
+    pointer_default_is_cancelable,
 };
 use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceContext, TraceDeliveryOutcome, TraceEventContext,
@@ -727,12 +728,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .as_ref()
                 .map(|owner| self.tree.trace_target(owner)),
         );
-        let pointer = TracePointerContext::event(
-            pointer_id,
-            trace.device_id,
-            trace.device_kind,
-            trace.phase,
-        );
+        let pointer =
+            TracePointerContext::event(pointer_id, trace.device_id, trace.device_kind, trace.phase);
         let surface = Some(match trace.surface_snapshot {
             Some(snapshot) => TraceSurfaceContext::accepted(&trace.surface_context, snapshot),
             None => TraceSurfaceContext::requested(&trace.surface_context),
