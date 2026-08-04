@@ -5,7 +5,8 @@ use runenui_core::{
 
 use super::PointerWork;
 use crate::{
-    RuntimeStatus, RuntimeTerminalReason, TraceRecordKind, TraceSequence,
+    RuntimeStatus, RuntimeTerminalReason, TraceEventContext, TraceEventFamily, TraceRecordKind,
+    TraceSequence,
     mounted::TargetStatus,
     runtime::{
         MandatoryTracePlan, PointerDispatchFacts, ProcessApplicationActionOutcome,
@@ -115,6 +116,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             owner.clone(),
             CommandOrigin::__runtime_pointer(),
             work.instant,
+            TraceEventContext::new(TraceEventFamily::PointerCapture, false),
             rejected,
             TraceReservation::continuation(),
         );
