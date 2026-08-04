@@ -91,10 +91,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let parent = match self.record_pointer_prelude(
             &work,
             false,
-            geometry.physical_target.as_ref(),
-            &geometry.physical_path,
-            geometry.snapshot,
-            geometry.diagnosis,
+            &geometry,
             boundary_events.len(),
         ) {
             Ok(parent) => parent,
