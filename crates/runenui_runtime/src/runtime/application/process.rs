@@ -1,12 +1,12 @@
 use runenui_core::CommandOrigin;
 
 use super::{
-    ApplicationActionEnvelope, ApplicationTransactionInput, HashMap, HashSet, HostProtocol,
-    IntoEffects, MandatoryTracePlan, MountedNodeId, MutationPhase, OwnedTransactionLedger,
-    ProcessApplicationActionOutcome, ReconciliationGeneration, ReconciliationReport, Runtime,
-    RuntimeStatus, RuntimeTerminalReason, SubscriptionDiff, SubscriptionSet, TargetStatus,
-    TraceRecordKind, TransactionLedger, UiApp, View, WorkOwner, mounted_effect_into_effect,
-    public_trace_work_identity, revoke_generation_authority,
+    ApplicationActionEnvelope, ApplicationTraceTransaction, ApplicationTransactionInput, HashMap,
+    HashSet, HostProtocol, IntoEffects, MandatoryTracePlan, MountedNodeId, MutationPhase,
+    OwnedTransactionLedger, ProcessApplicationActionOutcome, ReconciliationGeneration,
+    ReconciliationReport, Runtime, RuntimeStatus, RuntimeTerminalReason, SubscriptionDiff,
+    SubscriptionSet, TargetStatus, TraceRecordKind, TransactionLedger, UiApp, View, WorkOwner,
+    mounted_effect_into_effect, public_trace_work_identity, revoke_generation_authority,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -48,13 +48,14 @@ pub(crate) fn process_application_action<App: UiApp>(
         let cancelled = runtime.enter_terminal(reason, 1);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     }
-    let transaction_parent = runtime.trace.record(
-        TraceRecordKind::ApplicationActionTransactionStarted,
-        Some(sequence),
-        causal_parent,
-        Some(before),
-        None,
-        target.clone(),
+    let trace_transaction = ApplicationTraceTransaction::new(runtime.now());
+    let transaction_parent = runtime.trace.record_draft(
+        trace_transaction
+            .fact(TraceRecordKind::ApplicationActionTransactionStarted)
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(causal_parent)
+            .with_reconciliation(Some(before), None)
+            .with_target(target.clone()),
     );
     let app_state = runtime
         .state
@@ -71,13 +72,13 @@ pub(crate) fn process_application_action<App: UiApp>(
         }
     };
     let update_output_count = ledger.len();
-    runtime.trace.record(
-        TraceRecordKind::ApplicationStateUpdated,
-        Some(sequence),
-        causal_parent,
-        Some(before),
-        None,
-        target.clone(),
+    runtime.trace.record_draft(
+        trace_transaction
+            .fact(TraceRecordKind::ApplicationStateUpdated)
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(causal_parent)
+            .with_reconciliation(Some(before), None)
+            .with_target(target.clone()),
     );
     let transient = App::root(app_state).into_element();
     let previous_focus = runtime.focus.focused_node().cloned();
@@ -100,7 +101,7 @@ pub(crate) fn process_application_action<App: UiApp>(
     let input_cleanup_cause = super::super::focus::InputLifetimeCleanupCause::new(
         Some(sequence),
         transaction_parent,
-        runtime.now(),
+        trace_transaction.logical_time(),
         CommandOrigin::programmatic(),
     );
     runtime.cleanup_planned_input_lifetimes(
@@ -198,13 +199,13 @@ pub(crate) fn process_application_action<App: UiApp>(
             trace_target: previous_focus_trace,
         });
     } else if retained_focus {
-        runtime.trace.record(
-            TraceRecordKind::FocusRetained,
-            Some(sequence),
-            causal_parent,
-            Some(before),
-            Some(after),
-            target.clone(),
+        runtime.trace.record_draft(
+            trace_transaction
+                .fact(TraceRecordKind::FocusRetained)
+                .with_work_sequence(Some(sequence))
+                .with_causal_parent(causal_parent)
+                .with_reconciliation(Some(before), Some(after))
+                .with_target(target.clone()),
         );
     }
     runtime.tree.finish_focus_validation();
@@ -245,13 +246,13 @@ pub(crate) fn process_application_action<App: UiApp>(
         );
         lifecycle_cancellation_lineage.insert(identity.generation(), (identity, invalidated));
     }
-    let tree_reconciled = runtime.trace.record(
-        TraceRecordKind::TreeReconciled,
-        Some(sequence),
-        causal_parent,
-        Some(before),
-        Some(after),
-        target,
+    let tree_reconciled = runtime.trace.record_draft(
+        trace_transaction
+            .fact(TraceRecordKind::TreeReconciled)
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(causal_parent)
+            .with_reconciliation(Some(before), Some(after))
+            .with_target(target),
     );
     if runtime
         .reconcile_pointer_lifetimes(sequence, tree_reconciled, &unmounted_work_owners)
@@ -338,6 +339,7 @@ pub(crate) fn process_application_action<App: UiApp>(
             subscription_cancelled,
             transaction_parent,
             lifecycle_cancellation_lineage,
+            trace_transaction,
         )
         .is_err()
     {
@@ -345,13 +347,13 @@ pub(crate) fn process_application_action<App: UiApp>(
         let cancelled = runtime.enter_terminal(reason, 0);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     }
-    runtime.record_optional(
-        TraceRecordKind::UpdateEffectsCommitted {
-            count: update_output_count,
-        },
-        Some(sequence),
-        causal_parent,
-        None,
+    runtime.trace.record_draft(
+        trace_transaction
+            .fact(TraceRecordKind::UpdateEffectsCommitted {
+                count: update_output_count,
+            })
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(causal_parent),
     );
     runtime.request_redraw();
     if let RuntimeStatus::Terminal(reason) = runtime.status {
