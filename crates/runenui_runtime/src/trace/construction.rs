@@ -105,6 +105,17 @@ impl TraceRecordDraft {
         draft
     }
 
+    /// Constructs one application-transaction fact at the transaction's accepted instant.
+    #[must_use]
+    pub(crate) const fn application_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft
+    }
+
     /// Attaches the owning global work-envelope sequence.
     #[must_use]
     pub(crate) const fn with_work_sequence(mut self, work_sequence: Option<WorkSequence>) -> Self {
@@ -116,6 +127,24 @@ impl TraceRecordDraft {
     #[must_use]
     pub(crate) const fn with_causal_parent(mut self, causal_parent: Option<TraceSequence>) -> Self {
         self.causal_parent = causal_parent;
+        self
+    }
+
+    /// Attaches exact reconciliation generations known at the producer boundary.
+    #[must_use]
+    pub(crate) const fn with_reconciliation(
+        mut self,
+        before: Option<ReconciliationGeneration>,
+        after: Option<ReconciliationGeneration>,
+    ) -> Self {
+        self.reconciliation = TraceReconciliation::new(before, after);
+        self
+    }
+
+    /// Attaches the exact normalized target known at the producer boundary.
+    #[must_use]
+    pub(crate) fn with_target(mut self, target: Option<TraceTarget>) -> Self {
+        self.target = target;
         self
     }
 
