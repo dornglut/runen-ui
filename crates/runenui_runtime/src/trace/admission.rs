@@ -18,6 +18,10 @@ impl MandatoryTracePlan {
         Self::exact(0)
     }
 
+    pub(crate) const fn runtime_mount_and_publication() -> Self {
+        Self::exact(3)
+    }
+
     pub(crate) const fn action_acceptance() -> Self {
         Self::exact(1)
     }
