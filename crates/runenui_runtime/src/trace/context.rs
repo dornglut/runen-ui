@@ -315,10 +315,7 @@ pub struct TraceTargetTransition {
 }
 
 impl TraceTargetTransition {
-    pub(crate) const fn new(
-        previous: Option<TraceTarget>,
-        current: Option<TraceTarget>,
-    ) -> Self {
+    pub(crate) const fn new(previous: Option<TraceTarget>, current: Option<TraceTarget>) -> Self {
         Self { previous, current }
     }
 
