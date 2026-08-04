@@ -434,7 +434,7 @@ impl TraceContext {
         }
     }
 
-    pub(crate) fn surface(surface: TraceSurfaceContext) -> Self {
+    pub(crate) fn surface_record(surface: TraceSurfaceContext) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Surface(surface))),
         }
