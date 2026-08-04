@@ -116,6 +116,19 @@ impl TraceRecordDraft {
         draft
     }
 
+    /// Constructs one routed fact with exact event time and normalized context.
+    #[must_use]
+    pub(crate) fn routed_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        context: TraceContext,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft.context = context;
+        draft
+    }
+
     /// Attaches the owning global work-envelope sequence.
     #[must_use]
     pub(crate) const fn with_work_sequence(mut self, work_sequence: Option<WorkSequence>) -> Self {
@@ -145,6 +158,22 @@ impl TraceRecordDraft {
     #[must_use]
     pub(crate) fn with_target(mut self, target: Option<TraceTarget>) -> Self {
         self.target = target;
+        self
+    }
+
+    /// Attaches routed endpoints and command origin known at admission.
+    #[must_use]
+    pub(crate) fn with_routed_endpoints(
+        mut self,
+        original_target: MountedNodeId,
+        current_target: Option<MountedNodeId>,
+        command_origin: CommandOrigin,
+    ) -> Self {
+        self.routed = Some(TraceRoutedEndpoints::new(
+            original_target,
+            current_target,
+            command_origin,
+        ));
         self
     }
 
