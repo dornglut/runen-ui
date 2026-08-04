@@ -319,6 +319,10 @@ impl TracePublicationContext {
 
 /// Internal domain-owned payload for one normalized trace context.
 #[doc(hidden)]
+#[expect(
+    dead_code,
+    reason = "domain variants are constructed by the next producer-migration checkpoint"
+)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TraceContextData {
     Routed {
@@ -377,9 +381,11 @@ impl TraceContext {
     pub fn event(&self) -> Option<TraceEventContext> {
         match self.data.as_deref() {
             Some(TraceContextData::Routed { event, .. }) => Some(*event),
-            Some(TraceContextData::Pointer { event, .. })
-            | Some(TraceContextData::Focus { event, .. })
-            | Some(TraceContextData::Text { event, .. }) => *event,
+            Some(
+                TraceContextData::Pointer { event, .. }
+                | TraceContextData::Focus { event, .. }
+                | TraceContextData::Text { event, .. },
+            ) => *event,
             Some(
                 TraceContextData::Surface(_)
                 | TraceContextData::Action(_)
@@ -394,10 +400,12 @@ impl TraceContext {
     pub fn surface(&self) -> Option<&TraceSurfaceContext> {
         match self.data.as_deref() {
             Some(TraceContextData::Surface(surface)) => Some(surface),
-            Some(TraceContextData::Routed { surface, .. })
-            | Some(TraceContextData::Pointer { surface, .. })
-            | Some(TraceContextData::Focus { surface, .. })
-            | Some(TraceContextData::Text { surface, .. }) => surface.as_ref(),
+            Some(
+                TraceContextData::Routed { surface, .. }
+                | TraceContextData::Pointer { surface, .. }
+                | TraceContextData::Focus { surface, .. }
+                | TraceContextData::Text { surface, .. },
+            ) => surface.as_ref(),
             Some(TraceContextData::Publication(publication)) => Some(publication.surface()),
             Some(TraceContextData::Action(_)) | None => None,
         }
@@ -445,10 +453,12 @@ impl TraceContext {
     #[must_use]
     pub fn route(&self) -> Option<&TraceRouteSnapshot> {
         match self.data.as_deref() {
-            Some(TraceContextData::Routed { route, .. })
-            | Some(TraceContextData::Pointer { route, .. })
-            | Some(TraceContextData::Focus { route, .. })
-            | Some(TraceContextData::Text { route, .. }) => route.as_ref(),
+            Some(
+                TraceContextData::Routed { route, .. }
+                | TraceContextData::Pointer { route, .. }
+                | TraceContextData::Focus { route, .. }
+                | TraceContextData::Text { route, .. },
+            ) => route.as_ref(),
             _ => None,
         }
     }
@@ -466,12 +476,13 @@ impl TraceContext {
     #[must_use]
     pub fn target_transition(&self) -> Option<&TraceTargetTransition> {
         match self.data.as_deref() {
-            Some(TraceContextData::Pointer {
-                target_transition, ..
-            })
-            | Some(TraceContextData::Focus {
-                target_transition, ..
-            }) => target_transition.as_ref(),
+            Some(
+                TraceContextData::Pointer {
+                    target_transition, ..
+                } | TraceContextData::Focus {
+                    target_transition, ..
+                },
+            ) => target_transition.as_ref(),
             _ => None,
         }
     }
@@ -498,10 +509,12 @@ impl TraceContext {
     #[must_use]
     pub fn delivery(&self) -> Option<TraceDeliveryOutcome> {
         match self.data.as_deref() {
-            Some(TraceContextData::Routed { delivery, .. })
-            | Some(TraceContextData::Pointer { delivery, .. })
-            | Some(TraceContextData::Focus { delivery, .. })
-            | Some(TraceContextData::Text { delivery, .. }) => *delivery,
+            Some(
+                TraceContextData::Routed { delivery, .. }
+                | TraceContextData::Pointer { delivery, .. }
+                | TraceContextData::Focus { delivery, .. }
+                | TraceContextData::Text { delivery, .. },
+            ) => *delivery,
             _ => None,
         }
     }
