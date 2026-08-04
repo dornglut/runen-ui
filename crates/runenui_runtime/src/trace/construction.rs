@@ -139,7 +139,7 @@ impl TraceRecordDraft {
     ) -> Self {
         let mut draft = Self::new(kind);
         draft.logical_time = Some(logical_time);
-        draft.context = TraceContext::surface(surface);
+        draft.context = TraceContext::surface_record(surface);
         draft
     }
 
