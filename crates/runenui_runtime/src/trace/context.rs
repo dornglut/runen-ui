@@ -126,19 +126,6 @@ impl TracePointerContext {
         }
     }
 
-    pub(crate) const fn stream(
-        pointer_id: PointerId,
-        device_id: Option<InputDeviceId>,
-        device_kind: PointerDeviceKind,
-    ) -> Self {
-        Self {
-            pointer_id,
-            device_id,
-            device_kind,
-            phase: None,
-        }
-    }
-
     /// Returns the exact pointer-stream identity.
     #[must_use]
     pub const fn pointer_id(&self) -> &PointerId {
@@ -583,24 +570,6 @@ impl TraceContext {
         )
     }
 
-    pub(crate) fn pointer_capture_request_rejection(
-        surface: Option<TraceSurfaceContext>,
-        pointer: TracePointerContext,
-        route: TraceRouteSnapshot,
-        physical_path: TracePointerPath,
-        target_transition: TraceTargetTransition,
-    ) -> Self {
-        Self::pointer_record(
-            TraceEventContext::new(TraceEventFamily::PointerCapture, false),
-            surface,
-            pointer,
-            Some(route),
-            physical_path,
-            Some(target_transition),
-            None,
-        )
-    }
-
     pub(crate) fn publication_record(publication: TracePublicationContext) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Publication(publication))),
@@ -876,7 +845,12 @@ mod tests {
         let namespace = RuntimeNamespace::__runtime_new();
         let pointer_id =
             PointerId::new(9).unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
-        let pointer = TracePointerContext::stream(pointer_id, None, PointerDeviceKind::Mouse);
+        let pointer = TracePointerContext::event(
+            pointer_id,
+            None,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+        );
         let context = TraceContext::pointer_capture_notification(
             None,
             pointer,
@@ -891,7 +865,10 @@ mod tests {
             Some(TraceEventFamily::PointerCapture)
         );
         assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Delivered));
-        assert_eq!(context.pointer().and_then(TracePointerContext::phase), None);
+        assert_eq!(
+            context.pointer().and_then(TracePointerContext::phase),
+            Some(PointerPhase::Move)
+        );
         assert!(context.target_transition().is_some());
     }
 }
