@@ -39,7 +39,7 @@ impl PlannedWorkTrace {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(in crate::runtime) fn plan_and_commit_application_transaction(
+    pub(in crate::runtime::application) fn plan_and_commit_application_transaction(
         &mut self,
         input: ApplicationTransactionInput<Action, Protocol>,
         application_subscription_duplicates: &HashSet<runenui_core::WorkKey>,
@@ -60,7 +60,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         )
     }
 
-    pub(in crate::runtime) fn commit_planned_application_transaction(
+    pub(in crate::runtime::application) fn commit_planned_application_transaction(
         &mut self,
         plan: PlannedApplicationTransaction<Action, Protocol>,
         application_subscription_duplicates: &HashSet<runenui_core::WorkKey>,
