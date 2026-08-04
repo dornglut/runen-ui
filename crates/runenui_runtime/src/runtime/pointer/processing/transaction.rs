@@ -733,16 +733,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .replace(pointer_id, stream)
                 .map_err(map_commit_error),
             StreamCommitKind::Close => {
-                self.pointer_registry.close(pointer_id).ok_or(()).map(|_| {
-                    parent = self.trace.record(
-                        TraceRecordKind::PointerStreamClosed { pointer_id },
-                        Some(work.sequence),
-                        parent,
-                        None,
-                        None,
-                        None,
-                    );
-                })
+                self.pointer_registry
+                    .close(pointer_id)
+                    .ok_or(())
+                    .map(|_| {
+                        parent = self.trace.record(
+                            TraceRecordKind::PointerStreamClosed { pointer_id },
+                            Some(work.sequence),
+                            parent,
+                            None,
+                            None,
+                            None,
+                        );
+                    })
             }
         };
         if result.is_err() {
