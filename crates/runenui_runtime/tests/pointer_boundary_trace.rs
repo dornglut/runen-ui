@@ -197,7 +197,10 @@ fn assert_plan_identity(bundle: &TraceRecord, pointer_id: PointerId) {
         Some(&pointer_id)
     );
     assert_eq!(
-        bundle.context().surface().map(TraceSurfaceContext::snapshot),
+        bundle
+            .context()
+            .surface()
+            .map(TraceSurfaceContext::snapshot),
         Some(Some(TraceSurfaceSnapshotKind::Current))
     );
 }
