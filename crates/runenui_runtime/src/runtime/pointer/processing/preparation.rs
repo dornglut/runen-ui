@@ -199,7 +199,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    fn pointer_trace_context(work: &PointerWork) -> TracePointerContext {
+    const fn pointer_trace_context(work: &PointerWork) -> TracePointerContext {
         TracePointerContext::event(
             work.event.pointer_id(),
             work.event.device_id(),
