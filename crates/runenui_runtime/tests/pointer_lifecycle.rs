@@ -437,7 +437,6 @@ fn wheel_derives_exactly_one_logical_scroll_command() {
         false,
         LogicalDelta::new(2.0, -4.0).unwrap_or_else(|_| unreachable!("the wheel delta is finite")),
     );
-
     harness
         .runtime
         .submit_pointer(wheel)
@@ -505,10 +504,7 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
     let boundary_bundle = record(&|kind| {
         matches!(
             kind,
-            TraceRecordKind::PointerBoundaryBundlePlanned {
-                pointer_id,
-                notifications: 1,
-            } if pointer_id.get() == 6
+            TraceRecordKind::PointerBoundaryBundlePlanned { notifications: 1 }
         )
     });
     let routed = record(&|kind| matches!(kind, TraceRecordKind::RoutedEventStarted));
@@ -545,6 +541,13 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
     });
 
     assert_physical_pointer_observation(physical, &harness);
+    assert_eq!(
+        boundary_bundle
+            .context()
+            .pointer()
+            .map(|pointer| pointer.pointer_id().get()),
+        Some(6)
+    );
     assert_eq!(validated.causal_parent(), Some(accepted.sequence()));
     assert_eq!(stream.causal_parent(), Some(validated.sequence()));
     assert_eq!(physical.causal_parent(), Some(stream.sequence()));
