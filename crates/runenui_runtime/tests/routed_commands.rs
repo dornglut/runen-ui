@@ -691,14 +691,15 @@ fn work_and_trace_sequence_exhaustion_recover_inputs_and_enter_terminal_state() 
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
-fn ordinary_rejection_preserves_the_final_two_sequences_for_a_valid_command() {
+fn ordinary_rejection_preserves_publication_and_command_trace_authority() {
     let mut runtime = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Observe);
     let mut foreign_owner = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Observe);
     settle(&mut runtime);
     settle(&mut foreign_owner);
     let valid_target = target(&mut runtime);
     let foreign_target = target(&mut foreign_owner);
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 1);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
 
     assert_ordinary_submission_rejection_is_inert(
         &mut runtime,
@@ -713,7 +714,7 @@ fn ordinary_rejection_preserves_the_final_two_sequences_for_a_valid_command() {
             CommandOrigin::automation(),
         )
         .unwrap_or_else(|_| {
-            unreachable!("ordinary rejection preserved acceptance and outcome authority")
+            unreachable!("ordinary rejection preserved publication, acceptance, and outcome authority")
         });
     let acceptance = runtime
         .trace()
@@ -723,8 +724,11 @@ fn ordinary_rejection_preserves_the_final_two_sequences_for_a_valid_command() {
                 && record.work_sequence() == Some(submission.sequence())
         })
         .unwrap_or_else(|| unreachable!("the valid command has one acceptance record"));
-    assert_eq!(acceptance.sequence().get(), u64::MAX - 1);
-    assert_eq!(runtime.__routed_sequence_state_for_test().1, Some(u64::MAX));
+    assert_eq!(acceptance.sequence().get(), u64::MAX - 2);
+    assert_eq!(
+        runtime.__routed_sequence_state_for_test().1,
+        Some(u64::MAX - 1)
+    );
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 1);
     runtime.shutdown();
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
@@ -753,19 +757,22 @@ fn final_trace_sequence_cannot_accept_a_command_without_outcome_authority() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
-fn accepted_command_consumes_its_reserved_final_sequence_for_admission_rejection() {
+fn accepted_command_consumes_reserved_outcome_before_publication_authority() {
     let mut runtime = make_runtime(Behavior::Observe, Behavior::Observe, Behavior::Observe);
     settle(&mut runtime);
     runtime.state().log.borrow_mut().clear();
     let target = target(&mut runtime);
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 1);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
     let submission = runtime
         .submit_command(
             target,
             SemanticCommand::OpenMenu,
             CommandOrigin::automation(),
         )
-        .unwrap_or_else(|_| unreachable!("two trace sequences admit one command"));
+        .unwrap_or_else(|_| {
+            unreachable!("three trace sequences retain publication, acceptance, and outcome")
+        });
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 1);
     runtime.pump(PumpBudget::new(1, 0, 0, 0));
     assert!(runtime.state().log.borrow().is_empty());
@@ -794,8 +801,8 @@ fn accepted_command_consumes_its_reserved_final_sequence_for_admission_rejection
             )
         })
         .unwrap_or_else(|| unreachable!("reserved processing rejection is retained"));
-    assert_eq!(acceptance.sequence().get(), u64::MAX - 1);
-    assert_eq!(rejection.sequence().get(), u64::MAX);
+    assert_eq!(acceptance.sequence().get(), u64::MAX - 2);
+    assert_eq!(rejection.sequence().get(), u64::MAX - 1);
     assert_eq!(rejection.causal_parent(), Some(acceptance.sequence()));
 }
 
@@ -1101,7 +1108,8 @@ fn every_routed_bounded_authority_rejects_before_the_first_callback() {
     let mut trace = make_single(RuntimeConfig::default().with_limits(base));
     settle_single(&mut trace);
     trace.state().log.borrow_mut().clear();
-    trace.__seed_next_trace_sequence_for_test(u64::MAX - 1);
+    assert!(trace.__surface_publication_trace_reserved_for_test());
+    trace.__seed_next_trace_sequence_for_test(u64::MAX - 2);
     submit_single(&mut trace);
     assert!(trace.state().log.borrow().is_empty());
     assert_eq!(
