@@ -1,12 +1,13 @@
 use runenui_core::{CommandOrigin, SemanticCommand, StyleTokens};
 use runenui_runtime::{
-    RuntimeConfig, SubmitSurfaceCommandErrorKind, TraceConfig, TraceRecordKind,
-    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind,
+    AppRuntime, RuntimeConfig, SubmitSurfaceCommandErrorKind, SurfacePublication, TraceConfig,
+    TraceRecordKind, TraceSequence, TraceSurfaceIngressKind, TraceSurfaceRejection,
+    TraceSurfaceSnapshotKind,
 };
 
 use crate::support::{
-    SurfaceAction, activate_point, authored_center, authored_target, has_rejection, mounted,
-    mounted_with, publication, pump_all, rejected,
+    SurfaceAction, SurfaceApp, activate_point, authored_center, authored_target, has_rejection,
+    mounted, mounted_with, publication, pump_all, rejected,
 };
 
 #[test]
@@ -27,10 +28,7 @@ fn every_publication_issues_a_fresh_context_for_one_surface() {
     assert_eq!(second.input_context().coordinate_revision(), 2);
 }
 
-#[test]
-fn publication_retains_initial_and_update_redraw_causality() {
-    let mut runtime = mounted();
-    let tokens = StyleTokens::new();
+fn initial_redraw_sequence(runtime: &AppRuntime<SurfaceApp>) -> TraceSequence {
     let mounted = runtime
         .trace()
         .records()
@@ -48,54 +46,61 @@ fn publication_retains_initial_and_update_redraw_causality() {
         .unwrap_or_else(|| unreachable!("initial redraw request is retained"));
     assert_eq!(initial_request.causal_parent(), Some(mounted.sequence()));
     assert_eq!(initial_request.instant(), mounted.instant());
-    let initial_request_sequence = initial_request.sequence();
+    initial_request.sequence()
+}
 
-    let first = publication(&mut runtime, &tokens);
-    let first_published = runtime
+fn publication_sequence(
+    runtime: &AppRuntime<SurfaceApp>,
+    publication: &SurfacePublication,
+    causal_parent: TraceSequence,
+    after: Option<TraceSequence>,
+) -> TraceSequence {
+    let published = runtime
         .trace()
         .records()
-        .filter(|record| matches!(record.kind(), TraceRecordKind::SurfacePublished))
+        .filter(|record| {
+            matches!(record.kind(), TraceRecordKind::SurfacePublished)
+                && after.is_none_or(|sequence| record.sequence() > sequence)
+        })
         .last()
-        .unwrap_or_else(|| unreachable!("initial publication is retained"));
-    assert_eq!(
-        first_published.causal_parent(),
-        Some(initial_request_sequence)
-    );
-    let first_context = first_published
+        .unwrap_or_else(|| unreachable!("surface publication is retained"));
+    assert_eq!(published.causal_parent(), Some(causal_parent));
+    let context = published
         .context()
         .publication()
         .unwrap_or_else(|| unreachable!("publication owns exact context"));
     assert_eq!(
-        first_context.surface().surface_id(),
-        first.input_context().surface_id()
+        context.surface().surface_id(),
+        publication.input_context().surface_id()
     );
     assert_eq!(
-        first_context.surface().hit_test_generation(),
-        first.input_context().hit_test_generation()
+        context.surface().hit_test_generation(),
+        publication.input_context().hit_test_generation()
     );
     assert_eq!(
-        first_context.surface().coordinate_revision(),
-        first.input_context().coordinate_revision()
+        context.surface().coordinate_revision(),
+        publication.input_context().coordinate_revision()
     );
     assert_eq!(
-        first_context.surface().snapshot(),
+        context.surface().snapshot(),
         Some(TraceSurfaceSnapshotKind::Current)
     );
     assert_eq!(
-        first_context.reconciliation_generation(),
+        context.reconciliation_generation(),
         runtime.reconciliation_report().generation()
     );
-    assert_eq!(first_context.node_count(), first.frame().nodes().len());
+    assert_eq!(context.node_count(), publication.frame().nodes().len());
     assert_eq!(
-        first_context.executed_phases(),
+        context.executed_phases(),
         runtime.last_surface_phase_report().executed()
     );
-    let first_published_sequence = first_published.sequence();
+    published.sequence()
+}
 
-    runtime
-        .submit_action(SurfaceAction::Swap)
-        .unwrap_or_else(|_| unreachable!("swap action is accepted"));
-    pump_all(&mut runtime);
+fn update_redraw_sequence(
+    runtime: &AppRuntime<SurfaceApp>,
+    after: TraceSequence,
+) -> TraceSequence {
     let reconciled = runtime
         .trace()
         .records()
@@ -107,41 +112,36 @@ fn publication_retains_initial_and_update_redraw_causality() {
         .records()
         .filter(|record| {
             matches!(record.kind(), TraceRecordKind::RedrawRequested { .. })
-                && record.sequence() > first_published_sequence
+                && record.sequence() > after
         })
         .last()
         .unwrap_or_else(|| unreachable!("update redraw request is retained"));
     assert_eq!(redraw.causal_parent(), Some(reconciled.sequence()));
     assert_eq!(redraw.instant(), reconciled.instant());
-    let redraw_sequence = redraw.sequence();
+    redraw.sequence()
+}
+
+#[test]
+fn publication_retains_initial_and_update_redraw_causality() {
+    let mut runtime = mounted();
+    let tokens = StyleTokens::new();
+    let initial_request = initial_redraw_sequence(&runtime);
+
+    let first = publication(&mut runtime, &tokens);
+    let first_published = publication_sequence(&runtime, &first, initial_request, None);
+
+    runtime
+        .submit_action(SurfaceAction::Swap)
+        .unwrap_or_else(|_| unreachable!("swap action is accepted"));
+    pump_all(&mut runtime);
+    let update_request = update_redraw_sequence(&runtime, first_published);
 
     let second = publication(&mut runtime, &tokens);
-    let second_published = runtime
-        .trace()
-        .records()
-        .filter(|record| {
-            matches!(record.kind(), TraceRecordKind::SurfacePublished)
-                && record.sequence() > first_published_sequence
-        })
-        .last()
-        .unwrap_or_else(|| unreachable!("updated publication is retained"));
-    assert_eq!(second_published.causal_parent(), Some(redraw_sequence));
-    let second_context = second_published
-        .context()
-        .publication()
-        .unwrap_or_else(|| unreachable!("updated publication owns exact context"));
-    assert_eq!(
-        second_context.surface().surface_id(),
-        second.input_context().surface_id()
-    );
-    assert_eq!(
-        second_context.reconciliation_generation(),
-        runtime.reconciliation_report().generation()
-    );
-    assert_eq!(second_context.node_count(), second.frame().nodes().len());
-    assert_eq!(
-        second_context.executed_phases(),
-        runtime.last_surface_phase_report().executed()
+    let _ = publication_sequence(
+        &runtime,
+        &second,
+        update_request,
+        Some(first_published),
     );
 }
 
