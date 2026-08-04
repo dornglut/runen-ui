@@ -317,110 +317,215 @@ impl TracePublicationContext {
     }
 }
 
+/// Internal domain-owned payload for one normalized trace context.
+#[doc(hidden)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TraceContextData {
+    Routed {
+        event: TraceEventContext,
+        surface: Option<TraceSurfaceContext>,
+        route: Option<TraceRouteSnapshot>,
+        delivery: Option<TraceDeliveryOutcome>,
+    },
+    Surface(TraceSurfaceContext),
+    Pointer {
+        event: Option<TraceEventContext>,
+        surface: Option<TraceSurfaceContext>,
+        pointer: TracePointerContext,
+        route: Option<TraceRouteSnapshot>,
+        physical_path: Option<TracePointerPath>,
+        target_transition: Option<TraceTargetTransition>,
+        delivery: Option<TraceDeliveryOutcome>,
+    },
+    Focus {
+        event: Option<TraceEventContext>,
+        surface: Option<TraceSurfaceContext>,
+        route: Option<TraceRouteSnapshot>,
+        target_transition: Option<TraceTargetTransition>,
+        delivery: Option<TraceDeliveryOutcome>,
+    },
+    Text {
+        event: Option<TraceEventContext>,
+        surface: Option<TraceSurfaceContext>,
+        composition: Option<TraceCompositionContext>,
+        text_metrics: Option<TraceTextMetrics>,
+        composition_range: Option<TraceCompositionRange>,
+        route: Option<TraceRouteSnapshot>,
+        delivery: Option<TraceDeliveryOutcome>,
+    },
+    Action(TraceActionIdentity),
+    Publication(TracePublicationContext),
+}
+
 /// Typed normalized context attached to one canonical trace record.
+///
+/// Records without normalized family context retain only a nullable pointer.
+/// Enriched records own exactly one domain payload rather than twelve
+/// independently optional inline fields.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceContext {
-    event: Option<TraceEventContext>,
-    surface: Option<TraceSurfaceContext>,
-    pointer: Option<TracePointerContext>,
-    composition: Option<TraceCompositionContext>,
-    text_metrics: Option<TraceTextMetrics>,
-    composition_range: Option<TraceCompositionRange>,
-    route: Option<TraceRouteSnapshot>,
-    physical_path: Option<TracePointerPath>,
-    target_transition: Option<TraceTargetTransition>,
-    action: Option<TraceActionIdentity>,
-    publication: Option<TracePublicationContext>,
-    delivery: Option<TraceDeliveryOutcome>,
+    data: Option<Box<TraceContextData>>,
 }
 
 impl TraceContext {
-    pub(crate) const fn empty() -> Self {
-        Self {
-            event: None,
-            surface: None,
-            pointer: None,
-            composition: None,
-            text_metrics: None,
-            composition_range: None,
-            route: None,
-            physical_path: None,
-            target_transition: None,
-            action: None,
-            publication: None,
-            delivery: None,
-        }
+    pub(in crate::trace) const fn empty() -> Self {
+        Self { data: None }
     }
 
     /// Returns normalized event family and cancelability facts.
     #[must_use]
-    pub const fn event(&self) -> Option<TraceEventContext> {
-        self.event
+    pub fn event(&self) -> Option<TraceEventContext> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Routed { event, .. }) => Some(*event),
+            Some(TraceContextData::Pointer { event, .. })
+            | Some(TraceContextData::Focus { event, .. })
+            | Some(TraceContextData::Text { event, .. }) => *event,
+            Some(
+                TraceContextData::Surface(_)
+                | TraceContextData::Action(_)
+                | TraceContextData::Publication(_),
+            )
+            | None => None,
+        }
     }
 
     /// Returns exact displayed-surface facts.
     #[must_use]
-    pub const fn surface(&self) -> Option<&TraceSurfaceContext> {
-        self.surface.as_ref()
+    pub fn surface(&self) -> Option<&TraceSurfaceContext> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Surface(surface)) => Some(surface),
+            Some(TraceContextData::Routed { surface, .. })
+            | Some(TraceContextData::Pointer { surface, .. })
+            | Some(TraceContextData::Focus { surface, .. })
+            | Some(TraceContextData::Text { surface, .. }) => surface.as_ref(),
+            Some(TraceContextData::Publication(publication)) => Some(publication.surface()),
+            Some(TraceContextData::Action(_)) | None => None,
+        }
     }
 
     /// Returns exact pointer/device facts.
     #[must_use]
-    pub const fn pointer(&self) -> Option<&TracePointerContext> {
-        self.pointer.as_ref()
+    pub fn pointer(&self) -> Option<&TracePointerContext> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Pointer { pointer, .. }) => Some(pointer),
+            _ => None,
+        }
     }
 
     /// Returns exact composition lifetime facts.
     #[must_use]
-    pub const fn composition(&self) -> Option<&TraceCompositionContext> {
-        self.composition.as_ref()
+    pub fn composition(&self) -> Option<&TraceCompositionContext> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Text { composition, .. }) => composition.as_ref(),
+            _ => None,
+        }
     }
 
     /// Returns redacted text or preedit size facts.
     #[must_use]
-    pub const fn text_metrics(&self) -> Option<TraceTextMetrics> {
-        self.text_metrics
+    pub fn text_metrics(&self) -> Option<TraceTextMetrics> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Text { text_metrics, .. }) => *text_metrics,
+            _ => None,
+        }
     }
 
     /// Returns the checked redacted composition range.
     #[must_use]
-    pub const fn composition_range(&self) -> Option<TraceCompositionRange> {
-        self.composition_range
+    pub fn composition_range(&self) -> Option<TraceCompositionRange> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Text {
+                composition_range, ..
+            }) => *composition_range,
+            _ => None,
+        }
     }
 
     /// Returns the ordered routed path and related endpoint.
     #[must_use]
-    pub const fn route(&self) -> Option<&TraceRouteSnapshot> {
-        self.route.as_ref()
+    pub fn route(&self) -> Option<&TraceRouteSnapshot> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Routed { route, .. })
+            | Some(TraceContextData::Pointer { route, .. })
+            | Some(TraceContextData::Focus { route, .. })
+            | Some(TraceContextData::Text { route, .. }) => route.as_ref(),
+            _ => None,
+        }
     }
 
     /// Returns the ordered physical pointer path.
     #[must_use]
-    pub const fn physical_path(&self) -> Option<&TracePointerPath> {
-        self.physical_path.as_ref()
+    pub fn physical_path(&self) -> Option<&TracePointerPath> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Pointer { physical_path, .. }) => physical_path.as_ref(),
+            _ => None,
+        }
     }
 
     /// Returns exact previous/current transition endpoints.
     #[must_use]
-    pub const fn target_transition(&self) -> Option<&TraceTargetTransition> {
-        self.target_transition.as_ref()
+    pub fn target_transition(&self) -> Option<&TraceTargetTransition> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Pointer {
+                target_transition, ..
+            })
+            | Some(TraceContextData::Focus {
+                target_transition, ..
+            }) => target_transition.as_ref(),
+            _ => None,
+        }
     }
 
     /// Returns redacted application-action identity.
     #[must_use]
-    pub const fn action(&self) -> Option<TraceActionIdentity> {
-        self.action
+    pub fn action(&self) -> Option<TraceActionIdentity> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Action(action)) => Some(*action),
+            _ => None,
+        }
     }
 
     /// Returns renderer-facing publication identity.
     #[must_use]
-    pub const fn publication(&self) -> Option<&TracePublicationContext> {
-        self.publication.as_ref()
+    pub fn publication(&self) -> Option<&TracePublicationContext> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Publication(publication)) => Some(publication),
+            _ => None,
+        }
     }
 
     /// Returns explicit delivery or suppression outcome.
     #[must_use]
-    pub const fn delivery(&self) -> Option<TraceDeliveryOutcome> {
-        self.delivery
+    pub fn delivery(&self) -> Option<TraceDeliveryOutcome> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Routed { delivery, .. })
+            | Some(TraceContextData::Pointer { delivery, .. })
+            | Some(TraceContextData::Focus { delivery, .. })
+            | Some(TraceContextData::Text { delivery, .. }) => *delivery,
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TraceContext;
+
+    #[test]
+    fn empty_context_exposes_no_normalized_family_facts() {
+        let context = TraceContext::empty();
+
+        assert_eq!(context.event(), None);
+        assert_eq!(context.surface(), None);
+        assert_eq!(context.pointer(), None);
+        assert_eq!(context.composition(), None);
+        assert_eq!(context.text_metrics(), None);
+        assert_eq!(context.composition_range(), None);
+        assert_eq!(context.route(), None);
+        assert_eq!(context.physical_path(), None);
+        assert_eq!(context.target_transition(), None);
+        assert_eq!(context.action(), None);
+        assert_eq!(context.publication(), None);
+        assert_eq!(context.delivery(), None);
     }
 }
