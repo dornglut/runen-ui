@@ -1,8 +1,8 @@
 use super::{
-    ApplicationActionOrigin, ApplicationTransactionInput, CommitError, HashMap, HashSet,
-    HostProtocol, LiveSubscription, MandatoryTracePlan, PlannedApplicationTransaction,
-    PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent, Runtime, TraceRecordKind,
-    TraceSequence, TraceWorkIdentity, WorkOwner,
+    ApplicationActionOrigin, ApplicationTraceTransaction, ApplicationTransactionInput, CommitError,
+    HashMap, HashSet, HostProtocol, LiveSubscription, MandatoryTracePlan,
+    PlannedApplicationTransaction, PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent,
+    Runtime, TraceRecordKind, TraceSequence, TraceWorkIdentity, WorkOwner,
     required_application_transaction_trace_records_from_parts, trace_work_family, trace_work_owner,
 };
 
@@ -14,6 +14,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         application_subscription_cancelled: usize,
         transaction_parent: Option<TraceSequence>,
         pre_recorded_cancellation_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+        trace_transaction: ApplicationTraceTransaction,
     ) -> Result<(), CommitError> {
         let plan = PlannedApplicationTransaction::plan(input, &self.work, &self.queue)
             .map_err(|_| CommitError::Registry)?;
@@ -23,6 +24,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             application_subscription_cancelled,
             transaction_parent,
             pre_recorded_cancellation_lineage,
+            trace_transaction,
         )
     }
 
@@ -33,6 +35,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         application_subscription_cancelled: usize,
         transaction_parent: Option<TraceSequence>,
         pre_recorded_cancellation_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+        trace_transaction: ApplicationTraceTransaction,
     ) -> Result<(), CommitError> {
         let PlannedApplicationTransaction {
             invalidated,
@@ -86,17 +89,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &WorkOwner::Application,
             application_subscription_duplicates,
         );
-        self.trace.record(
-            TraceRecordKind::SubscriptionDiffCommitted {
-                started: application_subscription_started,
-                cancelled: application_subscription_cancelled,
-                duplicate_keys: application_subscription_duplicates.len(),
-            },
-            None,
-            transaction_parent,
-            None,
-            None,
-            None,
+        self.trace.record_draft(
+            trace_transaction
+                .fact(TraceRecordKind::SubscriptionDiffCommitted {
+                    started: application_subscription_started,
+                    cancelled: application_subscription_cancelled,
+                    duplicate_keys: application_subscription_duplicates.len(),
+                })
+                .with_causal_parent(transaction_parent),
         );
         Ok(())
     }
