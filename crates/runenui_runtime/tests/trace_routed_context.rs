@@ -51,7 +51,7 @@ impl UiApp for RouteApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         container(
             RouteWidget { actionable: false },
             vec![
@@ -65,7 +65,7 @@ impl UiApp for RouteApp {
         .key("root")
     }
 
-    fn update(_: &mut Self::State, (): Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 fn settle(runtime: &mut AppRuntime<RouteApp>) {
