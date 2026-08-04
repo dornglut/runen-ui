@@ -83,34 +83,37 @@ fn scheduler_work_facts_retain_monotonic_logical_time() {
 #[test]
 fn application_transaction_facts_share_one_accepted_instant() {
     let initial_work_runtime = AppRuntime::<LogicalTimeApp>::mount(0);
-    let initial_work_transaction_instant = initial_work_runtime
+    let initial_transaction = initial_work_runtime
         .trace()
         .records()
-        .find_map(|record| {
+        .find(|record| {
             matches!(
                 record.kind(),
                 TraceRecordKind::InitialApplicationTransactionStarted
             )
-            .then(|| record.instant().unwrap_or_else(|| unreachable!()))
         })
         .unwrap_or_else(|| unreachable!());
-    let initial_work_instants: Vec<_> = initial_work_runtime
+    let initial_transaction_instant = initial_transaction
+        .instant()
+        .unwrap_or_else(|| unreachable!());
+    let initial_requested = initial_work_runtime
         .trace()
         .records()
-        .filter(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::WorkRequested | TraceRecordKind::WorkGenerationCommitted
-            )
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::WorkRequested)
+                && record.causal_parent() == Some(initial_transaction.sequence())
         })
-        .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
-        .collect();
-    assert_eq!(initial_work_instants.len(), 2);
-    assert!(
-        initial_work_instants
-            .iter()
-            .all(|instant| *instant == initial_work_transaction_instant)
-    );
+        .unwrap_or_else(|| unreachable!());
+    let initial_committed = initial_work_runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::WorkGenerationCommitted)
+                && record.causal_parent() == Some(initial_requested.sequence())
+        })
+        .unwrap_or_else(|| unreachable!());
+    assert_eq!(initial_requested.instant(), Some(initial_transaction_instant));
+    assert_eq!(initial_committed.instant(), Some(initial_transaction_instant));
 
     let mut runtime = AppRuntime::<ApplicationTimeApp>::mount(0);
     let initial_instants: Vec<_> = runtime
@@ -145,44 +148,67 @@ fn application_transaction_facts_share_one_accepted_instant() {
         .records()
         .skip(retained_before_update)
         .collect();
-    let update_instants: Vec<_> = update_records
+    let update_transaction = update_records
         .iter()
-        .filter(|record| {
+        .copied()
+        .find(|record| {
             matches!(
                 record.kind(),
                 TraceRecordKind::ApplicationActionTransactionStarted
-                    | TraceRecordKind::ApplicationStateUpdated
-                    | TraceRecordKind::TreeReconciled
-                    | TraceRecordKind::SubscriptionDiffCommitted { .. }
-                    | TraceRecordKind::UpdateEffectsCommitted { .. }
             )
         })
-        .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
-        .collect();
-    assert_eq!(update_instants.len(), 5);
-    assert!(
-        update_instants
-            .iter()
-            .all(|instant| *instant == update_instants[0])
-    );
-    assert!(update_instants[0] > initial_instants[0]);
+        .unwrap_or_else(|| unreachable!());
+    let update_transaction_instant = update_transaction
+        .instant()
+        .unwrap_or_else(|| unreachable!());
+    let update_transaction_sequence = update_transaction.sequence();
+    let update_work_sequence = update_transaction.work_sequence();
 
-    let update_work_instants: Vec<_> = update_records
+    let update_summary_instants: Vec<_> = update_records
         .iter()
-        .filter(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::WorkRequested | TraceRecordKind::WorkGenerationCommitted
-            )
+        .copied()
+        .filter(|record| match record.kind() {
+            TraceRecordKind::ApplicationActionTransactionStarted => {
+                record.sequence() == update_transaction_sequence
+            }
+            TraceRecordKind::ApplicationStateUpdated
+            | TraceRecordKind::TreeReconciled
+            | TraceRecordKind::UpdateEffectsCommitted { .. } => {
+                record.work_sequence() == update_work_sequence
+            }
+            TraceRecordKind::SubscriptionDiffCommitted { .. } => {
+                record.causal_parent() == Some(update_transaction_sequence)
+            }
+            _ => false,
         })
         .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
         .collect();
-    assert_eq!(update_work_instants.len(), 2);
+    assert_eq!(update_summary_instants.len(), 5);
     assert!(
-        update_work_instants
+        update_summary_instants
             .iter()
-            .all(|instant| *instant == update_instants[0])
+            .all(|instant| *instant == update_transaction_instant)
     );
+    assert!(update_transaction_instant > initial_instants[0]);
+
+    let update_requested = update_records
+        .iter()
+        .copied()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::WorkRequested)
+                && record.causal_parent() == Some(update_transaction_sequence)
+        })
+        .unwrap_or_else(|| unreachable!());
+    let update_committed = update_records
+        .iter()
+        .copied()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::WorkGenerationCommitted)
+                && record.causal_parent() == Some(update_requested.sequence())
+        })
+        .unwrap_or_else(|| unreachable!());
+    assert_eq!(update_requested.instant(), Some(update_transaction_instant));
+    assert_eq!(update_committed.instant(), Some(update_transaction_instant));
 }
 
 #[cfg(feature = "internal-test-seams")]
