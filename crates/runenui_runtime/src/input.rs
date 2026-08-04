@@ -1066,7 +1066,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    fn routed_input_event_context(payload: &InputEnvelopePayload) -> TraceEventContext {
+    const fn routed_input_event_context(payload: &InputEnvelopePayload) -> TraceEventContext {
         match payload {
             InputEnvelopePayload::Keyboard(_) => {
                 TraceEventContext::new(TraceEventFamily::Keyboard, true)
