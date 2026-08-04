@@ -1,3 +1,7 @@
+use runenui_core::MonotonicInstant;
+
+use crate::trace::TraceRecordDraft;
+
 use super::{
     HashMap, HostProtocol, Runtime, TraceRecordKind, TraceSequence, TraceWorkIdentity,
     WorkSequence, public_trace_work_identity,
@@ -20,13 +24,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Option<TraceSequence> {
         let generation = self.work.generation_with_value(identity.generation());
         let causal_parent = generation.and_then(|generation| self.work.trace_parent(generation));
-        let trace = self
-            .trace
-            .record_work(kind, None, causal_parent, None, None, None, identity);
-        if let (Some(generation), Some(trace)) = (generation, trace) {
-            self.work.set_trace(generation, trace);
-        }
-        trace
+        let logical_time = self.now();
+        self.record_work_fact_at(kind, None, causal_parent, identity, logical_time)
     }
 
     pub(in crate::runtime) fn record_work_fact_from_envelope(
@@ -37,19 +36,31 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Option<TraceSequence> {
         let generation = self.work.generation_with_value(identity.generation());
         let causal_parent = generation.and_then(|generation| self.work.trace_parent(generation));
-        let trace = self.trace.record_work(
+        let logical_time = self.now();
+        self.record_work_fact_at(
             kind,
             Some(work_sequence),
             causal_parent,
-            None,
-            None,
-            None,
             identity,
-        );
-        if let (Some(generation), Some(trace)) = (generation, trace) {
-            self.work.set_trace(generation, trace);
-        }
-        trace
+            logical_time,
+        )
+    }
+
+    pub(in crate::runtime) fn record_work_fact_from_envelope_with_parent(
+        &mut self,
+        kind: TraceRecordKind,
+        work_sequence: WorkSequence,
+        causal_parent: Option<TraceSequence>,
+        identity: TraceWorkIdentity,
+    ) -> Option<TraceSequence> {
+        let logical_time = self.now();
+        self.record_work_fact_at(
+            kind,
+            Some(work_sequence),
+            causal_parent,
+            identity,
+            logical_time,
+        )
     }
 
     pub(in crate::runtime) fn record_work_fact_with_parent(
@@ -58,10 +69,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         causal_parent: Option<TraceSequence>,
         identity: TraceWorkIdentity,
     ) -> Option<TraceSequence> {
+        let logical_time = self.now();
+        self.record_work_fact_at(kind, None, causal_parent, identity, logical_time)
+    }
+
+    fn record_work_fact_at(
+        &mut self,
+        kind: TraceRecordKind,
+        work_sequence: Option<WorkSequence>,
+        causal_parent: Option<TraceSequence>,
+        identity: TraceWorkIdentity,
+        logical_time: MonotonicInstant,
+    ) -> Option<TraceSequence> {
         let generation = self.work.generation_with_value(identity.generation());
-        let trace = self
-            .trace
-            .record_work(kind, None, causal_parent, None, None, None, identity);
+        let draft = TraceRecordDraft::work_fact(kind, logical_time, identity)
+            .with_work_sequence(work_sequence)
+            .with_causal_parent(causal_parent);
+        let trace = self.trace.record_draft(draft);
         if let (Some(generation), Some(trace)) = (generation, trace) {
             self.work.set_trace(generation, trace);
         }
@@ -73,18 +97,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         identities: &[TraceWorkIdentity],
         transaction_parent: Option<TraceSequence>,
     ) -> HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)> {
+        let logical_time = self.now();
         identities
             .iter()
             .map(|identity| {
-                let bound = self.record_work_fact_with_parent(
+                let bound = self.record_work_fact_at(
                     TraceRecordKind::WorkCancellationBound,
+                    None,
                     transaction_parent,
                     identity.clone(),
+                    logical_time,
                 );
-                let invalidated = self.record_work_fact_with_parent(
+                let invalidated = self.record_work_fact_at(
                     TraceRecordKind::WorkLogicallyInvalidated,
+                    None,
                     bound,
                     identity.clone(),
+                    logical_time,
                 );
                 (identity.generation(), (identity.clone(), invalidated))
             })
