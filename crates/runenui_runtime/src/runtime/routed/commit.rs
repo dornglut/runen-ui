@@ -1,9 +1,10 @@
-use std::collections::HashMap;
-
 use runenui_core::{FocusReason, HostProtocol, MonotonicInstant, WidgetInvalidation};
 
 use super::{
-    super::{CollectedRoutedOutput, Runtime, mounted_effect_into_effect},
+    super::{
+        CollectedRoutedOutput, Runtime, application::PlannedWorkTrace,
+        mounted_effect_into_effect,
+    },
     transaction::RoutedTransaction,
 };
 use crate::{
@@ -115,13 +116,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !application_outputs.is_empty() || !application_subscription_starts.is_empty() {
             return Err(());
         }
+        let work_trace = PlannedWorkTrace::new(transaction.parent, transaction.instant);
         let cancellation_lineage = self.commit_application_starts(
             &invalidated,
             starts,
             next_generation,
             semantic_events,
-            transaction.parent,
-            HashMap::new(),
+            work_trace,
         );
         for owner in mounted_subscription_dirty {
             self.queue
