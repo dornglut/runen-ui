@@ -21,8 +21,6 @@ use crate::{
     trace::TraceReservation,
 };
 
-pub(super) type PointerSnapshot = (TraceSurfaceSnapshotKind, u64, u64);
-
 pub(super) struct PointerWork {
     pub(super) sequence: WorkSequence,
     pub(super) event: PointerEvent,
@@ -47,7 +45,7 @@ pub(super) struct StreamPreparation {
 pub(super) struct PointerGeometry {
     pub(super) physical_target: Option<MountedNodeId>,
     pub(super) physical_path: Vec<MountedNodeId>,
-    pub(super) snapshot: Option<PointerSnapshot>,
+    pub(super) snapshot: Option<TraceSurfaceSnapshotKind>,
     pub(super) diagnosis: Option<crate::TracePointerRejection>,
 }
 
