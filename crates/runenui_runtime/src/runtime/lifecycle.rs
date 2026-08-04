@@ -4,8 +4,8 @@ use runenui_core::CommandOrigin;
 
 use super::{
     AutomationSubmissionPolicy, CompletionIngress, HostProtocol, LiveHostRequest, LiveSubscription,
-    LocalTask, Runtime, RuntimeStatus, RuntimeTerminalReason, SendTaskMapper, ShutdownReport, Timer,
-    TraceRecordKind, TraceSequence, WorkCancellationCounts, WorkOwner, WorkRegistry,
+    LocalTask, Runtime, RuntimeStatus, RuntimeTerminalReason, SendTaskMapper, ShutdownReport,
+    Timer, TraceRecordKind, TraceSequence, WorkCancellationCounts, WorkOwner, WorkRegistry,
     focus::InputLifetimeCleanupCause,
 };
 use crate::{TraceSpaceCleanupReason, trace::TraceRecordDraft};
@@ -85,8 +85,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .saturating_add(cancelled_live.total())
             .saturating_add(additional_cancelled);
         let terminal = self.trace.record_draft(
-            TraceRecordDraft::lifecycle_fact(TraceRecordKind::RuntimeTerminal { reason }, logical_time)
-                .with_causal_parent(pointer_parent.or(space_parent)),
+            TraceRecordDraft::lifecycle_fact(
+                TraceRecordKind::RuntimeTerminal { reason },
+                logical_time,
+            )
+            .with_causal_parent(pointer_parent.or(space_parent)),
         );
         if cancelled > 0 {
             self.trace.record_draft(
