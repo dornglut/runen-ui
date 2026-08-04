@@ -88,15 +88,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         stream.set_surface_context(work.event.surface_context().clone());
         self.clear_non_live_pointer_owners(&mut stream);
-        let parent = match self.record_pointer_prelude(
-            &work,
-            false,
-            &geometry,
-            boundary_events.len(),
-        ) {
-            Ok(parent) => parent,
-            Err(outcome) => return outcome,
-        };
+        let parent =
+            match self.record_pointer_prelude(&work, false, &geometry, boundary_events.len()) {
+                Ok(parent) => parent,
+                Err(outcome) => return outcome,
+            };
         self.dispatch_prepared_pointer(PreparedPointer {
             work,
             is_new: false,
