@@ -417,9 +417,8 @@ impl SurfacePublicationState {
     }
 
     pub(crate) fn take_redraw_request(&self) -> Option<RedrawRequest> {
-        (self.redraw_revision > self.redraw_acknowledged).then(|| RedrawRequest {
-            namespace: Arc::clone(&self.redraw_namespace),
-            revision: self.redraw_revision,
+        (self.redraw_revision > self.redraw_acknowledged).then(|| {
+            RedrawRequest::new(Arc::clone(&self.redraw_namespace), self.redraw_revision)
         })
     }
 

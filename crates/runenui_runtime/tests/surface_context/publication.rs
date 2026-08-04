@@ -1,12 +1,12 @@
 use runenui_core::{CommandOrigin, SemanticCommand, StyleTokens};
 use runenui_runtime::{
-    SubmitSurfaceCommandErrorKind, TraceRecordKind, TraceSurfaceIngressKind, TraceSurfaceRejection,
-    TraceSurfaceSnapshotKind,
+    RuntimeConfig, SubmitSurfaceCommandErrorKind, TraceConfig, TraceRecordKind,
+    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind,
 };
 
 use crate::support::{
     SurfaceAction, activate_point, authored_center, authored_target, has_rejection, mounted,
-    publication, pump_all, rejected,
+    mounted_with, publication, pump_all, rejected,
 };
 
 #[test]
@@ -25,6 +25,155 @@ fn every_publication_issues_a_fresh_context_for_one_surface() {
     assert_eq!(second.input_context().hit_test_generation(), 2);
     assert_eq!(first.input_context().coordinate_revision(), 1);
     assert_eq!(second.input_context().coordinate_revision(), 2);
+}
+
+#[test]
+fn publication_retains_initial_and_update_redraw_causality() {
+    let mut runtime = mounted();
+    let tokens = StyleTokens::new();
+    let mounted = runtime
+        .trace()
+        .records()
+        .find(|record| matches!(record.kind(), TraceRecordKind::RuntimeMounted))
+        .unwrap_or_else(|| unreachable!("mount trace is retained"));
+    let initial_request = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::RedrawRequested { revision: 1 }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("initial redraw request is retained"));
+    assert_eq!(initial_request.causal_parent(), Some(mounted.sequence()));
+    assert_eq!(initial_request.instant(), mounted.instant());
+    let initial_request_sequence = initial_request.sequence();
+
+    let first = publication(&mut runtime, &tokens);
+    let first_published = runtime
+        .trace()
+        .records()
+        .filter(|record| matches!(record.kind(), TraceRecordKind::SurfacePublished))
+        .last()
+        .unwrap_or_else(|| unreachable!("initial publication is retained"));
+    assert_eq!(
+        first_published.causal_parent(),
+        Some(initial_request_sequence)
+    );
+    let first_context = first_published
+        .context()
+        .publication()
+        .unwrap_or_else(|| unreachable!("publication owns exact context"));
+    assert_eq!(
+        first_context.surface().surface_id(),
+        first.input_context().surface_id()
+    );
+    assert_eq!(
+        first_context.surface().hit_test_generation(),
+        first.input_context().hit_test_generation()
+    );
+    assert_eq!(
+        first_context.surface().coordinate_revision(),
+        first.input_context().coordinate_revision()
+    );
+    assert_eq!(
+        first_context.surface().snapshot(),
+        Some(TraceSurfaceSnapshotKind::Current)
+    );
+    assert_eq!(
+        first_context.reconciliation_generation(),
+        runtime.reconciliation_report().generation()
+    );
+    assert_eq!(first_context.node_count(), first.frame().nodes().len());
+    assert_eq!(
+        first_context.executed_phases(),
+        runtime.last_surface_phase_report().executed()
+    );
+    let first_published_sequence = first_published.sequence();
+
+    runtime
+        .submit_action(SurfaceAction::Swap)
+        .unwrap_or_else(|_| unreachable!("swap action is accepted"));
+    pump_all(&mut runtime);
+    let reconciled = runtime
+        .trace()
+        .records()
+        .filter(|record| matches!(record.kind(), TraceRecordKind::TreeReconciled))
+        .last()
+        .unwrap_or_else(|| unreachable!("update reconciliation is retained"));
+    let redraw = runtime
+        .trace()
+        .records()
+        .filter(|record| {
+            matches!(record.kind(), TraceRecordKind::RedrawRequested { .. })
+                && record.sequence() > first_published_sequence
+        })
+        .last()
+        .unwrap_or_else(|| unreachable!("update redraw request is retained"));
+    assert_eq!(redraw.causal_parent(), Some(reconciled.sequence()));
+    assert_eq!(redraw.instant(), reconciled.instant());
+    let redraw_sequence = redraw.sequence();
+
+    let second = publication(&mut runtime, &tokens);
+    let second_published = runtime
+        .trace()
+        .records()
+        .filter(|record| {
+            matches!(record.kind(), TraceRecordKind::SurfacePublished)
+                && record.sequence() > first_published_sequence
+        })
+        .last()
+        .unwrap_or_else(|| unreachable!("updated publication is retained"));
+    assert_eq!(second_published.causal_parent(), Some(redraw_sequence));
+    let second_context = second_published
+        .context()
+        .publication()
+        .unwrap_or_else(|| unreachable!("updated publication owns exact context"));
+    assert_eq!(
+        second_context.surface().surface_id(),
+        second.input_context().surface_id()
+    );
+    assert_eq!(
+        second_context.reconciliation_generation(),
+        runtime.reconciliation_report().generation()
+    );
+    assert_eq!(second_context.node_count(), second.frame().nodes().len());
+    assert_eq!(
+        second_context.executed_phases(),
+        runtime.last_surface_phase_report().executed()
+    );
+}
+
+#[test]
+fn capacity_zero_does_not_block_publication_or_allocate_trace_context() {
+    let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(0));
+    let mut runtime = mounted_with(config);
+    let tokens = StyleTokens::new();
+
+    let first = publication(&mut runtime, &tokens);
+    runtime
+        .submit_action(SurfaceAction::Swap)
+        .unwrap_or_else(|_| unreachable!("trace-disabled update is accepted"));
+    pump_all(&mut runtime);
+    let second = publication(&mut runtime, &tokens);
+
+    assert_eq!(first.input_context().hit_test_generation(), 1);
+    assert_eq!(second.input_context().hit_test_generation(), 2);
+    assert!(runtime.trace().is_empty());
+}
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn publication_consumes_and_replenishes_one_private_trace_reservation() {
+    let mut runtime = mounted();
+    let tokens = StyleTokens::new();
+
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
+    let _ = publication(&mut runtime, &tokens);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
 }
 
 #[test]

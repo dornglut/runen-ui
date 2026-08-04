@@ -136,10 +136,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.append_collected_routed_outputs(transaction.routed_outputs, transaction.instant)?;
         self.append_collected_routed_outputs(transaction.default_outputs, transaction.instant)?;
         self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
-        self.append_planned_outputs(mounted_outputs, transaction.parent)
+        self.append_planned_outputs(mounted_outputs, transaction.parent, transaction.instant)
             .map_err(|_| ())?;
-        self.finish_routed_invalidation(transaction.invalidation);
-        self.trace.record_event(
+        let committed = self.trace.record_event(
             TraceRecordKind::RoutedEventCommitted,
             transaction.sequence,
             transaction.parent,
@@ -149,15 +148,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             transaction.origin,
         );
+        self.finish_routed_invalidation(
+            transaction.invalidation,
+            committed,
+            transaction.instant,
+        );
         Ok(())
     }
 
-    fn finish_routed_invalidation(&mut self, invalidation: WidgetInvalidation) {
+    fn finish_routed_invalidation(
+        &mut self,
+        invalidation: WidgetInvalidation,
+        causal_parent: Option<crate::TraceSequence>,
+        instant: MonotonicInstant,
+    ) {
         if invalidation.contains(WidgetInvalidation::INTERACTION) {
             self.tree.finish_focus_validation();
         }
         if crate::mounted::publication_is_dirty(invalidation) {
-            self.request_redraw();
+            self.request_redraw(causal_parent, instant);
         }
     }
 

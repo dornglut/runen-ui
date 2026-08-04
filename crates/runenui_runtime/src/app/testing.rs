@@ -54,6 +54,12 @@ impl<App: UiApp> AppRuntime<App> {
 
     #[cfg(feature = "internal-test-seams")]
     #[doc(hidden)]
+    pub const fn __surface_publication_trace_reserved_for_test(&self) -> bool {
+        self.runtime.surface_publication_trace_reserved_for_test()
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
     #[must_use]
     pub fn __mounted_identity_parts_for_test(&self, id: &MountedNodeId) -> Option<(u32, u64)> {
         self.runtime

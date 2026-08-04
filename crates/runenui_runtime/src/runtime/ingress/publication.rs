@@ -1,46 +1,106 @@
-use super::{HostProtocol, QueueCommitError, Runtime, RuntimeTerminalReason, TraceRecordKind};
+use core::mem;
+
+use runenui_core::MonotonicInstant;
+
+use super::{
+    HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeTerminalReason,
+    TraceRecordKind, TraceSequence,
+};
+use crate::{
+    TracePublicationContext, TraceSurfaceContext, TraceSurfaceSnapshotKind,
+    trace::{TraceRecordDraft, TraceReservation},
+};
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(crate) fn request_redraw(&mut self) {
+    pub(crate) fn request_redraw(
+        &mut self,
+        causal_parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+    ) {
+        if !self.trace.can_admit(MandatoryTracePlan::one_fact()) {
+            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
+            return;
+        }
         let Some(next) = self.surface_publication.request_redraw() else {
             self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             return;
         };
-        self.record_optional(
-            TraceRecordKind::RedrawRequested { revision: next },
-            None,
-            None,
-            None,
-        );
+        let requested = if self.trace.is_enabled() {
+            self.trace.record_draft(
+                TraceRecordDraft::redraw_fact(
+                    TraceRecordKind::RedrawRequested { revision: next },
+                    instant,
+                )
+                .with_causal_parent(causal_parent),
+            )
+        } else {
+            None
+        };
+        if self.trace.is_enabled() && requested.is_none() {
+            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
+            return;
+        }
+        self.surface_trace.note_request(next, requested);
     }
 
     pub(crate) fn take_redraw_request(&mut self) -> Option<crate::RedrawRequest> {
-        let request = self.surface_publication.take_redraw_request();
-        if let Some(request) = &request {
-            self.record_optional(
-                TraceRecordKind::RedrawTaken {
-                    revision: request.revision,
-                },
-                None,
-                None,
-                None,
-            );
-        }
-        request
+        let instant = self.now();
+        self.take_redraw_request_at(instant)
+    }
+
+    fn take_redraw_request_at(
+        &mut self,
+        instant: MonotonicInstant,
+    ) -> Option<crate::RedrawRequest> {
+        let mut request = self.surface_publication.take_redraw_request()?;
+        let request_parent = self.surface_trace.request_parent(request.revision());
+        request.bind_request_trace(request_parent);
+        let taken = if self.trace.is_enabled() {
+            self.trace.record_draft(
+                TraceRecordDraft::redraw_fact(
+                    TraceRecordKind::RedrawTaken {
+                        revision: request.revision(),
+                    },
+                    instant,
+                )
+                .with_causal_parent(request_parent),
+            )
+        } else {
+            None
+        };
+        request.bind_taken_trace(taken);
+        Some(request)
     }
 
     pub(crate) fn acknowledge_redraw(
         &mut self,
         request: &crate::RedrawRequest,
     ) -> Result<(), crate::RedrawAcknowledgeError> {
+        let instant = self.now();
+        self.acknowledge_redraw_at(request, request.control_parent(), instant)
+    }
+
+    fn acknowledge_redraw_at(
+        &mut self,
+        request: &crate::RedrawRequest,
+        causal_parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+    ) -> Result<(), crate::RedrawAcknowledgeError> {
         self.surface_publication.acknowledge_redraw(request)?;
-        self.record_optional(
-            TraceRecordKind::RedrawAcknowledged {
-                revision: request.revision,
-            },
-            None,
-            None,
-            None,
+        if self.trace.is_enabled() {
+            self.trace.record_draft(
+                TraceRecordDraft::redraw_fact(
+                    TraceRecordKind::RedrawAcknowledged {
+                        revision: request.revision(),
+                    },
+                    instant,
+                )
+                .with_causal_parent(causal_parent),
+            );
+        }
+        self.surface_trace.clear_if_acknowledged(
+            request.revision(),
+            self.surface_publication.is_dirty(),
         );
         Ok(())
     }
@@ -49,11 +109,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         context: &crate::SurfaceBuildContext<'_>,
     ) -> crate::SurfacePublication {
+        let instant = self.now();
         let rehit_reservation = self.prepare_stationary_pointer_rehit();
-        let redraw = self.take_redraw_request();
+        let redraw = self.take_redraw_request_at(instant);
+        let publication_reservation = mem::replace(
+            &mut self.surface_trace.publication_reservation,
+            TraceReservation::continuation(),
+        );
         let publication = self.surface_publication.publish(&mut self.tree, context);
+        let published = self.record_surface_publication(
+            publication_reservation,
+            redraw.as_ref().and_then(crate::RedrawRequest::request_parent),
+            instant,
+            &publication,
+        );
         if let Some(trace_reservation) = rehit_reservation {
-            let instant = self.now();
             let input_context = publication.input_context();
             let causal_parent = self.trace.record_reserved(
                 trace_reservation,
@@ -64,13 +134,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 self.queue
                     .next_sequence()
                     .unwrap_or_else(|| unreachable!("stationary re-hit was preflighted")),
-                None,
+                published,
             );
             let committed = self.queue.push_pointer_rehit_preflighted(
                 input_context.clone(),
                 instant,
                 causal_parent,
-                crate::trace::TraceReservation::continuation(),
+                TraceReservation::continuation(),
             );
             match committed {
                 Ok(_) => self.external_queue_commit_accepted(),
@@ -80,13 +150,55 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
         }
         if let Some(redraw) = redraw {
-            self.acknowledge_redraw(&redraw)
+            self.acknowledge_redraw_at(&redraw, published, instant)
                 .unwrap_or_else(|_| unreachable!("runtime-issued redraw request remains local"));
         }
+        self.replenish_surface_publication_reservation();
         publication
     }
 
-    fn prepare_stationary_pointer_rehit(&mut self) -> Option<crate::trace::TraceReservation> {
+    fn record_surface_publication(
+        &mut self,
+        reservation: TraceReservation,
+        causal_parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+        publication: &crate::SurfacePublication,
+    ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            self.trace.release_reservation(reservation);
+            return None;
+        }
+        let input_context = publication.input_context();
+        let publication_context = TracePublicationContext::new(
+            TraceSurfaceContext::accepted(input_context, TraceSurfaceSnapshotKind::Current),
+            self.report.generation(),
+            publication.frame().nodes().len(),
+            self.surface_publication.phase_report().executed().to_vec(),
+        );
+        let published = self.trace.record_reserved_draft(
+            reservation,
+            TraceRecordDraft::publication_fact(
+                TraceRecordKind::SurfacePublished,
+                instant,
+                publication_context,
+            )
+            .with_causal_parent(causal_parent),
+        );
+        if published.is_none() {
+            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
+        }
+        published
+    }
+
+    fn replenish_surface_publication_reservation(&mut self) {
+        let Some(reservation) = self.trace.reserve_surface_publication() else {
+            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
+            return;
+        };
+        self.surface_trace.publication_reservation = reservation;
+    }
+
+    fn prepare_stationary_pointer_rehit(&mut self) -> Option<TraceReservation> {
         let required = self.pointer_registry.has_streams() || self.queue.has_pointer_envelopes();
         if !required {
             return None;
