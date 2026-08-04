@@ -112,6 +112,20 @@ pub struct TracePointerContext {
 }
 
 impl TracePointerContext {
+    pub(crate) const fn event(
+        pointer_id: PointerId,
+        device_id: Option<InputDeviceId>,
+        device_kind: PointerDeviceKind,
+        phase: PointerPhase,
+    ) -> Self {
+        Self {
+            pointer_id,
+            device_id,
+            device_kind,
+            phase: Some(phase),
+        }
+    }
+
     /// Returns the exact pointer-stream identity.
     #[must_use]
     pub const fn pointer_id(&self) -> &PointerId {
@@ -282,6 +296,10 @@ pub struct TracePointerPath {
 }
 
 impl TracePointerPath {
+    pub(crate) const fn new(targets: Vec<TraceTarget>) -> Self {
+        Self { targets }
+    }
+
     /// Returns the immutable root-to-physical-target path.
     #[must_use]
     pub const fn targets(&self) -> &[TraceTarget] {
@@ -454,6 +472,25 @@ impl TraceContext {
         }
     }
 
+    pub(crate) fn pointer_observation(
+        event: TraceEventContext,
+        surface: TraceSurfaceContext,
+        pointer: TracePointerContext,
+        physical_path: TracePointerPath,
+    ) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Pointer {
+                event: Some(event),
+                surface: Some(surface),
+                pointer,
+                route: None,
+                physical_path: Some(physical_path),
+                target_transition: None,
+                delivery: None,
+            })),
+        }
+    }
+
     pub(crate) fn publication_record(publication: TracePublicationContext) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Publication(publication))),
@@ -607,7 +644,15 @@ impl TraceContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{TraceContext, TraceEventContext, TraceEventFamily, TraceRouteSnapshot};
+    use runenui_core::{
+        __runtime::RuntimeNamespace, PointerDeviceKind, PointerId, PointerPhase,
+    };
+
+    use super::{
+        TraceContext, TraceEventContext, TraceEventFamily, TracePointerContext, TracePointerPath,
+        TraceRouteSnapshot, TraceSurfaceContext,
+    };
+    use crate::TraceSurfaceSnapshotKind;
 
     #[test]
     fn empty_context_exposes_no_normalized_family_facts() {
@@ -639,6 +684,47 @@ mod tests {
         assert_eq!(snapshot.event(), Some(event));
         assert_eq!(
             snapshot.route().map(TraceRouteSnapshot::targets),
+            Some([].as_slice())
+        );
+    }
+
+    #[test]
+    fn pointer_observation_owns_event_surface_device_and_physical_path() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let surface_context = namespace
+            .__runtime_surface_context(surface, 7, 9)
+            .unwrap_or_else(|| unreachable!("surface context belongs to the test namespace"));
+        let pointer_id = PointerId::new(5)
+            .unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+        let event = TraceEventContext::new(TraceEventFamily::Pointer, false);
+        let pointer = TracePointerContext::event(
+            pointer_id,
+            None,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+        );
+        let context = TraceContext::pointer_observation(
+            event,
+            TraceSurfaceContext::accepted(
+                &surface_context,
+                TraceSurfaceSnapshotKind::Current,
+            ),
+            pointer,
+            TracePointerPath::new(Vec::new()),
+        );
+
+        assert_eq!(context.event(), Some(event));
+        assert_eq!(
+            context.pointer().map(TracePointerContext::pointer_id),
+            Some(&pointer_id)
+        );
+        assert_eq!(
+            context.surface().map(TraceSurfaceContext::snapshot),
+            Some(Some(TraceSurfaceSnapshotKind::Current))
+        );
+        assert_eq!(
+            context.physical_path().map(TracePointerPath::targets),
             Some([].as_slice())
         );
     }
