@@ -1,11 +1,13 @@
 use core::num::NonZeroUsize;
 
+use crate::trace::{MandatoryTracePlan, TraceRecordDraft, TraceReservation};
+
 use super::{
     Arc, AutomationSubmissionPolicy, CompletionIngress, Element, FocusState, HostProtocol,
-    ManualClock, MountedIdentityExhausted, MountedTree, PointerRegistry, ReconciliationGeneration,
-    ReconciliationReport, Runtime, RuntimeConfig, RuntimeStatus, RuntimeTerminalReason,
-    SurfacePublicationState, Trace, TraceRecordKind, UnavailableExecutor, WakeState, WorkQueue,
-    WorkRegistry,
+    ManualClock, MonotonicInstant, MountedIdentityExhausted, MountedTree, PointerRegistry,
+    ReconciliationGeneration, ReconciliationReport, Runtime, RuntimeConfig, RuntimeStatus,
+    RuntimeTerminalReason, SurfacePublicationState, SurfaceTraceState, Trace, TraceRecordKind,
+    UnavailableExecutor, WakeState, WorkQueue, WorkRegistry,
 };
 
 fn checked_surface_snapshot_retention(retention: usize) -> NonZeroUsize {
@@ -41,16 +43,34 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let surface_publication =
             SurfacePublicationState::new(tree.runtime_namespace(), surface_snapshot_retention);
         let mut trace = Trace::new(config.trace_config());
-        if !mount_failed {
-            trace.record(
+        let initial_trace_plan = if mount_failed {
+            MandatoryTracePlan::one_fact()
+        } else {
+            MandatoryTracePlan::runtime_mount_and_publication()
+        };
+        let initial_trace_admitted = trace.can_admit(initial_trace_plan);
+        let initial_redraw_trace = if !mount_failed && initial_trace_admitted {
+            let mounted_trace = trace.record_draft(TraceRecordDraft::lifecycle_fact(
                 TraceRecordKind::RuntimeMounted,
-                None,
-                None,
-                None,
-                None,
-                None,
-            );
-        }
+                MonotonicInstant::ZERO,
+            ));
+            trace.record_draft(
+                TraceRecordDraft::redraw_fact(
+                    TraceRecordKind::RedrawRequested { revision: 1 },
+                    MonotonicInstant::ZERO,
+                )
+                .with_causal_parent(mounted_trace),
+            )
+        } else {
+            None
+        };
+        let publication_reservation = if initial_trace_admitted {
+            trace
+                .reserve_surface_publication()
+                .unwrap_or_else(|| unreachable!("initial publication trace was preflighted"))
+        } else {
+            TraceReservation::continuation()
+        };
         let report = ReconciliationReport {
             generation: ReconciliationGeneration(generation),
             live_node_count: tree.live_count(),
@@ -110,6 +130,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             host_namespace: Arc::new(()),
             host_requests: Vec::new(),
             surface_publication,
+            surface_trace: SurfaceTraceState::new(
+                Some(1),
+                initial_redraw_trace,
+                publication_reservation,
+            ),
             wake,
             #[cfg(test)]
             readiness_checkpoint_count: 0,
@@ -122,6 +147,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         if mount_failed {
             runtime.enter_terminal(RuntimeTerminalReason::MountedIdentityExhausted, 0);
+        } else if !initial_trace_admitted {
+            runtime.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
         }
         runtime
     }
