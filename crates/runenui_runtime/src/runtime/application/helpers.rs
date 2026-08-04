@@ -24,10 +24,13 @@ pub(in crate::runtime) fn required_application_transaction_trace_records_from_pa
     application_outputs: &[PlannedOutput<Action>],
     mounted_outputs: &[PlannedOutput<Action>],
 ) -> Option<usize> {
-    let action_count = application_outputs
-        .iter()
-        .chain(mounted_outputs)
+    let outputs = application_outputs.iter().chain(mounted_outputs);
+    let action_count = outputs
+        .clone()
         .filter(|output| matches!(output, PlannedOutput::Action(_)))
+        .count();
+    let redraw_count = outputs
+        .filter(|output| matches!(output, PlannedOutput::Redraw))
         .count();
     let subscription_start_count = starts
         .iter()
@@ -39,5 +42,6 @@ pub(in crate::runtime) fn required_application_transaction_trace_records_from_pa
         .checked_add(starts.len().checked_mul(2)?)?
         .checked_add(subscription_start_count)?
         .checked_add(action_count)?
+        .checked_add(redraw_count)?
         .checked_add(1)
 }
