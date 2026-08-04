@@ -60,15 +60,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 work,
                 parent,
                 boundary_plan,
-                PointerCommitPlan {
-                    pointer_id: stream.pointer_id,
-                    stream,
-                    kind,
-                    focus: None,
-                    capture_events: Vec::new(),
-                    physical_target: geometry.physical_target,
-                    physical_path: geometry.physical_path,
-                },
+                stream,
+                kind,
+                geometry,
             );
         };
         let Some(pointer_commit_trace) =
@@ -687,7 +681,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         work: PointerWork,
         mut parent: Option<crate::TraceSequence>,
         boundary_plan: PointerBoundaryPlan,
-        plan: PointerCommitPlan,
+        stream: PointerStreamState,
+        kind: StreamCommitKind,
+        geometry: PointerGeometry,
     ) -> ProcessApplicationActionOutcome {
         let Some(pointer_commit_trace) =
             self.plan_pointer_commit_trace(boundary_plan.notifications.len())
@@ -701,17 +697,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled,
             };
         }
-        let geometry = PointerGeometry {
-            physical_target: plan.physical_target.clone(),
-            physical_path: plan.physical_path.clone(),
-            snapshot: work
-                .event
-                .surface_context()
-                .hit_test_generation()
-                .checked_sub(work.event.surface_context().hit_test_generation())
-                .map(|_| unreachable!()),
-            diagnosis: None,
-        };
         for notification in &boundary_plan.notifications {
             debug_assert_eq!(notification.delivery, TraceDeliveryOutcome::Suppressed);
             parent = self.record_pointer_boundary_resolution(
@@ -722,16 +707,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 parent,
             );
         }
-        let result = match plan.kind {
+        let pointer_id = work.event.pointer_id();
+        let result = match kind {
             StreamCommitKind::Register => {
-                let registration_sequence = plan.stream.registration_sequence().get();
+                let registration_sequence = stream.registration_sequence().get();
                 self.pointer_registry
-                    .commit_registration(plan.pointer_id, plan.stream)
+                    .commit_registration(pointer_id, stream)
                     .map_err(map_commit_error)
                     .map(|()| {
                         parent = self.trace.record(
                             TraceRecordKind::PointerStreamRegistered {
-                                pointer_id: plan.pointer_id,
+                                pointer_id,
                                 registration_sequence,
                             },
                             Some(work.sequence),
@@ -744,25 +730,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             StreamCommitKind::Replace => self
                 .pointer_registry
-                .replace(plan.pointer_id, plan.stream)
+                .replace(pointer_id, stream)
                 .map_err(map_commit_error),
-            StreamCommitKind::Close => {
-                self.pointer_registry
-                    .close(plan.pointer_id)
-                    .ok_or(())
-                    .map(|_| {
-                        parent = self.trace.record(
-                            TraceRecordKind::PointerStreamClosed {
-                                pointer_id: plan.pointer_id,
-                            },
-                            Some(work.sequence),
-                            parent,
-                            None,
-                            None,
-                            None,
-                        );
-                    })
-            }
+            StreamCommitKind::Close => self.pointer_registry.close(pointer_id).ok_or(()).map(|_| {
+                parent = self.trace.record(
+                    TraceRecordKind::PointerStreamClosed { pointer_id },
+                    Some(work.sequence),
+                    parent,
+                    None,
+                    None,
+                    None,
+                );
+            }),
         };
         if result.is_err() {
             let cancelled = self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
@@ -772,9 +751,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             };
         }
         let _ = self.trace.record(
-            TraceRecordKind::PointerInteractionCommitted {
-                pointer_id: plan.pointer_id,
-            },
+            TraceRecordKind::PointerInteractionCommitted { pointer_id },
             Some(work.sequence),
             parent,
             None,
