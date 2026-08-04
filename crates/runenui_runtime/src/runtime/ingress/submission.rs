@@ -1,6 +1,6 @@
 use runenui_core::MonotonicInstant;
 
-use crate::{TraceSurfaceIngressKind, TraceSurfaceSnapshotKind};
+use crate::{TraceSurfaceContext, TraceSurfaceIngressKind, trace::TraceRecordDraft};
 
 use super::{
     ActionCommitError, ApplicationActionOrigin, CommandOrigin, CommandSubmission, HashMap,
@@ -11,31 +11,22 @@ use super::{
     WorkEnvelope, WorkSequence,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct SurfaceCommandTrace {
     ingress: TraceSurfaceIngressKind,
-    snapshot: TraceSurfaceSnapshotKind,
-    hit_test_generation: u64,
-    coordinate_revision: u64,
+    surface: TraceSurfaceContext,
 }
 
 impl SurfaceCommandTrace {
     pub(super) const fn new(
         ingress: TraceSurfaceIngressKind,
-        snapshot: TraceSurfaceSnapshotKind,
-        hit_test_generation: u64,
-        coordinate_revision: u64,
+        surface: TraceSurfaceContext,
     ) -> Self {
-        Self {
-            ingress,
-            snapshot,
-            hit_test_generation,
-            coordinate_revision,
-        }
+        Self { ingress, surface }
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum CommandTrace {
     Direct { parent: Option<TraceSequence> },
     Surface(SurfaceCommandTrace),
@@ -269,7 +260,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         instant: MonotonicInstant,
         trace: CommandTrace,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
-        let trace_reservation = match trace {
+        let trace_reservation = match &trace {
             CommandTrace::Direct { .. } => self.trace.reserve_command_outcome(),
             CommandTrace::Surface(_) => self.trace.reserve_surface_command_outcome(),
         }
@@ -292,19 +283,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 origin,
             ),
             CommandTrace::Surface(surface) => {
-                let context_parent = self.trace.record(
-                    TraceRecordKind::SurfaceContextAccepted {
-                        ingress: surface.ingress,
-                        snapshot: surface.snapshot,
-                        hit_test_generation: surface.hit_test_generation,
-                        coordinate_revision: surface.coordinate_revision,
-                    },
-                    Some(sequence),
-                    None,
-                    None,
-                    None,
-                    None,
-                );
+                let snapshot = surface
+                    .surface
+                    .snapshot()
+                    .unwrap_or_else(|| unreachable!("accepted surface context has a snapshot"));
+                let hit_test_generation = surface.surface.hit_test_generation();
+                let coordinate_revision = surface.surface.coordinate_revision();
+                let context_parent = if trace_enabled {
+                    self.trace.record_draft(
+                        TraceRecordDraft::surface_fact(
+                            TraceRecordKind::SurfaceContextAccepted {
+                                ingress: surface.ingress,
+                                snapshot,
+                                hit_test_generation,
+                                coordinate_revision,
+                            },
+                            instant,
+                            surface.surface,
+                        )
+                        .with_work_sequence(Some(sequence)),
+                    )
+                } else {
+                    None
+                };
                 if trace_enabled && context_parent.is_none() {
                     self.trace.release_reservation(trace_reservation);
                     return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
@@ -312,7 +313,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 let target_parent = self.trace.record_event(
                     TraceRecordKind::SurfaceTargetBound {
                         ingress: surface.ingress,
-                        hit_test_generation: surface.hit_test_generation,
+                        hit_test_generation,
                     },
                     sequence,
                     context_parent,
