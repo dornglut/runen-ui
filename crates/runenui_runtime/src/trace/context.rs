@@ -1,5 +1,6 @@
 use runenui_core::{
     CompositionGeneration, InputDeviceId, PointerDeviceKind, PointerId, PointerPhase, SurfaceId,
+    SurfaceInputContext,
 };
 
 use crate::{ReconciliationGeneration, SurfacePhase};
@@ -55,6 +56,27 @@ pub struct TraceSurfaceContext {
 }
 
 impl TraceSurfaceContext {
+    pub(crate) fn requested(context: &SurfaceInputContext) -> Self {
+        Self {
+            surface_id: context.surface_id().clone(),
+            coordinate_revision: context.coordinate_revision(),
+            hit_test_generation: context.hit_test_generation(),
+            snapshot: None,
+        }
+    }
+
+    pub(crate) fn accepted(
+        context: &SurfaceInputContext,
+        snapshot: TraceSurfaceSnapshotKind,
+    ) -> Self {
+        Self {
+            surface_id: context.surface_id().clone(),
+            coordinate_revision: context.coordinate_revision(),
+            hit_test_generation: context.hit_test_generation(),
+            snapshot: Some(snapshot),
+        }
+    }
+
     /// Returns the exact logical surface identity.
     #[must_use]
     pub const fn surface_id(&self) -> &SurfaceId {
@@ -409,6 +431,12 @@ impl TraceContext {
                 route: Some(route),
                 delivery: None,
             })),
+        }
+    }
+
+    pub(crate) fn surface(surface: TraceSurfaceContext) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Surface(surface))),
         }
     }
 
