@@ -95,7 +95,7 @@ fn post_update_dynamic_trace_admission_failure_is_poisoned() {
         .submit_action(false)
         .unwrap_or_else(|_| unreachable!("removal action is accepted"));
     assert!(runtime.__surface_publication_trace_reserved_for_test());
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 4);
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 5);
     runtime.pump(PumpBudget::new(1, 0, 0, 0));
 
     assert_eq!(runtime.state().updates, 1);
