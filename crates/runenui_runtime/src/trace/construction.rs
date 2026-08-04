@@ -51,10 +51,10 @@ impl TraceRoutedEndpoints {
 
 /// Complete named input for constructing one immutable canonical trace record.
 ///
-/// Producer-facing family APIs will progressively replace the transitional
-/// store entry points with domain-specific construction of this value.
+/// Producer-facing family APIs progressively replace the transitional store
+/// entry points with domain-specific construction of this value.
 #[derive(Debug)]
-pub(super) struct TraceRecordDraft {
+pub(crate) struct TraceRecordDraft {
     pub(super) kind: TraceRecordKind,
     pub(super) work_sequence: Option<WorkSequence>,
     pub(super) causal_parent: Option<TraceSequence>,
@@ -79,6 +79,39 @@ impl TraceRecordDraft {
             routed: None,
             context: TraceContext::empty(),
         }
+    }
+
+    /// Constructs one scheduler/work fact with mandatory logical time and work identity.
+    #[must_use]
+    pub(crate) fn work_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        work: TraceWorkIdentity,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft.work = Some(work);
+        draft
+    }
+
+    /// Attaches the owning global work-envelope sequence.
+    #[must_use]
+    pub(crate) const fn with_work_sequence(
+        mut self,
+        work_sequence: Option<WorkSequence>,
+    ) -> Self {
+        self.work_sequence = work_sequence;
+        self
+    }
+
+    /// Attaches the exact causal parent known at the producer boundary.
+    #[must_use]
+    pub(crate) const fn with_causal_parent(
+        mut self,
+        causal_parent: Option<TraceSequence>,
+    ) -> Self {
+        self.causal_parent = causal_parent;
+        self
     }
 
     pub(super) fn into_record(self, sequence: TraceSequence) -> TraceRecord {
