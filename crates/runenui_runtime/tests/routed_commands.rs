@@ -714,7 +714,9 @@ fn ordinary_rejection_preserves_publication_and_command_trace_authority() {
             CommandOrigin::automation(),
         )
         .unwrap_or_else(|_| {
-            unreachable!("ordinary rejection preserved publication, acceptance, and outcome authority")
+            unreachable!(
+                "ordinary rejection preserved publication, acceptance, and outcome authority"
+            )
         });
     let acceptance = runtime
         .trace()
