@@ -30,7 +30,7 @@ use runenui_core::{
     UiApp, View,
 };
 
-use crate::trace::MandatoryTracePlan;
+use crate::trace::{MandatoryTracePlan, TraceReservation};
 use crate::{
     CommandSubmission, FocusState, ManualClock, MonotonicClock, MonotonicInstant, MountedNodeId,
     RuntimeConfig, SendTaskExecutor, SendTaskStartError, SendTaskStartOutcome, SubmitActionError,
@@ -125,6 +125,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     host_namespace: Arc<()>,
     host_requests: Vec<LiveHostRequest<Action, Protocol>>,
     surface_publication: SurfacePublicationState,
+    surface_trace: SurfaceTraceState,
     wake: WakeState,
     #[cfg(test)]
     readiness_checkpoint_count: usize,
@@ -158,6 +159,46 @@ pub(crate) struct SchedulerObservation {
     pub(crate) mandatory_derived_work_pending: bool,
     pub(crate) next_deadline: Option<MonotonicInstant>,
     pub(crate) publication_dirty: bool,
+}
+
+struct SurfaceTraceState {
+    latest_redraw_revision: Option<u64>,
+    latest_redraw_request: Option<TraceSequence>,
+    publication_reservation: TraceReservation,
+}
+
+impl SurfaceTraceState {
+    const fn new(
+        latest_redraw_revision: Option<u64>,
+        latest_redraw_request: Option<TraceSequence>,
+        publication_reservation: TraceReservation,
+    ) -> Self {
+        Self {
+            latest_redraw_revision,
+            latest_redraw_request,
+            publication_reservation,
+        }
+    }
+
+    fn note_request(&mut self, revision: u64, request: Option<TraceSequence>) {
+        self.latest_redraw_revision = Some(revision);
+        self.latest_redraw_request = request;
+    }
+
+    const fn request_parent(&self, revision: u64) -> Option<TraceSequence> {
+        if self.latest_redraw_revision == Some(revision) {
+            self.latest_redraw_request
+        } else {
+            None
+        }
+    }
+
+    fn clear_if_acknowledged(&mut self, revision: u64, still_dirty: bool) {
+        if !still_dirty && self.latest_redraw_revision.is_some_and(|current| current <= revision) {
+            self.latest_redraw_revision = None;
+            self.latest_redraw_request = None;
+        }
+    }
 }
 
 struct SendTaskMapper<Action> {
