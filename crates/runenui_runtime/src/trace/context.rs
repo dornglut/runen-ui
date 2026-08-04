@@ -28,6 +28,10 @@ pub struct TraceEventContext {
 }
 
 impl TraceEventContext {
+    pub(crate) const fn new(family: TraceEventFamily, cancelable: bool) -> Self {
+        Self { family, cancelable }
+    }
+
     /// Returns the normalized event family.
     #[must_use]
     pub const fn family(self) -> TraceEventFamily {
@@ -226,6 +230,16 @@ pub struct TraceRouteSnapshot {
 }
 
 impl TraceRouteSnapshot {
+    pub(crate) const fn new(
+        targets: Vec<TraceTarget>,
+        related_target: Option<TraceTarget>,
+    ) -> Self {
+        Self {
+            targets,
+            related_target,
+        }
+    }
+
     /// Returns the immutable root-to-target route.
     #[must_use]
     pub const fn targets(&self) -> &[TraceTarget] {
@@ -376,6 +390,31 @@ impl TraceContext {
         Self { data: None }
     }
 
+    pub(crate) fn routed_event(event: TraceEventContext) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Routed {
+                event,
+                surface: None,
+                route: None,
+                delivery: None,
+            })),
+        }
+    }
+
+    pub(crate) fn routed_snapshot(
+        event: TraceEventContext,
+        route: TraceRouteSnapshot,
+    ) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Routed {
+                event,
+                surface: None,
+                route: Some(route),
+                delivery: None,
+            })),
+        }
+    }
+
     /// Returns normalized event family and cancelability facts.
     #[must_use]
     pub fn event(&self) -> Option<TraceEventContext> {
@@ -523,7 +562,7 @@ impl TraceContext {
 
 #[cfg(test)]
 mod tests {
-    use super::TraceContext;
+    use super::{TraceContext, TraceEventContext, TraceEventFamily, TraceRouteSnapshot};
 
     #[test]
     fn empty_context_exposes_no_normalized_family_facts() {
@@ -541,5 +580,17 @@ mod tests {
         assert_eq!(context.action(), None);
         assert_eq!(context.publication(), None);
         assert_eq!(context.delivery(), None);
+    }
+
+    #[test]
+    fn routed_context_separates_event_and_route_ownership() {
+        let event = TraceEventContext::new(TraceEventFamily::SemanticCommand, true);
+        let started = TraceContext::routed_event(event);
+        let snapshot = TraceContext::routed_snapshot(event, TraceRouteSnapshot::new(Vec::new(), None));
+
+        assert_eq!(started.event(), Some(event));
+        assert_eq!(started.route(), None);
+        assert_eq!(snapshot.event(), Some(event));
+        assert_eq!(snapshot.route().map(TraceRouteSnapshot::targets), Some([].as_slice()));
     }
 }
