@@ -97,10 +97,7 @@ fn publication_sequence(
     published.sequence()
 }
 
-fn update_redraw_sequence(
-    runtime: &AppRuntime<SurfaceApp>,
-    after: TraceSequence,
-) -> TraceSequence {
+fn update_redraw_sequence(runtime: &AppRuntime<SurfaceApp>, after: TraceSequence) -> TraceSequence {
     let reconciled = runtime
         .trace()
         .records()
@@ -137,12 +134,7 @@ fn publication_retains_initial_and_update_redraw_causality() {
     let update_request = update_redraw_sequence(&runtime, first_published);
 
     let second = publication(&mut runtime, &tokens);
-    let _ = publication_sequence(
-        &runtime,
-        &second,
-        update_request,
-        Some(first_published),
-    );
+    let _ = publication_sequence(&runtime, &second, update_request, Some(first_published));
 }
 
 #[test]
