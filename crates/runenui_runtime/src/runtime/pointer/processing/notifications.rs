@@ -39,7 +39,7 @@ impl PointerBoundaryPlan {
 
 pub(super) fn plan_boundary_transition(
     pointer_id: PointerId,
-    previous_path: &[MountedNodeId],
+    previous_path: Vec<MountedNodeId>,
     physical_path: &[MountedNodeId],
     surface_context: &SurfaceInputContext,
     mut is_live: impl FnMut(&MountedNodeId) -> bool,
@@ -86,7 +86,7 @@ pub(super) fn plan_boundary_transition(
         .collect::<Vec<_>>();
     debug_assert!(notifications.len() <= capacity);
     PointerBoundaryPlan {
-        previous_path: previous_path.to_vec(),
+        previous_path,
         previous_target,
         current_target,
         notifications,
@@ -151,7 +151,7 @@ mod tests {
 
         let plan = plan_boundary_transition(
             pointer_id,
-            &previous_path,
+            previous_path.clone(),
             &[root, new_parent.clone(), new_target.clone()],
             &context,
             |_| true,
@@ -205,7 +205,7 @@ mod tests {
 
         let plan = plan_boundary_transition(
             pointer_id,
-            core::slice::from_ref(&stale),
+            vec![stale.clone()],
             core::slice::from_ref(&live),
             &context,
             |target| target == &live,
