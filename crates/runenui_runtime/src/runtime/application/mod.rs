@@ -15,6 +15,7 @@ use super::{
 mod helpers;
 mod initial;
 mod process;
+mod trace;
 mod transaction;
 
 pub(in crate::runtime) use helpers::{
@@ -22,3 +23,4 @@ pub(in crate::runtime) use helpers::{
     required_application_transaction_trace_records_from_parts,
 };
 pub(crate) use process::process_application_action;
+pub(super) use trace::ApplicationTraceTransaction;
