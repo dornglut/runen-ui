@@ -57,3 +57,52 @@ fn scheduler_work_facts_retain_monotonic_logical_time() {
         .collect();
     assert!(instants.windows(2).all(|pair| pair[0] <= pair[1]));
 }
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn terminal_and_shutdown_facts_retain_transition_time() {
+    let mut runtime = AppRuntime::<LogicalTimeApp>::mount(0);
+    runtime.__seed_next_work_sequence_for_test(0);
+    assert!(runtime.submit_action(()).is_err());
+
+    let terminal_instant = runtime
+        .trace()
+        .records()
+        .find_map(|record| {
+            matches!(record.kind(), TraceRecordKind::RuntimeTerminal { .. })
+                .then(|| record.instant().unwrap_or_else(|| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!());
+    let cancelled_instant = runtime
+        .trace()
+        .records()
+        .find_map(|record| {
+            matches!(record.kind(), TraceRecordKind::QueuedWorkCancelled { .. })
+                .then(|| record.instant().unwrap_or_else(|| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!());
+    assert_eq!(cancelled_instant, terminal_instant);
+
+    let report = runtime.shutdown();
+    assert!(!report.already_complete());
+    let shutdown_records: Vec<_> = runtime
+        .trace()
+        .records()
+        .filter(|record| matches!(record.kind(), TraceRecordKind::RuntimeShutdown { .. }))
+        .collect();
+    assert_eq!(shutdown_records.len(), 1);
+    let shutdown_instant = shutdown_records[0]
+        .instant()
+        .unwrap_or_else(|| unreachable!());
+    assert!(shutdown_instant >= terminal_instant);
+
+    assert!(runtime.shutdown().already_complete());
+    assert_eq!(
+        runtime
+            .trace()
+            .records()
+            .filter(|record| matches!(record.kind(), TraceRecordKind::RuntimeShutdown { .. }))
+            .count(),
+        1
+    );
+}
