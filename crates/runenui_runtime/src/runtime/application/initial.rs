@@ -127,10 +127,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             return;
         }
-        self.trace.record_draft(trace_transaction.fact(
-            TraceRecordKind::InitialEffectsCommitted {
+        self.trace.record_draft(
+            trace_transaction.fact(TraceRecordKind::InitialEffectsCommitted {
                 count: initial_output_count,
-            },
-        ));
+            }),
+        );
     }
 }
