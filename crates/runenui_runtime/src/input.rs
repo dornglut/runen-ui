@@ -981,17 +981,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             trace_reservation,
         } = envelope;
         let origin = CommandOrigin::__runtime_keyboard();
-        let event_context = match &payload {
-            InputEnvelopePayload::Keyboard(_) => {
-                TraceEventContext::new(TraceEventFamily::Keyboard, true)
-            }
-            InputEnvelopePayload::CommittedText(_) => {
-                TraceEventContext::new(TraceEventFamily::CommittedText, true)
-            }
-            InputEnvelopePayload::Composition(_) => {
-                TraceEventContext::new(TraceEventFamily::Composition, false)
-            }
-        };
+        let event_context = Self::routed_input_event_context(&payload);
         let facts = RoutedIngressFacts::new(
             sequence,
             target.clone(),
@@ -1073,6 +1063,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 );
             }
             InputEnvelopePayload::Keyboard(_) | InputEnvelopePayload::CommittedText(_) => {}
+        }
+    }
+
+    fn routed_input_event_context(payload: &InputEnvelopePayload) -> TraceEventContext {
+        match payload {
+            InputEnvelopePayload::Keyboard(_) => {
+                TraceEventContext::new(TraceEventFamily::Keyboard, true)
+            }
+            InputEnvelopePayload::CommittedText(_) => {
+                TraceEventContext::new(TraceEventFamily::CommittedText, true)
+            }
+            InputEnvelopePayload::Composition(_) => {
+                TraceEventContext::new(TraceEventFamily::Composition, false)
+            }
         }
     }
 
