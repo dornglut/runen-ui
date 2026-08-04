@@ -3,7 +3,8 @@ use runenui_core::{CommandOrigin, MonotonicInstant};
 use crate::{MountedNodeId, ReconciliationGeneration, WorkSequence};
 
 use super::{
-    TraceContext, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget, TraceWorkIdentity,
+    TraceContext, TraceRecord, TraceRecordKind, TraceSequence, TraceSurfaceContext, TraceTarget,
+    TraceWorkIdentity,
 };
 
 /// Named reconciliation facts owned by one trace-record construction.
@@ -126,6 +127,19 @@ impl TraceRecordDraft {
         let mut draft = Self::new(kind);
         draft.logical_time = Some(logical_time);
         draft.context = context;
+        draft
+    }
+
+    /// Constructs one displayed-surface fact at its owning observation instant.
+    #[must_use]
+    pub(crate) fn surface_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        surface: TraceSurfaceContext,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft.context = TraceContext::surface(surface);
         draft
     }
 
