@@ -1,9 +1,10 @@
 use runenui_core::{HostProtocol, PointerPhase};
 
-use super::{PointerGeometry, PointerWork, StreamPreparation};
+use super::{PointerBoundaryPlan, PointerGeometry, PointerWork, StreamPreparation};
 use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceContext, TraceEventContext, TraceEventFamily,
     TracePointerContext, TracePointerPath, TraceRecordKind, TraceSequence, TraceSurfaceContext,
+    TraceTargetTransition,
     mounted::TargetStatus,
     runtime::{MandatoryTracePlan, ProcessApplicationActionOutcome, Runtime},
     trace::TraceRecordDraft,
@@ -198,6 +199,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    fn pointer_trace_context(work: &PointerWork) -> TracePointerContext {
+        TracePointerContext::event(
+            work.event.pointer_id(),
+            work.event.device_id(),
+            work.event.device_kind(),
+            work.event.phase(),
+        )
+    }
+
+    fn trace_pointer_path(&self, geometry: &PointerGeometry) -> TracePointerPath {
+        TracePointerPath::new(
+            geometry
+                .physical_path
+                .iter()
+                .map(|target| self.tree.trace_target(target))
+                .collect(),
+        )
+    }
+
     fn record_physical_pointer_observation(
         &mut self,
         work: &PointerWork,
@@ -210,27 +230,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !self.trace.is_enabled() {
             return parent;
         }
-        let pointer = TracePointerContext::event(
-            work.event.pointer_id(),
-            work.event.device_id(),
-            work.event.device_kind(),
-            work.event.phase(),
-        );
-        let physical_path = TracePointerPath::new(
-            geometry
-                .physical_path
-                .iter()
-                .map(|target| self.tree.trace_target(target))
-                .collect(),
-        );
         let context = TraceContext::pointer_observation(
             TraceEventContext::new(
                 TraceEventFamily::Pointer,
                 super::pointer_default_is_cancelable(work.event.phase()),
             ),
             TraceSurfaceContext::accepted(work.event.surface_context(), snapshot),
-            pointer,
-            physical_path,
+            Self::pointer_trace_context(work),
+            self.trace_pointer_path(geometry),
         );
         self.trace.record_draft(
             TraceRecordDraft::pointer_fact(
@@ -249,12 +256,60 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         )
     }
 
+    fn record_pointer_boundary_plan(
+        &mut self,
+        work: &PointerWork,
+        geometry: &PointerGeometry,
+        boundary_plan: &PointerBoundaryPlan,
+        parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let surface = geometry
+            .snapshot
+            .map(|snapshot| TraceSurfaceContext::accepted(work.event.surface_context(), snapshot));
+        let transition = TraceTargetTransition::new(
+            boundary_plan
+                .previous_target
+                .as_ref()
+                .map(|target| self.tree.trace_target(target)),
+            boundary_plan
+                .current_target
+                .as_ref()
+                .map(|target| self.tree.trace_target(target)),
+        );
+        let context = TraceContext::pointer_boundary_plan(
+            surface,
+            Self::pointer_trace_context(work),
+            self.trace_pointer_path(geometry),
+            transition,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerBoundaryBundlePlanned {
+                    notifications: boundary_plan.notifications.len(),
+                },
+                work.instant,
+                context,
+            )
+            .with_work_sequence(Some(work.sequence))
+            .with_causal_parent(parent)
+            .with_target(
+                boundary_plan
+                    .current_target
+                    .as_ref()
+                    .map(|target| self.tree.trace_target(target)),
+            ),
+        )
+    }
+
     pub(super) fn record_pointer_prelude(
         &mut self,
         work: &PointerWork,
         is_new: bool,
         geometry: &PointerGeometry,
-        boundary_notifications: usize,
+        boundary_plan: &PointerBoundaryPlan,
     ) -> Result<Option<TraceSequence>, ProcessApplicationActionOutcome> {
         if !self.trace.can_replace_reservation(
             work.trace_reservation,
@@ -315,17 +370,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             unreachable!("cancel requires an existing pointer stream")
         }
         parent = self.record_physical_pointer_observation(work, geometry, parent);
-        parent = self.trace.record(
-            TraceRecordKind::PointerBoundaryBundlePlanned {
-                pointer_id,
-                notifications: boundary_notifications,
-            },
-            Some(work.sequence),
-            parent,
-            None,
-            None,
-            None,
-        );
+        parent = self.record_pointer_boundary_plan(work, geometry, boundary_plan, parent);
         Ok(parent)
     }
 }
