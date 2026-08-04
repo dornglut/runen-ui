@@ -187,6 +187,9 @@ pub enum TraceRecordKind {
         pointer_id: PointerId,
         kind: PointerCaptureKind,
     },
+    PointerCaptureNotificationResolved {
+        kind: PointerCaptureKind,
+    },
     PointerBoundaryNotificationResolved {
         kind: PointerBoundaryKind,
     },
