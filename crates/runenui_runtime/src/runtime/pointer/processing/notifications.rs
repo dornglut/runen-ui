@@ -158,21 +158,33 @@ mod tests {
         assert_eq!(plan.previous_target.as_ref(), Some(&old_target));
         assert_eq!(plan.current_target.as_ref(), Some(&new_target));
         assert_eq!(plan.notifications.len(), 4);
-        assert_eq!(plan.notifications[0].event.kind(), PointerBoundaryKind::Leave);
+        assert_eq!(
+            plan.notifications[0].event.kind(),
+            PointerBoundaryKind::Leave
+        );
         assert_eq!(plan.notifications[0].event.target(), &old_target);
         assert_eq!(
             plan.notifications[0].event.related_target(),
             Some(&new_target)
         );
-        assert_eq!(plan.notifications[1].event.kind(), PointerBoundaryKind::Leave);
+        assert_eq!(
+            plan.notifications[1].event.kind(),
+            PointerBoundaryKind::Leave
+        );
         assert_eq!(plan.notifications[1].event.target(), &old_parent);
-        assert_eq!(plan.notifications[2].event.kind(), PointerBoundaryKind::Enter);
+        assert_eq!(
+            plan.notifications[2].event.kind(),
+            PointerBoundaryKind::Enter
+        );
         assert_eq!(plan.notifications[2].event.target(), &new_parent);
         assert_eq!(
             plan.notifications[2].event.related_target(),
             Some(&old_target)
         );
-        assert_eq!(plan.notifications[3].event.kind(), PointerBoundaryKind::Enter);
+        assert_eq!(
+            plan.notifications[3].event.kind(),
+            PointerBoundaryKind::Enter
+        );
         assert_eq!(plan.notifications[3].event.target(), &new_target);
     }
 
