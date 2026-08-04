@@ -96,10 +96,7 @@ impl TraceRecordDraft {
 
     /// Constructs one terminal or shutdown fact at its owning transition instant.
     #[must_use]
-    pub(crate) fn lifecycle_fact(
-        kind: TraceRecordKind,
-        logical_time: MonotonicInstant,
-    ) -> Self {
+    pub(crate) fn lifecycle_fact(kind: TraceRecordKind, logical_time: MonotonicInstant) -> Self {
         let mut draft = Self::new(kind);
         draft.logical_time = Some(logical_time);
         draft
