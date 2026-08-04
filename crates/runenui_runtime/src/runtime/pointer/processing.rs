@@ -134,10 +134,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 |target| self.tree.target_status(target) == crate::mounted::TargetStatus::Live,
             )
         } else {
-            PointerBoundaryPlan::unchanged(
-                previous_path.last().cloned(),
-                geometry.physical_target.clone(),
-            )
+            PointerBoundaryPlan::unchanged(previous_path)
         };
         let mut stream = prepared_stream.stream;
         stream.update_observation(
