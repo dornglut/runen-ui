@@ -401,10 +401,7 @@ impl TraceContext {
         }
     }
 
-    pub(crate) fn routed_snapshot(
-        event: TraceEventContext,
-        route: TraceRouteSnapshot,
-    ) -> Self {
+    pub(crate) fn routed_snapshot(event: TraceEventContext, route: TraceRouteSnapshot) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Routed {
                 event,
@@ -586,11 +583,15 @@ mod tests {
     fn routed_context_separates_event_and_route_ownership() {
         let event = TraceEventContext::new(TraceEventFamily::SemanticCommand, true);
         let started = TraceContext::routed_event(event);
-        let snapshot = TraceContext::routed_snapshot(event, TraceRouteSnapshot::new(Vec::new(), None));
+        let snapshot =
+            TraceContext::routed_snapshot(event, TraceRouteSnapshot::new(Vec::new(), None));
 
         assert_eq!(started.event(), Some(event));
         assert_eq!(started.route(), None);
         assert_eq!(snapshot.event(), Some(event));
-        assert_eq!(snapshot.route().map(TraceRouteSnapshot::targets), Some([].as_slice()));
+        assert_eq!(
+            snapshot.route().map(TraceRouteSnapshot::targets),
+            Some([].as_slice())
+        );
     }
 }
