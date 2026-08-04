@@ -154,6 +154,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &work,
             prepared_stream.is_new,
             geometry.physical_target.as_ref(),
+            &geometry.physical_path,
             geometry.snapshot,
             geometry.diagnosis,
             boundary_events.len(),
