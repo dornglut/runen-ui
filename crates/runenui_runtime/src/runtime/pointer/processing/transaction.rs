@@ -678,22 +678,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .pointer_registry
                 .replace(plan.pointer_id, plan.stream)
                 .map_err(map_commit_error),
-            StreamCommitKind::Close => self
-                .pointer_registry
-                .close(plan.pointer_id)
-                .ok_or(())
-                .map(|_| {
-                    parent = self.trace.record(
-                        TraceRecordKind::PointerStreamClosed {
-                            pointer_id: plan.pointer_id,
-                        },
-                        Some(sequence),
-                        parent,
-                        None,
-                        None,
-                        None,
-                    );
-                }),
+            StreamCommitKind::Close => {
+                self.pointer_registry
+                    .close(plan.pointer_id)
+                    .ok_or(())
+                    .map(|_| {
+                        parent = self.trace.record(
+                            TraceRecordKind::PointerStreamClosed {
+                                pointer_id: plan.pointer_id,
+                            },
+                            Some(sequence),
+                            parent,
+                            None,
+                            None,
+                            None,
+                        );
+                    })
+            }
         };
         if result.is_err() {
             let cancelled = self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
