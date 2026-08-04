@@ -96,20 +96,14 @@ impl TraceRecordDraft {
 
     /// Attaches the owning global work-envelope sequence.
     #[must_use]
-    pub(crate) const fn with_work_sequence(
-        mut self,
-        work_sequence: Option<WorkSequence>,
-    ) -> Self {
+    pub(crate) const fn with_work_sequence(mut self, work_sequence: Option<WorkSequence>) -> Self {
         self.work_sequence = work_sequence;
         self
     }
 
     /// Attaches the exact causal parent known at the producer boundary.
     #[must_use]
-    pub(crate) const fn with_causal_parent(
-        mut self,
-        causal_parent: Option<TraceSequence>,
-    ) -> Self {
+    pub(crate) const fn with_causal_parent(mut self, causal_parent: Option<TraceSequence>) -> Self {
         self.causal_parent = causal_parent;
         self
     }
