@@ -161,7 +161,6 @@ pub(crate) struct SchedulerObservation {
     pub(crate) publication_dirty: bool,
 }
 
-
 struct SurfaceTraceState {
     latest_redraw_revision: Option<u64>,
     latest_redraw_request: Option<TraceSequence>,
