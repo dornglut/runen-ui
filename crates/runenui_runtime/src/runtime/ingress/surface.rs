@@ -46,7 +46,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let trace = SurfaceCommandTrace::new(
             ingress,
-            TraceSurfaceContext::accepted(&context, map_snapshot_kind(resolution.snapshot_kind())),
+            accepted_surface_context(
+                &context,
+                map_snapshot_kind(resolution.snapshot_kind()),
+                resolution.hit_test_generation(),
+                resolution.coordinate_revision(),
+            ),
         );
         let target = resolution.into_target();
         match self.submit_surface_bound_command(&target, command, origin, trace) {
@@ -101,7 +106,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let trace = SurfaceCommandTrace::new(
             ingress,
-            TraceSurfaceContext::accepted(&context, map_snapshot_kind(selection.snapshot_kind())),
+            accepted_surface_context(
+                &context,
+                map_snapshot_kind(selection.snapshot_kind()),
+                selection.hit_test_generation(),
+                selection.coordinate_revision(),
+            ),
         );
         match self.submit_surface_bound_command(&target, command, origin, trace) {
             Ok(submission) => Ok(submission),
@@ -176,6 +186,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             },
         )
     }
+}
+
+fn accepted_surface_context(
+    context: &SurfaceInputContext,
+    snapshot: TraceSurfaceSnapshotKind,
+    hit_test_generation: u64,
+    coordinate_revision: u64,
+) -> TraceSurfaceContext {
+    debug_assert_eq!(context.hit_test_generation(), hit_test_generation);
+    debug_assert_eq!(context.coordinate_revision(), coordinate_revision);
+    TraceSurfaceContext::accepted(context, snapshot)
 }
 
 const fn map_snapshot_kind(kind: SurfaceSnapshotKind) -> TraceSurfaceSnapshotKind {
