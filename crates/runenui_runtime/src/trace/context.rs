@@ -644,9 +644,7 @@ impl TraceContext {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{
-        __runtime::RuntimeNamespace, PointerDeviceKind, PointerId, PointerPhase,
-    };
+    use runenui_core::{__runtime::RuntimeNamespace, PointerDeviceKind, PointerId, PointerPhase};
 
     use super::{
         TraceContext, TraceEventContext, TraceEventFamily, TracePointerContext, TracePointerPath,
@@ -695,8 +693,8 @@ mod tests {
         let surface_context = namespace
             .__runtime_surface_context(surface, 7, 9)
             .unwrap_or_else(|| unreachable!("surface context belongs to the test namespace"));
-        let pointer_id = PointerId::new(5)
-            .unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+        let pointer_id =
+            PointerId::new(5).unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
         let event = TraceEventContext::new(TraceEventFamily::Pointer, false);
         let pointer = TracePointerContext::event(
             pointer_id,
@@ -706,10 +704,7 @@ mod tests {
         );
         let context = TraceContext::pointer_observation(
             event,
-            TraceSurfaceContext::accepted(
-                &surface_context,
-                TraceSurfaceSnapshotKind::Current,
-            ),
+            TraceSurfaceContext::accepted(&surface_context, TraceSurfaceSnapshotKind::Current),
             pointer,
             TracePointerPath::new(Vec::new()),
         );
