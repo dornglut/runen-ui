@@ -94,8 +94,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             return Err(CommitError::Registry);
         }
-        let work_trace = PlannedWorkTrace::new(transaction_parent, trace_transaction.logical_time())
-            .with_pre_recorded_lineage(pre_recorded_cancellation_lineage);
+        let work_trace =
+            PlannedWorkTrace::new(transaction_parent, trace_transaction.logical_time())
+                .with_pre_recorded_lineage(pre_recorded_cancellation_lineage);
         let cancellation_lineage = self.commit_application_starts(
             &invalidated,
             starts,
