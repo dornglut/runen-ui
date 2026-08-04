@@ -1,5 +1,7 @@
 #![allow(refining_impl_trait)]
 
+use std::time::Duration;
+
 use runenui_core::{Effects, IntoEffects, NoHostProtocol, UiApp, View, text};
 use runenui_runtime::{AppRuntime, PumpBudget, TraceRecordKind};
 
@@ -20,6 +22,26 @@ impl UiApp for LogicalTimeApp {
 
     fn update(state: &mut Self::State, (): Self::Action) {
         *state += 1;
+    }
+}
+
+struct ApplicationTimeApp;
+
+impl UiApp for ApplicationTimeApp {
+    type State = usize;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(_: &Self::State) -> impl View<Self::Action> {
+        text("application time")
+    }
+
+    fn update(
+        state: &mut Self::State,
+        (): Self::Action,
+    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+        *state += 1;
+        Effects::redraw()
     }
 }
 
@@ -56,6 +78,54 @@ fn scheduler_work_facts_retain_monotonic_logical_time() {
         .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
         .collect();
     assert!(instants.windows(2).all(|pair| pair[0] <= pair[1]));
+}
+
+#[test]
+fn application_transaction_facts_share_one_accepted_instant() {
+    let mut runtime = AppRuntime::<ApplicationTimeApp>::mount(0);
+
+    let initial_instants: Vec<_> = runtime
+        .trace()
+        .records()
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::InitialApplicationTransactionStarted
+                    | TraceRecordKind::InitialEffectsCommitted { .. }
+                    | TraceRecordKind::SubscriptionDiffCommitted { .. }
+            )
+        })
+        .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
+        .collect();
+    assert_eq!(initial_instants.len(), 3);
+    assert!(initial_instants.iter().all(|instant| *instant == initial_instants[0]));
+
+    let retained_before_update = runtime.trace().len();
+    runtime
+        .advance_time(Duration::from_millis(1))
+        .unwrap_or_else(|_| unreachable!());
+    runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
+    runtime.pump(PumpBudget::new(1, 0, 0, 0));
+
+    let update_instants: Vec<_> = runtime
+        .trace()
+        .records()
+        .skip(retained_before_update)
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::ApplicationActionTransactionStarted
+                    | TraceRecordKind::ApplicationStateUpdated
+                    | TraceRecordKind::TreeReconciled
+                    | TraceRecordKind::SubscriptionDiffCommitted { .. }
+                    | TraceRecordKind::UpdateEffectsCommitted { .. }
+            )
+        })
+        .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
+        .collect();
+    assert_eq!(update_instants.len(), 5);
+    assert!(update_instants.iter().all(|instant| *instant == update_instants[0]));
+    assert!(update_instants[0] > initial_instants[0]);
 }
 
 #[cfg(feature = "internal-test-seams")]
