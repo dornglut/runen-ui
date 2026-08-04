@@ -9,8 +9,9 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
-    TraceEventFamily, TracePointerPath, TraceRecord, TraceRecordKind, TraceRouteSnapshot,
-    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetTransition,
+    TraceEventFamily, TracePointerContext, TracePointerPath, TraceRecord, TraceRecordKind,
+    TraceRouteSnapshot, TraceSurfaceContext, TraceSurfaceSnapshotKind, TraceTarget,
+    TraceTargetTransition,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -159,11 +160,10 @@ fn record<'a>(
 }
 
 fn trace_path(record: &TraceRecord) -> &[TraceTarget] {
-    record
-        .context()
-        .physical_path()
-        .map(TracePointerPath::targets)
-        .unwrap_or_else(|| unreachable!("pointer boundary fact owns its physical path"))
+    record.context().physical_path().map_or_else(
+        || unreachable!("pointer boundary fact owns its physical path"),
+        TracePointerPath::targets,
+    )
 }
 
 fn trace_route(record: &TraceRecord) -> &TraceRouteSnapshot {
@@ -180,7 +180,7 @@ fn trace_transition(record: &TraceRecord) -> &TraceTargetTransition {
         .unwrap_or_else(|| unreachable!("pointer boundary fact owns exact transition"))
 }
 
-fn assert_plan_identity(bundle: &TraceRecord, pointer_id: &PointerId) {
+fn assert_plan_identity(bundle: &TraceRecord, pointer_id: PointerId) {
     let event = bundle
         .context()
         .event()
@@ -193,11 +193,11 @@ fn assert_plan_identity(bundle: &TraceRecord, pointer_id: &PointerId) {
         bundle
             .context()
             .pointer()
-            .map(|pointer| pointer.pointer_id()),
-        Some(pointer_id)
+            .map(TracePointerContext::pointer_id),
+        Some(&pointer_id)
     );
     assert_eq!(
-        bundle.context().surface().map(|surface| surface.snapshot()),
+        bundle.context().surface().map(TraceSurfaceContext::snapshot),
         Some(Some(TraceSurfaceSnapshotKind::Current))
     );
 }
@@ -237,7 +237,7 @@ fn initial_enter_reconstructs_empty_previous_and_exact_current_path() {
         )
     });
 
-    assert_plan_identity(bundle, &pointer_id);
+    assert_plan_identity(bundle, pointer_id);
     assert!(trace_path(bundle).is_empty());
     assert_eq!(
         trace_path(physical)
@@ -309,7 +309,7 @@ fn leave_reconstructs_exact_previous_and_empty_current_path() {
         )
     });
 
-    assert_plan_identity(bundle, &pointer_id);
+    assert_plan_identity(bundle, pointer_id);
     assert_eq!(
         trace_path(bundle).first().map(TraceTarget::mounted_node_id),
         Some(&harness.target)
