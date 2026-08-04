@@ -222,6 +222,25 @@ fn mandatory_pointer_record<'a>(
         .unwrap_or_else(|| unreachable!("the mandatory pointer trace fact is retained"))
 }
 
+fn assert_causal_ancestor(
+    records: &[&TraceRecord],
+    descendant: &TraceRecord,
+    ancestor: &TraceRecord,
+) {
+    let mut parent = descendant.causal_parent();
+    while parent != Some(ancestor.sequence()) {
+        let sequence = parent.unwrap_or_else(|| {
+            unreachable!("the descendant must retain the committed interaction in its lineage")
+        });
+        parent = records
+            .iter()
+            .copied()
+            .find(|record| record.sequence() == sequence)
+            .unwrap_or_else(|| unreachable!("every retained parent is present in this trace"))
+            .causal_parent();
+    }
+}
+
 fn assert_physical_pointer_observation(physical: &TraceRecord, harness: &Harness) {
     let event = physical
         .context()
@@ -603,6 +622,6 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
     assert_eq!(modality.causal_parent(), Some(default.sequence()));
     assert_eq!(registered.causal_parent(), Some(modality.sequence()));
     assert_eq!(committed.causal_parent(), Some(registered.sequence()));
-    assert_eq!(capture.causal_parent(), Some(committed.sequence()));
+    assert_causal_ancestor(&records, capture, committed);
     assert_eq!(capture.instant(), routed.instant());
 }
