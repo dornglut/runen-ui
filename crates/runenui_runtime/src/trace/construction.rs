@@ -3,8 +3,8 @@ use runenui_core::{CommandOrigin, MonotonicInstant};
 use crate::{MountedNodeId, ReconciliationGeneration, WorkSequence};
 
 use super::{
-    TraceContext, TraceRecord, TraceRecordKind, TraceSequence, TraceSurfaceContext, TraceTarget,
-    TraceWorkIdentity,
+    TraceContext, TracePublicationContext, TraceRecord, TraceRecordKind, TraceSequence,
+    TraceSurfaceContext, TraceTarget, TraceWorkIdentity,
 };
 
 /// Named reconciliation facts owned by one trace-record construction.
@@ -106,6 +106,17 @@ impl TraceRecordDraft {
         draft
     }
 
+    /// Constructs one redraw-control fact at the owning dirty/publication instant.
+    #[must_use]
+    pub(crate) const fn redraw_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft
+    }
+
     /// Constructs one application-transaction fact at the transaction's accepted instant.
     #[must_use]
     pub(crate) const fn application_fact(
@@ -140,6 +151,19 @@ impl TraceRecordDraft {
         let mut draft = Self::new(kind);
         draft.logical_time = Some(logical_time);
         draft.context = TraceContext::surface_record(surface);
+        draft
+    }
+
+    /// Constructs one renderer-facing publication fact with exact displayed identity.
+    #[must_use]
+    pub(crate) fn publication_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        publication: TracePublicationContext,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft.context = TraceContext::publication_record(publication);
         draft
     }
 
