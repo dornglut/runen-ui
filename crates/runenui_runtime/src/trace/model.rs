@@ -168,12 +168,7 @@ pub enum TraceRecordKind {
     PointerStreamClosed {
         pointer_id: PointerId,
     },
-    PointerPhysicalTargetResolved {
-        pointer_id: PointerId,
-        snapshot: TraceSurfaceSnapshotKind,
-        hit_test_generation: u64,
-        coordinate_revision: u64,
-    },
+    PointerPhysicalTargetResolved,
     PointerBoundaryBundlePlanned {
         pointer_id: PointerId,
         notifications: usize,
