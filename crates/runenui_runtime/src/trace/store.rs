@@ -6,9 +6,7 @@ use runenui_core::{CommandOrigin, MonotonicInstant};
 use super::{
     admission::{MandatoryTracePlan, TraceReservation},
     construction::{TraceReconciliation, TraceRecordDraft, TraceRoutedEndpoints},
-    model::{
-        TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget, TraceWorkIdentity,
-    },
+    model::{TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget},
 };
 use crate::{MountedNodeId, ReconciliationGeneration, WorkSequence};
 
@@ -223,27 +221,6 @@ impl Trace {
             current_target.cloned(),
             origin,
         ));
-        self.record_draft(draft)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn record_work(
-        &mut self,
-        kind: TraceRecordKind,
-        work_sequence: Option<WorkSequence>,
-        causal_parent: Option<TraceSequence>,
-        reconciliation_before: Option<ReconciliationGeneration>,
-        reconciliation_after: Option<ReconciliationGeneration>,
-        target: Option<TraceTarget>,
-        work: TraceWorkIdentity,
-    ) -> Option<TraceSequence> {
-        let mut draft = TraceRecordDraft::new(kind);
-        draft.work_sequence = work_sequence;
-        draft.causal_parent = causal_parent;
-        draft.reconciliation =
-            TraceReconciliation::new(reconciliation_before, reconciliation_after);
-        draft.target = target;
-        draft.work = Some(work);
         self.record_draft(draft)
     }
 
