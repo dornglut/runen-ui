@@ -208,11 +208,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         )
     }
 
-    fn trace_pointer_path(&self, geometry: &PointerGeometry) -> TracePointerPath {
+    fn trace_pointer_path(&self, path: &[MountedNodeId]) -> TracePointerPath {
         TracePointerPath::new(
-            geometry
-                .physical_path
-                .iter()
+            path.iter()
                 .map(|target| self.tree.trace_target(target))
                 .collect(),
         )
@@ -237,7 +235,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ),
             TraceSurfaceContext::accepted(work.event.surface_context(), snapshot),
             Self::pointer_trace_context(work),
-            self.trace_pointer_path(geometry),
+            self.trace_pointer_path(&geometry.physical_path),
         );
         self.trace.record_draft(
             TraceRecordDraft::pointer_fact(
@@ -282,7 +280,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let context = TraceContext::pointer_boundary_plan(
             surface,
             Self::pointer_trace_context(work),
-            self.trace_pointer_path(geometry),
+            self.trace_pointer_path(&boundary_plan.previous_path),
             transition,
         );
         self.trace.record_draft(
