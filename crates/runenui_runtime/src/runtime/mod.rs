@@ -180,7 +180,7 @@ impl SurfaceTraceState {
         }
     }
 
-    fn note_request(&mut self, revision: u64, request: Option<TraceSequence>) {
+    const fn note_request(&mut self, revision: u64, request: Option<TraceSequence>) {
         self.latest_redraw_revision = Some(revision);
         self.latest_redraw_request = request;
     }
