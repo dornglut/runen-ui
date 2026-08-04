@@ -479,7 +479,8 @@ impl TraceContext {
             Some(
                 TraceContextData::Pointer {
                     target_transition, ..
-                } | TraceContextData::Focus {
+                }
+                | TraceContextData::Focus {
                     target_transition, ..
                 },
             ) => target_transition.as_ref(),
