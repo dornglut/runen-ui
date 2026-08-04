@@ -229,6 +229,7 @@ pub enum TraceRecordKind {
         ingress: TraceSurfaceIngressKind,
         outcome: TraceSurfaceRejection,
     },
+    SurfacePublished,
     CommandProcessingRejected {
         outcome: TraceTargetRejection,
     },
