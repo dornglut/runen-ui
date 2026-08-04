@@ -315,6 +315,13 @@ pub struct TraceTargetTransition {
 }
 
 impl TraceTargetTransition {
+    pub(crate) const fn new(
+        previous: Option<TraceTarget>,
+        current: Option<TraceTarget>,
+    ) -> Self {
+        Self { previous, current }
+    }
+
     /// Returns the previous exact target endpoint.
     #[must_use]
     pub const fn previous(&self) -> Option<&TraceTarget> {
@@ -472,23 +479,79 @@ impl TraceContext {
         }
     }
 
+    fn pointer_record(
+        event: TraceEventContext,
+        surface: Option<TraceSurfaceContext>,
+        pointer: TracePointerContext,
+        route: Option<TraceRouteSnapshot>,
+        physical_path: TracePointerPath,
+        target_transition: Option<TraceTargetTransition>,
+        delivery: Option<TraceDeliveryOutcome>,
+    ) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Pointer {
+                event: Some(event),
+                surface,
+                pointer,
+                route,
+                physical_path: Some(physical_path),
+                target_transition,
+                delivery,
+            })),
+        }
+    }
+
     pub(crate) fn pointer_observation(
         event: TraceEventContext,
         surface: TraceSurfaceContext,
         pointer: TracePointerContext,
         physical_path: TracePointerPath,
     ) -> Self {
-        Self {
-            data: Some(Box::new(TraceContextData::Pointer {
-                event: Some(event),
-                surface: Some(surface),
-                pointer,
-                route: None,
-                physical_path: Some(physical_path),
-                target_transition: None,
-                delivery: None,
-            })),
-        }
+        Self::pointer_record(
+            event,
+            Some(surface),
+            pointer,
+            None,
+            physical_path,
+            None,
+            None,
+        )
+    }
+
+    pub(crate) fn pointer_boundary_plan(
+        surface: Option<TraceSurfaceContext>,
+        pointer: TracePointerContext,
+        physical_path: TracePointerPath,
+        target_transition: TraceTargetTransition,
+    ) -> Self {
+        Self::pointer_record(
+            TraceEventContext::new(TraceEventFamily::PointerBoundary, false),
+            surface,
+            pointer,
+            None,
+            physical_path,
+            Some(target_transition),
+            None,
+        )
+    }
+
+    pub(crate) fn pointer_boundary_notification(
+        surface: TraceSurfaceContext,
+        pointer: TracePointerContext,
+        route: TraceRouteSnapshot,
+        physical_path: TracePointerPath,
+        target_transition: TraceTargetTransition,
+        delivery: TraceDeliveryOutcome,
+    ) -> Self {
+        Self::pointer_record(
+            TraceEventContext::new(TraceEventFamily::PointerBoundary, false),
+            Some(surface),
+            pointer,
+            Some(route),
+            physical_path,
+            Some(target_transition),
+            Some(delivery),
+        )
     }
 
     pub(crate) fn publication_record(publication: TracePublicationContext) -> Self {
@@ -647,8 +710,9 @@ mod tests {
     use runenui_core::{__runtime::RuntimeNamespace, PointerDeviceKind, PointerId, PointerPhase};
 
     use super::{
-        TraceContext, TraceEventContext, TraceEventFamily, TracePointerContext, TracePointerPath,
-        TraceRouteSnapshot, TraceSurfaceContext,
+        TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
+        TracePointerContext, TracePointerPath, TraceRouteSnapshot, TraceSurfaceContext,
+        TraceTargetTransition,
     };
     use crate::TraceSurfaceSnapshotKind;
 
@@ -722,5 +786,41 @@ mod tests {
             context.physical_path().map(TracePointerPath::targets),
             Some([].as_slice())
         );
+    }
+
+    #[test]
+    fn boundary_notification_owns_transition_route_related_endpoint_and_outcome() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let surface_context = namespace
+            .__runtime_surface_context(surface, 3, 4)
+            .unwrap_or_else(|| unreachable!("surface context belongs to the test namespace"));
+        let pointer_id =
+            PointerId::new(8).unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+        let pointer = TracePointerContext::event(
+            pointer_id,
+            None,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+        );
+        let context = TraceContext::pointer_boundary_notification(
+            TraceSurfaceContext::accepted(&surface_context, TraceSurfaceSnapshotKind::Current),
+            pointer,
+            TraceRouteSnapshot::new(Vec::new(), None),
+            TracePointerPath::new(Vec::new()),
+            TraceTargetTransition::new(None, None),
+            TraceDeliveryOutcome::Suppressed,
+        );
+
+        assert_eq!(
+            context.event().map(TraceEventContext::family),
+            Some(TraceEventFamily::PointerBoundary)
+        );
+        assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Suppressed));
+        assert_eq!(
+            context.route().map(TraceRouteSnapshot::targets),
+            Some([].as_slice())
+        );
+        assert!(context.target_transition().is_some());
     }
 }
