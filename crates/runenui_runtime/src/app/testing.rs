@@ -48,7 +48,7 @@ impl<App: UiApp> AppRuntime<App> {
 
     #[cfg(feature = "internal-test-seams")]
     #[doc(hidden)]
-    pub const fn __routed_trace_reservations_for_test(&self) -> usize {
+    pub fn __routed_trace_reservations_for_test(&self) -> usize {
         self.runtime.routed_trace_reservations_for_test()
     }
 
