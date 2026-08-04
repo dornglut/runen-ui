@@ -20,7 +20,7 @@ use crate::{
     runtime::{ProcessApplicationActionOutcome, Runtime},
     trace::TraceReservation,
 };
-pub(super) use notifications::{PointerBoundaryNotification, PointerBoundaryPlan};
+use notifications::{PointerBoundaryNotification, PointerBoundaryPlan};
 
 pub(super) struct PointerWork {
     pub(super) sequence: WorkSequence,
