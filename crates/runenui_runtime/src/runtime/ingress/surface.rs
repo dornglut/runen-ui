@@ -2,8 +2,8 @@ use runenui_core::{CommandOrigin, HostProtocol, SemanticCommand, SurfaceInputCon
 
 use crate::{
     CommandSubmission, LogicalPoint, MountedNodeId, SubmitCommandErrorKind,
-    SubmitSurfaceCommandError, SubmitSurfaceCommandErrorKind, TraceRecordKind,
-    TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind,
+    SubmitSurfaceCommandError, SubmitSurfaceCommandErrorKind, TraceRecordKind, TraceSurfaceContext,
+    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind,
     UnacceptedSurfaceCommand,
     runtime::{
         Runtime,
@@ -46,10 +46,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let trace = SurfaceCommandTrace::new(
             ingress,
-            TraceSurfaceContext::accepted(
-                &context,
-                map_snapshot_kind(resolution.snapshot_kind()),
-            ),
+            TraceSurfaceContext::accepted(&context, map_snapshot_kind(resolution.snapshot_kind())),
         );
         let target = resolution.into_target();
         match self.submit_surface_bound_command(&target, command, origin, trace) {
@@ -104,10 +101,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let trace = SurfaceCommandTrace::new(
             ingress,
-            TraceSurfaceContext::accepted(
-                &context,
-                map_snapshot_kind(selection.snapshot_kind()),
-            ),
+            TraceSurfaceContext::accepted(&context, map_snapshot_kind(selection.snapshot_kind())),
         );
         match self.submit_surface_bound_command(&target, command, origin, trace) {
             Ok(submission) => Ok(submission),
