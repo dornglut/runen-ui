@@ -50,15 +50,15 @@ pub(super) struct PointerGeometry {
     pub(super) diagnosis: Option<crate::TracePointerRejection>,
 }
 
-pub(super) struct PreparedPointer {
-    pub(super) work: PointerWork,
-    pub(super) is_new: bool,
-    pub(super) stream: PointerStreamState,
-    pub(super) previous_capture_owner: Option<MountedNodeId>,
-    pub(super) geometry: PointerGeometry,
-    pub(super) boundary_plan: PointerBoundaryPlan,
-    pub(super) routed_target: Option<MountedNodeId>,
-    pub(super) parent: Option<TraceSequence>,
+struct PreparedPointer {
+    work: PointerWork,
+    is_new: bool,
+    stream: PointerStreamState,
+    previous_capture_owner: Option<MountedNodeId>,
+    geometry: PointerGeometry,
+    boundary_plan: PointerBoundaryPlan,
+    routed_target: Option<MountedNodeId>,
+    parent: Option<TraceSequence>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -128,7 +128,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let boundary_plan = if geometry.snapshot.is_some() {
             notifications::plan_boundary_transition(
                 work.event.pointer_id(),
-                &previous_path,
+                previous_path,
                 &geometry.physical_path,
                 work.event.surface_context(),
                 |target| self.tree.target_status(target) == crate::mounted::TargetStatus::Live,
