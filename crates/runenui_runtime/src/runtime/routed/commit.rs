@@ -2,8 +2,7 @@ use runenui_core::{FocusReason, HostProtocol, MonotonicInstant, WidgetInvalidati
 
 use super::{
     super::{
-        CollectedRoutedOutput, Runtime, application::PlannedWorkTrace,
-        mounted_effect_into_effect,
+        CollectedRoutedOutput, Runtime, application::PlannedWorkTrace, mounted_effect_into_effect,
     },
     transaction::RoutedTransaction,
 };
