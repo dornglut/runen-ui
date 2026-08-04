@@ -11,19 +11,19 @@ pub(super) struct PointerBoundaryNotification {
 }
 
 pub(super) struct PointerBoundaryPlan {
+    pub(super) previous_path: Vec<MountedNodeId>,
     pub(super) previous_target: Option<MountedNodeId>,
     pub(super) current_target: Option<MountedNodeId>,
     pub(super) notifications: Vec<PointerBoundaryNotification>,
 }
 
 impl PointerBoundaryPlan {
-    pub(super) fn unchanged(
-        previous_target: Option<MountedNodeId>,
-        current_target: Option<MountedNodeId>,
-    ) -> Self {
+    pub(super) fn unchanged(previous_path: Vec<MountedNodeId>) -> Self {
+        let target = previous_path.last().cloned();
         Self {
-            previous_target,
-            current_target,
+            previous_path,
+            previous_target: target.clone(),
+            current_target: target,
             notifications: Vec::new(),
         }
     }
@@ -86,6 +86,7 @@ pub(super) fn plan_boundary_transition(
         .collect::<Vec<_>>();
     debug_assert!(notifications.len() <= capacity);
     PointerBoundaryPlan {
+        previous_path: previous_path.to_vec(),
         previous_target,
         current_target,
         notifications,
@@ -146,15 +147,17 @@ mod tests {
             .unwrap_or_else(|| unreachable!("the surface belongs to the namespace"));
         let pointer_id = PointerId::new(7)
             .unwrap_or_else(|| unreachable!("the test pointer identity is non-zero"));
+        let previous_path = vec![root.clone(), old_parent.clone(), old_target.clone()];
 
         let plan = plan_boundary_transition(
             pointer_id,
-            &[root.clone(), old_parent.clone(), old_target.clone()],
+            &previous_path,
             &[root, new_parent.clone(), new_target.clone()],
             &context,
             |_| true,
         );
 
+        assert_eq!(plan.previous_path, previous_path);
         assert_eq!(plan.previous_target.as_ref(), Some(&old_target));
         assert_eq!(plan.current_target.as_ref(), Some(&new_target));
         assert_eq!(plan.notifications.len(), 4);
@@ -208,6 +211,7 @@ mod tests {
             |target| target == &live,
         );
 
+        assert_eq!(plan.previous_path, [stale]);
         assert_eq!(plan.notifications.len(), 2);
         assert_eq!(
             plan.notifications[0].delivery,
