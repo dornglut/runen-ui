@@ -280,20 +280,17 @@ mod tests {
         assert_eq!(plan.notifications.len(), 2);
         assert_eq!(plan.notifications[0].event.kind(), PointerCaptureKind::Lost);
         assert_eq!(plan.notifications[0].event.target(), &previous);
-        assert_eq!(
-            plan.notifications[0].event.related_owner(),
-            Some(&current)
-        );
+        assert_eq!(plan.notifications[0].event.related_owner(), Some(&current));
         assert_eq!(
             plan.notifications[0].delivery,
             TraceDeliveryOutcome::Suppressed
         );
-        assert_eq!(plan.notifications[1].event.kind(), PointerCaptureKind::Gained);
-        assert_eq!(plan.notifications[1].event.target(), &current);
         assert_eq!(
-            plan.notifications[1].event.related_owner(),
-            Some(&previous)
+            plan.notifications[1].event.kind(),
+            PointerCaptureKind::Gained
         );
+        assert_eq!(plan.notifications[1].event.target(), &current);
+        assert_eq!(plan.notifications[1].event.related_owner(), Some(&previous));
         assert_eq!(
             plan.notifications[1].delivery,
             TraceDeliveryOutcome::Delivered
