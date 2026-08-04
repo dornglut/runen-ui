@@ -202,15 +202,62 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    fn record_physical_pointer_observation(
+        &mut self,
+        work: &PointerWork,
+        geometry: &PointerGeometry,
+        parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        let Some((snapshot, _, _)) = geometry.snapshot else {
+            return parent;
+        };
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let pointer = TracePointerContext::event(
+            work.event.pointer_id(),
+            work.event.device_id(),
+            work.event.device_kind(),
+            work.event.phase(),
+        );
+        let physical_path = TracePointerPath::new(
+            geometry
+                .physical_path
+                .iter()
+                .map(|target| self.tree.trace_target(target))
+                .collect(),
+        );
+        let context = TraceContext::pointer_observation(
+            TraceEventContext::new(
+                TraceEventFamily::Pointer,
+                super::pointer_default_is_cancelable(work.event.phase()),
+            ),
+            TraceSurfaceContext::accepted(work.event.surface_context(), snapshot),
+            pointer,
+            physical_path,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerPhysicalTargetResolved,
+                work.instant,
+                context,
+            )
+            .with_work_sequence(Some(work.sequence))
+            .with_causal_parent(parent)
+            .with_target(
+                geometry
+                    .physical_target
+                    .as_ref()
+                    .map(|target| self.tree.trace_target(target)),
+            ),
+        )
+    }
+
     pub(super) fn record_pointer_prelude(
         &mut self,
         work: &PointerWork,
         is_new: bool,
-        physical_target: Option<&MountedNodeId>,
-        physical_path: &[MountedNodeId],
-        snapshot: Option<PointerSnapshot>,
-        diagnosis: Option<crate::TracePointerRejection>,
+        geometry: &PointerGeometry,
         boundary_notifications: usize,
     ) -> Result<Option<TraceSequence>, ProcessApplicationActionOutcome> {
         if !self.trace.can_replace_reservation(
@@ -255,7 +302,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 None,
             );
         }
-        if let Some(outcome) = diagnosis {
+        if let Some(outcome) = geometry.diagnosis {
             parent = self.trace.record(
                 TraceRecordKind::PointerContextUnavailable {
                     pointer_id,
@@ -268,43 +315,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 None,
             );
         }
-        if let Some((snapshot, _, _)) = snapshot {
-            if self.trace.is_enabled() {
-                let pointer = TracePointerContext::event(
-                    pointer_id,
-                    work.event.device_id(),
-                    work.event.device_kind(),
-                    work.event.phase(),
-                );
-                let physical_path = TracePointerPath::new(
-                    physical_path
-                        .iter()
-                        .map(|target| self.tree.trace_target(target))
-                        .collect(),
-                );
-                let context = TraceContext::pointer_observation(
-                    TraceEventContext::new(
-                        TraceEventFamily::Pointer,
-                        super::pointer_default_is_cancelable(work.event.phase()),
-                    ),
-                    TraceSurfaceContext::accepted(work.event.surface_context(), snapshot),
-                    pointer,
-                    physical_path,
-                );
-                parent = self.trace.record_draft(
-                    TraceRecordDraft::pointer_fact(
-                        TraceRecordKind::PointerPhysicalTargetResolved,
-                        work.instant,
-                        context,
-                    )
-                    .with_work_sequence(Some(work.sequence))
-                    .with_causal_parent(parent)
-                    .with_target(physical_target.map(|target| self.tree.trace_target(target))),
-                );
-            }
-        } else if is_new {
+        if geometry.snapshot.is_none() && is_new {
             unreachable!("cancel requires an existing pointer stream")
         }
+        parent = self.record_physical_pointer_observation(work, geometry, parent);
         parent = self.trace.record(
             TraceRecordKind::PointerBoundaryBundlePlanned {
                 pointer_id,
