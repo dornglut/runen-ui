@@ -73,6 +73,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.record_work_fact_at(kind, None, causal_parent, identity, logical_time)
     }
 
+    pub(in crate::runtime) fn record_work_fact_with_parent_at(
+        &mut self,
+        kind: TraceRecordKind,
+        causal_parent: Option<TraceSequence>,
+        identity: TraceWorkIdentity,
+        logical_time: MonotonicInstant,
+    ) -> Option<TraceSequence> {
+        self.record_work_fact_at(kind, None, causal_parent, identity, logical_time)
+    }
+
     fn record_work_fact_at(
         &mut self,
         kind: TraceRecordKind,
