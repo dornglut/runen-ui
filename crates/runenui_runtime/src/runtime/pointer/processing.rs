@@ -131,9 +131,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 &previous_path,
                 &geometry.physical_path,
                 work.event.surface_context(),
-                |target| {
-                    self.tree.target_status(target) == crate::mounted::TargetStatus::Live
-                },
+                |target| self.tree.target_status(target) == crate::mounted::TargetStatus::Live,
             )
         } else {
             PointerBoundaryPlan::unchanged(
