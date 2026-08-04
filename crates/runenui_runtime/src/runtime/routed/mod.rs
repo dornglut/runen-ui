@@ -12,7 +12,8 @@ use runenui_core::{
 use super::Runtime;
 use crate::{
     MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily, TraceRecordKind,
-    TraceRouteSnapshot, TraceRoutedIntegrityFailure, queue::SemanticCommandEnvelope,
+    TraceRouteSnapshot, TraceRoutedIntegrityFailure,
+    queue::SemanticCommandEnvelope,
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
 pub(crate) use dispatch::PointerDispatchFacts;
@@ -131,7 +132,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         admission: admission::RoutedTransactionAdmissionPlan,
     ) -> RoutedTransaction<Action> {
         let target_trace = self.tree.trace_target(&facts.target);
-        let (started, parent) = if self.trace.is_enabled() {
+        let parent = if self.trace.is_enabled() {
             let started = self.trace.record_draft(
                 TraceRecordDraft::routed_fact(
                     TraceRecordKind::RoutedEventStarted,
@@ -147,7 +148,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .iter()
                 .map(|target| self.tree.trace_target(target))
                 .collect();
-            let parent = self.trace.record_draft(
+            self.trace.record_draft(
                 TraceRecordDraft::routed_fact(
                     TraceRecordKind::RouteSnapshotCreated {
                         invocations: admission.route_invocations,
@@ -162,12 +163,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .with_causal_parent(started)
                 .with_target(Some(target_trace.clone()))
                 .with_routed_endpoints(facts.target.clone(), None, facts.origin),
-            );
-            (started, parent)
+            )
         } else {
-            (None, None)
+            None
         };
-        let _ = started;
         RoutedTransaction {
             sequence: facts.sequence,
             target: facts.target,
