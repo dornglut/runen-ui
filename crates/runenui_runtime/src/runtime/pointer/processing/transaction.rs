@@ -83,13 +83,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 },
             );
         };
-        let event = pointer_event_context(routed_target.is_some(), work.event.phase());
         let facts = RoutedIngressFacts::new(
             work.sequence,
             anchor,
             CommandOrigin::__runtime_pointer(),
             work.instant,
-            event,
+            pointer_event_context(routed_target.is_some(), work.event.phase()),
             parent,
             TraceReservation::continuation(),
         );
