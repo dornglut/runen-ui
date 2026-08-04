@@ -9,6 +9,7 @@ mod model;
 mod store;
 
 pub(crate) use admission::{MandatoryTracePlan, TraceReservation};
+pub(crate) use construction::TraceRecordDraft;
 pub use context::{
     TraceActionCategory, TraceActionIdentity, TraceCompositionContext, TraceCompositionRange,
     TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily, TracePointerContext,
