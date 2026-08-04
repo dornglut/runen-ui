@@ -3,8 +3,9 @@
 use runenui_core::{
     Element, EventContext, LogicalDelta, LogicalLength, LogicalPoint, NoHostProtocol,
     PointerBoundaryKind, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, StyleTokens, UiApp, UiEvent, View, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetMeasure,
+    PointerPhase, StyleTokens, SurfaceInputContext, UiApp, UiEvent, View, Widget,
+    WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
+    WidgetMeasure, WorkSequence,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
@@ -72,20 +73,15 @@ impl Widget<Action> for Probe {
     }
 }
 
-fn record<'a>(
-    records: &[&'a TraceRecord],
-    sequence: runenui_core::WorkSequence,
-    predicate: impl Fn(&TraceRecordKind) -> bool,
-) -> &'a TraceRecord {
-    records
-        .iter()
-        .copied()
-        .find(|record| record.work_sequence() == Some(sequence) && predicate(record.kind()))
-        .unwrap_or_else(|| unreachable!("required pointer boundary fact is retained"))
+struct Harness {
+    runtime: AppRuntime<App>,
+    context: SurfaceInputContext,
+    target: runenui_core::MountedNodeId,
+    inside: LogicalPoint,
+    outside: LogicalPoint,
 }
 
-#[test]
-fn initial_enter_reconstructs_exact_boundary_plan_and_delivery() {
+fn harness() -> Harness {
     let mut runtime = AppRuntime::<App>::mount(false);
     let tokens = StyleTokens::default();
     let size = LogicalSize::try_new(64.0, 64.0)
@@ -98,46 +94,136 @@ fn initial_enter_reconstructs_exact_boundary_plan_and_delivery() {
         .unwrap_or_else(|| unreachable!("root is published"));
     let target = node.id().clone();
     let bounds = node.bounds();
-    let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
+    let inside = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
         .unwrap_or_else(|_| unreachable!("published bounds are finite"));
-    let pointer_id = PointerId::new(1)
+    let outside = LogicalPoint::new(63.0, 63.0)
+        .unwrap_or_else(|_| unreachable!("test surface coordinates are finite"));
+    Harness {
+        runtime,
+        context: publication.input_context().clone(),
+        target,
+        inside,
+        outside,
+    }
+}
+
+fn pointer_event(
+    harness: &Harness,
+    pointer_id: u64,
+    phase: PointerPhase,
+    point: LogicalPoint,
+) -> PointerEvent {
+    let pointer_id = PointerId::new(pointer_id)
         .unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
     let event = PointerEvent::new(
         pointer_id,
         PointerDeviceKind::Mouse,
-        PointerPhase::Down,
+        phase,
         point,
-        publication.input_context().clone(),
+        harness.context.clone(),
     )
-    .with_changed_button(PointerButton::Primary)
     .with_buttons(PointerButtons::new([PointerButton::Primary]))
     .with_scroll_delta(LogicalDelta::ZERO);
+    if phase == PointerPhase::Down {
+        event.with_changed_button(PointerButton::Primary)
+    } else {
+        event
+    }
+}
 
-    let submission = runtime
+fn submit_and_pump(harness: &mut Harness, event: PointerEvent) -> WorkSequence {
+    let submission = harness
+        .runtime
         .submit_pointer(event)
         .unwrap_or_else(|_| unreachable!("pointer submission is accepted"));
-    let report = runtime.pump(PumpBudget::new(
+    let report = harness.runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,
         usize::MAX,
         usize::MAX,
     ));
     assert!(report.is_quiescent());
+    submission.sequence()
+}
 
-    let records = runtime.trace().records().collect::<Vec<_>>();
-    let physical = record(&records, submission.sequence(), |kind| {
+fn record<'a>(
+    records: &[&'a TraceRecord],
+    sequence: WorkSequence,
+    predicate: impl Fn(&TraceRecordKind) -> bool,
+) -> &'a TraceRecord {
+    records
+        .iter()
+        .copied()
+        .find(|record| record.work_sequence() == Some(sequence) && predicate(record.kind()))
+        .unwrap_or_else(|| unreachable!("required pointer boundary fact is retained"))
+}
+
+fn trace_path(record: &TraceRecord) -> &[TraceTarget] {
+    record
+        .context()
+        .physical_path()
+        .map(TracePointerPath::targets)
+        .unwrap_or_else(|| unreachable!("pointer boundary fact owns its physical path"))
+}
+
+fn trace_route(record: &TraceRecord) -> &TraceRouteSnapshot {
+    record
+        .context()
+        .route()
+        .unwrap_or_else(|| unreachable!("resolved boundary owns target-only route"))
+}
+
+fn trace_transition(record: &TraceRecord) -> &TraceTargetTransition {
+    record
+        .context()
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("pointer boundary fact owns exact transition"))
+}
+
+fn assert_plan_identity(bundle: &TraceRecord, pointer_id: &PointerId) {
+    let event = bundle
+        .context()
+        .event()
+        .unwrap_or_else(|| unreachable!("boundary plan owns event classification"));
+    assert_eq!(event.family(), TraceEventFamily::PointerBoundary);
+    assert!(!event.is_cancelable());
+    assert_eq!(bundle.context().delivery(), None);
+    assert_eq!(bundle.context().route(), None);
+    assert_eq!(
+        bundle
+            .context()
+            .pointer()
+            .map(|pointer| pointer.pointer_id()),
+        Some(pointer_id)
+    );
+    assert_eq!(
+        bundle.context().surface().map(|surface| surface.snapshot()),
+        Some(Some(TraceSurfaceSnapshotKind::Current))
+    );
+}
+
+#[test]
+fn initial_enter_reconstructs_empty_previous_and_exact_current_path() {
+    let mut harness = harness();
+    let pointer_id = PointerId::new(1)
+        .unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+    let event = pointer_event(&harness, pointer_id.get(), PointerPhase::Down, harness.inside);
+    let sequence = submit_and_pump(&mut harness, event);
+
+    let records = harness.runtime.trace().records().collect::<Vec<_>>();
+    let physical = record(&records, sequence, |kind| {
         matches!(kind, TraceRecordKind::PointerPhysicalTargetResolved)
     });
-    let bundle = record(&records, submission.sequence(), |kind| {
+    let bundle = record(&records, sequence, |kind| {
         matches!(
             kind,
             TraceRecordKind::PointerBoundaryBundlePlanned { notifications: 1 }
         )
     });
-    let routed = record(&records, submission.sequence(), |kind| {
+    let routed = record(&records, sequence, |kind| {
         matches!(kind, TraceRecordKind::RoutedEventStarted)
     });
-    let resolved = record(&records, submission.sequence(), |kind| {
+    let resolved = record(&records, sequence, |kind| {
         matches!(
             kind,
             TraceRecordKind::PointerBoundaryNotificationResolved {
@@ -146,79 +232,109 @@ fn initial_enter_reconstructs_exact_boundary_plan_and_delivery() {
         )
     });
 
-    let bundle_event = bundle
-        .context()
-        .event()
-        .unwrap_or_else(|| unreachable!("boundary plan owns event classification"));
-    assert_eq!(bundle_event.family(), TraceEventFamily::PointerBoundary);
-    assert!(!bundle_event.is_cancelable());
-    assert_eq!(bundle.context().delivery(), None);
-    assert_eq!(bundle.context().route(), None);
+    assert_plan_identity(bundle, &pointer_id);
+    assert!(trace_path(bundle).is_empty());
     assert_eq!(
-        bundle
-            .context()
-            .pointer()
-            .map(|pointer| pointer.pointer_id()),
-        Some(&pointer_id)
-    );
-    assert_eq!(
-        bundle
-            .context()
-            .surface()
-            .map(|surface| surface.snapshot()),
-        Some(Some(TraceSurfaceSnapshotKind::Current))
-    );
-    assert_eq!(
-        bundle
-            .context()
-            .physical_path()
-            .map(TracePointerPath::targets)
-            .and_then(|path| path.first())
-            .map(TraceTarget::mounted_node_id),
-        Some(&target)
-    );
-    let bundle_transition = bundle
-        .context()
-        .target_transition()
-        .unwrap_or_else(|| unreachable!("boundary plan owns exact transition"));
-    assert_eq!(bundle_transition.previous(), None);
-    assert_eq!(
-        bundle_transition
-            .current()
-            .map(TraceTarget::mounted_node_id),
-        Some(&target)
-    );
-
-    assert_eq!(resolved.context().delivery(), Some(TraceDeliveryOutcome::Delivered));
-    let route = resolved
-        .context()
-        .route()
-        .unwrap_or_else(|| unreachable!("delivered boundary owns target-only route"));
-    assert_eq!(
-        route.targets()
+        trace_path(physical)
             .first()
             .map(TraceTarget::mounted_node_id),
-        Some(&target)
+        Some(&harness.target)
     );
-    assert_eq!(route.targets().len(), 1);
-    assert_eq!(route.related_target(), None);
-    let transition = resolved
-        .context()
-        .target_transition()
-        .unwrap_or_else(|| unreachable!("delivered boundary owns exact transition"));
+    let transition = trace_transition(bundle);
     assert_eq!(transition.previous(), None);
     assert_eq!(
         transition.current().map(TraceTarget::mounted_node_id),
-        Some(&target)
+        Some(&harness.target)
     );
+
+    assert_eq!(
+        resolved.context().delivery(),
+        Some(TraceDeliveryOutcome::Delivered)
+    );
+    let route = trace_route(resolved);
+    assert_eq!(route.targets().len(), 1);
+    assert_eq!(
+        route.targets().first().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(route.related_target(), None);
     assert_eq!(
         resolved.target().map(TraceTarget::mounted_node_id),
-        Some(&target)
+        Some(&harness.target)
     );
 
     assert_eq!(bundle.causal_parent(), Some(physical.sequence()));
     assert_eq!(routed.causal_parent(), Some(bundle.sequence()));
     assert!(resolved.sequence() > routed.sequence());
     assert_eq!(bundle.instant(), physical.instant());
+    assert_eq!(resolved.instant(), bundle.instant());
+}
+
+#[test]
+fn leave_reconstructs_exact_previous_and_empty_current_path() {
+    let mut harness = harness();
+    let down = pointer_event(&harness, 2, PointerPhase::Down, harness.inside);
+    submit_and_pump(&mut harness, down);
+    let pointer_id = PointerId::new(2)
+        .unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+    let move_outside = pointer_event(
+        &harness,
+        pointer_id.get(),
+        PointerPhase::Move,
+        harness.outside,
+    );
+    let sequence = submit_and_pump(&mut harness, move_outside);
+
+    let records = harness.runtime.trace().records().collect::<Vec<_>>();
+    let physical = record(&records, sequence, |kind| {
+        matches!(kind, TraceRecordKind::PointerPhysicalTargetResolved)
+    });
+    let bundle = record(&records, sequence, |kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerBoundaryBundlePlanned { notifications: 1 }
+        )
+    });
+    let resolved = record(&records, sequence, |kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerBoundaryNotificationResolved {
+                kind: PointerBoundaryKind::Leave,
+            }
+        )
+    });
+
+    assert_plan_identity(bundle, &pointer_id);
+    assert_eq!(
+        trace_path(bundle)
+            .first()
+            .map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert!(trace_path(physical).is_empty());
+    assert_eq!(physical.target(), None);
+    let transition = trace_transition(bundle);
+    assert_eq!(
+        transition.previous().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(transition.current(), None);
+
+    assert_eq!(
+        resolved.context().delivery(),
+        Some(TraceDeliveryOutcome::Delivered)
+    );
+    let route = trace_route(resolved);
+    assert_eq!(route.targets().len(), 1);
+    assert_eq!(
+        route.targets().first().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(route.related_target(), None);
+    assert_eq!(
+        resolved.target().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(bundle.causal_parent(), Some(physical.sequence()));
     assert_eq!(resolved.instant(), bundle.instant());
 }
