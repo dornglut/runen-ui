@@ -47,19 +47,32 @@ fn current_and_retained_contexts_use_their_exact_geometry() {
     assert_eq!(old.frame().hit_test_id(old_point), Some(primary));
     assert_eq!(current.frame().hit_test_id(old_point), Some(secondary));
 
-    activate_point(&mut runtime, old_context, old_point);
+    activate_point(&mut runtime, old_context.clone(), old_point);
     assert_eq!(runtime.state().primary_activations, 1);
     assert_eq!(runtime.state().secondary_activations, 0);
-    assert!(runtime.trace().kinds().any(|kind| {
-        matches!(
-            kind,
-            TraceRecordKind::SurfaceContextAccepted {
-                ingress: TraceSurfaceIngressKind::LogicalCoordinate,
-                snapshot: TraceSurfaceSnapshotKind::RetainedHistorical,
-                ..
-            }
-        )
-    }));
+    let retained = runtime
+        .trace()
+        .records()
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::SurfaceContextAccepted {
+                    ingress: TraceSurfaceIngressKind::LogicalCoordinate,
+                }
+            ) && record
+                .context()
+                .surface()
+                .is_some_and(|surface| {
+                    surface.surface_id() == old_context.surface_id()
+                        && surface.hit_test_generation() == old_context.hit_test_generation()
+                        && surface.coordinate_revision() == old_context.coordinate_revision()
+                        && surface.snapshot()
+                            == Some(TraceSurfaceSnapshotKind::RetainedHistorical)
+                })
+        })
+        .last()
+        .unwrap_or_else(|| unreachable!("retained accepted context is traced exactly"));
+    assert!(retained.instant().is_some());
 
     activate_point(&mut runtime, current_context, old_point);
     assert_eq!(runtime.state().primary_activations, 1);
@@ -90,6 +103,7 @@ fn accepted_historical_target_stays_bound_after_context_retirement() {
         .unwrap_or_else(|_| unreachable!("retained historical context is accepted"));
 
     let _ = publication(&mut runtime, &tokens);
+    let requested_context = old_context.clone();
     let retired = rejected(
         runtime.submit_surface_command(
             old_context,
@@ -108,6 +122,35 @@ fn accepted_historical_target_stays_bound_after_context_retirement() {
         TraceSurfaceIngressKind::LogicalCoordinate,
         TraceSurfaceRejection::RetiredGeneration,
     ));
+    let rejection = runtime
+        .trace()
+        .records()
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::SurfaceCommandRejected {
+                    ingress: TraceSurfaceIngressKind::LogicalCoordinate,
+                    outcome: TraceSurfaceRejection::RetiredGeneration,
+                }
+            )
+        })
+        .last()
+        .unwrap_or_else(|| unreachable!("retired rejection is traced"));
+    let surface = rejection
+        .context()
+        .surface()
+        .unwrap_or_else(|| unreachable!("rejection owns submitted surface context"));
+    assert_eq!(surface.surface_id(), requested_context.surface_id());
+    assert_eq!(
+        surface.hit_test_generation(),
+        requested_context.hit_test_generation()
+    );
+    assert_eq!(
+        surface.coordinate_revision(),
+        requested_context.coordinate_revision()
+    );
+    assert_eq!(surface.snapshot(), None);
+    assert!(rejection.instant().is_some());
 
     pump_all(&mut runtime);
     assert_eq!(runtime.state().primary_activations, 1);
