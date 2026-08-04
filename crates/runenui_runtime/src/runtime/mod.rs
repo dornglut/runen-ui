@@ -185,7 +185,7 @@ impl SurfaceTraceState {
         self.latest_redraw_request = request;
     }
 
-    const fn request_parent(&self, revision: u64) -> Option<TraceSequence> {
+    fn request_parent(&self, revision: u64) -> Option<TraceSequence> {
         if self.latest_redraw_revision == Some(revision) {
             self.latest_redraw_request
         } else {
