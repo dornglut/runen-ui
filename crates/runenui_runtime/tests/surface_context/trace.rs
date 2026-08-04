@@ -20,7 +20,6 @@ fn resolved_target_ingress_uses_the_canonical_route_update_and_trace_path() {
             kind,
             TraceRecordKind::SurfaceContextAccepted {
                 ingress: TraceSurfaceIngressKind::ResolvedTarget,
-                ..
             }
         )
     }));
@@ -31,13 +30,14 @@ fn successful_surface_trace_has_one_causal_chain() {
     let mut runtime = mounted();
     let tokens = StyleTokens::new();
     let published = publication(&mut runtime, &tokens);
+    let requested_context = published.input_context().clone();
     let point = authored_center(&published, "surface.primary");
-    let generation = published.input_context().hit_test_generation();
-    let revision = published.input_context().coordinate_revision();
+    let generation = requested_context.hit_test_generation();
+    let revision = requested_context.coordinate_revision();
 
     let submission = runtime
         .submit_surface_command(
-            published.input_context().clone(),
+            requested_context.clone(),
             point,
             SemanticCommand::Activate,
             CommandOrigin::programmatic(),
@@ -50,25 +50,29 @@ fn successful_surface_trace_has_one_causal_chain() {
             kind,
             TraceRecordKind::SurfaceContextAccepted {
                 ingress: TraceSurfaceIngressKind::LogicalCoordinate,
-                snapshot: TraceSurfaceSnapshotKind::Current,
-                hit_test_generation,
-                coordinate_revision,
-            } if *hit_test_generation == generation && *coordinate_revision == revision
+            }
         )
     });
     let target = trace_record(&runtime, sequence, |kind| {
-        matches!(
-            kind,
-            TraceRecordKind::SurfaceTargetBound {
-                ingress: TraceSurfaceIngressKind::LogicalCoordinate,
-                hit_test_generation,
-            } if *hit_test_generation == generation
-        )
+        matches!(kind, TraceRecordKind::SurfaceTargetBound)
     });
     let accepted = trace_record(&runtime, sequence, |kind| {
         matches!(kind, TraceRecordKind::CommandSubmissionAccepted)
     });
 
+    let surface = context
+        .context()
+        .surface()
+        .unwrap_or_else(|| unreachable!("accepted record owns exact surface context"));
+    assert_eq!(surface.surface_id(), requested_context.surface_id());
+    assert_eq!(surface.hit_test_generation(), generation);
+    assert_eq!(surface.coordinate_revision(), revision);
+    assert_eq!(surface.snapshot(), Some(TraceSurfaceSnapshotKind::Current));
+    assert_eq!(context.work_sequence(), Some(sequence));
+    assert_eq!(target.work_sequence(), Some(sequence));
+    assert_eq!(accepted.work_sequence(), Some(sequence));
+    assert_eq!(context.instant(), target.instant());
+    assert_eq!(context.instant(), accepted.instant());
     assert_eq!(target.causal_parent(), Some(context.sequence()));
     assert_eq!(accepted.causal_parent(), Some(target.sequence()));
     let accepted_sequence = accepted.sequence();
