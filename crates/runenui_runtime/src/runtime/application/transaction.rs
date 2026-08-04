@@ -69,6 +69,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             semantic_events,
             transaction_parent,
             pre_recorded_cancellation_lineage,
+            trace_transaction,
         );
         self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
         for owner in mounted_subscription_dirty {
@@ -101,6 +102,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::runtime) fn commit_application_starts(
         &mut self,
         invalidated: &[crate::work::WorkGeneration],
@@ -109,6 +111,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         semantic_events: Vec<PlannedWorkSemanticEvent>,
         transaction_parent: Option<TraceSequence>,
         pre_recorded_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+        trace_transaction: ApplicationTraceTransaction,
     ) -> HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)> {
         let invalidated_set: HashSet<_> = invalidated.iter().copied().collect();
         let mut identities: HashMap<_, _> = invalidated
@@ -140,6 +143,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .map(|generation| (generation.get(), self.work.trace_parent(*generation)))
             .collect();
         let mut lineage = pre_recorded_lineage;
+        let logical_time = trace_transaction.logical_time();
         for event in semantic_events {
             let generation = match event {
                 PlannedWorkSemanticEvent::Requested(generation)
@@ -151,27 +155,31 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .unwrap_or_else(|| unreachable!("planned semantic event has trace identity"));
             match event {
                 PlannedWorkSemanticEvent::Requested(_) => {
-                    let requested = self.record_work_fact_with_parent(
+                    let requested = self.record_work_fact_with_parent_at(
                         TraceRecordKind::WorkRequested,
                         transaction_parent,
                         identity.clone(),
+                        logical_time,
                     );
                     let committed = if identity.family() == crate::TraceWorkFamily::Subscription {
-                        let declared = self.record_work_fact_with_parent(
+                        let declared = self.record_work_fact_with_parent_at(
                             TraceRecordKind::SubscriptionDeclared,
                             requested,
                             identity.clone(),
+                            logical_time,
                         );
-                        self.record_work_fact_with_parent(
+                        self.record_work_fact_with_parent_at(
                             TraceRecordKind::WorkGenerationCommitted,
                             declared,
                             identity,
+                            logical_time,
                         )
                     } else {
-                        self.record_work_fact_with_parent(
+                        self.record_work_fact_with_parent_at(
                             TraceRecordKind::WorkGenerationCommitted,
                             requested,
                             identity,
+                            logical_time,
                         )
                     };
                     semantic_parents.insert(generation.get(), committed);
@@ -182,15 +190,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         .copied()
                         .flatten()
                         .or(transaction_parent);
-                    let bound = self.record_work_fact_with_parent(
+                    let bound = self.record_work_fact_with_parent_at(
                         TraceRecordKind::WorkCancellationBound,
                         parent,
                         identity.clone(),
+                        logical_time,
                     );
-                    let invalidated = self.record_work_fact_with_parent(
+                    let invalidated = self.record_work_fact_with_parent_at(
                         TraceRecordKind::WorkLogicallyInvalidated,
                         bound,
                         identity.clone(),
+                        logical_time,
                     );
                     semantic_parents.insert(generation.get(), invalidated);
                     lineage.insert(generation.get(), (identity, invalidated));
