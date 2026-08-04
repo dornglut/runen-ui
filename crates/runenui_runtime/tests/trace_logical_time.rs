@@ -147,7 +147,7 @@ fn application_transaction_facts_share_one_accepted_instant() {
         .advance_time(Duration::from_millis(1))
         .unwrap_or_else(|_| unreachable!());
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
-    runtime.pump(PumpBudget::new(1, 0, 0, 0));
+    runtime.pump(PumpBudget::new(8, 0, 0, 0));
 
     let update_records: Vec<_> = runtime
         .trace()
