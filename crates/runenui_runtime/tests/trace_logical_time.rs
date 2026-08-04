@@ -41,7 +41,7 @@ impl UiApp for ApplicationTimeApp {
         (): Self::Action,
     ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
         *state += 1;
-        Effects::redraw()
+        Effects::local_task(async { None::<()> })
     }
 }
 
@@ -82,8 +82,37 @@ fn scheduler_work_facts_retain_monotonic_logical_time() {
 
 #[test]
 fn application_transaction_facts_share_one_accepted_instant() {
-    let mut runtime = AppRuntime::<ApplicationTimeApp>::mount(0);
+    let initial_work_runtime = AppRuntime::<LogicalTimeApp>::mount(0);
+    let initial_work_transaction_instant = initial_work_runtime
+        .trace()
+        .records()
+        .find_map(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::InitialApplicationTransactionStarted
+            )
+            .then(|| record.instant().unwrap_or_else(|| unreachable!()))
+        })
+        .unwrap_or_else(|| unreachable!());
+    let initial_work_instants: Vec<_> = initial_work_runtime
+        .trace()
+        .records()
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::WorkRequested | TraceRecordKind::WorkGenerationCommitted
+            )
+        })
+        .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
+        .collect();
+    assert_eq!(initial_work_instants.len(), 2);
+    assert!(
+        initial_work_instants
+            .iter()
+            .all(|instant| *instant == initial_work_transaction_instant)
+    );
 
+    let mut runtime = AppRuntime::<ApplicationTimeApp>::mount(0);
     let initial_instants: Vec<_> = runtime
         .trace()
         .records()
@@ -111,10 +140,13 @@ fn application_transaction_facts_share_one_accepted_instant() {
     runtime.submit_action(()).unwrap_or_else(|_| unreachable!());
     runtime.pump(PumpBudget::new(1, 0, 0, 0));
 
-    let update_instants: Vec<_> = runtime
+    let update_records: Vec<_> = runtime
         .trace()
         .records()
         .skip(retained_before_update)
+        .collect();
+    let update_instants: Vec<_> = update_records
+        .iter()
         .filter(|record| {
             matches!(
                 record.kind(),
@@ -134,6 +166,23 @@ fn application_transaction_facts_share_one_accepted_instant() {
             .all(|instant| *instant == update_instants[0])
     );
     assert!(update_instants[0] > initial_instants[0]);
+
+    let update_work_instants: Vec<_> = update_records
+        .iter()
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::WorkRequested | TraceRecordKind::WorkGenerationCommitted
+            )
+        })
+        .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
+        .collect();
+    assert_eq!(update_work_instants.len(), 2);
+    assert!(
+        update_work_instants
+            .iter()
+            .all(|instant| *instant == update_instants[0])
+    );
 }
 
 #[cfg(feature = "internal-test-seams")]
