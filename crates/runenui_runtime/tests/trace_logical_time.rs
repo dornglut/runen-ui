@@ -98,7 +98,11 @@ fn application_transaction_facts_share_one_accepted_instant() {
         .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
         .collect();
     assert_eq!(initial_instants.len(), 3);
-    assert!(initial_instants.iter().all(|instant| *instant == initial_instants[0]));
+    assert!(
+        initial_instants
+            .iter()
+            .all(|instant| *instant == initial_instants[0])
+    );
 
     let retained_before_update = runtime.trace().len();
     runtime
@@ -124,7 +128,11 @@ fn application_transaction_facts_share_one_accepted_instant() {
         .map(|record| record.instant().unwrap_or_else(|| unreachable!()))
         .collect();
     assert_eq!(update_instants.len(), 5);
-    assert!(update_instants.iter().all(|instant| *instant == update_instants[0]));
+    assert!(
+        update_instants
+            .iter()
+            .all(|instant| *instant == update_instants[0])
+    );
     assert!(update_instants[0] > initial_instants[0]);
 }
 
