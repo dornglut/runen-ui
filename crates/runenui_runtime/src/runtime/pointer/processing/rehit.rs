@@ -76,7 +76,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let previous_capture_owner = prepared_stream.stream.capture_owner().cloned();
         let boundary_plan = super::notifications::plan_boundary_transition(
             work.event.pointer_id(),
-            &previous_path,
+            previous_path,
             &geometry.physical_path,
             work.event.surface_context(),
             |target| self.tree.target_status(target) == crate::mounted::TargetStatus::Live,
