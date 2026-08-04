@@ -112,8 +112,14 @@ fn application_transaction_facts_share_one_accepted_instant() {
                 && record.causal_parent() == Some(initial_requested.sequence())
         })
         .unwrap_or_else(|| unreachable!());
-    assert_eq!(initial_requested.instant(), Some(initial_transaction_instant));
-    assert_eq!(initial_committed.instant(), Some(initial_transaction_instant));
+    assert_eq!(
+        initial_requested.instant(),
+        Some(initial_transaction_instant)
+    );
+    assert_eq!(
+        initial_committed.instant(),
+        Some(initial_transaction_instant)
+    );
 
     let mut runtime = AppRuntime::<ApplicationTimeApp>::mount(0);
     let initial_instants: Vec<_> = runtime
