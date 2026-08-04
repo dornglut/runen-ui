@@ -57,12 +57,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .or_else(|| boundary_targets.first().cloned());
         let Some(anchor) = anchor else {
             return self.commit_unrouted_pointer(
-                work,
+                &work,
                 parent,
-                boundary_plan,
+                &boundary_plan,
                 stream,
                 kind,
-                geometry,
+                &geometry,
             );
         };
         let Some(pointer_commit_trace) =
@@ -675,12 +675,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     fn commit_unrouted_pointer(
         &mut self,
-        work: PointerWork,
+        work: &PointerWork,
         mut parent: Option<crate::TraceSequence>,
-        boundary_plan: PointerBoundaryPlan,
+        boundary_plan: &PointerBoundaryPlan,
         stream: PointerStreamState,
         kind: StreamCommitKind,
-        geometry: PointerGeometry,
+        geometry: &PointerGeometry,
     ) -> ProcessApplicationActionOutcome {
         let Some(pointer_commit_trace) =
             self.plan_pointer_commit_trace(boundary_plan.notifications.len())
@@ -697,9 +697,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         for notification in &boundary_plan.notifications {
             debug_assert_eq!(notification.delivery, TraceDeliveryOutcome::Suppressed);
             parent = self.record_pointer_boundary_resolution(
-                &work,
-                &geometry,
-                &boundary_plan,
+                work,
+                geometry,
+                boundary_plan,
                 notification,
                 parent,
             );
