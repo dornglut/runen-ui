@@ -3,9 +3,7 @@
 use std::time::Duration;
 
 use runenui_core::{Effects, IntoEffects, NoHostProtocol, UiApp, View, text};
-use runenui_runtime::{
-    AppRuntime, MonotonicInstant, PumpBudget, TraceRecord, TraceRecordKind,
-};
+use runenui_runtime::{AppRuntime, MonotonicInstant, PumpBudget, TraceRecord, TraceRecordKind};
 
 struct LogicalTimeApp;
 
@@ -134,7 +132,11 @@ fn initial_application_transaction_facts_share_one_accepted_instant() {
         .map(required_instant)
         .collect();
     assert_eq!(summary_instants.len(), 3);
-    assert!(summary_instants.iter().all(|instant| *instant == transaction_instant));
+    assert!(
+        summary_instants
+            .iter()
+            .all(|instant| *instant == transaction_instant)
+    );
 }
 
 fn update_transaction<'a>(records: &'a [&'a TraceRecord]) -> &'a TraceRecord {
@@ -173,7 +175,11 @@ fn assert_update_summary_time(records: &[&TraceRecord], transaction: &TraceRecor
         .collect();
 
     assert_eq!(summary_instants.len(), 5);
-    assert!(summary_instants.iter().all(|candidate| *candidate == instant));
+    assert!(
+        summary_instants
+            .iter()
+            .all(|candidate| *candidate == instant)
+    );
 }
 
 fn assert_update_work_time(records: &[&TraceRecord], transaction: &TraceRecord) {
