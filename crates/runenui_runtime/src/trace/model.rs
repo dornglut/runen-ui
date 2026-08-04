@@ -223,14 +223,8 @@ pub enum TraceRecordKind {
     },
     SurfaceContextAccepted {
         ingress: TraceSurfaceIngressKind,
-        snapshot: TraceSurfaceSnapshotKind,
-        hit_test_generation: u64,
-        coordinate_revision: u64,
     },
-    SurfaceTargetBound {
-        ingress: TraceSurfaceIngressKind,
-        hit_test_generation: u64,
-    },
+    SurfaceTargetBound,
     SurfaceCommandRejected {
         ingress: TraceSurfaceIngressKind,
         outcome: TraceSurfaceRejection,
