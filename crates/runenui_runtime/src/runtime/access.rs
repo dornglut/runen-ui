@@ -166,11 +166,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     #[cfg(feature = "internal-test-seams")]
     pub(crate) fn routed_trace_reservations_for_test(&self) -> usize {
-        let publication = if self.surface_trace.publication_reservation.is_active() {
-            1
-        } else {
-            0
-        };
+        let publication = usize::from(self.surface_trace.publication_reservation.is_active());
         self.trace
             .reserved_records_for_test()
             .checked_sub(publication)
