@@ -603,6 +603,6 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
     assert_eq!(modality.causal_parent(), Some(default.sequence()));
     assert_eq!(registered.causal_parent(), Some(modality.sequence()));
     assert_eq!(committed.causal_parent(), Some(registered.sequence()));
-    assert!(capture.sequence() > committed.sequence());
-    assert_eq!(capture.instant(), committed.instant());
+    assert_eq!(capture.causal_parent(), Some(committed.sequence()));
+    assert_eq!(capture.instant(), routed.instant());
 }
