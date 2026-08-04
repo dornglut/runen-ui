@@ -1,6 +1,6 @@
 use runenui_core::{HostProtocol, PointerPhase};
 
-use super::{PointerGeometry, PointerSnapshot, PointerWork, StreamPreparation};
+use super::{PointerGeometry, PointerWork, StreamPreparation};
 use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceContext, TraceEventContext, TraceEventFamily,
     TracePointerContext, TracePointerPath, TraceRecordKind, TraceSequence, TraceSurfaceContext,
@@ -142,11 +142,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ));
             }
         };
-        let snapshot: PointerSnapshot = (
-            super::rejection::map_snapshot_kind(resolution.snapshot_kind()),
-            resolution.hit_test_generation(),
-            resolution.coordinate_revision(),
-        );
+        let snapshot = super::rejection::map_snapshot_kind(resolution.snapshot_kind());
         let physical_target = resolution.into_target();
         let physical_path = match physical_target.as_ref() {
             Some(target) => {
@@ -208,7 +204,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         geometry: &PointerGeometry,
         parent: Option<TraceSequence>,
     ) -> Option<TraceSequence> {
-        let Some((snapshot, _, _)) = geometry.snapshot else {
+        let Some(snapshot) = geometry.snapshot else {
             return parent;
         };
         if !self.trace.is_enabled() {
