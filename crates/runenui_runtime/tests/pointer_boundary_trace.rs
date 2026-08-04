@@ -96,8 +96,8 @@ fn harness() -> Harness {
     let bounds = node.bounds();
     let inside = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
         .unwrap_or_else(|_| unreachable!("published bounds are finite"));
-    let outside = LogicalPoint::new(63.0, 63.0)
-        .unwrap_or_else(|_| unreachable!("test surface coordinates are finite"));
+    let outside = LogicalPoint::new(size.width() + 1.0, size.height() + 1.0)
+        .unwrap_or_else(|_| unreachable!("outside surface coordinates are finite"));
     Harness {
         runtime,
         context: publication.input_context().clone(),
@@ -278,8 +278,8 @@ fn initial_enter_reconstructs_empty_previous_and_exact_current_path() {
 #[test]
 fn leave_reconstructs_exact_previous_and_empty_current_path() {
     let mut harness = harness();
-    let down = pointer_event(&harness, 2, PointerPhase::Down, harness.inside);
-    submit_and_pump(&mut harness, down);
+    let move_inside = pointer_event(&harness, 2, PointerPhase::Move, harness.inside);
+    submit_and_pump(&mut harness, move_inside);
     let pointer_id =
         PointerId::new(2).unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
     let move_outside = pointer_event(
