@@ -8,8 +8,8 @@ mod rejection;
 mod transaction;
 
 use runenui_core::{
-    HostProtocol, MonotonicInstant, PointerBoundaryEvent, PointerCaptureEvent, PointerEvent,
-    PointerId, PointerPhase, SurfaceInputContext, WorkSequence,
+    HostProtocol, MonotonicInstant, PointerCaptureEvent, PointerEvent, PointerId, PointerPhase,
+    SurfaceInputContext, WorkSequence,
 };
 
 use super::{PointerCommitError, PointerRegistrationError, PointerStreamError, PointerStreamState};
@@ -20,6 +20,7 @@ use crate::{
     runtime::{ProcessApplicationActionOutcome, Runtime},
     trace::TraceReservation,
 };
+pub(super) use notifications::{PointerBoundaryNotification, PointerBoundaryPlan};
 
 pub(super) struct PointerWork {
     pub(super) sequence: WorkSequence,
@@ -55,7 +56,7 @@ pub(super) struct PreparedPointer {
     pub(super) stream: PointerStreamState,
     pub(super) previous_capture_owner: Option<MountedNodeId>,
     pub(super) geometry: PointerGeometry,
-    pub(super) boundary_events: Vec<PointerBoundaryEvent>,
+    pub(super) boundary_plan: PointerBoundaryPlan,
     pub(super) routed_target: Option<MountedNodeId>,
     pub(super) parent: Option<TraceSequence>,
 }
@@ -73,7 +74,6 @@ pub(super) struct PointerCommitPlan {
     pub(super) kind: StreamCommitKind,
     pub(super) focus: Option<MountedNodeId>,
     pub(super) capture_events: Vec<PointerCaptureEvent>,
-    pub(super) boundary_notifications: Vec<runenui_core::PointerBoundaryKind>,
     pub(super) physical_target: Option<MountedNodeId>,
     pub(super) physical_path: Vec<MountedNodeId>,
 }
@@ -125,15 +125,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let previous_path = prepared_stream.stream.physical_path().to_vec();
         let previous_capture_owner = prepared_stream.stream.capture_owner().cloned();
-        let boundary_events = if geometry.snapshot.is_some() {
-            notifications::plan_boundary_events(
+        let boundary_plan = if geometry.snapshot.is_some() {
+            notifications::plan_boundary_transition(
                 work.event.pointer_id(),
                 &previous_path,
                 &geometry.physical_path,
                 work.event.surface_context(),
+                |target| {
+                    self.tree.target_status(target) == crate::mounted::TargetStatus::Live
+                },
             )
         } else {
-            Vec::new()
+            PointerBoundaryPlan::unchanged(
+                previous_path.last().cloned(),
+                geometry.physical_target.clone(),
+            )
         };
         let mut stream = prepared_stream.stream;
         stream.update_observation(
@@ -152,7 +158,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &work,
             prepared_stream.is_new,
             &geometry,
-            boundary_events.len(),
+            &boundary_plan,
         ) {
             Ok(parent) => parent,
             Err(outcome) => return outcome,
@@ -163,7 +169,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             stream,
             previous_capture_owner,
             geometry,
-            boundary_events,
+            boundary_plan,
             routed_target,
             parent,
         })
