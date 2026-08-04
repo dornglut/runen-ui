@@ -5,7 +5,8 @@ use runenui_core::{
 
 use super::super::PointerRegistry;
 use crate::{
-    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, TraceSequence,
+    MountedNodeId, TraceEventContext, TraceEventFamily, TraceRecordKind,
+    TraceRoutedIntegrityFailure, TraceSequence,
     mounted::TargetStatus,
     runtime::{MandatoryTracePlan, PointerDispatchFacts, RoutedIngressFacts, Runtime},
     trace::TraceReservation,
@@ -339,6 +340,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             notification.owner.clone(),
             CommandOrigin::__runtime_pointer(),
             self.now(),
+            TraceEventContext::new(TraceEventFamily::PointerCapture, false),
             parent,
             TraceReservation::continuation(),
         );
