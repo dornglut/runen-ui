@@ -83,14 +83,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 },
             );
         };
-        let event = if routed_target.is_some() {
-            TraceEventContext::new(
-                TraceEventFamily::Pointer,
-                pointer_default_is_cancelable(work.event.phase()),
-            )
-        } else {
-            TraceEventContext::new(TraceEventFamily::PointerBoundary, false)
-        };
+        let event = pointer_event_context(routed_target.is_some(), work.event.phase());
         let facts = RoutedIngressFacts::new(
             work.sequence,
             anchor,
@@ -744,6 +737,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         events: &[PointerBoundaryEvent],
     ) -> Vec<runenui_core::PointerBoundaryKind> {
         events.iter().map(PointerBoundaryEvent::kind).collect()
+    }
+}
+
+const fn pointer_event_context(
+    has_routed_target: bool,
+    phase: PointerPhase,
+) -> TraceEventContext {
+    if has_routed_target {
+        TraceEventContext::new(
+            TraceEventFamily::Pointer,
+            pointer_default_is_cancelable(phase),
+        )
+    } else {
+        TraceEventContext::new(TraceEventFamily::PointerBoundary, false)
     }
 }
 
