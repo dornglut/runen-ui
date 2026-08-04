@@ -3,9 +3,9 @@
 use runenui_core::{
     Element, EventContext, LogicalDelta, LogicalLength, LogicalPoint, NoHostProtocol,
     PointerBoundaryKind, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, StyleTokens, SurfaceInputContext, UiApp, UiEvent, View, Widget,
-    WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput,
-    WidgetMeasure, WorkSequence,
+    PointerPhase, StyleTokens, SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetMeasure,
+    WorkSequence,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
@@ -205,9 +205,14 @@ fn assert_plan_identity(bundle: &TraceRecord, pointer_id: &PointerId) {
 #[test]
 fn initial_enter_reconstructs_empty_previous_and_exact_current_path() {
     let mut harness = harness();
-    let pointer_id = PointerId::new(1)
-        .unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
-    let event = pointer_event(&harness, pointer_id.get(), PointerPhase::Down, harness.inside);
+    let pointer_id =
+        PointerId::new(1).unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+    let event = pointer_event(
+        &harness,
+        pointer_id.get(),
+        PointerPhase::Down,
+        harness.inside,
+    );
     let sequence = submit_and_pump(&mut harness, event);
 
     let records = harness.runtime.trace().records().collect::<Vec<_>>();
@@ -275,8 +280,8 @@ fn leave_reconstructs_exact_previous_and_empty_current_path() {
     let mut harness = harness();
     let down = pointer_event(&harness, 2, PointerPhase::Down, harness.inside);
     submit_and_pump(&mut harness, down);
-    let pointer_id = PointerId::new(2)
-        .unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+    let pointer_id =
+        PointerId::new(2).unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
     let move_outside = pointer_event(
         &harness,
         pointer_id.get(),
@@ -306,9 +311,7 @@ fn leave_reconstructs_exact_previous_and_empty_current_path() {
 
     assert_plan_identity(bundle, &pointer_id);
     assert_eq!(
-        trace_path(bundle)
-            .first()
-            .map(TraceTarget::mounted_node_id),
+        trace_path(bundle).first().map(TraceTarget::mounted_node_id),
         Some(&harness.target)
     );
     assert!(trace_path(physical).is_empty());
