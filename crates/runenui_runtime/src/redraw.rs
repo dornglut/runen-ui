@@ -14,7 +14,7 @@ pub struct RedrawRequest {
 }
 
 impl RedrawRequest {
-    pub(crate) fn new(namespace: Arc<()>, revision: u64) -> Self {
+    pub(crate) const fn new(namespace: Arc<()>, revision: u64) -> Self {
         Self {
             namespace,
             revision,
@@ -39,11 +39,11 @@ impl RedrawRequest {
         }
     }
 
-    pub(crate) fn bind_request_trace(&mut self, request_trace: Option<TraceSequence>) {
+    pub(crate) const fn bind_request_trace(&mut self, request_trace: Option<TraceSequence>) {
         self.request_trace = request_trace;
     }
 
-    pub(crate) fn bind_taken_trace(&mut self, taken_trace: Option<TraceSequence>) {
+    pub(crate) const fn bind_taken_trace(&mut self, taken_trace: Option<TraceSequence>) {
         self.taken_trace = taken_trace;
     }
 }
