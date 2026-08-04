@@ -178,7 +178,7 @@ impl Trace {
         self.record_draft(draft)
     }
 
-    fn record_draft(&mut self, draft: TraceRecordDraft) -> Option<TraceSequence> {
+    pub(crate) fn record_draft(&mut self, draft: TraceRecordDraft) -> Option<TraceSequence> {
         if self.capacity == 0 {
             return None;
         }
