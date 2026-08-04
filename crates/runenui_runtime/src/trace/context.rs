@@ -126,6 +126,19 @@ impl TracePointerContext {
         }
     }
 
+    pub(crate) const fn stream(
+        pointer_id: PointerId,
+        device_id: Option<InputDeviceId>,
+        device_kind: PointerDeviceKind,
+    ) -> Self {
+        Self {
+            pointer_id,
+            device_id,
+            device_kind,
+            phase: None,
+        }
+    }
+
     /// Returns the exact pointer-stream identity.
     #[must_use]
     pub const fn pointer_id(&self) -> &PointerId {
@@ -551,6 +564,43 @@ impl TraceContext {
         )
     }
 
+    pub(crate) fn pointer_capture_notification(
+        surface: Option<TraceSurfaceContext>,
+        pointer: TracePointerContext,
+        route: TraceRouteSnapshot,
+        physical_path: TracePointerPath,
+        target_transition: TraceTargetTransition,
+        delivery: TraceDeliveryOutcome,
+    ) -> Self {
+        Self::pointer_record(
+            TraceEventContext::new(TraceEventFamily::PointerCapture, false),
+            surface,
+            pointer,
+            Some(route),
+            physical_path,
+            Some(target_transition),
+            Some(delivery),
+        )
+    }
+
+    pub(crate) fn pointer_capture_request_rejection(
+        surface: Option<TraceSurfaceContext>,
+        pointer: TracePointerContext,
+        route: TraceRouteSnapshot,
+        physical_path: TracePointerPath,
+        target_transition: TraceTargetTransition,
+    ) -> Self {
+        Self::pointer_record(
+            TraceEventContext::new(TraceEventFamily::PointerCapture, false),
+            surface,
+            pointer,
+            Some(route),
+            physical_path,
+            Some(target_transition),
+            None,
+        )
+    }
+
     pub(crate) fn publication_record(publication: TracePublicationContext) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Publication(publication))),
@@ -818,6 +868,30 @@ mod tests {
             context.route().map(TraceRouteSnapshot::targets),
             Some([].as_slice())
         );
+        assert!(context.target_transition().is_some());
+    }
+
+    #[test]
+    fn capture_notification_owns_transition_route_related_endpoint_and_outcome() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let pointer_id =
+            PointerId::new(9).unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+        let pointer = TracePointerContext::stream(pointer_id, None, PointerDeviceKind::Mouse);
+        let context = TraceContext::pointer_capture_notification(
+            None,
+            pointer,
+            TraceRouteSnapshot::new(Vec::new(), None),
+            TracePointerPath::new(Vec::new()),
+            TraceTargetTransition::new(None, None),
+            TraceDeliveryOutcome::Delivered,
+        );
+
+        assert_eq!(
+            context.event().map(TraceEventContext::family),
+            Some(TraceEventFamily::PointerCapture)
+        );
+        assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Delivered));
+        assert_eq!(context.pointer().and_then(TracePointerContext::phase), None);
         assert!(context.target_transition().is_some());
     }
 }
