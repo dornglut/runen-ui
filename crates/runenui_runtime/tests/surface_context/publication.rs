@@ -59,16 +59,12 @@ fn current_and_retained_contexts_use_their_exact_geometry() {
                 TraceRecordKind::SurfaceContextAccepted {
                     ingress: TraceSurfaceIngressKind::LogicalCoordinate,
                 }
-            ) && record
-                .context()
-                .surface()
-                .is_some_and(|surface| {
-                    surface.surface_id() == old_context.surface_id()
-                        && surface.hit_test_generation() == old_context.hit_test_generation()
-                        && surface.coordinate_revision() == old_context.coordinate_revision()
-                        && surface.snapshot()
-                            == Some(TraceSurfaceSnapshotKind::RetainedHistorical)
-                })
+            ) && record.context().surface().is_some_and(|surface| {
+                surface.surface_id() == old_context.surface_id()
+                    && surface.hit_test_generation() == old_context.hit_test_generation()
+                    && surface.coordinate_revision() == old_context.coordinate_revision()
+                    && surface.snapshot() == Some(TraceSurfaceSnapshotKind::RetainedHistorical)
+            })
         })
         .last()
         .unwrap_or_else(|| unreachable!("retained accepted context is traced exactly"));
