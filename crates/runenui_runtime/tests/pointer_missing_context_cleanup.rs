@@ -178,10 +178,7 @@ fn assert_prior_stream_surface(record: &TraceRecord, current: &SurfaceInputConte
         .unwrap_or_else(|| unreachable!("cleanup owns prior stream surface identity"));
     assert_eq!(surface.surface_id(), current.surface_id());
     assert_eq!(surface.coordinate_revision(), current.coordinate_revision());
-    assert_eq!(
-        surface.hit_test_generation(),
-        current.hit_test_generation()
-    );
+    assert_eq!(surface.hit_test_generation(), current.hit_test_generation());
     assert_eq!(surface.snapshot(), None);
 }
 
