@@ -237,8 +237,8 @@ pub use trace::{
     TraceRouteSnapshot, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
     TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection,
     TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTargetTransition,
-    TraceTextMetrics, TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
-    TraceWorkStartRefusal,
+    TraceTextMetrics, TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity,
+    TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::host_request::{HostRequestRef, HostRequestToken};
