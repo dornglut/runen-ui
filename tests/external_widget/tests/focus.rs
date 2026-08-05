@@ -10,7 +10,8 @@ use runenui_external_widget_conformance::{
     ExternalFocusFact, ExternalFocusWidget, external_focus_panel,
 };
 use runenui_runtime::{
-    AppRuntime, InputModality, MountedNodeId, PumpBudget, TraceDeliveryOutcome, TraceRecordKind,
+    AppRuntime, InputModality, MountedNodeId, PumpBudget, TraceDeliveryOutcome, TraceRecord,
+    TraceRecordKind, TraceTarget,
 };
 
 struct State {
@@ -63,48 +64,85 @@ fn focus(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
     );
 }
 
+fn record_position(
+    records: &[&TraceRecord],
+    predicate: impl Fn(&TraceRecord) -> bool,
+    message: &str,
+) -> usize {
+    records
+        .iter()
+        .position(|record| predicate(record))
+        .unwrap_or_else(|| unreachable!("{message}"))
+}
+
+fn assert_transition_endpoints(
+    record: &TraceRecord,
+    old_target: &MountedNodeId,
+    new_target: &MountedNodeId,
+) {
+    let transition = record
+        .context()
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("the transition owns exact endpoints"));
+    assert_eq!(
+        transition.previous().map(TraceTarget::mounted_node_id),
+        Some(old_target)
+    );
+    assert_eq!(
+        transition.current().map(TraceTarget::mounted_node_id),
+        Some(new_target)
+    );
+}
+
+fn assert_delivered_route(
+    record: &TraceRecord,
+    target: &MountedNodeId,
+    related: &MountedNodeId,
+) {
+    assert_eq!(
+        record.context().delivery(),
+        Some(TraceDeliveryOutcome::Delivered)
+    );
+    let route = record
+        .context()
+        .route()
+        .unwrap_or_else(|| unreachable!("delivered focus resolution owns its route"));
+    assert_eq!(
+        route.targets().last().map(TraceTarget::mounted_node_id),
+        Some(target)
+    );
+    assert_eq!(
+        route.related_target().map(TraceTarget::mounted_node_id),
+        Some(related)
+    );
+}
+
 fn assert_transition_trace(
     runtime: &AppRuntime<App>,
     trace_start: usize,
     old_target: &MountedNodeId,
     new_target: &MountedNodeId,
 ) {
-    let transition_trace = runtime
+    let records = runtime
         .trace()
         .records()
         .skip(trace_start)
         .collect::<Vec<_>>();
-    let committed = transition_trace
-        .iter()
-        .position(|record| {
+    let committed = record_position(
+        &records,
+        |record| {
             matches!(
                 record.kind(),
                 TraceRecordKind::FocusTransitionCommitted {
                     reason: FocusReason::ProgrammaticRequest,
                 }
             )
-        })
-        .unwrap_or_else(|| unreachable!("the exact transition is traced"));
-    let committed_transition = transition_trace[committed]
-        .context()
-        .target_transition()
-        .unwrap_or_else(|| unreachable!("the transition owns exact endpoints"));
-    assert_eq!(
-        committed_transition
-            .previous()
-            .map(runenui_runtime::TraceTarget::mounted_node_id),
-        Some(old_target)
+        },
+        "the exact transition is traced",
     );
-    assert_eq!(
-        committed_transition
-            .current()
-            .map(runenui_runtime::TraceTarget::mounted_node_id),
-        Some(new_target)
-    );
-
-    let within = transition_trace
-        .iter()
-        .position(|record| {
+    let within = record_position(
+        &records,
+        |record| {
             matches!(
                 record.kind(),
                 TraceRecordKind::FocusWithinInvalidated {
@@ -112,65 +150,37 @@ fn assert_transition_trace(
                     entered: 1,
                 }
             )
-        })
-        .unwrap_or_else(|| unreachable!("only the changed leaf routes invalidate"));
-    let out = transition_trace
-        .iter()
-        .position(|record| {
+        },
+        "only the changed leaf routes invalidate",
+    );
+    let out = record_position(
+        &records,
+        |record| {
             matches!(
                 record.kind(),
                 TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::Out,
                 }
             ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
-        })
-        .unwrap_or_else(|| unreachable!("focus out is delivered"));
-    let input = transition_trace
-        .iter()
-        .position(|record| {
+        },
+        "focus out is delivered",
+    );
+    let input = record_position(
+        &records,
+        |record| {
             matches!(
                 record.kind(),
                 TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::In,
                 }
             ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
-        })
-        .unwrap_or_else(|| unreachable!("focus in is delivered"));
+        },
+        "focus in is delivered",
+    );
 
-    let out_route = transition_trace[out]
-        .context()
-        .route()
-        .unwrap_or_else(|| unreachable!("delivered focus out owns its route"));
-    assert_eq!(
-        out_route
-            .targets()
-            .last()
-            .map(runenui_runtime::TraceTarget::mounted_node_id),
-        Some(old_target)
-    );
-    assert_eq!(
-        out_route
-            .related_target()
-            .map(runenui_runtime::TraceTarget::mounted_node_id),
-        Some(new_target)
-    );
-    let input_route = transition_trace[input]
-        .context()
-        .route()
-        .unwrap_or_else(|| unreachable!("delivered focus in owns its route"));
-    assert_eq!(
-        input_route
-            .targets()
-            .last()
-            .map(runenui_runtime::TraceTarget::mounted_node_id),
-        Some(new_target)
-    );
-    assert_eq!(
-        input_route
-            .related_target()
-            .map(runenui_runtime::TraceTarget::mounted_node_id),
-        Some(old_target)
-    );
+    assert_transition_endpoints(records[committed], old_target, new_target);
+    assert_delivered_route(records[out], old_target, new_target);
+    assert_delivered_route(records[input], new_target, old_target);
     assert!(committed < within && within < out && out < input);
 }
 
