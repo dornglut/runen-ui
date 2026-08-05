@@ -360,10 +360,7 @@ fn setup_registered_streams(harness: &mut Harness) -> (PointerId, PointerId, usi
     (captured, hovered, harness.runtime.trace().len())
 }
 
-fn cleanup_records<'a>(
-    records: &[&'a TraceRecord],
-    sequence: WorkSequence,
-) -> CleanupRecords<'a> {
+fn cleanup_records<'a>(records: &[&'a TraceRecord], sequence: WorkSequence) -> CleanupRecords<'a> {
     let captured = mandatory_record(records, sequence, |kind| {
         matches!(kind, TraceRecordKind::PointerIntegrityCleanupCommitted)
     });
@@ -404,7 +401,10 @@ fn assert_cleanup_order(
     assert_captured_cleanup(cleanup.captured, harness, captured);
     assert_suppressed_capture_loss(cleanup.suppressed_loss, harness, captured);
     assert_hovered_cleanup(cleanup.hovered, harness, hovered);
-    assert_eq!(cleanup.captured.instant(), cleanup.suppressed_loss.instant());
+    assert_eq!(
+        cleanup.captured.instant(),
+        cleanup.suppressed_loss.instant()
+    );
     assert_eq!(cleanup.captured.instant(), cleanup.hovered.instant());
     assert!(cleanup.captured.instant().is_some());
     assert_eq!(
