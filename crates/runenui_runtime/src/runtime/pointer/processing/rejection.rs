@@ -43,6 +43,35 @@ impl RejectedPointerCleanupTrace {
     }
 }
 
+pub(super) struct RejectedPointerFacts {
+    sequence: WorkSequence,
+    causal_parent: Option<TraceSequence>,
+    trace_reservation: TraceReservation,
+    pointer_id: PointerId,
+    phase: PointerPhase,
+    outcome: TracePointerRejection,
+}
+
+impl RejectedPointerFacts {
+    pub(super) const fn new(
+        sequence: WorkSequence,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+        pointer_id: PointerId,
+        phase: PointerPhase,
+        outcome: TracePointerRejection,
+    ) -> Self {
+        Self {
+            sequence,
+            causal_parent,
+            trace_reservation,
+            pointer_id,
+            phase,
+            outcome,
+        }
+    }
+}
+
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn close_unavailable_terminal_pointer(
         &mut self,
@@ -331,25 +360,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn reject_pointer(
         &mut self,
-        sequence: WorkSequence,
-        causal_parent: Option<TraceSequence>,
-        trace_reservation: TraceReservation,
-        pointer_id: PointerId,
-        phase: PointerPhase,
-        outcome: TracePointerRejection,
+        facts: RejectedPointerFacts,
     ) -> ProcessApplicationActionOutcome {
         self.trace.record_reserved(
-            trace_reservation,
+            facts.trace_reservation,
             TraceRecordKind::PointerIngressRejected {
-                pointer_id,
-                phase,
-                outcome,
+                pointer_id: facts.pointer_id,
+                phase: facts.phase,
+                outcome: facts.outcome,
             },
-            sequence,
-            causal_parent,
+            facts.sequence,
+            facts.causal_parent,
         );
         ProcessApplicationActionOutcome::Completed
     }
