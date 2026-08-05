@@ -10,8 +10,9 @@ use runenui_core::{
     WidgetMeasure, children, container,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
-    TracePointerCaptureRequestRejection, TraceRecordKind,
+    AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext, TraceEventFamily,
+    TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection, TraceRecord,
+    TraceRecordKind, TraceSurfaceSnapshotKind, TraceTarget, WorkSequence,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -169,6 +170,7 @@ impl Widget<()> for CaptureProbe {
 struct Harness {
     runtime: AppRuntime<App>,
     context: SurfaceInputContext,
+    root: MountedNodeId,
     left: MountedNodeId,
     right: MountedNodeId,
     left_point: LogicalPoint,
@@ -187,10 +189,18 @@ fn harness(release_after_transfer: bool, capture_root_on_down: bool) -> Harness 
     let size = LogicalSize::try_new(96.0, 48.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
     let publication = runtime.publish_surface(&SurfaceBuildContext::tight(&tokens, size));
+    let root_authored =
+        ElementId::new("root").unwrap_or_else(|_| unreachable!("the test id is valid"));
     let left_authored =
         ElementId::new("left").unwrap_or_else(|_| unreachable!("the test id is valid"));
     let right_authored =
         ElementId::new("right").unwrap_or_else(|_| unreachable!("the test id is valid"));
+    let root_node = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&root_authored))
+        .unwrap_or_else(|| unreachable!("the root node is published"));
     let left_node = publication
         .frame()
         .nodes()
@@ -218,6 +228,7 @@ fn harness(release_after_transfer: bool, capture_root_on_down: bool) -> Harness 
     Harness {
         runtime,
         context: publication.input_context().clone(),
+        root: root_node.id().clone(),
         left: left_node.id().clone(),
         right: right_node.id().clone(),
         left_point,
@@ -249,10 +260,11 @@ fn pointer_event(
     }
 }
 
-fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
-    runtime
+fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) -> WorkSequence {
+    let submission = runtime
         .submit_pointer(event)
         .unwrap_or_else(|_| unreachable!("the pointer event is accepted"));
+    let sequence = submission.sequence();
     let report = runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,
@@ -260,6 +272,70 @@ fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
         usize::MAX,
     ));
     assert!(report.is_quiescent());
+    sequence
+}
+
+fn assert_release_not_owner_rejection(
+    record: &TraceRecord,
+    sequence: WorkSequence,
+    harness: &Harness,
+) {
+    assert!(matches!(
+        record.kind(),
+        TraceRecordKind::PointerCaptureRequestRejected {
+            request: TracePointerCaptureRequestKind::Release,
+            outcome: TracePointerCaptureRequestRejection::ReleaseNotOwner,
+        }
+    ));
+    assert_eq!(record.work_sequence(), Some(sequence));
+    assert!(record.instant().is_some());
+    assert_eq!(
+        record.target().map(TraceTarget::mounted_node_id),
+        Some(&harness.root)
+    );
+
+    let context = record.context();
+    let event = context
+        .event()
+        .unwrap_or_else(|| unreachable!("rejection owns capture event classification"));
+    assert_eq!(event.family(), TraceEventFamily::PointerCapture);
+    assert!(!event.is_cancelable());
+    let pointer = context
+        .pointer()
+        .unwrap_or_else(|| unreachable!("rejection owns submitted pointer identity"));
+    assert_eq!(pointer.pointer_id().get(), 61);
+    assert_eq!(pointer.device_id(), None);
+    assert_eq!(pointer.device_kind(), PointerDeviceKind::Mouse);
+    assert_eq!(pointer.phase(), Some(PointerPhase::Move));
+    let surface = context
+        .surface()
+        .unwrap_or_else(|| unreachable!("rejection owns accepted surface identity"));
+    assert_eq!(surface.surface_id(), harness.context.surface_id());
+    assert_eq!(
+        surface.coordinate_revision(),
+        harness.context.coordinate_revision()
+    );
+    assert_eq!(
+        surface.hit_test_generation(),
+        harness.context.hit_test_generation()
+    );
+    assert_eq!(surface.snapshot(), Some(TraceSurfaceSnapshotKind::Current));
+    let path = context
+        .physical_path()
+        .unwrap_or_else(|| unreachable!("rejection owns the exact physical path"));
+    assert_eq!(path.targets().len(), 2);
+    assert_eq!(path.targets()[0].mounted_node_id(), &harness.root);
+    assert_eq!(path.targets()[1].mounted_node_id(), &harness.right);
+    let transition = context
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("rejection owns prior and requested capture endpoints"));
+    assert_eq!(
+        transition.previous().map(TraceTarget::mounted_node_id),
+        Some(&harness.right)
+    );
+    assert_eq!(transition.current(), None);
+    assert_eq!(context.route(), None);
+    assert_eq!(context.delivery(), None);
 }
 
 #[test]
@@ -271,7 +347,7 @@ fn invalid_later_releases_do_not_erase_an_earlier_valid_transfer() {
     );
     harness.captures.borrow_mut().clear();
 
-    submit_and_pump(
+    let sequence = submit_and_pump(
         &mut harness.runtime,
         pointer_event(&harness.context, harness.right_point, PointerPhase::Move),
     );
@@ -291,20 +367,25 @@ fn invalid_later_releases_do_not_erase_an_earlier_valid_transfer() {
             },
         ]
     );
+    let rejections = harness
+        .runtime
+        .trace()
+        .records()
+        .filter(|record| {
+            record.work_sequence() == Some(sequence)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerCaptureRequestRejected { .. }
+                )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(rejections.len(), 2);
+    assert_release_not_owner_rejection(rejections[0], sequence, &harness);
+    assert_release_not_owner_rejection(rejections[1], sequence, &harness);
+    assert_eq!(rejections[0].instant(), rejections[1].instant());
     assert_eq!(
-        harness
-            .runtime
-            .trace()
-            .kinds()
-            .filter(|kind| matches!(
-                kind,
-                TraceRecordKind::PointerCaptureRequestRejected {
-                    pointer_id,
-                    outcome: TracePointerCaptureRequestRejection::ReleaseNotOwner,
-                } if pointer_id.get() == 61
-            ))
-            .count(),
-        2
+        rejections[1].causal_parent(),
+        Some(rejections[0].sequence())
     );
 }
 
@@ -351,7 +432,6 @@ fn down_default_is_the_final_capture_request_after_explicit_staging() {
     );
     assert!(!harness.runtime.trace().kinds().any(|kind| matches!(
         kind,
-        TraceRecordKind::PointerCaptureRequestRejected { pointer_id, .. }
-            if pointer_id.get() == 61
+        TraceRecordKind::PointerCaptureRequestRejected { .. }
     )));
 }
