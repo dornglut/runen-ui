@@ -458,6 +458,7 @@ pub struct TracePointerRecordContext {
 
 /// Internal domain-owned payload for one normalized trace context.
 #[doc(hidden)]
+
 #[expect(
     dead_code,
     reason = "domain variants are constructed by the next producer-migration checkpoint"
