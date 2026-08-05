@@ -442,6 +442,20 @@ impl TracePublicationContext {
     }
 }
 
+/// Internal domain-owned pointer payload for one normalized trace context.
+#[doc(hidden)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TracePointerRecordContext {
+    event: Option<TraceEventContext>,
+    surface: Option<TraceSurfaceContext>,
+    pointer: TracePointerContext,
+    route: Option<TraceRouteSnapshot>,
+    physical_path: TracePointerPath,
+    target_transition: Option<TraceTargetTransition>,
+    cleanup: Option<TracePointerCleanup>,
+    delivery: Option<TraceDeliveryOutcome>,
+}
+
 /// Internal domain-owned payload for one normalized trace context.
 #[doc(hidden)]
 #[expect(
@@ -457,16 +471,7 @@ pub enum TraceContextData {
         delivery: Option<TraceDeliveryOutcome>,
     },
     Surface(TraceSurfaceContext),
-    Pointer {
-        event: Option<TraceEventContext>,
-        surface: Option<TraceSurfaceContext>,
-        pointer: TracePointerContext,
-        route: Option<TraceRouteSnapshot>,
-        physical_path: Option<TracePointerPath>,
-        target_transition: Option<TraceTargetTransition>,
-        cleanup: Option<TracePointerCleanup>,
-        delivery: Option<TraceDeliveryOutcome>,
-    },
+    Pointer(Box<TracePointerRecordContext>),
     Focus {
         event: Option<TraceEventContext>,
         surface: Option<TraceSurfaceContext>,
@@ -530,27 +535,9 @@ impl TraceContext {
         }
     }
 
-    fn pointer_record(
-        event: Option<TraceEventContext>,
-        surface: Option<TraceSurfaceContext>,
-        pointer: TracePointerContext,
-        route: Option<TraceRouteSnapshot>,
-        physical_path: TracePointerPath,
-        target_transition: Option<TraceTargetTransition>,
-        cleanup: Option<TracePointerCleanup>,
-        delivery: Option<TraceDeliveryOutcome>,
-    ) -> Self {
+    fn pointer_record(context: TracePointerRecordContext) -> Self {
         Self {
-            data: Some(Box::new(TraceContextData::Pointer {
-                event,
-                surface,
-                pointer,
-                route,
-                physical_path: Some(physical_path),
-                target_transition,
-                cleanup,
-                delivery,
-            })),
+            data: Some(Box::new(TraceContextData::Pointer(Box::new(context)))),
         }
     }
 
@@ -560,16 +547,16 @@ impl TraceContext {
         pointer: TracePointerContext,
         physical_path: TracePointerPath,
     ) -> Self {
-        Self::pointer_record(
-            Some(event),
-            Some(surface),
+        Self::pointer_record(TracePointerRecordContext {
+            event: Some(event),
+            surface: Some(surface),
             pointer,
-            None,
+            route: None,
             physical_path,
-            None,
-            None,
-            None,
-        )
+            target_transition: None,
+            cleanup: None,
+            delivery: None,
+        })
     }
 
     pub(crate) fn pointer_boundary_plan(
@@ -578,19 +565,19 @@ impl TraceContext {
         physical_path: TracePointerPath,
         target_transition: TraceTargetTransition,
     ) -> Self {
-        Self::pointer_record(
-            Some(TraceEventContext::new(
+        Self::pointer_record(TracePointerRecordContext {
+            event: Some(TraceEventContext::new(
                 TraceEventFamily::PointerBoundary,
                 false,
             )),
             surface,
             pointer,
-            None,
+            route: None,
             physical_path,
-            Some(target_transition),
-            None,
-            None,
-        )
+            target_transition: Some(target_transition),
+            cleanup: None,
+            delivery: None,
+        })
     }
 
     pub(crate) fn pointer_boundary_notification(
@@ -601,19 +588,19 @@ impl TraceContext {
         target_transition: TraceTargetTransition,
         delivery: TraceDeliveryOutcome,
     ) -> Self {
-        Self::pointer_record(
-            Some(TraceEventContext::new(
+        Self::pointer_record(TracePointerRecordContext {
+            event: Some(TraceEventContext::new(
                 TraceEventFamily::PointerBoundary,
                 false,
             )),
-            Some(surface),
+            surface: Some(surface),
             pointer,
-            Some(route),
+            route: Some(route),
             physical_path,
-            Some(target_transition),
-            None,
-            Some(delivery),
-        )
+            target_transition: Some(target_transition),
+            cleanup: None,
+            delivery: Some(delivery),
+        })
     }
 
     pub(crate) fn pointer_capture_notification(
@@ -624,19 +611,19 @@ impl TraceContext {
         target_transition: TraceTargetTransition,
         delivery: TraceDeliveryOutcome,
     ) -> Self {
-        Self::pointer_record(
-            Some(TraceEventContext::new(
+        Self::pointer_record(TracePointerRecordContext {
+            event: Some(TraceEventContext::new(
                 TraceEventFamily::PointerCapture,
                 false,
             )),
             surface,
             pointer,
-            Some(route),
+            route: Some(route),
             physical_path,
-            Some(target_transition),
-            None,
-            Some(delivery),
-        )
+            target_transition: Some(target_transition),
+            cleanup: None,
+            delivery: Some(delivery),
+        })
     }
 
     pub(crate) fn pointer_capture_request_rejection(
@@ -645,19 +632,19 @@ impl TraceContext {
         physical_path: TracePointerPath,
         target_transition: TraceTargetTransition,
     ) -> Self {
-        Self::pointer_record(
-            Some(TraceEventContext::new(
+        Self::pointer_record(TracePointerRecordContext {
+            event: Some(TraceEventContext::new(
                 TraceEventFamily::PointerCapture,
                 false,
             )),
             surface,
             pointer,
-            None,
+            route: None,
             physical_path,
-            Some(target_transition),
-            None,
-            None,
-        )
+            target_transition: Some(target_transition),
+            cleanup: None,
+            delivery: None,
+        })
     }
 
     pub(crate) fn pointer_integrity_cleanup(
@@ -666,16 +653,16 @@ impl TraceContext {
         physical_path: TracePointerPath,
         cleanup: TracePointerCleanup,
     ) -> Self {
-        Self::pointer_record(
-            None,
+        Self::pointer_record(TracePointerRecordContext {
+            event: None,
             surface,
             pointer,
-            None,
+            route: None,
             physical_path,
-            None,
-            Some(cleanup),
-            None,
-        )
+            target_transition: None,
+            cleanup: Some(cleanup),
+            delivery: None,
+        })
     }
 
     pub(crate) fn publication_record(publication: TracePublicationContext) -> Self {
@@ -689,11 +676,10 @@ impl TraceContext {
     pub fn event(&self) -> Option<TraceEventContext> {
         match self.data.as_deref() {
             Some(TraceContextData::Routed { event, .. }) => Some(*event),
-            Some(
-                TraceContextData::Pointer { event, .. }
-                | TraceContextData::Focus { event, .. }
-                | TraceContextData::Text { event, .. },
-            ) => *event,
+            Some(TraceContextData::Pointer(context)) => context.event,
+            Some(TraceContextData::Focus { event, .. } | TraceContextData::Text { event, .. }) => {
+                *event
+            }
             Some(
                 TraceContextData::Surface(_)
                 | TraceContextData::Action(_)
@@ -708,9 +694,9 @@ impl TraceContext {
     pub fn surface(&self) -> Option<&TraceSurfaceContext> {
         match self.data.as_deref() {
             Some(TraceContextData::Surface(surface)) => Some(surface),
+            Some(TraceContextData::Pointer(context)) => context.surface.as_ref(),
             Some(
                 TraceContextData::Routed { surface, .. }
-                | TraceContextData::Pointer { surface, .. }
                 | TraceContextData::Focus { surface, .. }
                 | TraceContextData::Text { surface, .. },
             ) => surface.as_ref(),
@@ -723,7 +709,7 @@ impl TraceContext {
     #[must_use]
     pub fn pointer(&self) -> Option<&TracePointerContext> {
         match self.data.as_deref() {
-            Some(TraceContextData::Pointer { pointer, .. }) => Some(pointer),
+            Some(TraceContextData::Pointer(context)) => Some(&context.pointer),
             _ => None,
         }
     }
@@ -761,9 +747,9 @@ impl TraceContext {
     #[must_use]
     pub fn route(&self) -> Option<&TraceRouteSnapshot> {
         match self.data.as_deref() {
+            Some(TraceContextData::Pointer(context)) => context.route.as_ref(),
             Some(
                 TraceContextData::Routed { route, .. }
-                | TraceContextData::Pointer { route, .. }
                 | TraceContextData::Focus { route, .. }
                 | TraceContextData::Text { route, .. },
             ) => route.as_ref(),
@@ -775,7 +761,7 @@ impl TraceContext {
     #[must_use]
     pub fn physical_path(&self) -> Option<&TracePointerPath> {
         match self.data.as_deref() {
-            Some(TraceContextData::Pointer { physical_path, .. }) => physical_path.as_ref(),
+            Some(TraceContextData::Pointer(context)) => Some(&context.physical_path),
             _ => None,
         }
     }
@@ -784,14 +770,10 @@ impl TraceContext {
     #[must_use]
     pub fn target_transition(&self) -> Option<&TraceTargetTransition> {
         match self.data.as_deref() {
-            Some(
-                TraceContextData::Pointer {
-                    target_transition, ..
-                }
-                | TraceContextData::Focus {
-                    target_transition, ..
-                },
-            ) => target_transition.as_ref(),
+            Some(TraceContextData::Pointer(context)) => context.target_transition.as_ref(),
+            Some(TraceContextData::Focus {
+                target_transition, ..
+            }) => target_transition.as_ref(),
             _ => None,
         }
     }
@@ -800,7 +782,7 @@ impl TraceContext {
     #[must_use]
     pub fn pointer_cleanup(&self) -> Option<&TracePointerCleanup> {
         match self.data.as_deref() {
-            Some(TraceContextData::Pointer { cleanup, .. }) => cleanup.as_ref(),
+            Some(TraceContextData::Pointer(context)) => context.cleanup.as_ref(),
             _ => None,
         }
     }
@@ -827,9 +809,9 @@ impl TraceContext {
     #[must_use]
     pub fn delivery(&self) -> Option<TraceDeliveryOutcome> {
         match self.data.as_deref() {
+            Some(TraceContextData::Pointer(context)) => context.delivery,
             Some(
                 TraceContextData::Routed { delivery, .. }
-                | TraceContextData::Pointer { delivery, .. }
                 | TraceContextData::Focus { delivery, .. }
                 | TraceContextData::Text { delivery, .. },
             ) => *delivery,
