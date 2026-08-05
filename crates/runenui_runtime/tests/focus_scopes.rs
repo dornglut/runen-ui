@@ -215,6 +215,51 @@ fn assert_focus_event(
     assert_eq!(&observation.current_target, current_target);
 }
 
+fn assert_delivered_focus_record(
+    record: &TraceRecord,
+    kind: FocusEventKind,
+    root: &runenui_core::MountedNodeId,
+    scope: &runenui_core::MountedNodeId,
+    target: &runenui_core::MountedNodeId,
+    related: &runenui_core::MountedNodeId,
+    previous: &runenui_core::MountedNodeId,
+    current: &runenui_core::MountedNodeId,
+) {
+    assert!(matches!(
+        record.kind(),
+        TraceRecordKind::FocusNotificationResolved { kind: actual } if *actual == kind
+    ));
+    let context = record.context();
+    let event = context
+        .event()
+        .unwrap_or_else(|| unreachable!("delivered focus notification owns event classification"));
+    assert_eq!(event.family(), TraceEventFamily::Focus);
+    assert!(!event.is_cancelable());
+    assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Delivered));
+    let route = context
+        .route()
+        .unwrap_or_else(|| unreachable!("delivered focus notification owns its exact route"));
+    assert_eq!(route.targets().len(), 3);
+    assert_eq!(route.targets()[0].mounted_node_id(), root);
+    assert_eq!(route.targets()[1].mounted_node_id(), scope);
+    assert_eq!(route.targets()[2].mounted_node_id(), target);
+    assert_eq!(
+        route.related_target().map(TraceTarget::mounted_node_id),
+        Some(related)
+    );
+    let endpoints = context
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("delivered focus notification owns exact endpoints"));
+    assert_eq!(
+        endpoints.previous().map(TraceTarget::mounted_node_id),
+        Some(previous)
+    );
+    assert_eq!(
+        endpoints.current().map(TraceTarget::mounted_node_id),
+        Some(current)
+    );
+}
+
 #[test]
 fn nested_focus_notifications_use_exact_routes_and_related_targets() {
     let log = Rc::new(RefCell::new(Vec::new()));
@@ -231,10 +276,11 @@ fn nested_focus_notifications_use_exact_routes_and_related_targets() {
 
     request_focus(&mut runtime, &publication, first.clone());
     log.borrow_mut().clear();
+    let trace_start = runtime.trace().len();
     request_focus(&mut runtime, &publication, second.clone());
 
     let observations = log.borrow();
-    assert_eq!(observations.len(), 10);
+    assert_eq!(observations.len(), 2);
     assert_focus_event(
         &observations[0],
         "first",
@@ -242,71 +288,11 @@ fn nested_focus_notifications_use_exact_routes_and_related_targets() {
         FocusReason::ProgrammaticRequest,
         &first,
         Some(&second),
-        runenui_core::EventPhase::Capture,
-        &root,
+        runenui_core::EventPhase::Target,
+        &first,
     );
     assert_focus_event(
         &observations[1],
-        "first",
-        FocusEventKind::Out,
-        FocusReason::ProgrammaticRequest,
-        &first,
-        Some(&second),
-        runenui_core::EventPhase::Capture,
-        &scope,
-    );
-    assert_focus_event(
-        &observations[2],
-        "first",
-        FocusEventKind::Out,
-        FocusReason::ProgrammaticRequest,
-        &first,
-        Some(&second),
-        runenui_core::EventPhase::Target,
-        &first,
-    );
-    assert_focus_event(
-        &observations[3],
-        "first",
-        FocusEventKind::Out,
-        FocusReason::ProgrammaticRequest,
-        &first,
-        Some(&second),
-        runenui_core::EventPhase::Bubble,
-        &scope,
-    );
-    assert_focus_event(
-        &observations[4],
-        "first",
-        FocusEventKind::Out,
-        FocusReason::ProgrammaticRequest,
-        &first,
-        Some(&second),
-        runenui_core::EventPhase::Bubble,
-        &root,
-    );
-    assert_focus_event(
-        &observations[5],
-        "second",
-        FocusEventKind::In,
-        FocusReason::ProgrammaticRequest,
-        &second,
-        Some(&first),
-        runenui_core::EventPhase::Capture,
-        &root,
-    );
-    assert_focus_event(
-        &observations[6],
-        "second",
-        FocusEventKind::In,
-        FocusReason::ProgrammaticRequest,
-        &second,
-        Some(&first),
-        runenui_core::EventPhase::Capture,
-        &scope,
-    );
-    assert_focus_event(
-        &observations[7],
         "second",
         FocusEventKind::In,
         FocusReason::ProgrammaticRequest,
@@ -315,26 +301,97 @@ fn nested_focus_notifications_use_exact_routes_and_related_targets() {
         runenui_core::EventPhase::Target,
         &second,
     );
-    assert_focus_event(
-        &observations[8],
-        "second",
-        FocusEventKind::In,
-        FocusReason::ProgrammaticRequest,
-        &second,
-        Some(&first),
-        runenui_core::EventPhase::Bubble,
-        &scope,
+    drop(observations);
+
+    let records = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
+    let transition = record_for(&records, |kind| {
+        matches!(
+            kind,
+            TraceRecordKind::FocusTransitionCommitted {
+                reason: FocusReason::ProgrammaticRequest,
+            }
+        )
+    });
+    let within = record_for(&records, |kind| {
+        matches!(
+            kind,
+            TraceRecordKind::FocusWithinInvalidated {
+                left: 1,
+                entered: 1,
+            }
+        )
+    });
+    let out = record_for(&records, |kind| {
+        matches!(
+            kind,
+            TraceRecordKind::FocusNotificationResolved {
+                kind: FocusEventKind::Out,
+            }
+        )
+    });
+    let input = record_for(&records, |kind| {
+        matches!(
+            kind,
+            TraceRecordKind::FocusNotificationResolved {
+                kind: FocusEventKind::In,
+            }
+        )
+    });
+
+    assert_eq!(within.causal_parent(), Some(transition.sequence()));
+    assert_eq!(out.causal_parent(), Some(within.sequence()));
+    assert_eq!(input.causal_parent(), Some(out.sequence()));
+    assert_eq!(transition.work_sequence(), within.work_sequence());
+    assert_eq!(transition.work_sequence(), out.work_sequence());
+    assert_eq!(transition.work_sequence(), input.work_sequence());
+    assert_eq!(transition.instant(), within.instant());
+    assert_eq!(transition.instant(), out.instant());
+    assert_eq!(transition.instant(), input.instant());
+    assert!(transition.instant().is_some());
+
+    let transition_endpoints = transition
+        .context()
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("focus transition owns exact endpoints"));
+    assert_eq!(
+        transition_endpoints
+            .previous()
+            .map(TraceTarget::mounted_node_id),
+        Some(&first)
     );
-    assert_focus_event(
-        &observations[9],
-        "second",
-        FocusEventKind::In,
-        FocusReason::ProgrammaticRequest,
-        &second,
-        Some(&first),
-        runenui_core::EventPhase::Bubble,
+    assert_eq!(
+        transition_endpoints
+            .current()
+            .map(TraceTarget::mounted_node_id),
+        Some(&second)
+    );
+    assert_reconciliation_surface(transition, &publication);
+    assert_delivered_focus_record(
+        out,
+        FocusEventKind::Out,
         &root,
+        &scope,
+        &first,
+        &second,
+        &first,
+        &second,
     );
+    assert_delivered_focus_record(
+        input,
+        FocusEventKind::In,
+        &root,
+        &scope,
+        &second,
+        &first,
+        &first,
+        &second,
+    );
+    assert_reconciliation_surface(out, &publication);
+    assert_reconciliation_surface(input, &publication);
 }
 
 #[test]
