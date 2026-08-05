@@ -12,9 +12,10 @@ pub(crate) use admission::{MandatoryTracePlan, TraceReservation};
 pub(crate) use construction::TraceRecordDraft;
 pub use context::{
     TraceActionCategory, TraceActionIdentity, TraceCompositionContext, TraceCompositionRange,
-    TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily, TracePointerCleanup,
-    TracePointerContext, TracePointerPath, TracePublicationContext, TraceRouteSnapshot,
-    TraceSurfaceContext, TraceTargetTransition, TraceTextMetrics,
+    TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
+    TraceModalityTransition, TracePointerCleanup, TracePointerContext, TracePointerPath,
+    TracePublicationContext, TraceRouteSnapshot, TraceSurfaceContext, TraceTargetTransition,
+    TraceTextMetrics,
 };
 pub use model::{
     TraceConfig, TraceFocusBoundaryOutcome, TracePointerCaptureRequestKind,
