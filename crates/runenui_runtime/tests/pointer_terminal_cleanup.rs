@@ -238,7 +238,11 @@ fn assert_causal_ancestor(
     }
 }
 
-fn assert_retired_up_cleanup(cleanup: &TraceRecord, harness: &Harness) {
+fn assert_retired_up_cleanup(
+    cleanup: &TraceRecord,
+    harness: &Harness,
+    stream_surface: &SurfaceInputContext,
+) {
     assert!(matches!(
         cleanup.kind(),
         TraceRecordKind::PointerIntegrityCleanupCommitted
@@ -255,14 +259,14 @@ fn assert_retired_up_cleanup(cleanup: &TraceRecord, harness: &Harness) {
     let surface = context
         .surface()
         .unwrap_or_else(|| unreachable!("cleanup owns prior stream surface identity"));
-    assert_eq!(surface.surface_id(), harness.context.surface_id());
+    assert_eq!(surface.surface_id(), stream_surface.surface_id());
     assert_eq!(
         surface.coordinate_revision(),
-        harness.context.coordinate_revision()
+        stream_surface.coordinate_revision()
     );
     assert_eq!(
         surface.hit_test_generation(),
-        harness.context.hit_test_generation()
+        stream_surface.hit_test_generation()
     );
     assert_eq!(surface.snapshot(), None);
     let path = context
@@ -295,7 +299,11 @@ fn assert_retired_up_cleanup(cleanup: &TraceRecord, harness: &Harness) {
     assert_eq!(context.delivery(), None);
 }
 
-fn assert_retired_up_capture_loss(capture: &TraceRecord, harness: &Harness) {
+fn assert_retired_up_capture_loss(
+    capture: &TraceRecord,
+    harness: &Harness,
+    stream_surface: &SurfaceInputContext,
+) {
     assert!(matches!(
         capture.kind(),
         TraceRecordKind::PointerCaptureNotificationResolved {
@@ -323,7 +331,15 @@ fn assert_retired_up_capture_loss(capture: &TraceRecord, harness: &Harness) {
     let surface = context
         .surface()
         .unwrap_or_else(|| unreachable!("capture loss owns prior stream surface identity"));
-    assert_eq!(surface.surface_id(), harness.context.surface_id());
+    assert_eq!(surface.surface_id(), stream_surface.surface_id());
+    assert_eq!(
+        surface.coordinate_revision(),
+        stream_surface.coordinate_revision()
+    );
+    assert_eq!(
+        surface.hit_test_generation(),
+        stream_surface.hit_test_generation()
+    );
     assert_eq!(surface.snapshot(), None);
     let route = context
         .route()
@@ -434,8 +450,15 @@ fn retired_context_up_closes_without_ordinary_route_or_activation_and_notifies_c
         })
         .unwrap_or_else(|| unreachable!("live capture loss is resolved"));
 
-    assert_retired_up_cleanup(cleanup, &harness);
-    assert_retired_up_capture_loss(capture_lost, &harness);
+    assert_retired_up_cleanup(cleanup, &harness, current.input_context());
+    assert_retired_up_capture_loss(capture_lost, &harness, current.input_context());
+    assert_ne!(
+        cleanup
+            .context()
+            .surface()
+            .map(|surface| surface.hit_test_generation()),
+        Some(harness.context.hit_test_generation())
+    );
     assert_eq!(cleanup.causal_parent(), Some(rejected.sequence()));
     assert_eq!(closed.causal_parent(), Some(cleanup.sequence()));
     assert_causal_ancestor(&records, capture_lost, closed);
