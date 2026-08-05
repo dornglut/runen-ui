@@ -363,11 +363,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 None,
             )
         });
-        let pointer = TracePointerContext::stream(
-            cleanup.pointer_id,
-            cleanup.device_id,
-            cleanup.device_kind,
-        );
+        let pointer =
+            TracePointerContext::stream(cleanup.pointer_id, cleanup.device_id, cleanup.device_kind);
         let surface = cleanup
             .surface_context
             .as_ref()
@@ -376,11 +373,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface,
             pointer,
             physical_path,
-            TracePointerCleanup::new(
-                pressed_owner,
-                capture_owner,
-                cleanup.clear_physical_path,
-            ),
+            TracePointerCleanup::new(pressed_owner, capture_owner, cleanup.clear_physical_path),
         );
         self.trace.record_draft(
             TraceRecordDraft::pointer_fact(
@@ -505,7 +498,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             work_sequence: Some(sequence),
             instant,
         };
-        transaction.parent = self.record_capture_loss_resolution(&capture_facts, transaction.parent);
+        transaction.parent =
+            self.record_capture_loss_resolution(&capture_facts, transaction.parent);
         let resolution = transaction.parent;
         let failure = transaction.failure_facts();
         if self.commit_routed_transaction(transaction).is_err() {
