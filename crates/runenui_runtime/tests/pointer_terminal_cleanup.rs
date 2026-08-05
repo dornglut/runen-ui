@@ -16,7 +16,7 @@ use runenui_core::{
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, RuntimeConfig, SurfaceBuildContext, SurfacePublication,
     TraceDeliveryOutcome, TraceEventFamily, TracePointerRejection, TraceRecord, TraceRecordKind,
-    TraceTarget,
+    TraceSurfaceContext, TraceTarget,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -363,6 +363,123 @@ fn assert_retired_up_capture_loss(
     assert_eq!(transition.current(), None);
 }
 
+struct RetiredUpRecords<'a> {
+    rejected: &'a TraceRecord,
+    cleanup: &'a TraceRecord,
+    closed: &'a TraceRecord,
+    capture_lost: &'a TraceRecord,
+}
+
+fn retired_up_records(records: &[&TraceRecord]) -> RetiredUpRecords<'_> {
+    let rejected = records
+        .iter()
+        .rev()
+        .copied()
+        .find(|record| matches!(
+            record.kind(),
+            TraceRecordKind::PointerIngressRejected {
+                pointer_id,
+                phase: PointerPhase::Up,
+                outcome: TracePointerRejection::RetiredGeneration,
+            } if pointer_id.get() == 71
+        ))
+        .unwrap_or_else(|| unreachable!("retired up is diagnosed"));
+    let cleanup = records
+        .iter()
+        .rev()
+        .copied()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::PointerIntegrityCleanupCommitted
+            ) && record
+                .context()
+                .pointer()
+                .is_some_and(|pointer| pointer.pointer_id().get() == 71)
+        })
+        .unwrap_or_else(|| unreachable!("retired up commits exact interaction cleanup"));
+    let closed = records
+        .iter()
+        .rev()
+        .copied()
+        .find(|record| matches!(
+            record.kind(),
+            TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id.get() == 71
+        ))
+        .unwrap_or_else(|| unreachable!("retired up closes the stream"));
+    let capture_lost = records
+        .iter()
+        .rev()
+        .copied()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::PointerCaptureNotificationResolved {
+                    kind: PointerCaptureKind::Lost,
+                }
+            ) && record
+                .context()
+                .pointer()
+                .is_some_and(|pointer| pointer.pointer_id().get() == 71)
+        })
+        .unwrap_or_else(|| unreachable!("live capture loss is resolved"));
+    RetiredUpRecords {
+        rejected,
+        cleanup,
+        closed,
+        capture_lost,
+    }
+}
+
+fn assert_retired_up_trace(
+    records: &[&TraceRecord],
+    facts: &RetiredUpRecords<'_>,
+    harness: &Harness,
+    stream_surface: &SurfaceInputContext,
+) {
+    assert_retired_up_cleanup(facts.cleanup, harness, stream_surface);
+    assert_retired_up_capture_loss(facts.capture_lost, harness, stream_surface);
+    assert_ne!(
+        facts
+            .cleanup
+            .context()
+            .surface()
+            .map(TraceSurfaceContext::hit_test_generation),
+        Some(harness.context.hit_test_generation())
+    );
+    assert_eq!(
+        facts.cleanup.causal_parent(),
+        Some(facts.rejected.sequence())
+    );
+    assert_eq!(
+        facts.closed.causal_parent(),
+        Some(facts.cleanup.sequence())
+    );
+    assert_causal_ancestor(records, facts.capture_lost, facts.closed);
+    assert_eq!(facts.cleanup.instant(), facts.capture_lost.instant());
+    assert!(facts.cleanup.instant().is_some());
+}
+
+fn assert_retired_up_stream_is_closed(harness: &mut Harness, current: &SurfacePublication) {
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(
+            71,
+            PointerPhase::Cancel,
+            current.input_context(),
+            harness.point,
+        ),
+    );
+    assert!(harness.runtime.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::PointerIngressRejected {
+            pointer_id,
+            phase: PointerPhase::Cancel,
+            outcome: TracePointerRejection::MissingStream,
+        } if pointer_id.get() == 71
+    )));
+}
+
 #[test]
 fn retired_context_up_closes_without_ordinary_route_or_activation_and_notifies_capture_loss() {
     let retention =
@@ -386,102 +503,16 @@ fn retired_context_up_closes_without_ordinary_route_or_activation_and_notifies_c
         &mut harness.runtime,
         pointer_event(71, PointerPhase::Up, &harness.context, harness.point),
     );
-
     assert_eq!(
         harness.observations.borrow().as_slice(),
         [Observation::Capture(PointerCaptureKind::Lost)]
     );
     assert_eq!(harness.activations.get(), 0);
+
     let records = harness.runtime.trace().records().collect::<Vec<_>>();
-    let rejected = records
-        .iter()
-        .rev()
-        .copied()
-        .find(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::PointerIngressRejected {
-                    pointer_id,
-                    phase: PointerPhase::Up,
-                    outcome: TracePointerRejection::RetiredGeneration,
-                } if pointer_id.get() == 71
-            )
-        })
-        .unwrap_or_else(|| unreachable!("retired up is diagnosed"));
-    let cleanup = records
-        .iter()
-        .rev()
-        .copied()
-        .find(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::PointerIntegrityCleanupCommitted
-            ) && record
-                .context()
-                .pointer()
-                .is_some_and(|pointer| pointer.pointer_id().get() == 71)
-        })
-        .unwrap_or_else(|| unreachable!("retired up commits exact interaction cleanup"));
-    let closed = records
-        .iter()
-        .rev()
-        .copied()
-        .find(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id.get() == 71
-            )
-        })
-        .unwrap_or_else(|| unreachable!("retired up closes the stream"));
-    let capture_lost = records
-        .iter()
-        .rev()
-        .copied()
-        .find(|record| {
-            matches!(
-                record.kind(),
-                TraceRecordKind::PointerCaptureNotificationResolved {
-                    kind: PointerCaptureKind::Lost,
-                }
-            ) && record
-                .context()
-                .pointer()
-                .is_some_and(|pointer| pointer.pointer_id().get() == 71)
-        })
-        .unwrap_or_else(|| unreachable!("live capture loss is resolved"));
-
-    assert_retired_up_cleanup(cleanup, &harness, current.input_context());
-    assert_retired_up_capture_loss(capture_lost, &harness, current.input_context());
-    assert_ne!(
-        cleanup
-            .context()
-            .surface()
-            .map(|surface| surface.hit_test_generation()),
-        Some(harness.context.hit_test_generation())
-    );
-    assert_eq!(cleanup.causal_parent(), Some(rejected.sequence()));
-    assert_eq!(closed.causal_parent(), Some(cleanup.sequence()));
-    assert_causal_ancestor(&records, capture_lost, closed);
-    assert_eq!(cleanup.instant(), capture_lost.instant());
-    assert!(cleanup.instant().is_some());
-
-    submit_and_pump(
-        &mut harness.runtime,
-        pointer_event(
-            71,
-            PointerPhase::Cancel,
-            current.input_context(),
-            harness.point,
-        ),
-    );
-    assert!(harness.runtime.trace().kinds().any(|kind| matches!(
-        kind,
-        TraceRecordKind::PointerIngressRejected {
-            pointer_id,
-            phase: PointerPhase::Cancel,
-            outcome: TracePointerRejection::MissingStream,
-        } if pointer_id.get() == 71
-    )));
+    let facts = retired_up_records(&records);
+    assert_retired_up_trace(&records, &facts, &harness, current.input_context());
+    assert_retired_up_stream_is_closed(&mut harness, &current);
 }
 
 #[test]
