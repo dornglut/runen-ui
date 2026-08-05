@@ -334,9 +334,13 @@ fn assert_hovered_cleanup(record: &TraceRecord, harness: &Harness, hovered: Poin
     assert!(cleanup.physical_path_cleared());
 }
 
-#[test]
-fn removal_cleans_streams_in_registration_order_and_suppresses_removed_capture_loss() {
-    let mut harness = harness();
+struct CleanupRecords<'a> {
+    captured: &'a TraceRecord,
+    suppressed_loss: &'a TraceRecord,
+    hovered: &'a TraceRecord,
+}
+
+fn setup_registered_streams(harness: &mut Harness) -> (PointerId, PointerId, usize) {
     let captured = pointer(9);
     let hovered = pointer(2);
     submit_and_pump(
@@ -353,8 +357,104 @@ fn removal_cleans_streams_in_registration_order_and_suppresses_removed_capture_l
         pointer_event(hovered, PointerPhase::Move, &harness.context, harness.point),
     );
     harness.callbacks.borrow_mut().clear();
-    let trace_start = harness.runtime.trace().len();
+    (captured, hovered, harness.runtime.trace().len())
+}
 
+fn cleanup_records<'a>(
+    records: &[&'a TraceRecord],
+    sequence: WorkSequence,
+) -> CleanupRecords<'a> {
+    let captured = mandatory_record(records, sequence, |kind| {
+        matches!(kind, TraceRecordKind::PointerIntegrityCleanupCommitted)
+    });
+    let suppressed_loss = mandatory_record(records, sequence, |kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerCaptureNotificationResolved {
+                kind: PointerCaptureKind::Lost,
+            }
+        )
+    });
+    let hovered = records
+        .iter()
+        .copied()
+        .filter(|record| {
+            record.work_sequence() == Some(sequence)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerIntegrityCleanupCommitted
+                )
+        })
+        .nth(1)
+        .unwrap_or_else(|| unreachable!("the hovered stream cleanup is retained"));
+    CleanupRecords {
+        captured,
+        suppressed_loss,
+        hovered,
+    }
+}
+
+fn assert_cleanup_order(
+    records: &[&TraceRecord],
+    cleanup: &CleanupRecords<'_>,
+    harness: &Harness,
+    captured: PointerId,
+    hovered: PointerId,
+) {
+    assert_captured_cleanup(cleanup.captured, harness, captured);
+    assert_suppressed_capture_loss(cleanup.suppressed_loss, harness, captured);
+    assert_hovered_cleanup(cleanup.hovered, harness, hovered);
+    assert_eq!(cleanup.captured.instant(), cleanup.suppressed_loss.instant());
+    assert_eq!(cleanup.captured.instant(), cleanup.hovered.instant());
+    assert!(cleanup.captured.instant().is_some());
+    assert_eq!(
+        cleanup.suppressed_loss.causal_parent(),
+        Some(cleanup.captured.sequence())
+    );
+    assert_eq!(
+        cleanup.hovered.causal_parent(),
+        Some(cleanup.suppressed_loss.sequence())
+    );
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| matches!(
+                record.kind(),
+                TraceRecordKind::PointerCaptureNotificationResolved { .. }
+            ))
+            .count(),
+        1
+    );
+}
+
+fn cancel_removed_streams(harness: &mut Harness, captured: PointerId, hovered: PointerId) {
+    for pointer_id in [captured, hovered] {
+        submit_and_pump(
+            &mut harness.runtime,
+            pointer_event(
+                pointer_id,
+                PointerPhase::Cancel,
+                &harness.context,
+                harness.point,
+            ),
+        );
+    }
+    assert!(harness.callbacks.borrow().is_empty());
+    assert_eq!(
+        harness
+            .runtime
+            .trace()
+            .kinds()
+            .filter(|kind| matches!(kind, TraceRecordKind::PointerStreamClosed { .. }))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn removal_cleans_streams_in_registration_order_and_suppresses_removed_capture_loss() {
+    let mut harness = harness();
+    let (captured, hovered, trace_start) = setup_registered_streams(&mut harness);
     let sequence = harness
         .runtime
         .submit_action(Action::Hide)
@@ -368,83 +468,7 @@ fn removal_cleans_streams_in_registration_order_and_suppresses_removed_capture_l
         .records()
         .skip(trace_start)
         .collect::<Vec<_>>();
-    let captured_cleanup = mandatory_record(&records, sequence, |kind| {
-        matches!(kind, TraceRecordKind::PointerIntegrityCleanupCommitted)
-    });
-    let suppressed_loss = mandatory_record(&records, sequence, |kind| {
-        matches!(
-            kind,
-            TraceRecordKind::PointerCaptureNotificationResolved {
-                kind: PointerCaptureKind::Lost,
-            }
-        )
-    });
-    let hovered_cleanup = records
-        .iter()
-        .copied()
-        .filter(|record| {
-            record.work_sequence() == Some(sequence)
-                && matches!(
-                    record.kind(),
-                    TraceRecordKind::PointerIntegrityCleanupCommitted
-                )
-        })
-        .nth(1)
-        .unwrap_or_else(|| unreachable!("the hovered stream cleanup is retained"));
-
-    assert_captured_cleanup(captured_cleanup, &harness, captured);
-    assert_suppressed_capture_loss(suppressed_loss, &harness, captured);
-    assert_hovered_cleanup(hovered_cleanup, &harness, hovered);
-    assert_eq!(captured_cleanup.instant(), suppressed_loss.instant());
-    assert_eq!(captured_cleanup.instant(), hovered_cleanup.instant());
-    assert!(captured_cleanup.instant().is_some());
-    assert_eq!(
-        suppressed_loss.causal_parent(),
-        Some(captured_cleanup.sequence())
-    );
-    assert_eq!(
-        hovered_cleanup.causal_parent(),
-        Some(suppressed_loss.sequence())
-    );
-    assert_eq!(
-        records
-            .iter()
-            .filter(|record| {
-                matches!(
-                    record.kind(),
-                    TraceRecordKind::PointerCaptureNotificationResolved { .. }
-                )
-            })
-            .count(),
-        1
-    );
-
-    submit_and_pump(
-        &mut harness.runtime,
-        pointer_event(
-            captured,
-            PointerPhase::Cancel,
-            &harness.context,
-            harness.point,
-        ),
-    );
-    submit_and_pump(
-        &mut harness.runtime,
-        pointer_event(
-            hovered,
-            PointerPhase::Cancel,
-            &harness.context,
-            harness.point,
-        ),
-    );
-    assert!(harness.callbacks.borrow().is_empty());
-    assert_eq!(
-        harness
-            .runtime
-            .trace()
-            .kinds()
-            .filter(|kind| matches!(kind, TraceRecordKind::PointerStreamClosed { .. }))
-            .count(),
-        2
-    );
+    let cleanup = cleanup_records(&records, sequence);
+    assert_cleanup_order(&records, &cleanup, &harness, captured, hovered);
+    cancel_removed_streams(&mut harness, captured, hovered);
 }
