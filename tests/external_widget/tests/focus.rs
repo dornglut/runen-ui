@@ -94,11 +94,7 @@ fn assert_transition_endpoints(
     );
 }
 
-fn assert_delivered_route(
-    record: &TraceRecord,
-    target: &MountedNodeId,
-    related: &MountedNodeId,
-) {
+fn assert_delivered_route(record: &TraceRecord, target: &MountedNodeId, related: &MountedNodeId) {
     assert_eq!(
         record.context().delivery(),
         Some(TraceDeliveryOutcome::Delivered)
