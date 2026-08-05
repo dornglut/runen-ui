@@ -5,7 +5,8 @@ use runenui_core::{__runtime::RuntimeNamespace, SurfaceId, SurfaceInputContext};
 
 use crate::{
     LogicalPoint, LogicalRect, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
-    SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication,
+    SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication, TraceSurfaceContext,
+    TraceSurfaceSnapshotKind,
     mounted::MountedTree,
     surface::{SurfaceCache, publish_mounted_surface_cached},
 };
@@ -191,6 +192,15 @@ impl SurfacePublicationState {
             nodes,
         });
         context
+    }
+
+    pub(in crate::runtime) fn current_trace_surface_context(&self) -> Option<TraceSurfaceContext> {
+        self.snapshots.back().map(|snapshot| {
+            TraceSurfaceContext::accepted(
+                &snapshot.context,
+                TraceSurfaceSnapshotKind::Current,
+            )
+        })
     }
 
     /// Validates only runtime namespace and logical-surface identity.
