@@ -5,9 +5,9 @@ use std::{cell::RefCell, rc::Rc};
 use runenui_core::{
     Element, ElementId, EventContext, FocusBoundaryPolicy, FocusDirection, FocusEventKind,
     FocusReason, FocusScope, FocusScopePolicy, Focusability, InputModality, KeyLocation,
-    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
-    PhysicalKey, SemanticCommand, StyleTokens, UiApp, UiEvent, View, Widget, WidgetActivation,
-    WidgetEventOutput, WidgetMeasure, children, column, row, text,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    NoHostProtocol, PhysicalKey, SemanticCommand, StyleTokens, UiApp, UiEvent, View, Widget,
+    WidgetActivation, WidgetEventOutput, WidgetMeasure, children, column, row, text,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
@@ -133,9 +133,7 @@ impl UiApp for EmptyApp {
     type HostProtocol = NoHostProtocol;
 
     fn root(_state: &Self::State) -> impl View<Self::Action> {
-        row(children![text("label")])
-            .id("root")
-            .key("root")
+        row(children![text("label")]).id("root").key("root")
     }
 
     fn update(_state: &mut Self::State, _action: Self::Action) {}
@@ -405,7 +403,10 @@ fn keyboard_modality_is_committed_before_keyboard_default_focus_transfer() {
     let first = target_by_id(&publication, "first");
     let second = target_by_id(&publication, "second");
     request_focus(&mut runtime, &publication, first.clone());
-    assert_eq!(runtime.focus().modality(), Some(InputModality::Programmatic));
+    assert_eq!(
+        runtime.focus().modality(),
+        Some(InputModality::Programmatic)
+    );
 
     runtime
         .submit_keyboard(keyboard_event(
@@ -495,10 +496,12 @@ fn scope_wrap_trap_and_restoration_are_deterministic() {
         .unwrap_or_else(|_| unreachable!("restore focus is admitted"));
     pump_all(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), Some(&first));
-    assert!(runtime
-        .trace()
-        .kinds()
-        .any(|kind| matches!(kind, TraceRecordKind::FocusRestorationAccepted)));
+    assert!(
+        runtime
+            .trace()
+            .kinds()
+            .any(|kind| matches!(kind, TraceRecordKind::FocusRestorationAccepted))
+    );
 }
 
 fn record_for<'a>(
@@ -584,10 +587,22 @@ fn focus_is_cleared_and_notification_is_suppressed_when_target_disappears() {
     assert_eq!(transition.instant(), within.instant());
     assert_eq!(transition.instant(), resolved.instant());
     assert!(transition.instant().is_some());
-    assert_eq!(transition.reconciliation_before(), within.reconciliation_before());
-    assert_eq!(transition.reconciliation_after(), within.reconciliation_after());
-    assert_eq!(transition.reconciliation_before(), resolved.reconciliation_before());
-    assert_eq!(transition.reconciliation_after(), resolved.reconciliation_after());
+    assert_eq!(
+        transition.reconciliation_before(),
+        within.reconciliation_before()
+    );
+    assert_eq!(
+        transition.reconciliation_after(),
+        within.reconciliation_after()
+    );
+    assert_eq!(
+        transition.reconciliation_before(),
+        resolved.reconciliation_before()
+    );
+    assert_eq!(
+        transition.reconciliation_after(),
+        resolved.reconciliation_after()
+    );
 
     let transition_context = transition.context();
     let endpoints = transition_context
