@@ -1,6 +1,6 @@
 use runenui_core::{
-    CompositionGeneration, InputDeviceId, InputModality, PointerDeviceKind, PointerId, PointerPhase,
-    SurfaceId, SurfaceInputContext,
+    CompositionGeneration, InputDeviceId, InputModality, PointerDeviceKind, PointerId,
+    PointerPhase, SurfaceId, SurfaceInputContext,
 };
 
 use crate::{ReconciliationGeneration, SurfacePhase};
@@ -773,10 +773,9 @@ impl TraceContext {
             Some(TraceContextData::Surface(surface)) => Some(surface),
             Some(TraceContextData::Pointer(context)) => context.surface.as_ref(),
             Some(TraceContextData::Focus(context)) => context.surface.as_ref(),
-            Some(
-                TraceContextData::Routed { surface, .. }
-                | TraceContextData::Text { surface, .. },
-            ) => surface.as_ref(),
+            Some(TraceContextData::Routed { surface, .. } | TraceContextData::Text { surface, .. }) => {
+                surface.as_ref()
+            }
             Some(TraceContextData::Publication(publication)) => Some(publication.surface()),
             Some(TraceContextData::Action(_)) | None => None,
         }
@@ -826,10 +825,9 @@ impl TraceContext {
         match self.data.as_deref() {
             Some(TraceContextData::Pointer(context)) => context.route.as_ref(),
             Some(TraceContextData::Focus(context)) => context.route.as_ref(),
-            Some(
-                TraceContextData::Routed { route, .. }
-                | TraceContextData::Text { route, .. },
-            ) => route.as_ref(),
+            Some(TraceContextData::Routed { route, .. } | TraceContextData::Text { route, .. }) => {
+                route.as_ref()
+            }
             _ => None,
         }
     }
@@ -896,8 +894,7 @@ impl TraceContext {
             Some(TraceContextData::Pointer(context)) => context.delivery,
             Some(TraceContextData::Focus(context)) => context.delivery,
             Some(
-                TraceContextData::Routed { delivery, .. }
-                | TraceContextData::Text { delivery, .. },
+                TraceContextData::Routed { delivery, .. } | TraceContextData::Text { delivery, .. },
             ) => *delivery,
             _ => None,
         }
