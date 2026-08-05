@@ -8,7 +8,11 @@ use runenui_core::{
     PointerPhase, StyleTokens, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetMeasure,
 };
-use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceRecordKind};
+use runenui_runtime::{
+    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
+    TraceEventFamily, TraceRecord, TraceRecordKind, TraceSurfaceSnapshotKind, TraceTarget,
+    WorkSequence,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Mode {
@@ -208,6 +212,144 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
     );
 }
 
+fn mandatory_cleanup_record<'a>(
+    records: &[&'a TraceRecord],
+    work_sequence: WorkSequence,
+    predicate: impl Fn(&TraceRecordKind) -> bool,
+) -> &'a TraceRecord {
+    records
+        .iter()
+        .copied()
+        .find(|record| record.work_sequence() == Some(work_sequence) && predicate(record.kind()))
+        .unwrap_or_else(|| unreachable!("the mandatory pointer cleanup fact is retained"))
+}
+
+fn assert_causal_ancestor(
+    records: &[&TraceRecord],
+    descendant: &TraceRecord,
+    ancestor: &TraceRecord,
+) {
+    let mut parent = descendant.causal_parent();
+    while parent != Some(ancestor.sequence()) {
+        let sequence = parent.unwrap_or_else(|| {
+            unreachable!("capture resolution must descend from the cleanup fact")
+        });
+        parent = records
+            .iter()
+            .copied()
+            .find(|record| record.sequence() == sequence)
+            .unwrap_or_else(|| unreachable!("every retained parent is present in this trace"))
+            .causal_parent();
+    }
+}
+
+fn assert_cleanup_context(cleanup: &TraceRecord, harness: &Harness) {
+    assert!(matches!(
+        cleanup.kind(),
+        TraceRecordKind::PointerIntegrityCleanupCommitted
+    ));
+    let context = cleanup.context();
+    assert_eq!(context.event(), None);
+    let pointer = context
+        .pointer()
+        .unwrap_or_else(|| unreachable!("cleanup owns pointer-stream identity"));
+    assert_eq!(pointer.pointer_id().get(), 71);
+    assert_eq!(pointer.device_id(), None);
+    assert_eq!(pointer.device_kind(), PointerDeviceKind::Mouse);
+    assert_eq!(pointer.phase(), None);
+    let surface = context
+        .surface()
+        .unwrap_or_else(|| unreachable!("cleanup owns requested surface identity"));
+    assert_eq!(surface.surface_id(), harness.context.surface_id());
+    assert_eq!(
+        surface.coordinate_revision(),
+        harness.context.coordinate_revision()
+    );
+    assert_eq!(
+        surface.hit_test_generation(),
+        harness.context.hit_test_generation()
+    );
+    assert_eq!(surface.snapshot(), None);
+    let path = context
+        .physical_path()
+        .unwrap_or_else(|| unreachable!("cleanup owns the pre-cleanup physical path"));
+    assert_eq!(path.targets().len(), 1);
+    assert_eq!(path.targets()[0].mounted_node_id(), &harness.target);
+    let cleanup_facts = context
+        .pointer_cleanup()
+        .unwrap_or_else(|| unreachable!("cleanup owns exact cleanup facts"));
+    let pressed = cleanup_facts
+        .pressed_owner()
+        .unwrap_or_else(|| unreachable!("pressed ownership was revoked"));
+    assert_eq!(
+        pressed.previous().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(pressed.current(), None);
+    let capture = cleanup_facts
+        .capture_owner()
+        .unwrap_or_else(|| unreachable!("capture ownership was revoked"));
+    assert_eq!(
+        capture.previous().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(capture.current(), None);
+    assert!(!cleanup_facts.physical_path_cleared());
+    assert_eq!(context.route(), None);
+    assert_eq!(context.delivery(), None);
+}
+
+fn assert_delivered_capture_loss(capture: &TraceRecord, harness: &Harness) {
+    assert!(matches!(
+        capture.kind(),
+        TraceRecordKind::PointerCaptureNotificationResolved {
+            kind: PointerCaptureKind::Lost,
+        }
+    ));
+    assert_eq!(
+        capture.target().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    let context = capture.context();
+    let event = context
+        .event()
+        .unwrap_or_else(|| unreachable!("capture loss owns event classification"));
+    assert_eq!(event.family(), TraceEventFamily::PointerCapture);
+    assert!(!event.is_cancelable());
+    assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Delivered));
+    let pointer = context
+        .pointer()
+        .unwrap_or_else(|| unreachable!("capture loss owns pointer-stream identity"));
+    assert_eq!(pointer.pointer_id().get(), 71);
+    assert_eq!(pointer.device_id(), None);
+    assert_eq!(pointer.device_kind(), PointerDeviceKind::Mouse);
+    assert_eq!(pointer.phase(), None);
+    let surface = context
+        .surface()
+        .unwrap_or_else(|| unreachable!("capture loss owns requested surface identity"));
+    assert_eq!(surface.surface_id(), harness.context.surface_id());
+    assert_eq!(surface.snapshot(), None);
+    let route = context
+        .route()
+        .unwrap_or_else(|| unreachable!("capture loss owns its target-only route"));
+    assert_eq!(route.targets().len(), 1);
+    assert_eq!(route.targets()[0].mounted_node_id(), &harness.target);
+    assert_eq!(route.related_target(), None);
+    let path = context
+        .physical_path()
+        .unwrap_or_else(|| unreachable!("capture loss owns the retained physical path"));
+    assert_eq!(path.targets().len(), 1);
+    assert_eq!(path.targets()[0].mounted_node_id(), &harness.target);
+    let transition = context
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("capture loss owns exact capture endpoints"));
+    assert_eq!(
+        transition.previous().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(transition.current(), None);
+}
+
 fn assert_capability_transition_clears_interaction(mode: Mode) {
     let mut harness = harness();
     let down = pointer_event(&harness, PointerPhase::Down, true);
@@ -228,10 +370,11 @@ fn assert_capability_transition_clears_interaction(mode: Mode) {
     harness.capture_kinds.borrow_mut().clear();
 
     let cleanup_start = harness.runtime.trace().len();
-    harness
+    let cleanup_submission = harness
         .runtime
         .submit_action(Action::SetMode(mode))
         .unwrap_or_else(|_| unreachable!("the application action is accepted"));
+    let cleanup_sequence = cleanup_submission.sequence();
     pump_all(&mut harness.runtime);
 
     assert_eq!(harness.runtime.index().nodes()[0].id(), &harness.target);
@@ -241,29 +384,29 @@ fn assert_capability_transition_clears_interaction(mode: Mode) {
         .records()
         .skip(cleanup_start)
         .collect::<Vec<_>>();
-    assert!(cleanup_records.iter().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::PointerIntegrityCleanupCommitted {
-            pointer_id,
-            pressed: true,
-            capture: true,
-            physical_path: false,
-        } if pointer_id.get() == 71
-    )));
-    assert!(cleanup_records.iter().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::PointerCaptureTransitionQueued {
-            pointer_id,
-            kind: PointerCaptureKind::Lost,
-        } if pointer_id.get() == 71
-    )));
-    assert!(!cleanup_records.iter().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::PointerCaptureNotificationSuppressed {
-            pointer_id,
-            kind: PointerCaptureKind::Lost,
-        } if pointer_id.get() == 71
-    )));
+    let cleanup = mandatory_cleanup_record(&cleanup_records, cleanup_sequence, |kind| {
+        matches!(kind, TraceRecordKind::PointerIntegrityCleanupCommitted)
+    });
+    let capture = mandatory_cleanup_record(&cleanup_records, cleanup_sequence, |kind| {
+        matches!(
+            kind,
+            TraceRecordKind::PointerCaptureNotificationResolved {
+                kind: PointerCaptureKind::Lost,
+            }
+        )
+    });
+    assert_cleanup_context(cleanup, &harness);
+    assert_delivered_capture_loss(capture, &harness);
+    assert_eq!(cleanup.instant(), capture.instant());
+    assert_causal_ancestor(&cleanup_records, capture, cleanup);
+    assert!(!cleanup_records.iter().any(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::PointerCaptureNotificationResolved {
+                kind: PointerCaptureKind::Lost,
+            }
+        ) && record.context().delivery() == Some(TraceDeliveryOutcome::Suppressed)
+    }));
     assert!(harness.pointer_phases.borrow().is_empty());
     assert_eq!(
         harness.capture_kinds.borrow().as_slice(),
