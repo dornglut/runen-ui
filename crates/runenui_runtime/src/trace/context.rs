@@ -842,7 +842,6 @@ mod tests {
 
     #[test]
     fn capture_notification_owns_transition_route_related_endpoint_and_outcome() {
-        let namespace = RuntimeNamespace::__runtime_new();
         let pointer_id =
             PointerId::new(9).unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
         let pointer = TracePointerContext::event(
