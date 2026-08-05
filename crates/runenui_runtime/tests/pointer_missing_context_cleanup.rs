@@ -13,8 +13,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
-    TraceEventFamily, TracePointerRejection, TraceRecord, TraceRecordKind, TraceTarget,
-    WorkSequence,
+    TraceEventFamily, TracePointerRejection, TraceRecord, TraceRecordKind, TraceSurfaceContext,
+    TraceTarget, WorkSequence,
 };
 
 #[derive(Clone)]
@@ -368,7 +368,7 @@ fn missing_context_up_commits_integrity_only_cleanup_with_causal_trace() {
         capture_lost
             .context()
             .surface()
-            .map(|surface| surface.hit_test_generation()),
+            .map(TraceSurfaceContext::hit_test_generation),
         Some(missing.hit_test_generation())
     );
 }
