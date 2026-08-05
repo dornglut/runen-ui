@@ -9,7 +9,9 @@ use runenui_core::{
 use runenui_external_widget_conformance::{
     ExternalFocusFact, ExternalFocusWidget, external_focus_panel,
 };
-use runenui_runtime::{AppRuntime, InputModality, MountedNodeId, PumpBudget, TraceRecordKind};
+use runenui_runtime::{
+    AppRuntime, InputModality, MountedNodeId, PumpBudget, TraceDeliveryOutcome, TraceRecordKind,
+};
 
 struct State {
     log: Rc<RefCell<Vec<ExternalFocusFact>>>,
@@ -71,26 +73,40 @@ fn assert_transition_trace(
         .trace()
         .records()
         .skip(trace_start)
-        .map(runenui_runtime::TraceRecord::kind)
         .collect::<Vec<_>>();
     let committed = transition_trace
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
+                record.kind(),
                 TraceRecordKind::FocusTransitionCommitted {
                     reason: FocusReason::ProgrammaticRequest,
-                    old_target: Some(old),
-                    new_target: Some(new),
-                } if old == old_target && new == new_target
+                }
             )
         })
         .unwrap_or_else(|| unreachable!("the exact transition is traced"));
+    let committed_transition = transition_trace[committed]
+        .context()
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("the transition owns exact endpoints"));
+    assert_eq!(
+        committed_transition
+            .previous()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
+        Some(old_target)
+    );
+    assert_eq!(
+        committed_transition
+            .current()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
+        Some(new_target)
+    );
+
     let within = transition_trace
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
+                record.kind(),
                 TraceRecordKind::FocusWithinInvalidated {
                     left: 1,
                     entered: 1,
@@ -100,26 +116,61 @@ fn assert_transition_trace(
         .unwrap_or_else(|| unreachable!("only the changed leaf routes invalidate"));
     let out = transition_trace
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
-                TraceRecordKind::FocusNotificationQueued {
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::Out,
                 }
-            )
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
         })
-        .unwrap_or_else(|| unreachable!("focus out is queued"));
+        .unwrap_or_else(|| unreachable!("focus out is delivered"));
     let input = transition_trace
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
-                TraceRecordKind::FocusNotificationQueued {
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::In,
                 }
-            )
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
         })
-        .unwrap_or_else(|| unreachable!("focus in is queued"));
+        .unwrap_or_else(|| unreachable!("focus in is delivered"));
+
+    let out_route = transition_trace[out]
+        .context()
+        .route()
+        .unwrap_or_else(|| unreachable!("delivered focus out owns its route"));
+    assert_eq!(
+        out_route
+            .targets()
+            .last()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
+        Some(old_target)
+    );
+    assert_eq!(
+        out_route
+            .related_target()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
+        Some(new_target)
+    );
+    let input_route = transition_trace[input]
+        .context()
+        .route()
+        .unwrap_or_else(|| unreachable!("delivered focus in owns its route"));
+    assert_eq!(
+        input_route
+            .targets()
+            .last()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
+        Some(new_target)
+    );
+    assert_eq!(
+        input_route
+            .related_target()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
+        Some(old_target)
+    );
     assert!(committed < within && within < out && out < input);
 }
 
