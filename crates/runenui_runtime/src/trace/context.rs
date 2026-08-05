@@ -126,6 +126,19 @@ impl TracePointerContext {
         }
     }
 
+    pub(crate) const fn stream(
+        pointer_id: PointerId,
+        device_id: Option<InputDeviceId>,
+        device_kind: PointerDeviceKind,
+    ) -> Self {
+        Self {
+            pointer_id,
+            device_id,
+            device_kind,
+            phase: None,
+        }
+    }
+
     /// Returns the exact pointer-stream identity.
     #[must_use]
     pub const fn pointer_id(&self) -> &PointerId {
@@ -332,6 +345,46 @@ impl TraceTargetTransition {
     }
 }
 
+/// Exact pointer-owner cleanup committed by one lifecycle boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TracePointerCleanup {
+    pressed_owner: Option<TraceTargetTransition>,
+    capture_owner: Option<TraceTargetTransition>,
+    physical_path_cleared: bool,
+}
+
+impl TracePointerCleanup {
+    pub(crate) const fn new(
+        pressed_owner: Option<TraceTargetTransition>,
+        capture_owner: Option<TraceTargetTransition>,
+        physical_path_cleared: bool,
+    ) -> Self {
+        Self {
+            pressed_owner,
+            capture_owner,
+            physical_path_cleared,
+        }
+    }
+
+    /// Returns the exact pressed-owner transition when pressed authority was cleared.
+    #[must_use]
+    pub const fn pressed_owner(&self) -> Option<&TraceTargetTransition> {
+        self.pressed_owner.as_ref()
+    }
+
+    /// Returns the exact capture-owner transition when capture authority was cleared.
+    #[must_use]
+    pub const fn capture_owner(&self) -> Option<&TraceTargetTransition> {
+        self.capture_owner.as_ref()
+    }
+
+    /// Returns whether the retained physical path was cleared.
+    #[must_use]
+    pub const fn physical_path_cleared(&self) -> bool {
+        self.physical_path_cleared
+    }
+}
+
 /// Whether a required routed notification reached callbacks or was suppressed.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -411,6 +464,7 @@ pub enum TraceContextData {
         route: Option<TraceRouteSnapshot>,
         physical_path: Option<TracePointerPath>,
         target_transition: Option<TraceTargetTransition>,
+        cleanup: Option<TracePointerCleanup>,
         delivery: Option<TraceDeliveryOutcome>,
     },
     Focus {
@@ -477,22 +531,24 @@ impl TraceContext {
     }
 
     fn pointer_record(
-        event: TraceEventContext,
+        event: Option<TraceEventContext>,
         surface: Option<TraceSurfaceContext>,
         pointer: TracePointerContext,
         route: Option<TraceRouteSnapshot>,
         physical_path: TracePointerPath,
         target_transition: Option<TraceTargetTransition>,
+        cleanup: Option<TracePointerCleanup>,
         delivery: Option<TraceDeliveryOutcome>,
     ) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Pointer {
-                event: Some(event),
+                event,
                 surface,
                 pointer,
                 route,
                 physical_path: Some(physical_path),
                 target_transition,
+                cleanup,
                 delivery,
             })),
         }
@@ -505,11 +561,12 @@ impl TraceContext {
         physical_path: TracePointerPath,
     ) -> Self {
         Self::pointer_record(
-            event,
+            Some(event),
             Some(surface),
             pointer,
             None,
             physical_path,
+            None,
             None,
             None,
         )
@@ -522,12 +579,16 @@ impl TraceContext {
         target_transition: TraceTargetTransition,
     ) -> Self {
         Self::pointer_record(
-            TraceEventContext::new(TraceEventFamily::PointerBoundary, false),
+            Some(TraceEventContext::new(
+                TraceEventFamily::PointerBoundary,
+                false,
+            )),
             surface,
             pointer,
             None,
             physical_path,
             Some(target_transition),
+            None,
             None,
         )
     }
@@ -541,12 +602,16 @@ impl TraceContext {
         delivery: TraceDeliveryOutcome,
     ) -> Self {
         Self::pointer_record(
-            TraceEventContext::new(TraceEventFamily::PointerBoundary, false),
+            Some(TraceEventContext::new(
+                TraceEventFamily::PointerBoundary,
+                false,
+            )),
             Some(surface),
             pointer,
             Some(route),
             physical_path,
             Some(target_transition),
+            None,
             Some(delivery),
         )
     }
@@ -560,13 +625,56 @@ impl TraceContext {
         delivery: TraceDeliveryOutcome,
     ) -> Self {
         Self::pointer_record(
-            TraceEventContext::new(TraceEventFamily::PointerCapture, false),
+            Some(TraceEventContext::new(
+                TraceEventFamily::PointerCapture,
+                false,
+            )),
             surface,
             pointer,
             Some(route),
             physical_path,
             Some(target_transition),
+            None,
             Some(delivery),
+        )
+    }
+
+    pub(crate) fn pointer_capture_request_rejection(
+        surface: Option<TraceSurfaceContext>,
+        pointer: TracePointerContext,
+        physical_path: TracePointerPath,
+        target_transition: TraceTargetTransition,
+    ) -> Self {
+        Self::pointer_record(
+            Some(TraceEventContext::new(
+                TraceEventFamily::PointerCapture,
+                false,
+            )),
+            surface,
+            pointer,
+            None,
+            physical_path,
+            Some(target_transition),
+            None,
+            None,
+        )
+    }
+
+    pub(crate) fn pointer_integrity_cleanup(
+        surface: Option<TraceSurfaceContext>,
+        pointer: TracePointerContext,
+        physical_path: TracePointerPath,
+        cleanup: TracePointerCleanup,
+    ) -> Self {
+        Self::pointer_record(
+            None,
+            surface,
+            pointer,
+            None,
+            physical_path,
+            None,
+            Some(cleanup),
+            None,
         )
     }
 
@@ -688,6 +796,15 @@ impl TraceContext {
         }
     }
 
+    /// Returns exact pointer-owner cleanup facts.
+    #[must_use]
+    pub fn pointer_cleanup(&self) -> Option<&TracePointerCleanup> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Pointer { cleanup, .. }) => cleanup.as_ref(),
+            _ => None,
+        }
+    }
+
     /// Returns redacted application-action identity.
     #[must_use]
     pub fn action(&self) -> Option<TraceActionIdentity> {
@@ -727,8 +844,8 @@ mod tests {
 
     use super::{
         TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
-        TracePointerContext, TracePointerPath, TraceRouteSnapshot, TraceSurfaceContext,
-        TraceTargetTransition,
+        TracePointerCleanup, TracePointerContext, TracePointerPath, TraceRouteSnapshot,
+        TraceSurfaceContext, TraceTargetTransition,
     };
     use crate::TraceSurfaceSnapshotKind;
 
@@ -745,6 +862,7 @@ mod tests {
         assert_eq!(context.route(), None);
         assert_eq!(context.physical_path(), None);
         assert_eq!(context.target_transition(), None);
+        assert_eq!(context.pointer_cleanup(), None);
         assert_eq!(context.action(), None);
         assert_eq!(context.publication(), None);
         assert_eq!(context.delivery(), None);
@@ -869,5 +987,37 @@ mod tests {
             Some(PointerPhase::Move)
         );
         assert!(context.target_transition().is_some());
+    }
+
+    #[test]
+    fn pointer_cleanup_owns_stream_identity_transitions_and_path_outcome() {
+        let pointer_id = PointerId::new(10)
+            .unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+        let context = TraceContext::pointer_integrity_cleanup(
+            None,
+            TracePointerContext::stream(pointer_id, None, PointerDeviceKind::Mouse),
+            TracePointerPath::new(Vec::new()),
+            TracePointerCleanup::new(
+                Some(TraceTargetTransition::new(None, None)),
+                Some(TraceTargetTransition::new(None, None)),
+                true,
+            ),
+        );
+
+        assert_eq!(context.event(), None);
+        assert_eq!(
+            context.pointer().map(TracePointerContext::pointer_id),
+            Some(&pointer_id)
+        );
+        assert_eq!(
+            context.pointer().and_then(TracePointerContext::phase),
+            None
+        );
+        let cleanup = context
+            .pointer_cleanup()
+            .unwrap_or_else(|| unreachable!("cleanup context owns cleanup facts"));
+        assert!(cleanup.pressed_owner().is_some());
+        assert!(cleanup.capture_owner().is_some());
+        assert!(cleanup.physical_path_cleared());
     }
 }
