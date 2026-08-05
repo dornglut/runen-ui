@@ -21,14 +21,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .surface_publication
             .validate_surface_identity(work.event.surface_context())
             .map_err(|error| {
-                self.reject_pointer(
+                self.reject_pointer(super::rejection::RejectedPointerFacts::new(
                     work.sequence,
                     work.causal_parent,
                     work.trace_reservation,
                     pointer_id,
                     phase,
                     super::rejection::map_surface_error(error),
-                )
+                ))
             })?;
         let existing = match self.pointer_registry.validate(
             pointer_id,
@@ -39,14 +39,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(stream) => Some(stream.clone()),
             Err(super::PointerStreamError::Missing) => None,
             Err(error) => {
-                return Err(self.reject_pointer(
+                return Err(self.reject_pointer(super::rejection::RejectedPointerFacts::new(
                     work.sequence,
                     work.causal_parent,
                     work.trace_reservation,
                     pointer_id,
                     phase,
                     super::rejection::map_stream_error(error),
-                ));
+                )));
             }
         };
         if matches!(phase, PointerPhase::Down)
@@ -56,24 +56,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .is_none_or(|button| stream.buttons().contains(button))
             })
         {
-            return Err(self.reject_pointer(
+            return Err(self.reject_pointer(super::rejection::RejectedPointerFacts::new(
                 work.sequence,
                 work.causal_parent,
                 work.trace_reservation,
                 pointer_id,
                 phase,
                 crate::trace::TracePointerRejection::DuplicateStream,
-            ));
+            )));
         }
         if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) && existing.is_none() {
-            return Err(self.reject_pointer(
+            return Err(self.reject_pointer(super::rejection::RejectedPointerFacts::new(
                 work.sequence,
                 work.causal_parent,
                 work.trace_reservation,
                 pointer_id,
                 phase,
                 crate::trace::TracePointerRejection::MissingStream,
-            ));
+            )));
         }
         let is_new = existing.is_none();
         let stream = match existing {
@@ -89,14 +89,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     work.event.buttons().clone(),
                 )
                 .map_err(|error| {
-                    self.reject_pointer(
+                    self.reject_pointer(super::rejection::RejectedPointerFacts::new(
                         work.sequence,
                         work.causal_parent,
                         work.trace_reservation,
                         pointer_id,
                         phase,
                         super::rejection::map_registration_error(error),
-                    )
+                    ))
                 })?,
         };
         Ok(StreamPreparation { is_new, stream })
@@ -133,14 +133,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 return Err(self.close_unavailable_terminal_pointer(work, error));
             }
             Err(error) => {
-                return Err(self.reject_pointer(
+                return Err(self.reject_pointer(super::rejection::RejectedPointerFacts::new(
                     work.sequence,
                     work.causal_parent,
                     work.trace_reservation,
                     work.event.pointer_id(),
                     work.event.phase(),
                     super::rejection::map_surface_error(error),
-                ));
+                )));
             }
         };
         let snapshot = super::rejection::map_snapshot_kind(resolution.snapshot_kind());
