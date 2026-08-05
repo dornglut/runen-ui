@@ -151,6 +151,19 @@ impl TraceRecordDraft {
         draft
     }
 
+    /// Constructs one focus/modality fact with exact transition time and context.
+    #[must_use]
+    pub(crate) fn focus_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        context: TraceContext,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft.context = context;
+        draft
+    }
+
     /// Constructs one displayed-surface fact at its owning observation instant.
     #[must_use]
     pub(crate) fn surface_fact(
