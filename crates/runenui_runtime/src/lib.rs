@@ -231,13 +231,14 @@ pub use surface_publication::SurfacePublication;
 pub use trace::{
     Trace, TraceActionCategory, TraceActionIdentity, TraceCompositionContext,
     TraceCompositionRange, TraceConfig, TraceContext, TraceDeliveryOutcome, TraceEventContext,
-    TraceEventFamily, TraceFocusBoundaryOutcome, TracePointerCaptureRequestRejection,
-    TracePointerContext, TracePointerPath, TracePointerRejection, TracePublicationContext,
-    TraceRecord, TraceRecordKind, TraceRouteSnapshot, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceSequence, TraceSpaceCleanupReason, TraceSurfaceContext,
-    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget,
-    TraceTargetRejection, TraceTargetTransition, TraceTextMetrics, TraceTimerTerminalOutcome,
-    TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
+    TraceEventFamily, TraceFocusBoundaryOutcome, TracePointerCaptureRequestKind,
+    TracePointerCaptureRequestRejection, TracePointerCleanup, TracePointerContext,
+    TracePointerPath, TracePointerRejection, TracePublicationContext, TraceRecord, TraceRecordKind,
+    TraceRouteSnapshot, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
+    TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection,
+    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTargetTransition,
+    TraceTextMetrics, TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
+    TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::host_request::{HostRequestRef, HostRequestToken};
