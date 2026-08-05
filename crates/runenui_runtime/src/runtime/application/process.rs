@@ -199,8 +199,6 @@ pub(crate) fn process_application_action<App: UiApp>(
         let (trace_target, old_route, surface) =
             previous_focus_trace.unwrap_or_else(|| (None, Vec::new(), None));
         runtime.commit_reconciled_focus_cleanup(super::super::focus::ReconciledFocusCleanup {
-            old_target: previous_focus
-                .unwrap_or_else(|| unreachable!("invalid focus has a previous target")),
             old_route,
             reason,
             sequence,
