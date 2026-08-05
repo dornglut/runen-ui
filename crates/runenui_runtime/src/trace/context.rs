@@ -991,8 +991,8 @@ mod tests {
 
     #[test]
     fn pointer_cleanup_owns_stream_identity_transitions_and_path_outcome() {
-        let pointer_id = PointerId::new(10)
-            .unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
+        let pointer_id =
+            PointerId::new(10).unwrap_or_else(|| unreachable!("test pointer identity is non-zero"));
         let context = TraceContext::pointer_integrity_cleanup(
             None,
             TracePointerContext::stream(pointer_id, None, PointerDeviceKind::Mouse),
@@ -1009,10 +1009,7 @@ mod tests {
             context.pointer().map(TracePointerContext::pointer_id),
             Some(&pointer_id)
         );
-        assert_eq!(
-            context.pointer().and_then(TracePointerContext::phase),
-            None
-        );
+        assert_eq!(context.pointer().and_then(TracePointerContext::phase), None);
         let cleanup = context
             .pointer_cleanup()
             .unwrap_or_else(|| unreachable!("cleanup context owns cleanup facts"));
