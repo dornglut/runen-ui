@@ -10,8 +10,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, SurfacePublication,
-    TraceDeliveryOutcome, TraceEventFamily, TraceRecord, TraceRecordKind, TraceSurfaceSnapshotKind,
-    TraceTarget, WorkSequence,
+    TraceDeliveryOutcome, TraceEventFamily, TraceRecord, TraceRecordKind, TraceTarget, WorkSequence,
 };
 
 #[derive(Clone)]
@@ -355,11 +354,10 @@ fn removal_cleans_streams_in_registration_order_and_suppresses_removed_capture_l
     harness.callbacks.borrow_mut().clear();
     let trace_start = harness.runtime.trace().len();
 
-    let submission = harness
+    let sequence = harness
         .runtime
         .submit_action(Action::Hide)
         .unwrap_or_else(|_| unreachable!("the hide action is accepted"));
-    let sequence = submission.sequence();
     pump_all(&mut harness.runtime);
 
     assert!(harness.callbacks.borrow().is_empty());
