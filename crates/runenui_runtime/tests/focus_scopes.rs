@@ -3,11 +3,11 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Element, ElementId, EventContext, FocusBoundaryPolicy, FocusDirection, FocusEventKind,
-    FocusReason, FocusScope, FocusScopePolicy, Focusability, InputModality, KeyLocation,
-    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
-    NoHostProtocol, PhysicalKey, SemanticCommand, StyleTokens, UiApp, UiEvent, View, Widget,
-    WidgetActivation, WidgetEventOutput, WidgetMeasure, children, column, row, text,
+    Element, ElementId, EventContext, FocusBoundaryPolicy, FocusEventKind, FocusReason,
+    FocusScope, FocusScopePolicy, InputModality, KeyLocation, KeyModifiers,
+    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
+    PhysicalKey, SemanticCommand, StyleTokens, UiApp, UiEvent, View, Widget, WidgetEventOutput,
+    children, column, row, text,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
@@ -56,14 +56,6 @@ impl Widget<Action> for FocusProbe {
         }
         WidgetEventOutput::none()
     }
-
-    fn activation(&self, _state: &Self::State) -> WidgetActivation {
-        WidgetActivation::new(false, true)
-    }
-
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Children
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -92,7 +84,7 @@ impl UiApp for App {
             })
             .id("first")
             .key("first")
-            .focusability(Focusability::Focusable)
+            .focusable(true)
         });
         let second = Element::new(FocusProbe {
             name: "second",
@@ -100,7 +92,7 @@ impl UiApp for App {
         })
         .id("second")
         .key("second")
-        .focusability(Focusability::Focusable);
+        .focusable(true);
         let scope_children = match first {
             Some(first) => children![first, second],
             None => children![second],
@@ -108,10 +100,11 @@ impl UiApp for App {
         let scope = column(scope_children)
             .id("scope")
             .key("scope")
-            .focus_scope(FocusScope::new(
-                FocusScopePolicy::new(FocusBoundaryPolicy::Wrap, FocusBoundaryPolicy::Trap),
-                true,
-            ));
+            .into_element()
+            .focus_scope(FocusScope::new().with_policy(FocusScopePolicy::new(
+                FocusBoundaryPolicy::Wrap,
+                FocusBoundaryPolicy::Trap,
+            )));
         row(children![scope]).id("root").key("root")
     }
 
@@ -151,7 +144,8 @@ fn pump_all<App: UiApp>(runtime: &mut AppRuntime<App>) {
 
 fn publish<App: UiApp>(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
     let tokens = StyleTokens::default();
-    let size = LogicalSize::try_new(320.0, 240.0).unwrap_or_default();
+    let size = LogicalSize::try_new(320.0, 240.0)
+        .unwrap_or_else(|_| unreachable!("positive logical size is valid"));
     runtime.publish_surface(&SurfaceBuildContext::tight(&tokens, size))
 }
 
@@ -195,10 +189,11 @@ fn keyboard_event(
         phase,
         physical,
         logical,
-        KeyLocation::Standard,
-        KeyModifiers::empty(),
+        KeyModifiers::NONE,
         false,
+        KeyLocation::Standard,
         KeyboardCompositionState::Inactive,
+        None,
     )
 }
 
@@ -371,10 +366,11 @@ fn tab_wraps_shift_tab_reverses_and_escape_is_not_focus_navigation() {
             KeyboardPhase::Down,
             PhysicalKey::Tab,
             LogicalKey::Tab,
-            KeyLocation::Standard,
             KeyModifiers::SHIFT,
             false,
+            KeyLocation::Standard,
             KeyboardCompositionState::Inactive,
+            None,
         ))
         .unwrap_or_else(|_| unreachable!("Shift+Tab is admitted"));
     pump_all(&mut runtime);
@@ -453,7 +449,7 @@ fn scope_wrap_trap_and_restoration_are_deterministic() {
     request_focus(&mut runtime, &publication, second.clone());
 
     runtime
-        .submit_surface_command(
+        .submit_resolved_surface_command(
             publication.input_context().clone(),
             scope.clone(),
             SemanticCommand::FocusNext,
@@ -470,7 +466,7 @@ fn scope_wrap_trap_and_restoration_are_deterministic() {
     )));
 
     runtime
-        .submit_surface_command(
+        .submit_resolved_surface_command(
             publication.input_context().clone(),
             scope.clone(),
             SemanticCommand::FocusRight,
@@ -487,7 +483,7 @@ fn scope_wrap_trap_and_restoration_are_deterministic() {
     )));
 
     runtime
-        .submit_surface_command(
+        .submit_resolved_surface_command(
             publication.input_context().clone(),
             scope,
             SemanticCommand::RestoreFocus,
@@ -666,7 +662,7 @@ fn empty_scope_does_not_move_focus_and_reports_empty_restoration() {
     let root = target_by_id(&publication, "root");
 
     runtime
-        .submit_surface_command(
+        .submit_resolved_surface_command(
             publication.input_context().clone(),
             root,
             SemanticCommand::RestoreFocus,
