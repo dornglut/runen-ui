@@ -121,6 +121,7 @@ impl Widget<Action> for Probe {
 struct Harness {
     runtime: AppRuntime<App>,
     context: SurfaceInputContext,
+    root: runenui_core::MountedNodeId,
     target: runenui_core::MountedNodeId,
     point: LogicalPoint,
     observations: Rc<RefCell<Vec<Observation>>>,
@@ -139,15 +140,23 @@ fn harness(config: RuntimeConfig) -> Harness {
         config,
     );
     let publication = publish(&mut runtime);
-    let authored =
+    let root_authored =
+        ElementId::new("root").unwrap_or_else(|_| unreachable!("the test id is valid"));
+    let target_authored =
         ElementId::new("target").unwrap_or_else(|_| unreachable!("the test id is valid"));
-    let node = publication
+    let root = publication
         .frame()
         .nodes()
         .iter()
-        .find(|node| node.authored_id() == Some(&authored))
+        .find(|node| node.authored_id() == Some(&root_authored))
+        .unwrap_or_else(|| unreachable!("the root is published"));
+    let target = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&target_authored))
         .unwrap_or_else(|| unreachable!("the target is published"));
-    let bounds = node.bounds();
+    let bounds = target.bounds();
     let point = LogicalPoint::new(
         bounds.x() + bounds.width() / 2.0,
         bounds.y() + bounds.height() / 2.0,
@@ -157,7 +166,8 @@ fn harness(config: RuntimeConfig) -> Harness {
     Harness {
         runtime,
         context: publication.input_context().clone(),
-        target: node.id().clone(),
+        root: root.id().clone(),
+        target: target.id().clone(),
         point,
         observations,
         activations,
@@ -258,8 +268,9 @@ fn assert_retired_up_cleanup(cleanup: &TraceRecord, harness: &Harness) {
     let path = context
         .physical_path()
         .unwrap_or_else(|| unreachable!("cleanup owns the prior physical path"));
-    assert_eq!(path.targets().len(), 1);
-    assert_eq!(path.targets()[0].mounted_node_id(), &harness.target);
+    assert_eq!(path.targets().len(), 2);
+    assert_eq!(path.targets()[0].mounted_node_id(), &harness.root);
+    assert_eq!(path.targets()[1].mounted_node_id(), &harness.target);
     let facts = context
         .pointer_cleanup()
         .unwrap_or_else(|| unreachable!("cleanup owns exact interaction transitions"));
@@ -323,8 +334,9 @@ fn assert_retired_up_capture_loss(capture: &TraceRecord, harness: &Harness) {
     let path = context
         .physical_path()
         .unwrap_or_else(|| unreachable!("capture loss owns the prior physical path"));
-    assert_eq!(path.targets().len(), 1);
-    assert_eq!(path.targets()[0].mounted_node_id(), &harness.target);
+    assert_eq!(path.targets().len(), 2);
+    assert_eq!(path.targets()[0].mounted_node_id(), &harness.root);
+    assert_eq!(path.targets()[1].mounted_node_id(), &harness.target);
     let transition = context
         .target_transition()
         .unwrap_or_else(|| unreachable!("capture loss owns exact capture endpoints"));
