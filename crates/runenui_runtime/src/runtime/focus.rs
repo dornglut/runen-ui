@@ -6,15 +6,16 @@ use runenui_core::{
 
 use super::{CollectedRoutedOutput, RoutedTransaction, Runtime, RuntimeStatus};
 use crate::{
-    MountedNodeId, ReconciliationGeneration, TraceEventContext, TraceEventFamily,
-    TraceFocusBoundaryOutcome, TraceRecordKind, TraceRoutedIntegrityFailure, TraceSequence,
-    TraceSpaceCleanupReason, TraceTarget, WorkSequence,
+    MountedNodeId, ReconciliationGeneration, TraceContext, TraceDeliveryOutcome, TraceEventContext,
+    TraceEventFamily, TraceFocusBoundaryOutcome, TraceModalityTransition, TraceRecordKind,
+    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence, TraceSpaceCleanupReason,
+    TraceTarget, TraceTargetTransition, WorkSequence,
     focus::{
         FocusBoundaryOutcome, FocusNavigation, FocusSelection, is_focus_eligible, nearest_scope,
         select_focus,
     },
     mounted::{PlannedInvalidation, PlannedLifetimeReason, RouteBuildError, TargetStatus},
-    trace::{MandatoryTracePlan, TraceReservation},
+    trace::{MandatoryTracePlan, TraceRecordDraft, TraceReservation},
 };
 
 #[derive(Clone, Copy)]
@@ -50,6 +51,16 @@ pub(in crate::runtime) struct ReconciledFocusCleanup {
     pub before: ReconciliationGeneration,
     pub after: ReconciliationGeneration,
     pub trace_target: Option<TraceTarget>,
+}
+
+struct FocusNotificationPlan {
+    kind: FocusEventKind,
+    reason: FocusReason,
+    target: MountedNodeId,
+    route: Vec<MountedNodeId>,
+    related: Option<MountedNodeId>,
+    previous: Option<MountedNodeId>,
+    current: Option<MountedNodeId>,
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -317,19 +328,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) {
         let modality = transaction.pending_modality;
         let previous = self.focus.modality();
-        if self.focus.set_modality(modality).is_some() {
-            transaction.parent = self.trace.record_event(
-                TraceRecordKind::ModalityChanged {
-                    previous,
-                    current: modality,
-                },
-                transaction.sequence,
-                transaction.parent,
-                Some(transaction.target_trace.clone()),
-                transaction.instant,
-                &transaction.target,
-                None,
-                transaction.origin,
+        if self.focus.set_modality(modality).is_some() && self.trace.is_enabled() {
+            let context =
+                TraceContext::modality_change(TraceModalityTransition::new(previous, modality));
+            transaction.parent = self.trace.record_draft(
+                TraceRecordDraft::focus_fact(
+                    TraceRecordKind::ModalityChanged {
+                        previous,
+                        current: modality,
+                    },
+                    transaction.instant,
+                    context,
+                )
+                .with_work_sequence(Some(transaction.sequence))
+                .with_causal_parent(transaction.parent)
+                .with_target(Some(transaction.target_trace.clone()))
+                .with_routed_endpoints(
+                    transaction.target.clone(),
+                    None,
+                    transaction.origin,
+                ),
             );
         }
     }
@@ -528,38 +546,33 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
 
         if let Some(old) = old_target.as_ref() {
-            if old_route.is_empty() {
-                transaction.parent = self.trace.record_event(
-                    TraceRecordKind::FocusNotificationSuppressed {
-                        kind: FocusEventKind::Out,
-                    },
-                    transaction.sequence,
-                    transaction.parent,
-                    Some(self.tree.trace_target(old)),
-                    transaction.instant,
-                    &transaction.target,
-                    Some(old),
-                    transaction.origin,
-                );
+            let plan = FocusNotificationPlan {
+                kind: FocusEventKind::Out,
+                reason,
+                target: old.clone(),
+                route: old_route,
+                related: new_target.clone(),
+                previous: old_target.clone(),
+                current: new_target.clone(),
+            };
+            if plan.route.is_empty() {
+                self.record_suppressed_focus_notification(transaction, &plan);
             } else {
-                self.invoke_focus_notification(
-                    transaction,
-                    FocusEventKind::Out,
-                    reason,
-                    old.clone(),
-                    old_route,
-                    new_target.as_ref(),
-                )?;
+                self.invoke_focus_notification(transaction, plan)?;
             }
         }
         if let Some(new) = new_target {
             self.invoke_focus_notification(
                 transaction,
-                FocusEventKind::In,
-                reason,
-                new,
-                new_route,
-                old_target.as_ref(),
+                FocusNotificationPlan {
+                    kind: FocusEventKind::In,
+                    reason,
+                    target: new,
+                    route: new_route,
+                    related: old_target.clone(),
+                    previous: old_target,
+                    current: self.focus.focused_node().cloned(),
+                },
             )?;
         }
         Ok(())
@@ -596,32 +609,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         left: usize,
         entered: usize,
     ) {
-        transaction.parent = self.trace.record_event(
-            TraceRecordKind::FocusTransitionCommitted {
-                reason,
-                old_target: old_target.cloned(),
-                new_target: new_target.cloned(),
-            },
-            transaction.sequence,
-            transaction.parent,
-            new_target
-                .or(old_target)
-                .map(|target| self.tree.trace_target(target)),
-            transaction.instant,
-            &transaction.target,
-            new_target.or(old_target),
-            transaction.origin,
-        );
+        let current_target = new_target.or(old_target);
+        if self.trace.is_enabled() {
+            let transition = TraceTargetTransition::new(
+                old_target.map(|target| self.tree.trace_target(target)),
+                new_target.map(|target| self.tree.trace_target(target)),
+            );
+            let context = TraceContext::focus_transition(None, transition);
+            transaction.parent = self.trace.record_draft(
+                TraceRecordDraft::focus_fact(
+                    TraceRecordKind::FocusTransitionCommitted {
+                        reason,
+                        old_target: old_target.cloned(),
+                        new_target: new_target.cloned(),
+                    },
+                    transaction.instant,
+                    context,
+                )
+                .with_work_sequence(Some(transaction.sequence))
+                .with_causal_parent(transaction.parent)
+                .with_target(current_target.map(|target| self.tree.trace_target(target)))
+                .with_routed_endpoints(
+                    transaction.target.clone(),
+                    current_target.cloned(),
+                    transaction.origin,
+                ),
+            );
+        }
         transaction.parent = self.trace.record_event(
             TraceRecordKind::FocusWithinInvalidated { left, entered },
             transaction.sequence,
             transaction.parent,
-            new_target
-                .or(old_target)
-                .map(|target| self.tree.trace_target(target)),
+            current_target.map(|target| self.tree.trace_target(target)),
             transaction.instant,
             &transaction.target,
-            new_target.or(old_target),
+            current_target,
             transaction.origin,
         );
     }
@@ -641,28 +663,90 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(route)
     }
 
-    #[allow(clippy::too_many_arguments)]
+    fn focus_notification_context(
+        &self,
+        plan: &FocusNotificationPlan,
+        delivery: TraceDeliveryOutcome,
+    ) -> Option<TraceContext> {
+        self.trace.is_enabled().then(|| {
+            let route = TraceRouteSnapshot::new(
+                plan.route
+                    .iter()
+                    .map(|target| self.tree.trace_target(target))
+                    .collect(),
+                plan.related
+                    .as_ref()
+                    .map(|target| self.tree.trace_target(target)),
+            );
+            let transition = TraceTargetTransition::new(
+                plan.previous
+                    .as_ref()
+                    .map(|target| self.tree.trace_target(target)),
+                plan.current
+                    .as_ref()
+                    .map(|target| self.tree.trace_target(target)),
+            );
+            TraceContext::focus_notification(None, route, transition, delivery)
+        })
+    }
+
+    fn record_suppressed_focus_notification(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        plan: &FocusNotificationPlan,
+    ) {
+        let Some(context) =
+            self.focus_notification_context(plan, TraceDeliveryOutcome::Suppressed)
+        else {
+            return;
+        };
+        transaction.parent = self.trace.record_draft(
+            TraceRecordDraft::focus_fact(
+                TraceRecordKind::FocusNotificationSuppressed { kind: plan.kind },
+                transaction.instant,
+                context,
+            )
+            .with_work_sequence(Some(transaction.sequence))
+            .with_causal_parent(transaction.parent)
+            .with_target(Some(self.tree.trace_target(&plan.target)))
+            .with_routed_endpoints(
+                transaction.target.clone(),
+                Some(plan.target.clone()),
+                transaction.origin,
+            ),
+        );
+    }
+
     fn invoke_focus_notification(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
-        kind: FocusEventKind,
-        reason: FocusReason,
-        target: MountedNodeId,
-        route: Vec<MountedNodeId>,
-        related: Option<&MountedNodeId>,
+        plan: FocusNotificationPlan,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
-        transaction.parent = self.trace.record_event(
-            TraceRecordKind::FocusNotificationQueued { kind },
-            transaction.sequence,
-            transaction.parent,
-            Some(self.tree.trace_target(&target)),
-            transaction.instant,
-            &transaction.target,
-            Some(&target),
-            transaction.origin,
-        );
-        let event = UiEvent::Focus(FocusEvent::__runtime_new(kind, reason, target));
-        self.invoke_focus_callbacks(transaction, &event, route, related)
+        let context = self.focus_notification_context(&plan, TraceDeliveryOutcome::Delivered);
+        let event = UiEvent::Focus(FocusEvent::__runtime_new(
+            plan.kind,
+            plan.reason,
+            plan.target.clone(),
+        ));
+        self.invoke_focus_callbacks(transaction, &event, plan.route, plan.related.as_ref())?;
+        if let Some(context) = context {
+            transaction.parent = self.trace.record_draft(
+                TraceRecordDraft::focus_fact(
+                    TraceRecordKind::FocusNotificationQueued { kind: plan.kind },
+                    transaction.instant,
+                    context,
+                )
+                .with_work_sequence(Some(transaction.sequence))
+                .with_causal_parent(transaction.parent)
+                .with_target(Some(self.tree.trace_target(&plan.target)))
+                .with_routed_endpoints(
+                    transaction.target.clone(),
+                    Some(plan.target),
+                    transaction.origin,
+                ),
+            );
+        }
+        Ok(())
     }
 
     pub(in crate::runtime) fn prune_focus_memory(&mut self) {
