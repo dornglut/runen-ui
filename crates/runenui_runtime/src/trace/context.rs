@@ -732,7 +732,7 @@ impl TraceContext {
         })
     }
 
-    pub(crate) fn modality_transition(transition: TraceModalityTransition) -> Self {
+    pub(crate) fn modality_change(transition: TraceModalityTransition) -> Self {
         Self::focus_record(TraceFocusRecordContext {
             event: None,
             surface: None,
@@ -1105,7 +1105,7 @@ mod tests {
     #[test]
     fn modality_context_owns_exact_endpoints() {
         let transition = TraceModalityTransition::new(None, InputModality::Keyboard);
-        let context = TraceContext::modality_transition(transition);
+        let context = TraceContext::modality_change(transition);
 
         assert_eq!(context.modality_transition(), Some(transition));
         assert_eq!(transition.previous(), None);
