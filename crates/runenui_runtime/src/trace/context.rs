@@ -773,9 +773,9 @@ impl TraceContext {
             Some(TraceContextData::Surface(surface)) => Some(surface),
             Some(TraceContextData::Pointer(context)) => context.surface.as_ref(),
             Some(TraceContextData::Focus(context)) => context.surface.as_ref(),
-            Some(TraceContextData::Routed { surface, .. } | TraceContextData::Text { surface, .. }) => {
-                surface.as_ref()
-            }
+            Some(
+                TraceContextData::Routed { surface, .. } | TraceContextData::Text { surface, .. },
+            ) => surface.as_ref(),
             Some(TraceContextData::Publication(publication)) => Some(publication.surface()),
             Some(TraceContextData::Action(_)) | None => None,
         }
