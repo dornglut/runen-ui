@@ -569,7 +569,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !self.trace.is_enabled() {
             return parent;
         }
-        let target = self.tree.trace_target(&rejected.target);
+        let RejectedPointerCaptureRequest {
+            requested_pointer,
+            target,
+            request,
+            outcome,
+            previous_owner,
+            requested_owner,
+        } = rejected;
+        let target = self.tree.trace_target(&target);
         let physical_path = TracePointerPath::new(
             geometry
                 .physical_path
@@ -578,17 +586,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .collect(),
         );
         let transition = TraceTargetTransition::new(
-            rejected
-                .previous_owner
+            previous_owner
                 .as_ref()
                 .map(|owner| self.tree.trace_target(owner)),
-            rejected
-                .requested_owner
+            requested_owner
                 .as_ref()
                 .map(|owner| self.tree.trace_target(owner)),
         );
         let pointer = TracePointerContext::event(
-            rejected.requested_pointer,
+            requested_pointer,
             work.event.device_id(),
             work.event.device_kind(),
             work.event.phase(),
@@ -605,10 +611,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         self.trace.record_draft(
             TraceRecordDraft::pointer_fact(
-                TraceRecordKind::PointerCaptureRequestRejected {
-                    request: rejected.request,
-                    outcome: rejected.outcome,
-                },
+                TraceRecordKind::PointerCaptureRequestRejected { request, outcome },
                 work.instant,
                 context,
             )
