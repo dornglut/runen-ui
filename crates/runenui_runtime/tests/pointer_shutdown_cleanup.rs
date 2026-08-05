@@ -11,7 +11,7 @@ use runenui_core::{
 use runenui_runtime::{
     AppRuntime, FocusEventKind, FocusReason, LogicalSize, PumpBudget, SurfaceBuildContext,
     SurfacePublication, TraceDeliveryOutcome, TraceEventFamily, TraceRecord, TraceRecordKind,
-    TraceSurfaceSnapshotKind, TraceTarget,
+    TraceTarget,
 };
 
 #[derive(Clone)]
