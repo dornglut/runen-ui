@@ -364,15 +364,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         facts: RejectedPointerFacts,
     ) -> ProcessApplicationActionOutcome {
+        let RejectedPointerFacts {
+            sequence,
+            causal_parent,
+            trace_reservation,
+            pointer_id,
+            phase,
+            outcome,
+        } = facts;
         self.trace.record_reserved(
-            facts.trace_reservation,
+            trace_reservation,
             TraceRecordKind::PointerIngressRejected {
-                pointer_id: facts.pointer_id,
-                phase: facts.phase,
-                outcome: facts.outcome,
+                pointer_id,
+                phase,
+                outcome,
             },
-            facts.sequence,
-            facts.causal_parent,
+            sequence,
+            causal_parent,
         );
         ProcessApplicationActionOutcome::Completed
     }
