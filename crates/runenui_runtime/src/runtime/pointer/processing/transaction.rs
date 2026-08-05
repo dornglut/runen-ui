@@ -11,9 +11,10 @@ use super::{
 };
 use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceContext, TraceDeliveryOutcome, TraceEventContext,
-    TraceEventFamily, TracePointerCaptureRequestRejection, TracePointerContext, TracePointerPath,
-    TraceRecordKind, TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence,
-    TraceSurfaceContext, TraceTargetTransition, WorkSequence,
+    TraceEventFamily, TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection,
+    TracePointerContext, TracePointerPath, TraceRecordKind, TraceRouteSnapshot,
+    TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceContext, TraceTargetTransition,
+    WorkSequence,
     mounted::TargetStatus,
     runtime::{
         CollectedRoutedOutput, MandatoryTracePlan, PointerDispatchFacts,
@@ -48,6 +49,15 @@ struct PointerCaptureResolutionFacts<'a> {
     physical_path: &'a [MountedNodeId],
     plan: &'a PointerCapturePlan,
     trace: &'a PointerCaptureTrace,
+}
+
+struct RejectedPointerCaptureRequest {
+    requested_pointer: PointerId,
+    target: MountedNodeId,
+    request: TracePointerCaptureRequestKind,
+    outcome: TracePointerCaptureRequestRejection,
+    previous_owner: Option<MountedNodeId>,
+    requested_owner: Option<MountedNodeId>,
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -146,7 +156,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         mut pending: PendingPointerCommit,
     ) -> ProcessApplicationActionOutcome {
         self.apply_pointer_capture_requests(
-            pending.work.event.pointer_id(),
+            &pending.work,
+            &pending.geometry,
             &mut pending.stream,
             &mut transaction,
         );
@@ -490,18 +501,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     fn apply_pointer_capture_requests(
         &mut self,
-        pointer_id: PointerId,
+        work: &PointerWork,
+        geometry: &PointerGeometry,
         stream: &mut PointerStreamState,
         transaction: &mut RoutedTransaction<Action>,
     ) {
         for request in core::mem::take(&mut transaction.pointer_capture_requests) {
-            let (requested, target, capture) = match request {
-                PointerCaptureRequest::Capture { pointer_id, target } => (pointer_id, target, true),
-                PointerCaptureRequest::Release { pointer_id, target } => {
-                    (pointer_id, target, false)
-                }
+            let previous_owner = stream.capture_owner().cloned();
+            let (requested_pointer, target, request_kind, requested_owner) = match request {
+                PointerCaptureRequest::Capture { pointer_id, target } => (
+                    pointer_id,
+                    target.clone(),
+                    TracePointerCaptureRequestKind::Capture,
+                    Some(target),
+                ),
+                PointerCaptureRequest::Release { pointer_id, target } => (
+                    pointer_id,
+                    target,
+                    TracePointerCaptureRequestKind::Release,
+                    None,
+                ),
             };
-            let rejection = if requested != pointer_id {
+            let rejection = if requested_pointer != work.event.pointer_id() {
                 Some(TracePointerCaptureRequestRejection::PointerMismatch)
             } else if !transaction
                 .pointer_callback_targets
@@ -511,7 +532,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Some(TracePointerCaptureRequestRejection::TargetNotInTransaction)
             } else if self.tree.target_status(&target) != TargetStatus::Live {
                 Some(TracePointerCaptureRequestRejection::TargetUnavailable)
-            } else if capture {
+            } else if request_kind == TracePointerCaptureRequestKind::Capture {
                 stream.set_capture_owner(Some(target.clone()));
                 None
             } else if stream.capture_owner().is_some_and(|owner| owner == &target) {
@@ -521,21 +542,80 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Some(TracePointerCaptureRequestRejection::ReleaseNotOwner)
             };
             if let Some(outcome) = rejection {
-                transaction.parent = self.trace.record_event(
-                    TraceRecordKind::PointerCaptureRequestRejected {
-                        pointer_id: requested,
+                transaction.parent = self.record_pointer_capture_request_rejection(
+                    work,
+                    geometry,
+                    RejectedPointerCaptureRequest {
+                        requested_pointer,
+                        target,
+                        request: request_kind,
                         outcome,
+                        previous_owner,
+                        requested_owner,
                     },
-                    transaction.sequence,
                     transaction.parent,
-                    Some(self.tree.trace_target(&target)),
-                    transaction.instant,
-                    &transaction.target,
-                    Some(&target),
-                    transaction.origin,
                 );
             }
         }
+    }
+
+    fn record_pointer_capture_request_rejection(
+        &mut self,
+        work: &PointerWork,
+        geometry: &PointerGeometry,
+        rejected: RejectedPointerCaptureRequest,
+        parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let target = self.tree.trace_target(&rejected.target);
+        let physical_path = TracePointerPath::new(
+            geometry
+                .physical_path
+                .iter()
+                .map(|node| self.tree.trace_target(node))
+                .collect(),
+        );
+        let transition = TraceTargetTransition::new(
+            rejected
+                .previous_owner
+                .as_ref()
+                .map(|owner| self.tree.trace_target(owner)),
+            rejected
+                .requested_owner
+                .as_ref()
+                .map(|owner| self.tree.trace_target(owner)),
+        );
+        let pointer = TracePointerContext::event(
+            rejected.requested_pointer,
+            work.event.device_id(),
+            work.event.device_kind(),
+            work.event.phase(),
+        );
+        let surface = Some(geometry.snapshot.map_or_else(
+            || TraceSurfaceContext::requested(work.event.surface_context()),
+            |snapshot| TraceSurfaceContext::accepted(work.event.surface_context(), snapshot),
+        ));
+        let context = TraceContext::pointer_capture_request_rejection(
+            surface,
+            pointer,
+            physical_path,
+            transition,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerCaptureRequestRejected {
+                    request: rejected.request,
+                    outcome: rejected.outcome,
+                },
+                work.instant,
+                context,
+            )
+            .with_work_sequence(Some(work.sequence))
+            .with_causal_parent(parent)
+            .with_target(Some(target)),
+        )
     }
 
     fn commit_pointer_plan(
