@@ -227,17 +227,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .map(|node| self.tree.trace_target(node))
                 .collect(),
         );
-        let pressed_owner = cleanup.pressed_owner.as_ref().map(|owner| {
-            TraceTargetTransition::new(Some(self.tree.trace_target(owner)), None)
-        });
-        let capture_owner = cleanup.capture_owner.as_ref().map(|owner| {
-            TraceTargetTransition::new(Some(self.tree.trace_target(owner)), None)
-        });
-        let pointer = TracePointerContext::stream(
-            cleanup.pointer_id,
-            cleanup.device_id,
-            cleanup.device_kind,
-        );
+        let pressed_owner = cleanup
+            .pressed_owner
+            .as_ref()
+            .map(|owner| TraceTargetTransition::new(Some(self.tree.trace_target(owner)), None));
+        let capture_owner = cleanup
+            .capture_owner
+            .as_ref()
+            .map(|owner| TraceTargetTransition::new(Some(self.tree.trace_target(owner)), None));
+        let pointer =
+            TracePointerContext::stream(cleanup.pointer_id, cleanup.device_id, cleanup.device_kind);
         let surface = cleanup
             .surface_context
             .as_ref()
@@ -288,11 +287,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .collect(),
         );
         let transition = TraceTargetTransition::new(Some(target.clone()), None);
-        let pointer = TracePointerContext::stream(
-            cleanup.pointer_id,
-            cleanup.device_id,
-            cleanup.device_kind,
-        );
+        let pointer =
+            TracePointerContext::stream(cleanup.pointer_id, cleanup.device_id, cleanup.device_kind);
         let surface = cleanup
             .surface_context
             .as_ref()
