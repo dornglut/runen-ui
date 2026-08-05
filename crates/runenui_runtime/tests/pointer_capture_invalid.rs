@@ -430,8 +430,11 @@ fn down_default_is_the_final_capture_request_after_explicit_staging() {
             related: None,
         }]
     );
-    assert!(!harness.runtime.trace().kinds().any(|kind| matches!(
-        kind,
-        TraceRecordKind::PointerCaptureRequestRejected { .. }
-    )));
+    assert!(
+        !harness
+            .runtime
+            .trace()
+            .kinds()
+            .any(|kind| matches!(kind, TraceRecordKind::PointerCaptureRequestRejected { .. }))
+    );
 }
