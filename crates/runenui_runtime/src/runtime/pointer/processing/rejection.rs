@@ -43,6 +43,7 @@ impl RejectedPointerCleanupTrace {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(super) struct RejectedPointerFacts {
     sequence: WorkSequence,
     causal_parent: Option<TraceSequence>,
