@@ -43,7 +43,6 @@ impl InputLifetimeCleanupCause {
 }
 
 pub(in crate::runtime) struct ReconciledFocusCleanup {
-    pub old_target: MountedNodeId,
     pub old_route: Vec<TraceTarget>,
     pub reason: FocusReason,
     pub sequence: WorkSequence,
@@ -335,10 +334,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 TraceContext::modality_change(TraceModalityTransition::new(previous, modality));
             transaction.parent = self.trace.record_draft(
                 TraceRecordDraft::focus_fact(
-                    TraceRecordKind::ModalityChanged {
-                        previous,
-                        current: modality,
-                    },
+                    TraceRecordKind::ModalityChanged,
                     transaction.instant,
                     context,
                 )
@@ -623,11 +619,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             transaction.parent = self.trace.record_draft(
                 TraceRecordDraft::focus_fact(
-                    TraceRecordKind::FocusTransitionCommitted {
-                        reason,
-                        old_target: old_target.cloned(),
-                        new_target: new_target.cloned(),
-                    },
+                    TraceRecordKind::FocusTransitionCommitted { reason },
                     transaction.instant,
                     context,
                 )
@@ -711,7 +703,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         transaction.parent = self.trace.record_draft(
             TraceRecordDraft::focus_fact(
-                TraceRecordKind::FocusNotificationSuppressed { kind: plan.kind },
+                TraceRecordKind::FocusNotificationResolved { kind: plan.kind },
                 transaction.instant,
                 context,
             )
@@ -741,7 +733,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Some(context) = context {
             transaction.parent = self.trace.record_draft(
                 TraceRecordDraft::focus_fact(
-                    TraceRecordKind::FocusNotificationQueued { kind: plan.kind },
+                    TraceRecordKind::FocusNotificationResolved { kind: plan.kind },
                     transaction.instant,
                     context,
                 )
@@ -772,7 +764,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         cleanup: ReconciledFocusCleanup,
     ) {
         let ReconciledFocusCleanup {
-            old_target,
             old_route,
             reason,
             sequence,
@@ -793,11 +784,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         let transition = self.trace.record_draft(
             TraceRecordDraft::focus_fact(
-                TraceRecordKind::FocusTransitionCommitted {
-                    reason,
-                    old_target: Some(old_target),
-                    new_target: None,
-                },
+                TraceRecordKind::FocusTransitionCommitted { reason },
                 instant,
                 transition_context,
             )
@@ -827,7 +814,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         self.trace.record_draft(
             TraceRecordDraft::focus_fact(
-                TraceRecordKind::FocusNotificationSuppressed {
+                TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::Out,
                 },
                 instant,
@@ -861,7 +848,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             (target, route, surface)
         });
         self.focus.clear_all(FocusReason::Shutdown);
-        let Some(old_target) = old_target else {
+        let Some(_old_target) = old_target else {
             return causal_parent;
         };
         let Some((Some(trace_target), old_route, surface)) = trace_facts else {
@@ -875,8 +862,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TraceRecordDraft::focus_fact(
                 TraceRecordKind::FocusTransitionCommitted {
                     reason: FocusReason::Shutdown,
-                    old_target: Some(old_target),
-                    new_target: None,
                 },
                 instant,
                 transition_context,
@@ -903,7 +888,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         self.trace.record_draft(
             TraceRecordDraft::focus_fact(
-                TraceRecordKind::FocusNotificationSuppressed {
+                TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::Out,
                 },
                 instant,
