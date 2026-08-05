@@ -10,8 +10,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
-    TraceEventFamily, TraceRecord, TraceRecordKind, TraceSurfaceSnapshotKind, TraceTarget,
-    WorkSequence,
+    TraceEventFamily, TraceRecord, TraceRecordKind, TraceTarget, WorkSequence,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -370,11 +369,10 @@ fn assert_capability_transition_clears_interaction(mode: Mode) {
     harness.capture_kinds.borrow_mut().clear();
 
     let cleanup_start = harness.runtime.trace().len();
-    let cleanup_submission = harness
+    let cleanup_sequence = harness
         .runtime
         .submit_action(Action::SetMode(mode))
         .unwrap_or_else(|_| unreachable!("the application action is accepted"));
-    let cleanup_sequence = cleanup_submission.sequence();
     pump_all(&mut harness.runtime);
 
     assert_eq!(harness.runtime.index().nodes()[0].id(), &harness.target);
