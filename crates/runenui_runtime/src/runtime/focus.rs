@@ -9,7 +9,7 @@ use crate::{
     MountedNodeId, ReconciliationGeneration, TraceContext, TraceDeliveryOutcome, TraceEventContext,
     TraceEventFamily, TraceFocusBoundaryOutcome, TraceModalityTransition, TraceRecordKind,
     TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence, TraceSpaceCleanupReason,
-    TraceTarget, TraceTargetTransition, WorkSequence,
+    TraceSurfaceContext, TraceTarget, TraceTargetTransition, WorkSequence,
     focus::{
         FocusBoundaryOutcome, FocusNavigation, FocusSelection, is_focus_eligible, nearest_scope,
         select_focus,
@@ -44,13 +44,15 @@ impl InputLifetimeCleanupCause {
 
 pub(in crate::runtime) struct ReconciledFocusCleanup {
     pub old_target: MountedNodeId,
-    pub old_route_len: usize,
+    pub old_route: Vec<TraceTarget>,
     pub reason: FocusReason,
     pub sequence: WorkSequence,
     pub causal_parent: Option<TraceSequence>,
+    pub instant: MonotonicInstant,
     pub before: ReconciliationGeneration,
     pub after: ReconciliationGeneration,
     pub trace_target: Option<TraceTarget>,
+    pub surface: Option<TraceSurfaceContext>,
 }
 
 struct FocusNotificationPlan {
@@ -615,7 +617,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 old_target.map(|target| self.tree.trace_target(target)),
                 new_target.map(|target| self.tree.trace_target(target)),
             );
-            let context = TraceContext::focus_transition(None, transition);
+            let context = TraceContext::focus_transition(
+                self.surface_publication.current_trace_surface_context(),
+                transition,
+            );
             transaction.parent = self.trace.record_draft(
                 TraceRecordDraft::focus_fact(
                     TraceRecordKind::FocusTransitionCommitted {
@@ -686,7 +691,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .as_ref()
                     .map(|target| self.tree.trace_target(target)),
             );
-            TraceContext::focus_notification(None, route, transition, delivery)
+            TraceContext::focus_notification(
+                self.surface_publication.current_trace_surface_context(),
+                route,
+                transition,
+                delivery,
+            )
         })
     }
 
@@ -763,95 +773,144 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) {
         let ReconciledFocusCleanup {
             old_target,
-            old_route_len,
+            old_route,
             reason,
             sequence,
             causal_parent,
+            instant,
             before,
             after,
             trace_target,
+            surface,
         } = cleanup;
         self.focus.commit(None, Vec::new(), reason);
-        self.trace.record(
-            TraceRecordKind::FocusTransitionCommitted {
-                reason,
-                old_target: Some(old_target),
-                new_target: None,
-            },
-            Some(sequence),
-            causal_parent,
-            Some(before),
-            Some(after),
-            trace_target.clone(),
+        let Some(trace_target) = trace_target else {
+            return;
+        };
+        let transition_context = TraceContext::focus_transition(
+            surface.clone(),
+            TraceTargetTransition::new(Some(trace_target.clone()), None),
         );
-        self.trace.record(
-            TraceRecordKind::FocusWithinInvalidated {
-                left: old_route_len,
-                entered: 0,
-            },
-            Some(sequence),
-            causal_parent,
-            Some(before),
-            Some(after),
-            trace_target.clone(),
+        let transition = self.trace.record_draft(
+            TraceRecordDraft::focus_fact(
+                TraceRecordKind::FocusTransitionCommitted {
+                    reason,
+                    old_target: Some(old_target),
+                    new_target: None,
+                },
+                instant,
+                transition_context,
+            )
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(causal_parent)
+            .with_reconciliation(Some(before), Some(after))
+            .with_target(Some(trace_target.clone())),
         );
-        self.trace.record(
-            TraceRecordKind::FocusNotificationSuppressed {
-                kind: FocusEventKind::Out,
-            },
-            Some(sequence),
-            causal_parent,
-            Some(before),
-            Some(after),
-            trace_target,
+        let within = self.trace.record_draft(
+            TraceRecordDraft::lifecycle_fact(
+                TraceRecordKind::FocusWithinInvalidated {
+                    left: old_route.len(),
+                    entered: 0,
+                },
+                instant,
+            )
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(transition)
+            .with_reconciliation(Some(before), Some(after))
+            .with_target(Some(trace_target.clone())),
+        );
+        let notification_context = TraceContext::focus_notification(
+            surface,
+            TraceRouteSnapshot::new(old_route, None),
+            TraceTargetTransition::new(Some(trace_target.clone()), None),
+            TraceDeliveryOutcome::Suppressed,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::focus_fact(
+                TraceRecordKind::FocusNotificationSuppressed {
+                    kind: FocusEventKind::Out,
+                },
+                instant,
+                notification_context,
+            )
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(within)
+            .with_reconciliation(Some(before), Some(after))
+            .with_target(Some(trace_target)),
         );
     }
 
     pub(in crate::runtime) fn clear_focus_for_shutdown(
         &mut self,
         causal_parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
     ) -> Option<TraceSequence> {
         let old_target = self.focus.focused_node().cloned();
         let old_route_len = self.focus.route_len();
-        let trace_target = old_target
-            .as_ref()
-            .map(|target| self.tree.trace_target(target));
+        let trace_facts = self.trace.is_enabled().then(|| {
+            let target = old_target
+                .as_ref()
+                .map(|target| self.tree.trace_target(target));
+            let route = self
+                .focus
+                .route()
+                .iter()
+                .map(|target| self.tree.trace_target(target))
+                .collect::<Vec<_>>();
+            let surface = self.surface_publication.current_trace_surface_context();
+            (target, route, surface)
+        });
         self.focus.clear_all(FocusReason::Shutdown);
-        if let Some(old_target) = old_target {
-            let transition = self.trace.record(
+        let Some(old_target) = old_target else {
+            return causal_parent;
+        };
+        let Some((Some(trace_target), old_route, surface)) = trace_facts else {
+            return causal_parent;
+        };
+        let transition_context = TraceContext::focus_transition(
+            surface.clone(),
+            TraceTargetTransition::new(Some(trace_target.clone()), None),
+        );
+        let transition = self.trace.record_draft(
+            TraceRecordDraft::focus_fact(
                 TraceRecordKind::FocusTransitionCommitted {
                     reason: FocusReason::Shutdown,
                     old_target: Some(old_target),
                     new_target: None,
                 },
-                None,
-                causal_parent,
-                None,
-                None,
-                trace_target.clone(),
-            );
-            let within = self.trace.record(
+                instant,
+                transition_context,
+            )
+            .with_causal_parent(causal_parent)
+            .with_target(Some(trace_target.clone())),
+        );
+        let within = self.trace.record_draft(
+            TraceRecordDraft::lifecycle_fact(
                 TraceRecordKind::FocusWithinInvalidated {
                     left: old_route_len,
                     entered: 0,
                 },
-                None,
-                transition,
-                None,
-                None,
-                trace_target.clone(),
-            );
-            return self.trace.record(
+                instant,
+            )
+            .with_causal_parent(transition)
+            .with_target(Some(trace_target.clone())),
+        );
+        let notification_context = TraceContext::focus_notification(
+            surface,
+            TraceRouteSnapshot::new(old_route, None),
+            TraceTargetTransition::new(Some(trace_target.clone()), None),
+            TraceDeliveryOutcome::Suppressed,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::focus_fact(
                 TraceRecordKind::FocusNotificationSuppressed {
                     kind: FocusEventKind::Out,
                 },
-                None,
-                within,
-                None,
-                None,
-                trace_target,
-            );
-        }
-        causal_parent
+                instant,
+                notification_context,
+            )
+            .with_causal_parent(within)
+            .with_target(Some(trace_target)),
+        )
     }
 }
