@@ -292,7 +292,9 @@ fn assert_gained_capture(capture: &TraceRecord, harness: &Harness) {
     let context = capture.context();
     assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Delivered));
     assert_eq!(
-        context.event().map(|event| event.family()),
+        context
+            .event()
+            .map(runenui_runtime::TraceEventContext::family),
         Some(TraceEventFamily::PointerCapture)
     );
     let pointer = context
