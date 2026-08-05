@@ -375,14 +375,16 @@ fn retired_up_records(records: &[&TraceRecord]) -> RetiredUpRecords<'_> {
         .iter()
         .rev()
         .copied()
-        .find(|record| matches!(
-            record.kind(),
-            TraceRecordKind::PointerIngressRejected {
-                pointer_id,
-                phase: PointerPhase::Up,
-                outcome: TracePointerRejection::RetiredGeneration,
-            } if pointer_id.get() == 71
-        ))
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::PointerIngressRejected {
+                    pointer_id,
+                    phase: PointerPhase::Up,
+                    outcome: TracePointerRejection::RetiredGeneration,
+                } if pointer_id.get() == 71
+            )
+        })
         .unwrap_or_else(|| unreachable!("retired up is diagnosed"));
     let cleanup = records
         .iter()
@@ -402,10 +404,12 @@ fn retired_up_records(records: &[&TraceRecord]) -> RetiredUpRecords<'_> {
         .iter()
         .rev()
         .copied()
-        .find(|record| matches!(
-            record.kind(),
-            TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id.get() == 71
-        ))
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id.get() == 71
+            )
+        })
         .unwrap_or_else(|| unreachable!("retired up closes the stream"));
     let capture_lost = records
         .iter()
@@ -451,10 +455,7 @@ fn assert_retired_up_trace(
         facts.cleanup.causal_parent(),
         Some(facts.rejected.sequence())
     );
-    assert_eq!(
-        facts.closed.causal_parent(),
-        Some(facts.cleanup.sequence())
-    );
+    assert_eq!(facts.closed.causal_parent(), Some(facts.cleanup.sequence()));
     assert_causal_ancestor(records, facts.capture_lost, facts.closed);
     assert_eq!(facts.cleanup.instant(), facts.capture_lost.instant());
     assert!(facts.cleanup.instant().is_some());
