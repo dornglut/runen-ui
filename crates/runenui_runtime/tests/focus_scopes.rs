@@ -261,7 +261,11 @@ fn assert_delivered_focus_record(record: &TraceRecord, expected: FocusRouteExpec
     );
 }
 
-fn descends_from(records: &[&TraceRecord], descendant: &TraceRecord, ancestor: &TraceRecord) -> bool {
+fn descends_from(
+    records: &[&TraceRecord],
+    descendant: &TraceRecord,
+    ancestor: &TraceRecord,
+) -> bool {
     let mut parent = descendant.causal_parent();
     for _ in 0..records.len() {
         let Some(sequence) = parent else {
