@@ -370,7 +370,7 @@ struct RetiredUpRecords<'a> {
     capture_lost: &'a TraceRecord,
 }
 
-fn retired_up_records(records: &[&TraceRecord]) -> RetiredUpRecords<'_> {
+fn retired_up_records<'a>(records: &'a [&'a TraceRecord]) -> RetiredUpRecords<'a> {
     let rejected = records
         .iter()
         .rev()
