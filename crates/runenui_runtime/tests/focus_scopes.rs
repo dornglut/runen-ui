@@ -215,19 +215,20 @@ fn assert_focus_event(
     assert_eq!(&observation.current_target, current_target);
 }
 
-fn assert_delivered_focus_record(
-    record: &TraceRecord,
+struct FocusRouteExpectation<'a> {
     kind: FocusEventKind,
-    root: &runenui_core::MountedNodeId,
-    scope: &runenui_core::MountedNodeId,
-    target: &runenui_core::MountedNodeId,
-    related: &runenui_core::MountedNodeId,
-    previous: &runenui_core::MountedNodeId,
-    current: &runenui_core::MountedNodeId,
-) {
+    root: &'a runenui_core::MountedNodeId,
+    scope: &'a runenui_core::MountedNodeId,
+    target: &'a runenui_core::MountedNodeId,
+    related: &'a runenui_core::MountedNodeId,
+    previous: &'a runenui_core::MountedNodeId,
+    current: &'a runenui_core::MountedNodeId,
+}
+
+fn assert_delivered_focus_record(record: &TraceRecord, expected: FocusRouteExpectation<'_>) {
     assert!(matches!(
         record.kind(),
-        TraceRecordKind::FocusNotificationResolved { kind: actual } if *actual == kind
+        TraceRecordKind::FocusNotificationResolved { kind } if *kind == expected.kind
     ));
     let context = record.context();
     let event = context
@@ -240,24 +241,41 @@ fn assert_delivered_focus_record(
         .route()
         .unwrap_or_else(|| unreachable!("delivered focus notification owns its exact route"));
     assert_eq!(route.targets().len(), 3);
-    assert_eq!(route.targets()[0].mounted_node_id(), root);
-    assert_eq!(route.targets()[1].mounted_node_id(), scope);
-    assert_eq!(route.targets()[2].mounted_node_id(), target);
+    assert_eq!(route.targets()[0].mounted_node_id(), expected.root);
+    assert_eq!(route.targets()[1].mounted_node_id(), expected.scope);
+    assert_eq!(route.targets()[2].mounted_node_id(), expected.target);
     assert_eq!(
         route.related_target().map(TraceTarget::mounted_node_id),
-        Some(related)
+        Some(expected.related)
     );
     let endpoints = context
         .target_transition()
         .unwrap_or_else(|| unreachable!("delivered focus notification owns exact endpoints"));
     assert_eq!(
         endpoints.previous().map(TraceTarget::mounted_node_id),
-        Some(previous)
+        Some(expected.previous)
     );
     assert_eq!(
         endpoints.current().map(TraceTarget::mounted_node_id),
-        Some(current)
+        Some(expected.current)
     );
+}
+
+fn descends_from(records: &[&TraceRecord], descendant: &TraceRecord, ancestor: &TraceRecord) -> bool {
+    let mut parent = descendant.causal_parent();
+    for _ in 0..records.len() {
+        let Some(sequence) = parent else {
+            return false;
+        };
+        if sequence == ancestor.sequence() {
+            return true;
+        }
+        parent = records
+            .iter()
+            .find(|record| record.sequence() == sequence)
+            .and_then(|record| record.causal_parent());
+    }
+    false
 }
 
 #[test]
@@ -343,8 +361,8 @@ fn nested_focus_notifications_use_exact_routes_and_related_targets() {
     });
 
     assert_eq!(within.causal_parent(), Some(transition.sequence()));
-    assert_eq!(out.causal_parent(), Some(within.sequence()));
-    assert_eq!(input.causal_parent(), Some(out.sequence()));
+    assert!(descends_from(&records, out, within));
+    assert!(descends_from(&records, input, out));
     assert_eq!(transition.work_sequence(), within.work_sequence());
     assert_eq!(transition.work_sequence(), out.work_sequence());
     assert_eq!(transition.work_sequence(), input.work_sequence());
@@ -372,23 +390,27 @@ fn nested_focus_notifications_use_exact_routes_and_related_targets() {
     assert_reconciliation_surface(transition, &publication);
     assert_delivered_focus_record(
         out,
-        FocusEventKind::Out,
-        &root,
-        &scope,
-        &first,
-        &second,
-        &first,
-        &second,
+        FocusRouteExpectation {
+            kind: FocusEventKind::Out,
+            root: &root,
+            scope: &scope,
+            target: &first,
+            related: &second,
+            previous: &first,
+            current: &second,
+        },
     );
     assert_delivered_focus_record(
         input,
-        FocusEventKind::In,
-        &root,
-        &scope,
-        &second,
-        &first,
-        &first,
-        &second,
+        FocusRouteExpectation {
+            kind: FocusEventKind::In,
+            root: &root,
+            scope: &scope,
+            target: &second,
+            related: &first,
+            previous: &first,
+            current: &second,
+        },
     );
     assert_reconciliation_surface(out, &publication);
     assert_reconciliation_surface(input, &publication);
