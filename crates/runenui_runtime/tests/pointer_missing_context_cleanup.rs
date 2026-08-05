@@ -13,8 +13,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
-    TraceEventFamily, TracePointerRejection, TraceRecord, TraceRecordKind,
-    TraceSurfaceSnapshotKind, TraceTarget, WorkSequence,
+    TraceEventFamily, TracePointerRejection, TraceRecord, TraceRecordKind, TraceTarget, WorkSequence,
 };
 
 #[derive(Clone)]
