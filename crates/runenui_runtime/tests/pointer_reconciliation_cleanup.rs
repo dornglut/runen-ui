@@ -10,7 +10,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, SurfacePublication,
-    TraceDeliveryOutcome, TraceEventFamily, TraceRecord, TraceRecordKind, TraceTarget, WorkSequence,
+    TraceDeliveryOutcome, TraceEventFamily, TraceRecord, TraceRecordKind, TraceTarget,
+    WorkSequence,
 };
 
 #[derive(Clone)]
