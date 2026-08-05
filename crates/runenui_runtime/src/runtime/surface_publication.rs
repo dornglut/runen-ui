@@ -196,10 +196,7 @@ impl SurfacePublicationState {
 
     pub(in crate::runtime) fn current_trace_surface_context(&self) -> Option<TraceSurfaceContext> {
         self.snapshots.back().map(|snapshot| {
-            TraceSurfaceContext::accepted(
-                &snapshot.context,
-                TraceSurfaceSnapshotKind::Current,
-            )
+            TraceSurfaceContext::accepted(&snapshot.context, TraceSurfaceSnapshotKind::Current)
         })
     }
 
