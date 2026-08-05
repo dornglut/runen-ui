@@ -2,8 +2,8 @@ use core::num::NonZeroU64;
 
 use runenui_core::{
     CommandOrigin, ElementId, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason,
-    InputModality, MonotonicInstant, PointerBoundaryKind, PointerCaptureKind, PointerId,
-    PointerPhase, SemanticCommand, WidgetInvalidation, WorkKey,
+    MonotonicInstant, PointerBoundaryKind, PointerCaptureKind, PointerId, PointerPhase,
+    SemanticCommand, WidgetInvalidation, WorkKey,
 };
 
 use crate::{
@@ -266,23 +266,15 @@ pub enum TraceRecordKind {
     FocusRestorationRejected,
     FocusTransitionCommitted {
         reason: FocusReason,
-        old_target: Option<MountedNodeId>,
-        new_target: Option<MountedNodeId>,
     },
-    FocusNotificationQueued {
-        kind: FocusEventKind,
-    },
-    FocusNotificationSuppressed {
+    FocusNotificationResolved {
         kind: FocusEventKind,
     },
     FocusWithinInvalidated {
         left: usize,
         entered: usize,
     },
-    ModalityChanged {
-        previous: Option<InputModality>,
-        current: InputModality,
-    },
+    ModalityChanged,
     PumpBudgetExhausted,
     InitialEffectsCommitted {
         count: usize,
