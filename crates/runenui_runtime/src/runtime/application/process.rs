@@ -92,9 +92,7 @@ pub(crate) fn process_application_action<App: UiApp>(
             .iter()
             .map(|member| runtime.tree.trace_target(member))
             .collect::<Vec<_>>();
-        let surface = runtime
-            .surface_publication
-            .current_trace_surface_context();
+        let surface = runtime.surface_publication.current_trace_surface_context();
         (target, route, surface)
     });
     let mut lifecycle_invalidated = Vec::new();
@@ -198,8 +196,8 @@ pub(crate) fn process_application_action<App: UiApp>(
         } else {
             runenui_core::FocusReason::Removal
         };
-        let (trace_target, old_route, surface) = previous_focus_trace
-            .unwrap_or_else(|| (None, Vec::new(), None));
+        let (trace_target, old_route, surface) =
+            previous_focus_trace.unwrap_or_else(|| (None, Vec::new(), None));
         runtime.commit_reconciled_focus_cleanup(super::super::focus::ReconciledFocusCleanup {
             old_target: previous_focus
                 .unwrap_or_else(|| unreachable!("invalid focus has a previous target")),
