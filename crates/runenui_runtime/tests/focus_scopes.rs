@@ -9,9 +9,9 @@ use runenui_core::{
     StyleTokens, UiApp, UiEvent, View, Widget, WidgetEventOutput, children, column, row, text,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
-    TraceEventFamily, TraceFocusBoundaryOutcome, TraceRecord, TraceRecordKind,
-    TraceSurfaceSnapshotKind, TraceTarget,
+    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, SurfacePublication,
+    TraceDeliveryOutcome, TraceEventFamily, TraceFocusBoundaryOutcome, TraceRecord,
+    TraceRecordKind, TraceSurfaceSnapshotKind, TraceTarget, WorkSequence,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -131,6 +131,16 @@ impl UiApp for EmptyApp {
     fn update(_state: &mut Self::State, _action: Self::Action) {}
 }
 
+struct FocusFixture {
+    runtime: AppRuntime<App>,
+    publication: SurfacePublication,
+    log: Rc<RefCell<Vec<FocusObservation>>>,
+    root: runenui_core::MountedNodeId,
+    scope: runenui_core::MountedNodeId,
+    first: runenui_core::MountedNodeId,
+    second: runenui_core::MountedNodeId,
+}
+
 fn pump_all<App: UiApp>(runtime: &mut AppRuntime<App>) {
     let report = runtime.pump(PumpBudget::new(
         usize::MAX,
@@ -141,17 +151,14 @@ fn pump_all<App: UiApp>(runtime: &mut AppRuntime<App>) {
     assert!(report.is_quiescent());
 }
 
-fn publish<App: UiApp>(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
+fn publish<App: UiApp>(runtime: &mut AppRuntime<App>) -> SurfacePublication {
     let tokens = StyleTokens::default();
     let size = LogicalSize::try_new(320.0, 240.0)
         .unwrap_or_else(|_| unreachable!("positive logical size is valid"));
     runtime.publish_surface(&SurfaceBuildContext::tight(&tokens, size))
 }
 
-fn target_by_id(
-    publication: &runenui_runtime::SurfacePublication,
-    id: &str,
-) -> runenui_core::MountedNodeId {
+fn target_by_id(publication: &SurfacePublication, id: &str) -> runenui_core::MountedNodeId {
     let id = ElementId::new(id).unwrap_or_else(|_| unreachable!("test id is valid"));
     publication
         .frame()
@@ -163,9 +170,28 @@ fn target_by_id(
         .clone()
 }
 
+fn focus_fixture() -> FocusFixture {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<App>::mount(State {
+        show_first: true,
+        log: Rc::clone(&log),
+    });
+    let publication = publish(&mut runtime);
+    pump_all(&mut runtime);
+    FocusFixture {
+        root: target_by_id(&publication, "root"),
+        scope: target_by_id(&publication, "scope"),
+        first: target_by_id(&publication, "first"),
+        second: target_by_id(&publication, "second"),
+        runtime,
+        publication,
+        log,
+    }
+}
+
 fn request_focus<App: UiApp>(
     runtime: &mut AppRuntime<App>,
-    publication: &runenui_runtime::SurfacePublication,
+    publication: &SurfacePublication,
     target: runenui_core::MountedNodeId,
 ) {
     runtime
@@ -179,7 +205,7 @@ fn request_focus<App: UiApp>(
     pump_all(runtime);
 }
 
-fn keyboard_event(
+const fn keyboard_event(
     phase: KeyboardPhase,
     physical: PhysicalKey,
     logical: LogicalKey,
@@ -196,25 +222,28 @@ fn keyboard_event(
     )
 }
 
-fn assert_focus_event(
-    observation: &FocusObservation,
+#[derive(Clone, Copy)]
+struct FocusEventExpectation<'a> {
     observer: &'static str,
     kind: FocusEventKind,
     reason: FocusReason,
-    original_target: &runenui_core::MountedNodeId,
-    related_target: Option<&runenui_core::MountedNodeId>,
+    original_target: &'a runenui_core::MountedNodeId,
+    related_target: Option<&'a runenui_core::MountedNodeId>,
     phase: runenui_core::EventPhase,
-    current_target: &runenui_core::MountedNodeId,
-) {
-    assert_eq!(observation.observer, observer);
-    assert_eq!(observation.kind, kind);
-    assert_eq!(observation.reason, reason);
-    assert_eq!(&observation.original_target, original_target);
-    assert_eq!(observation.related_target.as_ref(), related_target);
-    assert_eq!(observation.phase, phase);
-    assert_eq!(&observation.current_target, current_target);
+    current_target: &'a runenui_core::MountedNodeId,
 }
 
+fn assert_focus_event(observation: &FocusObservation, expected: FocusEventExpectation<'_>) {
+    assert_eq!(observation.observer, expected.observer);
+    assert_eq!(observation.kind, expected.kind);
+    assert_eq!(observation.reason, expected.reason);
+    assert_eq!(&observation.original_target, expected.original_target);
+    assert_eq!(observation.related_target.as_ref(), expected.related_target);
+    assert_eq!(observation.phase, expected.phase);
+    assert_eq!(&observation.current_target, expected.current_target);
+}
+
+#[derive(Clone, Copy)]
 struct FocusRouteExpectation<'a> {
     kind: FocusEventKind,
     root: &'a runenui_core::MountedNodeId,
@@ -282,142 +311,183 @@ fn descends_from(
     false
 }
 
-#[test]
-fn nested_focus_notifications_use_exact_routes_and_related_targets() {
-    let log = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<App>::mount(State {
-        show_first: true,
-        log: Rc::clone(&log),
-    });
-    let publication = publish(&mut runtime);
-    pump_all(&mut runtime);
-    let root = target_by_id(&publication, "root");
-    let scope = target_by_id(&publication, "scope");
-    let first = target_by_id(&publication, "first");
-    let second = target_by_id(&publication, "second");
+fn record_for<'a>(
+    records: &[&'a TraceRecord],
+    predicate: impl Fn(&TraceRecordKind) -> bool,
+) -> &'a TraceRecord {
+    records
+        .iter()
+        .copied()
+        .find(|record| predicate(record.kind()))
+        .unwrap_or_else(|| unreachable!("the expected focus record is retained"))
+}
 
-    request_focus(&mut runtime, &publication, first.clone());
-    log.borrow_mut().clear();
-    let trace_start = runtime.trace().len();
-    request_focus(&mut runtime, &publication, second.clone());
+struct FocusTransferRecords<'a> {
+    transition: &'a TraceRecord,
+    within: &'a TraceRecord,
+    out: &'a TraceRecord,
+    input: &'a TraceRecord,
+}
 
-    let observations = log.borrow();
-    assert_eq!(observations.len(), 2);
-    assert_focus_event(
-        &observations[0],
-        "first",
-        FocusEventKind::Out,
-        FocusReason::ProgrammaticRequest,
-        &first,
-        Some(&second),
-        runenui_core::EventPhase::Target,
-        &first,
-    );
-    assert_focus_event(
-        &observations[1],
-        "second",
-        FocusEventKind::In,
-        FocusReason::ProgrammaticRequest,
-        &second,
-        Some(&first),
-        runenui_core::EventPhase::Target,
-        &second,
-    );
-    drop(observations);
+fn focus_transfer_records<'a>(records: &[&'a TraceRecord]) -> FocusTransferRecords<'a> {
+    FocusTransferRecords {
+        transition: record_for(records, |kind| {
+            matches!(
+                kind,
+                TraceRecordKind::FocusTransitionCommitted {
+                    reason: FocusReason::ProgrammaticRequest,
+                }
+            )
+        }),
+        within: record_for(records, |kind| {
+            matches!(
+                kind,
+                TraceRecordKind::FocusWithinInvalidated {
+                    left: 1,
+                    entered: 1,
+                }
+            )
+        }),
+        out: record_for(records, |kind| {
+            matches!(
+                kind,
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out,
+                }
+            )
+        }),
+        input: record_for(records, |kind| {
+            matches!(
+                kind,
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::In,
+                }
+            )
+        }),
+    }
+}
 
-    let records = runtime
-        .trace()
-        .records()
-        .skip(trace_start)
-        .collect::<Vec<_>>();
-    let transition = record_for(&records, |kind| {
-        matches!(
-            kind,
-            TraceRecordKind::FocusTransitionCommitted {
-                reason: FocusReason::ProgrammaticRequest,
-            }
-        )
-    });
-    let within = record_for(&records, |kind| {
-        matches!(
-            kind,
-            TraceRecordKind::FocusWithinInvalidated {
-                left: 1,
-                entered: 1,
-            }
-        )
-    });
-    let out = record_for(&records, |kind| {
-        matches!(
-            kind,
-            TraceRecordKind::FocusNotificationResolved {
-                kind: FocusEventKind::Out,
-            }
-        )
-    });
-    let input = record_for(&records, |kind| {
-        matches!(
-            kind,
-            TraceRecordKind::FocusNotificationResolved {
-                kind: FocusEventKind::In,
-            }
-        )
-    });
+fn assert_transfer_lineage(records: &[&TraceRecord], facts: &FocusTransferRecords<'_>) {
+    assert_eq!(facts.within.causal_parent(), Some(facts.transition.sequence()));
+    assert!(descends_from(records, facts.out, facts.within));
+    assert!(descends_from(records, facts.input, facts.out));
+    assert_eq!(facts.transition.work_sequence(), facts.within.work_sequence());
+    assert_eq!(facts.transition.work_sequence(), facts.out.work_sequence());
+    assert_eq!(facts.transition.work_sequence(), facts.input.work_sequence());
+    assert_eq!(facts.transition.instant(), facts.within.instant());
+    assert_eq!(facts.transition.instant(), facts.out.instant());
+    assert_eq!(facts.transition.instant(), facts.input.instant());
+    assert!(facts.transition.instant().is_some());
+}
 
-    assert_eq!(within.causal_parent(), Some(transition.sequence()));
-    assert!(descends_from(&records, out, within));
-    assert!(descends_from(&records, input, out));
-    assert_eq!(transition.work_sequence(), within.work_sequence());
-    assert_eq!(transition.work_sequence(), out.work_sequence());
-    assert_eq!(transition.work_sequence(), input.work_sequence());
-    assert_eq!(transition.instant(), within.instant());
-    assert_eq!(transition.instant(), out.instant());
-    assert_eq!(transition.instant(), input.instant());
-    assert!(transition.instant().is_some());
+fn assert_reconciliation_surface(record: &TraceRecord, publication: &SurfacePublication) {
+    let surface = record
+        .context()
+        .surface()
+        .unwrap_or_else(|| unreachable!("focus record owns displayed-surface identity"));
+    let input = publication.input_context();
+    assert_eq!(surface.surface_id(), input.surface_id());
+    assert_eq!(surface.coordinate_revision(), input.coordinate_revision());
+    assert_eq!(surface.hit_test_generation(), input.hit_test_generation());
+    assert_eq!(surface.snapshot(), Some(TraceSurfaceSnapshotKind::Current));
+}
 
-    let transition_endpoints = transition
+fn assert_transfer_context(fixture: &FocusFixture, facts: &FocusTransferRecords<'_>) {
+    let endpoints = facts
+        .transition
         .context()
         .target_transition()
         .unwrap_or_else(|| unreachable!("focus transition owns exact endpoints"));
     assert_eq!(
-        transition_endpoints
-            .previous()
-            .map(TraceTarget::mounted_node_id),
-        Some(&first)
+        endpoints.previous().map(TraceTarget::mounted_node_id),
+        Some(&fixture.first)
     );
     assert_eq!(
-        transition_endpoints
-            .current()
-            .map(TraceTarget::mounted_node_id),
-        Some(&second)
+        endpoints.current().map(TraceTarget::mounted_node_id),
+        Some(&fixture.second)
     );
-    assert_reconciliation_surface(transition, &publication);
+    assert_reconciliation_surface(facts.transition, &fixture.publication);
     assert_delivered_focus_record(
-        out,
+        facts.out,
         FocusRouteExpectation {
             kind: FocusEventKind::Out,
-            root: &root,
-            scope: &scope,
-            target: &first,
-            related: &second,
-            previous: &first,
-            current: &second,
+            root: &fixture.root,
+            scope: &fixture.scope,
+            target: &fixture.first,
+            related: &fixture.second,
+            previous: &fixture.first,
+            current: &fixture.second,
         },
     );
     assert_delivered_focus_record(
-        input,
+        facts.input,
         FocusRouteExpectation {
             kind: FocusEventKind::In,
-            root: &root,
-            scope: &scope,
-            target: &second,
-            related: &first,
-            previous: &first,
-            current: &second,
+            root: &fixture.root,
+            scope: &fixture.scope,
+            target: &fixture.second,
+            related: &fixture.first,
+            previous: &fixture.first,
+            current: &fixture.second,
         },
     );
-    assert_reconciliation_surface(out, &publication);
-    assert_reconciliation_surface(input, &publication);
+    assert_reconciliation_surface(facts.out, &fixture.publication);
+    assert_reconciliation_surface(facts.input, &fixture.publication);
+}
+
+#[test]
+fn nested_focus_notifications_use_exact_routes_and_related_targets() {
+    let mut fixture = focus_fixture();
+    request_focus(
+        &mut fixture.runtime,
+        &fixture.publication,
+        fixture.first.clone(),
+    );
+    fixture.log.borrow_mut().clear();
+    let trace_start = fixture.runtime.trace().len();
+    request_focus(
+        &mut fixture.runtime,
+        &fixture.publication,
+        fixture.second.clone(),
+    );
+
+    let observations = fixture.log.borrow();
+    assert_eq!(observations.len(), 2);
+    assert_focus_event(
+        &observations[0],
+        FocusEventExpectation {
+            observer: "first",
+            kind: FocusEventKind::Out,
+            reason: FocusReason::ProgrammaticRequest,
+            original_target: &fixture.first,
+            related_target: Some(&fixture.second),
+            phase: runenui_core::EventPhase::Target,
+            current_target: &fixture.first,
+        },
+    );
+    assert_focus_event(
+        &observations[1],
+        FocusEventExpectation {
+            observer: "second",
+            kind: FocusEventKind::In,
+            reason: FocusReason::ProgrammaticRequest,
+            original_target: &fixture.second,
+            related_target: Some(&fixture.first),
+            phase: runenui_core::EventPhase::Target,
+            current_target: &fixture.second,
+        },
+    );
+    drop(observations);
+
+    let records = fixture
+        .runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
+    let facts = focus_transfer_records(&records);
+    assert_transfer_lineage(&records, &facts);
+    assert_transfer_context(&fixture, &facts);
 }
 
 #[test]
@@ -480,7 +550,7 @@ fn keyboard_modality_is_committed_before_keyboard_default_focus_transfer() {
     pump_all(&mut runtime);
     let first = target_by_id(&publication, "first");
     let second = target_by_id(&publication, "second");
-    request_focus(&mut runtime, &publication, first.clone());
+    request_focus(&mut runtime, &publication, first);
     assert_eq!(
         runtime.focus().modality(),
         Some(InputModality::Programmatic)
@@ -528,7 +598,7 @@ fn scope_wrap_trap_and_restoration_are_deterministic() {
     let scope = target_by_id(&publication, "scope");
     let first = target_by_id(&publication, "first");
     let second = target_by_id(&publication, "second");
-    request_focus(&mut runtime, &publication, second.clone());
+    request_focus(&mut runtime, &publication, second);
 
     runtime
         .submit_resolved_surface_command(
@@ -582,146 +652,132 @@ fn scope_wrap_trap_and_restoration_are_deterministic() {
     );
 }
 
-fn record_for<'a>(
-    records: &[&'a TraceRecord],
-    predicate: impl Fn(&TraceRecordKind) -> bool,
-) -> &'a TraceRecord {
-    records
-        .iter()
-        .copied()
-        .find(|record| predicate(record.kind()))
-        .unwrap_or_else(|| unreachable!("the expected focus record is retained"))
+struct FocusCleanupRecords<'a> {
+    transition: &'a TraceRecord,
+    within: &'a TraceRecord,
+    resolved: &'a TraceRecord,
 }
 
-fn assert_reconciliation_surface(
-    record: &TraceRecord,
-    publication: &runenui_runtime::SurfacePublication,
-) {
-    let surface = record
+fn focus_cleanup_records<'a>(records: &[&'a TraceRecord]) -> FocusCleanupRecords<'a> {
+    FocusCleanupRecords {
+        transition: record_for(records, |kind| {
+            matches!(
+                kind,
+                TraceRecordKind::FocusTransitionCommitted {
+                    reason: FocusReason::Removal,
+                }
+            )
+        }),
+        within: record_for(records, |kind| {
+            matches!(
+                kind,
+                TraceRecordKind::FocusWithinInvalidated { left, entered: 0 } if *left >= 1
+            )
+        }),
+        resolved: record_for(records, |kind| {
+            matches!(
+                kind,
+                TraceRecordKind::FocusNotificationResolved {
+                    kind: FocusEventKind::Out,
+                }
+            )
+        }),
+    }
+}
+
+fn assert_cleanup_lineage(facts: &FocusCleanupRecords<'_>, sequence: WorkSequence) {
+    assert_eq!(facts.transition.work_sequence(), Some(sequence));
+    assert_eq!(facts.within.work_sequence(), Some(sequence));
+    assert_eq!(facts.resolved.work_sequence(), Some(sequence));
+    assert_eq!(facts.within.causal_parent(), Some(facts.transition.sequence()));
+    assert_eq!(facts.resolved.causal_parent(), Some(facts.within.sequence()));
+    assert_eq!(facts.transition.instant(), facts.within.instant());
+    assert_eq!(facts.transition.instant(), facts.resolved.instant());
+    assert!(facts.transition.instant().is_some());
+    assert_eq!(
+        facts.transition.reconciliation_before(),
+        facts.within.reconciliation_before()
+    );
+    assert_eq!(
+        facts.transition.reconciliation_after(),
+        facts.within.reconciliation_after()
+    );
+    assert_eq!(
+        facts.transition.reconciliation_before(),
+        facts.resolved.reconciliation_before()
+    );
+    assert_eq!(
+        facts.transition.reconciliation_after(),
+        facts.resolved.reconciliation_after()
+    );
+}
+
+fn assert_cleanup_context(fixture: &FocusFixture, facts: &FocusCleanupRecords<'_>) {
+    let endpoints = facts
+        .transition
         .context()
-        .surface()
-        .unwrap_or_else(|| unreachable!("focus cleanup owns displayed-surface identity"));
-    let input = publication.input_context();
-    assert_eq!(surface.surface_id(), input.surface_id());
-    assert_eq!(surface.coordinate_revision(), input.coordinate_revision());
-    assert_eq!(surface.hit_test_generation(), input.hit_test_generation());
-    assert_eq!(surface.snapshot(), Some(TraceSurfaceSnapshotKind::Current));
-}
-
-#[test]
-fn focus_is_cleared_and_notification_is_suppressed_when_target_disappears() {
-    let log = Rc::new(RefCell::new(Vec::new()));
-    let mut runtime = AppRuntime::<App>::mount(State {
-        show_first: true,
-        log,
-    });
-    let publication = publish(&mut runtime);
-    pump_all(&mut runtime);
-    let root = target_by_id(&publication, "root");
-    let scope = target_by_id(&publication, "scope");
-    let first = target_by_id(&publication, "first");
-    request_focus(&mut runtime, &publication, first.clone());
-    let trace_start = runtime.trace().len();
-
-    let sequence = runtime
-        .submit_action(Action::HideFirst)
-        .unwrap_or_else(|_| unreachable!("hide action is admitted"));
-    pump_all(&mut runtime);
-
-    assert_eq!(runtime.focus().focused_node(), None);
-    let records = runtime
-        .trace()
-        .records()
-        .skip(trace_start)
-        .collect::<Vec<_>>();
-    let transition = record_for(&records, |kind| {
-        matches!(
-            kind,
-            TraceRecordKind::FocusTransitionCommitted {
-                reason: FocusReason::Removal,
-            }
-        )
-    });
-    let within = record_for(&records, |kind| {
-        matches!(
-            kind,
-            TraceRecordKind::FocusWithinInvalidated { left, entered: 0 } if *left >= 1
-        )
-    });
-    let resolved = record_for(&records, |kind| {
-        matches!(
-            kind,
-            TraceRecordKind::FocusNotificationResolved {
-                kind: FocusEventKind::Out,
-            }
-        )
-    });
-
-    assert_eq!(transition.work_sequence(), Some(sequence));
-    assert_eq!(within.work_sequence(), Some(sequence));
-    assert_eq!(resolved.work_sequence(), Some(sequence));
-    assert_eq!(within.causal_parent(), Some(transition.sequence()));
-    assert_eq!(resolved.causal_parent(), Some(within.sequence()));
-    assert_eq!(transition.instant(), within.instant());
-    assert_eq!(transition.instant(), resolved.instant());
-    assert!(transition.instant().is_some());
-    assert_eq!(
-        transition.reconciliation_before(),
-        within.reconciliation_before()
-    );
-    assert_eq!(
-        transition.reconciliation_after(),
-        within.reconciliation_after()
-    );
-    assert_eq!(
-        transition.reconciliation_before(),
-        resolved.reconciliation_before()
-    );
-    assert_eq!(
-        transition.reconciliation_after(),
-        resolved.reconciliation_after()
-    );
-
-    let transition_context = transition.context();
-    let endpoints = transition_context
         .target_transition()
         .unwrap_or_else(|| unreachable!("focus transition owns exact endpoints"));
     assert_eq!(
         endpoints.previous().map(TraceTarget::mounted_node_id),
-        Some(&first)
+        Some(&fixture.first)
     );
     assert_eq!(endpoints.current(), None);
-    assert_reconciliation_surface(transition, &publication);
+    assert_reconciliation_surface(facts.transition, &fixture.publication);
 
-    let resolved_context = resolved.context();
-    let event = resolved_context
+    let context = facts.resolved.context();
+    let event = context
         .event()
         .unwrap_or_else(|| unreachable!("focus resolution owns event classification"));
     assert_eq!(event.family(), TraceEventFamily::Focus);
     assert!(!event.is_cancelable());
-    assert_eq!(
-        resolved_context.delivery(),
-        Some(TraceDeliveryOutcome::Suppressed)
-    );
-    let route = resolved_context
+    assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Suppressed));
+    let route = context
         .route()
         .unwrap_or_else(|| unreachable!("suppressed focus cleanup retains the old route"));
     assert_eq!(route.targets().len(), 3);
-    assert_eq!(route.targets()[0].mounted_node_id(), &root);
-    assert_eq!(route.targets()[1].mounted_node_id(), &scope);
-    assert_eq!(route.targets()[2].mounted_node_id(), &first);
+    assert_eq!(route.targets()[0].mounted_node_id(), &fixture.root);
+    assert_eq!(route.targets()[1].mounted_node_id(), &fixture.scope);
+    assert_eq!(route.targets()[2].mounted_node_id(), &fixture.first);
     assert_eq!(route.related_target(), None);
-    let notification_endpoints = resolved_context
+    let notification_endpoints = context
         .target_transition()
         .unwrap_or_else(|| unreachable!("focus resolution owns exact endpoints"));
     assert_eq!(
         notification_endpoints
             .previous()
             .map(TraceTarget::mounted_node_id),
-        Some(&first)
+        Some(&fixture.first)
     );
     assert_eq!(notification_endpoints.current(), None);
-    assert_reconciliation_surface(resolved, &publication);
+    assert_reconciliation_surface(facts.resolved, &fixture.publication);
+}
+
+#[test]
+fn focus_is_cleared_and_notification_is_suppressed_when_target_disappears() {
+    let mut fixture = focus_fixture();
+    request_focus(
+        &mut fixture.runtime,
+        &fixture.publication,
+        fixture.first.clone(),
+    );
+    let trace_start = fixture.runtime.trace().len();
+    let sequence = fixture
+        .runtime
+        .submit_action(Action::HideFirst)
+        .unwrap_or_else(|_| unreachable!("hide action is admitted"));
+    pump_all(&mut fixture.runtime);
+
+    assert_eq!(fixture.runtime.focus().focused_node(), None);
+    let records = fixture
+        .runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
+    let facts = focus_cleanup_records(&records);
+    assert_cleanup_lineage(&facts, sequence);
+    assert_cleanup_context(&fixture, &facts);
     assert_eq!(
         records
             .iter()
