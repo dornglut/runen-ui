@@ -227,16 +227,12 @@ fn shutdown_clears_focus_memory_with_shutdown_reason_and_retains_modality() {
         runtime.focus().modality(),
         Some(InputModality::Programmatic)
     );
-    let shutdown_kinds = runtime
-        .trace()
-        .records()
-        .map(runenui_runtime::TraceRecord::kind)
-        .collect::<Vec<_>>();
-    let focus_shutdown = shutdown_kinds
+    let shutdown_records = runtime.trace().records().collect::<Vec<_>>();
+    let focus_shutdown = shutdown_records
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
+                record.kind(),
                 TraceRecordKind::FocusTransitionCommitted {
                     reason: runenui_runtime::FocusReason::Shutdown,
                     ..
@@ -244,20 +240,23 @@ fn shutdown_clears_focus_memory_with_shutdown_reason_and_retains_modality() {
             )
         })
         .unwrap_or_else(|| unreachable!("shutdown focus transition is traced"));
-    let runtime_shutdown = shutdown_kinds
+    let runtime_shutdown = shutdown_records
         .iter()
-        .position(|kind| matches!(kind, TraceRecordKind::RuntimeShutdown { .. }))
+        .position(|record| matches!(record.kind(), TraceRecordKind::RuntimeShutdown { .. }))
         .unwrap_or_else(|| unreachable!("runtime shutdown is traced"));
     assert!(focus_shutdown < runtime_shutdown);
     assert!(
-        shutdown_kinds[focus_shutdown..runtime_shutdown]
+        shutdown_records[focus_shutdown..runtime_shutdown]
             .iter()
-            .any(|kind| matches!(
-                kind,
-                TraceRecordKind::FocusNotificationSuppressed {
-                    kind: runenui_runtime::FocusEventKind::Out,
-                }
-            ))
+            .any(|record| {
+                matches!(
+                    record.kind(),
+                    TraceRecordKind::FocusNotificationResolved {
+                        kind: runenui_runtime::FocusEventKind::Out,
+                    }
+                ) && record.context().delivery()
+                    == Some(runenui_runtime::TraceDeliveryOutcome::Suppressed)
+            })
     );
 }
 
@@ -383,33 +382,30 @@ fn composition_focus_transfer_routes_cancel_before_focus_out_and_retires_generat
         runtime.submit_composition_end(start.generation().clone()),
         Err(error) if error.kind() == runenui_runtime::SubmitCompositionErrorKind::StaleGeneration
     ));
-    let kinds: Vec<_> = runtime
-        .trace()
-        .records()
-        .map(runenui_runtime::TraceRecord::kind)
-        .collect();
-    let cancellation = kinds
+    let records = runtime.trace().records().collect::<Vec<_>>();
+    let cancellation = records
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
+                record.kind(),
                 TraceRecordKind::CompositionCancelled {
                     reason: runenui_runtime::CompositionCancelReason::FocusTransfer
                 }
             )
         })
         .unwrap_or_else(|| unreachable!("cancellation is traced"));
-    let focus_out = kinds
+    let focus_out = records
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
-                TraceRecordKind::FocusNotificationQueued {
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
                     kind: runenui_runtime::FocusEventKind::Out
                 }
-            )
+            ) && record.context().delivery()
+                == Some(runenui_runtime::TraceDeliveryOutcome::Delivered)
         })
-        .unwrap_or_else(|| unreachable!("focus departure is traced"));
+        .unwrap_or_else(|| unreachable!("focus departure is delivered"));
     assert!(cancellation < focus_out);
 }
 
