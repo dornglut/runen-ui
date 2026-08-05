@@ -695,8 +695,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: &mut RoutedTransaction<Action>,
         plan: &FocusNotificationPlan,
     ) {
-        let Some(context) =
-            self.focus_notification_context(plan, TraceDeliveryOutcome::Suppressed)
+        let Some(context) = self.focus_notification_context(plan, TraceDeliveryOutcome::Suppressed)
         else {
             return;
         };
