@@ -833,13 +833,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface_snapshot: geometry.snapshot,
         };
         if self
-            .commit_unrouted_pointer_stream(
-                pointer_id,
-                stream,
-                kind,
-                work.sequence,
-                &mut parent,
-            )
+            .commit_unrouted_pointer_stream(pointer_id, stream, kind, work.sequence, &mut parent)
             .is_err()
         {
             let cancelled = self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
