@@ -217,9 +217,8 @@ fn assert_causal_ancestor(
 ) {
     let mut parent = descendant.causal_parent();
     while parent != Some(ancestor.sequence()) {
-        let sequence = parent.unwrap_or_else(|| {
-            unreachable!("capture loss must descend from stream closure")
-        });
+        let sequence =
+            parent.unwrap_or_else(|| unreachable!("capture loss must descend from stream closure"));
         parent = records
             .iter()
             .copied()
