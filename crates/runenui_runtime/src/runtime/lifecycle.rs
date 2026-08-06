@@ -8,7 +8,7 @@ use super::{
     Timer, TraceRecordKind, TraceSequence, WorkCancellationCounts, WorkOwner, WorkRegistry,
     focus::InputLifetimeCleanupCause,
 };
-use crate::TraceSpaceCleanupReason;
+use crate::{TraceSpaceCleanupReason, trace::TraceRecordDraft};
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn cancel_owner_work(&mut self, owner: &WorkOwner) {
@@ -48,6 +48,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !matches!(self.status, RuntimeStatus::Running) {
             return 0;
         }
+        let logical_time = self.now();
         // Stop ordinary mutation first. Cleanup still uses the checked live
         // route; if that route or its bounded admission is irrecoverable, the
         // exact lifetime is retired without falsely claiming callback delivery.
@@ -55,7 +56,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let cleanup_cause = InputLifetimeCleanupCause::new(
             None,
             causal_parent,
-            self.now(),
+            logical_time,
             CommandOrigin::programmatic(),
         );
         let composition_parent = self
@@ -74,7 +75,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             InputLifetimeCleanupCause::new(
                 None,
                 composition_parent,
-                self.now(),
+                logical_time,
                 CommandOrigin::programmatic(),
             ),
         );
@@ -83,22 +84,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let cancelled = cancelled_queued
             .saturating_add(cancelled_live.total())
             .saturating_add(additional_cancelled);
-        let terminal = self.trace.record(
-            TraceRecordKind::RuntimeTerminal { reason },
-            None,
-            pointer_parent.or(space_parent),
-            None,
-            None,
-            None,
+        let terminal = self.trace.record_draft(
+            TraceRecordDraft::lifecycle_fact(
+                TraceRecordKind::RuntimeTerminal { reason },
+                logical_time,
+            )
+            .with_causal_parent(pointer_parent.or(space_parent)),
         );
         if cancelled > 0 {
-            self.trace.record(
-                TraceRecordKind::QueuedWorkCancelled { count: cancelled },
-                None,
-                terminal,
-                None,
-                None,
-                None,
+            self.trace.record_draft(
+                TraceRecordDraft::lifecycle_fact(
+                    TraceRecordKind::QueuedWorkCancelled { count: cancelled },
+                    logical_time,
+                )
+                .with_causal_parent(terminal),
             );
         }
         cancelled
@@ -140,6 +139,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled_live_work: WorkCancellationCounts::default(),
             };
         }
+        let logical_time = self.now();
         let initial_parent = if matches!(self.status, RuntimeStatus::Terminal(_)) {
             self.trace.latest_runtime_terminal_sequence()
         } else {
@@ -148,7 +148,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let cleanup_cause = InputLifetimeCleanupCause::new(
             None,
             initial_parent,
-            self.now(),
+            logical_time,
             CommandOrigin::programmatic(),
         );
         let composition_parent = self
@@ -176,7 +176,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             InputLifetimeCleanupCause::new(
                 None,
                 pointer_parent,
-                self.now(),
+                logical_time,
                 CommandOrigin::programmatic(),
             ),
         );
@@ -185,16 +185,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.close_scheduling_authority(shutdown_parent);
         let stats = self.tree.shutdown();
         self.surface_publication.clear_cache();
-        self.trace.record(
-            TraceRecordKind::RuntimeShutdown {
-                cancelled_queued: cancelled_queued_envelopes,
-                unmounted_lifetimes: stats.unmounted,
-            },
-            None,
-            final_parent.or(shutdown_parent),
-            None,
-            None,
-            None,
+        self.trace.record_draft(
+            TraceRecordDraft::lifecycle_fact(
+                TraceRecordKind::RuntimeShutdown {
+                    cancelled_queued: cancelled_queued_envelopes,
+                    unmounted_lifetimes: stats.unmounted,
+                },
+                logical_time,
+            )
+            .with_causal_parent(final_parent.or(shutdown_parent)),
         );
         self.status = RuntimeStatus::Closed;
         ShutdownReport {

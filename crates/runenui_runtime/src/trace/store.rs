@@ -5,9 +5,8 @@ use runenui_core::{CommandOrigin, MonotonicInstant};
 
 use super::{
     admission::{MandatoryTracePlan, TraceReservation},
-    model::{
-        TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget, TraceWorkIdentity,
-    },
+    construction::{TraceReconciliation, TraceRecordDraft, TraceRoutedEndpoints},
+    model::{TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget},
 };
 use crate::{MountedNodeId, ReconciliationGeneration, WorkSequence};
 
@@ -168,6 +167,16 @@ impl Trace {
         reconciliation_after: Option<ReconciliationGeneration>,
         target: Option<TraceTarget>,
     ) -> Option<TraceSequence> {
+        let mut draft = TraceRecordDraft::new(kind);
+        draft.work_sequence = work_sequence;
+        draft.causal_parent = causal_parent;
+        draft.reconciliation =
+            TraceReconciliation::new(reconciliation_before, reconciliation_after);
+        draft.target = target;
+        self.record_draft(draft)
+    }
+
+    pub(crate) fn record_draft(&mut self, draft: TraceRecordDraft) -> Option<TraceSequence> {
         if self.capacity == 0 {
             return None;
         }
@@ -186,20 +195,7 @@ impl Trace {
         {
             self.dropped_before_sequence = Some(TraceSequence::new(next));
         }
-        self.records.push_back(TraceRecord {
-            sequence,
-            kind,
-            work_sequence,
-            causal_parent,
-            reconciliation_before,
-            reconciliation_after,
-            target,
-            work: None,
-            instant: None,
-            original_target: None,
-            current_target: None,
-            command_origin: None,
-        });
+        self.records.push_back(draft.into_record(sequence));
         Some(sequence)
     }
 
@@ -215,39 +211,17 @@ impl Trace {
         current_target: Option<&MountedNodeId>,
         origin: CommandOrigin,
     ) -> Option<TraceSequence> {
-        let sequence = self.record(kind, Some(work_sequence), causal_parent, None, None, target)?;
-        if let Some(record) = self.records.back_mut() {
-            record.instant = Some(instant);
-            record.original_target = Some(original_target.clone());
-            record.current_target = current_target.cloned();
-            record.command_origin = Some(origin);
-        }
-        Some(sequence)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn record_work(
-        &mut self,
-        kind: TraceRecordKind,
-        work_sequence: Option<WorkSequence>,
-        causal_parent: Option<TraceSequence>,
-        reconciliation_before: Option<ReconciliationGeneration>,
-        reconciliation_after: Option<ReconciliationGeneration>,
-        target: Option<TraceTarget>,
-        work: TraceWorkIdentity,
-    ) -> Option<TraceSequence> {
-        let sequence = self.record(
-            kind,
-            work_sequence,
-            causal_parent,
-            reconciliation_before,
-            reconciliation_after,
-            target,
-        )?;
-        if let Some(record) = self.records.back_mut() {
-            record.work = Some(work);
-        }
-        Some(sequence)
+        let mut draft = TraceRecordDraft::new(kind);
+        draft.work_sequence = Some(work_sequence);
+        draft.causal_parent = causal_parent;
+        draft.target = target;
+        draft.logical_time = Some(instant);
+        draft.routed = Some(TraceRoutedEndpoints::new(
+            original_target.clone(),
+            current_target.cloned(),
+            origin,
+        ));
+        self.record_draft(draft)
     }
 
     pub(crate) fn latest_runtime_terminal_sequence(&self) -> Option<TraceSequence> {

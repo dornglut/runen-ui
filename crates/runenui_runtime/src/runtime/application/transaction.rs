@@ -1,19 +1,52 @@
+use runenui_core::MonotonicInstant;
+
 use super::{
-    ApplicationActionOrigin, ApplicationTransactionInput, CommitError, HashMap, HashSet,
-    HostProtocol, LiveSubscription, MandatoryTracePlan, PlannedApplicationTransaction,
-    PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent, Runtime, TraceRecordKind,
-    TraceSequence, TraceWorkIdentity, WorkOwner,
+    ApplicationActionOrigin, ApplicationTraceTransaction, ApplicationTransactionInput, CommitError,
+    HashMap, HashSet, HostProtocol, LiveSubscription, MandatoryTracePlan,
+    PlannedApplicationTransaction, PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent,
+    Runtime, TraceRecordKind, TraceSequence, TraceWorkIdentity, WorkOwner,
     required_application_transaction_trace_records_from_parts, trace_work_family, trace_work_owner,
 };
 
+/// Neutral trace ownership shared by application and routed work-plan commits.
+#[derive(Debug)]
+pub(in crate::runtime) struct PlannedWorkTrace {
+    transaction_parent: Option<TraceSequence>,
+    logical_time: MonotonicInstant,
+    pre_recorded_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+}
+
+impl PlannedWorkTrace {
+    pub(in crate::runtime) fn new(
+        transaction_parent: Option<TraceSequence>,
+        logical_time: MonotonicInstant,
+    ) -> Self {
+        Self {
+            transaction_parent,
+            logical_time,
+            pre_recorded_lineage: HashMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub(in crate::runtime) fn with_pre_recorded_lineage(
+        mut self,
+        pre_recorded_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+    ) -> Self {
+        self.pre_recorded_lineage = pre_recorded_lineage;
+        self
+    }
+}
+
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(in crate::runtime) fn plan_and_commit_application_transaction(
+    pub(in crate::runtime::application) fn plan_and_commit_application_transaction(
         &mut self,
         input: ApplicationTransactionInput<Action, Protocol>,
         application_subscription_duplicates: &HashSet<runenui_core::WorkKey>,
         application_subscription_cancelled: usize,
         transaction_parent: Option<TraceSequence>,
         pre_recorded_cancellation_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+        trace_transaction: ApplicationTraceTransaction,
     ) -> Result<(), CommitError> {
         let plan = PlannedApplicationTransaction::plan(input, &self.work, &self.queue)
             .map_err(|_| CommitError::Registry)?;
@@ -23,16 +56,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             application_subscription_cancelled,
             transaction_parent,
             pre_recorded_cancellation_lineage,
+            trace_transaction,
         )
     }
 
-    pub(in crate::runtime) fn commit_planned_application_transaction(
+    pub(in crate::runtime::application) fn commit_planned_application_transaction(
         &mut self,
         plan: PlannedApplicationTransaction<Action, Protocol>,
         application_subscription_duplicates: &HashSet<runenui_core::WorkKey>,
         application_subscription_cancelled: usize,
         transaction_parent: Option<TraceSequence>,
         pre_recorded_cancellation_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+        trace_transaction: ApplicationTraceTransaction,
     ) -> Result<(), CommitError> {
         let PlannedApplicationTransaction {
             invalidated,
@@ -59,13 +94,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             return Err(CommitError::Registry);
         }
+        let work_trace =
+            PlannedWorkTrace::new(transaction_parent, trace_transaction.logical_time())
+                .with_pre_recorded_lineage(pre_recorded_cancellation_lineage);
         let cancellation_lineage = self.commit_application_starts(
             &invalidated,
             starts,
             next_generation,
             semantic_events,
-            transaction_parent,
-            pre_recorded_cancellation_lineage,
+            work_trace,
         );
         self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
         for owner in mounted_subscription_dirty {
@@ -86,17 +123,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &WorkOwner::Application,
             application_subscription_duplicates,
         );
-        self.trace.record(
-            TraceRecordKind::SubscriptionDiffCommitted {
-                started: application_subscription_started,
-                cancelled: application_subscription_cancelled,
-                duplicate_keys: application_subscription_duplicates.len(),
-            },
-            None,
-            transaction_parent,
-            None,
-            None,
-            None,
+        self.trace.record_draft(
+            trace_transaction
+                .fact(TraceRecordKind::SubscriptionDiffCommitted {
+                    started: application_subscription_started,
+                    cancelled: application_subscription_cancelled,
+                    duplicate_keys: application_subscription_duplicates.len(),
+                })
+                .with_causal_parent(transaction_parent),
         );
         Ok(())
     }
@@ -107,9 +141,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         starts: Vec<crate::transaction::PlannedOwnedStart<Action, Protocol>>,
         next_generation: Option<core::num::NonZeroU64>,
         semantic_events: Vec<PlannedWorkSemanticEvent>,
-        transaction_parent: Option<TraceSequence>,
-        pre_recorded_lineage: HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)>,
+        work_trace: PlannedWorkTrace,
     ) -> HashMap<u64, (TraceWorkIdentity, Option<TraceSequence>)> {
+        let PlannedWorkTrace {
+            transaction_parent,
+            logical_time,
+            pre_recorded_lineage,
+        } = work_trace;
         let invalidated_set: HashSet<_> = invalidated.iter().copied().collect();
         let mut identities: HashMap<_, _> = invalidated
             .iter()
@@ -151,27 +189,31 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .unwrap_or_else(|| unreachable!("planned semantic event has trace identity"));
             match event {
                 PlannedWorkSemanticEvent::Requested(_) => {
-                    let requested = self.record_work_fact_with_parent(
+                    let requested = self.record_work_fact_with_parent_at(
                         TraceRecordKind::WorkRequested,
                         transaction_parent,
                         identity.clone(),
+                        logical_time,
                     );
                     let committed = if identity.family() == crate::TraceWorkFamily::Subscription {
-                        let declared = self.record_work_fact_with_parent(
+                        let declared = self.record_work_fact_with_parent_at(
                             TraceRecordKind::SubscriptionDeclared,
                             requested,
                             identity.clone(),
+                            logical_time,
                         );
-                        self.record_work_fact_with_parent(
+                        self.record_work_fact_with_parent_at(
                             TraceRecordKind::WorkGenerationCommitted,
                             declared,
                             identity,
+                            logical_time,
                         )
                     } else {
-                        self.record_work_fact_with_parent(
+                        self.record_work_fact_with_parent_at(
                             TraceRecordKind::WorkGenerationCommitted,
                             requested,
                             identity,
+                            logical_time,
                         )
                     };
                     semantic_parents.insert(generation.get(), committed);
@@ -182,15 +224,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         .copied()
                         .flatten()
                         .or(transaction_parent);
-                    let bound = self.record_work_fact_with_parent(
+                    let bound = self.record_work_fact_with_parent_at(
                         TraceRecordKind::WorkCancellationBound,
                         parent,
                         identity.clone(),
+                        logical_time,
                     );
-                    let invalidated = self.record_work_fact_with_parent(
+                    let invalidated = self.record_work_fact_with_parent_at(
                         TraceRecordKind::WorkLogicallyInvalidated,
                         bound,
                         identity.clone(),
+                        logical_time,
                     );
                     semantic_parents.insert(generation.get(), invalidated);
                     lineage.insert(generation.get(), (identity, invalidated));
