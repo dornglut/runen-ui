@@ -3,10 +3,12 @@
 #![allow(clippy::redundant_pub_crate)]
 
 mod admission;
+mod construction;
 mod model;
 mod store;
 
 pub(crate) use admission::{MandatoryTracePlan, TraceReservation};
+pub(crate) use construction::TraceRecordDraft;
 pub use model::{
     TraceConfig, TraceFocusBoundaryOutcome, TracePointerCaptureRequestRejection,
     TracePointerRejection, TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection,

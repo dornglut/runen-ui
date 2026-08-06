@@ -280,13 +280,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
             return;
         }
-        self.trace.record_work(
+        self.record_work_fact_from_envelope_with_parent(
             TraceRecordKind::WorkCleanupProcessed,
-            Some(sequence),
+            sequence,
             causal_parent,
-            None,
-            None,
-            None,
             identity,
         );
         self.revoke_generation(generation);
