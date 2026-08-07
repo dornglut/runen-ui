@@ -6,8 +6,9 @@ use runenui_core::{
 
 use super::{CollectedRoutedOutput, RoutedTransaction, Runtime, RuntimeStatus};
 use crate::{
-    MountedNodeId, ReconciliationGeneration, TraceFocusBoundaryOutcome, TraceRecordKind,
-    TraceRoutedIntegrityFailure, TraceSequence, TraceSpaceCleanupReason, TraceTarget, WorkSequence,
+    MountedNodeId, ReconciliationGeneration, TraceEventContext, TraceEventFamily,
+    TraceFocusBoundaryOutcome, TraceRecordKind, TraceRoutedIntegrityFailure, TraceSequence,
+    TraceSpaceCleanupReason, TraceTarget, WorkSequence,
     focus::{
         FocusBoundaryOutcome, FocusNavigation, FocusSelection, is_focus_eligible, nearest_scope,
         select_focus,
@@ -185,6 +186,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             owner.clone(),
             cause.origin,
             cause.instant,
+            TraceEventContext::new(TraceEventFamily::Composition, false),
             cause.causal_parent,
             TraceReservation::continuation(),
         );

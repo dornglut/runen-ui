@@ -9,8 +9,8 @@ use super::{
     StreamCommitKind, pointer_default_is_cancelable,
 };
 use crate::{
-    MountedNodeId, RuntimeTerminalReason, TracePointerCaptureRequestRejection, TraceRecordKind,
-    TraceRoutedIntegrityFailure,
+    MountedNodeId, RuntimeTerminalReason, TraceEventContext, TraceEventFamily,
+    TracePointerCaptureRequestRejection, TraceRecordKind, TraceRoutedIntegrityFailure,
     mounted::TargetStatus,
     runtime::{
         CollectedRoutedOutput, MandatoryTracePlan, PointerDispatchFacts,
@@ -88,6 +88,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             anchor,
             CommandOrigin::__runtime_pointer(),
             work.instant,
+            pointer_event_context(routed_target.is_some(), work.event.phase()),
             parent,
             TraceReservation::continuation(),
         );
@@ -735,6 +736,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         events: &[PointerBoundaryEvent],
     ) -> Vec<runenui_core::PointerBoundaryKind> {
         events.iter().map(PointerBoundaryEvent::kind).collect()
+    }
+}
+
+const fn pointer_event_context(has_routed_target: bool, phase: PointerPhase) -> TraceEventContext {
+    if has_routed_target {
+        TraceEventContext::new(
+            TraceEventFamily::Pointer,
+            pointer_default_is_cancelable(phase),
+        )
+    } else {
+        TraceEventContext::new(TraceEventFamily::PointerBoundary, false)
     }
 }
 

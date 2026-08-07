@@ -821,10 +821,11 @@ fn trace_boundary_send_task() -> (AppRuntime<SendCancelApp>, Rc<Cell<usize>>, Se
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
-fn send_task_completion_admits_its_exact_three_record_trace_plan() {
+fn send_task_completion_admits_its_exact_three_record_plan_beside_publication_authority() {
     let (mut runtime, mapper_calls, job) = trace_boundary_send_task();
     run_ready(job).unwrap_or_else(|_| unreachable!("live completion enters ingress"));
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 3);
     runtime.pump(PumpBudget::new(0, 1, 0, 0));
 
     assert_eq!(mapper_calls.get(), 1);
@@ -840,10 +841,11 @@ fn send_task_completion_admits_its_exact_three_record_trace_plan() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
-fn send_task_completion_with_only_two_records_never_runs_mapper() {
+fn send_task_completion_with_only_two_unreserved_records_never_runs_mapper() {
     let (mut runtime, mapper_calls, job) = trace_boundary_send_task();
     run_ready(job).unwrap_or_else(|_| unreachable!("live completion enters ingress"));
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 1);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
     runtime.pump(PumpBudget::new(0, 1, 0, 0));
 
     assert_eq!(mapper_calls.get(), 0);

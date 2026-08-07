@@ -2,7 +2,10 @@ use runenui_core::{CommandOrigin, MonotonicInstant};
 
 use crate::{MountedNodeId, ReconciliationGeneration, WorkSequence};
 
-use super::{TraceRecord, TraceRecordKind, TraceSequence, TraceTarget, TraceWorkIdentity};
+use super::{
+    TraceContext, TracePublicationContext, TraceRecord, TraceRecordKind, TraceSequence,
+    TraceSurfaceContext, TraceTarget, TraceWorkIdentity,
+};
 
 /// Named reconciliation facts owned by one trace-record construction.
 #[derive(Debug)]
@@ -61,6 +64,7 @@ pub(crate) struct TraceRecordDraft {
     pub(super) work: Option<TraceWorkIdentity>,
     pub(super) logical_time: Option<MonotonicInstant>,
     pub(super) routed: Option<TraceRoutedEndpoints>,
+    pub(super) context: TraceContext,
 }
 
 impl TraceRecordDraft {
@@ -74,6 +78,7 @@ impl TraceRecordDraft {
             work: None,
             logical_time: None,
             routed: None,
+            context: TraceContext::empty(),
         }
     }
 
@@ -101,6 +106,14 @@ impl TraceRecordDraft {
         draft
     }
 
+    /// Constructs one redraw-control fact at the owning dirty/publication instant.
+    #[must_use]
+    pub(crate) const fn redraw_fact(kind: TraceRecordKind, logical_time: MonotonicInstant) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft
+    }
+
     /// Constructs one application-transaction fact at the transaction's accepted instant.
     #[must_use]
     pub(crate) const fn application_fact(
@@ -109,6 +122,45 @@ impl TraceRecordDraft {
     ) -> Self {
         let mut draft = Self::new(kind);
         draft.logical_time = Some(logical_time);
+        draft
+    }
+
+    /// Constructs one routed fact with exact event time and normalized context.
+    #[must_use]
+    pub(crate) fn routed_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        context: TraceContext,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft.context = context;
+        draft
+    }
+
+    /// Constructs one displayed-surface fact at its owning observation instant.
+    #[must_use]
+    pub(crate) fn surface_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        surface: TraceSurfaceContext,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft.context = TraceContext::surface_record(surface);
+        draft
+    }
+
+    /// Constructs one renderer-facing publication fact with exact displayed identity.
+    #[must_use]
+    pub(crate) fn publication_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        publication: TracePublicationContext,
+    ) -> Self {
+        let mut draft = Self::new(kind);
+        draft.logical_time = Some(logical_time);
+        draft.context = TraceContext::publication_record(publication);
         draft
     }
 
@@ -144,6 +196,22 @@ impl TraceRecordDraft {
         self
     }
 
+    /// Attaches routed endpoints and command origin known at admission.
+    #[must_use]
+    pub(crate) fn with_routed_endpoints(
+        mut self,
+        original_target: MountedNodeId,
+        current_target: Option<MountedNodeId>,
+        command_origin: CommandOrigin,
+    ) -> Self {
+        self.routed = Some(TraceRoutedEndpoints::new(
+            original_target,
+            current_target,
+            command_origin,
+        ));
+        self
+    }
+
     pub(super) fn into_record(self, sequence: TraceSequence) -> TraceRecord {
         let (original_target, current_target, command_origin) = match self.routed {
             Some(routed) => (
@@ -166,6 +234,7 @@ impl TraceRecordDraft {
             original_target,
             current_target,
             command_origin,
+            context: self.context,
         }
     }
 }
@@ -187,5 +256,6 @@ mod tests {
         assert_eq!(draft.work, None);
         assert_eq!(draft.logical_time, None);
         assert!(draft.routed.is_none());
+        assert_eq!(draft.context.event(), None);
     }
 }

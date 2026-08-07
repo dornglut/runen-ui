@@ -319,14 +319,19 @@ fn focus_trace_admission_exhaustion_commits_no_partial_focus_or_modality() {
         usize::MAX,
     ));
     let target = runtime.index().nodes()[1].id().clone();
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 1);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
     runtime
         .submit_command(
             target,
             SemanticCommand::RequestFocus,
             CommandOrigin::controller(),
         )
-        .unwrap_or_else(|_| unreachable!("submission owns the final trace reservation"));
+        .unwrap_or_else(|_| {
+            unreachable!("submission retains publication and routed outcome reservations")
+        });
+    assert_eq!(runtime.__routed_trace_reservations_for_test(), 1);
     runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,

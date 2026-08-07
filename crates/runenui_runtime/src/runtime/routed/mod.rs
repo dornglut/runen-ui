@@ -11,8 +11,10 @@ use runenui_core::{
 
 use super::Runtime;
 use crate::{
-    MountedNodeId, TraceRecordKind, TraceRoutedIntegrityFailure, queue::SemanticCommandEnvelope,
-    trace::MandatoryTracePlan,
+    MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily, TraceRecordKind,
+    TraceRouteSnapshot, TraceRoutedIntegrityFailure,
+    queue::SemanticCommandEnvelope,
+    trace::{MandatoryTracePlan, TraceRecordDraft},
 };
 pub(crate) use dispatch::PointerDispatchFacts;
 pub(crate) use transaction::{RoutedIngressFacts, RoutedTransaction};
@@ -33,6 +35,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target,
             origin,
             instant,
+            TraceEventContext::new(TraceEventFamily::SemanticCommand, true),
             causal_parent,
             trace_reservation,
         );
@@ -129,28 +132,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         admission: admission::RoutedTransactionAdmissionPlan,
     ) -> RoutedTransaction<Action> {
         let target_trace = self.tree.trace_target(&facts.target);
-        let started = self.trace.record_event(
-            TraceRecordKind::RoutedEventStarted,
-            facts.sequence,
-            facts.causal_parent,
-            Some(target_trace.clone()),
-            facts.instant,
-            &facts.target,
-            None,
-            facts.origin,
-        );
-        let parent = self.trace.record_event(
-            TraceRecordKind::RouteSnapshotCreated {
-                invocations: admission.route_invocations,
-            },
-            facts.sequence,
-            started,
-            Some(target_trace.clone()),
-            facts.instant,
-            &facts.target,
-            None,
-            facts.origin,
-        );
+        let parent = if self.trace.is_enabled() {
+            let started = self.trace.record_draft(
+                TraceRecordDraft::routed_fact(
+                    TraceRecordKind::RoutedEventStarted,
+                    facts.instant,
+                    TraceContext::routed_event(facts.event),
+                )
+                .with_work_sequence(Some(facts.sequence))
+                .with_causal_parent(facts.causal_parent)
+                .with_target(Some(target_trace.clone()))
+                .with_routed_endpoints(facts.target.clone(), None, facts.origin),
+            );
+            let trace_route = route
+                .iter()
+                .map(|target| self.tree.trace_target(target))
+                .collect();
+            self.trace.record_draft(
+                TraceRecordDraft::routed_fact(
+                    TraceRecordKind::RouteSnapshotCreated {
+                        invocations: admission.route_invocations,
+                    },
+                    facts.instant,
+                    TraceContext::routed_snapshot(
+                        facts.event,
+                        TraceRouteSnapshot::new(trace_route, None),
+                    ),
+                )
+                .with_work_sequence(Some(facts.sequence))
+                .with_causal_parent(started)
+                .with_target(Some(target_trace.clone()))
+                .with_routed_endpoints(facts.target.clone(), None, facts.origin),
+            )
+        } else {
+            None
+        };
         RoutedTransaction {
             sequence: facts.sequence,
             target: facts.target,

@@ -539,7 +539,7 @@ fn trace_boundary_host_runtime() -> (
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
-fn detached_host_completion_admits_its_exact_four_record_trace_plan() {
+fn detached_host_completion_admits_its_exact_four_record_plan_beside_publication_authority() {
     let (mut runtime, mapper_calls, token) = trace_boundary_host_runtime();
     let completion = runtime
         .host_response_completion(&token, Response::Number(7))
@@ -547,7 +547,8 @@ fn detached_host_completion_admits_its_exact_four_record_trace_plan() {
     completion
         .submit()
         .unwrap_or_else(|_| unreachable!("live completion enters ingress"));
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 3);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 4);
     runtime.pump(PumpBudget::new(0, 1, 0, 0));
 
     assert_eq!(mapper_calls.get(), 1, "status: {:?}", runtime.status());
@@ -575,7 +576,7 @@ fn detached_host_completion_admits_its_exact_four_record_trace_plan() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
-fn detached_host_completion_with_only_three_records_never_runs_mapper() {
+fn detached_host_completion_with_only_three_unreserved_records_never_runs_mapper() {
     let (mut runtime, mapper_calls, token) = trace_boundary_host_runtime();
     let completion = runtime
         .host_response_completion(&token, Response::Number(7))
@@ -583,7 +584,8 @@ fn detached_host_completion_with_only_three_records_never_runs_mapper() {
     completion
         .submit()
         .unwrap_or_else(|_| unreachable!("live completion enters ingress"));
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 3);
     runtime.pump(PumpBudget::new(0, 1, 0, 0));
 
     assert_eq!(mapper_calls.get(), 0);

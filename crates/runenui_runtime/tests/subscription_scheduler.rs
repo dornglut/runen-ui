@@ -586,7 +586,7 @@ fn trace_boundary_send_subscription() -> (AppRuntime<StartOutcomeApp>, Arc<Start
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
-fn send_subscription_item_admits_its_exact_three_record_trace_plan() {
+fn send_subscription_item_admits_its_exact_three_record_plan_beside_publication_authority() {
     let (mut runtime, control) = trace_boundary_send_subscription();
     let sink = lock(&control.sink)
         .as_ref()
@@ -594,7 +594,8 @@ fn send_subscription_item_admits_its_exact_three_record_trace_plan() {
         .unwrap_or_else(|| unreachable!("started source retained its sink"));
     sink.try_send(Arc::new(SendItem(21)))
         .unwrap_or_else(|_| unreachable!("post-start item enters ingress"));
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 3);
     runtime.pump(PumpBudget::new(0, 1, 0, 0));
 
     assert_eq!(control.mapped.load(Ordering::Relaxed), 1);
@@ -609,7 +610,7 @@ fn send_subscription_item_admits_its_exact_three_record_trace_plan() {
 
 #[cfg(feature = "internal-test-seams")]
 #[test]
-fn send_subscription_item_with_only_two_records_never_runs_mapper() {
+fn send_subscription_item_with_only_two_unreserved_records_never_runs_mapper() {
     let (mut runtime, control) = trace_boundary_send_subscription();
     let sink = lock(&control.sink)
         .as_ref()
@@ -617,7 +618,8 @@ fn send_subscription_item_with_only_two_records_never_runs_mapper() {
         .unwrap_or_else(|| unreachable!("started source retained its sink"));
     sink.try_send(Arc::new(SendItem(22)))
         .unwrap_or_else(|_| unreachable!("post-start item enters ingress"));
-    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 1);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 2);
     runtime.pump(PumpBudget::new(0, 1, 0, 0));
 
     assert_eq!(control.mapped.load(Ordering::Relaxed), 0);

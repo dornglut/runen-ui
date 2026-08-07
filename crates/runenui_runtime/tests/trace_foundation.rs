@@ -66,13 +66,13 @@ fn bounded_retention_evicts_oldest_and_advances_the_exclusive_watermark() {
         .records()
         .map(|record| record.sequence().get())
         .collect();
-    assert_eq!(sequences, [6, 7, 8]);
+    assert_eq!(sequences, [7, 8, 9]);
     assert_eq!(
         runtime
             .trace()
             .dropped_before_sequence()
             .map(runenui_runtime::TraceSequence::get),
-        Some(6)
+        Some(7)
     );
 
     let one = RuntimeConfig::default().with_trace_config(TraceConfig::new(1));
@@ -85,7 +85,7 @@ fn bounded_retention_evicts_oldest_and_advances_the_exclusive_watermark() {
         .records()
         .next()
         .unwrap_or_else(|| unreachable!());
-    assert_eq!(retained.sequence().get(), 6);
+    assert_eq!(retained.sequence().get(), 7);
     assert!(matches!(
         retained.kind(),
         TraceRecordKind::ActionSubmissionAccepted
@@ -95,7 +95,7 @@ fn bounded_retention_evicts_oldest_and_advances_the_exclusive_watermark() {
             .trace()
             .dropped_before_sequence()
             .map(runenui_runtime::TraceSequence::get),
-        Some(6)
+        Some(7)
     );
 }
 
@@ -115,14 +115,14 @@ fn repeated_eviction_advances_exclusive_watermark_exactly() {
         );
     }
 
-    assert_eq!(observed, [Some(5), Some(6), Some(7), Some(8)]);
+    assert_eq!(observed, [Some(6), Some(7), Some(8), Some(9)]);
     assert_eq!(
         runtime
             .trace()
             .records()
             .map(|record| record.sequence().get())
             .collect::<Vec<_>>(),
-        [8, 9]
+        [9, 10]
     );
 }
 
