@@ -357,7 +357,7 @@ pub(crate) fn process_application_action<App: UiApp>(
             .with_work_sequence(Some(sequence))
             .with_causal_parent(causal_parent),
     );
-    runtime.request_redraw();
+    runtime.request_redraw(tree_reconciled, trace_transaction.logical_time());
     if let RuntimeStatus::Terminal(reason) = runtime.status {
         return ProcessApplicationActionOutcome::Terminal {
             reason,

@@ -18,6 +18,10 @@ impl MandatoryTracePlan {
         Self::exact(0)
     }
 
+    pub(crate) const fn runtime_mount_and_publication() -> Self {
+        Self::exact(3)
+    }
+
     pub(crate) const fn action_acceptance() -> Self {
         Self::exact(1)
     }
@@ -106,8 +110,10 @@ impl MandatoryTracePlan {
         Self::exact(if host_request { 3 } else { 2 })
     }
 
+    /// Update summary records plus the mandatory redraw request caused by the
+    /// committed reconciliation.
     pub(crate) const fn application_action_base(has_focus: bool) -> Self {
-        Self::exact(if has_focus { 6 } else { 3 })
+        Self::exact(if has_focus { 7 } else { 4 })
     }
 
     pub(crate) fn lifecycle_invalidations(count: usize) -> Option<Self> {
@@ -115,7 +121,9 @@ impl MandatoryTracePlan {
     }
 
     pub(crate) fn routed_event(route_invocations: usize, max_outputs: usize) -> Option<Self> {
-        Self::exact(7)
+        // The fixed maximum includes the final redraw request when routed
+        // invalidation dirties publication.
+        Self::exact(8)
             .checked_add(Self::exact(6).checked_mul(route_invocations)?)
             .and_then(|plan| plan.checked_add(Self::exact(6).checked_mul(max_outputs)?))
             .and_then(|plan| {

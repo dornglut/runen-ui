@@ -111,14 +111,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .unwrap_or_else(|_| unreachable!("application transaction was preflighted"));
             self.mounted_subscription_reconcile_pending.push(owner);
         }
-        self.append_planned_outputs(application_outputs, transaction_parent)?;
+        self.append_planned_outputs(
+            application_outputs,
+            transaction_parent,
+            trace_transaction.logical_time(),
+        )?;
         let application_subscription_started = application_subscription_starts.len();
         for generation in application_subscription_starts {
             self.queue
                 .push_effect_start(generation)
                 .unwrap_or_else(|_| unreachable!("application transaction was preflighted"));
         }
-        self.append_planned_outputs(mounted_outputs, transaction_parent)?;
+        self.append_planned_outputs(
+            mounted_outputs,
+            transaction_parent,
+            trace_transaction.logical_time(),
+        )?;
         self.record_subscription_duplicates(
             &WorkOwner::Application,
             application_subscription_duplicates,
@@ -275,6 +283,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         outputs: Vec<PlannedOutput<Action>>,
         transaction_parent: Option<TraceSequence>,
+        logical_time: MonotonicInstant,
     ) -> Result<(), CommitError> {
         for output in outputs {
             match output {
@@ -294,7 +303,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                             unreachable!("application transaction was preflighted")
                         });
                 }
-                PlannedOutput::Redraw => self.request_redraw(),
+                PlannedOutput::Redraw => self.request_redraw(transaction_parent, logical_time),
             }
         }
         Ok(())

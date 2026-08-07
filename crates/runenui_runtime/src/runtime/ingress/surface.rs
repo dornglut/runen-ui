@@ -2,13 +2,14 @@ use runenui_core::{CommandOrigin, HostProtocol, SemanticCommand, SurfaceInputCon
 
 use crate::{
     CommandSubmission, LogicalPoint, MountedNodeId, SubmitCommandErrorKind,
-    SubmitSurfaceCommandError, SubmitSurfaceCommandErrorKind, TraceRecordKind,
+    SubmitSurfaceCommandError, SubmitSurfaceCommandErrorKind, TraceRecordKind, TraceSurfaceContext,
     TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind,
     UnacceptedSurfaceCommand,
     runtime::{
         Runtime,
         surface_publication::{SurfaceSnapshotError, SurfaceSnapshotKind},
     },
+    trace::TraceRecordDraft,
 };
 
 use super::submission::SurfaceCommandTrace;
@@ -24,7 +25,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let ingress = TraceSurfaceIngressKind::LogicalCoordinate;
         if let Err(kind) = self.command_status_preflight() {
             let surface_kind = map_command_error(kind);
-            self.record_surface_command_rejection(ingress, surface_kind);
+            self.record_surface_command_rejection(ingress, surface_kind, &context);
             return Err(Self::reject_logical_surface_command(
                 surface_kind,
                 context,
@@ -37,7 +38,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(resolution) => resolution,
             Err(error) => {
                 let kind = map_snapshot_error(error);
-                self.record_surface_command_rejection(ingress, kind);
+                self.record_surface_command_rejection(ingress, kind, &context);
                 return Err(Self::reject_logical_surface_command(
                     kind, context, point, command, origin,
                 ));
@@ -45,16 +46,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let trace = SurfaceCommandTrace::new(
             ingress,
-            map_snapshot_kind(resolution.snapshot_kind()),
-            resolution.hit_test_generation(),
-            resolution.coordinate_revision(),
+            accepted_surface_context(
+                &context,
+                map_snapshot_kind(resolution.snapshot_kind()),
+                resolution.hit_test_generation(),
+                resolution.coordinate_revision(),
+            ),
         );
         let target = resolution.into_target();
         match self.submit_surface_bound_command(&target, command, origin, trace) {
             Ok(submission) => Ok(submission),
             Err(kind) => {
                 let surface_kind = map_command_error(kind);
-                self.record_surface_command_rejection(ingress, surface_kind);
+                self.record_surface_command_rejection(ingress, surface_kind, &context);
                 let error = Self::reject_logical_surface_command(
                     surface_kind,
                     context,
@@ -78,7 +82,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let ingress = TraceSurfaceIngressKind::ResolvedTarget;
         if let Err(kind) = self.command_status_preflight() {
             let surface_kind = map_command_error(kind);
-            self.record_surface_command_rejection(ingress, surface_kind);
+            self.record_surface_command_rejection(ingress, surface_kind, &context);
             return Err(Self::reject_resolved_surface_command(
                 surface_kind,
                 context,
@@ -94,7 +98,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(selection) => selection,
             Err(error) => {
                 let kind = map_snapshot_error(error);
-                self.record_surface_command_rejection(ingress, kind);
+                self.record_surface_command_rejection(ingress, kind, &context);
                 return Err(Self::reject_resolved_surface_command(
                     kind, context, target, command, origin,
                 ));
@@ -102,15 +106,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let trace = SurfaceCommandTrace::new(
             ingress,
-            map_snapshot_kind(selection.snapshot_kind()),
-            selection.hit_test_generation(),
-            selection.coordinate_revision(),
+            accepted_surface_context(
+                &context,
+                map_snapshot_kind(selection.snapshot_kind()),
+                selection.hit_test_generation(),
+                selection.coordinate_revision(),
+            ),
         );
         match self.submit_surface_bound_command(&target, command, origin, trace) {
             Ok(submission) => Ok(submission),
             Err(kind) => {
                 let surface_kind = map_command_error(kind);
-                self.record_surface_command_rejection(ingress, surface_kind);
+                self.record_surface_command_rejection(ingress, surface_kind, &context);
                 let error = Self::reject_resolved_surface_command(
                     surface_kind,
                     context,
@@ -128,16 +135,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         ingress: TraceSurfaceIngressKind,
         kind: SubmitSurfaceCommandErrorKind,
+        context: &SurfaceInputContext,
     ) {
-        self.record_optional(
+        if !self.trace.is_enabled() {
+            return;
+        }
+        let instant = self.now();
+        self.trace.record_draft(TraceRecordDraft::surface_fact(
             TraceRecordKind::SurfaceCommandRejected {
                 ingress,
                 outcome: map_trace_rejection(kind),
             },
-            None,
-            None,
-            None,
-        );
+            instant,
+            TraceSurfaceContext::requested(context),
+        ));
     }
 
     const fn reject_logical_surface_command(
@@ -175,6 +186,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             },
         )
     }
+}
+
+fn accepted_surface_context(
+    context: &SurfaceInputContext,
+    snapshot: TraceSurfaceSnapshotKind,
+    hit_test_generation: u64,
+    coordinate_revision: u64,
+) -> TraceSurfaceContext {
+    debug_assert_eq!(context.hit_test_generation(), hit_test_generation);
+    debug_assert_eq!(context.coordinate_revision(), coordinate_revision);
+    TraceSurfaceContext::accepted(context, snapshot)
 }
 
 const fn map_snapshot_kind(kind: SurfaceSnapshotKind) -> TraceSurfaceSnapshotKind {

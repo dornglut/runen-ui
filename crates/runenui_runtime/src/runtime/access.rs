@@ -165,8 +165,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[cfg(feature = "internal-test-seams")]
-    pub(crate) const fn routed_trace_reservations_for_test(&self) -> usize {
-        self.trace.reserved_records_for_test()
+    pub(crate) fn routed_trace_reservations_for_test(&self) -> usize {
+        let publication = usize::from(self.surface_trace.publication_reservation.is_active());
+        self.trace
+            .reserved_records_for_test()
+            .checked_sub(publication)
+            .unwrap_or_else(|| unreachable!("publication reservation is retained in trace"))
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn surface_publication_trace_reserved_for_test(&self) -> bool {
+        self.surface_trace.publication_reservation.is_active()
     }
 
     #[cfg(feature = "internal-test-seams")]

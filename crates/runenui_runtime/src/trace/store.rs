@@ -75,6 +75,10 @@ impl Trace {
         self.reserve_outcome_with_prefix(MandatoryTracePlan::surface_command_acceptance())
     }
 
+    pub(crate) fn reserve_surface_publication(&mut self) -> Option<TraceReservation> {
+        self.reserve_outcome_with_prefix(MandatoryTracePlan::none())
+    }
+
     fn reserve_outcome_with_prefix(
         &mut self,
         prefix: MandatoryTracePlan,
@@ -155,6 +159,15 @@ impl Trace {
     ) -> Option<TraceSequence> {
         self.release_reservation(reservation);
         self.record(kind, Some(work_sequence), causal_parent, None, None, None)
+    }
+
+    pub(crate) fn record_reserved_draft(
+        &mut self,
+        reservation: TraceReservation,
+        draft: TraceRecordDraft,
+    ) -> Option<TraceSequence> {
+        self.release_reservation(reservation);
+        self.record_draft(draft)
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -9,7 +9,8 @@ use runenui_core::{
 };
 
 use crate::{
-    RuntimeStatus, RuntimeTerminalReason, TraceRecordKind, TraceSpaceCleanupReason,
+    RuntimeStatus, RuntimeTerminalReason, TraceEventContext, TraceEventFamily, TraceRecordKind,
+    TraceSpaceCleanupReason,
     mounted::{AutomationResolution, TargetStatus},
     queue::{InputEnvelope, InputEnvelopePayload},
     runtime::{RoutedIngressFacts, Runtime},
@@ -980,11 +981,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             trace_reservation,
         } = envelope;
         let origin = CommandOrigin::__runtime_keyboard();
+        let event_context = Self::routed_input_event_context(&payload);
         let facts = RoutedIngressFacts::new(
             sequence,
             target.clone(),
             origin,
             instant,
+            event_context,
             causal_parent,
             trace_reservation,
         );
@@ -1060,6 +1063,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 );
             }
             InputEnvelopePayload::Keyboard(_) | InputEnvelopePayload::CommittedText(_) => {}
+        }
+    }
+
+    const fn routed_input_event_context(payload: &InputEnvelopePayload) -> TraceEventContext {
+        match payload {
+            InputEnvelopePayload::Keyboard(_) => {
+                TraceEventContext::new(TraceEventFamily::Keyboard, true)
+            }
+            InputEnvelopePayload::CommittedText(_) => {
+                TraceEventContext::new(TraceEventFamily::CommittedText, true)
+            }
+            InputEnvelopePayload::Composition(_) => {
+                TraceEventContext::new(TraceEventFamily::Composition, false)
+            }
         }
     }
 
