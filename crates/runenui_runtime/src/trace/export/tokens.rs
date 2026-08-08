@@ -158,7 +158,6 @@ pub(super) const fn runtime_terminal_reason(value: RuntimeTerminalReason) -> &'s
         RuntimeTerminalReason::MountedIdentityExhausted => "mounted_identity_exhausted",
         RuntimeTerminalReason::TraceSequenceExhausted => "trace_sequence_exhausted",
         RuntimeTerminalReason::Poisoned => "poisoned",
-        _ => "unknown",
     }
 }
 
@@ -172,7 +171,6 @@ pub(super) const fn event_family(value: TraceEventFamily) -> &'static str {
         TraceEventFamily::Keyboard => "keyboard",
         TraceEventFamily::CommittedText => "committed_text",
         TraceEventFamily::Composition => "composition",
-        _ => "unknown",
     }
 }
 
@@ -184,7 +182,6 @@ pub(super) const fn pointer_record_role(value: TracePointerRecordRole) -> &'stat
         TracePointerRecordRole::CaptureNotification => "capture_notification",
         TracePointerRecordRole::CaptureRequestRejection => "capture_request_rejection",
         TracePointerRecordRole::Cleanup => "cleanup",
-        _ => "unknown",
     }
 }
 
@@ -193,7 +190,6 @@ pub(super) const fn focus_record_role(value: TraceFocusRecordRole) -> &'static s
         TraceFocusRecordRole::Transition => "transition",
         TraceFocusRecordRole::Notification => "notification",
         TraceFocusRecordRole::ModalityChange => "modality_change",
-        _ => "unknown",
     }
 }
 
@@ -204,7 +200,6 @@ pub(super) const fn input_record_role(value: TraceInputRecordRole) -> &'static s
         TraceInputRecordRole::CompositionIdentity => "composition_identity",
         TraceInputRecordRole::CompositionUpdate => "composition_update",
         TraceInputRecordRole::CompositionCleanup => "composition_cleanup",
-        _ => "unknown",
     }
 }
 
@@ -213,7 +208,6 @@ pub(super) const fn automation_record_role(value: TraceAutomationRecordRole) -> 
         TraceAutomationRecordRole::Unique => "unique",
         TraceAutomationRecordRole::Missing => "missing",
         TraceAutomationRecordRole::Ambiguous => "ambiguous",
-        _ => "unknown",
     }
 }
 
@@ -222,7 +216,6 @@ pub(super) const fn action_category(value: TraceActionCategory) -> &'static str 
         TraceActionCategory::DirectSubmission => "direct_submission",
         TraceActionCategory::RoutedCommand => "routed_command",
         TraceActionCategory::ApplicationEffect => "application_effect",
-        _ => "unknown",
     }
 }
 
@@ -230,7 +223,6 @@ pub(super) const fn delivery_outcome(value: TraceDeliveryOutcome) -> &'static st
     match value {
         TraceDeliveryOutcome::Delivered => "delivered",
         TraceDeliveryOutcome::Suppressed => "suppressed",
-        _ => "unknown",
     }
 }
 
@@ -239,7 +231,6 @@ pub(super) const fn sink_delivery(value: TraceSinkDeliveryOutcome) -> &'static s
         TraceSinkDeliveryOutcome::Delivered => "delivered",
         TraceSinkDeliveryOutcome::Full => "full",
         TraceSinkDeliveryOutcome::Closed => "closed",
-        _ => "unknown",
     }
 }
 
@@ -247,7 +238,6 @@ pub(super) const fn surface_snapshot(value: TraceSurfaceSnapshotKind) -> &'stati
     match value {
         TraceSurfaceSnapshotKind::Current => "current",
         TraceSurfaceSnapshotKind::RetainedHistorical => "retained_historical",
-        _ => "unknown",
     }
 }
 
@@ -255,7 +245,6 @@ pub(super) const fn surface_ingress(value: TraceSurfaceIngressKind) -> &'static 
     match value {
         TraceSurfaceIngressKind::LogicalCoordinate => "logical_coordinate",
         TraceSurfaceIngressKind::ResolvedTarget => "resolved_target",
-        _ => "unknown",
     }
 }
 
@@ -264,7 +253,6 @@ pub(super) const fn target_rejection(value: TraceTargetRejection) -> &'static st
         TraceTargetRejection::Foreign => "foreign",
         TraceTargetRejection::Stale => "stale",
         TraceTargetRejection::Missing => "missing",
-        _ => "unknown",
     }
 }
 
@@ -285,7 +273,6 @@ pub(super) const fn surface_rejection(value: TraceSurfaceRejection) -> &'static 
         TraceSurfaceRejection::RuntimeTerminal => "runtime_terminal",
         TraceSurfaceRejection::WorkSequenceExhausted => "work_sequence_exhausted",
         TraceSurfaceRejection::TraceSequenceExhausted => "trace_sequence_exhausted",
-        _ => "unknown",
     }
 }
 
@@ -304,7 +291,6 @@ pub(super) const fn pointer_rejection(value: TracePointerRejection) -> &'static 
         TracePointerRejection::DeviceMismatch => "device_mismatch",
         TracePointerRejection::DeviceKindMismatch => "device_kind_mismatch",
         TracePointerRejection::ForeignStreamSurface => "foreign_stream_surface",
-        _ => "unknown",
     }
 }
 
@@ -312,7 +298,6 @@ pub(super) const fn capture_request_kind(value: TracePointerCaptureRequestKind) 
     match value {
         TracePointerCaptureRequestKind::Capture => "capture",
         TracePointerCaptureRequestKind::Release => "release",
-        _ => "unknown",
     }
 }
 
@@ -324,7 +309,6 @@ pub(super) const fn capture_request_rejection(
         TracePointerCaptureRequestRejection::TargetNotInTransaction => "target_not_in_transaction",
         TracePointerCaptureRequestRejection::TargetUnavailable => "target_unavailable",
         TracePointerCaptureRequestRejection::ReleaseNotOwner => "release_not_owner",
-        _ => "unknown",
     }
 }
 
@@ -336,7 +320,6 @@ pub(super) const fn routed_integrity_failure(value: TraceRoutedIntegrityFailure)
         TraceRoutedIntegrityFailure::OutputAllowanceExceeded => "output_allowance_exceeded",
         TraceRoutedIntegrityFailure::SemanticDefaultFailure => "semantic_default_failure",
         TraceRoutedIntegrityFailure::CommitInvariantFailure => "commit_invariant_failure",
-        _ => "unknown",
     }
 }
 
@@ -356,7 +339,6 @@ pub(super) const fn routed_admission_rejection(
         }
         TraceRoutedAdmissionRejection::TraceSequenceExhausted => "trace_sequence_exhausted",
         TraceRoutedAdmissionRejection::CheckedArithmeticOverflow => "checked_arithmetic_overflow",
-        _ => "unknown",
     }
 }
 
@@ -369,7 +351,6 @@ pub(super) const fn focus_boundary_outcome(value: TraceFocusBoundaryOutcome) -> 
         TraceFocusBoundaryOutcome::Wrapped => "wrapped",
         TraceFocusBoundaryOutcome::LogicalScroll => "logical_scroll",
         TraceFocusBoundaryOutcome::Empty => "empty",
-        _ => "unknown",
     }
 }
 
@@ -385,7 +366,6 @@ pub(super) const fn space_cleanup_reason(value: TraceSpaceCleanupReason) -> &'st
         TraceSpaceCleanupReason::Shutdown => "shutdown",
         TraceSpaceCleanupReason::Drop => "drop",
         TraceSpaceCleanupReason::Release => "release",
-        _ => "unknown",
     }
 }
 
@@ -396,7 +376,6 @@ pub(super) const fn work_family(value: TraceWorkFamily) -> &'static str {
         TraceWorkFamily::Timer => "timer",
         TraceWorkFamily::Subscription => "subscription",
         TraceWorkFamily::HostRequest => "host_request",
-        _ => "unknown",
     }
 }
 
@@ -412,7 +391,6 @@ pub(super) const fn work_start_refusal(value: TraceWorkStartRefusal) -> &'static
         TraceWorkStartRefusal::SubscriptionRejected => "subscription_rejected",
         TraceWorkStartRefusal::TimerZeroInterval => "timer_zero_interval",
         TraceWorkStartRefusal::TimerDeadlineOverflow => "timer_deadline_overflow",
-        _ => "unknown",
     }
 }
 
@@ -420,7 +398,6 @@ pub(super) const fn timer_terminal_outcome(value: TraceTimerTerminalOutcome) -> 
     match value {
         TraceTimerTerminalOutcome::Completed => "completed",
         TraceTimerTerminalOutcome::RepeatDeadlineOverflow => "repeat_deadline_overflow",
-        _ => "unknown",
     }
 }
 
@@ -434,6 +411,5 @@ pub(super) const fn surface_phase(value: SurfacePhase) -> &'static str {
         SurfacePhase::Semantics => "semantics",
         SurfacePhase::Diagnostics => "diagnostics",
         SurfacePhase::FocusValidation => "focus_validation",
-        _ => "unknown",
     }
 }
