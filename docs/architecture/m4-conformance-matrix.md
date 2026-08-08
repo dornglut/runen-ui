@@ -12,17 +12,17 @@ M4C0–M4D3 delivery sequence. This matrix defines observable acceptance and pro
 ownership; neither the charter nor a private implementation seam can weaken a
 row here.
 
-Current audited branch state after M4C5 owner acceptance and squash merge. The
-accepted feature head `d0d2ef1d53a8ab1d940beb4155f5f991229f042e` passed
-exact-head CI run `30843238697`; [PR #27](https://github.com/dornglut/runen-ui/pull/27)
-was squash-merged as `284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`.
-All fifteen M4C5-owned rows are owner-accepted. M4D1-E's complete exact-head proof
-package now passes; owner acceptance and merge remain pending:
+Current audited branch state after M4D1 owner acceptance and squash merge. The
+accepted feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed
+exact-head CI run `31269401262` / #657; [PR #39](https://github.com/dornglut/runen-ui/pull/39)
+was squash-merged as `2fe269366386d7aee9de2a2573498b64ad486293`.
+All ten M4D1-owned `TRACE-EVENT-*` rows are owner-accepted. M4D2 remains blocked
+until this post-merge authority reconciliation is accepted and merged:
 
 ```text
 237 total unique rows
-207 owner-accepted
-10 proof-complete
+217 owner-accepted
+0 proof-complete
 20 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -300,16 +300,16 @@ not imply routed-event or M4D support.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Trace proof owner | Delivery slice | Status | M4 gate |
 |---|---|---|---|---|---|---|---|
-| TRACE-EVENT-01 | One canonical bounded trace remains; no duplicate compatibility vector or result history exists. | Public API/runtime trace conformance | Repository symbol/storage audit | Canonical trace itself | M4D1 | proof-complete | Required |
-| TRACE-EVENT-02 | Complete routed-event normalization records ingress, command source, route snapshot, phases, controls, default, commit, and output acceptance. | End-to-end routed trace proof | Rejection/no-callback and missing-parent proof | M4D1 normalized event schema | M4D1 | proof-complete | Required |
-| TRACE-EVENT-03 | Surface context records namespace/surface/generation/revision acceptance and retired/missing/foreign rejection. | Surface-context trace integration | No retarget and diagnostic omission proof | M4D1 surface schema | M4D1 | proof-complete | Required |
-| TRACE-EVENT-04 | Pointer, physical path, pressed, capture, boundary, terminal cleanup, and release-inside causality are reconstructable. | Pointer/capture/boundary trace integration | Cross-pointer and diagnosis-without-cleanup proof | M4D1 pointer schema | M4D1 | proof-complete | Required |
-| TRACE-EVENT-05 | Focus scope, directional result, transition order, focus-within, modality, and suppressed stale delivery are reconstructable. | Focus/modality trace integration | Removed target and missing reason proof | M4D1 focus/modality schema | M4D1 | proof-complete | Required |
-| TRACE-EVENT-06 | Composition ownership, redacted payload facts, cancellation-before-focus, and stale completion are reconstructable. | IME trace integration | Payload leakage and retarget proof | M4D1 composition schema | M4D1 | proof-complete | Required |
-| TRACE-EVENT-07 | Scheduler logical time and complete input/command-to-publication causal chains normalize existing accepted M4B lineage without changing it. | Counter full reconstruction proof | Missing parent/work identity/time proof | M4D1 complete schema | M4D1 | proof-complete | Required |
-| TRACE-EVENT-08 | Capacity eviction advances the exact exclusive watermark; capacity zero changes no behavior. | Existing `trace_foundation` plus normalized-schema proof | Repeated eviction and disabled-trace equality proof | Canonical retention facts | M4D1 | proof-complete | Required |
-| TRACE-EVENT-09 | Non-`Debug` actions trace by type/category/identity without a global debug bound. | Compile/runtime non-`Debug` proof | Payload/debug formatting audit | M4D1 action facts | M4D1 | proof-complete | Required |
-| TRACE-EVENT-10 | Terminal integrity, poisoning, cancellation, wake/redraw, and shutdown remain causally reconstructable. | Integrity end-to-end trace proof | Truncation/missing cleanup proof | M4D1 terminal schema | M4D1 | proof-complete | Required |
+| TRACE-EVENT-01 | One canonical bounded trace remains; no duplicate compatibility vector or result history exists. | Public API/runtime trace conformance | Repository symbol/storage audit | Canonical trace itself | M4D1 | owner-accepted | Required |
+| TRACE-EVENT-02 | Complete routed-event normalization records ingress, command source, route snapshot, phases, controls, default, commit, and output acceptance. | End-to-end routed trace proof | Rejection/no-callback and missing-parent proof | M4D1 normalized event schema | M4D1 | owner-accepted | Required |
+| TRACE-EVENT-03 | Surface context records namespace/surface/generation/revision acceptance and retired/missing/foreign rejection. | Surface-context trace integration | No retarget and diagnostic omission proof | M4D1 surface schema | M4D1 | owner-accepted | Required |
+| TRACE-EVENT-04 | Pointer, physical path, pressed, capture, boundary, terminal cleanup, and release-inside causality are reconstructable. | Pointer/capture/boundary trace integration | Cross-pointer and diagnosis-without-cleanup proof | M4D1 pointer schema | M4D1 | owner-accepted | Required |
+| TRACE-EVENT-05 | Focus scope, directional result, transition order, focus-within, modality, and suppressed stale delivery are reconstructable. | Focus/modality trace integration | Removed target and missing reason proof | M4D1 focus/modality schema | M4D1 | owner-accepted | Required |
+| TRACE-EVENT-06 | Composition ownership, redacted payload facts, cancellation-before-focus, and stale completion are reconstructable. | IME trace integration | Payload leakage and retarget proof | M4D1 composition schema | M4D1 | owner-accepted | Required |
+| TRACE-EVENT-07 | Scheduler logical time and complete input/command-to-publication causal chains normalize existing accepted M4B lineage without changing it. | Counter full reconstruction proof | Missing parent/work identity/time proof | M4D1 complete schema | M4D1 | owner-accepted | Required |
+| TRACE-EVENT-08 | Capacity eviction advances the exact exclusive watermark; capacity zero changes no behavior. | Existing `trace_foundation` plus normalized-schema proof | Repeated eviction and disabled-trace equality proof | Canonical retention facts | M4D1 | owner-accepted | Required |
+| TRACE-EVENT-09 | Non-`Debug` actions trace by type/category/identity without a global debug bound. | Compile/runtime non-`Debug` proof | Payload/debug formatting audit | M4D1 action facts | M4D1 | owner-accepted | Required |
+| TRACE-EVENT-10 | Terminal integrity, poisoning, cancellation, wake/redraw, and shutdown remain causally reconstructable. | Integrity end-to-end trace proof | Truncation/missing cleanup proof | M4D1 terminal schema | M4D1 | owner-accepted | Required |
 | TRACE-EXPORT-01 | Versioned deterministic JSONL is byte-stable for identical logical execution. | Snapshot/export test | Version/schema mismatch proof | Exported projection of canonical trace | M4D2 | blocked | Required |
 | TRACE-EXPORT-02 | Text payload is redacted by default; full capture requires explicit independent configuration. | Text redaction test | Generic-debug opt-in leakage proof | Export redaction metadata | M4D2 | blocked | Required |
 | TRACE-EXPORT-03 | IME payload is redacted by default with the same explicit opt-in boundary. | IME redaction test | Preedit/range leakage proof | Export redaction metadata | M4D2 | blocked | Required |

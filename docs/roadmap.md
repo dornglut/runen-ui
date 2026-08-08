@@ -284,10 +284,9 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Subsequent record:** M4C1–M4C5 are complete, owner-accepted, and merged.
-M4C5's accepted implementation is being reconciled through the separate
-post-merge authority update. M4D1 remains blocked until that reconciliation is
-accepted and merged.
+**Subsequent record:** M4C1–M4C5 and M4D1 are complete, owner-accepted, and
+merged. M4D2 remains blocked until the M4D1 post-merge authority reconciliation
+is accepted and merged.
 
 #### M4C1 — Routed semantic-command kernel
 
@@ -402,9 +401,9 @@ release-inside; no press-only pointer helper remains.
 `2fc165b9386f55c061d61232400375b13ad175bf`. All 28 M4C3 rows are
 `owner-accepted`; M4 remains active and incomplete.
 
-**Next implementation slice:** M4C4 and M4C5 are complete and owner-accepted.
-M4D1 remains blocked until the M4C5 post-merge authority reconciliation is
-accepted and merged.
+**Next implementation slice:** M4C4, M4C5, and M4D1 subsequently completed and
+were owner-accepted. M4D2 remains blocked until the M4D1 post-merge authority
+reconciliation is accepted and merged.
 
 #### M4C4 — Focus scopes and modality
 
@@ -436,15 +435,15 @@ no direct focus-command bypass remains.
 `f95571634a9c6528e5834e9589b048ad5197bd15`. All 32 M4C4 rows are
 `owner-accepted`; M4 remains active and incomplete.
 
-**Subsequent record:** M4C5 is complete, owner-accepted, and squash-merged.
-Its post-merge authority reconciliation remains the final predecessor gate for
-M4D1.
+**Subsequent record:** M4C5 and M4D1 are complete, owner-accepted, and
+squash-merged. M4D2 remains blocked until the M4D1 post-merge authority
+reconciliation is accepted and merged.
 
 #### M4C5 — Keyboard, text, IME, automation, and M4C closure
 
 **Status:** `complete`; owner-accepted and squash-merged in
-[PR #27](https://github.com/dornglut/runen-ui/pull/27). The separate post-merge
-authority reconciliation is in progress and remains a predecessor to M4D1.
+[PR #27](https://github.com/dornglut/runen-ui/pull/27). Its post-merge authority
+reconciliation is complete and M4D1 subsequently completed.
 
 **Goal:** Complete keyboard activation policy, separate committed-text and IME
 streams, exact composition ownership, authored-ID automation resolution, and
@@ -479,14 +478,14 @@ automation work/trace-sequence exhaustion is inert and recoverable rather than
 terminalizing the runtime. Direct commands and already-accepted work retain the
 ordinary terminal exhaustion policy.
 
-**Next implementation slice:** M4D1 only after this post-merge authority
-reconciliation is owner-accepted, squash-merged, and recorded on accepted
-`main`. No M4D1 implementation begins from the unmerged reconciliation branch.
+**Next implementation slice:** M4D1 subsequently completed, was owner-accepted,
+and was squash-merged. M4D2 follows only after M4D1's post-merge authority
+reconciliation is accepted and merged.
 
 #### M4D1 — Complete trace schema
 
-**Status:** `blocked` pending acceptance and merge of the M4C5 post-merge
-authority reconciliation.
+**Status:** `complete`; owner-accepted and squash-merged in
+[PR #39](https://github.com/dornglut/runen-ui/pull/39).
 
 **Goal:** Normalize the complete event/surface/pointer/focus/composition/modality
 and scheduler trace schema with logical causality and suppressed delivery.
@@ -502,19 +501,34 @@ external sink, or replay.
 **Proof ownership:** End-to-end causal schema/reconstruction, retention and
 redaction-boundary proofs, terminal cases, stable/MSRV validation, exact-head CI.
 
-**Exit criteria:** Every `TRACE-EVENT-*` row is proof-complete and one canonical
+**Exit criteria:** Every `TRACE-EVENT-*` row is owner-accepted and one canonical
 trace reconstructs the complete in-memory M4 lifecycle.
 
-**Next unblocked slice:** M4D2 after M4D1 owner acceptance and merge.
+**Completion record:** The accepted feature head
+`990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed canonical exact-head CI run
+`31269401262` / #657 and the frozen complete-diff review. PR #39 was
+squash-merged as `2fe269366386d7aee9de2a2573498b64ad486293`. The accepted
+implementation normalizes typed input, composition, authored-automation, and
+application-action trace facts; preserves redacted text/preedit metrics and
+checked ranges; reconstructs cleanup/terminal/shutdown ancestry; proves
+non-`Debug` action identity; and closes the full Counter/public reconstruction.
+All ten `TRACE-EVENT-*` rows are owner-accepted through the post-merge authority
+reconciliation.
+
+**Next unblocked slice:** M4D2 only after this post-merge authority
+reconciliation is owner-accepted, squash-merged, and recorded on accepted
+`main`.
 
 #### M4D2 — Export and external sink
 
-**Status:** `blocked` pending M4D1 acceptance.
+**Status:** `blocked` pending acceptance and merge of the M4D1 post-merge
+authority reconciliation.
 
 **Goal:** Add deterministic versioned JSONL, default text/IME redaction, optional
 application labels, and a behaviorally subordinate bounded/try external sink.
 
-**Dependencies:** Accepted and merged M4D1 complete schema.
+**Dependencies:** Accepted and merged M4D1 complete schema plus its accepted
+post-merge authority reconciliation.
 
 **Included work:** All `TRACE-EXPORT-*` rows, sink diagnostics, recursion guard,
 and transaction isolation.
