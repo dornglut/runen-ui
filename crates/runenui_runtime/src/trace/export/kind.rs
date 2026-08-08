@@ -24,7 +24,9 @@ fn name(kind: &TraceRecordKind) -> &'static str {
         TraceRecordKind::KeyboardProcessingValidated => "keyboard_processing_validated",
         TraceRecordKind::KeyboardDefaultPrevented => "keyboard_default_prevented",
         TraceRecordKind::KeyboardEnterActivationDerived => "keyboard_enter_activation_derived",
-        TraceRecordKind::KeyboardSpaceOwnershipEstablished => "keyboard_space_ownership_established",
+        TraceRecordKind::KeyboardSpaceOwnershipEstablished => {
+            "keyboard_space_ownership_established"
+        }
         TraceRecordKind::KeyboardSpaceReleaseMatched { .. } => "keyboard_space_release_matched",
         TraceRecordKind::KeyboardSpaceActivationDerived => "keyboard_space_activation_derived",
         TraceRecordKind::KeyboardSpaceOwnershipCleared { .. } => "keyboard_space_ownership_cleared",
@@ -166,11 +168,7 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
             field_str(output, "reason", tokens::space_cleanup_reason(*reason));
         }
         TraceRecordKind::CompositionCancelled { reason } => {
-            field_str(
-                output,
-                "reason",
-                tokens::composition_cancel_reason(*reason),
-            );
+            field_str(output, "reason", tokens::composition_cancel_reason(*reason));
         }
         TraceRecordKind::PointerIngressRejected {
             pointer_id,
@@ -304,11 +302,7 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
             );
         }
         TraceRecordKind::FocusCandidateSelected { outcome } => {
-            field_str(
-                output,
-                "outcome",
-                tokens::focus_boundary_outcome(*outcome),
-            );
+            field_str(output, "outcome", tokens::focus_boundary_outcome(*outcome));
         }
         TraceRecordKind::FocusTransitionCommitted { reason } => {
             field_str(output, "reason", tokens::focus_reason(*reason));
@@ -352,11 +346,7 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
             field_usize(output, "duplicate_keys", *duplicate_keys);
         }
         TraceRecordKind::TimerTerminated { outcome } => {
-            field_str(
-                output,
-                "outcome",
-                tokens::timer_terminal_outcome(*outcome),
-            );
+            field_str(output, "outcome", tokens::timer_terminal_outcome(*outcome));
         }
         TraceRecordKind::RedrawRequested { revision }
         | TraceRecordKind::RedrawTaken { revision }
@@ -364,11 +354,7 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
             field_u64(output, "revision", *revision);
         }
         TraceRecordKind::RuntimeTerminal { reason } => {
-            field_str(
-                output,
-                "reason",
-                tokens::runtime_terminal_reason(*reason),
-            );
+            field_str(output, "reason", tokens::runtime_terminal_reason(*reason));
         }
         TraceRecordKind::RuntimeShutdown {
             cancelled_queued,
@@ -453,7 +439,11 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
     }
 }
 
-fn pointer_phase(output: &mut String, pointer_id: runenui_core::PointerId, phase: runenui_core::PointerPhase) {
+fn pointer_phase(
+    output: &mut String,
+    pointer_id: runenui_core::PointerId,
+    phase: runenui_core::PointerPhase,
+) {
     field_u64(output, "pointer_id", pointer_id.get());
     output.push(',');
     field_str(output, "phase", tokens::pointer_phase(phase));
