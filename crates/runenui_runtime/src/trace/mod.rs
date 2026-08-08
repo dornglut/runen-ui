@@ -37,6 +37,6 @@ pub use model::{
     TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
     TraceWorkStartRefusal,
 };
-pub(crate) use sink::TraceSink;
+use sink::TraceSink;
 pub use sink::{TraceJsonlLine, TraceSinkReceiveError, TraceSinkReceiver};
 pub use store::Trace;
