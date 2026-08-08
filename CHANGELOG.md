@@ -8,6 +8,22 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and squash-merged the complete M4D1 trace-schema and causal
+  reconstruction slice in [PR #39](https://github.com/dornglut/runen-ui/pull/39).
+  The accepted feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a`
+  passed canonical exact-head CI run `31269401262` / #657 and the frozen
+  complete-diff review; the squash merge commit is
+  `2fe269366386d7aee9de2a2573498b64ad486293`. All ten `TRACE-EVENT-*` rows
+  become `owner-accepted` through this post-merge authority reconciliation,
+  producing 237 total / 217 owner-accepted / 0 proof-complete / 20 blocked rows.
+  The accepted implementation normalizes typed input, composition,
+  authored-automation, and application-action trace facts; retains redacted
+  text/preedit byte/scalar metrics and checked ranges; preserves exact cleanup,
+  terminal, cancellation, shutdown, logical-time, work-sequence, and causal
+  ancestry; proves non-`Debug` action identity; and reconstructs the real Counter
+  and downstream public path through publication. M4D2 remains blocked until
+  this reconciliation is owner-accepted and merged; M4 remains active and
+  incomplete.
 - Owner-accepted and squash-merged the complete M4C5 keyboard,
   committed-text, composition, and deterministic authored-ID automation slice
   in [PR #27](https://github.com/dornglut/runen-ui/pull/27). The accepted
@@ -27,9 +43,9 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   exhaustion is inert and recoverable, while direct commands and accepted work
   retain ordinary terminal exhaustion policy. Undeliverable mandatory
   composition cleanup records causal suppression, retires the exact lifetime,
-  terminalizes, and preserves shutdown lineage. The separate post-merge
-  authority-reconciliation pull request remains the final predecessor gate for
-  M4D1; M4 remains active and incomplete.
+  terminalizes, and preserves shutdown lineage. Its separate post-merge
+  authority reconciliation subsequently completed and M4D1 progressed through
+  the accepted slice above; M4 remains active and incomplete.
 - Owner-accepted and squash-merged the complete M4C4 focus-scopes and modality
   slice in [PR #22](https://github.com/dornglut/runen-ui/pull/22): one
   exact-generation focus authority, root/nested scope policies, current-order
