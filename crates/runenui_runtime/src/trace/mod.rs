@@ -32,10 +32,11 @@ pub use model::{
     TraceConfig, TraceFocusBoundaryOutcome, TracePayloadCapture, TracePointerCaptureRequestKind,
     TracePointerCaptureRequestRejection, TracePointerRejection, TraceRecord, TraceRecordKind,
     TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
-    TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind, TraceSurfaceRejection,
-    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTimerTerminalOutcome,
-    TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
+    TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
+    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
+    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
+    TraceWorkStartRefusal,
 };
-pub use sink::{TraceJsonlLine, TraceSinkReceiveError, TraceSinkReceiver};
 pub(crate) use sink::TraceSink;
+pub use sink::{TraceJsonlLine, TraceSinkReceiveError, TraceSinkReceiver};
 pub use store::Trace;
