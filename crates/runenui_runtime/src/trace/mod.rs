@@ -7,8 +7,10 @@ mod admission;
 mod automation_context;
 mod construction;
 mod context;
+mod export;
 mod input_context;
 mod model;
+mod sink;
 mod store;
 
 pub use action_context::{TraceActionCategory, TraceActionIdentity};
@@ -21,16 +23,19 @@ pub use context::{
     TracePointerRecordRole, TracePublicationContext, TraceRouteSnapshot, TraceSurfaceContext,
     TraceTargetTransition,
 };
+pub(crate) use export::encode_record_json;
 pub use input_context::{
     TraceCompositionContext, TraceCompositionRange, TraceInputContext, TraceInputRecordRole,
     TraceTextMetrics,
 };
 pub use model::{
-    TraceConfig, TraceFocusBoundaryOutcome, TracePointerCaptureRequestKind,
+    TraceConfig, TraceFocusBoundaryOutcome, TracePayloadCapture, TracePointerCaptureRequestKind,
     TracePointerCaptureRequestRejection, TracePointerRejection, TraceRecord, TraceRecordKind,
     TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
-    TraceSpaceCleanupReason, TraceSurfaceIngressKind, TraceSurfaceRejection,
+    TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind, TraceSurfaceRejection,
     TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTimerTerminalOutcome,
     TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
+pub use sink::{TraceJsonlLine, TraceSinkReceiveError, TraceSinkReceiver};
+pub(crate) use sink::TraceSink;
 pub use store::Trace;
