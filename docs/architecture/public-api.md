@@ -25,9 +25,14 @@ feature head `f3201a83583af0c1d148bec87cd9140ff42795b7` after exact-head CI run
 feature head `d0d2ef1d53a8ab1d940beb4155f5f991229f042e` after exact-head CI run
 `30843238697` succeeded and independent rereview found no blocking defect. It
 was squash-merged in [PR #27](https://github.com/dornglut/runen-ui/pull/27) as
-`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. Its separate post-merge authority
-reconciliation remains the final predecessor gate for M4D1. M4D1–M4D3 remain
-blocked in sequence, and M4 is active and incomplete. The accepted
+`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. M4D1 was owner-accepted at
+feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` after canonical exact-head
+CI run `31269401262` / #657 and the frozen complete-diff review passed. It was
+squash-merged in [PR #39](https://github.com/dornglut/runen-ui/pull/39) as
+`2fe269366386d7aee9de2a2573498b64ad486293`. This separate post-merge authority
+reconciliation records the accepted M4D1 public/trace status; M4D2 remains blocked
+until it is accepted and merged, M4D3 remains blocked behind M4D2, and M4 is
+active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions. The
 [M4 conformance matrix](m4-conformance-matrix.md) owns observable acceptance, and
@@ -430,8 +435,8 @@ activation/resolution helpers are removed. Focus changes enter through
 not a public `CommandOrigin::keyboard()` constructor. M4C2 owns surface context,
 M4C3 implements pointer lifecycle/release-inside activation, M4C4 implements
 focus scopes/modality, M4C5 implements keyboard/text/composition and automation
-resolution, M4D trace normalization/export/replay, and M5 semantic accessibility
-mapping.
+resolution, M4D1 implements normalized in-memory trace reconstruction, M4D2/M4D3
+own export/sink/replay, and M5 owns semantic accessibility mapping.
 
 One runtime-owned `FocusState` retains the exact focused mounted lifetime, its
 committed focus-within route, exact-generation scope memories, last
@@ -628,36 +633,42 @@ distinct by observation: submission rejection has no canonical record and
 consumes no trace identity, while processing rejection after acceptance is
 recorded. Routed integrity failures classify broken topology, event-bridge
 mismatch, callback-bridge failure, output-allowance overflow, semantic-default
-failure, or commit-invariant failure without losing accepted causal facts. This
-remains an in-memory causal graph, not the deferred M4D
-normalization/export/replay contract.
+failure, or commit-invariant failure without losing accepted causal facts. M4D1
+normalizes this canonical in-memory graph across scheduler, routed, surface,
+pointer, focus/modality, keyboard/text/composition/automation, application-action,
+terminal/cancellation/shutdown, logical-time, and publication facts. It remains
+an in-memory causal graph, not the deferred M4D2 export/sink or M4D3 replay
+contract.
 
 M4C3 adds pointer submission, ordered validation and stream resolution,
 physical-path and boundary-bundle planning, default applied/suppressed,
 interaction commit, capture/boundary notification, activation/logical-scroll
 collection, stationary-publication re-hit, and terminal diagnosis-to-cleanup
 facts. The accepted pointer `WorkSequence` and causal parents reconstruct the
-slice-local lineage; M4D may normalize this schema but does not own missing
-pointer parentage.
+slice-local lineage; M4D1 preserves and normalizes that lineage but does not own
+missing earlier pointer parentage.
 
 M4C4 adds focus command and scope-policy evaluation, directional candidate and
 restoration outcomes, exact old/new focus targets and reasons, focus-within
 changes, routed notification queue/suppression, retained modality, reconciliation
 cleanup, and shutdown ordering. The accepted command `WorkSequence` and causal
-parents reconstruct the slice-local focus/modality lineage; M4D may normalize
-this schema but does not own missing M4C4 parentage.
+parents reconstruct the slice-local focus/modality lineage; M4D1 preserves and
+normalizes that lineage but does not own missing M4C4 parentage.
 
 M4C5 adds accepted/processed keyboard, committed-text, composition, Space
 cleanup, and automation-resolution facts to the same trace. Keyboard default
 derivation, canonical derived-command acceptance, composition activation and
 retirement, cleanup cancellation/retirement, and suppressed-delivery terminal
-cleanup retain their work sequence and causal parent. Text and preedit are
-redacted: records expose event/lifecycle kind, scalar-count and range facts, and
-opaque owner/generation causality, never raw payload content. The M4C5 mandatory
-admission plans reserve every required input trace sequence before mutation;
-trace capacity zero preserves input behavior without allocation. Automation
-resolution records unique/missing/ambiguous outcomes and parents accepted
-commands; sequence-exhaustion rejection remains trace-free and non-mutating.
+cleanup retain their work sequence and causal parent. M4D1 replaces the remaining
+nullable/staged trace construction with role-typed input, automation, and action
+contexts; retains redacted UTF-8 byte/Unicode scalar metrics and checked
+composition byte/scalar ranges without raw text/preedit; records explicit
+cleanup delivery/suppression and exact lifetime/device identity; classifies
+accepted application actions by type/category without payload retention or a
+global `Action: Debug` bound; and proves the full Counter/public terminal and
+publication reconstruction. The M4D1 mandatory admission proofs preserve
+capacity-zero behavior, oldest-first eviction, exclusive watermark, and exact
+sequence exhaustion.
 
 Transaction semantic request/invalidation records preserve callback collector
 order independently from cleanup-before-start queue grouping. Final action
@@ -670,8 +681,8 @@ longer retained. Ordinary eviction cannot affect application behavior. When
 enabled mandatory trace sequencing cannot advance for direct commands or
 already-accepted mutable work, the runtime becomes terminal before the pending
 mutable callback and cancels queued work. The current contract has no external
-sink, JSONL/export, replay, or M4D-normalized schema; M4C5's in-memory
-text/preedit redaction is not an export contract.
+sink, deterministic JSONL export, or replay; the accepted M4D1-normalized schema
+and in-memory redaction boundary are not an export contract.
 
 ## Breaking migrations
 
@@ -725,16 +736,18 @@ Added:
 - host-neutral keyboard, committed-text, and composition protocol values;
   `WidgetTextInput`; canonical input ingress/owned recovery; opaque runtime-local
   composition generations; deterministic authored-ID automation resolution; and
-  redacted input trace facts.
+  redacted input trace facts;
+- M4D1 role-typed input/automation/action trace contexts, normalized causal
+  reconstruction, and public non-`Debug` action identity facts.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
 in force. The current contract includes effects, subscriptions, tasks, timers,
-host requests, all four readiness budgets, wake/redraw, and M4C1 exact-target
-routed semantic commands, M4C2 displayed-generation surface context, the M4C3
+host requests, all four readiness budgets, wake/redraw, M4C1 exact-target routed
+semantic commands, M4C2 displayed-generation surface context, the M4C3
 host-neutral pointer lifecycle, the owner-accepted M4C4 focus-scope/modality
-protocol, and the owner-accepted M4C5 keyboard/text/composition and authored-ID
-automation implementation. It does not imply native host translation,
-production scrolling, editable text, platform IME objects, M4D trace
-normalization/export/replay, M5 semantic accessibility mapping, or M4
-completion.
+protocol, the owner-accepted M4C5 keyboard/text/composition and authored-ID
+automation implementation, and the owner-accepted M4D1 normalized in-memory
+trace schema. It does not imply native host translation, production scrolling,
+editable text, platform IME objects, M4D2 export/sink, M4D3 replay, M5 semantic
+accessibility mapping, or M4 completion.
