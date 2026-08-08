@@ -1,12 +1,12 @@
 //! Application mutation, reconciliation, and transaction orchestration.
 
 use super::{
-    ApplicationActionEnvelope, ApplicationActionOrigin, ApplicationTransactionInput, CommitError,
-    HashMap, HashSet, HostProtocol, IntoEffects, LiveSubscription, MandatoryTracePlan,
-    MountedNodeId, MutationPhase, OwnedTransactionLedger, PlannedApplicationTransaction,
-    PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent, ProcessApplicationActionOutcome,
-    ReconciliationGeneration, ReconciliationReport, Runtime, RuntimeStatus, RuntimeTerminalReason,
-    SubscriptionDiff, SubscriptionSet, TargetStatus, TraceRecordKind, TraceSequence,
+    ApplicationActionEnvelope, ApplicationTransactionInput, CommitError, HashMap, HashSet,
+    HostProtocol, IntoEffects, LiveSubscription, MandatoryTracePlan, MountedNodeId, MutationPhase,
+    OwnedTransactionLedger, PlannedApplicationTransaction, PlannedOutput, PlannedStartPayload,
+    PlannedWorkSemanticEvent, ProcessApplicationActionOutcome, ReconciliationGeneration,
+    ReconciliationReport, Runtime, RuntimeStatus, RuntimeTerminalReason, SubscriptionDiff,
+    SubscriptionSet, TargetStatus, TraceActionCategory, TraceRecordKind, TraceSequence,
     TraceWorkIdentity, TransactionLedger, TransactionPlanError, UiApp, View, WorkFamily, WorkOwner,
     mounted_effect_into_effect, public_trace_work_identity, revoke_generation_authority,
     trace_work_family, trace_work_owner,

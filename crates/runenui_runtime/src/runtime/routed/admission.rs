@@ -1,6 +1,9 @@
 use runenui_core::HostProtocol;
 
-use super::{super::Runtime, transaction::RoutedIngressFacts};
+use super::{
+    super::Runtime,
+    transaction::{RoutedFailureLineage, RoutedIngressFacts},
+};
 use crate::{
     MountedNodeId, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure,
     mounted::{RouteBuildError, TargetStatus},
@@ -91,8 +94,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: &RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
         mandatory_default_commands: usize,
-    ) -> Option<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan)> {
-        self.prepare_routed_invocations(
+    ) -> Result<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan), RoutedFailureLineage> {
+        self.try_prepare_routed_invocations(
             facts,
             true,
             &[],
@@ -149,7 +152,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         } else {
             (deferred_invocations, additional_trace)
         };
-        self.prepare_routed_invocations(
+        self.try_prepare_routed_invocations(
             facts,
             include_ordinary_route,
             target_only,
@@ -158,6 +161,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             additional_trace,
             0,
         )
+        .ok()
     }
 
     pub(super) fn prepare_focus_routed_route(
@@ -172,7 +176,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             return None;
         };
-        self.prepare_routed_invocations(
+        self.try_prepare_routed_invocations(
             facts,
             true,
             &[],
@@ -181,10 +185,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             MandatoryTracePlan::focus_commit(),
             0,
         )
+        .ok()
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn prepare_routed_invocations(
+    fn try_prepare_routed_invocations(
         &mut self,
         facts: &RoutedIngressFacts,
         include_ordinary_route: bool,
@@ -193,32 +198,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         deferred_invocations: usize,
         additional_trace: MandatoryTracePlan,
         mandatory_default_commands: usize,
-    ) -> Option<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan)> {
+    ) -> Result<(Vec<MountedNodeId>, RoutedTransactionAdmissionPlan), RoutedFailureLineage> {
         let route = self.prepare_invocation_route(facts, include_ordinary_route)?;
-        if !self.preflight_target_only_bridges(facts, target_only)
-            || !self.preflight_target_only_bridges(facts, deferred_target_only)
-        {
-            return None;
-        }
+        self.preflight_target_only_bridges(facts, target_only)?;
+        self.preflight_target_only_bridges(facts, deferred_target_only)?;
         let ordinary_invocations =
             self.ordinary_invocation_count(facts, include_ordinary_route, route.len())?;
         let route_invocations = ordinary_invocations
             .checked_add(target_only.len())
-            .or_else(|| {
+            .ok_or_else(|| {
                 self.handle_routed_admission_rejection(
                     TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
                     facts,
-                );
-                None
+                )
             })?;
         let admitted_invocations = route_invocations
             .checked_add(deferred_invocations)
-            .or_else(|| {
+            .ok_or_else(|| {
                 self.handle_routed_admission_rejection(
                     TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
                     facts,
-                );
-                None
+                )
             })?;
         let admission = self.admit_routed_invocations(
             facts,
@@ -227,57 +227,56 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             additional_trace,
             mandatory_default_commands,
         )?;
-        Some((route, admission))
+        Ok((route, admission))
     }
 
     fn prepare_invocation_route(
         &mut self,
         facts: &RoutedIngressFacts,
         include_ordinary_route: bool,
-    ) -> Option<Vec<MountedNodeId>> {
+    ) -> Result<Vec<MountedNodeId>, RoutedFailureLineage> {
         let target_status = self.tree.target_status(&facts.target);
         if target_status != TargetStatus::Live {
-            self.record_processing_target_rejection(facts, target_status);
-            return None;
+            return Err(self.record_processing_target_rejection(facts, target_status));
         }
         if !include_ordinary_route {
-            return Some(Vec::new());
+            return Ok(Vec::new());
         }
         let route = match self.tree.event_route(&facts.target) {
             Ok(route) => route,
             Err(RouteBuildError::Target(status)) => {
-                self.record_processing_target_rejection(facts, status);
-                return None;
+                return Err(self.record_processing_target_rejection(facts, status));
             }
             Err(RouteBuildError::BrokenTopology) => {
-                self.poison_routed_facts(facts, TraceRoutedIntegrityFailure::BrokenTopology, None);
-                return None;
+                return Err(self.poison_routed_facts(
+                    facts,
+                    TraceRoutedIntegrityFailure::BrokenTopology,
+                    None,
+                ));
             }
             Err(RouteBuildError::BridgeMismatch) => {
-                self.poison_routed_facts(
+                return Err(self.poison_routed_facts(
                     facts,
                     TraceRoutedIntegrityFailure::EventBridgeMismatch,
                     None,
-                );
-                return None;
+                ));
             }
         };
         if self.tree.preflight_event_bridges(&route).is_err() {
-            self.poison_routed_facts(
+            return Err(self.poison_routed_facts(
                 facts,
                 TraceRoutedIntegrityFailure::EventBridgeMismatch,
                 None,
-            );
-            return None;
+            ));
         }
-        Some(route)
+        Ok(route)
     }
 
     fn preflight_target_only_bridges(
         &mut self,
         facts: &RoutedIngressFacts,
         target_only: &[MountedNodeId],
-    ) -> bool {
+    ) -> Result<(), RoutedFailureLineage> {
         for target in target_only {
             if self.tree.target_status(target) != TargetStatus::Live {
                 continue;
@@ -287,15 +286,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .preflight_event_bridges(core::slice::from_ref(target))
                 .is_err()
             {
-                self.poison_routed_facts(
+                return Err(self.poison_routed_facts(
                     facts,
                     TraceRoutedIntegrityFailure::EventBridgeMismatch,
                     Some(target),
-                );
-                return false;
+                ));
             }
         }
-        true
+        Ok(())
     }
 
     fn ordinary_invocation_count(
@@ -303,19 +301,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: &RoutedIngressFacts,
         include_ordinary_route: bool,
         route_len: usize,
-    ) -> Option<usize> {
+    ) -> Result<usize, RoutedFailureLineage> {
         if !include_ordinary_route {
-            return Some(0);
+            return Ok(0);
         }
         route_len
             .checked_mul(2)
             .and_then(|count| count.checked_sub(1))
-            .or_else(|| {
+            .ok_or_else(|| {
                 self.handle_routed_admission_rejection(
                     TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
                     facts,
-                );
-                None
+                )
             })
     }
 
@@ -326,7 +323,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         admitted_invocations: usize,
         additional_trace: MandatoryTracePlan,
         mandatory_default_commands: usize,
-    ) -> Option<RoutedTransactionAdmissionPlan> {
+    ) -> Result<RoutedTransactionAdmissionPlan, RoutedFailureLineage> {
         let admission = RoutedTransactionAdmissionPlan::checked(
             route_invocations,
             admitted_invocations,
@@ -336,33 +333,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         .and_then(|plan| {
             plan.preflight(self)?;
             Ok(plan)
-        });
-        let admission = match admission {
-            Ok(plan) => plan,
-            Err(capacity) => {
-                self.handle_routed_admission_rejection(capacity, facts);
-                return None;
-            }
-        };
-        let Some(trace_plan) = admission.trace.checked_add(additional_trace) else {
-            self.handle_routed_admission_rejection(
-                TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
-                facts,
-            );
-            return None;
-        };
+        })
+        .map_err(|capacity| self.handle_routed_admission_rejection(capacity, facts))?;
+        let trace_plan = admission
+            .trace
+            .checked_add(additional_trace)
+            .ok_or_else(|| {
+                self.handle_routed_admission_rejection(
+                    TraceRoutedAdmissionRejection::CheckedArithmeticOverflow,
+                    facts,
+                )
+            })?;
         if !self
             .trace
             .can_replace_reservation(facts.trace_reservation, trace_plan)
         {
-            self.handle_routed_admission_rejection(
+            return Err(self.handle_routed_admission_rejection(
                 TraceRoutedAdmissionRejection::TraceSequenceExhausted,
                 facts,
-            );
-            return None;
+            ));
         }
         self.trace.release_reservation(facts.trace_reservation);
-        Some(admission)
+        Ok(admission)
     }
 }
 

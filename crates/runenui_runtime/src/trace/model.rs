@@ -6,10 +6,7 @@ use runenui_core::{
     SemanticCommand, WidgetInvalidation, WorkKey,
 };
 
-use crate::{
-    AutomationMatchDiagnostic, MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason,
-    WorkSequence,
-};
+use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
 
 use super::TraceContext;
 
@@ -111,24 +108,17 @@ pub enum TraceRecordKind {
     KeyboardSpaceOwnershipCleared {
         reason: TraceSpaceCleanupReason,
     },
-    CommittedTextSubmissionAccepted {
-        bytes: usize,
-        scalars: usize,
-    },
+    CommittedTextSubmissionAccepted,
     CommittedTextSubmissionRejected,
-    CommittedTextProcessingValidated {
-        bytes: usize,
-        scalars: usize,
-    },
+    CommittedTextProcessingValidated,
     CommittedTextDefaultPrevented,
     CompositionGenerationAllocated,
     CompositionPendingBound,
     CompositionActiveBound,
     CompositionProcessingValidated,
-    CompositionUpdated {
-        has_range: bool,
-    },
-    CompositionEnded,
+    CompositionUpdateSubmitted,
+    CompositionEndSubmitted,
+    CompositionCancelSubmitted,
     CompositionCancelled {
         reason: runenui_core::CompositionCancelReason,
     },
@@ -137,9 +127,7 @@ pub enum TraceRecordKind {
     CompositionSubmissionRejected,
     AutomationResolutionUnique,
     AutomationResolutionMissing,
-    AutomationResolutionAmbiguous {
-        candidates: Vec<AutomationMatchDiagnostic>,
-    },
+    AutomationResolutionAmbiguous,
     AutomationTargetStaleAfterResolution,
     PointerIngressRejected {
         pointer_id: PointerId,

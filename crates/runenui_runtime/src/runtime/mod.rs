@@ -34,17 +34,14 @@ use crate::trace::{MandatoryTracePlan, TraceReservation};
 use crate::{
     CommandSubmission, FocusState, ManualClock, MonotonicClock, MonotonicInstant, MountedNodeId,
     RuntimeConfig, SendTaskExecutor, SendTaskStartError, SendTaskStartOutcome, SubmitActionError,
-    SubmitActionResult, SubmitCommandError, SubmitCommandErrorKind, Trace, TraceRecordKind,
-    TraceSequence, TraceTarget, TraceTimerTerminalOutcome, TraceWorkIdentity, TraceWorkOwner,
-    TraceWorkStartRefusal, UnacceptedCommand, WorkSequence,
+    SubmitActionResult, SubmitCommandError, SubmitCommandErrorKind, Trace, TraceActionCategory,
+    TraceRecordKind, TraceSequence, TraceTarget, TraceTimerTerminalOutcome, TraceWorkIdentity,
+    TraceWorkOwner, TraceWorkStartRefusal, UnacceptedCommand, WorkSequence,
     completion::{
         CompletionIngress, CompletionKind, HostResponseCompletion, SendTaskJob, UnavailableExecutor,
     },
     mounted::{MountedIdentityExhausted, MountedTree, TargetStatus},
-    queue::{
-        ApplicationActionEnvelope, ApplicationActionOrigin, QueueCommitError, WorkEnvelope,
-        WorkQueue,
-    },
+    queue::{ApplicationActionEnvelope, QueueCommitError, WorkEnvelope, WorkQueue},
     transaction::{
         ApplicationTransactionInput, OwnedTransactionLedger, PlannedApplicationTransaction,
         PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent, TransactionLedger,
@@ -79,7 +76,7 @@ pub use model::{
 };
 use pointer::PointerRegistry;
 pub(crate) use routed::PointerDispatchFacts;
-pub(crate) use routed::{RoutedIngressFacts, RoutedTransaction};
+pub(crate) use routed::{RoutedFailureLineage, RoutedIngressFacts, RoutedTransaction};
 use surface_publication::SurfacePublicationState;
 
 pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol> {

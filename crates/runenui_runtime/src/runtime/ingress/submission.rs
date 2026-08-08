@@ -1,14 +1,16 @@
 use runenui_core::MonotonicInstant;
 
-use crate::{TraceSurfaceContext, TraceSurfaceIngressKind, trace::TraceRecordDraft};
+use crate::{
+    TraceActionCategory, TraceActionIdentity, TraceContext, TraceSurfaceContext,
+    TraceSurfaceIngressKind, trace::TraceRecordDraft,
+};
 
 use super::{
-    ActionCommitError, ApplicationActionOrigin, CommandOrigin, CommandSubmission, HashMap,
-    HostProtocol, MandatoryTracePlan, MountedNodeId, QueueCommitError, Runtime, RuntimeStatus,
-    RuntimeTerminalReason, SemanticCommand, SubmitActionError, SubmitActionResult,
-    SubmitCommandError, SubmitCommandErrorKind, SubscriptionDiagnostic, TargetStatus,
-    TraceRecordKind, TraceSequence, TraceTarget, TraceWorkIdentity, UnacceptedCommand,
-    WorkEnvelope, WorkSequence,
+    ActionCommitError, CommandOrigin, CommandSubmission, HashMap, HostProtocol, MandatoryTracePlan,
+    MountedNodeId, QueueCommitError, Runtime, RuntimeStatus, RuntimeTerminalReason,
+    SemanticCommand, SubmitActionError, SubmitActionResult, SubmitCommandError,
+    SubmitCommandErrorKind, SubscriptionDiagnostic, TargetStatus, TraceRecordKind, TraceSequence,
+    TraceTarget, TraceWorkIdentity, UnacceptedCommand, WorkEnvelope, WorkSequence,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,7 +38,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn submit_action(
         &mut self,
         action: Action,
-        origin: ApplicationActionOrigin,
+        category: TraceActionCategory,
         causal_parent: Option<TraceSequence>,
         target: Option<TraceTarget>,
     ) -> SubmitActionResult<Action> {
@@ -70,7 +72,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             return Err(SubmitActionError::Full(action));
         }
-        let sequence = match self.commit_preflighted_action(action, causal_parent, target, origin) {
+        let instant = self.now();
+        let sequence = match self.commit_preflighted_action(
+            action,
+            causal_parent,
+            target,
+            category,
+            instant,
+        ) {
             Ok(sequence) => sequence,
             Err(ActionCommitError::QueueFull(action)) => {
                 self.record_optional(
@@ -106,7 +115,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         action: Action,
         causal_parent: Option<TraceSequence>,
         target: Option<TraceTarget>,
-        origin: ApplicationActionOrigin,
+        category: TraceActionCategory,
+        instant: MonotonicInstant,
     ) -> Result<WorkSequence, ActionCommitError<Action>> {
         match self.queue.preflight_commit(1) {
             Ok(()) => {}
@@ -125,19 +135,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(ActionCommitError::Integrity(action));
         };
         let trace_enabled = self.trace.is_enabled();
-        let accepted = self.trace.record(
-            TraceRecordKind::ActionSubmissionAccepted,
-            Some(sequence),
-            causal_parent,
-            None,
-            None,
-            target.clone(),
+        let accepted = self.trace.record_draft(
+            TraceRecordDraft::action_fact(
+                TraceRecordKind::ActionSubmissionAccepted,
+                instant,
+                TraceContext::action_record(TraceActionIdentity::of::<Action>(category)),
+            )
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(causal_parent)
+            .with_target(target.clone()),
         );
         if trace_enabled && accepted.is_none() {
             return Err(ActionCommitError::TraceSequenceExhausted(action));
         }
         self.queue
-            .push_preflighted(action, accepted, target, origin)
+            .push_preflighted(action, accepted, target)
             .map_err(ActionCommitError::Integrity)
     }
 
@@ -229,9 +241,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    /// Commits a routed command through the same canonical command ingress used
-    /// by direct and automation submissions. The enclosing routed admission has
-    /// already reserved its queue and trace capacity.
     pub(in crate::runtime) fn commit_preflighted_routed_command(
         &mut self,
         target: &MountedNodeId,

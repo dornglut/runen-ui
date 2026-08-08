@@ -1,10 +1,10 @@
 use runenui_core::MonotonicInstant;
 
 use super::{
-    ApplicationActionOrigin, ApplicationTraceTransaction, ApplicationTransactionInput, CommitError,
-    HashMap, HashSet, HostProtocol, LiveSubscription, MandatoryTracePlan,
-    PlannedApplicationTransaction, PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent,
-    Runtime, TraceRecordKind, TraceSequence, TraceWorkIdentity, WorkOwner,
+    ApplicationTraceTransaction, ApplicationTransactionInput, CommitError, HashMap, HashSet,
+    HostProtocol, LiveSubscription, MandatoryTracePlan, PlannedApplicationTransaction,
+    PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent, Runtime, TraceActionCategory,
+    TraceRecordKind, TraceSequence, TraceWorkIdentity, WorkOwner,
     required_application_transaction_trace_records_from_parts, trace_work_family, trace_work_owner,
 };
 
@@ -292,7 +292,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         action,
                         transaction_parent,
                         None,
-                        ApplicationActionOrigin::ApplicationEffect,
+                        TraceActionCategory::ApplicationEffect,
+                        logical_time,
                     )
                     .map_err(|_| CommitError::Registry)?;
                 }

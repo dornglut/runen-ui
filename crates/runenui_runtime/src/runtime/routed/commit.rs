@@ -7,8 +7,7 @@ use super::{
     transaction::RoutedTransaction,
 };
 use crate::{
-    TraceRecordKind,
-    queue::ApplicationActionOrigin,
+    TraceActionCategory, TraceRecordKind,
     transaction::{
         ApplicationTransactionInput, OwnedTransactionLedger, PlannedApplicationTransaction,
         TransactionLedger,
@@ -182,7 +181,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         action,
                         causal_parent,
                         Some(self.tree.trace_target(&current_target)),
-                        ApplicationActionOrigin::RoutedCommand,
+                        TraceActionCategory::RoutedCommand,
+                        instant,
                     )
                     .map_err(|_| ())?;
                 }
