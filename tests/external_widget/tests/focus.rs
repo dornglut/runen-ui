@@ -9,7 +9,10 @@ use runenui_core::{
 use runenui_external_widget_conformance::{
     ExternalFocusFact, ExternalFocusWidget, external_focus_panel,
 };
-use runenui_runtime::{AppRuntime, InputModality, MountedNodeId, PumpBudget, TraceRecordKind};
+use runenui_runtime::{
+    AppRuntime, InputModality, MountedNodeId, PumpBudget, TraceDeliveryOutcome, TraceEventFamily,
+    TraceFocusRecordRole, TraceRecordKind, TraceTarget,
+};
 
 struct State {
     log: Rc<RefCell<Vec<ExternalFocusFact>>>,
@@ -64,6 +67,7 @@ fn focus(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
 fn assert_transition_trace(
     runtime: &AppRuntime<App>,
     trace_start: usize,
+    focus_root: &MountedNodeId,
     old_target: &MountedNodeId,
     new_target: &MountedNodeId,
 ) {
@@ -71,26 +75,33 @@ fn assert_transition_trace(
         .trace()
         .records()
         .skip(trace_start)
-        .map(runenui_runtime::TraceRecord::kind)
         .collect::<Vec<_>>();
     let committed = transition_trace
         .iter()
-        .position(|kind| {
-            matches!(
-                kind,
+        .position(|record| {
+            if !matches!(
+                record.kind(),
                 TraceRecordKind::FocusTransitionCommitted {
                     reason: FocusReason::ProgrammaticRequest,
-                    old_target: Some(old),
-                    new_target: Some(new),
-                } if old == old_target && new == new_target
-            )
+                }
+            ) {
+                return false;
+            }
+            if record.context().focus_record_role() != Some(TraceFocusRecordRole::Transition) {
+                return false;
+            }
+            let Some(transition) = record.context().target_transition() else {
+                return false;
+            };
+            transition.previous().map(TraceTarget::mounted_node_id) == Some(old_target)
+                && transition.current().map(TraceTarget::mounted_node_id) == Some(new_target)
         })
         .unwrap_or_else(|| unreachable!("the exact transition is traced"));
     let within = transition_trace
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
+                record.kind(),
                 TraceRecordKind::FocusWithinInvalidated {
                     left: 1,
                     entered: 1,
@@ -100,26 +111,51 @@ fn assert_transition_trace(
         .unwrap_or_else(|| unreachable!("only the changed leaf routes invalidate"));
     let out = transition_trace
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
-                TraceRecordKind::FocusNotificationQueued {
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::Out,
                 }
-            )
+            ) && record.context().focus_record_role() == Some(TraceFocusRecordRole::Notification)
+                && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+                && record.context().event().is_some_and(|event| {
+                    event.family() == TraceEventFamily::Focus && !event.is_cancelable()
+                })
+                && record.context().route().is_some_and(|route| {
+                    route
+                        .targets()
+                        .iter()
+                        .any(|target| target.mounted_node_id() == focus_root)
+                        && route.targets().last().map(TraceTarget::mounted_node_id)
+                            == Some(old_target)
+                        && route.related_target().map(TraceTarget::mounted_node_id)
+                            == Some(new_target)
+                })
         })
-        .unwrap_or_else(|| unreachable!("focus out is queued"));
+        .unwrap_or_else(|| unreachable!("focus out is resolved after delivery"));
     let input = transition_trace
         .iter()
-        .position(|kind| {
+        .position(|record| {
             matches!(
-                kind,
-                TraceRecordKind::FocusNotificationQueued {
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
                     kind: FocusEventKind::In,
                 }
-            )
+            ) && record.context().focus_record_role() == Some(TraceFocusRecordRole::Notification)
+                && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
+                && record.context().route().is_some_and(|route| {
+                    route
+                        .targets()
+                        .iter()
+                        .any(|target| target.mounted_node_id() == focus_root)
+                        && route.targets().last().map(TraceTarget::mounted_node_id)
+                            == Some(new_target)
+                        && route.related_target().map(TraceTarget::mounted_node_id)
+                            == Some(old_target)
+                })
         })
-        .unwrap_or_else(|| unreachable!("focus in is queued"));
+        .unwrap_or_else(|| unreachable!("focus in is resolved after delivery"));
     assert!(committed < within && within < out && out < input);
 }
 
@@ -226,7 +262,7 @@ fn downstream_focus_scope_events_reasons_and_focus_within_use_only_public_apis()
         ]
     );
 
-    assert_transition_trace(&runtime, trace_start, &a, &b);
+    assert_transition_trace(&runtime, trace_start, &root, &a, &b);
 }
 
 struct PreventApp;

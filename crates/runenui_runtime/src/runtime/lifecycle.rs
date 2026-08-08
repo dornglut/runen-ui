@@ -180,7 +180,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 CommandOrigin::programmatic(),
             ),
         );
-        let shutdown_parent = self.clear_focus_for_shutdown(space_parent);
+        let shutdown_parent = self.clear_focus_for_shutdown(space_parent, logical_time);
         let (cancelled_queued_envelopes, cancelled_live_work, final_parent) =
             self.close_scheduling_authority(shutdown_parent);
         let stats = self.tree.shutdown();

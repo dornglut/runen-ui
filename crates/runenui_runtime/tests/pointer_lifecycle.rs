@@ -581,7 +581,7 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
                 if pointer_id.get() == 6
         )
     });
-    let modality = record(&|kind| matches!(kind, TraceRecordKind::ModalityChanged { .. }));
+    let modality = record(&|kind| matches!(kind, TraceRecordKind::ModalityChanged));
     let registered = record(&|kind| {
         matches!(
             kind,

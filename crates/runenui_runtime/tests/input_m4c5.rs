@@ -1378,17 +1378,19 @@ fn ime_03_focus_transfer_cancels_the_live_owner_before_focus_out() {
             )
         })
         .unwrap_or_else(|| unreachable!("focus cancellation is traced"));
-    let focus_out = trace
-        .iter()
-        .position(|kind| {
+    let focus_out = runtime
+        .trace()
+        .records()
+        .position(|record| {
             matches!(
-                kind,
-                TraceRecordKind::FocusNotificationQueued {
+                record.kind(),
+                TraceRecordKind::FocusNotificationResolved {
                     kind: runenui_runtime::FocusEventKind::Out
                 }
-            )
+            ) && record.context().delivery()
+                == Some(runenui_runtime::TraceDeliveryOutcome::Delivered)
         })
-        .unwrap_or_else(|| unreachable!("focus departure is traced"));
+        .unwrap_or_else(|| unreachable!("focus departure is delivered"));
     assert!(cancellation < focus_out);
     let cancelled = runtime
         .trace()

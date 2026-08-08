@@ -91,6 +91,10 @@ impl FocusState {
         self.reason = Some(reason);
     }
 
+    pub(crate) const fn route(&self) -> &[MountedNodeId] {
+        self.focused_route.as_slice()
+    }
+
     pub(crate) const fn route_len(&self) -> usize {
         self.focused_route.len()
     }
