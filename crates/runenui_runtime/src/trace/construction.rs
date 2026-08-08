@@ -3,8 +3,8 @@ use runenui_core::{CommandOrigin, MonotonicInstant};
 use crate::{MountedNodeId, ReconciliationGeneration, WorkSequence};
 
 use super::{
-    TraceContext, TracePublicationContext, TraceRecord, TraceRecordKind, TraceSequence,
-    TraceSurfaceContext, TraceTarget, TraceWorkIdentity,
+    TraceContext, TracePayloadCapture, TracePublicationContext, TraceRecord, TraceRecordKind,
+    TraceSequence, TraceSurfaceContext, TraceTarget, TraceWorkIdentity,
 };
 
 /// Named reconciliation facts owned by one trace-record construction.
@@ -260,6 +260,12 @@ impl TraceRecordDraft {
         self
     }
 
+    pub(super) fn apply_payload_capture(&self, capture: TracePayloadCapture) {
+        if let Some(input) = self.context.input() {
+            input.apply_payload_capture(capture);
+        }
+    }
+
     pub(super) fn into_record(self, sequence: TraceSequence) -> TraceRecord {
         let (original_target, current_target, command_origin) = match self.routed {
             Some(routed) => (
@@ -283,6 +289,7 @@ impl TraceRecordDraft {
             current_target,
             command_origin,
             context: self.context,
+            sink_delivery: None,
         }
     }
 }
