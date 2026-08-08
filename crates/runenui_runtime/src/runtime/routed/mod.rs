@@ -17,7 +17,7 @@ use crate::{
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
 pub(crate) use dispatch::PointerDispatchFacts;
-pub(crate) use transaction::{RoutedIngressFacts, RoutedTransaction};
+pub(crate) use transaction::{RoutedFailureLineage, RoutedIngressFacts, RoutedTransaction};
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn process_semantic_command(&mut self, envelope: SemanticCommandEnvelope) {
@@ -77,22 +77,35 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
     ) -> Option<RoutedTransaction<Action>> {
-        self.begin_routed_transaction_with_trace_and_default_commands(facts, additional_trace, 0)
+        self.try_begin_routed_transaction_with_trace(facts, additional_trace)
+            .ok()
     }
 
-    pub(crate) fn begin_routed_transaction_with_trace_and_default_commands(
+    pub(crate) fn try_begin_routed_transaction_with_trace(
+        &mut self,
+        facts: RoutedIngressFacts,
+        additional_trace: MandatoryTracePlan,
+    ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
+        self.try_begin_routed_transaction_with_trace_and_default_commands(
+            facts,
+            additional_trace,
+            0,
+        )
+    }
+
+    pub(crate) fn try_begin_routed_transaction_with_trace_and_default_commands(
         &mut self,
         facts: RoutedIngressFacts,
         additional_trace: MandatoryTracePlan,
         mandatory_default_commands: usize,
-    ) -> Option<RoutedTransaction<Action>> {
+    ) -> Result<RoutedTransaction<Action>, RoutedFailureLineage> {
         let (route, admission) = self.prepare_routed_route_with_default_commands(
             &facts,
             additional_trace,
             mandatory_default_commands,
         )?;
         let pointer_callback_targets = route.clone();
-        Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
+        Ok(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
 
     #[allow(clippy::too_many_arguments)]

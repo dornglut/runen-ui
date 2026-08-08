@@ -7,6 +7,21 @@ use super::super::CollectedRoutedOutput;
 use crate::trace::TraceReservation;
 use crate::{MountedNodeId, TraceEventContext, TraceSequence, TraceTarget};
 
+#[derive(Clone, Copy)]
+pub(crate) struct RoutedFailureLineage {
+    causal_parent: Option<TraceSequence>,
+}
+
+impl RoutedFailureLineage {
+    pub(crate) const fn new(causal_parent: Option<TraceSequence>) -> Self {
+        Self { causal_parent }
+    }
+
+    pub(crate) const fn causal_parent(self) -> Option<TraceSequence> {
+        self.causal_parent
+    }
+}
+
 pub(crate) struct RoutedIngressFacts {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,

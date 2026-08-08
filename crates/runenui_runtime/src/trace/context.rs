@@ -5,7 +5,10 @@ use runenui_core::{
 
 use crate::{ReconciliationGeneration, SurfacePhase};
 
-use super::{TraceSurfaceSnapshotKind, TraceTarget};
+use super::{
+    TraceSurfaceSnapshotKind, TraceTarget, action_context::TraceActionIdentity,
+    automation_context::TraceAutomationContext, input_context::TraceInputContext,
+};
 
 /// Routed event family retained by the normalized M4 trace schema.
 #[non_exhaustive]
@@ -617,6 +620,9 @@ enum TraceContextData {
     Surface(TraceSurfaceContext),
     Pointer(Box<TracePointerRecordContext>),
     Focus(Box<TraceFocusRecordContext>),
+    Input(TraceInputContext),
+    Automation(TraceAutomationContext),
+    Action(TraceActionIdentity),
     Publication(TracePublicationContext),
 }
 
@@ -661,6 +667,24 @@ impl TraceContext {
     fn focus_record(context: TraceFocusRecordContext) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Focus(Box::new(context)))),
+        }
+    }
+
+    pub(crate) fn input_record(context: TraceInputContext) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Input(context))),
+        }
+    }
+
+    pub(crate) fn automation_record(context: TraceAutomationContext) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Automation(context))),
+        }
+    }
+
+    pub(crate) fn action_record(identity: TraceActionIdentity) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Action(identity))),
         }
     }
 
@@ -799,7 +823,14 @@ impl TraceContext {
             Some(TraceContextData::Routed { event, .. }) => Some(*event),
             Some(TraceContextData::Pointer(context)) => context.event(),
             Some(TraceContextData::Focus(context)) => context.event(),
-            Some(TraceContextData::Surface(_) | TraceContextData::Publication(_)) | None => None,
+            Some(TraceContextData::Input(context)) => Some(context.event()),
+            Some(
+                TraceContextData::Surface(_)
+                | TraceContextData::Automation(_)
+                | TraceContextData::Action(_)
+                | TraceContextData::Publication(_),
+            )
+            | None => None,
         }
     }
 
@@ -811,7 +842,13 @@ impl TraceContext {
             Some(TraceContextData::Pointer(context)) => context.surface(),
             Some(TraceContextData::Focus(context)) => context.surface(),
             Some(TraceContextData::Publication(publication)) => Some(publication.surface()),
-            Some(TraceContextData::Routed { .. }) | None => None,
+            Some(
+                TraceContextData::Routed { .. }
+                | TraceContextData::Input(_)
+                | TraceContextData::Automation(_)
+                | TraceContextData::Action(_),
+            )
+            | None => None,
         }
     }
 
@@ -845,6 +882,33 @@ impl TraceContext {
         }
     }
 
+    /// Returns role-typed keyboard/text/composition facts.
+    #[must_use]
+    pub fn input(&self) -> Option<&TraceInputContext> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Input(context)) => Some(context),
+            _ => None,
+        }
+    }
+
+    /// Returns exact authored-automation resolution facts.
+    #[must_use]
+    pub fn automation(&self) -> Option<&TraceAutomationContext> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Automation(context)) => Some(context),
+            _ => None,
+        }
+    }
+
+    /// Returns redacted accepted application-action identity.
+    #[must_use]
+    pub fn action(&self) -> Option<TraceActionIdentity> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Action(identity)) => Some(*identity),
+            _ => None,
+        }
+    }
+
     /// Returns the exact pointer identity named by a rejected capture request.
     ///
     /// This differs from [`Self::pointer`] only for the mismatch rejection case.
@@ -863,7 +927,7 @@ impl TraceContext {
             Some(TraceContextData::Routed { route, .. }) => route.as_ref(),
             Some(TraceContextData::Pointer(context)) => context.route(),
             Some(TraceContextData::Focus(context)) => context.route(),
-            Some(TraceContextData::Surface(_) | TraceContextData::Publication(_)) | None => None,
+            _ => None,
         }
     }
 
@@ -914,22 +978,17 @@ impl TraceContext {
     pub fn publication(&self) -> Option<&TracePublicationContext> {
         match self.data.as_deref() {
             Some(TraceContextData::Publication(publication)) => Some(publication),
-            Some(
-                TraceContextData::Routed { .. }
-                | TraceContextData::Surface(_)
-                | TraceContextData::Pointer(_)
-                | TraceContextData::Focus(_),
-            )
-            | None => None,
+            _ => None,
         }
     }
 
-    /// Returns explicit routed-notification delivery or suppression outcome.
+    /// Returns explicit routed-notification or input-cleanup delivery/suppression outcome.
     #[must_use]
     pub fn delivery(&self) -> Option<TraceDeliveryOutcome> {
         match self.data.as_deref() {
             Some(TraceContextData::Pointer(context)) => context.delivery(),
             Some(TraceContextData::Focus(context)) => context.delivery(),
+            Some(TraceContextData::Input(context)) => context.delivery(),
             _ => None,
         }
     }
@@ -961,6 +1020,9 @@ mod tests {
         assert_eq!(context.pointer(), None);
         assert_eq!(context.pointer_record_role(), None);
         assert_eq!(context.focus_record_role(), None);
+        assert_eq!(context.input(), None);
+        assert_eq!(context.automation(), None);
+        assert_eq!(context.action(), None);
         assert_eq!(context.requested_pointer_id(), None);
         assert_eq!(context.route(), None);
         assert_eq!(context.physical_path(), None);

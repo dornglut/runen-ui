@@ -2,7 +2,9 @@ use runenui_core::{EventSource, HostProtocol};
 
 use super::{
     super::{Runtime, RuntimeTerminalReason},
-    transaction::{RoutedFailureFacts, RoutedIngressFacts, RoutedTransaction},
+    transaction::{
+        RoutedFailureFacts, RoutedFailureLineage, RoutedIngressFacts, RoutedTransaction,
+    },
 };
 use crate::{
     MountedNodeId, TraceRecordKind, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure,
@@ -14,8 +16,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         capacity: TraceRoutedAdmissionRejection,
         facts: &RoutedIngressFacts,
-    ) {
-        self.trace.record_reserved_event(
+    ) -> RoutedFailureLineage {
+        let failure_parent = self.trace.record_reserved_event(
             facts.trace_reservation,
             TraceRecordKind::RoutedEventAdmissionRejected { capacity },
             facts.sequence,
@@ -49,20 +51,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             | TraceRoutedAdmissionRejection::Timers => None,
         };
         if let Some(reason) = terminal {
-            self.enter_terminal(reason, 0);
+            self.enter_terminal_with_parent(reason, 0, failure_parent);
         }
+        RoutedFailureLineage::new(failure_parent)
     }
 
     pub(super) fn record_processing_target_rejection(
         &mut self,
         facts: &RoutedIngressFacts,
         status: TargetStatus,
-    ) {
+    ) -> RoutedFailureLineage {
         let outcome = match status {
             TargetStatus::Foreign => TraceTargetRejection::Foreign,
             TargetStatus::Stale => TraceTargetRejection::Stale,
             TargetStatus::Missing => TraceTargetRejection::Missing,
-            TargetStatus::Live => return,
+            TargetStatus::Live => unreachable!("live targets are not processing rejections"),
         };
         let kind = if outcome == TraceTargetRejection::Stale
             && facts.origin.source() == EventSource::Automation
@@ -71,7 +74,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         } else {
             TraceRecordKind::CommandProcessingRejected { outcome }
         };
-        self.trace.record_reserved_event(
+        let failure_parent = self.trace.record_reserved_event(
             facts.trace_reservation,
             kind,
             facts.sequence,
@@ -82,6 +85,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             facts.origin,
         );
+        RoutedFailureLineage::new(failure_parent)
     }
 
     pub(super) fn poison_routed_facts(
@@ -89,8 +93,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: &RoutedIngressFacts,
         failure: TraceRoutedIntegrityFailure,
         current_target: Option<&MountedNodeId>,
-    ) {
-        self.trace.record_reserved_event(
+    ) -> RoutedFailureLineage {
+        let failure_parent = self.trace.record_reserved_event(
             facts.trace_reservation,
             TraceRecordKind::RoutedIntegrityFailed { failure },
             facts.sequence,
@@ -101,7 +105,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             current_target,
             facts.origin,
         );
-        self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+        self.enter_terminal_with_parent(RuntimeTerminalReason::Poisoned, 0, failure_parent);
+        RoutedFailureLineage::new(failure_parent)
     }
 
     pub(crate) fn poison_transaction(
@@ -109,8 +114,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: &RoutedTransaction<Action>,
         failure: TraceRoutedIntegrityFailure,
         current_target: Option<&MountedNodeId>,
-    ) {
-        self.poison_routed_event(&transaction.failure_facts(), failure, current_target);
+    ) -> RoutedFailureLineage {
+        self.poison_routed_event(&transaction.failure_facts(), failure, current_target)
     }
 
     pub(crate) fn poison_routed_event(
@@ -118,8 +123,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         facts: &RoutedFailureFacts,
         failure: TraceRoutedIntegrityFailure,
         current_target: Option<&MountedNodeId>,
-    ) {
-        self.trace.record_event(
+    ) -> RoutedFailureLineage {
+        let failure_parent = self.trace.record_event(
             TraceRecordKind::RoutedIntegrityFailed { failure },
             facts.sequence,
             facts.causal_parent,
@@ -129,6 +134,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             current_target,
             facts.origin,
         );
-        self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+        self.enter_terminal_with_parent(RuntimeTerminalReason::Poisoned, 0, failure_parent);
+        RoutedFailureLineage::new(failure_parent)
     }
 }

@@ -29,7 +29,6 @@ pub(crate) fn process_application_action<App: UiApp>(
         action,
         causal_parent,
         target,
-        origin: _origin,
     } = envelope;
     let before = ReconciliationGeneration(runtime.generation);
     let Some(next) = runtime.next_generation() else {

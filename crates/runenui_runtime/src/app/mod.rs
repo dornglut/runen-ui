@@ -13,8 +13,7 @@ use runenui_core::{CommandOrigin, ElementId, SemanticCommand, UiApp, View};
 use crate::{
     FocusState, MountedNodeId, MountedTreeIndex, PumpBudget, PumpReport, ReconciliationReport,
     RuntimeConfig, RuntimeStatus, ShutdownReport, SubmitActionResult, SurfaceBuildContext,
-    SurfacePublication, Trace, WorkSequence, pump, queue::ApplicationActionOrigin,
-    runtime::Runtime,
+    SurfacePublication, Trace, TraceActionCategory, WorkSequence, pump, runtime::Runtime,
 };
 
 pub struct AppRuntime<App: UiApp> {
@@ -48,12 +47,8 @@ impl<App: UiApp> AppRuntime<App> {
     /// Returns the exact unaccepted action when the queue is full or the runtime
     /// is closed or terminal.
     pub fn submit_action(&mut self, action: App::Action) -> SubmitActionResult<App::Action> {
-        self.runtime.submit_action(
-            action,
-            ApplicationActionOrigin::DirectSubmission,
-            None,
-            None,
-        )
+        self.runtime
+            .submit_action(action, TraceActionCategory::DirectSubmission, None, None)
     }
 
     /// Appends one exact-target semantic command to the canonical FIFO.

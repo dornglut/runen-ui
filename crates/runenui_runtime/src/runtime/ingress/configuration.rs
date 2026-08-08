@@ -1,7 +1,7 @@
 use super::{
-    ApplicationActionOrigin, HostProtocol, MandatoryTracePlan, MonotonicClock, Runtime,
-    RuntimeStatus, RuntimeTerminalReason, SendTaskExecutor, SendTaskStartOutcome,
-    TimerFiringOutcome, TimerStartOutcome, TraceRecordKind, TraceSequence, WorkFamily,
+    HostProtocol, MandatoryTracePlan, MonotonicClock, Runtime, RuntimeStatus,
+    RuntimeTerminalReason, SendTaskExecutor, SendTaskStartOutcome, TimerFiringOutcome,
+    TimerStartOutcome, TraceActionCategory, TraceRecordKind, TraceSequence, WorkFamily,
     WorkSequence,
 };
 
@@ -93,11 +93,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         action: Action,
         causal_parent: Option<TraceSequence>,
     ) -> Option<WorkSequence> {
+        let instant = self.now();
         self.commit_preflighted_action(
             action,
             causal_parent,
             None,
-            ApplicationActionOrigin::ApplicationEffect,
+            TraceActionCategory::ApplicationEffect,
+            instant,
         )
         .map_or_else(
             |_| {

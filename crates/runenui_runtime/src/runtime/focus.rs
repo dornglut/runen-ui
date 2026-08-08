@@ -4,12 +4,14 @@ use runenui_core::{
     WidgetInvalidation,
 };
 
-use super::{CollectedRoutedOutput, RoutedTransaction, Runtime, RuntimeStatus};
+use super::{
+    CollectedRoutedOutput, RoutedFailureLineage, RoutedTransaction, Runtime, RuntimeStatus,
+};
 use crate::{
     MountedNodeId, ReconciliationGeneration, TraceContext, TraceDeliveryOutcome, TraceEventContext,
-    TraceEventFamily, TraceFocusBoundaryOutcome, TraceModalityTransition, TraceRecordKind,
-    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence, TraceSpaceCleanupReason,
-    TraceSurfaceContext, TraceTarget, TraceTargetTransition, WorkSequence,
+    TraceEventFamily, TraceFocusBoundaryOutcome, TraceInputContext, TraceModalityTransition,
+    TraceRecordKind, TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence,
+    TraceSpaceCleanupReason, TraceSurfaceContext, TraceTarget, TraceTargetTransition, WorkSequence,
     focus::{
         FocusBoundaryOutcome, FocusNavigation, FocusSelection, is_focus_eligible, nearest_scope,
         select_focus,
@@ -38,6 +40,16 @@ impl InputLifetimeCleanupCause {
             causal_parent,
             instant,
             origin,
+        }
+    }
+
+    pub(crate) const fn with_failure_lineage(self, failure: RoutedFailureLineage) -> Self {
+        Self {
+            causal_parent: match failure.causal_parent() {
+                Some(parent) => Some(parent),
+                None => self.causal_parent,
+            },
+            ..self
         }
     }
 }
@@ -84,9 +96,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 })
         });
         if let Some(reason) = composition_reason
-            && self.cancel_composition_while_live(reason, cause).is_err()
+            && let Err(failure) = self.cancel_composition_while_live(reason, cause)
         {
-            let retirement_parent = self.suppress_composition_cleanup(reason, cause);
+            let retirement_parent =
+                self.suppress_composition_cleanup(reason, cause.with_failure_lineage(failure));
             if matches!(self.status, RuntimeStatus::Running) {
                 self.enter_terminal_with_parent(
                     crate::RuntimeTerminalReason::Poisoned,
@@ -152,12 +165,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         || !text_input.accepts_composition()
                 });
         if composition_lost
-            && self
-                .cancel_composition_while_live(CompositionCancelReason::Disablement, cause)
-                .is_err()
+            && let Err(failure) =
+                self.cancel_composition_while_live(CompositionCancelReason::Disablement, cause)
         {
-            let retirement_parent =
-                self.suppress_composition_cleanup(CompositionCancelReason::Disablement, cause);
+            let retirement_parent = self.suppress_composition_cleanup(
+                CompositionCancelReason::Disablement,
+                cause.with_failure_lineage(failure),
+            );
             if matches!(self.status, RuntimeStatus::Running) {
                 self.enter_terminal_with_parent(
                     crate::RuntimeTerminalReason::Poisoned,
@@ -186,7 +200,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         reason: CompositionCancelReason,
         cause: InputLifetimeCleanupCause,
-    ) -> Result<Option<TraceSequence>, ()> {
+    ) -> Result<Option<TraceSequence>, RoutedFailureLineage> {
         let (Some(owner), Some(start_sequence)) = (
             self.composition.owner().cloned(),
             self.composition.start_sequence(),
@@ -202,27 +216,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             cause.causal_parent,
             TraceReservation::continuation(),
         );
-        let Some(mut transaction) = self
-            .begin_routed_transaction_with_trace(facts, MandatoryTracePlan::composition_cleanup())
-        else {
-            return Err(());
-        };
+        let mut transaction = self.try_begin_routed_transaction_with_trace(
+            facts,
+            MandatoryTracePlan::composition_cleanup(),
+        )?;
         if let Err(failure) =
             self.cancel_composition_in_transaction(&mut transaction, &owner, reason)
         {
             let current = transaction.failure_current_target.clone();
-            self.poison_transaction(&transaction, failure, current.as_ref());
-            return Err(());
+            let lineage = self.poison_transaction(&transaction, failure, current.as_ref());
+            return Err(lineage);
         }
         let cleanup_parent = transaction.parent;
         let failure_facts = transaction.failure_facts();
         if self.commit_routed_transaction(transaction).is_err() {
-            self.poison_routed_event(
+            let lineage = self.poison_routed_event(
                 &failure_facts,
                 TraceRoutedIntegrityFailure::CommitInvariantFailure,
                 Some(&owner),
             );
-            return Err(());
+            return Err(lineage);
         }
         Ok(cleanup_parent)
     }
@@ -236,22 +249,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         _reason: CompositionCancelReason,
         cause: InputLifetimeCleanupCause,
     ) -> Option<TraceSequence> {
-        let (Some(owner), Some(start_sequence)) = (
+        let (Some(owner), Some(start_sequence), Some(composition)) = (
             self.composition.owner().cloned(),
             self.composition.start_sequence(),
+            self.composition.trace_context(),
         ) else {
             return cause.causal_parent;
         };
         self.composition = crate::input::CompositionState::None;
-        self.trace.record_event(
-            TraceRecordKind::CompositionRetired,
-            start_sequence,
-            cause.causal_parent,
-            Some(self.tree.trace_target(&owner)),
-            cause.instant,
-            &owner,
-            Some(&owner),
-            cause.origin,
+        self.trace.record_draft(
+            TraceRecordDraft::input_fact(
+                TraceRecordKind::CompositionRetired,
+                cause.instant,
+                TraceContext::input_record(TraceInputContext::composition_cleanup(
+                    composition,
+                    TraceDeliveryOutcome::Suppressed,
+                )),
+            )
+            .with_work_sequence(Some(start_sequence))
+            .with_causal_parent(cause.causal_parent)
+            .with_target(Some(self.tree.trace_target(&owner))),
         )
     }
 
@@ -288,7 +305,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         owner: &MountedNodeId,
         reason: CompositionCancelReason,
     ) -> Result<(), TraceRoutedIntegrityFailure> {
-        let Some(generation) = self.composition.generation().cloned() else {
+        let Some(composition) = self.composition.trace_context() else {
             return Ok(());
         };
         if self.composition.owner() != Some(owner) {
@@ -296,29 +313,36 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let route = self.checked_focus_route(owner)?;
         let event = UiEvent::Composition(CompositionEvent::Cancel(
-            CompositionCancel::__runtime_new(generation, reason),
+            CompositionCancel::__runtime_new(composition.generation().clone(), reason),
         ));
         self.invoke_focus_callbacks(transaction, &event, route, None)?;
         self.composition = crate::input::CompositionState::None;
-        transaction.parent = self.trace.record_event(
-            TraceRecordKind::CompositionCancelled { reason },
-            transaction.sequence,
-            transaction.parent,
-            Some(self.tree.trace_target(owner)),
-            transaction.instant,
-            &transaction.target,
-            Some(owner),
-            transaction.origin,
+        transaction.parent = self.trace.record_draft(
+            TraceRecordDraft::input_fact(
+                TraceRecordKind::CompositionCancelled { reason },
+                transaction.instant,
+                TraceContext::input_record(TraceInputContext::composition_cleanup(
+                    composition,
+                    TraceDeliveryOutcome::Delivered,
+                )),
+            )
+            .with_work_sequence(Some(transaction.sequence))
+            .with_causal_parent(transaction.parent)
+            .with_target(Some(self.tree.trace_target(owner)))
+            .with_routed_endpoints(
+                transaction.target.clone(),
+                Some(owner.clone()),
+                transaction.origin,
+            ),
         );
-        transaction.parent = self.trace.record_event(
-            TraceRecordKind::CompositionRetired,
-            transaction.sequence,
-            transaction.parent,
-            Some(self.tree.trace_target(owner)),
-            transaction.instant,
-            &transaction.target,
-            Some(owner),
-            transaction.origin,
+        transaction.parent = self.trace.record_draft(
+            TraceRecordDraft::input_marker(
+                TraceRecordKind::CompositionRetired,
+                transaction.instant,
+            )
+            .with_work_sequence(Some(transaction.sequence))
+            .with_causal_parent(transaction.parent)
+            .with_target(Some(self.tree.trace_target(owner))),
         );
         Ok(())
     }

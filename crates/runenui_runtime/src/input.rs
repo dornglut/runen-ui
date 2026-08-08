@@ -9,12 +9,13 @@ use runenui_core::{
 };
 
 use crate::{
-    RuntimeStatus, RuntimeTerminalReason, TraceEventContext, TraceEventFamily, TraceRecordKind,
-    TraceSpaceCleanupReason,
+    RuntimeStatus, RuntimeTerminalReason, TraceAutomationContext, TraceCompositionContext,
+    TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily, TraceInputContext,
+    TraceRecordKind, TraceSpaceCleanupReason,
     mounted::{AutomationResolution, TargetStatus},
     queue::{InputEnvelope, InputEnvelopePayload},
     runtime::{RoutedIngressFacts, Runtime},
-    trace::MandatoryTracePlan,
+    trace::{MandatoryTracePlan, TraceRecordDraft},
 };
 
 #[non_exhaustive]
@@ -152,22 +153,17 @@ impl CompositionStartSubmission {
 }
 
 /// Caller-owned facts for a requested composition start.
-///
-/// A generation is intentionally absent: one exists only after the request has
-/// passed every admission check and entered the canonical input FIFO.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CompositionStartRequest {
     device_id: Option<InputDeviceId>,
 }
 
 impl CompositionStartRequest {
-    /// Creates a request for the host input device, when one is known.
     #[must_use]
     pub const fn new(device_id: Option<InputDeviceId>) -> Self {
         Self { device_id }
     }
 
-    /// Returns the host input device associated with this request.
     #[must_use]
     pub const fn device_id(self) -> Option<InputDeviceId> {
         self.device_id
@@ -241,7 +237,6 @@ impl fmt::Display for SubmitCompositionError {
 }
 impl std::error::Error for SubmitCompositionError {}
 
-/// Rejection of a composition-start request before a generation exists.
 #[must_use]
 pub struct SubmitCompositionStartError {
     kind: SubmitCompositionErrorKind,
@@ -253,19 +248,16 @@ impl SubmitCompositionStartError {
         Self { kind, request }
     }
 
-    /// Returns the structural or admission reason for the rejection.
     #[must_use]
     pub const fn kind(&self) -> SubmitCompositionErrorKind {
         self.kind
     }
 
-    /// Returns the original caller-owned request facts.
     #[must_use]
     pub const fn request(&self) -> CompositionStartRequest {
         self.request
     }
 
-    /// Consumes this error and returns the original caller-owned request facts.
     #[must_use]
     pub const fn into_request(self) -> CompositionStartRequest {
         self.request
@@ -306,8 +298,8 @@ pub enum CompositionState {
     Active {
         generation: CompositionGeneration,
         owner: crate::MountedNodeId,
-        _device_id: Option<InputDeviceId>,
-        _start_sequence: WorkSequence,
+        device_id: Option<InputDeviceId>,
+        start_sequence: WorkSequence,
     },
 }
 
@@ -326,17 +318,29 @@ impl CompositionState {
         }
     }
 
+    pub(crate) const fn device_id(&self) -> Option<InputDeviceId> {
+        match self {
+            Self::None => None,
+            Self::Pending { device_id, .. } | Self::Active { device_id, .. } => *device_id,
+        }
+    }
+
     pub(crate) const fn start_sequence(&self) -> Option<WorkSequence> {
         match self {
             Self::None => None,
-            Self::Pending { start_sequence, .. }
-            | Self::Active {
-                _start_sequence: start_sequence,
-                ..
-            } => Some(*start_sequence),
+            Self::Pending { start_sequence, .. } | Self::Active { start_sequence, .. } => {
+                Some(*start_sequence)
+            }
         }
     }
+
+    pub(crate) fn trace_context(&self) -> Option<TraceCompositionContext> {
+        self.generation()
+            .cloned()
+            .map(|generation| TraceCompositionContext::new(generation, self.device_id()))
+    }
 }
+
 impl TextSubmission {
     pub(crate) const fn new(sequence: WorkSequence) -> Self {
         Self { sequence }
@@ -440,9 +444,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         authored_id: ElementId,
         command: SemanticCommand,
     ) -> Result<AutomationSubmission, SubmitAutomationError> {
-        // Resolution itself is a mandatory, redacted trace boundary. Check it
-        // before consulting the mounted preorder so a trace-sequence terminal
-        // cannot leave a partly recorded automation decision behind.
         if !self
             .trace
             .can_admit(MandatoryTracePlan::automation_resolution())
@@ -457,16 +458,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 command,
             ));
         }
+        let instant = self.now();
         let (target, resolution_parent) = match self.tree.resolve_authored_id(&authored_id) {
             AutomationResolution::Missing => {
-                self.trace.record(
+                self.trace.record_draft(TraceRecordDraft::automation_fact(
                     TraceRecordKind::AutomationResolutionMissing,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                );
+                    instant,
+                    TraceContext::automation_record(TraceAutomationContext::missing(
+                        authored_id.clone(),
+                        command,
+                    )),
+                ));
                 return Err(SubmitAutomationError::new(
                     SubmitAutomationErrorKind::MissingAuthoredId,
                     authored_id,
@@ -474,27 +476,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 ));
             }
             AutomationResolution::Unique(target) => {
-                let parent = self.trace.record(
-                    TraceRecordKind::AutomationResolutionUnique,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(self.tree.trace_target(&target)),
+                let parent = self.trace.record_draft(
+                    TraceRecordDraft::automation_fact(
+                        TraceRecordKind::AutomationResolutionUnique,
+                        instant,
+                        TraceContext::automation_record(TraceAutomationContext::unique(
+                            authored_id.clone(),
+                            command,
+                        )),
+                    )
+                    .with_target(Some(self.tree.trace_target(&target))),
                 );
                 (target, parent)
             }
             AutomationResolution::Ambiguous { candidates } => {
-                self.trace.record(
-                    TraceRecordKind::AutomationResolutionAmbiguous {
-                        candidates: candidates.clone(),
-                    },
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                );
+                self.trace.record_draft(TraceRecordDraft::automation_fact(
+                    TraceRecordKind::AutomationResolutionAmbiguous,
+                    instant,
+                    TraceContext::automation_record(TraceAutomationContext::ambiguous(
+                        authored_id.clone(),
+                        command,
+                        candidates.clone(),
+                    )),
+                ));
                 return Err(SubmitAutomationError::new(
                     SubmitAutomationErrorKind::AmbiguousAuthoredId { candidates },
                     authored_id,
@@ -517,12 +521,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             )
         })
     }
+
     pub(crate) fn submit_keyboard(
         &mut self,
         event: KeyboardEvent,
     ) -> Result<KeyboardSubmission, SubmitKeyboardError> {
         let target = self
-            .input_target(&event, false)
+            .input_target()
             .map_err(|kind| SubmitKeyboardError::new(kind, event.clone()))?;
         self.commit_input(target, InputEnvelopePayload::Keyboard(event))
             .map(KeyboardSubmission::new)
@@ -539,7 +544,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         event: CommittedTextEvent,
     ) -> Result<TextSubmission, SubmitTextError> {
         let target = self
-            .input_target_text(&event)
+            .input_target_text()
             .map_err(|kind| SubmitTextError::new(kind, event.clone()))?;
         self.commit_input(target, InputEnvelopePayload::CommittedText(event))
             .map(TextSubmission::new)
@@ -608,13 +613,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             generation.clone(),
             request.device_id(),
         ));
-        let accepted = self.trace.record(
-            TraceRecordKind::CompositionGenerationAllocated,
-            Some(sequence),
-            None,
-            None,
-            None,
-            Some(self.tree.trace_target(&target)),
+        let instant = self.now();
+        let accepted = self.trace.record_draft(
+            TraceRecordDraft::input_fact(
+                TraceRecordKind::CompositionGenerationAllocated,
+                instant,
+                TraceContext::input_record(TraceInputContext::composition_identity(
+                    TraceCompositionContext::new(generation.clone(), request.device_id()),
+                )),
+            )
+            .with_work_sequence(Some(sequence))
+            .with_target(Some(self.tree.trace_target(&target))),
         );
         debug_assert!(accepted.is_some() || !self.trace.is_enabled());
         self.composition = CompositionState::Pending {
@@ -623,13 +632,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             device_id: request.device_id(),
             start_sequence: sequence,
         };
-        let pending_bound = self.trace.record(
-            TraceRecordKind::CompositionPendingBound,
-            Some(sequence),
-            accepted,
-            None,
-            None,
-            Some(self.tree.trace_target(&target)),
+        let pending_bound = self.trace.record_draft(
+            TraceRecordDraft::input_marker(TraceRecordKind::CompositionPendingBound, instant)
+                .with_work_sequence(Some(sequence))
+                .with_causal_parent(accepted)
+                .with_target(Some(self.tree.trace_target(&target))),
         );
         debug_assert!(pending_bound.is_some() || !self.trace.is_enabled());
         self.next_composition_generation = next
@@ -641,8 +648,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .push_input_preflighted(
                 target,
                 InputEnvelopePayload::Composition(event),
-                self.now(),
-                accepted,
+                instant,
+                pending_bound,
                 reservation,
             )
             .unwrap_or_else(|_| unreachable!("composition queue was preflighted"));
@@ -755,40 +762,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         event: CompositionEvent,
     ) -> Result<CompositionSubmission, SubmitCompositionError> {
-        match self.status {
-            RuntimeStatus::Running => {}
-            RuntimeStatus::Closed => {
-                return Err(SubmitCompositionError::new(
-                    SubmitCompositionErrorKind::Closed,
-                    event,
-                ));
-            }
-            RuntimeStatus::Terminal(reason) => {
-                return Err(SubmitCompositionError::new(
-                    SubmitCompositionErrorKind::Terminal(reason),
-                    event,
-                ));
-            }
-        }
-        let generation = event.generation();
-        if !self.tree.composition_generation_is_local(generation) {
-            return Err(SubmitCompositionError::new(
-                SubmitCompositionErrorKind::ForeignGeneration,
-                event,
-            ));
-        }
-        let Some(owner) = self.composition.owner().cloned() else {
-            return Err(SubmitCompositionError::new(
-                self.composition_generation_error_kind(generation),
-                event,
-            ));
+        let validation = self.validate_existing_composition(&event);
+        let (owner, composition) = match validation {
+            Ok(validated) => validated,
+            Err(kind) => return Err(SubmitCompositionError::new(kind, event)),
         };
-        if self.composition.generation() != Some(generation) {
-            return Err(SubmitCompositionError::new(
-                self.composition_generation_error_kind(generation),
-                event,
-            ));
-        }
         match self.queue.preflight_commit(1) {
             Ok(()) => {}
             Err(crate::queue::QueueCommitError::Full) => {
@@ -814,24 +792,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .queue
             .next_sequence()
             .unwrap_or_else(|| unreachable!("composition sequence was preflighted"));
-        let trace_kind = match &event {
-            CompositionEvent::Update(update) => TraceRecordKind::CompositionUpdated {
-                has_range: update.range().is_some(),
-            },
-            CompositionEvent::End(_) => TraceRecordKind::CompositionEnded,
-            CompositionEvent::Cancel(cancel) => TraceRecordKind::CompositionCancelled {
-                reason: cancel.reason(),
-            },
-            CompositionEvent::Start(_) => unreachable!("existing composition excludes start"),
-            _ => unreachable!("unknown composition event cannot be submitted"),
-        };
-        let parent = self.trace.record(
-            trace_kind,
-            Some(sequence),
-            None,
-            None,
-            None,
-            Some(self.tree.trace_target(&owner)),
+        let instant = self.now();
+        let (trace_kind, context) = Self::existing_composition_trace(&event, composition);
+        let parent = self.trace.record_draft(
+            TraceRecordDraft::input_fact(trace_kind, instant, TraceContext::input_record(context))
+                .with_work_sequence(Some(sequence))
+                .with_target(Some(self.tree.trace_target(&owner))),
         );
         if self.trace.is_enabled() && parent.is_none() {
             self.trace.release_reservation(reservation);
@@ -845,13 +811,67 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .push_input_preflighted(
                 owner,
                 InputEnvelopePayload::Composition(event),
-                self.now(),
+                instant,
                 parent,
                 reservation,
             )
             .unwrap_or_else(|_| unreachable!("composition queue was preflighted"));
         self.external_queue_commit_accepted();
         Ok(CompositionSubmission::new(sequence))
+    }
+
+    fn validate_existing_composition(
+        &self,
+        event: &CompositionEvent,
+    ) -> Result<(crate::MountedNodeId, TraceCompositionContext), SubmitCompositionErrorKind> {
+        match self.status {
+            RuntimeStatus::Running => {}
+            RuntimeStatus::Closed => return Err(SubmitCompositionErrorKind::Closed),
+            RuntimeStatus::Terminal(reason) => {
+                return Err(SubmitCompositionErrorKind::Terminal(reason));
+            }
+        }
+        let generation = event.generation();
+        if !self.tree.composition_generation_is_local(generation) {
+            return Err(SubmitCompositionErrorKind::ForeignGeneration);
+        }
+        let Some(owner) = self.composition.owner().cloned() else {
+            return Err(self.composition_generation_error_kind(generation));
+        };
+        if self.composition.generation() != Some(generation) {
+            return Err(self.composition_generation_error_kind(generation));
+        }
+        let composition = self
+            .composition
+            .trace_context()
+            .unwrap_or_else(|| unreachable!("accepted existing composition has identity"));
+        Ok((owner, composition))
+    }
+
+    fn existing_composition_trace(
+        event: &CompositionEvent,
+        composition: TraceCompositionContext,
+    ) -> (TraceRecordKind, TraceInputContext) {
+        match event {
+            CompositionEvent::Update(update) => (
+                TraceRecordKind::CompositionUpdateSubmitted,
+                TraceInputContext::composition_update(
+                    composition,
+                    update.preedit(),
+                    update.range(),
+                ),
+            ),
+            CompositionEvent::End(_) => (
+                TraceRecordKind::CompositionEndSubmitted,
+                TraceInputContext::composition_identity(composition),
+            ),
+            CompositionEvent::Cancel(_) => (
+                TraceRecordKind::CompositionCancelSubmitted,
+                TraceInputContext::composition_identity(composition),
+            ),
+            CompositionEvent::Start(_) => unreachable!("existing composition excludes start"),
+            _ => unreachable!("unknown composition event cannot be submitted"),
+        }
     }
 
     fn composition_generation_was_issued(&self, generation: &CompositionGeneration) -> bool {
@@ -870,11 +890,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
-    fn input_target(
-        &self,
-        _event: &KeyboardEvent,
-        _: bool,
-    ) -> Result<crate::MountedNodeId, SubmitKeyboardErrorKind> {
+    fn input_target(&self) -> Result<crate::MountedNodeId, SubmitKeyboardErrorKind> {
         match self.status {
             RuntimeStatus::Running => {}
             RuntimeStatus::Closed => return Err(SubmitKeyboardErrorKind::Closed),
@@ -894,10 +910,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .ok_or(SubmitKeyboardErrorKind::NoFocusedTarget)
     }
 
-    fn input_target_text(
-        &mut self,
-        _: &CommittedTextEvent,
-    ) -> Result<crate::MountedNodeId, SubmitTextErrorKind> {
+    fn input_target_text(&mut self) -> Result<crate::MountedNodeId, SubmitTextErrorKind> {
         match self.status {
             RuntimeStatus::Running => {}
             RuntimeStatus::Closed => return Err(SubmitTextErrorKind::Closed),
@@ -929,7 +942,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         target: crate::MountedNodeId,
         payload: InputEnvelopePayload,
     ) -> Result<WorkSequence, (SubmitKeyboardErrorKind, InputEnvelopePayload)> {
-        // The routed event reservation supplies bounded processing admission. No raw text is recorded.
         let Some(reservation) = self.trace.reserve_input_outcome() else {
             return Err((SubmitKeyboardErrorKind::TraceSequenceExhausted, payload));
         };
@@ -937,35 +949,32 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.trace.release_reservation(reservation);
             return Err((SubmitKeyboardErrorKind::WorkSequenceExhausted, payload));
         };
-        let trace_kind = match &payload {
-            InputEnvelopePayload::Keyboard(_) => TraceRecordKind::KeyboardSubmissionAccepted,
-            InputEnvelopePayload::CommittedText(event) => {
-                TraceRecordKind::CommittedTextSubmissionAccepted {
-                    bytes: event.text().len(),
-                    scalars: event.text().chars().count(),
-                }
-            }
+        let instant = self.now();
+        let (trace_kind, context) = match &payload {
+            InputEnvelopePayload::Keyboard(event) => (
+                TraceRecordKind::KeyboardSubmissionAccepted,
+                TraceInputContext::keyboard(event.device_id()),
+            ),
+            InputEnvelopePayload::CommittedText(event) => (
+                TraceRecordKind::CommittedTextSubmissionAccepted,
+                TraceInputContext::committed_text(event.text(), event.device_id()),
+            ),
             InputEnvelopePayload::Composition(_) => {
                 unreachable!("composition has dedicated ingress")
             }
         };
-        let accepted = self.trace.record(
-            trace_kind,
-            Some(sequence),
-            None,
-            None,
-            None,
-            Some(self.tree.trace_target(&target)),
+        let accepted = self.trace.record_draft(
+            TraceRecordDraft::input_fact(trace_kind, instant, TraceContext::input_record(context))
+                .with_work_sequence(Some(sequence))
+                .with_target(Some(self.tree.trace_target(&target))),
         );
         if self.trace.is_enabled() && accepted.is_none() {
             self.trace.release_reservation(reservation);
             return Err((SubmitKeyboardErrorKind::TraceSequenceExhausted, payload));
         }
-        let instant = self.now();
-        let event = payload;
         let committed = self
             .queue
-            .push_input_preflighted(target, event, instant, accepted, reservation)
+            .push_input_preflighted(target, payload, instant, accepted, reservation)
             .unwrap_or_else(|_| unreachable!("input queue was preflighted"));
         self.external_queue_commit_accepted();
         Ok(committed)
@@ -1013,13 +1022,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             return;
         }
-        let Some(mut transaction) = self.begin_routed_transaction_with_trace_and_default_commands(
-            facts,
-            MandatoryTracePlan::input_processing(),
-            mandatory_default_commands,
-        ) else {
-            self.retire_failed_composition(&target, &payload, sequence, causal_parent);
-            return;
+        let mut transaction = match self
+            .try_begin_routed_transaction_with_trace_and_default_commands(
+                facts,
+                MandatoryTracePlan::input_processing(),
+                mandatory_default_commands,
+            ) {
+            Ok(transaction) => transaction,
+            Err(failure) => {
+                self.retire_failed_composition(
+                    &target,
+                    &payload,
+                    sequence,
+                    failure.causal_parent().or(causal_parent),
+                    instant,
+                );
+                return;
+            }
         };
         self.record_input_processing_validation(&mut transaction, &payload);
         let event = match &payload {
@@ -1028,7 +1047,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             InputEnvelopePayload::Composition(event) => UiEvent::Composition(event.clone()),
         };
         if let Err(failure) = self.invoke_routed_callbacks(&mut transaction, &event, None) {
-            self.retire_failed_composition(&target, &payload, sequence, causal_parent);
             let current = transaction.failure_current_target.clone();
             self.poison_transaction(&transaction, failure, current.as_ref());
             return;
@@ -1043,7 +1061,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let completion_origin = transaction.origin;
         let failure_facts = transaction.failure_facts();
         if self.commit_routed_transaction(transaction).is_err() {
-            self.retire_failed_composition(&target, &payload, sequence, causal_parent);
             self.poison_routed_event(
                 &failure_facts,
                 crate::TraceRoutedIntegrityFailure::CommitInvariantFailure,
@@ -1130,11 +1147,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) {
         let kind = match payload {
             InputEnvelopePayload::Keyboard(_) => TraceRecordKind::KeyboardProcessingValidated,
-            InputEnvelopePayload::CommittedText(event) => {
-                TraceRecordKind::CommittedTextProcessingValidated {
-                    bytes: event.text().len(),
-                    scalars: event.text().chars().count(),
-                }
+            InputEnvelopePayload::CommittedText(_) => {
+                TraceRecordKind::CommittedTextProcessingValidated
             }
             InputEnvelopePayload::Composition(_) => TraceRecordKind::CompositionProcessingValidated,
         };
@@ -1187,6 +1201,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         payload: &InputEnvelopePayload,
         sequence: WorkSequence,
         causal_parent: Option<crate::TraceSequence>,
+        instant: MonotonicInstant,
     ) {
         let InputEnvelopePayload::Composition(event) = payload else {
             return;
@@ -1196,14 +1211,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             return;
         }
+        let composition = self
+            .composition
+            .trace_context()
+            .unwrap_or_else(|| unreachable!("retired composition retains exact identity"));
         self.composition = CompositionState::None;
-        self.trace.record(
-            TraceRecordKind::CompositionRetired,
-            Some(sequence),
-            causal_parent,
-            None,
-            None,
-            Some(self.tree.trace_target(target)),
+        self.trace.record_draft(
+            TraceRecordDraft::input_fact(
+                TraceRecordKind::CompositionRetired,
+                instant,
+                TraceContext::input_record(TraceInputContext::composition_cleanup(
+                    composition,
+                    TraceDeliveryOutcome::Suppressed,
+                )),
+            )
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(causal_parent)
+            .with_target(Some(self.tree.trace_target(target))),
         );
     }
 
@@ -1245,14 +1269,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         CompositionState::Active {
                             generation,
                             owner,
-                            _device_id: device_id,
-                            _start_sequence: start_sequence,
+                            device_id,
+                            start_sequence,
                         }
                     }
                     other => other,
                 };
             }
-            CompositionEvent::End(_) | CompositionEvent::Cancel(_) => {
+            CompositionEvent::End(_) => {
                 self.composition = CompositionState::None;
                 self.trace.record_event(
                     TraceRecordKind::CompositionRetired,
@@ -1263,6 +1287,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     target,
                     Some(target),
                     origin,
+                );
+            }
+            CompositionEvent::Cancel(cancel) => {
+                let composition = self
+                    .composition
+                    .trace_context()
+                    .unwrap_or_else(|| unreachable!("completed cancellation retains identity"));
+                self.composition = CompositionState::None;
+                let cancelled = self.trace.record_draft(
+                    TraceRecordDraft::input_fact(
+                        TraceRecordKind::CompositionCancelled {
+                            reason: cancel.reason(),
+                        },
+                        instant,
+                        TraceContext::input_record(TraceInputContext::composition_cleanup(
+                            composition,
+                            TraceDeliveryOutcome::Delivered,
+                        )),
+                    )
+                    .with_work_sequence(Some(sequence))
+                    .with_causal_parent(causal_parent)
+                    .with_target(Some(self.tree.trace_target(target)))
+                    .with_routed_endpoints(
+                        target.clone(),
+                        Some(target.clone()),
+                        origin,
+                    ),
+                );
+                self.trace.record_draft(
+                    TraceRecordDraft::input_marker(TraceRecordKind::CompositionRetired, instant)
+                        .with_work_sequence(Some(sequence))
+                        .with_causal_parent(cancelled)
+                        .with_target(Some(self.tree.trace_target(target))),
                 );
             }
             _ => {}

@@ -51,9 +51,6 @@ impl TraceRoutedEndpoints {
 }
 
 /// Complete named input for constructing one immutable canonical trace record.
-///
-/// Producer-facing family APIs progressively replace the transitional store
-/// entry points with domain-specific construction of this value.
 #[derive(Debug)]
 pub(crate) struct TraceRecordDraft {
     pub(super) kind: TraceRecordKind,
@@ -82,7 +79,6 @@ impl TraceRecordDraft {
         }
     }
 
-    /// Constructs one scheduler/work fact with mandatory logical time and work identity.
     #[must_use]
     pub(crate) fn work_fact(
         kind: TraceRecordKind,
@@ -95,7 +91,6 @@ impl TraceRecordDraft {
         draft
     }
 
-    /// Constructs one terminal or shutdown fact at its owning transition instant.
     #[must_use]
     pub(crate) const fn lifecycle_fact(
         kind: TraceRecordKind,
@@ -106,7 +101,6 @@ impl TraceRecordDraft {
         draft
     }
 
-    /// Constructs one redraw-control fact at the owning dirty/publication instant.
     #[must_use]
     pub(crate) const fn redraw_fact(kind: TraceRecordKind, logical_time: MonotonicInstant) -> Self {
         let mut draft = Self::new(kind);
@@ -114,7 +108,6 @@ impl TraceRecordDraft {
         draft
     }
 
-    /// Constructs one application-transaction fact at the transaction's accepted instant.
     #[must_use]
     pub(crate) const fn application_fact(
         kind: TraceRecordKind,
@@ -125,35 +118,71 @@ impl TraceRecordDraft {
         draft
     }
 
-    /// Constructs one routed fact with exact event time and normalized context.
     #[must_use]
     pub(crate) fn routed_fact(
         kind: TraceRecordKind,
         logical_time: MonotonicInstant,
         context: TraceContext,
     ) -> Self {
-        let mut draft = Self::new(kind);
-        draft.logical_time = Some(logical_time);
-        draft.context = context;
-        draft
+        Self::context_fact(kind, logical_time, context)
     }
 
-    /// Constructs one pointer-domain fact with exact event time and context.
     #[must_use]
     pub(crate) fn pointer_fact(
         kind: TraceRecordKind,
         logical_time: MonotonicInstant,
         context: TraceContext,
     ) -> Self {
+        Self::context_fact(kind, logical_time, context)
+    }
+
+    #[must_use]
+    pub(crate) fn focus_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        context: TraceContext,
+    ) -> Self {
+        Self::context_fact(kind, logical_time, context)
+    }
+
+    #[must_use]
+    pub(crate) fn input_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        context: TraceContext,
+    ) -> Self {
+        Self::context_fact(kind, logical_time, context)
+    }
+
+    #[must_use]
+    pub(crate) const fn input_marker(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+    ) -> Self {
         let mut draft = Self::new(kind);
         draft.logical_time = Some(logical_time);
-        draft.context = context;
         draft
     }
 
-    /// Constructs one focus/modality fact with exact transition time and context.
     #[must_use]
-    pub(crate) fn focus_fact(
+    pub(crate) fn automation_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        context: TraceContext,
+    ) -> Self {
+        Self::context_fact(kind, logical_time, context)
+    }
+
+    #[must_use]
+    pub(crate) fn action_fact(
+        kind: TraceRecordKind,
+        logical_time: MonotonicInstant,
+        context: TraceContext,
+    ) -> Self {
+        Self::context_fact(kind, logical_time, context)
+    }
+
+    fn context_fact(
         kind: TraceRecordKind,
         logical_time: MonotonicInstant,
         context: TraceContext,
@@ -164,7 +193,6 @@ impl TraceRecordDraft {
         draft
     }
 
-    /// Constructs one displayed-surface fact at its owning observation instant.
     #[must_use]
     pub(crate) fn surface_fact(
         kind: TraceRecordKind,
@@ -177,7 +205,6 @@ impl TraceRecordDraft {
         draft
     }
 
-    /// Constructs one renderer-facing publication fact with exact displayed identity.
     #[must_use]
     pub(crate) fn publication_fact(
         kind: TraceRecordKind,
@@ -190,21 +217,18 @@ impl TraceRecordDraft {
         draft
     }
 
-    /// Attaches the owning global work-envelope sequence.
     #[must_use]
     pub(crate) const fn with_work_sequence(mut self, work_sequence: Option<WorkSequence>) -> Self {
         self.work_sequence = work_sequence;
         self
     }
 
-    /// Attaches the exact causal parent known at the producer boundary.
     #[must_use]
     pub(crate) const fn with_causal_parent(mut self, causal_parent: Option<TraceSequence>) -> Self {
         self.causal_parent = causal_parent;
         self
     }
 
-    /// Attaches exact reconciliation generations known at the producer boundary.
     #[must_use]
     pub(crate) const fn with_reconciliation(
         mut self,
@@ -215,14 +239,12 @@ impl TraceRecordDraft {
         self
     }
 
-    /// Attaches the exact normalized target known at the producer boundary.
     #[must_use]
     pub(crate) fn with_target(mut self, target: Option<TraceTarget>) -> Self {
         self.target = target;
         self
     }
 
-    /// Attaches routed endpoints and command origin known at admission.
     #[must_use]
     pub(crate) fn with_routed_endpoints(
         mut self,

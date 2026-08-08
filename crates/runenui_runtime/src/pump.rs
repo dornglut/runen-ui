@@ -339,7 +339,7 @@ mod tests {
     use runenui_core::{Element, NoHostProtocol, UiApp, View, text};
 
     use super::{PumpBudget, pump};
-    use crate::{RuntimeConfig, queue::ApplicationActionOrigin, runtime::Runtime};
+    use crate::{RuntimeConfig, TraceActionCategory, runtime::Runtime};
 
     struct App;
 
@@ -361,7 +361,7 @@ mod tests {
     fn one_checkpoint_authority_runs_before_and_at_the_final_boundary() {
         let mut runtime = Runtime::mount(0, App::root, RuntimeConfig::default());
         runtime
-            .submit_action((), ApplicationActionOrigin::DirectSubmission, None, None)
+            .submit_action((), TraceActionCategory::DirectSubmission, None, None)
             .unwrap_or_else(|_| unreachable!());
         assert_eq!(runtime.readiness_checkpoint_count_for_test(), 0);
         let report = pump::<App>(

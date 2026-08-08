@@ -80,13 +80,6 @@ impl<Action> fmt::Display for SubmitActionError<Action> {
 /// Result of submitting one owned application action.
 pub type SubmitActionResult<Action> = Result<WorkSequence, SubmitActionError<Action>>;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ApplicationActionOrigin {
-    DirectSubmission,
-    RoutedCommand,
-    ApplicationEffect,
-}
-
 pub(crate) struct SemanticCommandEnvelope {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,
@@ -130,7 +123,6 @@ pub(crate) struct ApplicationActionEnvelope<Action> {
     pub(crate) action: Action,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) target: Option<TraceTarget>,
-    pub(crate) origin: ApplicationActionOrigin,
 }
 
 pub(crate) enum WorkEnvelope<Action> {
@@ -229,7 +221,6 @@ impl<Action> WorkQueue<Action> {
         action: Action,
         causal_parent: Option<TraceSequence>,
         target: Option<TraceTarget>,
-        origin: ApplicationActionOrigin,
     ) -> Result<WorkSequence, Action> {
         let Some(next_sequence) = self.next_sequence else {
             return Err(action);
@@ -242,7 +233,6 @@ impl<Action> WorkQueue<Action> {
                 action,
                 causal_parent,
                 target,
-                origin,
             }));
         Ok(sequence)
     }

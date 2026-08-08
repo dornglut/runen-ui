@@ -64,10 +64,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 runenui_core::CompositionCancelReason::Shutdown,
                 cleanup_cause,
             )
-            .unwrap_or_else(|()| {
+            .unwrap_or_else(|failure| {
                 self.suppress_composition_cleanup(
                     runenui_core::CompositionCancelReason::Shutdown,
-                    cleanup_cause,
+                    cleanup_cause.with_failure_lineage(failure),
                 )
             });
         let space_parent = self.revoke_space_ownership_with_cause(
@@ -156,10 +156,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 runenui_core::CompositionCancelReason::Shutdown,
                 cleanup_cause,
             )
-            .unwrap_or_else(|()| {
+            .unwrap_or_else(|failure| {
                 let parent = self.suppress_composition_cleanup(
                     runenui_core::CompositionCancelReason::Shutdown,
-                    cleanup_cause,
+                    cleanup_cause.with_failure_lineage(failure),
                 );
                 if matches!(self.status, RuntimeStatus::Running) {
                     self.enter_terminal_with_parent(RuntimeTerminalReason::Poisoned, 0, parent);

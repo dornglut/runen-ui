@@ -12,7 +12,8 @@ use runenui_core::{
 use runenui_runtime::{
     AppRuntime, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
     SubmitAutomationErrorKind, SubmitCommandErrorKind, SubmitCompositionErrorKind,
-    SubmitKeyboardErrorKind, SubmitTextErrorKind, TraceConfig, TraceRecord, TraceRecordKind,
+    SubmitKeyboardErrorKind, SubmitTextErrorKind, TraceAutomationRecordRole, TraceConfig,
+    TraceDeliveryOutcome, TraceInputRecordRole, TraceRecord, TraceRecordKind,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -958,21 +959,40 @@ fn text_01_committed_text_routes_to_the_exact_capable_focus_and_is_redacted_in_t
             }
         ) && fact.cancelable == Some(true)
     }));
-    let trace = kinds(&runtime);
-    assert!(trace.iter().any(|kind| matches!(
-        kind,
-        TraceRecordKind::CommittedTextSubmissionAccepted {
-            bytes: 3,
-            scalars: 2
-        }
-    )));
-    assert!(trace.iter().any(|kind| matches!(
-        kind,
-        TraceRecordKind::CommittedTextProcessingValidated {
-            bytes: 3,
-            scalars: 2
-        }
-    )));
+    let accepted = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CommittedTextSubmissionAccepted
+            )
+        })
+        .unwrap_or_else(|| unreachable!("committed text acceptance is traced"));
+    let input = accepted
+        .context()
+        .input()
+        .unwrap_or_else(|| unreachable!("committed text acceptance owns typed input facts"));
+    assert_eq!(input.role(), TraceInputRecordRole::CommittedText);
+    let metrics = input
+        .text_metrics()
+        .unwrap_or_else(|| unreachable!("committed text owns redacted metrics"));
+    assert_eq!(metrics.bytes(), 3);
+    assert_eq!(metrics.scalars(), 2);
+    let validated = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CommittedTextProcessingValidated
+            )
+        })
+        .unwrap_or_else(|| unreachable!("committed text processing is traced"));
+    assert!(
+        validated.context().input().is_none(),
+        "processing classification does not duplicate accepted text metrics"
+    );
     assert!(
         !format!("{:?}", runtime.trace().records().collect::<Vec<_>>()).contains("hé"),
         "the canonical trace retains only text length facts"
@@ -1089,14 +1109,54 @@ fn ime_01_composition_start_update_end_and_explicit_cancel_are_exact_and_redacte
             .iter()
             .any(|kind| matches!(kind, TraceRecordKind::CompositionActiveBound))
     );
-    assert!(trace.iter().any(|kind| matches!(
-        kind,
-        TraceRecordKind::CompositionUpdated { has_range: true }
-    )));
-    assert!(
-        trace
-            .iter()
-            .any(|kind| matches!(kind, TraceRecordKind::CompositionEnded))
+    let update = runtime
+        .trace()
+        .records()
+        .find(|record| matches!(record.kind(), TraceRecordKind::CompositionUpdateSubmitted))
+        .unwrap_or_else(|| unreachable!("composition update submission is traced"));
+    let update_context = update
+        .context()
+        .input()
+        .unwrap_or_else(|| unreachable!("composition update owns typed input facts"));
+    assert_eq!(
+        update_context.role(),
+        TraceInputRecordRole::CompositionUpdate
+    );
+    let composition = update_context
+        .composition()
+        .unwrap_or_else(|| unreachable!("composition update owns exact lifetime identity"));
+    assert_eq!(composition.generation(), start.generation());
+    let metrics = update_context
+        .text_metrics()
+        .unwrap_or_else(|| unreachable!("composition update owns redacted preedit metrics"));
+    assert_eq!(metrics.bytes(), 14);
+    assert_eq!(metrics.scalars(), 14);
+    let trace_range = update_context
+        .composition_range()
+        .unwrap_or_else(|| unreachable!("composition update owns its checked range"));
+    assert_eq!(trace_range.byte_start(), 0);
+    assert_eq!(trace_range.byte_end(), 7);
+    assert_eq!(trace_range.scalar_start(), 0);
+    assert_eq!(trace_range.scalar_end(), 7);
+    let ended = runtime
+        .trace()
+        .records()
+        .find(|record| matches!(record.kind(), TraceRecordKind::CompositionEndSubmitted))
+        .unwrap_or_else(|| unreachable!("composition end submission is traced"));
+    let end_context = ended
+        .context()
+        .input()
+        .unwrap_or_else(|| unreachable!("composition end owns exact lifetime identity"));
+    assert_eq!(
+        end_context.role(),
+        TraceInputRecordRole::CompositionIdentity
+    );
+    assert_eq!(
+        end_context
+            .composition()
+            .unwrap_or_else(|| unreachable!("composition end retains identity"))
+            .generation(),
+        start.generation()
     );
     assert!(
         trace
@@ -1145,7 +1205,7 @@ fn ime_01_composition_start_update_end_and_explicit_cancel_are_exact_and_redacte
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("retired generation permits a fresh start"));
     settle(&mut runtime);
-    runtime
+    let cancel = runtime
         .cancel_composition(second.generation().clone())
         .unwrap_or_else(|_| unreachable!("active generation accepts explicit cancellation"));
     settle(&mut runtime);
@@ -1155,6 +1215,69 @@ fn ime_01_composition_start_update_end_and_explicit_cancel_are_exact_and_redacte
             && fact.input == ObservedInput::CompositionCancel(CompositionCancelReason::Explicit)
             && fact.cancelable == Some(false)
     }));
+    let submitted = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CompositionCancelSubmitted)
+                && record.work_sequence() == Some(cancel.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("explicit cancel submission is traced"));
+    let submitted_context = submitted
+        .context()
+        .input()
+        .unwrap_or_else(|| unreachable!("explicit cancel submission owns exact identity"));
+    assert_eq!(
+        submitted_context.role(),
+        TraceInputRecordRole::CompositionIdentity
+    );
+    assert_eq!(
+        submitted_context
+            .composition()
+            .unwrap_or_else(|| unreachable!("cancel submission retains composition identity"))
+            .generation(),
+        second.generation()
+    );
+    let committed = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CompositionCancelled {
+                    reason: CompositionCancelReason::Explicit
+                }
+            ) && record.work_sequence() == Some(cancel.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("explicit cancellation commits after callback success"));
+    let committed_context = committed
+        .context()
+        .input()
+        .unwrap_or_else(|| unreachable!("committed cancellation owns cleanup result"));
+    assert_eq!(
+        committed_context.role(),
+        TraceInputRecordRole::CompositionCleanup
+    );
+    assert_eq!(
+        committed_context.delivery(),
+        Some(TraceDeliveryOutcome::Delivered)
+    );
+    assert_eq!(
+        committed_context
+            .composition()
+            .unwrap_or_else(|| unreachable!("committed cancellation retains exact lifetime"))
+            .generation(),
+        second.generation()
+    );
+    let retired = runtime
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CompositionRetired)
+                && record.work_sequence() == Some(cancel.sequence())
+        })
+        .unwrap_or_else(|| unreachable!("explicit cancellation retires the same work"));
+    assert_eq!(retired.causal_parent(), Some(committed.sequence()));
 }
 
 #[test]
@@ -1387,8 +1510,7 @@ fn ime_03_focus_transfer_cancels_the_live_owner_before_focus_out() {
                 TraceRecordKind::FocusNotificationResolved {
                     kind: runenui_runtime::FocusEventKind::Out
                 }
-            ) && record.context().delivery()
-                == Some(runenui_runtime::TraceDeliveryOutcome::Delivered)
+            ) && record.context().delivery() == Some(TraceDeliveryOutcome::Delivered)
         })
         .unwrap_or_else(|| unreachable!("focus departure is delivered"));
     assert!(cancellation < focus_out);
@@ -1404,6 +1526,19 @@ fn ime_03_focus_transfer_cancels_the_live_owner_before_focus_out() {
             ) && record.work_sequence() == Some(focus_submission.sequence())
         })
         .unwrap_or_else(|| unreachable!("focus cleanup cancellation retains command work"));
+    let cleanup = cancelled
+        .context()
+        .input()
+        .unwrap_or_else(|| unreachable!("focus cleanup owns typed composition identity"));
+    assert_eq!(cleanup.role(), TraceInputRecordRole::CompositionCleanup);
+    assert_eq!(cleanup.delivery(), Some(TraceDeliveryOutcome::Delivered));
+    assert_eq!(
+        cleanup
+            .composition()
+            .unwrap_or_else(|| unreachable!("focus cleanup retains exact lifetime"))
+            .generation(),
+        start.generation()
+    );
     assert!(cancelled.causal_parent().is_some());
     let retired = runtime
         .trace()
@@ -1482,6 +1617,19 @@ fn ime_04_reconciliation_cancels_before_removal_replacement_and_capability_loss(
             ) && record.work_sequence() == Some(removal_start.sequence())
         })
         .unwrap_or_else(|| unreachable!("reconciliation cleanup retains start work"));
+    let cleanup = cancelled
+        .context()
+        .input()
+        .unwrap_or_else(|| unreachable!("reconciliation cleanup owns typed input facts"));
+    assert_eq!(cleanup.role(), TraceInputRecordRole::CompositionCleanup);
+    assert_eq!(cleanup.delivery(), Some(TraceDeliveryOutcome::Delivered));
+    assert_eq!(
+        cleanup
+            .composition()
+            .unwrap_or_else(|| unreachable!("reconciliation cleanup retains exact lifetime"))
+            .generation(),
+        removal_start.generation()
+    );
     assert!(cancelled.causal_parent().is_some());
     let retired = removal
         .trace()
@@ -1596,6 +1744,10 @@ fn ime_05_pending_shutdown_cleans_the_live_owner_and_trace_is_optional() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "this conformance row proves both bounded-admission and bridge-integrity cleanup ancestry"
+)]
 fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown() {
     let bounded_log = Rc::new(RefCell::new(Vec::new()));
     let bounded_config = RuntimeConfig::default().with_limits(
@@ -1608,7 +1760,7 @@ fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown(
         bounded_config,
     );
     focus(&mut bounded, "target");
-    bounded
+    let bounded_start = bounded
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("live composition starts before bounded cleanup"));
     settle(&mut bounded);
@@ -1640,11 +1792,58 @@ fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown(
                     .unwrap_or_else(|_| unreachable!("valid authored id")),
             )
     }));
+    let rejection = bounded
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::RoutedEventAdmissionRejected {
+                    capacity: runenui_runtime::TraceRoutedAdmissionRejection::WaitingEnvelopes
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("bounded cleanup records its exact admission rejection"));
+    let retired = bounded
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CompositionRetired)
+                && record.context().delivery() == Some(TraceDeliveryOutcome::Suppressed)
+        })
+        .unwrap_or_else(|| unreachable!("failed bounded cleanup explicitly retires composition"));
+    let cleanup = retired
+        .context()
+        .input()
+        .unwrap_or_else(|| unreachable!("suppressed retirement owns typed composition facts"));
+    assert_eq!(cleanup.role(), TraceInputRecordRole::CompositionCleanup);
+    assert_eq!(cleanup.delivery(), Some(TraceDeliveryOutcome::Suppressed));
+    assert_eq!(
+        cleanup
+            .composition()
+            .unwrap_or_else(|| unreachable!("suppressed cleanup retains exact lifetime"))
+            .generation(),
+        bounded_start.generation()
+    );
+    assert_eq!(retired.causal_parent(), Some(rejection.sequence()));
+    let terminal = bounded
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::RuntimeTerminal {
+                    reason: RuntimeTerminalReason::Poisoned
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("bounded cleanup failure terminalizes"));
+    assert_eq!(terminal.causal_parent(), Some(retired.sequence()));
 
     let bridge_log = Rc::new(RefCell::new(Vec::new()));
     let mut bridge = mounted(InputState::standard(Rc::clone(&bridge_log)));
     focus(&mut bridge, "target");
-    bridge
+    let bridge_start = bridge
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("live composition starts before bridge failure"));
     settle(&mut bridge);
@@ -1670,6 +1869,54 @@ fn ime_06_cleanup_admission_or_bridge_failure_terminalizes_before_tree_teardown(
             .any(|fact| fact.input == ObservedInput::Unmounted),
         "a bridge failure terminalizes before the invalidated owner can unmount"
     );
+    let retired = bridge
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(record.kind(), TraceRecordKind::CompositionRetired)
+                && record.context().delivery() == Some(TraceDeliveryOutcome::Suppressed)
+        })
+        .unwrap_or_else(|| unreachable!("bridge failure suppresses composition delivery"));
+    let failure_parent = retired
+        .causal_parent()
+        .unwrap_or_else(|| unreachable!("suppressed retirement retains failure ancestry"));
+    let failure = bridge
+        .trace()
+        .records()
+        .find(|record| record.sequence() == failure_parent)
+        .unwrap_or_else(|| unreachable!("suppressed retirement parent is retained"));
+    assert!(matches!(
+        failure.kind(),
+        TraceRecordKind::RoutedIntegrityFailed {
+            failure: runenui_runtime::TraceRoutedIntegrityFailure::CallbackBridgeFailure
+        }
+    ));
+    let cleanup = retired
+        .context()
+        .input()
+        .unwrap_or_else(|| unreachable!("suppressed retirement owns typed composition facts"));
+    assert_eq!(cleanup.role(), TraceInputRecordRole::CompositionCleanup);
+    assert_eq!(cleanup.delivery(), Some(TraceDeliveryOutcome::Suppressed));
+    assert_eq!(
+        cleanup
+            .composition()
+            .unwrap_or_else(|| unreachable!("bridge cleanup retains exact lifetime"))
+            .generation(),
+        bridge_start.generation()
+    );
+    let terminal = bridge
+        .trace()
+        .records()
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::RuntimeTerminal {
+                    reason: RuntimeTerminalReason::Poisoned
+                }
+            )
+        })
+        .unwrap_or_else(|| unreachable!("bridge cleanup failure terminalizes"));
+    assert_eq!(terminal.causal_parent(), Some(retired.sequence()));
 }
 
 #[test]
@@ -1841,7 +2088,7 @@ fn automation_01_unique_resolution_uses_canonical_command_ingress_with_lineage()
     let authored =
         runenui_core::ElementId::new("target").unwrap_or_else(|_| unreachable!("valid id"));
     let submission = runtime
-        .submit_automation_command(authored, SemanticCommand::Activate)
+        .submit_automation_command(authored.clone(), SemanticCommand::Activate)
         .unwrap_or_else(|_| unreachable!("unique target is accepted"));
     assert_eq!(
         runtime.state().activations,
@@ -1855,8 +2102,16 @@ fn automation_01_unique_resolution_uses_canonical_command_ingress_with_lineage()
         .trace()
         .records()
         .find(|record| matches!(record.kind(), TraceRecordKind::AutomationResolutionUnique))
-        .unwrap_or_else(|| unreachable!("unique resolution is traced"))
-        .sequence();
+        .unwrap_or_else(|| unreachable!("unique resolution is traced"));
+    let resolution_context = resolution
+        .context()
+        .automation()
+        .unwrap_or_else(|| unreachable!("unique automation resolution owns authored intent"));
+    assert_eq!(resolution_context.role(), TraceAutomationRecordRole::Unique);
+    assert_eq!(resolution_context.authored_id(), &authored);
+    assert_eq!(resolution_context.command(), SemanticCommand::Activate);
+    assert_eq!(resolution_context.candidates(), None);
+    let resolution_sequence = resolution.sequence();
     let accepted = runtime
         .trace()
         .records()
@@ -1865,12 +2120,12 @@ fn automation_01_unique_resolution_uses_canonical_command_ingress_with_lineage()
                 && record.work_sequence() == Some(submission.sequence())
         })
         .unwrap_or_else(|| unreachable!("canonical command acceptance is traced"));
-    assert_eq!(accepted.causal_parent(), Some(resolution));
+    assert_eq!(accepted.causal_parent(), Some(resolution_sequence));
     assert_eq!(accepted.command_origin(), Some(CommandOrigin::automation()));
 }
 
 #[test]
-fn automation_02_missing_ambiguous_and_underlying_rejections_preserve_requests() {
+fn automation_02_missing_and_ambiguous_rejections_preserve_requests() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut missing = mounted(InputState::standard(Rc::clone(&log)));
     let before = missing.__routed_sequence_state_for_test();
@@ -1881,13 +2136,24 @@ fn automation_02_missing_ambiguous_and_underlying_rejections_preserve_requests()
         unreachable!("missing authored id is structurally rejected");
     };
     assert_eq!(error.kind(), &SubmitAutomationErrorKind::MissingAuthoredId);
-    assert_eq!(error.into_request(), (authored, SemanticCommand::Activate));
-    assert_eq!(missing.__routed_sequence_state_for_test().0, before.0);
-    assert!(
-        kinds(&missing)
-            .iter()
-            .any(|kind| matches!(kind, TraceRecordKind::AutomationResolutionMissing))
+    assert_eq!(
+        error.into_request(),
+        (authored.clone(), SemanticCommand::Activate)
     );
+    assert_eq!(missing.__routed_sequence_state_for_test().0, before.0);
+    let missing_record = missing
+        .trace()
+        .records()
+        .find(|record| matches!(record.kind(), TraceRecordKind::AutomationResolutionMissing))
+        .unwrap_or_else(|| unreachable!("missing resolution is traced"));
+    let missing_context = missing_record
+        .context()
+        .automation()
+        .unwrap_or_else(|| unreachable!("missing resolution owns authored intent"));
+    assert_eq!(missing_context.role(), TraceAutomationRecordRole::Missing);
+    assert_eq!(missing_context.authored_id(), &authored);
+    assert_eq!(missing_context.command(), SemanticCommand::Activate);
+    assert_eq!(missing_context.candidates(), None);
 
     let mut ambiguous_state = InputState::standard(Rc::clone(&log));
     ambiguous_state.duplicate_target_id = true;
@@ -1920,20 +2186,37 @@ fn automation_02_missing_ambiguous_and_underlying_rejections_preserve_requests()
         candidates[1].mounted_node_id(),
         "diagnostics retain only distinct opaque mounted lifetimes"
     );
-    assert_eq!(error.into_request(), (authored, SemanticCommand::Activate));
+    assert_eq!(
+        error.into_request(),
+        (authored.clone(), SemanticCommand::Activate)
+    );
     assert_eq!(ambiguous.__routed_sequence_state_for_test().0, before.0);
-    let traced_candidates = ambiguous
+    let ambiguous_record = ambiguous
         .trace()
         .records()
-        .find_map(|record| match record.kind() {
-            TraceRecordKind::AutomationResolutionAmbiguous { candidates } => {
-                Some(candidates.clone())
-            }
-            _ => None,
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::AutomationResolutionAmbiguous
+            )
         })
         .unwrap_or_else(|| unreachable!("ambiguous resolution is traced"));
-    assert_eq!(traced_candidates, candidates);
+    let ambiguous_context = ambiguous_record
+        .context()
+        .automation()
+        .unwrap_or_else(|| unreachable!("ambiguous resolution owns deterministic candidates"));
+    assert_eq!(
+        ambiguous_context.role(),
+        TraceAutomationRecordRole::Ambiguous
+    );
+    assert_eq!(ambiguous_context.authored_id(), &authored);
+    assert_eq!(ambiguous_context.command(), SemanticCommand::Activate);
+    assert_eq!(ambiguous_context.candidates(), Some(candidates.as_slice()));
+}
 
+#[test]
+fn automation_02b_underlying_queue_rejection_preserves_request() {
+    let log = Rc::new(RefCell::new(Vec::new()));
     let config = RuntimeConfig::default().with_limits(
         RuntimeLimits::default()
             .with_waiting_envelopes(4)
