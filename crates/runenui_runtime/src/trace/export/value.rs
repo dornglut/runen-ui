@@ -9,11 +9,7 @@ use crate::TraceTarget;
 
 use super::{json, tokens};
 
-pub(super) fn mounted_id(
-    output: &mut String,
-    runtime: &RuntimeNamespace,
-    id: &MountedNodeId,
-) {
+pub(super) fn mounted_id(output: &mut String, runtime: &RuntimeNamespace, id: &MountedNodeId) {
     if let Some((slot, generation)) = runtime.__runtime_mounted_parts(id) {
         output.push_str("{\"scope\":\"local\",\"token\":");
         let mut token = String::new();
@@ -57,7 +53,10 @@ pub(super) fn target(output: &mut String, runtime: &RuntimeNamespace, target: &T
     mounted_id(output, runtime, target.mounted_node_id());
     output.push(',');
     json::name(output, "authored_id");
-    json::optional_string(output, target.authored_id().map(runenui_core::ElementId::as_str));
+    json::optional_string(
+        output,
+        target.authored_id().map(runenui_core::ElementId::as_str),
+    );
     output.push('}');
 }
 
