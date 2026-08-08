@@ -1,6 +1,8 @@
+use core::fmt;
+
 use runenui_core::{CompositionGeneration, CompositionRange, InputDeviceId};
 
-use super::{TraceDeliveryOutcome, TraceEventContext, TraceEventFamily};
+use super::{TraceDeliveryOutcome, TraceEventContext, TraceEventFamily, TracePayloadCapture};
 
 /// Semantic role of the typed input payload stored by one trace record.
 #[non_exhaustive]
@@ -124,6 +126,25 @@ impl TraceCompositionRange {
     }
 }
 
+#[derive(Clone, Eq, PartialEq)]
+struct PendingTraceText(Box<str>);
+
+impl PendingTraceText {
+    fn new(text: &str) -> Self {
+        Self(text.into())
+    }
+
+    const fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for PendingTraceText {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("PendingTraceText(..)")
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum TraceInputContextData {
     Keyboard {
@@ -132,6 +153,7 @@ enum TraceInputContextData {
     CommittedText {
         device_id: Option<InputDeviceId>,
         metrics: TraceTextMetrics,
+        captured: Option<PendingTraceText>,
     },
     CompositionIdentity {
         composition: TraceCompositionContext,
@@ -140,6 +162,7 @@ enum TraceInputContextData {
         composition: TraceCompositionContext,
         metrics: TraceTextMetrics,
         range: Option<TraceCompositionRange>,
+        captured: Option<PendingTraceText>,
     },
     CompositionCleanup {
         composition: TraceCompositionContext,
@@ -165,6 +188,7 @@ impl TraceInputContext {
             data: TraceInputContextData::CommittedText {
                 device_id,
                 metrics: TraceTextMetrics::redacted(text),
+                captured: Some(PendingTraceText::new(text)),
             },
         }
     }
@@ -185,6 +209,7 @@ impl TraceInputContext {
                 composition,
                 metrics: TraceTextMetrics::redacted(preedit),
                 range: range.map(|range| TraceCompositionRange::from_validated(preedit, range)),
+                captured: Some(PendingTraceText::new(preedit)),
             },
         }
     }
@@ -198,6 +223,19 @@ impl TraceInputContext {
                 composition,
                 delivery,
             },
+        }
+    }
+
+    pub(in crate::trace) fn apply_payload_capture(&mut self, capture: TracePayloadCapture) {
+        if matches!(capture, TracePayloadCapture::FullText) {
+            return;
+        }
+        match &mut self.data {
+            TraceInputContextData::CommittedText { captured, .. }
+            | TraceInputContextData::CompositionUpdate { captured, .. } => *captured = None,
+            TraceInputContextData::Keyboard { .. }
+            | TraceInputContextData::CompositionIdentity { .. }
+            | TraceInputContextData::CompositionCleanup { .. } => {}
         }
     }
 
@@ -275,6 +313,20 @@ impl TraceInputContext {
         }
     }
 
+    /// Returns the explicitly captured committed text or preedit, when enabled.
+    #[must_use]
+    pub fn captured_text(&self) -> Option<&str> {
+        match &self.data {
+            TraceInputContextData::CommittedText { captured, .. }
+            | TraceInputContextData::CompositionUpdate { captured, .. } => {
+                captured.as_ref().map(PendingTraceText::as_str)
+            }
+            TraceInputContextData::Keyboard { .. }
+            | TraceInputContextData::CompositionIdentity { .. }
+            | TraceInputContextData::CompositionCleanup { .. } => None,
+        }
+    }
+
     /// Returns the checked redacted composition range for an update that supplied one.
     #[must_use]
     pub const fn composition_range(&self) -> Option<TraceCompositionRange> {
@@ -301,11 +353,15 @@ mod tests {
     use super::{
         TraceCompositionContext, TraceInputContext, TraceInputRecordRole, TraceTextMetrics,
     };
-    use crate::TraceDeliveryOutcome;
+    use crate::{TraceDeliveryOutcome, TracePayloadCapture};
 
     #[test]
-    fn committed_text_retains_only_redacted_metrics() {
-        let context = TraceInputContext::committed_text("hé", None);
+    fn committed_text_is_scrubbed_by_default_policy_without_debug_leakage() {
+        let mut context = TraceInputContext::committed_text("hé", None);
+        assert_eq!(context.captured_text(), Some("hé"));
+        assert!(!format!("{context:?}").contains("hé"));
+
+        context.apply_payload_capture(TracePayloadCapture::Redacted);
 
         assert_eq!(context.role(), TraceInputRecordRole::CommittedText);
         assert_eq!(
@@ -317,8 +373,16 @@ mod tests {
             context.text_metrics().map(TraceTextMetrics::scalars),
             Some(2)
         );
+        assert_eq!(context.captured_text(), None);
         assert_eq!(context.composition(), None);
         assert_eq!(context.delivery(), None);
+    }
+
+    #[test]
+    fn explicit_full_text_policy_retains_payload_without_debug_formatting_it() {
+        let mut context = TraceInputContext::committed_text("hé", None);
+        context.apply_payload_capture(TracePayloadCapture::FullText);
+        assert_eq!(context.captured_text(), Some("hé"));
         assert!(!format!("{context:?}").contains("hé"));
     }
 
@@ -340,6 +404,7 @@ mod tests {
             Some(7)
         );
         assert_eq!(context.text_metrics(), None);
+        assert_eq!(context.captured_text(), None);
         assert_eq!(context.composition_range(), None);
     }
 }
