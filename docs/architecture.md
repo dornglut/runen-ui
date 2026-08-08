@@ -40,9 +40,9 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
-M4A, M4B, and M4C0–M4C5 are complete and owner-accepted. The accepted M4C3
-feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
-`29996101708` and was squash-merged in PR #15 as
+M4A, M4B, M4C0–M4C5, and M4D1 are complete and owner-accepted. The accepted
+M4C3 feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI
+run `29996101708` and was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`. The accepted M4C4 feature head
 `f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
 `30006170403` and was squash-merged in
@@ -51,9 +51,13 @@ feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
 `d0d2ef1d53a8ab1d940beb4155f5f991229f042e` passed exact-head CI run
 `30843238697`, passed independent rereview, and was squash-merged in
 [PR #27](https://github.com/dornglut/runen-ui/pull/27) as
-`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. Its separate post-merge authority
-reconciliation remains the final predecessor gate for M4D1. M4D1–M4D3 remain
-blocked in sequence. The target M4 pipeline is active and incomplete.
+`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. The accepted M4D1 feature head
+`990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed canonical exact-head CI run
+`31269401262` / #657 and the frozen complete-diff review, and was squash-merged in
+[PR #39](https://github.com/dornglut/runen-ui/pull/39) as
+`2fe269366386d7aee9de2a2573498b64ad486293`. M4D2 remains blocked until this
+post-merge authority reconciliation is accepted and merged; M4D3 remains blocked
+behind M4D2. The target M4 pipeline is active and incomplete.
 
 ```text
 Application-owned State + Action
@@ -124,16 +128,20 @@ four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
 complete per-family causal scheduler trace proofs. The exact-target routed
 semantic-command kernel is accepted through M4C1, displayed-generation surface
 context through M4C2, pointer lifecycle through M4C3, focus scopes/modality
-through M4C4, and keyboard, committed-text/composition, plus deterministic
-authored-ID automation resolution through M4C5. The accepted M4C5 behavior does
-not add editable text, native IME objects, a platform host, or semantic
+through M4C4, keyboard, committed-text/composition, plus deterministic
+authored-ID automation resolution through M4C5, and normalized in-memory trace
+schema and full M4 causal reconstruction through M4D1. The accepted M4C5 behavior
+does not add editable text, native IME objects, a platform host, or semantic
 accessibility resolution. Public automation work/trace-sequence exhaustion is a
 deliberate recoverable exception that returns the exact authored request without
 terminalizing; direct commands and already-accepted mutable work retain ordinary
 terminal exhaustion policy. If mandatory composition cleanup cannot be delivered,
 the runtime records causal suppression, retires the exact lifetime, terminalizes,
 and preserves shutdown lineage rather than falsely claiming callback delivery.
-Trace-v2 normalization, export, and replay remain unimplemented M4D target
+M4D1's accepted canonical in-memory trace retains typed/redacted input,
+composition, automation, action, terminal, shutdown, logical-time, work-sequence,
+and causal-parent facts without a second history. Deterministic JSONL export,
+external sink delivery, and replay remain unimplemented M4D2/M4D3 target
 architecture. See the [public API contract](architecture/public-api.md),
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
 [work-tracking contract](work-tracking.md).
@@ -353,9 +361,9 @@ effects/scheduling/trace are accepted in ADR 0005 and ADR 0006 and are the activ
 M4 implementation authorities. The current implementation contains their
 accepted queue, scheduler, routed semantic-command, displayed-generation
 surface, pointer, focus/modality, keyboard/text/composition/automation,
-terminal/shutdown, and in-memory trace foundations. M4D normalization,
-export/sink, replay, and final milestone closure remain implementation gates.
-Public proof requirements are fixed in the M4 conformance matrix and
+terminal/shutdown, and M4D1-normalized in-memory trace authority. M4D2
+export/sink, M4D3 replay, and final milestone closure remain implementation
+gates. Public proof requirements are fixed in the M4 conformance matrix and
 directional-focus corpus.
 
 The following later choices still require dedicated analysis and review:
