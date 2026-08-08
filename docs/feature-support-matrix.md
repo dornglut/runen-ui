@@ -15,19 +15,19 @@ Support labels:
 | `deferred` | Accepted later target outside the first foundation or release. |
 | `unsupported` | Not available and not safe to infer from current APIs. |
 
-M4B and M4C0–M4C5 are complete and owner-accepted. The accepted M4C5 feature
-head `d0d2ef1d53a8ab1d940beb4155f5f991229f042e` passed exact-head CI run
-`30843238697` and was squash-merged in
-[PR #27](https://github.com/dornglut/runen-ui/pull/27) as
-`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. This document promotes only the
-accepted host-neutral proof behavior; editable text, native host translation,
-semantic accessibility resolution, and M4D normalization/export/replay remain
-outside M4C5. M4D1 becomes the next implementation slice only after this
-post-merge authority reconciliation is accepted and merged. Exact branch, head,
-blocker, validation, and next-action state belongs in the
-[work-tracking system](work-tracking.md), GitHub issues, and pull requests.
-Historical acceptance evidence remains in the [public repository migration
-history](history/public-repository-migration.md).
+M4B, M4C0–M4C5, and M4D1 are complete and owner-accepted. The accepted M4D1
+feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed exact-head CI run
+`31269401262` / #657 and was squash-merged in
+[PR #39](https://github.com/dornglut/runen-ui/pull/39) as
+`2fe269366386d7aee9de2a2573498b64ad486293`. This document promotes only the
+accepted normalized in-memory trace behavior; deterministic JSONL export,
+external sinks, replay, editable text, native host translation, and semantic
+accessibility resolution remain outside M4D1. M4D2 becomes the next
+implementation slice only after this post-merge authority reconciliation is
+accepted and merged. Exact branch, head, blocker, validation, and next-action
+state belongs in the [work-tracking system](work-tracking.md), GitHub issues, and
+pull requests. Historical acceptance evidence remains in the [public repository
+migration history](history/public-repository-migration.md).
 
 ## 1. Authoring and composition
 
@@ -235,8 +235,8 @@ history](history/public-repository-migration.md).
 | Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 harness and Ubuntu-only CI | M5, M11 |
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, fresh surface generation/revision context, and debug output | No stable severity/strict mode | M4C2 owner-accepted; M5–M7 |
-| Runtime trace | `partial` | Checked admission; capacity-zero equivalence; scheduler/routed/surface/pointer/focus graphs plus owner-accepted M4C5 keyboard/text/composition/automation causal facts and in-memory text/preedit redaction | Normalization M4D1; JSONL/sink/export/replay M4D2–M4D3 | M4B/M4C1–M4C5 owner-accepted; M4D blocked |
-| Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, and exclusive dropped-before watermark | Retention foundation is not complete trace v2 | M4–M5 |
+| Runtime trace | `partial` | One bounded M4D1-normalized canonical graph reconstructs scheduler/routed/surface/pointer/focus/modality/input/action/terminal/shutdown/publication causality; typed input/action/automation facts retain redacted identity and exact lineage | JSONL export, external sink, and replay remain M4D2–M4D3 | M4D1 owner-accepted; M4D2–M4D3 blocked |
+| Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, exclusive dropped-before watermark, and M4D1 normalized-schema proof | Retention alone does not provide export, sink delivery, or replay | M4D1 owner-accepted |
 | Bounded external trace sink | `unsupported` | Accepted bounded/try-based subordinate sink target contract only | No sink, backpressure diagnostic, or recursion guard | M4D2 |
 | Public headless test harness | `planned` | Current tests prove demand | No `runenui_testing` public boundary | M5 |
 | Semantic/layout/hit/paint assertions | `planned` | Layout/frame internals are inspectable | No unified public assertions | M5–M6 |
