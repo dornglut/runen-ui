@@ -82,10 +82,19 @@ pub(crate) fn process_application_action<App: UiApp>(
     );
     let transient = App::root(app_state).into_element();
     let previous_focus = runtime.focus.focused_node().cloned();
-    let previous_focus_route_len = runtime.focus.route_len();
-    let previous_focus_trace = previous_focus
-        .as_ref()
-        .map(|focused| runtime.tree.trace_target(focused));
+    let previous_focus_trace = runtime.trace.is_enabled().then(|| {
+        let target = previous_focus
+            .as_ref()
+            .map(|focused| runtime.tree.trace_target(focused));
+        let route = runtime
+            .focus
+            .route()
+            .iter()
+            .map(|member| runtime.tree.trace_target(member))
+            .collect::<Vec<_>>();
+        let surface = runtime.surface_publication.current_trace_surface_context();
+        (target, route, surface)
+    });
     let mut lifecycle_invalidated = Vec::new();
     let mut lifecycle_invalidated_identities = Vec::new();
     let mounted_public_slot_limit = runtime.mounted_public_slot_limit;
@@ -187,16 +196,18 @@ pub(crate) fn process_application_action<App: UiApp>(
         } else {
             runenui_core::FocusReason::Removal
         };
+        let (trace_target, old_route, surface) =
+            previous_focus_trace.unwrap_or_else(|| (None, Vec::new(), None));
         runtime.commit_reconciled_focus_cleanup(super::super::focus::ReconciledFocusCleanup {
-            old_target: previous_focus
-                .unwrap_or_else(|| unreachable!("invalid focus has a previous target")),
-            old_route_len: previous_focus_route_len,
+            old_route,
             reason,
             sequence,
-            causal_parent,
+            causal_parent: transaction_parent,
+            instant: trace_transaction.logical_time(),
             before,
             after,
-            trace_target: previous_focus_trace,
+            trace_target,
+            surface,
         });
     } else if retained_focus {
         runtime.trace.record_draft(

@@ -9,7 +9,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, SurfaceBuildContext,
-    TraceFocusBoundaryOutcome, TraceRecordKind,
+    TraceDeliveryOutcome, TraceFocusBoundaryOutcome, TraceFocusRecordRole, TraceRecordKind,
+    TraceTarget,
 };
 
 #[derive(Clone, Copy)]
@@ -536,18 +537,43 @@ fn removed_scope_clears_exact_focus_and_suppresses_stale_delivery() {
     settle(&mut runtime);
     assert_eq!(runtime.focus().focused_node(), None);
     assert_eq!(runtime.focus().reason(), Some(FocusReason::Removal));
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::FocusTransitionCommitted {
-            reason: FocusReason::Removal,
-            old_target: Some(old),
-            new_target: None,
-        } if old == &focused
-    )));
-    assert!(runtime.trace().records().any(|record| matches!(
-        record.kind(),
-        TraceRecordKind::FocusNotificationSuppressed { .. }
-    )));
+    assert!(runtime.trace().records().any(|record| {
+        if !matches!(
+            record.kind(),
+            TraceRecordKind::FocusTransitionCommitted {
+                reason: FocusReason::Removal,
+            }
+        ) || record.context().focus_record_role() != Some(TraceFocusRecordRole::Transition)
+        {
+            return false;
+        }
+        record
+            .context()
+            .target_transition()
+            .is_some_and(|transition| {
+                transition.previous().map(TraceTarget::mounted_node_id) == Some(&focused)
+                    && transition.current().is_none()
+            })
+    }));
+    assert!(runtime.trace().records().any(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::FocusNotificationResolved {
+                kind: FocusEventKind::Out,
+            }
+        ) && record.context().focus_record_role() == Some(TraceFocusRecordRole::Notification)
+            && record.context().delivery() == Some(TraceDeliveryOutcome::Suppressed)
+            && record.context().route().is_some_and(|route| {
+                route.targets().last().map(TraceTarget::mounted_node_id) == Some(&focused)
+            })
+            && record
+                .context()
+                .target_transition()
+                .is_some_and(|transition| {
+                    transition.previous().map(TraceTarget::mounted_node_id) == Some(&focused)
+                        && transition.current().is_none()
+                })
+    }));
 }
 
 #[test]

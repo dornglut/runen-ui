@@ -10,8 +10,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, FocusEventKind, FocusReason, LogicalSize, PumpBudget, SurfaceBuildContext,
-    SurfacePublication, TraceDeliveryOutcome, TraceEventFamily, TraceRecord, TraceRecordKind,
-    TraceTarget,
+    SurfacePublication, TraceDeliveryOutcome, TraceEventFamily, TraceFocusRecordRole, TraceRecord,
+    TraceRecordKind, TraceTarget,
 };
 
 #[derive(Clone)]
@@ -153,29 +153,77 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
     assert!(runtime.pump(full_budget()).is_quiescent());
 }
 
-fn assert_focus_shutdown_chain(records: &[&TraceRecord]) {
+fn assert_focus_shutdown_chain(records: &[&TraceRecord], harness: &Harness) {
+    let transition = records[5];
     assert!(matches!(
-        records[5].kind(),
+        transition.kind(),
         TraceRecordKind::FocusTransitionCommitted {
             reason: FocusReason::Shutdown,
-            old_target: Some(_),
-            new_target: None,
         }
     ));
+    assert_eq!(
+        transition.context().focus_record_role(),
+        Some(TraceFocusRecordRole::Transition)
+    );
+    let transition_endpoints = transition
+        .context()
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("shutdown focus transition owns exact endpoints"));
+    assert_eq!(
+        transition_endpoints
+            .previous()
+            .map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(transition_endpoints.current(), None);
+
     assert!(matches!(
         records[6].kind(),
         TraceRecordKind::FocusWithinInvalidated { entered: 0, .. }
     ));
+
+    let notification = records[7];
     assert!(matches!(
-        records[7].kind(),
-        TraceRecordKind::FocusNotificationSuppressed {
+        notification.kind(),
+        TraceRecordKind::FocusNotificationResolved {
             kind: FocusEventKind::Out,
         }
     ));
+    let context = notification.context();
+    assert_eq!(
+        context.focus_record_role(),
+        Some(TraceFocusRecordRole::Notification)
+    );
+    let event = context
+        .event()
+        .unwrap_or_else(|| unreachable!("shutdown focus resolution owns event classification"));
+    assert_eq!(event.family(), TraceEventFamily::Focus);
+    assert!(!event.is_cancelable());
+    assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Suppressed));
+    let route = context
+        .route()
+        .unwrap_or_else(|| unreachable!("shutdown focus resolution retains the old route"));
+    assert_eq!(route.targets().len(), 1);
+    assert_eq!(route.targets()[0].mounted_node_id(), &harness.target);
+    assert_eq!(route.related_target(), None);
+    let notification_endpoints = context
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("shutdown focus resolution owns exact endpoints"));
+    assert_eq!(
+        notification_endpoints
+            .previous()
+            .map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(notification_endpoints.current(), None);
+
     assert!(matches!(
         records[8].kind(),
         TraceRecordKind::RuntimeShutdown { .. }
     ));
+    assert!(transition.instant().is_some());
+    assert_eq!(transition.instant(), notification.instant());
+    assert_eq!(transition.instant(), records[8].instant());
 }
 
 fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
@@ -357,7 +405,9 @@ fn shutdown_drains_pointer_streams_in_registration_order_without_callbacks() {
                     | TraceRecordKind::PointerStreamClosed { .. }
                     | TraceRecordKind::FocusTransitionCommitted { .. }
                     | TraceRecordKind::FocusWithinInvalidated { .. }
-                    | TraceRecordKind::FocusNotificationSuppressed { .. }
+                    | TraceRecordKind::FocusNotificationResolved {
+                        kind: FocusEventKind::Out,
+                    }
                     | TraceRecordKind::RuntimeShutdown { .. }
             )
         })
@@ -377,7 +427,7 @@ fn shutdown_drains_pointer_streams_in_registration_order_without_callbacks() {
         records[4].kind(),
         TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id == &hovered
     ));
-    assert_focus_shutdown_chain(&records);
+    assert_focus_shutdown_chain(&records, &harness);
     for pair in records.windows(2) {
         assert_eq!(pair[1].causal_parent(), Some(pair[0].sequence()));
     }

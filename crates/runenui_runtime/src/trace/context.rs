@@ -1,5 +1,6 @@
 use runenui_core::{
-    InputDeviceId, PointerDeviceKind, PointerId, PointerPhase, SurfaceId, SurfaceInputContext,
+    InputDeviceId, InputModality, PointerDeviceKind, PointerId, PointerPhase, SurfaceId,
+    SurfaceInputContext,
 };
 
 use crate::{ReconciliationGeneration, SurfacePhase};
@@ -277,7 +278,32 @@ impl TracePointerCleanup {
     }
 }
 
-/// Whether a required pointer notification reached callbacks or was suppressed.
+/// Exact previous/current input modality endpoints.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TraceModalityTransition {
+    previous: Option<InputModality>,
+    current: InputModality,
+}
+
+impl TraceModalityTransition {
+    pub(crate) const fn new(previous: Option<InputModality>, current: InputModality) -> Self {
+        Self { previous, current }
+    }
+
+    /// Returns the previous accepted modality, if any.
+    #[must_use]
+    pub const fn previous(self) -> Option<InputModality> {
+        self.previous
+    }
+
+    /// Returns the newly accepted modality.
+    #[must_use]
+    pub const fn current(self) -> InputModality {
+        self.current
+    }
+}
+
+/// Whether a required routed notification reached callbacks or was suppressed.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TraceDeliveryOutcome {
@@ -298,6 +324,15 @@ pub enum TracePointerRecordRole {
     CaptureNotification,
     CaptureRequestRejection,
     Cleanup,
+}
+
+/// Semantic role of the typed focus/modality payload stored by one trace record.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TraceFocusRecordRole {
+    Transition,
+    Notification,
+    ModalityChange,
 }
 
 /// Renderer-facing publication identity that closes an M4 causal chain.
@@ -499,6 +534,81 @@ impl TracePointerRecordContext {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+enum TraceFocusRecordContext {
+    Transition {
+        surface: Option<TraceSurfaceContext>,
+        transition: TraceTargetTransition,
+    },
+    Notification {
+        surface: Option<TraceSurfaceContext>,
+        route: TraceRouteSnapshot,
+        transition: TraceTargetTransition,
+        delivery: TraceDeliveryOutcome,
+    },
+    ModalityChange {
+        transition: TraceModalityTransition,
+    },
+}
+
+impl TraceFocusRecordContext {
+    const fn role(&self) -> TraceFocusRecordRole {
+        match self {
+            Self::Transition { .. } => TraceFocusRecordRole::Transition,
+            Self::Notification { .. } => TraceFocusRecordRole::Notification,
+            Self::ModalityChange { .. } => TraceFocusRecordRole::ModalityChange,
+        }
+    }
+
+    const fn event(&self) -> Option<TraceEventContext> {
+        match self {
+            Self::Notification { .. } => {
+                Some(TraceEventContext::new(TraceEventFamily::Focus, false))
+            }
+            Self::Transition { .. } | Self::ModalityChange { .. } => None,
+        }
+    }
+
+    const fn surface(&self) -> Option<&TraceSurfaceContext> {
+        match self {
+            Self::Transition { surface, .. } | Self::Notification { surface, .. } => {
+                surface.as_ref()
+            }
+            Self::ModalityChange { .. } => None,
+        }
+    }
+
+    const fn route(&self) -> Option<&TraceRouteSnapshot> {
+        match self {
+            Self::Notification { route, .. } => Some(route),
+            Self::Transition { .. } | Self::ModalityChange { .. } => None,
+        }
+    }
+
+    const fn target_transition(&self) -> Option<&TraceTargetTransition> {
+        match self {
+            Self::Transition { transition, .. } | Self::Notification { transition, .. } => {
+                Some(transition)
+            }
+            Self::ModalityChange { .. } => None,
+        }
+    }
+
+    const fn modality_transition(&self) -> Option<TraceModalityTransition> {
+        match self {
+            Self::ModalityChange { transition } => Some(*transition),
+            Self::Transition { .. } | Self::Notification { .. } => None,
+        }
+    }
+
+    const fn delivery(&self) -> Option<TraceDeliveryOutcome> {
+        match self {
+            Self::Notification { delivery, .. } => Some(*delivery),
+            Self::Transition { .. } | Self::ModalityChange { .. } => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum TraceContextData {
     Routed {
         event: TraceEventContext,
@@ -506,6 +616,7 @@ enum TraceContextData {
     },
     Surface(TraceSurfaceContext),
     Pointer(Box<TracePointerRecordContext>),
+    Focus(Box<TraceFocusRecordContext>),
     Publication(TracePublicationContext),
 }
 
@@ -544,6 +655,12 @@ impl TraceContext {
     fn pointer_record(context: TracePointerRecordContext) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Pointer(Box::new(context)))),
+        }
+    }
+
+    fn focus_record(context: TraceFocusRecordContext) -> Self {
+        Self {
+            data: Some(Box::new(TraceContextData::Focus(Box::new(context)))),
         }
     }
 
@@ -641,6 +758,34 @@ impl TraceContext {
         })
     }
 
+    pub(crate) fn focus_transition(
+        surface: Option<TraceSurfaceContext>,
+        target_transition: TraceTargetTransition,
+    ) -> Self {
+        Self::focus_record(TraceFocusRecordContext::Transition {
+            surface,
+            transition: target_transition,
+        })
+    }
+
+    pub(crate) fn focus_notification(
+        surface: Option<TraceSurfaceContext>,
+        route: TraceRouteSnapshot,
+        target_transition: TraceTargetTransition,
+        delivery: TraceDeliveryOutcome,
+    ) -> Self {
+        Self::focus_record(TraceFocusRecordContext::Notification {
+            surface,
+            route,
+            transition: target_transition,
+            delivery,
+        })
+    }
+
+    pub(crate) fn modality_change(transition: TraceModalityTransition) -> Self {
+        Self::focus_record(TraceFocusRecordContext::ModalityChange { transition })
+    }
+
     pub(crate) fn publication_record(publication: TracePublicationContext) -> Self {
         Self {
             data: Some(Box::new(TraceContextData::Publication(publication))),
@@ -653,6 +798,7 @@ impl TraceContext {
         match self.data.as_deref() {
             Some(TraceContextData::Routed { event, .. }) => Some(*event),
             Some(TraceContextData::Pointer(context)) => context.event(),
+            Some(TraceContextData::Focus(context)) => context.event(),
             Some(TraceContextData::Surface(_) | TraceContextData::Publication(_)) | None => None,
         }
     }
@@ -663,6 +809,7 @@ impl TraceContext {
         match self.data.as_deref() {
             Some(TraceContextData::Surface(surface)) => Some(surface),
             Some(TraceContextData::Pointer(context)) => context.surface(),
+            Some(TraceContextData::Focus(context)) => context.surface(),
             Some(TraceContextData::Publication(publication)) => Some(publication.surface()),
             Some(TraceContextData::Routed { .. }) | None => None,
         }
@@ -689,6 +836,15 @@ impl TraceContext {
         }
     }
 
+    /// Returns the semantic role of the typed focus/modality payload.
+    #[must_use]
+    pub fn focus_record_role(&self) -> Option<TraceFocusRecordRole> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Focus(context)) => Some(context.role()),
+            _ => None,
+        }
+    }
+
     /// Returns the exact pointer identity named by a rejected capture request.
     ///
     /// This differs from [`Self::pointer`] only for the mismatch rejection case.
@@ -706,6 +862,7 @@ impl TraceContext {
         match self.data.as_deref() {
             Some(TraceContextData::Routed { route, .. }) => route.as_ref(),
             Some(TraceContextData::Pointer(context)) => context.route(),
+            Some(TraceContextData::Focus(context)) => context.route(),
             Some(TraceContextData::Surface(_) | TraceContextData::Publication(_)) | None => None,
         }
     }
@@ -729,6 +886,7 @@ impl TraceContext {
     pub fn target_transition(&self) -> Option<&TraceTargetTransition> {
         match self.data.as_deref() {
             Some(TraceContextData::Pointer(context)) => context.target_transition(),
+            Some(TraceContextData::Focus(context)) => context.target_transition(),
             _ => None,
         }
     }
@@ -742,6 +900,15 @@ impl TraceContext {
         }
     }
 
+    /// Returns exact previous/current modality endpoints.
+    #[must_use]
+    pub fn modality_transition(&self) -> Option<TraceModalityTransition> {
+        match self.data.as_deref() {
+            Some(TraceContextData::Focus(context)) => context.modality_transition(),
+            _ => None,
+        }
+    }
+
     /// Returns renderer-facing publication identity.
     #[must_use]
     pub fn publication(&self) -> Option<&TracePublicationContext> {
@@ -750,17 +917,19 @@ impl TraceContext {
             Some(
                 TraceContextData::Routed { .. }
                 | TraceContextData::Surface(_)
-                | TraceContextData::Pointer(_),
+                | TraceContextData::Pointer(_)
+                | TraceContextData::Focus(_),
             )
             | None => None,
         }
     }
 
-    /// Returns explicit pointer-notification delivery or suppression outcome.
+    /// Returns explicit routed-notification delivery or suppression outcome.
     #[must_use]
     pub fn delivery(&self) -> Option<TraceDeliveryOutcome> {
         match self.data.as_deref() {
             Some(TraceContextData::Pointer(context)) => context.delivery(),
+            Some(TraceContextData::Focus(context)) => context.delivery(),
             _ => None,
         }
     }
@@ -768,10 +937,13 @@ impl TraceContext {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{__runtime::RuntimeNamespace, PointerDeviceKind, PointerId, PointerPhase};
+    use runenui_core::{
+        __runtime::RuntimeNamespace, InputModality, PointerDeviceKind, PointerId, PointerPhase,
+    };
 
     use super::{
-        TraceContext, TraceDeliveryOutcome, TracePointerContext, TracePointerPath,
+        TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
+        TraceFocusRecordRole, TraceModalityTransition, TracePointerContext, TracePointerPath,
         TracePointerRecordRole, TraceRouteSnapshot, TraceSurfaceContext, TraceSurfaceSnapshotKind,
         TraceTargetTransition,
     };
@@ -788,11 +960,13 @@ mod tests {
         assert_eq!(context.surface(), None);
         assert_eq!(context.pointer(), None);
         assert_eq!(context.pointer_record_role(), None);
+        assert_eq!(context.focus_record_role(), None);
         assert_eq!(context.requested_pointer_id(), None);
         assert_eq!(context.route(), None);
         assert_eq!(context.physical_path(), None);
         assert_eq!(context.target_transition(), None);
         assert_eq!(context.pointer_cleanup(), None);
+        assert_eq!(context.modality_transition(), None);
         assert_eq!(context.publication(), None);
         assert_eq!(context.delivery(), None);
     }
@@ -854,5 +1028,62 @@ mod tests {
         assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Suppressed));
         assert!(context.route().is_some());
         assert_eq!(context.requested_pointer_id(), None);
+    }
+
+    #[test]
+    fn focus_transition_has_only_transition_role_facts() {
+        let context = TraceContext::focus_transition(None, TraceTargetTransition::new(None, None));
+
+        assert_eq!(
+            context.focus_record_role(),
+            Some(TraceFocusRecordRole::Transition)
+        );
+        assert_eq!(context.event(), None);
+        assert_eq!(context.route(), None);
+        assert!(context.target_transition().is_some());
+        assert_eq!(context.modality_transition(), None);
+        assert_eq!(context.delivery(), None);
+    }
+
+    #[test]
+    fn focus_notification_has_only_notification_role_facts() {
+        let context = TraceContext::focus_notification(
+            None,
+            TraceRouteSnapshot::new(Vec::new(), None),
+            TraceTargetTransition::new(None, None),
+            TraceDeliveryOutcome::Suppressed,
+        );
+
+        assert_eq!(
+            context.focus_record_role(),
+            Some(TraceFocusRecordRole::Notification)
+        );
+        assert_eq!(
+            context.event().map(TraceEventContext::family),
+            Some(TraceEventFamily::Focus)
+        );
+        assert!(context.route().is_some());
+        assert!(context.target_transition().is_some());
+        assert_eq!(context.modality_transition(), None);
+        assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Suppressed));
+    }
+
+    #[test]
+    fn modality_change_has_only_modality_role_facts() {
+        let transition =
+            TraceModalityTransition::new(Some(InputModality::Pointer), InputModality::Keyboard);
+        let context = TraceContext::modality_change(transition);
+
+        assert_eq!(
+            context.focus_record_role(),
+            Some(TraceFocusRecordRole::ModalityChange)
+        );
+        assert_eq!(context.event(), None);
+        assert_eq!(context.route(), None);
+        assert_eq!(context.target_transition(), None);
+        assert_eq!(context.modality_transition(), Some(transition));
+        assert_eq!(transition.previous(), Some(InputModality::Pointer));
+        assert_eq!(transition.current(), InputModality::Keyboard);
+        assert_eq!(context.delivery(), None);
     }
 }

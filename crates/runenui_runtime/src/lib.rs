@@ -230,10 +230,11 @@ pub use surface_command::{
 pub use surface_publication::SurfacePublication;
 pub use trace::{
     Trace, TraceConfig, TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
-    TraceFocusBoundaryOutcome, TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection,
-    TracePointerCleanup, TracePointerContext, TracePointerPath, TracePointerRecordRole,
-    TracePointerRejection, TracePublicationContext, TraceRecord, TraceRecordKind,
-    TraceRouteSnapshot, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
+    TraceFocusBoundaryOutcome, TraceFocusRecordRole, TraceModalityTransition,
+    TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection, TracePointerCleanup,
+    TracePointerContext, TracePointerPath, TracePointerRecordRole, TracePointerRejection,
+    TracePublicationContext, TraceRecord, TraceRecordKind, TraceRouteSnapshot,
+    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
     TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection,
     TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTargetTransition,
     TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,

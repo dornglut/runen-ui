@@ -12,9 +12,10 @@ pub(crate) use admission::{MandatoryTracePlan, TraceReservation};
 pub(crate) use construction::TraceRecordDraft;
 // Public context vocabulary is added only when its producer family is complete.
 pub use context::{
-    TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily, TracePointerCleanup,
-    TracePointerContext, TracePointerPath, TracePointerRecordRole, TracePublicationContext,
-    TraceRouteSnapshot, TraceSurfaceContext, TraceTargetTransition,
+    TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily, TraceFocusRecordRole,
+    TraceModalityTransition, TracePointerCleanup, TracePointerContext, TracePointerPath,
+    TracePointerRecordRole, TracePublicationContext, TraceRouteSnapshot, TraceSurfaceContext,
+    TraceTargetTransition,
 };
 pub use model::{
     TraceConfig, TraceFocusBoundaryOutcome, TracePointerCaptureRequestKind,
