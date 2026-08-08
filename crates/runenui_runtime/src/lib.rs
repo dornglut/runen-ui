@@ -234,14 +234,14 @@ pub use trace::{
     TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
     TraceFocusBoundaryOutcome, TraceFocusRecordRole, TraceInputContext, TraceInputRecordRole,
     TraceJsonlLine, TraceModalityTransition, TracePayloadCapture, TracePointerCaptureRequestKind,
-    TracePointerCaptureRequestRejection, TracePointerCleanup, TracePointerContext, TracePointerPath,
-    TracePointerRecordRole, TracePointerRejection, TracePublicationContext, TraceRecord,
-    TraceRecordKind, TraceRouteSnapshot, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure,
-    TraceSequence, TraceSinkDeliveryOutcome, TraceSinkReceiveError, TraceSinkReceiver,
-    TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection,
-    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTargetTransition,
-    TraceTextMetrics, TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
-    TraceWorkStartRefusal,
+    TracePointerCaptureRequestRejection, TracePointerCleanup, TracePointerContext,
+    TracePointerPath, TracePointerRecordRole, TracePointerRejection, TracePublicationContext,
+    TraceRecord, TraceRecordKind, TraceRouteSnapshot, TraceRoutedAdmissionRejection,
+    TraceRoutedIntegrityFailure, TraceSequence, TraceSinkDeliveryOutcome, TraceSinkReceiveError,
+    TraceSinkReceiver, TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind,
+    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
+    TraceTargetTransition, TraceTextMetrics, TraceTimerTerminalOutcome, TraceWorkFamily,
+    TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::host_request::{HostRequestRef, HostRequestToken};
