@@ -300,9 +300,7 @@ pub(super) const fn pointer_rejection(value: TracePointerRejection) -> &'static 
         TracePointerRejection::DuplicateStream => "duplicate_stream",
         TracePointerRejection::MissingStream => "missing_stream",
         TracePointerRejection::RegistryFull => "registry_full",
-        TracePointerRejection::RegistrationSequenceExhausted => {
-            "registration_sequence_exhausted"
-        }
+        TracePointerRejection::RegistrationSequenceExhausted => "registration_sequence_exhausted",
         TracePointerRejection::DeviceMismatch => "device_mismatch",
         TracePointerRejection::DeviceKindMismatch => "device_kind_mismatch",
         TracePointerRejection::ForeignStreamSurface => "foreign_stream_surface",
