@@ -1,7 +1,7 @@
 use core::{fmt, num::NonZeroU64};
 use std::collections::VecDeque;
 
-use runenui_core::{CommandOrigin, MonotonicInstant, __runtime::RuntimeNamespace};
+use runenui_core::{__runtime::RuntimeNamespace, CommandOrigin, MonotonicInstant};
 
 use super::{
     TraceJsonlLine, TracePayloadCapture, TraceSink, TraceSinkDeliveryOutcome, TraceSinkReceiver,
@@ -272,7 +272,9 @@ impl Trace {
             let outcome = self
                 .sink
                 .as_mut()
-                .map_or(TraceSinkDeliveryOutcome::Closed, |sink| sink.try_deliver(line));
+                .map_or(TraceSinkDeliveryOutcome::Closed, |sink| {
+                    sink.try_deliver(line)
+                });
             self.records
                 .back_mut()
                 .unwrap_or_else(|| unreachable!("just-appended trace record is retained"))
