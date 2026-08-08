@@ -8,8 +8,8 @@ mod rejection;
 mod transaction;
 
 use runenui_core::{
-    HostProtocol, MonotonicInstant, PointerBoundaryEvent, PointerCaptureEvent, PointerEvent,
-    PointerId, PointerPhase, SurfaceInputContext, WorkSequence,
+    HostProtocol, InputDeviceId, MonotonicInstant, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, SurfaceInputContext, WorkSequence,
 };
 
 use super::{PointerCommitError, PointerRegistrationError, PointerStreamError, PointerStreamState};
@@ -20,8 +20,10 @@ use crate::{
     runtime::{ProcessApplicationActionOutcome, Runtime},
     trace::TraceReservation,
 };
-
-pub(super) type PointerSnapshot = (TraceSurfaceSnapshotKind, u64, u64);
+use notifications::{
+    PointerBoundaryNotification, PointerBoundaryPlan, PointerCaptureNotification,
+    PointerCapturePlan,
+};
 
 pub(super) struct PointerWork {
     pub(super) sequence: WorkSequence,
@@ -47,19 +49,19 @@ pub(super) struct StreamPreparation {
 pub(super) struct PointerGeometry {
     pub(super) physical_target: Option<MountedNodeId>,
     pub(super) physical_path: Vec<MountedNodeId>,
-    pub(super) snapshot: Option<PointerSnapshot>,
+    pub(super) snapshot: Option<TraceSurfaceSnapshotKind>,
     pub(super) diagnosis: Option<crate::TracePointerRejection>,
 }
 
-pub(super) struct PreparedPointer {
-    pub(super) work: PointerWork,
-    pub(super) is_new: bool,
-    pub(super) stream: PointerStreamState,
-    pub(super) previous_capture_owner: Option<MountedNodeId>,
-    pub(super) geometry: PointerGeometry,
-    pub(super) boundary_events: Vec<PointerBoundaryEvent>,
-    pub(super) routed_target: Option<MountedNodeId>,
-    pub(super) parent: Option<TraceSequence>,
+struct PreparedPointer {
+    work: PointerWork,
+    is_new: bool,
+    stream: PointerStreamState,
+    previous_capture_owner: Option<MountedNodeId>,
+    geometry: PointerGeometry,
+    boundary_plan: PointerBoundaryPlan,
+    routed_target: Option<MountedNodeId>,
+    parent: Option<TraceSequence>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -69,15 +71,23 @@ pub(super) enum StreamCommitKind {
     Close,
 }
 
-pub(super) struct PointerCommitPlan {
-    pub(super) pointer_id: PointerId,
-    pub(super) stream: PointerStreamState,
-    pub(super) kind: StreamCommitKind,
-    pub(super) focus: Option<MountedNodeId>,
-    pub(super) capture_events: Vec<PointerCaptureEvent>,
-    pub(super) boundary_notifications: Vec<runenui_core::PointerBoundaryKind>,
-    pub(super) physical_target: Option<MountedNodeId>,
-    pub(super) physical_path: Vec<MountedNodeId>,
+struct PointerCaptureTrace {
+    device_id: Option<InputDeviceId>,
+    device_kind: PointerDeviceKind,
+    phase: PointerPhase,
+    surface_context: SurfaceInputContext,
+    surface_snapshot: Option<TraceSurfaceSnapshotKind>,
+}
+
+struct PointerCommitPlan {
+    pointer_id: PointerId,
+    stream: PointerStreamState,
+    kind: StreamCommitKind,
+    focus: Option<MountedNodeId>,
+    capture_plan: PointerCapturePlan,
+    capture_trace: PointerCaptureTrace,
+    physical_target: Option<MountedNodeId>,
+    physical_path: Vec<MountedNodeId>,
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -127,15 +137,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let previous_path = prepared_stream.stream.physical_path().to_vec();
         let previous_capture_owner = prepared_stream.stream.capture_owner().cloned();
-        let boundary_events = if geometry.snapshot.is_some() {
-            notifications::plan_boundary_events(
+        let boundary_plan = if geometry.snapshot.is_some() {
+            notifications::plan_boundary_transition(
                 work.event.pointer_id(),
-                &previous_path,
+                previous_path,
                 &geometry.physical_path,
                 work.event.surface_context(),
+                |target| self.tree.target_status(target) == crate::mounted::TargetStatus::Live,
             )
         } else {
-            Vec::new()
+            PointerBoundaryPlan::unchanged(previous_path)
         };
         let mut stream = prepared_stream.stream;
         stream.update_observation(
@@ -153,10 +164,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let parent = match self.record_pointer_prelude(
             &work,
             prepared_stream.is_new,
-            geometry.physical_target.as_ref(),
-            geometry.snapshot,
-            geometry.diagnosis,
-            boundary_events.len(),
+            &geometry,
+            &boundary_plan,
         ) {
             Ok(parent) => parent,
             Err(outcome) => return outcome,
@@ -167,7 +176,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             stream,
             previous_capture_owner,
             geometry,
-            boundary_events,
+            boundary_plan,
             routed_target,
             parent,
         })

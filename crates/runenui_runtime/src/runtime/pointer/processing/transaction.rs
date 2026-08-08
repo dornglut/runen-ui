@@ -1,22 +1,26 @@
 use runenui_core::{
     __runtime::PointerCaptureRequest, CommandOrigin, HostProtocol, LogicalScrollCommand,
-    PointerBoundaryEvent, PointerButton, PointerCaptureEvent, PointerPhase, SemanticCommand,
-    UiEvent,
+    MonotonicInstant, PointerButton, PointerId, PointerPhase, SemanticCommand, UiEvent,
 };
 
 use super::{
-    PointerCommitPlan, PointerGeometry, PointerStreamState, PointerWork, PreparedPointer,
-    StreamCommitKind, pointer_default_is_cancelable,
+    PointerBoundaryNotification, PointerBoundaryPlan, PointerCaptureNotification,
+    PointerCapturePlan, PointerCaptureTrace, PointerCommitPlan, PointerGeometry,
+    PointerStreamState, PointerWork, PreparedPointer, StreamCommitKind,
+    pointer_default_is_cancelable,
 };
 use crate::{
-    MountedNodeId, RuntimeTerminalReason, TraceEventContext, TraceEventFamily,
-    TracePointerCaptureRequestRejection, TraceRecordKind, TraceRoutedIntegrityFailure,
+    MountedNodeId, RuntimeTerminalReason, TraceContext, TraceDeliveryOutcome, TraceEventContext,
+    TraceEventFamily, TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection,
+    TracePointerContext, TracePointerPath, TraceRecordKind, TraceRouteSnapshot,
+    TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceContext, TraceTargetTransition,
+    WorkSequence,
     mounted::TargetStatus,
     runtime::{
         CollectedRoutedOutput, MandatoryTracePlan, PointerDispatchFacts,
         ProcessApplicationActionOutcome, RoutedIngressFacts, RoutedTransaction, Runtime,
     },
-    trace::TraceReservation,
+    trace::{TraceRecordDraft, TraceReservation},
 };
 
 struct PendingPointerCommit {
@@ -26,7 +30,34 @@ struct PendingPointerCommit {
     geometry: PointerGeometry,
     routed_target: Option<MountedNodeId>,
     kind: StreamCommitKind,
-    boundary_notifications: Vec<runenui_core::PointerBoundaryKind>,
+}
+
+struct PendingUnroutedPointerCommit {
+    work: PointerWork,
+    parent: Option<TraceSequence>,
+    boundary_plan: PointerBoundaryPlan,
+    stream: PointerStreamState,
+    kind: StreamCommitKind,
+    geometry: PointerGeometry,
+    previous_capture_owner: Option<MountedNodeId>,
+}
+
+struct PointerCaptureResolutionFacts<'a> {
+    sequence: WorkSequence,
+    instant: MonotonicInstant,
+    pointer_id: PointerId,
+    physical_path: &'a [MountedNodeId],
+    plan: &'a PointerCapturePlan,
+    trace: &'a PointerCaptureTrace,
+}
+
+struct RejectedPointerCaptureRequest {
+    requested_pointer: PointerId,
+    target: MountedNodeId,
+    request: TracePointerCaptureRequestKind,
+    outcome: TracePointerCaptureRequestRejection,
+    previous_owner: Option<MountedNodeId>,
+    requested_owner: Option<MountedNodeId>,
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -40,48 +71,35 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             stream,
             previous_capture_owner,
             geometry,
-            boundary_events,
+            boundary_plan,
             routed_target,
             parent,
         } = prepared;
         let kind = Self::stream_commit_kind(work.event.phase(), is_new);
-        let boundary_events = boundary_events
-            .into_iter()
-            .filter(|event| self.tree.target_status(event.target()) == TargetStatus::Live)
-            .collect::<Vec<_>>();
-        let boundary_targets = boundary_events
-            .iter()
-            .map(|event| event.target().clone())
-            .collect::<Vec<_>>();
-        let boundary_notifications = Self::boundary_notification_kinds(&boundary_events);
+        let boundary_targets = boundary_plan.delivered_targets();
         let deferred_capture_targets = previous_capture_owner
             .iter()
             .filter(|target| self.tree.target_status(target) == TargetStatus::Live)
             .cloned()
             .collect::<Vec<_>>();
-        let Some(pointer_commit_trace) =
-            self.plan_pointer_commit_trace(boundary_notifications.len())
-        else {
-            return self.pointer_runtime_outcome();
-        };
         let anchor = routed_target
             .clone()
             .or_else(|| boundary_targets.first().cloned());
         let Some(anchor) = anchor else {
-            return self.commit_unrouted_pointer(
-                work.sequence,
+            return self.commit_unrouted_pointer(PendingUnroutedPointerCommit {
+                work,
                 parent,
-                PointerCommitPlan {
-                    pointer_id: work.event.pointer_id(),
-                    stream,
-                    kind,
-                    focus: None,
-                    capture_events: Vec::new(),
-                    boundary_notifications,
-                    physical_target: geometry.physical_target,
-                    physical_path: geometry.physical_path,
-                },
-            );
+                boundary_plan,
+                stream,
+                kind,
+                geometry,
+                previous_capture_owner,
+            });
+        };
+        let Some(pointer_commit_trace) =
+            self.plan_pointer_commit_trace(boundary_plan.notifications.len())
+        else {
+            return self.pointer_runtime_outcome();
         };
         let facts = RoutedIngressFacts::new(
             work.sequence,
@@ -103,12 +121,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         ) else {
             return self.pointer_runtime_outcome();
         };
-        if let Err((failure, current)) = self.invoke_pointer_boundary_events(
-            &mut transaction,
-            &work,
-            &geometry,
-            &boundary_events,
-        ) {
+        if let Err((failure, current)) =
+            self.invoke_pointer_boundary_events(&mut transaction, &work, &geometry, &boundary_plan)
+        {
             self.poison_transaction(&transaction, failure, Some(&current));
             return self.pointer_runtime_outcome();
         }
@@ -131,7 +146,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 geometry,
                 routed_target,
                 kind,
-                boundary_notifications,
             },
         )
     }
@@ -142,7 +156,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         mut pending: PendingPointerCommit,
     ) -> ProcessApplicationActionOutcome {
         self.apply_pointer_capture_requests(
-            pending.work.event.pointer_id(),
+            &pending.work,
+            &pending.geometry,
             &mut pending.stream,
             &mut transaction,
         );
@@ -203,12 +218,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         } else {
             pending.stream.capture_owner().cloned()
         };
-        let capture_events = super::notifications::plan_capture_events(
+        let capture_plan = super::notifications::plan_capture_transition(
             pending.work.event.pointer_id(),
             pending.previous_capture_owner.as_ref(),
             final_capture_owner.as_ref(),
             pending.work.event.surface_context(),
+            |target| self.tree.target_status(target) == TargetStatus::Live,
         );
+        let capture_trace = PointerCaptureTrace {
+            device_id: pending.work.event.device_id(),
+            device_kind: pending.work.event.device_kind(),
+            phase: pending.work.event.phase(),
+            surface_context: pending.work.event.surface_context().clone(),
+            surface_snapshot: pending.geometry.snapshot,
+        };
         self.commit_prepared_pointer_transaction(
             transaction,
             PointerCommitPlan {
@@ -216,8 +239,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 stream: pending.stream,
                 kind: pending.kind,
                 focus,
-                capture_events,
-                boundary_notifications: pending.boundary_notifications,
+                capture_plan,
+                capture_trace,
                 physical_target: pending.geometry.physical_target,
                 physical_path: pending.geometry.physical_path,
             },
@@ -229,9 +252,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: &mut RoutedTransaction<Action>,
         work: &PointerWork,
         geometry: &PointerGeometry,
-        boundary_events: &[PointerBoundaryEvent],
+        plan: &PointerBoundaryPlan,
     ) -> Result<(), (TraceRoutedIntegrityFailure, MountedNodeId)> {
-        for boundary in boundary_events {
+        for notification in &plan.notifications {
+            if notification.delivery == TraceDeliveryOutcome::Suppressed {
+                transaction.parent = self.record_pointer_boundary_resolution(
+                    work,
+                    geometry,
+                    plan,
+                    notification,
+                    transaction.parent,
+                );
+                continue;
+            }
+            let boundary = &notification.event;
             let event = UiEvent::PointerBoundary(boundary.clone());
             let dispatch = PointerDispatchFacts::new(
                 work.event.pointer_id(),
@@ -248,8 +282,78 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ) {
                 return Err((failure, boundary.target().clone()));
             }
+            transaction.parent = self.record_pointer_boundary_resolution(
+                work,
+                geometry,
+                plan,
+                notification,
+                transaction.parent,
+            );
         }
         Ok(())
+    }
+
+    fn record_pointer_boundary_resolution(
+        &mut self,
+        work: &PointerWork,
+        geometry: &PointerGeometry,
+        plan: &PointerBoundaryPlan,
+        notification: &PointerBoundaryNotification,
+        parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        let Some(snapshot) = geometry.snapshot else {
+            unreachable!("boundary notifications require accepted displayed geometry")
+        };
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let boundary = &notification.event;
+        let target = self.tree.trace_target(boundary.target());
+        let related_target = boundary
+            .related_target()
+            .map(|related| self.tree.trace_target(related));
+        let route = TraceRouteSnapshot::new(vec![target.clone()], related_target);
+        let physical_path = TracePointerPath::new(
+            geometry
+                .physical_path
+                .iter()
+                .map(|node| self.tree.trace_target(node))
+                .collect(),
+        );
+        let transition = TraceTargetTransition::new(
+            plan.previous_target
+                .as_ref()
+                .map(|node| self.tree.trace_target(node)),
+            plan.current_target
+                .as_ref()
+                .map(|node| self.tree.trace_target(node)),
+        );
+        let pointer = TracePointerContext::event(
+            work.event.pointer_id(),
+            work.event.device_id(),
+            work.event.device_kind(),
+            work.event.phase(),
+        );
+        let context = TraceContext::pointer_boundary_notification(
+            TraceSurfaceContext::accepted(boundary.surface_context(), snapshot),
+            pointer,
+            route,
+            physical_path,
+            transition,
+            notification.delivery,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerBoundaryNotificationResolved {
+                    kind: boundary.kind(),
+                },
+                work.instant,
+                context,
+            )
+            .with_work_sequence(Some(work.sequence))
+            .with_causal_parent(parent)
+            .with_target(Some(target)),
+        )
     }
 
     fn invoke_ordinary_pointer_event(
@@ -397,18 +501,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     fn apply_pointer_capture_requests(
         &mut self,
-        pointer_id: runenui_core::PointerId,
+        work: &PointerWork,
+        geometry: &PointerGeometry,
         stream: &mut PointerStreamState,
         transaction: &mut RoutedTransaction<Action>,
     ) {
         for request in core::mem::take(&mut transaction.pointer_capture_requests) {
-            let (requested, target, capture) = match request {
-                PointerCaptureRequest::Capture { pointer_id, target } => (pointer_id, target, true),
-                PointerCaptureRequest::Release { pointer_id, target } => {
-                    (pointer_id, target, false)
-                }
+            let previous_owner = stream.capture_owner().cloned();
+            let (requested_pointer, target, request_kind, requested_owner) = match request {
+                PointerCaptureRequest::Capture { pointer_id, target } => (
+                    pointer_id,
+                    target.clone(),
+                    TracePointerCaptureRequestKind::Capture,
+                    Some(target),
+                ),
+                PointerCaptureRequest::Release { pointer_id, target } => (
+                    pointer_id,
+                    target,
+                    TracePointerCaptureRequestKind::Release,
+                    None,
+                ),
             };
-            let rejection = if requested != pointer_id {
+            let rejection = if requested_pointer != work.event.pointer_id() {
                 Some(TracePointerCaptureRequestRejection::PointerMismatch)
             } else if !transaction
                 .pointer_callback_targets
@@ -418,7 +532,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Some(TracePointerCaptureRequestRejection::TargetNotInTransaction)
             } else if self.tree.target_status(&target) != TargetStatus::Live {
                 Some(TracePointerCaptureRequestRejection::TargetUnavailable)
-            } else if capture {
+            } else if request_kind == TracePointerCaptureRequestKind::Capture {
                 stream.set_capture_owner(Some(target.clone()));
                 None
             } else if stream.capture_owner().is_some_and(|owner| owner == &target) {
@@ -428,21 +542,84 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Some(TracePointerCaptureRequestRejection::ReleaseNotOwner)
             };
             if let Some(outcome) = rejection {
-                transaction.parent = self.trace.record_event(
-                    TraceRecordKind::PointerCaptureRequestRejected {
-                        pointer_id: requested,
+                transaction.parent = self.record_pointer_capture_request_rejection(
+                    work,
+                    geometry,
+                    RejectedPointerCaptureRequest {
+                        requested_pointer,
+                        target,
+                        request: request_kind,
                         outcome,
+                        previous_owner,
+                        requested_owner,
                     },
-                    transaction.sequence,
                     transaction.parent,
-                    Some(self.tree.trace_target(&target)),
-                    transaction.instant,
-                    &transaction.target,
-                    Some(&target),
-                    transaction.origin,
                 );
             }
         }
+    }
+
+    fn record_pointer_capture_request_rejection(
+        &mut self,
+        work: &PointerWork,
+        geometry: &PointerGeometry,
+        rejected: RejectedPointerCaptureRequest,
+        parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let RejectedPointerCaptureRequest {
+            requested_pointer,
+            target,
+            request,
+            outcome,
+            previous_owner,
+            requested_owner,
+        } = rejected;
+        let target = self.tree.trace_target(&target);
+        let physical_path = TracePointerPath::new(
+            geometry
+                .physical_path
+                .iter()
+                .map(|node| self.tree.trace_target(node))
+                .collect(),
+        );
+        let transition = TraceTargetTransition::new(
+            previous_owner
+                .as_ref()
+                .map(|owner| self.tree.trace_target(owner)),
+            requested_owner
+                .as_ref()
+                .map(|owner| self.tree.trace_target(owner)),
+        );
+        let event_pointer = TracePointerContext::event(
+            work.event.pointer_id(),
+            work.event.device_id(),
+            work.event.device_kind(),
+            work.event.phase(),
+        );
+        let surface = Some(geometry.snapshot.map_or_else(
+            || TraceSurfaceContext::requested(work.event.surface_context()),
+            |snapshot| TraceSurfaceContext::accepted(work.event.surface_context(), snapshot),
+        ));
+        let context = TraceContext::pointer_capture_request_rejection(
+            surface,
+            event_pointer,
+            requested_pointer,
+            physical_path,
+            transition,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerCaptureRequestRejected { request, outcome },
+                work.instant,
+                context,
+            )
+            .with_work_sequence(Some(work.sequence))
+            .with_causal_parent(parent)
+            .with_target(Some(target)),
+        )
     }
 
     fn commit_pointer_plan(
@@ -455,8 +632,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             stream,
             kind,
             focus,
-            capture_events,
-            boundary_notifications,
+            capture_plan,
+            capture_trace,
             physical_target,
             physical_path,
         } = plan;
@@ -488,13 +665,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 self.pointer_registry.close(pointer_id).ok_or(())?;
             }
         }
-        self.record_pointer_commit_facts(
-            transaction,
-            pointer_id,
-            kind,
-            &capture_events,
-            boundary_notifications,
-        );
+        self.record_pointer_commit_facts(transaction, pointer_id, kind);
         if let Some(focus) = focus
             && self.validate_focus(&focus)
         {
@@ -510,17 +681,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             pointer_id,
             physical_target.as_ref(),
             &physical_path,
-            &capture_events,
+            &capture_plan,
+            &capture_trace,
         )
     }
 
     fn record_pointer_commit_facts(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
-        pointer_id: runenui_core::PointerId,
+        pointer_id: PointerId,
         kind: StreamCommitKind,
-        capture_events: &[PointerCaptureEvent],
-        boundary_notifications: Vec<runenui_core::PointerBoundaryKind>,
     ) {
         transaction.parent = self.trace.record(
             TraceRecordKind::PointerInteractionCommitted { pointer_id },
@@ -530,29 +700,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             None,
         );
-        for capture in capture_events {
-            transaction.parent = self.trace.record(
-                TraceRecordKind::PointerCaptureTransitionQueued {
-                    pointer_id,
-                    kind: capture.kind(),
-                },
-                Some(transaction.sequence),
-                transaction.parent,
-                None,
-                None,
-                Some(self.tree.trace_target(capture.target())),
-            );
-        }
-        for kind in boundary_notifications {
-            transaction.parent = self.trace.record(
-                TraceRecordKind::PointerBoundaryNotificationQueued { pointer_id, kind },
-                Some(transaction.sequence),
-                transaction.parent,
-                None,
-                None,
-                None,
-            );
-        }
         for output in &transaction.default_outputs {
             let kind = match output {
                 CollectedRoutedOutput::Command {
@@ -599,15 +746,30 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn invoke_pointer_capture_events(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
-        pointer_id: runenui_core::PointerId,
+        pointer_id: PointerId,
         physical_target: Option<&MountedNodeId>,
         physical_path: &[MountedNodeId],
-        capture_events: &[PointerCaptureEvent],
+        plan: &PointerCapturePlan,
+        trace: &PointerCaptureTrace,
     ) -> Result<(), ()> {
-        for capture in capture_events {
-            if self.tree.target_status(capture.target()) != TargetStatus::Live {
+        let resolution = PointerCaptureResolutionFacts {
+            sequence: transaction.sequence,
+            instant: transaction.instant,
+            pointer_id,
+            physical_path,
+            plan,
+            trace,
+        };
+        for notification in &plan.notifications {
+            if notification.delivery == TraceDeliveryOutcome::Suppressed {
+                transaction.parent = self.record_pointer_capture_resolution(
+                    &resolution,
+                    notification,
+                    transaction.parent,
+                );
                 continue;
             }
+            let capture = &notification.event;
             let event = UiEvent::PointerCapture(capture.clone());
             let dispatch = PointerDispatchFacts::new(
                 pointer_id,
@@ -624,18 +786,96 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             )
             .map_err(|_| ())?;
             transaction.pointer_capture_requests.clear();
+            transaction.parent = self.record_pointer_capture_resolution(
+                &resolution,
+                notification,
+                transaction.parent,
+            );
         }
         Ok(())
     }
 
+    fn record_pointer_capture_resolution(
+        &mut self,
+        facts: &PointerCaptureResolutionFacts<'_>,
+        notification: &PointerCaptureNotification,
+        parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let capture = &notification.event;
+        let target = self.tree.trace_target(capture.target());
+        let related_target = capture
+            .related_owner()
+            .map(|related| self.tree.trace_target(related));
+        let route = TraceRouteSnapshot::new(vec![target.clone()], related_target);
+        let physical_path = TracePointerPath::new(
+            facts
+                .physical_path
+                .iter()
+                .map(|node| self.tree.trace_target(node))
+                .collect(),
+        );
+        let transition = TraceTargetTransition::new(
+            facts
+                .plan
+                .previous_owner
+                .as_ref()
+                .map(|owner| self.tree.trace_target(owner)),
+            facts
+                .plan
+                .current_owner
+                .as_ref()
+                .map(|owner| self.tree.trace_target(owner)),
+        );
+        let pointer = TracePointerContext::event(
+            facts.pointer_id,
+            facts.trace.device_id,
+            facts.trace.device_kind,
+            facts.trace.phase,
+        );
+        let surface = Some(facts.trace.surface_snapshot.map_or_else(
+            || TraceSurfaceContext::requested(&facts.trace.surface_context),
+            |snapshot| TraceSurfaceContext::accepted(&facts.trace.surface_context, snapshot),
+        ));
+        let context = TraceContext::pointer_capture_notification(
+            surface,
+            pointer,
+            route,
+            physical_path,
+            transition,
+            notification.delivery,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerCaptureNotificationResolved {
+                    kind: capture.kind(),
+                },
+                facts.instant,
+                context,
+            )
+            .with_work_sequence(Some(facts.sequence))
+            .with_causal_parent(parent)
+            .with_target(Some(target)),
+        )
+    }
+
     fn commit_unrouted_pointer(
         &mut self,
-        sequence: runenui_core::WorkSequence,
-        mut parent: Option<crate::TraceSequence>,
-        plan: PointerCommitPlan,
+        pending: PendingUnroutedPointerCommit,
     ) -> ProcessApplicationActionOutcome {
+        let PendingUnroutedPointerCommit {
+            work,
+            mut parent,
+            boundary_plan,
+            stream,
+            kind,
+            geometry,
+            previous_capture_owner,
+        } = pending;
         let Some(pointer_commit_trace) =
-            self.plan_pointer_commit_trace(plan.boundary_notifications.len())
+            self.plan_pointer_commit_trace(boundary_plan.notifications.len())
         else {
             return self.pointer_runtime_outcome();
         };
@@ -646,49 +886,40 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled,
             };
         }
-        let result = match plan.kind {
-            StreamCommitKind::Register => {
-                let registration_sequence = plan.stream.registration_sequence().get();
-                self.pointer_registry
-                    .commit_registration(plan.pointer_id, plan.stream)
-                    .map_err(map_commit_error)
-                    .map(|()| {
-                        parent = self.trace.record(
-                            TraceRecordKind::PointerStreamRegistered {
-                                pointer_id: plan.pointer_id,
-                                registration_sequence,
-                            },
-                            Some(sequence),
-                            parent,
-                            None,
-                            None,
-                            None,
-                        );
-                    })
-            }
-            StreamCommitKind::Replace => self
-                .pointer_registry
-                .replace(plan.pointer_id, plan.stream)
-                .map_err(map_commit_error),
-            StreamCommitKind::Close => {
-                self.pointer_registry
-                    .close(plan.pointer_id)
-                    .ok_or(())
-                    .map(|_| {
-                        parent = self.trace.record(
-                            TraceRecordKind::PointerStreamClosed {
-                                pointer_id: plan.pointer_id,
-                            },
-                            Some(sequence),
-                            parent,
-                            None,
-                            None,
-                            None,
-                        );
-                    })
-            }
+        for notification in &boundary_plan.notifications {
+            debug_assert_eq!(notification.delivery, TraceDeliveryOutcome::Suppressed);
+            parent = self.record_pointer_boundary_resolution(
+                &work,
+                &geometry,
+                &boundary_plan,
+                notification,
+                parent,
+            );
+        }
+        let pointer_id = work.event.pointer_id();
+        let final_capture_owner = if kind == StreamCommitKind::Close {
+            None
+        } else {
+            stream.capture_owner().cloned()
         };
-        if result.is_err() {
+        let capture_plan = super::notifications::plan_capture_transition(
+            pointer_id,
+            previous_capture_owner.as_ref(),
+            final_capture_owner.as_ref(),
+            work.event.surface_context(),
+            |target| self.tree.target_status(target) == TargetStatus::Live,
+        );
+        let capture_trace = PointerCaptureTrace {
+            device_id: work.event.device_id(),
+            device_kind: work.event.device_kind(),
+            phase: work.event.phase(),
+            surface_context: work.event.surface_context().clone(),
+            surface_snapshot: geometry.snapshot,
+        };
+        if self
+            .commit_unrouted_pointer_stream(pointer_id, stream, kind, work.sequence, &mut parent)
+            .is_err()
+        {
             let cancelled = self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             return ProcessApplicationActionOutcome::Terminal {
                 reason: RuntimeTerminalReason::Poisoned,
@@ -696,29 +927,72 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             };
         }
         parent = self.trace.record(
-            TraceRecordKind::PointerInteractionCommitted {
-                pointer_id: plan.pointer_id,
-            },
-            Some(sequence),
+            TraceRecordKind::PointerInteractionCommitted { pointer_id },
+            Some(work.sequence),
             parent,
             None,
             None,
             None,
         );
-        for kind in plan.boundary_notifications {
-            parent = self.trace.record(
-                TraceRecordKind::PointerBoundaryNotificationQueued {
-                    pointer_id: plan.pointer_id,
-                    kind,
-                },
-                Some(sequence),
-                parent,
-                None,
-                None,
-                None,
-            );
+        let resolution = PointerCaptureResolutionFacts {
+            sequence: work.sequence,
+            instant: work.instant,
+            pointer_id,
+            physical_path: &geometry.physical_path,
+            plan: &capture_plan,
+            trace: &capture_trace,
+        };
+        for notification in &capture_plan.notifications {
+            debug_assert_eq!(notification.delivery, TraceDeliveryOutcome::Suppressed);
+            parent = self.record_pointer_capture_resolution(&resolution, notification, parent);
         }
         ProcessApplicationActionOutcome::Completed
+    }
+
+    fn commit_unrouted_pointer_stream(
+        &mut self,
+        pointer_id: PointerId,
+        stream: PointerStreamState,
+        kind: StreamCommitKind,
+        sequence: WorkSequence,
+        parent: &mut Option<TraceSequence>,
+    ) -> Result<(), ()> {
+        match kind {
+            StreamCommitKind::Register => {
+                let registration_sequence = stream.registration_sequence().get();
+                self.pointer_registry
+                    .commit_registration(pointer_id, stream)
+                    .map_err(map_commit_error)?;
+                *parent = self.trace.record(
+                    TraceRecordKind::PointerStreamRegistered {
+                        pointer_id,
+                        registration_sequence,
+                    },
+                    Some(sequence),
+                    *parent,
+                    None,
+                    None,
+                    None,
+                );
+            }
+            StreamCommitKind::Replace => {
+                self.pointer_registry
+                    .replace(pointer_id, stream)
+                    .map_err(map_commit_error)?;
+            }
+            StreamCommitKind::Close => {
+                self.pointer_registry.close(pointer_id).ok_or(())?;
+                *parent = self.trace.record(
+                    TraceRecordKind::PointerStreamClosed { pointer_id },
+                    Some(sequence),
+                    *parent,
+                    None,
+                    None,
+                    None,
+                );
+            }
+        }
+        Ok(())
     }
 
     fn plan_pointer_commit_trace(
@@ -730,12 +1004,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
         }
         plan
-    }
-
-    fn boundary_notification_kinds(
-        events: &[PointerBoundaryEvent],
-    ) -> Vec<runenui_core::PointerBoundaryKind> {
-        events.iter().map(PointerBoundaryEvent::kind).collect()
     }
 }
 

@@ -108,14 +108,6 @@ impl SurfacePointResolution {
         self.selection.snapshot_kind()
     }
 
-    pub(in crate::runtime) const fn hit_test_generation(&self) -> u64 {
-        self.selection.hit_test_generation()
-    }
-
-    pub(in crate::runtime) const fn coordinate_revision(&self) -> u64 {
-        self.selection.coordinate_revision()
-    }
-
     pub(in crate::runtime) fn into_target(self) -> Option<MountedNodeId> {
         self.target
     }

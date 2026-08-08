@@ -1,19 +1,77 @@
 use runenui_core::{
-    CommandOrigin, HostProtocol, PointerCaptureEvent, PointerCaptureKind, PointerId, PointerPhase,
-    UiEvent, WorkSequence,
+    CommandOrigin, HostProtocol, InputDeviceId, MonotonicInstant, PointerCaptureEvent,
+    PointerCaptureKind, PointerDeviceKind, PointerId, PointerPhase, SurfaceInputContext, UiEvent,
+    WorkSequence,
 };
 
-use super::PointerWork;
+use super::{PointerStreamState, PointerWork};
 use crate::{
-    RuntimeStatus, RuntimeTerminalReason, TraceEventContext, TraceEventFamily, TraceRecordKind,
-    TraceSequence,
+    MountedNodeId, RuntimeStatus, RuntimeTerminalReason, TraceContext, TraceDeliveryOutcome,
+    TraceEventContext, TraceEventFamily, TracePointerCleanup, TracePointerContext,
+    TracePointerPath, TraceRecordKind, TraceRouteSnapshot, TraceSequence, TraceSurfaceContext,
+    TraceTargetTransition,
     mounted::TargetStatus,
     runtime::{
         MandatoryTracePlan, PointerDispatchFacts, ProcessApplicationActionOutcome,
         RoutedIngressFacts, Runtime,
     },
-    trace::{TracePointerRejection, TraceReservation},
+    trace::{TracePointerRejection, TraceRecordDraft, TraceReservation},
 };
+
+#[derive(Clone)]
+struct RejectedPointerCleanupTrace {
+    pointer_id: PointerId,
+    device_id: Option<InputDeviceId>,
+    device_kind: PointerDeviceKind,
+    pressed_owner: Option<MountedNodeId>,
+    capture_owner: Option<MountedNodeId>,
+    physical_path: Vec<MountedNodeId>,
+    surface_context: Option<SurfaceInputContext>,
+}
+
+impl RejectedPointerCleanupTrace {
+    fn from_stream(pointer_id: PointerId, stream: &PointerStreamState) -> Self {
+        Self {
+            pointer_id,
+            device_id: stream.device_id(),
+            device_kind: stream.device_kind(),
+            pressed_owner: stream.pressed_owner().cloned(),
+            capture_owner: stream.capture_owner().cloned(),
+            physical_path: stream.physical_path().to_vec(),
+            surface_context: stream.surface_context().cloned(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RejectedPointerFacts {
+    sequence: WorkSequence,
+    causal_parent: Option<TraceSequence>,
+    trace_reservation: TraceReservation,
+    pointer_id: PointerId,
+    phase: PointerPhase,
+    outcome: TracePointerRejection,
+}
+
+impl RejectedPointerFacts {
+    pub(super) const fn new(
+        sequence: WorkSequence,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+        pointer_id: PointerId,
+        phase: PointerPhase,
+        outcome: TracePointerRejection,
+    ) -> Self {
+        Self {
+            sequence,
+            causal_parent,
+            trace_reservation,
+            pointer_id,
+            phase,
+            outcome,
+        }
+    }
+}
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn close_unavailable_terminal_pointer(
@@ -57,37 +115,24 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 work, rejected, &stream, &owner,
             );
         }
-        let stream = self
-            .pointer_registry
+        let cleanup_trace = RejectedPointerCleanupTrace::from_stream(pointer_id, &stream);
+        self.pointer_registry
             .close(pointer_id)
             .unwrap_or_else(|| unreachable!("terminal cleanup follows active-stream validation"));
-        let pressed = stream.pressed_owner().is_some();
-        let capture = stream.capture_owner().is_some();
-        let physical_path = !stream.physical_path().is_empty();
-        let cleanup = self.trace.record(
-            TraceRecordKind::PointerIntegrityCleanupCommitted {
-                pointer_id,
-                pressed,
-                capture,
-                physical_path,
-            },
-            Some(work.sequence),
+        let cleanup = self.record_rejected_pointer_cleanup(
+            &cleanup_trace,
+            work.sequence,
             rejected,
-            None,
-            None,
-            None,
+            work.instant,
         );
-        let parent = if capture {
-            self.trace.record(
-                TraceRecordKind::PointerCaptureNotificationSuppressed {
-                    pointer_id,
-                    kind: PointerCaptureKind::Lost,
-                },
-                Some(work.sequence),
+        let parent = if cleanup_trace.capture_owner.is_some() {
+            self.record_rejected_capture_loss(
+                &cleanup_trace,
+                &[],
+                TraceDeliveryOutcome::Suppressed,
+                work.sequence,
                 cleanup,
-                None,
-                None,
-                None,
+                work.instant,
             )
         } else {
             cleanup
@@ -107,8 +152,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         work: &PointerWork,
         rejected: Option<TraceSequence>,
-        stream: &super::PointerStreamState,
-        owner: &crate::MountedNodeId,
+        stream: &PointerStreamState,
+        owner: &MountedNodeId,
     ) -> ProcessApplicationActionOutcome {
         let pointer_id = work.event.pointer_id();
         let facts = Self::rejected_capture_ingress_facts(work, owner, rejected);
@@ -128,7 +173,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled,
             };
         };
-        let physical_path = stream.physical_path().to_vec();
+        let cleanup_trace = RejectedPointerCleanupTrace::from_stream(pointer_id, stream);
+        let physical_path = cleanup_trace.physical_path.clone();
         let physical_target = physical_path.last().cloned();
         let capture_event = PointerCaptureEvent::__runtime_new(
             pointer_id,
@@ -137,36 +183,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             work.event.surface_context().clone(),
         );
-        let pressed = stream.pressed_owner().is_some();
-        let physical_path_present = !physical_path.is_empty();
         let failure_facts = transaction.failure_facts();
         let callback_owner = owner.clone();
+        let instant = work.instant;
         let result =
             self.commit_routed_transaction_with(transaction, move |runtime, transaction| {
                 runtime.pointer_registry.close(pointer_id).ok_or(())?;
-                transaction.parent = runtime.trace.record(
-                    TraceRecordKind::PointerIntegrityCleanupCommitted {
-                        pointer_id,
-                        pressed,
-                        capture: true,
-                        physical_path: physical_path_present,
-                    },
-                    Some(transaction.sequence),
+                transaction.parent = runtime.record_rejected_pointer_cleanup(
+                    &cleanup_trace,
+                    transaction.sequence,
                     rejected,
-                    None,
-                    None,
-                    None,
-                );
-                transaction.parent = runtime.trace.record(
-                    TraceRecordKind::PointerCaptureTransitionQueued {
-                        pointer_id,
-                        kind: PointerCaptureKind::Lost,
-                    },
-                    Some(transaction.sequence),
-                    transaction.parent,
-                    None,
-                    None,
-                    Some(runtime.tree.trace_target(&callback_owner)),
+                    instant,
                 );
                 transaction.parent = runtime.trace.record(
                     TraceRecordKind::PointerStreamClosed { pointer_id },
@@ -193,6 +220,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     )
                     .map_err(|_| ())?;
                 transaction.pointer_capture_requests.clear();
+                transaction.parent = runtime.record_rejected_capture_loss(
+                    &cleanup_trace,
+                    &physical_path,
+                    TraceDeliveryOutcome::Delivered,
+                    transaction.sequence,
+                    transaction.parent,
+                    instant,
+                );
                 Ok(())
             });
         if result.is_err() {
@@ -205,9 +240,114 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.pointer_runtime_outcome()
     }
 
+    fn record_rejected_pointer_cleanup(
+        &mut self,
+        cleanup: &RejectedPointerCleanupTrace,
+        sequence: WorkSequence,
+        parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+    ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let physical_path = TracePointerPath::new(
+            cleanup
+                .physical_path
+                .iter()
+                .map(|node| self.tree.trace_target(node))
+                .collect(),
+        );
+        let pressed_owner = cleanup
+            .pressed_owner
+            .as_ref()
+            .map(|owner| TraceTargetTransition::new(Some(self.tree.trace_target(owner)), None));
+        let capture_owner = cleanup
+            .capture_owner
+            .as_ref()
+            .map(|owner| TraceTargetTransition::new(Some(self.tree.trace_target(owner)), None));
+        let pointer =
+            TracePointerContext::stream(cleanup.pointer_id, cleanup.device_id, cleanup.device_kind);
+        let surface = cleanup
+            .surface_context
+            .as_ref()
+            .map(TraceSurfaceContext::requested);
+        let context = TraceContext::pointer_integrity_cleanup(
+            surface,
+            pointer,
+            physical_path,
+            TracePointerCleanup::new(
+                pressed_owner,
+                capture_owner,
+                !cleanup.physical_path.is_empty(),
+            ),
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerIntegrityCleanupCommitted,
+                instant,
+                context,
+            )
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(parent),
+        )
+    }
+
+    fn record_rejected_capture_loss(
+        &mut self,
+        cleanup: &RejectedPointerCleanupTrace,
+        physical_path: &[MountedNodeId],
+        delivery: TraceDeliveryOutcome,
+        sequence: WorkSequence,
+        parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+    ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let owner = cleanup
+            .capture_owner
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("capture cleanup retains its previous owner"));
+        let target = self.tree.trace_target(owner);
+        let route = TraceRouteSnapshot::new(vec![target.clone()], None);
+        let physical_path = TracePointerPath::new(
+            physical_path
+                .iter()
+                .map(|node| self.tree.trace_target(node))
+                .collect(),
+        );
+        let transition = TraceTargetTransition::new(Some(target.clone()), None);
+        let pointer =
+            TracePointerContext::stream(cleanup.pointer_id, cleanup.device_id, cleanup.device_kind);
+        let surface = cleanup
+            .surface_context
+            .as_ref()
+            .map(TraceSurfaceContext::requested);
+        let context = TraceContext::pointer_capture_notification(
+            surface,
+            pointer,
+            route,
+            physical_path,
+            transition,
+            delivery,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerCaptureNotificationResolved {
+                    kind: PointerCaptureKind::Lost,
+                },
+                instant,
+                context,
+            )
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(parent)
+            .with_target(Some(target)),
+        )
+    }
+
     fn rejected_capture_ingress_facts(
         work: &PointerWork,
-        owner: &crate::MountedNodeId,
+        owner: &MountedNodeId,
         rejected: Option<TraceSequence>,
     ) -> RoutedIngressFacts {
         RoutedIngressFacts::new(
@@ -221,16 +361,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn reject_pointer(
         &mut self,
-        sequence: WorkSequence,
-        causal_parent: Option<TraceSequence>,
-        trace_reservation: TraceReservation,
-        pointer_id: PointerId,
-        phase: PointerPhase,
-        outcome: TracePointerRejection,
+        facts: RejectedPointerFacts,
     ) -> ProcessApplicationActionOutcome {
+        let RejectedPointerFacts {
+            sequence,
+            causal_parent,
+            trace_reservation,
+            pointer_id,
+            phase,
+            outcome,
+        } = facts;
         self.trace.record_reserved(
             trace_reservation,
             TraceRecordKind::PointerIngressRejected {

@@ -229,13 +229,15 @@ pub use surface_command::{
 };
 pub use surface_publication::SurfacePublication;
 pub use trace::{
-    Trace, TraceConfig, TraceContext, TraceEventContext, TraceEventFamily,
-    TraceFocusBoundaryOutcome, TracePointerCaptureRequestRejection, TracePointerRejection,
-    TracePublicationContext, TraceRecord, TraceRecordKind, TraceRouteSnapshot,
-    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
+    Trace, TraceConfig, TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
+    TraceFocusBoundaryOutcome, TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection,
+    TracePointerCleanup, TracePointerContext, TracePointerPath, TracePointerRecordRole,
+    TracePointerRejection, TracePublicationContext, TraceRecord, TraceRecordKind,
+    TraceRouteSnapshot, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
     TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection,
-    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTimerTerminalOutcome,
-    TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
+    TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection, TraceTargetTransition,
+    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
+    TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::host_request::{HostRequestRef, HostRequestToken};

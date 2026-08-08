@@ -74,11 +74,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let previous_path = prepared_stream.stream.physical_path().to_vec();
         let previous_capture_owner = prepared_stream.stream.capture_owner().cloned();
-        let boundary_events = super::notifications::plan_boundary_events(
+        let boundary_plan = super::notifications::plan_boundary_transition(
             work.event.pointer_id(),
-            &previous_path,
+            previous_path,
             &geometry.physical_path,
             work.event.surface_context(),
+            |target| self.tree.target_status(target) == crate::mounted::TargetStatus::Live,
         );
         let mut stream = prepared_stream.stream;
         stream.update_observation(
@@ -88,14 +89,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         stream.set_surface_context(work.event.surface_context().clone());
         self.clear_non_live_pointer_owners(&mut stream);
-        let parent = match self.record_pointer_prelude(
-            &work,
-            false,
-            geometry.physical_target.as_ref(),
-            geometry.snapshot,
-            geometry.diagnosis,
-            boundary_events.len(),
-        ) {
+        let parent = match self.record_pointer_prelude(&work, false, &geometry, &boundary_plan) {
             Ok(parent) => parent,
             Err(outcome) => return outcome,
         };
@@ -105,7 +99,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             stream,
             previous_capture_owner,
             geometry,
-            boundary_events,
+            boundary_plan,
             routed_target: None,
             parent,
         })

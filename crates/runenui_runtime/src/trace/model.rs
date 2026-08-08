@@ -168,14 +168,8 @@ pub enum TraceRecordKind {
     PointerStreamClosed {
         pointer_id: PointerId,
     },
-    PointerPhysicalTargetResolved {
-        pointer_id: PointerId,
-        snapshot: TraceSurfaceSnapshotKind,
-        hit_test_generation: u64,
-        coordinate_revision: u64,
-    },
+    PointerPhysicalTargetResolved,
     PointerBoundaryBundlePlanned {
-        pointer_id: PointerId,
         notifications: usize,
     },
     PointerDefaultApplied {
@@ -189,12 +183,10 @@ pub enum TraceRecordKind {
     PointerInteractionCommitted {
         pointer_id: PointerId,
     },
-    PointerCaptureTransitionQueued {
-        pointer_id: PointerId,
+    PointerCaptureNotificationResolved {
         kind: PointerCaptureKind,
     },
-    PointerBoundaryNotificationQueued {
-        pointer_id: PointerId,
+    PointerBoundaryNotificationResolved {
         kind: PointerBoundaryKind,
     },
     PointerActivateCollected {
@@ -208,19 +200,10 @@ pub enum TraceRecordKind {
         coordinate_revision: u64,
     },
     PointerCaptureRequestRejected {
-        pointer_id: PointerId,
+        request: TracePointerCaptureRequestKind,
         outcome: TracePointerCaptureRequestRejection,
     },
-    PointerIntegrityCleanupCommitted {
-        pointer_id: PointerId,
-        pressed: bool,
-        capture: bool,
-        physical_path: bool,
-    },
-    PointerCaptureNotificationSuppressed {
-        pointer_id: PointerId,
-        kind: PointerCaptureKind,
-    },
+    PointerIntegrityCleanupCommitted,
     SurfaceContextAccepted {
         ingress: TraceSurfaceIngressKind,
     },
@@ -433,6 +416,14 @@ pub enum TracePointerRejection {
     DeviceMismatch,
     DeviceKindMismatch,
     ForeignStreamSurface,
+}
+
+/// Requested pointer-capture mutation retained by a rejected request fact.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TracePointerCaptureRequestKind {
+    Capture,
+    Release,
 }
 
 /// Structured rejection of one staged pointer-capture mutation request.
