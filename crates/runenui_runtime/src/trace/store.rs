@@ -1,35 +1,82 @@
-use core::num::NonZeroU64;
+use core::{fmt, num::NonZeroU64};
 use std::collections::VecDeque;
 
-use runenui_core::{CommandOrigin, MonotonicInstant};
+use runenui_core::{CommandOrigin, MonotonicInstant, __runtime::RuntimeNamespace};
 
 use super::{
+    TraceJsonlLine, TracePayloadCapture, TraceSink, TraceSinkDeliveryOutcome, TraceSinkReceiver,
     admission::{MandatoryTracePlan, TraceReservation},
     construction::{TraceReconciliation, TraceRecordDraft, TraceRoutedEndpoints},
+    encode_record_json,
+    export::encode_trace_jsonl,
     model::{TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget},
 };
 use crate::{MountedNodeId, ReconciliationGeneration, WorkSequence};
 
 /// One bounded canonical trace store.
-#[derive(Debug, Eq, PartialEq)]
 pub struct Trace {
     capacity: usize,
+    payload_capture: TracePayloadCapture,
+    runtime: RuntimeNamespace,
     records: VecDeque<TraceRecord>,
     next_sequence: Option<NonZeroU64>,
     reserved_records: usize,
     dropped_before_sequence: Option<TraceSequence>,
+    sink: Option<TraceSink>,
 }
+
+impl fmt::Debug for Trace {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Trace")
+            .field("capacity", &self.capacity)
+            .field("payload_capture", &self.payload_capture)
+            .field("records", &self.records)
+            .field("next_sequence", &self.next_sequence)
+            .field("reserved_records", &self.reserved_records)
+            .field("dropped_before_sequence", &self.dropped_before_sequence)
+            .field(
+                "sink_open",
+                &self.sink.as_ref().is_some_and(TraceSink::is_open),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for Trace {
+    fn eq(&self, other: &Self) -> bool {
+        self.capacity == other.capacity
+            && self.payload_capture == other.payload_capture
+            && self.records == other.records
+            && self.next_sequence == other.next_sequence
+            && self.reserved_records == other.reserved_records
+            && self.dropped_before_sequence == other.dropped_before_sequence
+    }
+}
+
+impl Eq for Trace {}
 
 impl Trace {
     #[must_use]
-    pub(crate) const fn new(config: TraceConfig) -> Self {
+    pub(crate) fn new(config: TraceConfig) -> Self {
+        Self::new_for_runtime(config, RuntimeNamespace::__runtime_new())
+    }
+
+    #[must_use]
+    pub(crate) fn new_for_runtime(config: TraceConfig, runtime: RuntimeNamespace) -> Self {
         let capacity = config.capacity();
+        let sink = config
+            .sink_capacity()
+            .map(|capacity| TraceSink::bounded(capacity.get()));
         Self {
             capacity,
+            payload_capture: config.payload_capture(),
+            runtime,
             records: VecDeque::new(),
             next_sequence: NonZeroU64::new(1),
             reserved_records: 0,
             dropped_before_sequence: None,
+            sink,
         }
     }
 
@@ -196,6 +243,7 @@ impl Trace {
         if !self.can_admit(MandatoryTracePlan::one_fact()) {
             return None;
         }
+        draft.apply_payload_capture(self.payload_capture);
         let sequence = TraceSequence::new(self.next_sequence?);
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         if self.records.len() == self.capacity
@@ -208,7 +256,28 @@ impl Trace {
         {
             self.dropped_before_sequence = Some(TraceSequence::new(next));
         }
-        self.records.push_back(draft.into_record(sequence));
+        let sink_open = self.sink.as_ref().is_some_and(TraceSink::is_open);
+        let mut record = draft.into_record(sequence);
+        if sink_open {
+            record.sink_delivery = Some(TraceSinkDeliveryOutcome::Delivered);
+        }
+        self.records.push_back(record);
+        if sink_open {
+            let line = TraceJsonlLine::new(encode_record_json(
+                &self.runtime,
+                self.records
+                    .back()
+                    .unwrap_or_else(|| unreachable!("just-appended trace record is retained")),
+            ));
+            let outcome = self
+                .sink
+                .as_mut()
+                .map_or(TraceSinkDeliveryOutcome::Closed, |sink| sink.try_deliver(line));
+            self.records
+                .back_mut()
+                .unwrap_or_else(|| unreachable!("just-appended trace record is retained"))
+                .sink_delivery = Some(outcome);
+        }
         Some(sequence)
     }
 
@@ -243,6 +312,26 @@ impl Trace {
             .rev()
             .find(|record| matches!(record.kind(), TraceRecordKind::RuntimeTerminal { .. }))
             .map(TraceRecord::sequence)
+    }
+
+    pub(crate) fn take_sink_receiver(&mut self) -> Option<TraceSinkReceiver> {
+        self.sink.as_mut().and_then(TraceSink::take_receiver)
+    }
+
+    pub(crate) fn close_sink(&mut self) {
+        if let Some(sink) = self.sink.as_mut() {
+            sink.close();
+        }
+    }
+
+    /// Projects the retained canonical trace as versioned deterministic JSONL.
+    #[must_use]
+    pub fn export_jsonl(&self) -> String {
+        encode_trace_jsonl(
+            &self.runtime,
+            self.dropped_before_sequence,
+            self.records.iter(),
+        )
     }
 
     /// Borrows canonical records from oldest retained to newest.
