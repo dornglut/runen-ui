@@ -100,6 +100,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             tree,
             queue,
             trace,
+            trace_action_labeler: None,
             focus: FocusState::new(),
             pointer_registry: PointerRegistry::new(limits.pointer_streams()),
             space_ownership: None,
