@@ -20,6 +20,16 @@ pub trait UiApp {
     ) -> impl IntoEffects<Self::Action, Self::HostProtocol>;
 
     fn subscriptions(_state: &Self::State, _subscriptions: &mut SubscriptionSet<Self::Action>) {}
+
+    /// Returns an optional low-cardinality diagnostic label for one action.
+    ///
+    /// Labels are static by design: applications may provide stable semantic
+    /// names such as `"increment"` or `"loaded"`, but this hook is not a
+    /// generic payload serializer and never requires `Action: Debug`.
+    #[must_use]
+    fn trace_action_label(_action: &Self::Action) -> Option<&'static str> {
+        None
+    }
 }
 
 /// Closed application-defined command and response protocol used by host effects.
