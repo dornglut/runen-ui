@@ -183,7 +183,9 @@ fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &Tra
     output.push_str(",\"requested_pointer_id\":");
     json::optional_u64(
         output,
-        context.requested_pointer_id().map(|pointer_id| pointer_id.get()),
+        context
+            .requested_pointer_id()
+            .map(|pointer_id| pointer_id.get()),
     );
     output.push_str(",\"route\":");
     encode_route(output, runtime, context.route());
