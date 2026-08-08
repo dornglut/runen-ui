@@ -84,6 +84,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     pub(crate) tree: MountedTree<Action>,
     pub(crate) queue: WorkQueue<Action>,
     pub(crate) trace: Trace,
+    pub(crate) trace_action_labeler: Option<fn(&Action) -> Option<&'static str>>,
     pub(crate) focus: FocusState,
     pointer_registry: PointerRegistry,
     pub(crate) space_ownership: Option<SpaceOwnership>,

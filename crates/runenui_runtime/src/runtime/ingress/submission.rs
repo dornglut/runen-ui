@@ -135,11 +135,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(ActionCommitError::Integrity(action));
         };
         let trace_enabled = self.trace.is_enabled();
+        let action_label = self
+            .trace_action_labeler
+            .and_then(|labeler| labeler(&action));
         let accepted = self.trace.record_draft(
             TraceRecordDraft::action_fact(
                 TraceRecordKind::ActionSubmissionAccepted,
                 instant,
-                TraceContext::action_record(TraceActionIdentity::of::<Action>(category)),
+                TraceContext::action_record(TraceActionIdentity::of_labeled::<Action>(
+                    category,
+                    action_label,
+                )),
             )
             .with_work_sequence(Some(sequence))
             .with_causal_parent(causal_parent)
