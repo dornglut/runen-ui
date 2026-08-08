@@ -1,4 +1,4 @@
-use core::num::NonZeroU64;
+use core::num::{NonZeroU64, NonZeroUsize};
 
 use runenui_core::{
     CommandOrigin, ElementId, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason,
@@ -26,23 +26,78 @@ impl TraceSequence {
     }
 }
 
-/// Configuration for canonical in-memory trace retention.
+/// Payload-retention policy for committed text and composition preedit.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TracePayloadCapture {
+    /// Retain only byte/scalar metrics and checked range facts.
+    #[default]
+    Redacted,
+    /// Explicitly retain committed text and composition preedit in canonical records.
+    FullText,
+}
+
+/// Outcome of the one subordinate nonblocking sink attempt for a canonical record.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceSinkDeliveryOutcome {
+    Delivered,
+    Full,
+    Closed,
+}
+
+/// Configuration for canonical trace retention, payload capture, and optional sink delivery.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TraceConfig {
     capacity: usize,
+    payload_capture: TracePayloadCapture,
+    sink_capacity: Option<NonZeroUsize>,
 }
 
 impl TraceConfig {
     /// Creates trace configuration with the requested retained-record capacity.
+    ///
+    /// Text and IME payloads are redacted and external sink delivery is disabled
+    /// unless explicitly enabled by their independent configuration methods.
     #[must_use]
     pub const fn new(capacity: usize) -> Self {
-        Self { capacity }
+        Self {
+            capacity,
+            payload_capture: TracePayloadCapture::Redacted,
+            sink_capacity: None,
+        }
+    }
+
+    /// Returns this configuration with a different text/IME payload policy.
+    #[must_use]
+    pub const fn with_payload_capture(mut self, payload_capture: TracePayloadCapture) -> Self {
+        self.payload_capture = payload_capture;
+        self
+    }
+
+    /// Enables the bounded subordinate JSONL sink with the requested capacity.
+    #[must_use]
+    pub const fn with_sink_capacity(mut self, capacity: NonZeroUsize) -> Self {
+        self.sink_capacity = Some(capacity);
+        self
     }
 
     /// Returns the retained-record capacity.
     #[must_use]
     pub const fn capacity(self) -> usize {
         self.capacity
+    }
+
+    /// Returns the configured committed-text/preedit capture policy.
+    #[must_use]
+    pub const fn payload_capture(self) -> TracePayloadCapture {
+        self.payload_capture
+    }
+
+    /// Returns the configured subordinate sink capacity, when enabled.
+    #[must_use]
+    pub const fn sink_capacity(self) -> Option<NonZeroUsize> {
+        self.sink_capacity
     }
 }
 
@@ -576,6 +631,7 @@ pub struct TraceRecord {
     pub(super) current_target: Option<MountedNodeId>,
     pub(super) command_origin: Option<CommandOrigin>,
     pub(super) context: TraceContext,
+    pub(super) sink_delivery: Option<TraceSinkDeliveryOutcome>,
 }
 
 impl TraceRecord {
@@ -655,5 +711,11 @@ impl TraceRecord {
     #[must_use]
     pub const fn context(&self) -> &TraceContext {
         &self.context
+    }
+
+    /// Returns the subordinate nonblocking sink outcome for this record, when enabled.
+    #[must_use]
+    pub const fn sink_delivery(&self) -> Option<TraceSinkDeliveryOutcome> {
+        self.sink_delivery
     }
 }
