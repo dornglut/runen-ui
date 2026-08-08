@@ -14,7 +14,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, FocusReason, InputModality, LogicalSize, PumpBudget, SurfaceBuildContext,
-    TraceRecord, TraceRecordKind,
+    TraceDeliveryOutcome, TraceEventFamily, TraceRecord, TraceRecordKind, TraceSurfaceSnapshotKind,
+    TraceTarget,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -221,6 +222,118 @@ fn mandatory_pointer_record<'a>(
         .unwrap_or_else(|| unreachable!("the mandatory pointer trace fact is retained"))
 }
 
+fn assert_causal_ancestor(
+    records: &[&TraceRecord],
+    descendant: &TraceRecord,
+    ancestor: &TraceRecord,
+) {
+    let mut parent = descendant.causal_parent();
+    while parent != Some(ancestor.sequence()) {
+        let sequence = parent.unwrap_or_else(|| {
+            unreachable!("the descendant must retain the committed interaction in its lineage")
+        });
+        parent = records
+            .iter()
+            .copied()
+            .find(|record| record.sequence() == sequence)
+            .unwrap_or_else(|| unreachable!("every retained parent is present in this trace"))
+            .causal_parent();
+    }
+}
+
+fn assert_physical_pointer_observation(physical: &TraceRecord, harness: &Harness) {
+    let event = physical
+        .context()
+        .event()
+        .unwrap_or_else(|| unreachable!("physical observation owns its event context"));
+    assert_eq!(event.family(), TraceEventFamily::Pointer);
+    assert!(event.is_cancelable());
+
+    let pointer = physical
+        .context()
+        .pointer()
+        .unwrap_or_else(|| unreachable!("physical observation owns pointer identity"));
+    assert_eq!(pointer.pointer_id().get(), 6);
+    assert_eq!(pointer.device_id(), None);
+    assert_eq!(pointer.device_kind(), PointerDeviceKind::Mouse);
+    assert_eq!(pointer.phase(), Some(PointerPhase::Down));
+
+    let surface = physical
+        .context()
+        .surface()
+        .unwrap_or_else(|| unreachable!("physical observation owns displayed surface identity"));
+    assert_eq!(surface.surface_id(), harness.context.surface_id());
+    assert_eq!(
+        surface.coordinate_revision(),
+        harness.context.coordinate_revision()
+    );
+    assert_eq!(
+        surface.hit_test_generation(),
+        harness.context.hit_test_generation()
+    );
+    assert_eq!(surface.snapshot(), Some(TraceSurfaceSnapshotKind::Current));
+
+    let physical_path = physical
+        .context()
+        .physical_path()
+        .unwrap_or_else(|| unreachable!("physical observation owns the exact physical path"));
+    assert_eq!(physical_path.targets().len(), 1);
+    assert_eq!(
+        physical_path.targets()[0].mounted_node_id(),
+        &harness.target
+    );
+    assert_eq!(
+        physical.target().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+}
+
+fn assert_gained_capture(capture: &TraceRecord, harness: &Harness) {
+    let context = capture.context();
+    assert_eq!(context.delivery(), Some(TraceDeliveryOutcome::Delivered));
+    assert_eq!(
+        context
+            .event()
+            .map(runenui_runtime::TraceEventContext::family),
+        Some(TraceEventFamily::PointerCapture)
+    );
+    let pointer = context
+        .pointer()
+        .unwrap_or_else(|| unreachable!("capture resolution owns pointer identity"));
+    assert_eq!(pointer.pointer_id().get(), 6);
+    assert_eq!(pointer.device_id(), None);
+    assert_eq!(pointer.device_kind(), PointerDeviceKind::Mouse);
+    assert_eq!(pointer.phase(), Some(PointerPhase::Down));
+    let surface = context
+        .surface()
+        .unwrap_or_else(|| unreachable!("capture resolution owns surface identity"));
+    assert_eq!(surface.surface_id(), harness.context.surface_id());
+    assert_eq!(surface.snapshot(), Some(TraceSurfaceSnapshotKind::Current));
+    let route = context
+        .route()
+        .unwrap_or_else(|| unreachable!("capture resolution owns its target-only route"));
+    assert_eq!(route.targets().len(), 1);
+    assert_eq!(route.targets()[0].mounted_node_id(), &harness.target);
+    assert_eq!(route.related_target(), None);
+    let path = context
+        .physical_path()
+        .unwrap_or_else(|| unreachable!("capture resolution owns the physical path"));
+    assert_eq!(path.targets().len(), 1);
+    assert_eq!(path.targets()[0].mounted_node_id(), &harness.target);
+    let transition = context
+        .target_transition()
+        .unwrap_or_else(|| unreachable!("capture resolution owns exact owners"));
+    assert_eq!(transition.previous(), None);
+    assert_eq!(
+        transition.current().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+    assert_eq!(
+        capture.target().map(TraceTarget::mounted_node_id),
+        Some(&harness.target)
+    );
+}
+
 #[test]
 fn pointer_submission_is_non_reentrant_and_exposes_physical_facts() {
     let mut harness = harness(false, false);
@@ -390,7 +503,6 @@ fn wheel_derives_exactly_one_logical_scroll_command() {
         false,
         LogicalDelta::new(2.0, -4.0).unwrap_or_else(|_| unreachable!("the wheel delta is finite")),
     );
-
     harness
         .runtime
         .submit_pointer(wheel)
@@ -454,20 +566,11 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
                 if pointer_id.get() == 6
         )
     });
-    let physical = record(&|kind| {
-        matches!(
-            kind,
-            TraceRecordKind::PointerPhysicalTargetResolved { pointer_id, .. }
-                if pointer_id.get() == 6
-        )
-    });
+    let physical = record(&|kind| matches!(kind, TraceRecordKind::PointerPhysicalTargetResolved));
     let boundary_bundle = record(&|kind| {
         matches!(
             kind,
-            TraceRecordKind::PointerBoundaryBundlePlanned {
-                pointer_id,
-                notifications: 1,
-            } if pointer_id.get() == 6
+            TraceRecordKind::PointerBoundaryBundlePlanned { notifications: 1 }
         )
     });
     let routed = record(&|kind| matches!(kind, TraceRecordKind::RoutedEventStarted));
@@ -496,21 +599,31 @@ fn pointer_trace_reconstructs_validation_routing_default_and_commit_lineage() {
     let capture = record(&|kind| {
         matches!(
             kind,
-            TraceRecordKind::PointerCaptureTransitionQueued {
-                pointer_id,
+            TraceRecordKind::PointerCaptureNotificationResolved {
                 kind: PointerCaptureKind::Gained,
-            } if pointer_id.get() == 6
+            }
         )
     });
 
+    assert_physical_pointer_observation(physical, &harness);
+    assert_gained_capture(capture, &harness);
+    assert_eq!(
+        boundary_bundle
+            .context()
+            .pointer()
+            .map(|pointer| pointer.pointer_id().get()),
+        Some(6)
+    );
     assert_eq!(validated.causal_parent(), Some(accepted.sequence()));
     assert_eq!(stream.causal_parent(), Some(validated.sequence()));
     assert_eq!(physical.causal_parent(), Some(stream.sequence()));
+    assert_eq!(physical.instant(), routed.instant());
     assert_eq!(boundary_bundle.causal_parent(), Some(physical.sequence()));
     assert_eq!(routed.causal_parent(), Some(boundary_bundle.sequence()));
     assert!(default.sequence() > routed.sequence());
     assert_eq!(modality.causal_parent(), Some(default.sequence()));
     assert_eq!(registered.causal_parent(), Some(modality.sequence()));
     assert_eq!(committed.causal_parent(), Some(registered.sequence()));
-    assert_eq!(capture.causal_parent(), Some(committed.sequence()));
+    assert_causal_ancestor(&records, capture, committed);
+    assert_eq!(capture.instant(), routed.instant());
 }

@@ -1,23 +1,31 @@
 use runenui_core::{
-    CommandOrigin, HostProtocol, PointerCaptureEvent, PointerCaptureKind, PointerId,
-    SurfaceInputContext, UiEvent, WorkSequence,
+    CommandOrigin, HostProtocol, InputDeviceId, MonotonicInstant, PointerCaptureEvent,
+    PointerCaptureKind, PointerDeviceKind, PointerId, SurfaceInputContext, UiEvent, WorkSequence,
 };
 
 use super::super::PointerRegistry;
 use crate::{
-    MountedNodeId, TraceEventContext, TraceEventFamily, TraceRecordKind,
-    TraceRoutedIntegrityFailure, TraceSequence,
+    MountedNodeId, TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
+    TracePointerCleanup, TracePointerContext, TracePointerPath, TraceRecordKind,
+    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceContext,
+    TraceTargetTransition,
     mounted::TargetStatus,
     runtime::{MandatoryTracePlan, PointerDispatchFacts, RoutedIngressFacts, Runtime},
-    trace::TraceReservation,
+    trace::{TraceRecordDraft, TraceReservation},
 };
 
 #[derive(Clone)]
 struct PointerCleanup {
     pointer_id: PointerId,
+    device_id: Option<InputDeviceId>,
+    device_kind: PointerDeviceKind,
+    pressed_owner: Option<MountedNodeId>,
+    capture_owner: Option<MountedNodeId>,
+    physical_path: Vec<MountedNodeId>,
+    surface_context: Option<SurfaceInputContext>,
     pressed: bool,
     capture: bool,
-    physical_path: bool,
+    clear_physical_path: bool,
     capture_notification: Option<PointerCaptureNotification>,
 }
 
@@ -28,6 +36,15 @@ struct PointerCaptureNotification {
     physical_path: Vec<MountedNodeId>,
 }
 
+struct CaptureLossTraceFacts<'a> {
+    cleanup: &'a PointerCleanup,
+    physical_path: &'a [MountedNodeId],
+    surface_context: Option<&'a SurfaceInputContext>,
+    delivery: TraceDeliveryOutcome,
+    work_sequence: Option<WorkSequence>,
+    instant: MonotonicInstant,
+}
+
 impl PointerCleanup {
     const fn reconciliation_fact_count(&self) -> usize {
         if self.capture { 2 } else { 1 }
@@ -36,11 +53,21 @@ impl PointerCleanup {
     const fn closure_fact_count(&self) -> usize {
         if self.capture { 3 } else { 2 }
     }
+
+    fn remaining_physical_path(&self) -> &[MountedNodeId] {
+        if self.clear_physical_path {
+            &[]
+        } else {
+            &self.physical_path
+        }
+    }
 }
 
 #[derive(Clone)]
 struct PointerReconciliationSnapshot {
     pointer_id: PointerId,
+    device_id: Option<InputDeviceId>,
+    device_kind: PointerDeviceKind,
     pressed_owner: Option<MountedNodeId>,
     capture_owner: Option<MountedNodeId>,
     physical_path: Vec<MountedNodeId>,
@@ -71,6 +98,8 @@ impl PointerRegistry {
                     .unwrap_or_else(|| unreachable!("planned pointer stream remains registered"));
                 PointerReconciliationSnapshot {
                     pointer_id,
+                    device_id: stream.device_id(),
+                    device_kind: stream.device_kind(),
                     pressed_owner: stream.pressed_owner().cloned(),
                     capture_owner: stream.capture_owner().cloned(),
                     physical_path: stream.physical_path().to_vec(),
@@ -90,9 +119,15 @@ impl PointerRegistry {
                     .unwrap_or_else(|| unreachable!("planned pointer stream remains registered"));
                 PointerCleanup {
                     pointer_id,
+                    device_id: stream.device_id(),
+                    device_kind: stream.device_kind(),
+                    pressed_owner: stream.pressed_owner().cloned(),
+                    capture_owner: stream.capture_owner().cloned(),
+                    physical_path: stream.physical_path().to_vec(),
+                    surface_context: stream.surface_context().cloned(),
                     pressed: stream.pressed_owner().is_some(),
                     capture: stream.capture_owner().is_some(),
-                    physical_path: !stream.physical_path().is_empty(),
+                    clear_physical_path: !stream.physical_path().is_empty(),
                     capture_notification: None,
                 }
             })
@@ -111,7 +146,7 @@ impl PointerRegistry {
             if cleanup.capture {
                 stream.set_capture_owner(None);
             }
-            if cleanup.physical_path {
+            if cleanup.clear_physical_path {
                 stream.physical_path.clear();
             }
         }
@@ -125,6 +160,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         mut parent: Option<TraceSequence>,
         unmounted: &[MountedNodeId],
     ) -> Result<Option<TraceSequence>, ()> {
+        let instant = self.now();
         let cleanups = self.plan_reconciled_pointer_cleanup(unmounted);
         let fact_count = cleanups.iter().try_fold(0usize, |count, cleanup| {
             count.checked_add(cleanup.reconciliation_fact_count())
@@ -140,37 +176,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.pointer_registry
             .commit_reconciled_target_cleanup(&cleanups);
         for cleanup in cleanups {
-            parent = self.record_pointer_cleanup_fact(&cleanup, Some(sequence), parent);
+            parent = self.record_pointer_cleanup_fact(&cleanup, Some(sequence), parent, instant);
             if cleanup.capture {
                 if let Some(notification) = cleanup.capture_notification.as_ref() {
-                    parent = self.trace.record(
-                        TraceRecordKind::PointerCaptureTransitionQueued {
-                            pointer_id: cleanup.pointer_id,
-                            kind: PointerCaptureKind::Lost,
-                        },
-                        Some(sequence),
+                    parent = self.deliver_reconciled_capture_loss(
+                        sequence,
                         parent,
-                        None,
-                        None,
-                        Some(self.tree.trace_target(&notification.owner)),
-                    );
-                    if self
-                        .deliver_reconciled_capture_loss(
-                            sequence,
-                            parent,
-                            cleanup.pointer_id,
-                            notification,
-                        )
-                        .is_err()
-                    {
-                        return Err(());
-                    }
+                        instant,
+                        &cleanup,
+                        notification,
+                    )?;
                 } else {
-                    parent = self.record_suppressed_capture_loss(
-                        cleanup.pointer_id,
-                        Some(sequence),
-                        parent,
-                    );
+                    let facts = CaptureLossTraceFacts {
+                        cleanup: &cleanup,
+                        physical_path: cleanup.remaining_physical_path(),
+                        surface_context: cleanup.surface_context.as_ref(),
+                        delivery: TraceDeliveryOutcome::Suppressed,
+                        work_sequence: Some(sequence),
+                        instant,
+                    };
+                    parent = self.record_capture_loss_resolution(&facts, parent);
                 }
             }
         }
@@ -201,7 +226,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     (Some(owner), _) => self.pointer_owner_is_ineligible(owner, unmounted),
                     (None, _) => false,
                 };
-                let physical_path = snapshot
+                let clear_physical_path = snapshot
                     .physical_path
                     .iter()
                     .any(|target| unmounted.contains(target));
@@ -213,7 +238,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                                     PointerCaptureNotification {
                                         owner: owner.clone(),
                                         context,
-                                        physical_path: if physical_path {
+                                        physical_path: if clear_physical_path {
                                             Vec::new()
                                         } else {
                                             snapshot.physical_path.clone()
@@ -226,11 +251,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 } else {
                     None
                 };
-                (pressed || capture || physical_path).then_some(PointerCleanup {
+                (pressed || capture || clear_physical_path).then_some(PointerCleanup {
                     pointer_id: snapshot.pointer_id,
+                    device_id: snapshot.device_id,
+                    device_kind: snapshot.device_kind,
+                    pressed_owner: snapshot.pressed_owner,
+                    capture_owner: snapshot.capture_owner,
+                    physical_path: snapshot.physical_path,
+                    surface_context: snapshot.surface_context,
                     pressed,
                     capture,
-                    physical_path,
+                    clear_physical_path,
                     capture_notification,
                 })
             })
@@ -256,6 +287,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         mut parent: Option<TraceSequence>,
     ) -> (usize, Option<TraceSequence>) {
+        let instant = self.now();
         let cleanups = self.pointer_registry.plan_closure_cleanup();
         let closed = cleanups.len();
         let trace_ready = cleanups
@@ -270,9 +302,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return (closed, parent);
         }
         for cleanup in cleanups {
-            parent = self.record_pointer_cleanup_fact(&cleanup, None, parent);
+            parent = self.record_pointer_cleanup_fact(&cleanup, None, parent, instant);
             if cleanup.capture {
-                parent = self.record_suppressed_capture_loss(cleanup.pointer_id, None, parent);
+                let facts = CaptureLossTraceFacts {
+                    cleanup: &cleanup,
+                    physical_path: cleanup.remaining_physical_path(),
+                    surface_context: cleanup.surface_context.as_ref(),
+                    delivery: TraceDeliveryOutcome::Suppressed,
+                    work_sequence: None,
+                    instant,
+                };
+                parent = self.record_capture_loss_resolution(&facts, parent);
             }
             parent = self.trace.record(
                 TraceRecordKind::PointerStreamClosed {
@@ -293,38 +333,107 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         cleanup: &PointerCleanup,
         work_sequence: Option<WorkSequence>,
         parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
     ) -> Option<TraceSequence> {
-        self.trace.record(
-            TraceRecordKind::PointerIntegrityCleanupCommitted {
-                pointer_id: cleanup.pointer_id,
-                pressed: cleanup.pressed,
-                capture: cleanup.capture,
-                physical_path: cleanup.physical_path,
-            },
-            work_sequence,
-            parent,
-            None,
-            None,
-            None,
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let physical_path = TracePointerPath::new(
+            cleanup
+                .physical_path
+                .iter()
+                .map(|node| self.tree.trace_target(node))
+                .collect(),
+        );
+        let pressed_owner = cleanup.pressed.then(|| {
+            TraceTargetTransition::new(
+                cleanup
+                    .pressed_owner
+                    .as_ref()
+                    .map(|owner| self.tree.trace_target(owner)),
+                None,
+            )
+        });
+        let capture_owner = cleanup.capture.then(|| {
+            TraceTargetTransition::new(
+                cleanup
+                    .capture_owner
+                    .as_ref()
+                    .map(|owner| self.tree.trace_target(owner)),
+                None,
+            )
+        });
+        let pointer =
+            TracePointerContext::stream(cleanup.pointer_id, cleanup.device_id, cleanup.device_kind);
+        let surface = cleanup
+            .surface_context
+            .as_ref()
+            .map(TraceSurfaceContext::requested);
+        let context = TraceContext::pointer_integrity_cleanup(
+            surface,
+            pointer,
+            physical_path,
+            TracePointerCleanup::new(pressed_owner, capture_owner, cleanup.clear_physical_path),
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerIntegrityCleanupCommitted,
+                instant,
+                context,
+            )
+            .with_work_sequence(work_sequence)
+            .with_causal_parent(parent),
         )
     }
 
-    fn record_suppressed_capture_loss(
+    fn record_capture_loss_resolution(
         &mut self,
-        pointer_id: PointerId,
-        work_sequence: Option<WorkSequence>,
+        facts: &CaptureLossTraceFacts<'_>,
         parent: Option<TraceSequence>,
     ) -> Option<TraceSequence> {
-        self.trace.record(
-            TraceRecordKind::PointerCaptureNotificationSuppressed {
-                pointer_id,
-                kind: PointerCaptureKind::Lost,
-            },
-            work_sequence,
-            parent,
-            None,
-            None,
-            None,
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let owner = facts
+            .cleanup
+            .capture_owner
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("capture cleanup retains its previous owner"));
+        let target = self.tree.trace_target(owner);
+        let route = TraceRouteSnapshot::new(vec![target.clone()], None);
+        let physical_path = TracePointerPath::new(
+            facts
+                .physical_path
+                .iter()
+                .map(|node| self.tree.trace_target(node))
+                .collect(),
+        );
+        let transition = TraceTargetTransition::new(Some(target.clone()), None);
+        let pointer = TracePointerContext::stream(
+            facts.cleanup.pointer_id,
+            facts.cleanup.device_id,
+            facts.cleanup.device_kind,
+        );
+        let surface = facts.surface_context.map(TraceSurfaceContext::requested);
+        let context = TraceContext::pointer_capture_notification(
+            surface,
+            pointer,
+            route,
+            physical_path,
+            transition,
+            facts.delivery,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerCaptureNotificationResolved {
+                    kind: PointerCaptureKind::Lost,
+                },
+                facts.instant,
+                context,
+            )
+            .with_work_sequence(facts.work_sequence)
+            .with_causal_parent(parent)
+            .with_target(Some(target)),
         )
     }
 
@@ -332,14 +441,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         sequence: WorkSequence,
         parent: Option<TraceSequence>,
-        pointer_id: PointerId,
+        instant: MonotonicInstant,
+        cleanup: &PointerCleanup,
         notification: &PointerCaptureNotification,
-    ) -> Result<(), ()> {
+    ) -> Result<Option<TraceSequence>, ()> {
         let facts = RoutedIngressFacts::new(
             sequence,
             notification.owner.clone(),
             CommandOrigin::__runtime_pointer(),
-            self.now(),
+            instant,
             TraceEventContext::new(TraceEventFamily::PointerCapture, false),
             parent,
             TraceReservation::continuation(),
@@ -356,7 +466,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(());
         };
         let capture = PointerCaptureEvent::__runtime_new(
-            pointer_id,
+            cleanup.pointer_id,
             PointerCaptureKind::Lost,
             notification.owner.clone(),
             None,
@@ -364,7 +474,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         let physical_target = notification.physical_path.last();
         let dispatch = PointerDispatchFacts::new(
-            pointer_id,
+            cleanup.pointer_id,
             physical_target,
             &notification.physical_path,
             None,
@@ -380,6 +490,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(());
         }
         transaction.pointer_capture_requests.clear();
+        let capture_facts = CaptureLossTraceFacts {
+            cleanup,
+            physical_path: &notification.physical_path,
+            surface_context: Some(&notification.context),
+            delivery: TraceDeliveryOutcome::Delivered,
+            work_sequence: Some(sequence),
+            instant,
+        };
+        transaction.parent =
+            self.record_capture_loss_resolution(&capture_facts, transaction.parent);
+        let resolution = transaction.parent;
         let failure = transaction.failure_facts();
         if self.commit_routed_transaction(transaction).is_err() {
             self.poison_routed_event(
@@ -389,6 +510,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             return Err(());
         }
-        Ok(())
+        Ok(resolution)
     }
 }

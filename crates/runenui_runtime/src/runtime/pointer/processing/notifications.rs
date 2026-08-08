@@ -3,37 +3,79 @@ use runenui_core::{
     SurfaceInputContext,
 };
 
-use crate::MountedNodeId;
+use crate::{MountedNodeId, TraceDeliveryOutcome};
 
-pub(super) fn plan_boundary_events(
+pub(super) struct PointerBoundaryNotification {
+    pub(super) event: PointerBoundaryEvent,
+    pub(super) delivery: TraceDeliveryOutcome,
+}
+
+pub(super) struct PointerBoundaryPlan {
+    pub(super) previous_path: Vec<MountedNodeId>,
+    pub(super) previous_target: Option<MountedNodeId>,
+    pub(super) current_target: Option<MountedNodeId>,
+    pub(super) notifications: Vec<PointerBoundaryNotification>,
+}
+
+impl PointerBoundaryPlan {
+    pub(super) fn unchanged(previous_path: Vec<MountedNodeId>) -> Self {
+        let target = previous_path.last().cloned();
+        Self {
+            previous_path,
+            previous_target: target.clone(),
+            current_target: target,
+            notifications: Vec::new(),
+        }
+    }
+
+    pub(super) fn delivered_targets(&self) -> Vec<MountedNodeId> {
+        self.notifications
+            .iter()
+            .filter(|notification| notification.delivery == TraceDeliveryOutcome::Delivered)
+            .map(|notification| notification.event.target().clone())
+            .collect()
+    }
+}
+
+pub(super) struct PointerCaptureNotification {
+    pub(super) event: PointerCaptureEvent,
+    pub(super) delivery: TraceDeliveryOutcome,
+}
+
+pub(super) struct PointerCapturePlan {
+    pub(super) previous_owner: Option<MountedNodeId>,
+    pub(super) current_owner: Option<MountedNodeId>,
+    pub(super) notifications: Vec<PointerCaptureNotification>,
+}
+
+pub(super) fn plan_boundary_transition(
     pointer_id: PointerId,
-    previous_path: &[MountedNodeId],
+    previous_path: Vec<MountedNodeId>,
     physical_path: &[MountedNodeId],
     surface_context: &SurfaceInputContext,
-) -> Vec<PointerBoundaryEvent> {
+    mut is_live: impl FnMut(&MountedNodeId) -> bool,
+) -> PointerBoundaryPlan {
     let shared = previous_path
         .iter()
         .zip(physical_path)
         .take_while(|(previous, current)| previous == current)
         .count();
     let previous_target = previous_path.last().cloned();
-    let physical_target = physical_path.last().cloned();
-    let mut events = Vec::with_capacity(
-        previous_path
-            .len()
-            .saturating_sub(shared)
-            .saturating_add(physical_path.len().saturating_sub(shared)),
-    );
-    events.extend(previous_path[shared..].iter().rev().cloned().map(|target| {
+    let current_target = physical_path.last().cloned();
+    let capacity = previous_path
+        .len()
+        .saturating_sub(shared)
+        .saturating_add(physical_path.len().saturating_sub(shared));
+    let leaving = previous_path[shared..].iter().rev().cloned().map(|target| {
         PointerBoundaryEvent::__runtime_new(
             pointer_id,
             PointerBoundaryKind::Leave,
             target,
-            physical_target.clone(),
+            current_target.clone(),
             surface_context.clone(),
         )
-    }));
-    events.extend(physical_path[shared..].iter().cloned().map(|target| {
+    });
+    let entering = physical_path[shared..].iter().cloned().map(|target| {
         PointerBoundaryEvent::__runtime_new(
             pointer_id,
             PointerBoundaryKind::Enter,
@@ -41,39 +83,76 @@ pub(super) fn plan_boundary_events(
             previous_target.clone(),
             surface_context.clone(),
         )
-    }));
-    events
+    });
+    let notifications = leaving
+        .chain(entering)
+        .map(|event| PointerBoundaryNotification {
+            delivery: if is_live(event.target()) {
+                TraceDeliveryOutcome::Delivered
+            } else {
+                TraceDeliveryOutcome::Suppressed
+            },
+            event,
+        })
+        .collect::<Vec<_>>();
+    debug_assert!(notifications.len() <= capacity);
+    PointerBoundaryPlan {
+        previous_path,
+        previous_target,
+        current_target,
+        notifications,
+    }
 }
 
-pub(super) fn plan_capture_events(
+pub(super) fn plan_capture_transition(
     pointer_id: PointerId,
     previous_owner: Option<&MountedNodeId>,
     current_owner: Option<&MountedNodeId>,
     surface_context: &SurfaceInputContext,
-) -> Vec<PointerCaptureEvent> {
-    if previous_owner == current_owner {
-        return Vec::new();
+    mut is_live: impl FnMut(&MountedNodeId) -> bool,
+) -> PointerCapturePlan {
+    let mut notifications = Vec::with_capacity(2);
+    if previous_owner != current_owner {
+        if let Some(previous_owner) = previous_owner {
+            let event = PointerCaptureEvent::__runtime_new(
+                pointer_id,
+                PointerCaptureKind::Lost,
+                previous_owner.clone(),
+                current_owner.cloned(),
+                surface_context.clone(),
+            );
+            notifications.push(PointerCaptureNotification {
+                delivery: if is_live(event.target()) {
+                    TraceDeliveryOutcome::Delivered
+                } else {
+                    TraceDeliveryOutcome::Suppressed
+                },
+                event,
+            });
+        }
+        if let Some(current_owner) = current_owner {
+            let event = PointerCaptureEvent::__runtime_new(
+                pointer_id,
+                PointerCaptureKind::Gained,
+                current_owner.clone(),
+                previous_owner.cloned(),
+                surface_context.clone(),
+            );
+            notifications.push(PointerCaptureNotification {
+                delivery: if is_live(event.target()) {
+                    TraceDeliveryOutcome::Delivered
+                } else {
+                    TraceDeliveryOutcome::Suppressed
+                },
+                event,
+            });
+        }
     }
-    let mut events = Vec::with_capacity(2);
-    if let Some(previous_owner) = previous_owner {
-        events.push(PointerCaptureEvent::__runtime_new(
-            pointer_id,
-            PointerCaptureKind::Lost,
-            previous_owner.clone(),
-            current_owner.cloned(),
-            surface_context.clone(),
-        ));
+    PointerCapturePlan {
+        previous_owner: previous_owner.cloned(),
+        current_owner: current_owner.cloned(),
+        notifications,
     }
-    if let Some(current_owner) = current_owner {
-        events.push(PointerCaptureEvent::__runtime_new(
-            pointer_id,
-            PointerCaptureKind::Gained,
-            current_owner.clone(),
-            previous_owner.cloned(),
-            surface_context.clone(),
-        ));
-    }
-    events
 }
 
 #[cfg(test)]
@@ -82,7 +161,8 @@ mod tests {
         __runtime::RuntimeNamespace, PointerBoundaryKind, PointerCaptureKind, PointerId,
     };
 
-    use super::{plan_boundary_events, plan_capture_events};
+    use super::{plan_boundary_transition, plan_capture_transition};
+    use crate::TraceDeliveryOutcome;
 
     #[test]
     fn path_diff_leaves_inner_to_outer_before_entering_outer_to_inner() {
@@ -98,29 +178,85 @@ mod tests {
             .unwrap_or_else(|| unreachable!("the surface belongs to the namespace"));
         let pointer_id = PointerId::new(7)
             .unwrap_or_else(|| unreachable!("the test pointer identity is non-zero"));
+        let previous_path = vec![root.clone(), old_parent.clone(), old_target.clone()];
 
-        let events = plan_boundary_events(
+        let plan = plan_boundary_transition(
             pointer_id,
-            &[root.clone(), old_parent.clone(), old_target.clone()],
+            previous_path.clone(),
             &[root, new_parent.clone(), new_target.clone()],
             &context,
+            |_| true,
         );
 
-        assert_eq!(events.len(), 4);
-        assert_eq!(events[0].kind(), PointerBoundaryKind::Leave);
-        assert_eq!(events[0].target(), &old_target);
-        assert_eq!(events[0].related_target(), Some(&new_target));
-        assert_eq!(events[1].kind(), PointerBoundaryKind::Leave);
-        assert_eq!(events[1].target(), &old_parent);
-        assert_eq!(events[2].kind(), PointerBoundaryKind::Enter);
-        assert_eq!(events[2].target(), &new_parent);
-        assert_eq!(events[2].related_target(), Some(&old_target));
-        assert_eq!(events[3].kind(), PointerBoundaryKind::Enter);
-        assert_eq!(events[3].target(), &new_target);
+        assert_eq!(plan.previous_path, previous_path);
+        assert_eq!(plan.previous_target.as_ref(), Some(&old_target));
+        assert_eq!(plan.current_target.as_ref(), Some(&new_target));
+        assert_eq!(plan.notifications.len(), 4);
+        assert_eq!(
+            plan.notifications[0].event.kind(),
+            PointerBoundaryKind::Leave
+        );
+        assert_eq!(plan.notifications[0].event.target(), &old_target);
+        assert_eq!(
+            plan.notifications[0].event.related_target(),
+            Some(&new_target)
+        );
+        assert_eq!(
+            plan.notifications[1].event.kind(),
+            PointerBoundaryKind::Leave
+        );
+        assert_eq!(plan.notifications[1].event.target(), &old_parent);
+        assert_eq!(
+            plan.notifications[2].event.kind(),
+            PointerBoundaryKind::Enter
+        );
+        assert_eq!(plan.notifications[2].event.target(), &new_parent);
+        assert_eq!(
+            plan.notifications[2].event.related_target(),
+            Some(&old_target)
+        );
+        assert_eq!(
+            plan.notifications[3].event.kind(),
+            PointerBoundaryKind::Enter
+        );
+        assert_eq!(plan.notifications[3].event.target(), &new_target);
     }
 
     #[test]
-    fn capture_transfer_loses_before_it_gains() {
+    fn non_live_boundary_targets_are_retained_as_suppressed() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let stale = namespace.__runtime_mounted_id(1, 1);
+        let live = namespace.__runtime_mounted_id(2, 1);
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let context = namespace
+            .__runtime_surface_context(surface, 1, 1)
+            .unwrap_or_else(|| unreachable!("the surface belongs to the namespace"));
+        let pointer_id = PointerId::new(8)
+            .unwrap_or_else(|| unreachable!("the test pointer identity is non-zero"));
+
+        let plan = plan_boundary_transition(
+            pointer_id,
+            vec![stale.clone()],
+            core::slice::from_ref(&live),
+            &context,
+            |target| target == &live,
+        );
+
+        assert_eq!(plan.previous_path, [stale]);
+        assert_eq!(plan.notifications.len(), 2);
+        assert_eq!(
+            plan.notifications[0].delivery,
+            TraceDeliveryOutcome::Suppressed
+        );
+        assert_eq!(
+            plan.notifications[1].delivery,
+            TraceDeliveryOutcome::Delivered
+        );
+        assert_eq!(plan.delivered_targets(), [live]);
+    }
+
+    #[test]
+    fn capture_transfer_loses_before_it_gains_and_retains_outcomes() {
         let namespace = RuntimeNamespace::__runtime_new();
         let previous = namespace.__runtime_mounted_id(1, 1);
         let current = namespace.__runtime_mounted_id(2, 1);
@@ -131,14 +267,33 @@ mod tests {
         let pointer_id = PointerId::new(9)
             .unwrap_or_else(|| unreachable!("the test pointer identity is non-zero"));
 
-        let events = plan_capture_events(pointer_id, Some(&previous), Some(&current), &context);
+        let plan = plan_capture_transition(
+            pointer_id,
+            Some(&previous),
+            Some(&current),
+            &context,
+            |target| target == &current,
+        );
 
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].kind(), PointerCaptureKind::Lost);
-        assert_eq!(events[0].target(), &previous);
-        assert_eq!(events[0].related_owner(), Some(&current));
-        assert_eq!(events[1].kind(), PointerCaptureKind::Gained);
-        assert_eq!(events[1].target(), &current);
-        assert_eq!(events[1].related_owner(), Some(&previous));
+        assert_eq!(plan.previous_owner.as_ref(), Some(&previous));
+        assert_eq!(plan.current_owner.as_ref(), Some(&current));
+        assert_eq!(plan.notifications.len(), 2);
+        assert_eq!(plan.notifications[0].event.kind(), PointerCaptureKind::Lost);
+        assert_eq!(plan.notifications[0].event.target(), &previous);
+        assert_eq!(plan.notifications[0].event.related_owner(), Some(&current));
+        assert_eq!(
+            plan.notifications[0].delivery,
+            TraceDeliveryOutcome::Suppressed
+        );
+        assert_eq!(
+            plan.notifications[1].event.kind(),
+            PointerCaptureKind::Gained
+        );
+        assert_eq!(plan.notifications[1].event.target(), &current);
+        assert_eq!(plan.notifications[1].event.related_owner(), Some(&previous));
+        assert_eq!(
+            plan.notifications[1].delivery,
+            TraceDeliveryOutcome::Delivered
+        );
     }
 }

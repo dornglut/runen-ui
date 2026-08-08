@@ -1,10 +1,13 @@
 use runenui_core::{HostProtocol, PointerPhase};
 
-use super::{PointerGeometry, PointerSnapshot, PointerWork, StreamPreparation};
+use super::{PointerBoundaryPlan, PointerGeometry, PointerWork, StreamPreparation};
 use crate::{
-    MountedNodeId, RuntimeTerminalReason, TraceRecordKind, TraceSequence,
+    MountedNodeId, RuntimeTerminalReason, TraceContext, TraceEventContext, TraceEventFamily,
+    TracePointerContext, TracePointerPath, TraceRecordKind, TraceSequence, TraceSurfaceContext,
+    TraceTargetTransition,
     mounted::TargetStatus,
     runtime::{MandatoryTracePlan, ProcessApplicationActionOutcome, Runtime},
+    trace::TraceRecordDraft,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -18,14 +21,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .surface_publication
             .validate_surface_identity(work.event.surface_context())
             .map_err(|error| {
-                self.reject_pointer(
+                self.reject_pointer(super::rejection::RejectedPointerFacts::new(
                     work.sequence,
                     work.causal_parent,
                     work.trace_reservation,
                     pointer_id,
                     phase,
                     super::rejection::map_surface_error(error),
-                )
+                ))
             })?;
         let existing = match self.pointer_registry.validate(
             pointer_id,
@@ -36,14 +39,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(stream) => Some(stream.clone()),
             Err(super::PointerStreamError::Missing) => None,
             Err(error) => {
-                return Err(self.reject_pointer(
-                    work.sequence,
-                    work.causal_parent,
-                    work.trace_reservation,
-                    pointer_id,
-                    phase,
-                    super::rejection::map_stream_error(error),
-                ));
+                return Err(
+                    self.reject_pointer(super::rejection::RejectedPointerFacts::new(
+                        work.sequence,
+                        work.causal_parent,
+                        work.trace_reservation,
+                        pointer_id,
+                        phase,
+                        super::rejection::map_stream_error(error),
+                    )),
+                );
             }
         };
         if matches!(phase, PointerPhase::Down)
@@ -53,24 +58,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .is_none_or(|button| stream.buttons().contains(button))
             })
         {
-            return Err(self.reject_pointer(
-                work.sequence,
-                work.causal_parent,
-                work.trace_reservation,
-                pointer_id,
-                phase,
-                crate::trace::TracePointerRejection::DuplicateStream,
-            ));
+            return Err(
+                self.reject_pointer(super::rejection::RejectedPointerFacts::new(
+                    work.sequence,
+                    work.causal_parent,
+                    work.trace_reservation,
+                    pointer_id,
+                    phase,
+                    crate::trace::TracePointerRejection::DuplicateStream,
+                )),
+            );
         }
         if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) && existing.is_none() {
-            return Err(self.reject_pointer(
-                work.sequence,
-                work.causal_parent,
-                work.trace_reservation,
-                pointer_id,
-                phase,
-                crate::trace::TracePointerRejection::MissingStream,
-            ));
+            return Err(
+                self.reject_pointer(super::rejection::RejectedPointerFacts::new(
+                    work.sequence,
+                    work.causal_parent,
+                    work.trace_reservation,
+                    pointer_id,
+                    phase,
+                    crate::trace::TracePointerRejection::MissingStream,
+                )),
+            );
         }
         let is_new = existing.is_none();
         let stream = match existing {
@@ -86,14 +95,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     work.event.buttons().clone(),
                 )
                 .map_err(|error| {
-                    self.reject_pointer(
+                    self.reject_pointer(super::rejection::RejectedPointerFacts::new(
                         work.sequence,
                         work.causal_parent,
                         work.trace_reservation,
                         pointer_id,
                         phase,
                         super::rejection::map_registration_error(error),
-                    )
+                    ))
                 })?,
         };
         Ok(StreamPreparation { is_new, stream })
@@ -130,21 +139,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 return Err(self.close_unavailable_terminal_pointer(work, error));
             }
             Err(error) => {
-                return Err(self.reject_pointer(
-                    work.sequence,
-                    work.causal_parent,
-                    work.trace_reservation,
-                    work.event.pointer_id(),
-                    work.event.phase(),
-                    super::rejection::map_surface_error(error),
-                ));
+                return Err(
+                    self.reject_pointer(super::rejection::RejectedPointerFacts::new(
+                        work.sequence,
+                        work.causal_parent,
+                        work.trace_reservation,
+                        work.event.pointer_id(),
+                        work.event.phase(),
+                        super::rejection::map_surface_error(error),
+                    )),
+                );
             }
         };
-        let snapshot: PointerSnapshot = (
-            super::rejection::map_snapshot_kind(resolution.snapshot_kind()),
-            resolution.hit_test_generation(),
-            resolution.coordinate_revision(),
-        );
+        let snapshot = super::rejection::map_snapshot_kind(resolution.snapshot_kind());
         let physical_target = resolution.into_target();
         let physical_path = match physical_target.as_ref() {
             Some(target) => {
@@ -200,14 +207,115 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    const fn pointer_trace_context(work: &PointerWork) -> TracePointerContext {
+        TracePointerContext::event(
+            work.event.pointer_id(),
+            work.event.device_id(),
+            work.event.device_kind(),
+            work.event.phase(),
+        )
+    }
+
+    fn trace_pointer_path(&self, path: &[MountedNodeId]) -> TracePointerPath {
+        TracePointerPath::new(
+            path.iter()
+                .map(|target| self.tree.trace_target(target))
+                .collect(),
+        )
+    }
+
+    fn record_physical_pointer_observation(
+        &mut self,
+        work: &PointerWork,
+        geometry: &PointerGeometry,
+        parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        let Some(snapshot) = geometry.snapshot else {
+            return parent;
+        };
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let context = TraceContext::pointer_observation(
+            TraceEventContext::new(
+                TraceEventFamily::Pointer,
+                super::pointer_default_is_cancelable(work.event.phase()),
+            ),
+            TraceSurfaceContext::accepted(work.event.surface_context(), snapshot),
+            Self::pointer_trace_context(work),
+            self.trace_pointer_path(&geometry.physical_path),
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerPhysicalTargetResolved,
+                work.instant,
+                context,
+            )
+            .with_work_sequence(Some(work.sequence))
+            .with_causal_parent(parent)
+            .with_target(
+                geometry
+                    .physical_target
+                    .as_ref()
+                    .map(|target| self.tree.trace_target(target)),
+            ),
+        )
+    }
+
+    fn record_pointer_boundary_plan(
+        &mut self,
+        work: &PointerWork,
+        geometry: &PointerGeometry,
+        boundary_plan: &PointerBoundaryPlan,
+        parent: Option<TraceSequence>,
+    ) -> Option<TraceSequence> {
+        if !self.trace.is_enabled() {
+            return parent;
+        }
+        let surface = geometry
+            .snapshot
+            .map(|snapshot| TraceSurfaceContext::accepted(work.event.surface_context(), snapshot));
+        let transition = TraceTargetTransition::new(
+            boundary_plan
+                .previous_target
+                .as_ref()
+                .map(|target| self.tree.trace_target(target)),
+            boundary_plan
+                .current_target
+                .as_ref()
+                .map(|target| self.tree.trace_target(target)),
+        );
+        let context = TraceContext::pointer_boundary_plan(
+            surface,
+            Self::pointer_trace_context(work),
+            self.trace_pointer_path(&boundary_plan.previous_path),
+            transition,
+        );
+        self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerBoundaryBundlePlanned {
+                    notifications: boundary_plan.notifications.len(),
+                },
+                work.instant,
+                context,
+            )
+            .with_work_sequence(Some(work.sequence))
+            .with_causal_parent(parent)
+            .with_target(
+                boundary_plan
+                    .current_target
+                    .as_ref()
+                    .map(|target| self.tree.trace_target(target)),
+            ),
+        )
+    }
+
     pub(super) fn record_pointer_prelude(
         &mut self,
         work: &PointerWork,
         is_new: bool,
-        physical_target: Option<&MountedNodeId>,
-        snapshot: Option<PointerSnapshot>,
-        diagnosis: Option<crate::TracePointerRejection>,
-        boundary_notifications: usize,
+        geometry: &PointerGeometry,
+        boundary_plan: &PointerBoundaryPlan,
     ) -> Result<Option<TraceSequence>, ProcessApplicationActionOutcome> {
         if !self.trace.can_replace_reservation(
             work.trace_reservation,
@@ -251,7 +359,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 None,
             );
         }
-        if let Some(outcome) = diagnosis {
+        if let Some(outcome) = geometry.diagnosis {
             parent = self.trace.record(
                 TraceRecordKind::PointerContextUnavailable {
                     pointer_id,
@@ -264,35 +372,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 None,
             );
         }
-        if let Some((snapshot, hit_test_generation, coordinate_revision)) = snapshot {
-            let kind = TraceRecordKind::PointerPhysicalTargetResolved {
-                pointer_id,
-                snapshot,
-                hit_test_generation,
-                coordinate_revision,
-            };
-            parent = self.trace.record(
-                kind,
-                Some(work.sequence),
-                parent,
-                None,
-                None,
-                physical_target.map(|target| self.tree.trace_target(target)),
-            );
-        } else if is_new {
+        if geometry.snapshot.is_none() && is_new {
             unreachable!("cancel requires an existing pointer stream")
         }
-        parent = self.trace.record(
-            TraceRecordKind::PointerBoundaryBundlePlanned {
-                pointer_id,
-                notifications: boundary_notifications,
-            },
-            Some(work.sequence),
-            parent,
-            None,
-            None,
-            None,
-        );
+        parent = self.record_physical_pointer_observation(work, geometry, parent);
+        parent = self.record_pointer_boundary_plan(work, geometry, boundary_plan, parent);
         Ok(parent)
     }
 }
