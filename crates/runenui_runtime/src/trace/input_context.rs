@@ -1,4 +1,4 @@
-use core::fmt;
+use core::{cell::RefCell, fmt};
 
 use runenui_core::{CompositionGeneration, CompositionRange, InputDeviceId};
 
@@ -153,7 +153,7 @@ enum TraceInputContextData {
     CommittedText {
         device_id: Option<InputDeviceId>,
         metrics: TraceTextMetrics,
-        captured: Option<PendingTraceText>,
+        captured: RefCell<Option<PendingTraceText>>,
     },
     CompositionIdentity {
         composition: TraceCompositionContext,
@@ -162,7 +162,7 @@ enum TraceInputContextData {
         composition: TraceCompositionContext,
         metrics: TraceTextMetrics,
         range: Option<TraceCompositionRange>,
-        captured: Option<PendingTraceText>,
+        captured: RefCell<Option<PendingTraceText>>,
     },
     CompositionCleanup {
         composition: TraceCompositionContext,
@@ -188,7 +188,7 @@ impl TraceInputContext {
             data: TraceInputContextData::CommittedText {
                 device_id,
                 metrics: TraceTextMetrics::redacted(text),
-                captured: Some(PendingTraceText::new(text)),
+                captured: RefCell::new(Some(PendingTraceText::new(text))),
             },
         }
     }
@@ -209,7 +209,7 @@ impl TraceInputContext {
                 composition,
                 metrics: TraceTextMetrics::redacted(preedit),
                 range: range.map(|range| TraceCompositionRange::from_validated(preedit, range)),
-                captured: Some(PendingTraceText::new(preedit)),
+                captured: RefCell::new(Some(PendingTraceText::new(preedit))),
             },
         }
     }
@@ -226,13 +226,15 @@ impl TraceInputContext {
         }
     }
 
-    pub(in crate::trace) fn apply_payload_capture(&mut self, capture: TracePayloadCapture) {
+    pub(in crate::trace) fn apply_payload_capture(&self, capture: TracePayloadCapture) {
         if matches!(capture, TracePayloadCapture::FullText) {
             return;
         }
-        match &mut self.data {
+        match &self.data {
             TraceInputContextData::CommittedText { captured, .. }
-            | TraceInputContextData::CompositionUpdate { captured, .. } => *captured = None,
+            | TraceInputContextData::CompositionUpdate { captured, .. } => {
+                *captured.borrow_mut() = None;
+            }
             TraceInputContextData::Keyboard { .. }
             | TraceInputContextData::CompositionIdentity { .. }
             | TraceInputContextData::CompositionCleanup { .. } => {}
@@ -313,14 +315,17 @@ impl TraceInputContext {
         }
     }
 
-    /// Returns the explicitly captured committed text or preedit, when enabled.
+    /// Returns an owned copy of explicitly captured committed text or preedit.
+    ///
+    /// Default-redacted traces return `None`.
     #[must_use]
-    pub fn captured_text(&self) -> Option<&str> {
+    pub fn captured_text(&self) -> Option<String> {
         match &self.data {
             TraceInputContextData::CommittedText { captured, .. }
-            | TraceInputContextData::CompositionUpdate { captured, .. } => {
-                captured.as_ref().map(PendingTraceText::as_str)
-            }
+            | TraceInputContextData::CompositionUpdate { captured, .. } => captured
+                .borrow()
+                .as_ref()
+                .map(|captured| captured.as_str().to_owned()),
             TraceInputContextData::Keyboard { .. }
             | TraceInputContextData::CompositionIdentity { .. }
             | TraceInputContextData::CompositionCleanup { .. } => None,
@@ -357,8 +362,8 @@ mod tests {
 
     #[test]
     fn committed_text_is_scrubbed_by_default_policy_without_debug_leakage() {
-        let mut context = TraceInputContext::committed_text("hé", None);
-        assert_eq!(context.captured_text(), Some("hé"));
+        let context = TraceInputContext::committed_text("hé", None);
+        assert_eq!(context.captured_text().as_deref(), Some("hé"));
         assert!(!format!("{context:?}").contains("hé"));
 
         context.apply_payload_capture(TracePayloadCapture::Redacted);
@@ -380,9 +385,9 @@ mod tests {
 
     #[test]
     fn explicit_full_text_policy_retains_payload_without_debug_formatting_it() {
-        let mut context = TraceInputContext::committed_text("hé", None);
+        let context = TraceInputContext::committed_text("hé", None);
         context.apply_payload_capture(TracePayloadCapture::FullText);
-        assert_eq!(context.captured_text(), Some("hé"));
+        assert_eq!(context.captured_text().as_deref(), Some("hé"));
         assert!(!format!("{context:?}").contains("hé"));
     }
 
