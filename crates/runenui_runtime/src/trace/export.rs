@@ -71,7 +71,9 @@ pub(crate) fn encode_record_json(runtime: &RuntimeNamespace, record: &TraceRecor
     output.push_str(",\"instant_nanos\":");
     json::optional_u64(
         &mut output,
-        record.instant().map(runenui_core::MonotonicInstant::as_nanos),
+        record
+            .instant()
+            .map(runenui_core::MonotonicInstant::as_nanos),
     );
     output.push_str(",\"original_target\":");
     value::optional_mounted_id(&mut output, runtime, record.original_target());
@@ -94,11 +96,7 @@ pub(crate) fn encode_record_json(runtime: &RuntimeNamespace, record: &TraceRecor
     output
 }
 
-fn encode_work(
-    output: &mut String,
-    runtime: &RuntimeNamespace,
-    work: Option<&TraceWorkIdentity>,
-) {
+fn encode_work(output: &mut String, runtime: &RuntimeNamespace, work: Option<&TraceWorkIdentity>) {
     let Some(work) = work else {
         output.push_str("null");
         return;
@@ -145,7 +143,10 @@ fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &Tra
         output.push_str("{\"pointer_id\":");
         json::u64_value(output, pointer.pointer_id().get());
         output.push_str(",\"device_id\":");
-        json::optional_u64(output, pointer.device_id().map(runenui_core::InputDeviceId::get));
+        json::optional_u64(
+            output,
+            pointer.device_id().map(runenui_core::InputDeviceId::get),
+        );
         output.push_str(",\"device_kind\":");
         json::string(output, tokens::pointer_device_kind(pointer.device_kind()));
         output.push_str(",\"phase\":");
@@ -155,9 +156,17 @@ fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &Tra
         output.push_str("null");
     }
     output.push_str(",\"pointer_role\":");
-    json::optional_string(output, context.pointer_record_role().map(tokens::pointer_record_role));
+    json::optional_string(
+        output,
+        context
+            .pointer_record_role()
+            .map(tokens::pointer_record_role),
+    );
     output.push_str(",\"focus_role\":");
-    json::optional_string(output, context.focus_record_role().map(tokens::focus_record_role));
+    json::optional_string(
+        output,
+        context.focus_record_role().map(tokens::focus_record_role),
+    );
     output.push_str(",\"input\":");
     encode_input(output, context.input());
     output.push_str(",\"automation\":");
@@ -177,7 +186,9 @@ fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &Tra
     output.push_str(",\"requested_pointer_id\":");
     json::optional_u64(
         output,
-        context.requested_pointer_id().map(runenui_core::PointerId::get),
+        context
+            .requested_pointer_id()
+            .map(runenui_core::PointerId::get),
     );
     output.push_str(",\"route\":");
     encode_route(output, runtime, context.route());
@@ -253,7 +264,10 @@ fn encode_input(output: &mut String, input: Option<&TraceInputContext>) {
     output.push_str("{\"role\":");
     json::string(output, tokens::input_record_role(input.role()));
     output.push_str(",\"device_id\":");
-    json::optional_u64(output, input.device_id().map(runenui_core::InputDeviceId::get));
+    json::optional_u64(
+        output,
+        input.device_id().map(runenui_core::InputDeviceId::get),
+    );
     output.push_str(",\"composition\":");
     if let Some(composition) = input.composition() {
         output.push_str("{\"generation\":");
@@ -261,7 +275,9 @@ fn encode_input(output: &mut String, input: Option<&TraceInputContext>) {
         output.push_str(",\"device_id\":");
         json::optional_u64(
             output,
-            composition.device_id().map(runenui_core::InputDeviceId::get),
+            composition
+                .device_id()
+                .map(runenui_core::InputDeviceId::get),
         );
         output.push('}');
     } else {
@@ -348,7 +364,11 @@ fn encode_route(
     output.push('}');
 }
 
-fn encode_target_list(output: &mut String, runtime: &RuntimeNamespace, targets: &[crate::TraceTarget]) {
+fn encode_target_list(
+    output: &mut String,
+    runtime: &RuntimeNamespace,
+    targets: &[crate::TraceTarget],
+) {
     output.push('[');
     for (index, target) in targets.iter().enumerate() {
         if index != 0 {
