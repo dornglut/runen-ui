@@ -195,6 +195,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             )
             .with_causal_parent(final_parent.or(shutdown_parent)),
         );
+        self.trace.close_sink();
         self.status = RuntimeStatus::Closed;
         ShutdownReport {
             already_complete: false,
