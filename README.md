@@ -6,16 +6,16 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M4A through M4C5 are complete and owner-accepted. The accepted
-M4C5 feature head `d0d2ef1d53a8ab1d940beb4155f5f991229f042e` passed
-exact-head CI run `30843238697` and was squash-merged in
-[PR #27](https://github.com/dornglut/runen-ui/pull/27) as
-`284ecdcfe107e0a7afc88e4bf4fc82eecc52a226`. M4D1 becomes the next
-implementation slice only after this post-merge authority reconciliation is
-accepted and merged and its resulting accepted `main` is recorded. M4D2–M4D3
-remain blocked in sequence. M4 remains active and incomplete. Current maturity,
-durable sequence, work ownership, and historical acceptance evidence live in
-the [status map](docs/status-map.md), [roadmap](docs/roadmap.md),
+Milestone status: M4A through M4D1 are complete and owner-accepted. The accepted
+M4D1 feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed
+exact-head CI run `31269401262` / #657 and was squash-merged in
+[PR #39](https://github.com/dornglut/runen-ui/pull/39) as
+`2fe269366386d7aee9de2a2573498b64ad486293`. This post-merge authority
+reconciliation records the accepted trace-schema result. M4D2–M4D3 remain
+blocked in sequence until the required predecessor reconciliation and acceptance
+gates pass. M4 remains active and incomplete. Current maturity, durable sequence,
+work ownership, and historical acceptance evidence live in the
+[status map](docs/status-map.md), [roadmap](docs/roadmap.md),
 [work-tracking contract](docs/work-tracking.md), and
 [public repository migration history](docs/history/public-repository-migration.md).
 
@@ -85,8 +85,9 @@ Important limitations remain: pointer input is a deterministic logical-surface
 proof without native host translation or production scrolling; text measurement
 is deterministic character counting; M4C5's owner-accepted raw keyboard,
 committed-text, composition, and authored-ID automation remain host-neutral
-proof behavior without editable text or native translation; and complete
-trace-v2 normalization, trace export/sinks/replay, production
+proof behavior without editable text or native translation; M4D1's accepted
+in-memory trace schema is normalized and causally reconstructable, while
+deterministic JSONL export, external trace sinks, replay, production
 semantics/accessibility, paint/hit scenes, production layout/style/text, native
 hosts, renderer backends, and production controls are absent. The current
 runtime has one mounted root, one focus domain, and one logical surface with
