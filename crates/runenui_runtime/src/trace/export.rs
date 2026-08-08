@@ -10,8 +10,6 @@ use crate::{
     TraceRouteSnapshot, TraceTargetTransition, TraceWorkIdentity, TraceWorkOwner,
 };
 
-pub(super) const TRACE_JSONL_VERSION: u32 = 1;
-
 pub(crate) fn encode_trace_jsonl<'a>(
     runtime: &RuntimeNamespace,
     dropped_before_sequence: Option<crate::TraceSequence>,
@@ -110,7 +108,6 @@ fn encode_work(output: &mut String, runtime: &RuntimeNamespace, work: Option<&Tr
             value::mounted_id(output, runtime, owner);
             output.push('}');
         }
-        _ => json::string(output, "unknown"),
     }
     output.push(',');
     json::name(output, "family");
@@ -186,9 +183,7 @@ fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &Tra
     output.push_str(",\"requested_pointer_id\":");
     json::optional_u64(
         output,
-        context
-            .requested_pointer_id()
-            .map(runenui_core::PointerId::get),
+        context.requested_pointer_id().map(|pointer_id| pointer_id.get()),
     );
     output.push_str(",\"route\":");
     encode_route(output, runtime, context.route());
