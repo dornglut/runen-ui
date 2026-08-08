@@ -42,7 +42,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             checked_surface_snapshot_retention(config.surface_snapshot_retention());
         let surface_publication =
             SurfacePublicationState::new(tree.runtime_namespace(), surface_snapshot_retention);
-        let mut trace = Trace::new(config.trace_config());
+        let mut trace =
+            Trace::new_for_runtime(config.trace_config(), tree.runtime_namespace().clone());
         let initial_trace_plan = if mount_failed {
             MandatoryTracePlan::one_fact()
         } else {
