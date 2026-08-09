@@ -4,12 +4,12 @@
 
 This map reports the maturity of the active implementation at the current revision. It does not treat types, target documents, or historical code as implemented behavior.
 
-M4D1 is complete, owner-accepted, and squash-merged. Its ten owned
-`TRACE-EVENT-*` conformance rows are accepted support at the current headless
-proof level. The entries below retain the explicit production limitations: this
-acceptance does not add JSONL export, an external trace sink, replay, editable
-text, native host translation, or accessibility semantics. M4D2 becomes the
-next implementation slice only after this post-merge authority reconciliation
+M4D2 is complete, owner-accepted, and squash-merged. Its ten owned
+`TRACE-EXPORT-*` conformance rows are accepted support at the current headless
+proof level. M4D2 adds deterministic JSONL projection, explicit text/IME capture
+policy, optional non-`Debug` action labels, and a subordinate bounded trace sink
+without creating a second trace authority. Replay remains absent. M4D3 becomes
+the next implementation slice only after this post-merge authority reconciliation
 is accepted and merged.
 
 ## Maturity states
@@ -56,25 +56,25 @@ No framework subsystem is currently `stable`.
 | Host neutrality | `usable` | Active core/runtime have no native window, GPU, ECS, platform-controller, or legacy dependencies | Neutrality alone is not a host integration contract | M10 |
 | Host/platform integration | `absent` | Core application host protocol and runtime wake acknowledgment are host-neutral seams only | No native event loop/window, DPI, clipboard, cursor, IME, drag/drop, accessibility bridge, or multi-window adapter | M4, M10 |
 | Raw controller/gamepad platform input | `absent` | None | No device connection/identity, raw button/axis translation, normalization/dead zones, or embedded-host mapping | M10 |
-| Testing and diagnostics | `partial` | Substantial proof-level integration tests; genuine downstream widget conformance; deterministic clock/tasks and open widget/style/layout inspection; strict lints | No unified M5 public harness, stable semantic queries, replay, snapshots, fuzzing, property tests, benchmarks, or platform tests | M4–M5, M11 |
-| Trace and observability | `partial` | One bounded canonical M4D1-normalized sequence reconstructs scheduler, routed command, surface, pointer, focus/modality, keyboard/text/composition/automation, application-action, terminal, cancellation, shutdown, and publication causality with redacted input facts and exact retention semantics | No deterministic JSONL export, external sink, or replay | M4D1 owner-accepted; M4D2–M4D3 blocked |
+| Testing and diagnostics | `partial` | Substantial proof-level integration tests; genuine downstream widget conformance; deterministic clock/tasks and open widget/style/layout inspection; strict lints; deterministic trace export/sink conformance | No unified M5 public harness, stable semantic queries, replay, snapshots, fuzzing, property tests, benchmarks, or platform tests | M4–M5, M11 |
+| Trace and observability | `partial` | One bounded canonical M4D1-normalized sequence plus M4D2 deterministic JSONL v1 projection, default-redacted/explicit-full text and IME capture, optional static action labels, and a subordinate lazily bounded nonblocking sink with same-record delivery diagnostics | Replay remains absent; the sink/export surface is still headless proof infrastructure rather than a production observability service | M4D1–M4D2 owner-accepted; M4D3 blocked until reconciliation |
 | Source formats and devtools | `deferred` | Context-export tooling only; no UI source system | No parser, source mapping, inspector, hot reload, live preview, or visual authoring | M12 |
 | Advanced editor/game systems | `deferred` | Product direction only | No virtualization, advanced data controls, animation, overlays, docking, workspaces, or advanced multi-surface systems | M12 |
 | Legacy archive | `archived` | Git history and annotated tag `legacy-runenwerk-ui-archive-2026-07-11` preserve the audited tree | Removed from active content; salvage remains opt-in and must follow current architecture | M0B complete |
 
 ## Current milestone
 
-M0–M3, M4A, M4B, M4C0–M4C5, and M4D1 are complete and owner-accepted. ADR 0005 remains routed-behavior authority, ADR 0006 remains scheduler-behavior authority, the accepted [M4C delivery charter](architecture/m4c-delivery-and-routed-transaction-charter.md) owns implementation and delivery constraints, and the [M4 conformance matrix](architecture/m4-conformance-matrix.md) owns observable acceptance.
+M0–M3, M4A, M4B, M4C0–M4C5, M4D1, and M4D2 are complete and owner-accepted. ADR 0005 remains routed-behavior authority, ADR 0006 remains scheduler-behavior authority, the accepted [M4C delivery charter](architecture/m4c-delivery-and-routed-transaction-charter.md) owns implementation and delivery constraints, and the [M4 conformance matrix](architecture/m4-conformance-matrix.md) owns observable acceptance.
 
-The accepted M4D1 feature head
-`990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed exact-head CI run
-`31269401262` / #657 and was squash-merged in
-[PR #39](https://github.com/dornglut/runen-ui/pull/39) as
-`2fe269366386d7aee9de2a2573498b64ad486293`. Its ten owned
-`TRACE-EVENT-*` rows are `owner-accepted` through this authority
-reconciliation. M4D2 becomes the next implementation slice only after this
-post-merge reconciliation is accepted and merged; M4D3 remains blocked behind
-M4D2. Semantic accessibility mapping, export, sink, and replay are not upgraded.
-M4 remains active and incomplete.
+The accepted M4D2 feature head
+`1bd7dcfdbb46dec52da62faabb739c835e971c80` passed exact-head CI run
+`31321448821` / #712 and was squash-merged in
+[PR #41](https://github.com/dornglut/runen-ui/pull/41) as
+`8c67655ffce438c2e35e6478e7299bd704033b8b`. All 23 changed-file blob
+identities match between the reviewed feature head and accepted squash. Its ten
+owned `TRACE-EXPORT-*` rows are `owner-accepted` through this authority
+reconciliation. M4D3 becomes the next implementation slice only after this
+post-merge reconciliation is accepted and merged. Semantic accessibility mapping
+and replay are not upgraded. M4 remains active and incomplete.
 
 Merged acceptance evidence belongs in pull requests and the [public repository migration history](history/public-repository-migration.md). Volatile branch, head, blocker, and next-action state belongs in the [work-tracking system](work-tracking.md) and GitHub issues.
