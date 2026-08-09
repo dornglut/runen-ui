@@ -377,7 +377,12 @@ fn trace_export_07_09_10_sink_delivery_state_cannot_change_runtime_or_canonical_
     let with_full_sink = execute(TraceConfig::new(128).with_sink_capacity(one));
     let with_closed_sink = execute_closed(TraceConfig::new(128).with_sink_capacity(huge));
 
-    for result in [&without_sink, &with_delivered_sink, &with_full_sink, &with_closed_sink] {
+    for result in [
+        &without_sink,
+        &with_delivered_sink,
+        &with_full_sink,
+        &with_closed_sink,
+    ] {
         assert_eq!(result.0, 2);
         assert_eq!(result.1, without_sink.1);
     }
