@@ -467,10 +467,7 @@ fn validate_contiguous_sequence(
     Ok(())
 }
 
-fn validate_causal_parent(
-    line: usize,
-    record: &TraceReplayRecord,
-) -> Result<(), TraceReplayError> {
+fn validate_causal_parent(line: usize, record: &TraceReplayRecord) -> Result<(), TraceReplayError> {
     let Some(parent) = record.causal_parent else {
         return Ok(());
     };
