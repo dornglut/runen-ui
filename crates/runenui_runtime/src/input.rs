@@ -1318,7 +1318,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .with_work_sequence(Some(sequence))
                     .with_causal_parent(causal_parent)
                     .with_target(Some(self.tree.trace_target(target)))
-                    .with_routed_endpoints(target.clone(), Some(target.clone()), origin),
+                    .with_routed_endpoints(
+                        target.clone(),
+                        Some(target.clone()),
+                        origin,
+                    ),
                 );
                 self.trace.record_draft(
                     TraceRecordDraft::input_marker(TraceRecordKind::CompositionRetired, instant)
