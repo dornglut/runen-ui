@@ -4,7 +4,7 @@ use core::num::NonZeroUsize;
 
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, Element, EventContext, NoHostProtocol, SemanticCommand,
-    UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetTextInput,
+    UiApp, UiEvent, Widget, WidgetEventOutput, WidgetTextInput,
 };
 use runenui_runtime::{
     AppRuntime, PumpBudget, RuntimeConfig, TraceConfig, TracePayloadCapture, TraceRecord,
@@ -415,6 +415,7 @@ fn open_sink_delivers_shutdown_then_closes_after_buffer_drains() {
             Ok(line) => saw_shutdown |= line.as_str().contains("runtime_shutdown"),
             Err(TraceSinkReceiveError::Empty) => continue,
             Err(TraceSinkReceiveError::Closed) => break,
+            Err(error) => panic!("unexpected trace sink receive error: {error}"),
         }
     }
     assert!(saw_shutdown);
