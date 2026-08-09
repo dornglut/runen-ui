@@ -16,10 +16,6 @@ pub struct TraceActionIdentity {
 }
 
 impl TraceActionIdentity {
-    pub(crate) fn of<Action>(category: TraceActionCategory) -> Self {
-        Self::of_labeled::<Action>(category, None)
-    }
-
     pub(crate) fn of_labeled<Action>(
         category: TraceActionCategory,
         label: Option<&'static str>,
