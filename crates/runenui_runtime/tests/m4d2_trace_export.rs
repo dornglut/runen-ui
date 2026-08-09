@@ -3,8 +3,8 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, Element, EventContext, NoHostProtocol, SemanticCommand, UiApp,
-    UiEvent, View, Widget, WidgetEventOutput, WidgetTextInput,
+    CommandOrigin, CommittedTextEvent, Element, EventContext, NoHostProtocol, SemanticCommand,
+    UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetTextInput,
 };
 use runenui_runtime::{
     AppRuntime, PumpBudget, RuntimeConfig, TraceConfig, TracePayloadCapture, TraceRecord,
@@ -99,7 +99,10 @@ fn focus(runtime: &mut AppRuntime<TestApp>) {
     settle(runtime);
 }
 
-fn record_for_work(runtime: &AppRuntime<TestApp>, work: runenui_runtime::WorkSequence) -> &TraceRecord {
+fn record_for_work(
+    runtime: &AppRuntime<TestApp>,
+    work: runenui_runtime::WorkSequence,
+) -> &TraceRecord {
     runtime
         .trace()
         .records()
@@ -120,8 +123,12 @@ fn canonical_signature(
             (
                 record.sequence().get(),
                 record.kind().clone(),
-                record.work_sequence().map(runenui_runtime::WorkSequence::get),
-                record.causal_parent().map(runenui_runtime::TraceSequence::get),
+                record
+                    .work_sequence()
+                    .map(runenui_runtime::WorkSequence::get),
+                record
+                    .causal_parent()
+                    .map(runenui_runtime::TraceSequence::get),
             )
         })
         .collect()
@@ -151,9 +158,9 @@ fn trace_export_01_jsonl_v1_is_versioned_and_byte_stable() {
     ));
     let records: Vec<_> = lines.collect();
     assert!(!records.is_empty());
-    assert!(records.iter().all(|line| line.starts_with(
-        "{\"schema\":\"runenui.trace.record\",\"version\":1,\"sequence\":"
-    )));
+    assert!(records.iter().all(|line| {
+        line.starts_with("{\"schema\":\"runenui.trace.record\",\"version\":1,\"sequence\":")
+    }));
 }
 
 #[test]
@@ -171,7 +178,12 @@ fn trace_export_02_text_is_redacted_by_default_and_full_only_by_explicit_policy(
     let accepted = redacted
         .trace()
         .records()
-        .find(|record| matches!(record.kind(), TraceRecordKind::CommittedTextSubmissionAccepted))
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CommittedTextSubmissionAccepted
+            )
+        })
         .unwrap_or_else(|| unreachable!("committed text acceptance is traced"));
     let input = accepted
         .context()
@@ -191,10 +203,18 @@ fn trace_export_02_text_is_redacted_by_default_and_full_only_by_explicit_policy(
     let accepted = full
         .trace()
         .records()
-        .find(|record| matches!(record.kind(), TraceRecordKind::CommittedTextSubmissionAccepted))
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::CommittedTextSubmissionAccepted
+            )
+        })
         .unwrap_or_else(|| unreachable!("committed text acceptance is traced"));
     assert_eq!(
-        accepted.context().input().and_then(|input| input.captured_text()),
+        accepted
+            .context()
+            .input()
+            .and_then(|input| input.captured_text()),
         Some(SECRET)
     );
     assert!(full.trace().export_jsonl().contains(SECRET));
@@ -212,11 +232,7 @@ fn trace_export_03_preedit_is_redacted_by_default_and_preserves_checked_range() 
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("composition-capable focus accepts start"));
     redacted
-        .submit_composition_update(
-            start.generation().clone(),
-            PREEDIT.to_owned(),
-            Some(range),
-        )
+        .submit_composition_update(start.generation().clone(), PREEDIT.to_owned(), Some(range))
         .unwrap_or_else(|_| unreachable!("live composition accepts update"));
     let update = redacted
         .trace()
@@ -231,7 +247,10 @@ fn trace_export_03_preedit_is_redacted_by_default_and_preserves_checked_range() 
     let captured_range = input
         .composition_range()
         .unwrap_or_else(|| unreachable!("checked range is retained"));
-    assert_eq!((captured_range.byte_start(), captured_range.byte_end()), (0, 7));
+    assert_eq!(
+        (captured_range.byte_start(), captured_range.byte_end()),
+        (0, 7)
+    );
     assert!(!redacted.trace().export_jsonl().contains(PREEDIT));
 
     let config = TraceConfig::new(128).with_payload_capture(TracePayloadCapture::FullText);
@@ -240,19 +259,18 @@ fn trace_export_03_preedit_is_redacted_by_default_and_preserves_checked_range() 
     let start = full
         .start_composition(None)
         .unwrap_or_else(|_| unreachable!("composition-capable focus accepts start"));
-    full.submit_composition_update(
-        start.generation().clone(),
-        PREEDIT.to_owned(),
-        Some(range),
-    )
-    .unwrap_or_else(|_| unreachable!("live composition accepts update"));
+    full.submit_composition_update(start.generation().clone(), PREEDIT.to_owned(), Some(range))
+        .unwrap_or_else(|_| unreachable!("live composition accepts update"));
     let update = full
         .trace()
         .records()
         .find(|record| matches!(record.kind(), TraceRecordKind::CompositionUpdateSubmitted))
         .unwrap_or_else(|| unreachable!("composition update is traced"));
     assert_eq!(
-        update.context().input().and_then(|input| input.captured_text()),
+        update
+            .context()
+            .input()
+            .and_then(|input| input.captured_text()),
         Some(PREEDIT)
     );
     assert!(full.trace().export_jsonl().contains(PREEDIT));
@@ -278,7 +296,10 @@ fn trace_export_05_08_full_sink_loses_only_external_copy_and_adds_no_sequence() 
 
     let first = record_for_work(&runtime, first_work);
     let second = record_for_work(&runtime, second_work);
-    assert_eq!(first.sink_delivery(), Some(TraceSinkDeliveryOutcome::Delivered));
+    assert_eq!(
+        first.sink_delivery(),
+        Some(TraceSinkDeliveryOutcome::Delivered)
+    );
     assert_eq!(second.sink_delivery(), Some(TraceSinkDeliveryOutcome::Full));
     assert_eq!(second.sequence().get(), first.sequence().get() + 1);
 
@@ -323,7 +344,9 @@ fn trace_export_06_closed_sink_is_diagnosed_once_then_retired_before_shutdown() 
 
 #[test]
 fn trace_export_07_09_10_sink_backpressure_cannot_change_runtime_or_canonical_order() {
-    fn execute(config: TraceConfig) -> (usize, Vec<(u64, TraceRecordKind, Option<u64>, Option<u64>)>) {
+    fn execute(
+        config: TraceConfig,
+    ) -> (usize, Vec<(u64, TraceRecordKind, Option<u64>, Option<u64>)>) {
         let mut runtime = mounted(config);
         runtime
             .submit_action(TestAction::Increment)
@@ -346,8 +369,8 @@ fn trace_export_07_09_10_sink_backpressure_cannot_change_runtime_or_canonical_or
 
 #[test]
 fn trace_export_10_huge_logical_sink_capacity_does_not_eagerly_allocate() {
-    let huge = NonZeroUsize::new(usize::MAX)
-        .unwrap_or_else(|| unreachable!("usize max is non-zero"));
+    let huge =
+        NonZeroUsize::new(usize::MAX).unwrap_or_else(|| unreachable!("usize max is non-zero"));
     let mut runtime = mounted(TraceConfig::new(128).with_sink_capacity(huge));
     assert!(runtime.take_trace_sink_receiver().is_some());
     assert!(!runtime.trace().is_empty());
@@ -355,8 +378,8 @@ fn trace_export_10_huge_logical_sink_capacity_does_not_eagerly_allocate() {
 
 #[test]
 fn capacity_zero_disables_payload_and_sink_diagnostics_without_changing_actions() {
-    let huge = NonZeroUsize::new(usize::MAX)
-        .unwrap_or_else(|| unreachable!("usize max is non-zero"));
+    let huge =
+        NonZeroUsize::new(usize::MAX).unwrap_or_else(|| unreachable!("usize max is non-zero"));
     let config = TraceConfig::new(0)
         .with_payload_capture(TracePayloadCapture::FullText)
         .with_sink_capacity(huge);
