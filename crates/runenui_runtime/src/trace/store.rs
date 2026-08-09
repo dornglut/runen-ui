@@ -84,6 +84,14 @@ impl Trace {
         self.capacity != 0
     }
 
+    pub(crate) const fn payload_capture(&self) -> TracePayloadCapture {
+        if self.is_enabled() {
+            self.payload_capture
+        } else {
+            TracePayloadCapture::Redacted
+        }
+    }
+
     pub(crate) fn can_admit(&self, plan: MandatoryTracePlan) -> bool {
         self.can_admit_with_reserved(plan, self.reserved_records)
     }
