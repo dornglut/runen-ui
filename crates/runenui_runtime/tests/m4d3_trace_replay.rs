@@ -35,7 +35,10 @@ fn settle(runtime: &mut AppRuntime<ReplayApp>) {
         usize::MAX,
         usize::MAX,
     ));
-    assert!(report.is_quiescent(), "replay fixture did not settle: {report:?}");
+    assert!(
+        report.is_quiescent(),
+        "replay fixture did not settle: {report:?}"
+    );
 }
 
 fn mounted(trace_capacity: usize) -> AppRuntime<ReplayApp> {
