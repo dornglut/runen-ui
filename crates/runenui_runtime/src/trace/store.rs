@@ -84,10 +84,6 @@ impl Trace {
         self.capacity != 0
     }
 
-    pub(crate) const fn payload_capture(&self) -> TracePayloadCapture {
-        self.payload_capture
-    }
-
     pub(crate) fn can_admit(&self, plan: MandatoryTracePlan) -> bool {
         self.can_admit_with_reserved(plan, self.reserved_records)
     }
@@ -261,31 +257,37 @@ impl Trace {
         }
 
         let mut record = draft.into_record(sequence);
-        if let Some(sink) = self.sink.as_mut() {
-            match sink.reserve_delivery() {
-                Err(outcome) => record.sink_delivery = Some(outcome),
-                Ok(permit) => {
-                    record.sink_delivery = Some(TraceSinkDeliveryOutcome::Delivered);
-                    let mut shared = Arc::new(record);
-                    match permit.deliver(Arc::clone(&shared)) {
-                        Ok(()) => {
-                            self.records.push_back(shared);
-                            return Some(sequence);
-                        }
-                        Err(returned) => {
-                            drop(returned);
-                            sink.retire_closed();
-                            Arc::get_mut(&mut shared)
-                                .unwrap_or_else(|| {
-                                    unreachable!("failed sink delivery returns sole record ownership")
-                                })
-                                .sink_delivery = Some(TraceSinkDeliveryOutcome::Closed);
-                            self.records.push_back(shared);
-                            return Some(sequence);
-                        }
+        let sink_reservation = self.sink.as_mut().map(TraceSink::reserve_delivery);
+        match sink_reservation {
+            Some(Err(outcome)) => record.sink_delivery = Some(outcome),
+            Some(Ok(permit)) => {
+                record.sink_delivery = Some(TraceSinkDeliveryOutcome::Delivered);
+                let shared = Arc::new(record);
+                self.records.push_back(shared);
+                let outgoing = Arc::clone(
+                    self.records
+                        .back()
+                        .unwrap_or_else(|| unreachable!("just-appended trace record is retained")),
+                );
+                if let Err(returned) = permit.deliver(outgoing) {
+                    drop(returned);
+                    if let Some(sink) = self.sink.as_mut() {
+                        sink.retire_closed();
                     }
+                    let mut retained = self
+                        .records
+                        .pop_back()
+                        .unwrap_or_else(|| unreachable!("just-appended trace record is retained"));
+                    Arc::get_mut(&mut retained)
+                        .unwrap_or_else(|| {
+                            unreachable!("failed sink delivery leaves sole retained ownership")
+                        })
+                        .sink_delivery = Some(TraceSinkDeliveryOutcome::Closed);
+                    self.records.push_back(retained);
                 }
+                return Some(sequence);
             }
+            None => {}
         }
         self.records.push_back(Arc::new(record));
         Some(sequence)
