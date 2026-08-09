@@ -144,9 +144,7 @@ impl TraceSink {
         self.receiver.take()
     }
 
-    pub(super) fn reserve_delivery(
-        &mut self,
-    ) -> Result<TraceSinkPermit, TraceSinkDeliveryOutcome> {
+    pub(super) fn reserve_delivery(&mut self) -> Result<TraceSinkPermit, TraceSinkDeliveryOutcome> {
         if self.sender.is_none() || self.receiver_closed.load(Ordering::Acquire) {
             self.sender = None;
             return Err(TraceSinkDeliveryOutcome::Closed);
