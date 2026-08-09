@@ -11,6 +11,9 @@ use runenui_runtime::{
     TraceRecordKind, TraceSinkDeliveryOutcome, TraceSinkReceiveError,
 };
 
+type CanonicalSignature = Vec<(u64, TraceRecordKind, Option<u64>, Option<u64>)>;
+type ExecutionResult = (usize, CanonicalSignature);
+
 #[derive(Clone, Copy)]
 enum TestAction {
     Increment,
@@ -113,9 +116,7 @@ fn record_for_work(
         .unwrap_or_else(|| unreachable!("accepted action owns one canonical trace record"))
 }
 
-fn canonical_signature(
-    runtime: &AppRuntime<TestApp>,
-) -> Vec<(u64, TraceRecordKind, Option<u64>, Option<u64>)> {
+fn canonical_signature(runtime: &AppRuntime<TestApp>) -> CanonicalSignature {
     runtime
         .trace()
         .records()
@@ -344,9 +345,7 @@ fn trace_export_06_closed_sink_is_diagnosed_once_then_retired_before_shutdown() 
 
 #[test]
 fn trace_export_07_09_10_sink_backpressure_cannot_change_runtime_or_canonical_order() {
-    fn execute(
-        config: TraceConfig,
-    ) -> (usize, Vec<(u64, TraceRecordKind, Option<u64>, Option<u64>)>) {
+    fn execute(config: TraceConfig) -> ExecutionResult {
         let mut runtime = mounted(config);
         runtime
             .submit_action(TestAction::Increment)
@@ -413,9 +412,9 @@ fn open_sink_delivers_shutdown_then_closes_after_buffer_drains() {
     loop {
         match receiver.try_recv() {
             Ok(line) => saw_shutdown |= line.as_str().contains("runtime_shutdown"),
-            Err(TraceSinkReceiveError::Empty) => continue,
+            Err(TraceSinkReceiveError::Empty) => {}
             Err(TraceSinkReceiveError::Closed) => break,
-            Err(error) => panic!("unexpected trace sink receive error: {error}"),
+            Err(_) => unreachable!("current public sink error vocabulary is exhausted"),
         }
     }
     assert!(saw_shutdown);
