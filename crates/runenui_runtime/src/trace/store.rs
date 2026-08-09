@@ -1,13 +1,12 @@
 use core::{fmt, num::NonZeroU64};
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
 use runenui_core::{__runtime::RuntimeNamespace, CommandOrigin, MonotonicInstant};
 
 use super::{
-    TraceJsonlLine, TracePayloadCapture, TraceSink, TraceSinkDeliveryOutcome, TraceSinkReceiver,
+    TracePayloadCapture, TraceSink, TraceSinkDeliveryOutcome, TraceSinkReceiver,
     admission::{MandatoryTracePlan, TraceReservation},
     construction::{TraceReconciliation, TraceRecordDraft, TraceRoutedEndpoints},
-    encode_record_json,
     export::encode_trace_jsonl,
     model::{TraceConfig, TraceRecord, TraceRecordKind, TraceSequence, TraceTarget},
 };
@@ -18,7 +17,7 @@ pub struct Trace {
     capacity: usize,
     payload_capture: TracePayloadCapture,
     runtime: RuntimeNamespace,
-    records: VecDeque<TraceRecord>,
+    records: VecDeque<Arc<TraceRecord>>,
     next_sequence: Option<NonZeroU64>,
     reserved_records: usize,
     dropped_before_sequence: Option<TraceSequence>,
@@ -47,10 +46,16 @@ impl PartialEq for Trace {
     fn eq(&self, other: &Self) -> bool {
         self.capacity == other.capacity
             && self.payload_capture == other.payload_capture
+            && self.runtime.__runtime_same_as(&other.runtime)
             && self.records == other.records
             && self.next_sequence == other.next_sequence
             && self.reserved_records == other.reserved_records
             && self.dropped_before_sequence == other.dropped_before_sequence
+            && match (&self.sink, &other.sink) {
+                (Some(left), Some(right)) => left.state_eq(right),
+                (None, None) => true,
+                (Some(_), None) | (None, Some(_)) => false,
+            }
     }
 }
 
@@ -58,16 +63,11 @@ impl Eq for Trace {}
 
 impl Trace {
     #[must_use]
-    pub(crate) fn new(config: TraceConfig) -> Self {
-        Self::new_for_runtime(config, RuntimeNamespace::__runtime_new())
-    }
-
-    #[must_use]
     pub(crate) fn new_for_runtime(config: TraceConfig, runtime: RuntimeNamespace) -> Self {
         let capacity = config.capacity();
         let sink = config
             .sink_capacity()
-            .map(|capacity| TraceSink::bounded(capacity.get()));
+            .map(|capacity| TraceSink::bounded(capacity.get(), runtime.clone()));
         Self {
             capacity,
             payload_capture: config.payload_capture(),
@@ -82,6 +82,10 @@ impl Trace {
 
     pub(crate) const fn is_enabled(&self) -> bool {
         self.capacity != 0
+    }
+
+    pub(crate) const fn payload_capture(&self) -> TracePayloadCapture {
+        self.payload_capture
     }
 
     pub(crate) fn can_admit(&self, plan: MandatoryTracePlan) -> bool {
@@ -243,43 +247,47 @@ impl Trace {
         if !self.can_admit(MandatoryTracePlan::one_fact()) {
             return None;
         }
-        draft.apply_payload_capture(self.payload_capture);
         let sequence = TraceSequence::new(self.next_sequence?);
         self.next_sequence = sequence.get().checked_add(1).and_then(NonZeroU64::new);
         if self.records.len() == self.capacity
             && let Some(evicted) = self.records.pop_front()
             && let Some(next) = evicted
-                .sequence
+                .sequence()
                 .get()
                 .checked_add(1)
                 .and_then(NonZeroU64::new)
         {
             self.dropped_before_sequence = Some(TraceSequence::new(next));
         }
-        let sink_open = self.sink.as_ref().is_some_and(TraceSink::is_open);
+
         let mut record = draft.into_record(sequence);
-        if sink_open {
-            record.sink_delivery = Some(TraceSinkDeliveryOutcome::Delivered);
+        if let Some(sink) = self.sink.as_mut() {
+            match sink.reserve_delivery() {
+                Err(outcome) => record.sink_delivery = Some(outcome),
+                Ok(permit) => {
+                    record.sink_delivery = Some(TraceSinkDeliveryOutcome::Delivered);
+                    let mut shared = Arc::new(record);
+                    match permit.deliver(Arc::clone(&shared)) {
+                        Ok(()) => {
+                            self.records.push_back(shared);
+                            return Some(sequence);
+                        }
+                        Err(returned) => {
+                            drop(returned);
+                            sink.retire_closed();
+                            Arc::get_mut(&mut shared)
+                                .unwrap_or_else(|| {
+                                    unreachable!("failed sink delivery returns sole record ownership")
+                                })
+                                .sink_delivery = Some(TraceSinkDeliveryOutcome::Closed);
+                            self.records.push_back(shared);
+                            return Some(sequence);
+                        }
+                    }
+                }
+            }
         }
-        self.records.push_back(record);
-        if sink_open {
-            let line = TraceJsonlLine::new(encode_record_json(
-                &self.runtime,
-                self.records
-                    .back()
-                    .unwrap_or_else(|| unreachable!("just-appended trace record is retained")),
-            ));
-            let outcome = self
-                .sink
-                .as_mut()
-                .map_or(TraceSinkDeliveryOutcome::Closed, |sink| {
-                    sink.try_deliver(line)
-                });
-            self.records
-                .back_mut()
-                .unwrap_or_else(|| unreachable!("just-appended trace record is retained"))
-                .sink_delivery = Some(outcome);
-        }
+        self.records.push_back(Arc::new(record));
         Some(sequence)
     }
 
@@ -313,7 +321,7 @@ impl Trace {
             .iter()
             .rev()
             .find(|record| matches!(record.kind(), TraceRecordKind::RuntimeTerminal { .. }))
-            .map(TraceRecord::sequence)
+            .map(|record| record.sequence())
     }
 
     pub(crate) fn take_sink_receiver(&mut self) -> Option<TraceSinkReceiver> {
@@ -332,20 +340,20 @@ impl Trace {
         encode_trace_jsonl(
             &self.runtime,
             self.dropped_before_sequence,
-            self.records.iter(),
+            self.records.iter().map(Arc::as_ref),
         )
     }
 
     /// Borrows canonical records from oldest retained to newest.
     #[must_use]
     pub fn records(&self) -> impl ExactSizeIterator<Item = &TraceRecord> {
-        self.records.iter()
+        self.records.iter().map(Arc::as_ref)
     }
 
     /// Borrows structured record kinds from oldest retained to newest.
     #[must_use]
     pub fn kinds(&self) -> impl ExactSizeIterator<Item = &TraceRecordKind> {
-        self.records.iter().map(TraceRecord::kind)
+        self.records.iter().map(|record| record.kind())
     }
 
     /// Returns the number of retained records.
