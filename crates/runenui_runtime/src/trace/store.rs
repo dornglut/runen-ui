@@ -65,9 +65,13 @@ impl Trace {
     #[must_use]
     pub(crate) fn new_for_runtime(config: TraceConfig, runtime: RuntimeNamespace) -> Self {
         let capacity = config.capacity();
-        let sink = config
-            .sink_capacity()
-            .map(|capacity| TraceSink::bounded(capacity.get(), runtime.clone()));
+        let sink = if capacity == 0 {
+            None
+        } else {
+            config
+                .sink_capacity()
+                .map(|capacity| TraceSink::bounded(capacity.get(), runtime.clone()))
+        };
         Self {
             capacity,
             payload_capture: config.payload_capture(),
@@ -267,7 +271,12 @@ impl Trace {
         let mut record = draft.into_record(sequence);
         let sink_reservation = self.sink.as_mut().map(TraceSink::reserve_delivery);
         match sink_reservation {
-            Some(Err(outcome)) => record.sink_delivery = Some(outcome),
+            Some(Err(outcome)) => {
+                record.sink_delivery = Some(outcome);
+                if matches!(outcome, TraceSinkDeliveryOutcome::Closed) {
+                    self.sink = None;
+                }
+            }
             Some(Ok(permit)) => {
                 record.sink_delivery = Some(TraceSinkDeliveryOutcome::Delivered);
                 let shared = Arc::new(record);
@@ -279,9 +288,7 @@ impl Trace {
                 );
                 if let Err(returned) = permit.deliver(outgoing) {
                     drop(returned);
-                    if let Some(sink) = self.sink.as_mut() {
-                        sink.retire_closed();
-                    }
+                    self.sink = None;
                     let mut retained = self
                         .records
                         .pop_back()
