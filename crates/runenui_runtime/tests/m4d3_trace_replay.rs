@@ -78,7 +78,9 @@ fn replay_01_real_jsonl_round_trip_preserves_canonical_causal_header_facts() {
                     record
                         .reconciliation_after()
                         .map(runenui_runtime::ReconciliationGeneration::get),
-                    record.instant().map(runenui_core::MonotonicInstant::as_nanos),
+                    record
+                        .instant()
+                        .map(runenui_core::MonotonicInstant::as_nanos),
                 )
             })
             .collect();
