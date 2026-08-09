@@ -72,9 +72,13 @@ fn replay_01_real_jsonl_round_trip_preserves_canonical_causal_header_facts() {
                     record
                         .causal_parent()
                         .map(runenui_runtime::TraceSequence::get),
-                    record.reconciliation_before().map(|value| value.get()),
-                    record.reconciliation_after().map(|value| value.get()),
-                    record.instant().map(|value| value.as_nanos()),
+                    record
+                        .reconciliation_before()
+                        .map(runenui_runtime::ReconciliationGeneration::get),
+                    record
+                        .reconciliation_after()
+                        .map(runenui_runtime::ReconciliationGeneration::get),
+                    record.instant().map(runenui_core::MonotonicInstant::as_nanos),
                 )
             })
             .collect();
@@ -91,8 +95,12 @@ fn replay_01_real_jsonl_round_trip_preserves_canonical_causal_header_facts() {
         .map(|record| {
             (
                 record.sequence().get(),
-                record.work_sequence().map(|value| value.get()),
-                record.causal_parent().map(|value| value.get()),
+                record
+                    .work_sequence()
+                    .map(runenui_runtime::TraceReplayWorkSequence::get),
+                record
+                    .causal_parent()
+                    .map(runenui_runtime::TraceReplaySequence::get),
                 record.reconciliation_before(),
                 record.reconciliation_after(),
                 record.instant_nanos(),
