@@ -12,18 +12,20 @@ M4C0–M4D3 delivery sequence. This matrix defines observable acceptance and pro
 ownership; neither the charter nor a private implementation seam can weaken a
 row here.
 
-Current audited branch state after M4D1 owner acceptance and squash merge. The
-accepted feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed
-exact-head CI run `31269401262` / #657; [PR #39](https://github.com/dornglut/runen-ui/pull/39)
-was squash-merged as `2fe269366386d7aee9de2a2573498b64ad486293`.
-All ten M4D1-owned `TRACE-EVENT-*` rows are owner-accepted. M4D2 remains blocked
-until this post-merge authority reconciliation is accepted and merged:
+Current audited branch state after M4D1 owner acceptance and post-merge authority
+reconciliation. The accepted M4D1 base
+`7c641a20e2a215fca78f0dde28029f69af3f8252` is the exact M4D2 base. M4D2's
+complete code and proof package passed exact-head CI run `31321081573` / #711 on
+pre-promotion feature head `b3cdefc0922267b8c9d1961458dd2cbac60e485f`.
+All ten M4D2-owned `TRACE-EXPORT-*` rows are proof-complete on this branch;
+owner acceptance and merge remain pending, while M4D3 and M4 closure remain
+blocked:
 
 ```text
 237 total unique rows
 217 owner-accepted
-0 proof-complete
-20 blocked
+10 proof-complete
+10 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -310,16 +312,16 @@ not imply routed-event or M4D support.
 | TRACE-EVENT-08 | Capacity eviction advances the exact exclusive watermark; capacity zero changes no behavior. | Existing `trace_foundation` plus normalized-schema proof | Repeated eviction and disabled-trace equality proof | Canonical retention facts | M4D1 | owner-accepted | Required |
 | TRACE-EVENT-09 | Non-`Debug` actions trace by type/category/identity without a global debug bound. | Compile/runtime non-`Debug` proof | Payload/debug formatting audit | M4D1 action facts | M4D1 | owner-accepted | Required |
 | TRACE-EVENT-10 | Terminal integrity, poisoning, cancellation, wake/redraw, and shutdown remain causally reconstructable. | Integrity end-to-end trace proof | Truncation/missing cleanup proof | M4D1 terminal schema | M4D1 | owner-accepted | Required |
-| TRACE-EXPORT-01 | Versioned deterministic JSONL is byte-stable for identical logical execution. | Snapshot/export test | Version/schema mismatch proof | Exported projection of canonical trace | M4D2 | blocked | Required |
-| TRACE-EXPORT-02 | Text payload is redacted by default; full capture requires explicit independent configuration. | Text redaction test | Generic-debug opt-in leakage proof | Export redaction metadata | M4D2 | blocked | Required |
-| TRACE-EXPORT-03 | IME payload is redacted by default with the same explicit opt-in boundary. | IME redaction test | Preedit/range leakage proof | Export redaction metadata | M4D2 | blocked | Required |
-| TRACE-EXPORT-04 | Optional application labels add no `Action: Debug` bound and cannot change canonical identity/order. | Public label-provider compile/runtime proof | Debug-bound and order mutation proof | Export label metadata | M4D2 | blocked | Required |
-| TRACE-EXPORT-05 | Bounded/try sink full loses only the external copy and records a structured canonical diagnostic. | Trace sink full test | Canonical record/order loss proof | Sink diagnostic trace | M4D2 | blocked | Required |
-| TRACE-EXPORT-06 | Closed sink is diagnosed and receives no later shutdown delivery. | Trace sink closed test | Post-close delivery proof | Sink diagnostic/shutdown trace | M4D2 | blocked | Required |
-| TRACE-EXPORT-07 | Sink failure is structured, cannot submit runtime work, and never blocks inside a mutable transaction. | Failing/blocking sink tests | Reentrancy/deadlock/behavior mutation proof | Sink failure trace | M4D2 | blocked | Required |
-| TRACE-EXPORT-08 | Sink diagnostic recursion guard never redelivers a failure diagnostic through the same failing path. | Recursion-guard test | Repeated/unbounded diagnostic proof | One canonical sink diagnostic | M4D2 | blocked | Required |
-| TRACE-EXPORT-09 | Sink refusal/failure cannot remove, reorder, or alter the canonical retained trace or application/runtime behavior. | Behavioral-isolation test | Canonical diff and output equality proof | Canonical/sink comparison | M4D2 | blocked | Required |
-| TRACE-EXPORT-10 | Sink delivery is bounded or try-based and never blocks or runs arbitrary work inside a mutable runtime transaction. | Sink transaction-isolation test | Blocking, reentrancy, and lock-held callback proof | M4D2 sink-delivery diagnostics | M4D2 | blocked | Required |
+| TRACE-EXPORT-01 | Versioned deterministic JSONL is byte-stable for identical logical execution. | Snapshot/export test | Version/schema mismatch proof | Exported projection of canonical trace | M4D2 | proof-complete | Required |
+| TRACE-EXPORT-02 | Text payload is redacted by default; full capture requires explicit independent configuration. | Text redaction test | Generic-debug opt-in leakage proof | Export redaction metadata | M4D2 | proof-complete | Required |
+| TRACE-EXPORT-03 | IME payload is redacted by default with the same explicit opt-in boundary. | IME redaction test | Preedit/range leakage proof | Export redaction metadata | M4D2 | proof-complete | Required |
+| TRACE-EXPORT-04 | Optional application labels add no `Action: Debug` bound and cannot change canonical identity/order. | Public label-provider compile/runtime proof | Debug-bound and order mutation proof | Export label metadata | M4D2 | proof-complete | Required |
+| TRACE-EXPORT-05 | Bounded/try sink full loses only the external copy and records a structured canonical diagnostic. | Trace sink full test | Canonical record/order loss proof | Sink diagnostic trace | M4D2 | proof-complete | Required |
+| TRACE-EXPORT-06 | Closed sink is diagnosed and receives no later shutdown delivery. | Trace sink closed test | Post-close delivery proof | Sink diagnostic/shutdown trace | M4D2 | proof-complete | Required |
+| TRACE-EXPORT-07 | Sink failure is structured, cannot submit runtime work, and never blocks inside a mutable transaction. | Failing/blocking sink tests | Reentrancy/deadlock/behavior mutation proof | Sink failure trace | M4D2 | proof-complete | Required |
+| TRACE-EXPORT-08 | Sink diagnostic recursion guard never redelivers a failure diagnostic through the same failing path. | Recursion-guard test | Repeated/unbounded diagnostic proof | One canonical sink diagnostic | M4D2 | proof-complete | Required |
+| TRACE-EXPORT-09 | Sink refusal/failure cannot remove, reorder, or alter the canonical retained trace or application/runtime behavior. | Behavioral-isolation test | Canonical diff and output equality proof | Canonical/sink comparison | M4D2 | proof-complete | Required |
+| TRACE-EXPORT-10 | Sink delivery is bounded or try-based and never blocks or runs arbitrary work inside a mutable runtime transaction. | Sink transaction-isolation test | Blocking, reentrancy, and lock-held callback proof | M4D2 sink-delivery diagnostics | M4D2 | proof-complete | Required |
 | REPLAY-01 | Replay foundation consumes the versioned causal projection without becoming a second live runtime authority. | Replay protocol conformance | Mutation/queue authority and unsupported-version proof | M4D3 replay diagnostics | M4D3 | blocked | Required |
 | REPLAY-02 | Counter reconstructs command/input, route/default, interaction transition, action/update/reconciliation, work, wake/redraw, and publication at the exact head. | End-to-end Counter replay proof | Missing-parent, dropped-prefix, and divergent-output proof | M4D3 replay trace | M4D3 | blocked | Required |
 
