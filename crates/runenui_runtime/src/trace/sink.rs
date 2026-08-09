@@ -190,6 +190,15 @@ impl TraceSink {
     pub(super) fn is_open(&self) -> bool {
         self.sender.is_some() && !self.receiver_closed.load(Ordering::Acquire)
     }
+
+    pub(super) fn state_eq(&self, other: &Self) -> bool {
+        self.capacity == other.capacity
+            && self.is_open() == other.is_open()
+            && self.receiver.is_some() == other.receiver.is_some()
+            && self.queued.load(Ordering::Acquire) == other.queued.load(Ordering::Acquire)
+            && self.receiver_closed.load(Ordering::Acquire)
+                == other.receiver_closed.load(Ordering::Acquire)
+    }
 }
 
 impl fmt::Debug for TraceSink {
