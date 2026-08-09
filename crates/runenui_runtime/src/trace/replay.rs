@@ -4,7 +4,6 @@
 //! live runtime authority.
 
 use core::fmt;
-use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 
@@ -146,14 +145,14 @@ impl TraceReplay {
     /// The first line must be the `runenui.trace` v1 header and every following
     /// line must be a `runenui.trace.record` v1 record. Retained trace sequences
     /// must form the exact contiguous canonical segment described by the header.
-    /// Causal parents must refer to an earlier retained record unless the parent
-    /// is explicitly below the header's dropped-prefix watermark.
+    /// Causal parents must be strictly earlier; parents below an explicit
+    /// dropped-prefix watermark describe valid but incomplete reconstruction.
     ///
     /// # Errors
     ///
     /// Returns [`TraceReplayError`] for malformed JSON, schema/version mismatch,
-    /// invalid sequence structure, retained-count mismatch, or unexplained
-    /// missing causal ancestry.
+    /// invalid sequence structure, retained-count mismatch, or invalid causal
+    /// ancestry.
     pub fn parse_jsonl(input: &str) -> Result<Self, TraceReplayError> {
         let mut lines = input.lines().enumerate();
         let Some((header_index, header_line)) = lines.next() else {
@@ -172,7 +171,6 @@ impl TraceReplay {
         let retained_records = required_usize(header_line_number, header, "retained_records")?;
 
         let mut records = Vec::with_capacity(retained_records.min(4096));
-        let mut seen_sequences = BTreeSet::new();
         let mut previous_sequence = None;
 
         for (index, line) in lines {
@@ -180,21 +178,15 @@ impl TraceReplay {
             if line.is_empty() {
                 return Err(TraceReplayError::EmptyLine { line: line_number });
             }
-            let record = parse_record(
-                line_number,
-                line,
-                dropped_before_sequence,
-                previous_sequence,
-                &seen_sequences,
-            )?;
+            let record = parse_record(line_number, line)?;
             validate_contiguous_sequence(
                 line_number,
                 record.sequence,
                 dropped_before_sequence,
                 previous_sequence,
             )?;
+            validate_causal_parent(line_number, &record, dropped_before_sequence)?;
             previous_sequence = Some(record.sequence);
-            seen_sequences.insert(record.sequence.get());
             records.push(record);
         }
 
@@ -290,27 +282,12 @@ pub enum TraceReplayError {
         field: &'static str,
         value: u64,
     },
-    NonIncreasingSequence {
-        line: usize,
-        previous: TraceReplaySequence,
-        current: TraceReplaySequence,
-    },
     NonContiguousSequence {
         line: usize,
         expected: u64,
         actual: TraceReplaySequence,
     },
-    SequenceBeforeDroppedPrefix {
-        line: usize,
-        sequence: TraceReplaySequence,
-        dropped_before: TraceReplaySequence,
-    },
     CausalParentNotEarlier {
-        line: usize,
-        sequence: TraceReplaySequence,
-        parent: TraceReplaySequence,
-    },
-    MissingCausalParent {
         line: usize,
         sequence: TraceReplaySequence,
         parent: TraceReplaySequence,
@@ -369,16 +346,6 @@ impl fmt::Display for TraceReplayError {
                 formatter,
                 "trace replay line {line} has invalid zero `{field}` sequence value {value}"
             ),
-            Self::NonIncreasingSequence {
-                line,
-                previous,
-                current,
-            } => write!(
-                formatter,
-                "trace replay line {line} sequence {} does not follow {}",
-                current.get(),
-                previous.get()
-            ),
             Self::NonContiguousSequence {
                 line,
                 expected,
@@ -388,16 +355,6 @@ impl fmt::Display for TraceReplayError {
                 "trace replay line {line} has sequence {}; expected contiguous sequence {expected}",
                 actual.get()
             ),
-            Self::SequenceBeforeDroppedPrefix {
-                line,
-                sequence,
-                dropped_before,
-            } => write!(
-                formatter,
-                "trace replay line {line} retains sequence {} below dropped-prefix watermark {}",
-                sequence.get(),
-                dropped_before.get()
-            ),
             Self::CausalParentNotEarlier {
                 line,
                 sequence,
@@ -405,16 +362,6 @@ impl fmt::Display for TraceReplayError {
             } => write!(
                 formatter,
                 "trace replay line {line} sequence {} has non-earlier causal parent {}",
-                sequence.get(),
-                parent.get()
-            ),
-            Self::MissingCausalParent {
-                line,
-                sequence,
-                parent,
-            } => write!(
-                formatter,
-                "trace replay line {line} sequence {} references missing causal parent {}",
                 sequence.get(),
                 parent.get()
             ),
@@ -428,37 +375,12 @@ impl fmt::Display for TraceReplayError {
 
 impl std::error::Error for TraceReplayError {}
 
-fn parse_record(
-    line_number: usize,
-    line: &str,
-    dropped_before_sequence: Option<TraceReplaySequence>,
-    previous_sequence: Option<TraceReplaySequence>,
-    seen_sequences: &BTreeSet<u64>,
-) -> Result<TraceReplayRecord, TraceReplayError> {
+fn parse_record(line_number: usize, line: &str) -> Result<TraceReplayRecord, TraceReplayError> {
     let value = parse_json_line(line_number, line)?;
     let record = object(line_number, &value)?;
     validate_schema_and_version(line_number, record, TRACE_RECORD_SCHEMA)?;
 
     let sequence = required_replay_sequence(line_number, record, "sequence")?;
-    if let Some(previous) = previous_sequence
-        && sequence <= previous
-    {
-        return Err(TraceReplayError::NonIncreasingSequence {
-            line: line_number,
-            previous,
-            current: sequence,
-        });
-    }
-    if let Some(dropped_before) = dropped_before_sequence
-        && sequence < dropped_before
-    {
-        return Err(TraceReplayError::SequenceBeforeDroppedPrefix {
-            line: line_number,
-            sequence,
-            dropped_before,
-        });
-    }
-
     let kind_object = required_object(line_number, record, "kind")?;
     let kind_name = required_string(line_number, kind_object, "name")?;
     let _ = required_object(line_number, kind_object, "data")?;
@@ -470,38 +392,17 @@ fn parse_record(
     let reconciliation_after = optional_u64(line_number, record, "reconciliation_after")?;
     let instant_nanos = optional_u64(line_number, record, "instant_nanos")?;
 
-    for required in [
+    for field in [
         "target",
         "work",
         "original_target",
         "current_target",
         "command_origin",
-        "context",
-        "sink_delivery",
     ] {
-        let _ = required_value(line_number, record, required)?;
+        validate_nullable_object(line_number, record, field)?;
     }
-
-    if let Some(parent) = causal_parent {
-        if parent >= sequence {
-            return Err(TraceReplayError::CausalParentNotEarlier {
-                line: line_number,
-                sequence,
-                parent,
-            });
-        }
-        if !seen_sequences.contains(&parent.get()) {
-            let explained_by_drop =
-                dropped_before_sequence.is_some_and(|dropped_before| parent < dropped_before);
-            if !explained_by_drop {
-                return Err(TraceReplayError::MissingCausalParent {
-                    line: line_number,
-                    sequence,
-                    parent,
-                });
-            }
-        }
-    }
+    let _ = required_object(line_number, record, "context")?;
+    validate_nullable_string(line_number, record, "sink_delivery")?;
 
     Ok(TraceReplayRecord {
         sequence,
@@ -530,6 +431,29 @@ fn validate_contiguous_sequence(
             expected,
             actual: current,
         });
+    }
+    Ok(())
+}
+
+fn validate_causal_parent(
+    line: usize,
+    record: &TraceReplayRecord,
+    dropped_before_sequence: Option<TraceReplaySequence>,
+) -> Result<(), TraceReplayError> {
+    let Some(parent) = record.causal_parent else {
+        return Ok(());
+    };
+    if parent >= record.sequence {
+        return Err(TraceReplayError::CausalParentNotEarlier {
+            line,
+            sequence: record.sequence,
+            parent,
+        });
+    }
+    if let Some(dropped_before) = dropped_before_sequence
+        && parent < dropped_before
+    {
+        return Ok(());
     }
     Ok(())
 }
@@ -633,6 +557,32 @@ fn optional_u64(
             .as_u64()
             .map(Some)
             .ok_or(TraceReplayError::InvalidFieldType { line, field })
+    }
+}
+
+fn validate_nullable_object(
+    line: usize,
+    object: &Map<String, Value>,
+    field: &'static str,
+) -> Result<(), TraceReplayError> {
+    let value = required_value(line, object, field)?;
+    if value.is_null() || value.is_object() {
+        Ok(())
+    } else {
+        Err(TraceReplayError::InvalidFieldType { line, field })
+    }
+}
+
+fn validate_nullable_string(
+    line: usize,
+    object: &Map<String, Value>,
+    field: &'static str,
+) -> Result<(), TraceReplayError> {
+    let value = required_value(line, object, field)?;
+    if value.is_null() || value.is_string() {
+        Ok(())
+    } else {
+        Err(TraceReplayError::InvalidFieldType { line, field })
     }
 }
 
@@ -743,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn unexplained_missing_parent_is_rejected() {
+    fn non_earlier_causal_parent_is_rejected() {
         let input = format!(
             "{}\n{}\n",
             header("null", 1),
@@ -761,7 +711,7 @@ mod tests {
             "{}\n{}\n{}\n",
             header("null", 2),
             record(1, "null", "runtime_mounted"),
-            record(3, "null", "redraw_requested")
+            record(3, "2", "redraw_requested")
         );
         assert!(matches!(
             TraceReplay::parse_jsonl(&input),
@@ -783,6 +733,19 @@ mod tests {
             TraceReplay::parse_jsonl(&input),
             Err(TraceReplayError::NonContiguousSequence {
                 expected: 5,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn wrong_typed_required_top_level_field_is_rejected() {
+        let malformed = record(1, "null", "runtime_mounted").replace("\"context\":{}", "\"context\":[]");
+        let input = format!("{}\n{malformed}\n", header("null", 1));
+        assert!(matches!(
+            TraceReplay::parse_jsonl(&input),
+            Err(TraceReplayError::InvalidFieldType {
+                field: "context",
                 ..
             })
         ));
