@@ -89,7 +89,10 @@ fn trace_export_04_public_non_debug_labels_are_optional_and_dormant_when_trace_i
         .context()
         .action()
         .unwrap_or_else(|| unreachable!("direct action owns public trace identity"));
-    assert_eq!(direct_identity.category(), TraceActionCategory::DirectSubmission);
+    assert_eq!(
+        direct_identity.category(),
+        TraceActionCategory::DirectSubmission
+    );
     assert_eq!(direct_identity.label(), Some("emits-follow-up"));
 
     assert_eq!(
@@ -104,16 +107,16 @@ fn trace_export_04_public_non_debug_labels_are_optional_and_dormant_when_trace_i
         .find(|record| {
             matches!(record.kind(), TraceRecordKind::ActionSubmissionAccepted)
                 && record.work_sequence() != Some(direct_work)
-                && record
-                    .context()
-                    .action()
-                    .is_some_and(|identity| {
-                        identity.category() == TraceActionCategory::ApplicationEffect
-                    })
+                && record.context().action().is_some_and(|identity| {
+                    identity.category() == TraceActionCategory::ApplicationEffect
+                })
         })
         .unwrap_or_else(|| unreachable!("effect action acceptance is traced"));
     assert_eq!(
-        effect.context().action().and_then(|identity| identity.label()),
+        effect
+            .context()
+            .action()
+            .and_then(|identity| identity.label()),
         Some("leaf")
     );
     let jsonl = runtime.trace().export_jsonl();
