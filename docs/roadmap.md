@@ -159,7 +159,7 @@ matrix passes. M4 boundaries remain intact.
 
 **Why now:** Controls, accessibility actions, text input, scrolling, hosts, and testing require consistent routing, commands, queues, effects, time, observation, cancellation, and wake behavior.
 
-**Included work:** Host-event normalization with exact displayed-generation `SurfaceInputContext` retention/rejection and integrity-only cleanup for same-runtime/surface terminal pointer input; observable target/current-target/phase facts; the normative routed/derived event policy; capture/target/bubble; exact framework-default versus route-only semantic-command behavior; pointer IDs/device kind/capture/cancellation; deterministic multi-pointer geometry-triggered boundary updates; release-inside semantic activation and `on_activate`; focus scopes; keyboard commands; abstract next/previous and directional navigation frozen by a public-outcome corpus; activate, cancel/back, menu, context, and logical-scroll commands; input-modality tracking; controller/accessibility-stub/automation/programmatic convergence; separate text/IME streams; one action/work queue with readiness checkpoints and four independent pump budgets; `initial_effects` and update effects; state-derived application subscriptions and dedicated complete-set mounted subscription declarations; local/send tasks with one-attempt terminal executor refusal; timers; owner-local `WorkKey` cancellation/replacement with commit-bound private generations; one exact response-kind-validated application host protocol; lifecycle cancellation; deterministic clock/executor; configured saturation; race-free wake/redraw request/acknowledgment; terminal integrity policy; bounded structured trace plus bounded/try-based subordinate sink and replay foundation.
+**Included work:** Host-event normalization with exact displayed-generation `SurfaceInputContext` retention/rejection and integrity-only cleanup for same-runtime/surface terminal pointer input; observable target/current-target/phase facts; the normative routed/derived event policy; capture/target/bubble; exact framework-default versus route-only semantic-command behavior; pointer IDs/device kind/capture/cancellation; deterministic multi-pointer geometry-triggered boundary updates; release-inside semantic activation and `on_activate`; focus scopes; keyboard commands; abstract next/previous and directional navigation frozen by a public-outcome corpus; activate, cancel/back, menu, context, and logical-scroll commands; input-modality tracking; controller/accessibility-stub/automation/programmatic convergence; separate text/IME streams; one action/work queue with readiness checkpoints and four independent pump budgets; `initial_effects` and update effects; state-derived application subscriptions and dedicated complete-set mounted subscription declarations; local/send tasks with one-attempt terminal executor refusal; timers; owner-local `WorkKey` cancellation/replacement with commit-bound private generations; one exact response-kind-validated application host protocol; lifecycle cancellation; deterministic clock/executor; configured saturation; race-free wake/redraw request/acknowledgment; terminal integrity policy; bounded structured trace plus bounded subordinate export sink and replay foundation.
 
 **Explicit non-goals:** Platform-specific host implementation, full semantics adapter, production text editing, renderer backend, or multi-surface lifecycle.
 
@@ -284,9 +284,9 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Subsequent record:** M4C1–M4C5 and M4D1 are complete, owner-accepted, and
-merged. M4D2 remains blocked until the M4D1 post-merge authority reconciliation
-is accepted and merged.
+**Subsequent record:** M4C1–M4C5, M4D1, and M4D2 are complete, owner-accepted,
+and merged. M4D3 remains blocked until the M4D2 post-merge authority
+reconciliation is accepted and merged.
 
 #### M4C1 — Routed semantic-command kernel
 
@@ -401,8 +401,8 @@ release-inside; no press-only pointer helper remains.
 `2fc165b9386f55c061d61232400375b13ad175bf`. All 28 M4C3 rows are
 `owner-accepted`; M4 remains active and incomplete.
 
-**Next implementation slice:** M4C4, M4C5, and M4D1 subsequently completed and
-were owner-accepted. M4D2 remains blocked until the M4D1 post-merge authority
+**Subsequent record:** M4C4, M4C5, M4D1, and M4D2 subsequently completed and
+were owner-accepted. M4D3 remains blocked until the M4D2 post-merge authority
 reconciliation is accepted and merged.
 
 #### M4C4 — Focus scopes and modality
@@ -435,8 +435,8 @@ no direct focus-command bypass remains.
 `f95571634a9c6528e5834e9589b048ad5197bd15`. All 32 M4C4 rows are
 `owner-accepted`; M4 remains active and incomplete.
 
-**Subsequent record:** M4C5 and M4D1 are complete, owner-accepted, and
-squash-merged. M4D2 remains blocked until the M4D1 post-merge authority
+**Subsequent record:** M4C5, M4D1, and M4D2 are complete, owner-accepted, and
+squash-merged. M4D3 remains blocked until the M4D2 post-merge authority
 reconciliation is accepted and merged.
 
 #### M4C5 — Keyboard, text, IME, automation, and M4C closure
@@ -478,8 +478,8 @@ automation work/trace-sequence exhaustion is inert and recoverable rather than
 terminalizing the runtime. Direct commands and already-accepted work retain the
 ordinary terminal exhaustion policy.
 
-**Next implementation slice:** M4D1 subsequently completed, was owner-accepted,
-and was squash-merged. M4D2 follows only after M4D1's post-merge authority
+**Subsequent record:** M4D1 and M4D2 subsequently completed, were owner-accepted,
+and were squash-merged. M4D3 remains blocked until M4D2's post-merge authority
 reconciliation is accepted and merged.
 
 #### M4D1 — Complete trace schema
@@ -515,43 +515,63 @@ non-`Debug` action identity; and closes the full Counter/public reconstruction.
 All ten `TRACE-EVENT-*` rows are owner-accepted through the post-merge authority
 reconciliation.
 
-**Next unblocked slice:** M4D2 only after this post-merge authority
-reconciliation is owner-accepted, squash-merged, and recorded on accepted
-`main`.
+**Subsequent record:** M4D2 subsequently completed, was owner-accepted, and was
+squash-merged. M4D3 remains blocked until M4D2's post-merge authority
+reconciliation is accepted and merged.
 
 #### M4D2 — Export and external sink
 
-**Status:** `blocked` pending acceptance and merge of the M4D1 post-merge
-authority reconciliation.
+**Status:** `complete`; owner-accepted and squash-merged in
+[PR #41](https://github.com/dornglut/runen-ui/pull/41).
 
 **Goal:** Add deterministic versioned JSONL, default text/IME redaction, optional
-application labels, and a behaviorally subordinate bounded/try external sink.
+application labels, and a behaviorally subordinate bounded external sink.
 
 **Dependencies:** Accepted and merged M4D1 complete schema plus its accepted
 post-merge authority reconciliation.
 
-**Included work:** All `TRACE-EXPORT-*` rows, sink diagnostics, recursion guard,
-and transaction isolation.
+**Included work:** All `TRACE-EXPORT-*` rows, same-record sink diagnostics,
+recursion prevention by construction, and transaction isolation.
 
 **Explicit non-goals:** A second ordering authority, unbounded/blocking delivery,
 generic `Action: Debug`, replay, or M4 completion.
 
-**Proof ownership:** Snapshot export, redaction, full/closed/failing sink,
-recursion, behavioral isolation, stable/MSRV validation, and exact-head CI.
+**Proof ownership:** Snapshot/export, exact JSON escaping, committed-text and IME
+redaction/full-capture boundaries, downstream non-`Debug` labels, full/closed
+sink diagnostics, recursion isolation, four-state behavioral isolation,
+stable/MSRV validation, and exact-head CI.
 
-**Exit criteria:** Every `TRACE-EXPORT-*` row is proof-complete and sink state can
-change neither canonical trace nor runtime behavior.
+**Exit criteria:** Every `TRACE-EXPORT-*` row is owner-accepted and sink state can
+change neither canonical trace ordering/identity nor application/runtime
+behavior.
 
-**Next unblocked slice:** M4D3 after M4D2 owner acceptance and merge.
+**Completion record:** The accepted feature head
+`1bd7dcfdbb46dec52da62faabb739c835e971c80` passed canonical exact-head CI run
+`31321448821` / #712 and the frozen complete-diff review. PR #41 was guarded-
+squash-merged as `8c67655ffce438c2e35e6478e7299bd704033b8b`; all 23 changed-file
+blob identities match between the reviewed feature head and accepted squash.
+The accepted implementation adds deterministic JSONL v1 projection, default-
+redacted and explicit-full text/IME capture, optional static action labels,
+lazy bounded subordinate sink delivery, receiver-side serialization, same-record
+`Delivered`/`Full`/first-`Closed` diagnostics, one-way sink retirement, and
+capacity-zero diagnostic dormancy without a second trace/history authority. All
+ten `TRACE-EXPORT-*` rows become owner-accepted through this post-merge authority
+reconciliation.
+
+**Next unblocked slice:** M4D3 only after this post-merge authority
+reconciliation is owner-accepted, squash-merged, and recorded on accepted
+`main`.
 
 #### M4D3 — Replay and milestone closure
 
-**Status:** `blocked` pending M4D2 acceptance.
+**Status:** `blocked` pending acceptance and merge of the M4D2 post-merge
+authority reconciliation.
 
 **Goal:** Complete replay foundation, Counter causal reconstruction, final
 migration/current-document cleanup, and the exact M4 acceptance gate.
 
-**Dependencies:** Accepted and merged M4D2.
+**Dependencies:** Accepted and merged M4D2 plus its accepted post-merge authority
+reconciliation.
 
 **Included work:** `REPLAY-*`, final `MIGRATION-*`, and `M4-CLOSE-*` rows; final
 public API/status/support audit; stable/MSRV validation and exact-head CI.

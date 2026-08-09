@@ -29,10 +29,15 @@ was squash-merged in [PR #27](https://github.com/dornglut/runen-ui/pull/27) as
 feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` after canonical exact-head
 CI run `31269401262` / #657 and the frozen complete-diff review passed. It was
 squash-merged in [PR #39](https://github.com/dornglut/runen-ui/pull/39) as
-`2fe269366386d7aee9de2a2573498b64ad486293`. This separate post-merge authority
-reconciliation records the accepted M4D1 public/trace status; M4D2 remains blocked
-until it is accepted and merged, M4D3 remains blocked behind M4D2, and M4 is
-active and incomplete. The accepted
+`2fe269366386d7aee9de2a2573498b64ad486293`. M4D2 was owner-accepted at
+feature head `1bd7dcfdbb46dec52da62faabb739c835e971c80` after canonical exact-head
+CI run `31321448821` / #712 and the frozen complete-diff review passed. It was
+guarded-squash-merged in [PR #41](https://github.com/dornglut/runen-ui/pull/41)
+as `8c67655ffce438c2e35e6478e7299bd704033b8b`, and all 23 changed-file blob
+identities match between reviewed feature head and accepted squash. This separate
+post-merge authority reconciliation records the accepted M4D2 public/trace
+status; M4D3 remains blocked until this reconciliation is accepted and merged,
+and M4 remains active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions. The
 [M4 conformance matrix](m4-conformance-matrix.md) owns observable acceptance, and
@@ -72,9 +77,10 @@ vocabulary includes:
   `WidgetTextInput` capability values, plus input/automation submission
   receipts and owned recovery errors;
 - `RuntimeStatus`, `RuntimeTerminalReason`, `ShutdownReport`, and `RuntimeError`;
-- `TraceConfig`, `TraceSequence`, `TraceRecord`, `TraceRecordKind`,
-  `TraceSurfaceIngressKind`, `TraceSurfaceSnapshotKind`,
-  `TraceSurfaceRejection`, `TraceTarget`, and `Trace`;
+- `TraceConfig`, `TracePayloadCapture`, `TraceSequence`, `TraceRecord`,
+  `TraceRecordKind`, `TraceSurfaceIngressKind`, `TraceSurfaceSnapshotKind`,
+  `TraceSurfaceRejection`, `TraceTarget`, `TraceSinkDeliveryOutcome`, `Trace`,
+  `TraceJsonlLine`, `TraceSinkReceiveError`, and `TraceSinkReceiver`;
 - read-only frame, style-report, layout-report, and publication products.
 
 The ordinary preludes remain narrow. Specialist runtime/mounted/lifecycle
@@ -92,6 +98,14 @@ remain private. Queue capacity counts waiting
 envelopes only, and zero is valid. Queue and trace capacities are logical limits:
 internal storage grows with accepted envelopes or retained records and does not
 reserve the complete configured capacity when the runtime mounts.
+`TraceConfig::new(capacity)` defaults text/IME capture to
+`TracePayloadCapture::Redacted` and leaves external sink delivery disabled.
+`with_payload_capture(TracePayloadCapture::FullText)` explicitly opts canonical
+trace records into exact committed-text/preedit retention, independently from
+action labels and sink delivery. `with_sink_capacity(NonZeroUsize)` enables the
+subordinate lazily bounded sink without treating the configured logical capacity
+as an eager allocation request. Trace capacity zero is fully dormant: it creates
+no sink, retains no raw diagnostic payload, and invokes no action label hook.
 Default live local-task, send-task, timer, subscription, and host-request limits
 are 2048 each; the default transaction-output limit is 1024.
 `RuntimeLimits::with_subscription_diagnostics` independently bounds the public
@@ -435,8 +449,9 @@ activation/resolution helpers are removed. Focus changes enter through
 not a public `CommandOrigin::keyboard()` constructor. M4C2 owns surface context,
 M4C3 implements pointer lifecycle/release-inside activation, M4C4 implements
 focus scopes/modality, M4C5 implements keyboard/text/composition and automation
-resolution, M4D1 implements normalized in-memory trace reconstruction, M4D2/M4D3
-own export/sink/replay, and M5 owns semantic accessibility mapping.
+resolution, M4D1 implements normalized in-memory trace reconstruction, M4D2
+implements deterministic export and bounded subordinate sink delivery, M4D3
+owns replay, and M5 owns semantic accessibility mapping.
 
 One runtime-owned `FocusState` retains the exact focused mounted lifetime, its
 committed focus-within route, exact-generation scope memories, last
@@ -512,8 +527,9 @@ be routed or committed because integrity/admission is no longer available, the
 runtime records causal suppression, retires the exact composition lifetime
 without falsely claiming callback delivery, terminalizes, and preserves the
 terminal-to-shutdown causal chain. No composition operation performs editable-
-text mutation or an implicit committed-text default. Trace facts record
-lifecycle/causal metadata but never raw committed text or preedit.
+text mutation or an implicit committed-text default. Default trace policy stores
+only metrics/ranges and no raw committed text or preedit; exact payload capture
+requires explicit independent `TracePayloadCapture::FullText` configuration.
 
 Automation resolves a unique authored ID in logical preorder and submits the
 ordinary semantic command with automation origin. Missing IDs return a
@@ -604,41 +620,72 @@ publication function is removed.
 
 ## Bounded canonical trace
 
-`TraceConfig::new(capacity)` configures retained records; capacity zero disables
-retention without allocating trace sequences or changing runtime behavior. The
-configured capacity is a logical retention limit, not an eager allocation
-request. `AppRuntime::trace()` borrows the one canonical `Trace`, whose
-`records()` and `kinds()` iterators run oldest-to-newest without a duplicate
-store. `TraceRecord` accessors expose a non-forgeable `TraceSequence`, structured
-kind, optional `WorkSequence`, optional causal-parent `TraceSequence`, optional
-reconciliation generations before/after, optional `TraceTarget`, and optional
-`TraceWorkIdentity`. Work identity exposes only read-only owner, family, exact
-private generation value, and optional authored `WorkKey`; it is not a runtime
-capability. Action payloads are never stored. Scheduler records link the
-application transaction, work request, generation commit, start attempt/outcome,
-completion/firing/cancellation, and final action using causal parents and the
-actual accepted envelope `WorkSequence` where one exists. M4C1 event records
-also expose logical instant, immutable original target, callback current target,
-and command origin. M4C2 surface ingress adds structured context acceptance,
-current-versus-retained snapshot selection, displayed generation/revision, exact
-target binding, and rejection facts. For accepted surface commands the chain is
-`SurfaceContextAccepted -> SurfaceTargetBound -> CommandSubmissionAccepted ->
-RoutedEventStarted`; exact mandatory admission reserves the three-record surface
-prefix plus the future routed outcome. Acceptance causally parents route start and
-snapshot; phase,
-control, state, invalidation, output collection, default, and commit records form
-the routed chain. Collected actions and delegated commands parent their later
-accepted envelopes and transactions. Submission and processing rejection are
-distinct by observation: submission rejection has no canonical record and
-consumes no trace identity, while processing rejection after acceptance is
-recorded. Routed integrity failures classify broken topology, event-bridge
-mismatch, callback-bridge failure, output-allowance overflow, semantic-default
-failure, or commit-invariant failure without losing accepted causal facts. M4D1
-normalizes this canonical in-memory graph across scheduler, routed, surface,
-pointer, focus/modality, keyboard/text/composition/automation, application-action,
-terminal/cancellation/shutdown, logical-time, and publication facts. It remains
-an in-memory causal graph, not the deferred M4D2 export/sink or M4D3 replay
-contract.
+`TraceConfig::new(capacity)` configures retained records, defaults
+`TracePayloadCapture` to `Redacted`, and leaves the subordinate external sink
+disabled. Capacity zero disables retention without allocating trace sequences,
+constructing a sink, capturing raw text/preedit, invoking an application label
+hook, or changing runtime behavior. The configured trace and sink capacities are
+logical limits rather than eager allocation requests.
+
+`AppRuntime::trace()` borrows the one canonical `Trace`, whose `records()` and
+`kinds()` iterators run oldest-to-newest without a duplicate store. `TraceRecord`
+accessors expose a non-forgeable `TraceSequence`, structured kind, optional
+`WorkSequence`, optional causal-parent `TraceSequence`, optional reconciliation
+generations before/after, optional `TraceTarget`, optional `TraceWorkIdentity`,
+and optional `TraceSinkDeliveryOutcome`. Work identity exposes only read-only
+owner, family, exact private generation value, and optional authored `WorkKey`;
+it is not a runtime capability. Action payloads are never stored. Optional static
+application labels come from `UiApp::trace_action_label(&Action)` and are retained
+on `TraceActionIdentity` without adding an `Action: Debug` bound; the hook is not
+invoked when tracing is disabled.
+
+Scheduler records link the application transaction, work request, generation
+commit, start attempt/outcome, completion/firing/cancellation, and final action
+using causal parents and the actual accepted envelope `WorkSequence` where one
+exists. M4C1 event records also expose logical instant, immutable original target,
+callback current target, and command origin. M4C2 surface ingress adds structured
+context acceptance, current-versus-retained snapshot selection, displayed
+generation/revision, exact target binding, and rejection facts. For accepted
+surface commands the chain is `SurfaceContextAccepted -> SurfaceTargetBound ->
+CommandSubmissionAccepted -> RoutedEventStarted`; exact mandatory admission
+reserves the three-record surface prefix plus the future routed outcome.
+Acceptance causally parents route start and snapshot; phase, control, state,
+invalidation, output collection, default, and commit records form the routed
+chain. Collected actions and delegated commands parent their later accepted
+envelopes and transactions. Submission and processing rejection are distinct by
+observation: submission rejection has no canonical record and consumes no trace
+identity, while processing rejection after acceptance is recorded. Routed
+integrity failures classify broken topology, event-bridge mismatch, callback-
+bridge failure, output-allowance overflow, semantic-default failure, or commit-
+invariant failure without losing accepted causal facts. M4D1 normalizes this
+canonical in-memory graph across scheduler, routed, surface, pointer, focus/
+modality, keyboard/text/composition/automation, application-action, terminal/
+cancellation/shutdown, logical-time, and publication facts.
+
+M4D2 adds deterministic versioned JSONL projection and the subordinate bounded
+sink without introducing a second trace/history/order authority. `Trace::export_jsonl()`
+projects the retained snapshot with stable schema/version fields, fixed field
+ordering, explicit symbolic tokens, exact JSON escaping, deterministic trace-only
+runtime-local identity tokens, and the exclusive dropped-prefix watermark.
+Default-redacted committed text and composition preedit retain metrics and checked
+ranges only. `TracePayloadCapture::FullText` is the independent explicit opt-in to
+exact payload retention; it is unrelated to debug formatting, action labels, and
+sink enablement.
+
+`TraceConfig::with_sink_capacity(NonZeroUsize)` enables one framework-owned
+subordinate sink. `AppRuntime::take_trace_sink_receiver()` transfers its receiver
+at most once. Runtime-side delivery first reserves lazy atomic logical capacity,
+retains the canonical immutable record, then transports an `Arc<TraceRecord>` on
+an asynchronous channel without waiting for receiver capacity. JSON encoding
+occurs only in `TraceSinkReceiver::try_recv()`, outside mutable runtime
+transactions. `TraceJsonlLine` exposes the encoded object, while
+`TraceSinkReceiveError::{Empty, Closed}` describes nonblocking receive outcomes.
+`Delivered`, `Full`, and first `Closed` attach to the same canonical record and
+consume no second trace sequence. `Full` loses only the external copy; first
+`Closed` retires sink authority, so no later record is sent through that closed
+path. An open sink receives the canonical `RuntimeShutdown` attempt before sender
+closure. The public sink surface exposes no arbitrary callback or runtime-work
+submission capability.
 
 M4C3 adds pointer submission, ordered validation and stream resolution,
 physical-path and boundary-bundle planning, default applied/suppressed,
@@ -662,13 +709,14 @@ retirement, cleanup cancellation/retirement, and suppressed-delivery terminal
 cleanup retain their work sequence and causal parent. M4D1 replaces the remaining
 nullable/staged trace construction with role-typed input, automation, and action
 contexts; retains redacted UTF-8 byte/Unicode scalar metrics and checked
-composition byte/scalar ranges without raw text/preedit; records explicit
-cleanup delivery/suppression and exact lifetime/device identity; classifies
-accepted application actions by type/category without payload retention or a
-global `Action: Debug` bound; and proves the full Counter/public terminal and
-publication reconstruction. The M4D1 mandatory admission proofs preserve
-capacity-zero behavior, oldest-first eviction, exclusive watermark, and exact
-sequence exhaustion.
+composition byte/scalar ranges by default; records explicit cleanup delivery/
+suppression and exact lifetime/device identity; classifies accepted application
+actions by type/category without payload retention or a global `Action: Debug`
+bound; and proves the full Counter/public terminal and publication
+reconstruction. M4D2's explicit FullText policy may additionally retain exact
+committed-text/preedit payload under that independent opt-in. The mandatory
+admission proofs preserve capacity-zero behavior, oldest-first eviction,
+exclusive watermark, and exact sequence exhaustion.
 
 Transaction semantic request/invalidation records preserve callback collector
 order independently from cleanup-before-start queue grouping. Final action
@@ -680,9 +728,9 @@ exclusive watermark: `Some(S)` means every trace sequence less than `S` is no
 longer retained. Ordinary eviction cannot affect application behavior. When
 enabled mandatory trace sequencing cannot advance for direct commands or
 already-accepted mutable work, the runtime becomes terminal before the pending
-mutable callback and cancels queued work. The current contract has no external
-sink, deterministic JSONL export, or replay; the accepted M4D1-normalized schema
-and in-memory redaction boundary are not an export contract.
+mutable callback and cancels queued work. The accepted M4D2 export/sink surface
+is a projection/transport over the same canonical in-memory authority; replay
+remains M4D3 scope.
 
 ## Breaking migrations
 
@@ -738,7 +786,11 @@ Added:
   composition generations; deterministic authored-ID automation resolution; and
   redacted input trace facts;
 - M4D1 role-typed input/automation/action trace contexts, normalized causal
-  reconstruction, and public non-`Debug` action identity facts.
+  reconstruction, and public non-`Debug` action identity facts;
+- M4D2 `TracePayloadCapture`, explicit FullText opt-in, deterministic
+  `Trace::export_jsonl()`, optional static action labels, `TraceSinkDeliveryOutcome`,
+  and the one-time `TraceSinkReceiver`/`TraceJsonlLine` nonblocking subordinate
+  sink surface.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
@@ -747,7 +799,8 @@ host requests, all four readiness budgets, wake/redraw, M4C1 exact-target routed
 semantic commands, M4C2 displayed-generation surface context, the M4C3
 host-neutral pointer lifecycle, the owner-accepted M4C4 focus-scope/modality
 protocol, the owner-accepted M4C5 keyboard/text/composition and authored-ID
-automation implementation, and the owner-accepted M4D1 normalized in-memory
-trace schema. It does not imply native host translation, production scrolling,
-editable text, platform IME objects, M4D2 export/sink, M4D3 replay, M5 semantic
-accessibility mapping, or M4 completion.
+automation implementation, the owner-accepted M4D1 normalized in-memory trace
+schema, and the owner-accepted M4D2 deterministic export/redaction/bounded-sink
+surface. It does not imply native host translation, production scrolling,
+editable text, platform IME objects, M4D3 replay, M5 semantic accessibility
+mapping, or M4 completion.

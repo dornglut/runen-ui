@@ -6,17 +6,16 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M4A through M4D1 are complete and owner-accepted. The accepted
-M4D1 feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed
-exact-head CI run `31269401262` / #657 and was squash-merged in
-[PR #39](https://github.com/dornglut/runen-ui/pull/39) as
-`2fe269366386d7aee9de2a2573498b64ad486293`. This post-merge authority
-reconciliation records the accepted trace-schema result. M4D2–M4D3 remain
-blocked in sequence until the required predecessor reconciliation and acceptance
-gates pass. M4 remains active and incomplete. Current maturity, durable sequence,
-work ownership, and historical acceptance evidence live in the
-[status map](docs/status-map.md), [roadmap](docs/roadmap.md),
-[work-tracking contract](docs/work-tracking.md), and
+Milestone status: M4A through M4D2 are complete and owner-accepted. The accepted
+M4D2 feature head `1bd7dcfdbb46dec52da62faabb739c835e971c80` passed
+exact-head CI run `31321448821` / #712 and was squash-merged in
+[PR #41](https://github.com/dornglut/runen-ui/pull/41) as
+`8c67655ffce438c2e35e6478e7299bd704033b8b`. This post-merge authority
+reconciliation records the accepted export/redaction/sink result. M4D3 remains
+blocked until this reconciliation is accepted and merged. M4 remains active and
+incomplete. Current maturity, durable sequence, work ownership, and historical
+acceptance evidence live in the [status map](docs/status-map.md),
+[roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and
 [public repository migration history](docs/history/public-repository-migration.md).
 
 ## What exists today
@@ -86,13 +85,15 @@ proof without native host translation or production scrolling; text measurement
 is deterministic character counting; M4C5's owner-accepted raw keyboard,
 committed-text, composition, and authored-ID automation remain host-neutral
 proof behavior without editable text or native translation; M4D1's accepted
-in-memory trace schema is normalized and causally reconstructable, while
-deterministic JSONL export, external trace sinks, replay, production
-semantics/accessibility, paint/hit scenes, production layout/style/text, native
-hosts, renderer backends, and production controls are absent. The current
-runtime has one mounted root, one focus domain, and one logical surface with
-bounded proof-level displayed hit-test history. Current paint and semantic facts
-remain deterministic extension proofs, not the M5/M6 production products.
+in-memory trace schema is normalized and causally reconstructable, and M4D2 adds
+accepted deterministic JSONL v1 projection, default-redacted/explicit-full
+text/IME capture, optional static action labels, and a subordinate lazily bounded
+nonblocking trace sink. Replay, production semantics/accessibility, paint/hit
+scenes, production layout/style/text, native hosts, renderer backends, and
+production controls remain absent. The current runtime has one mounted root, one
+focus domain, and one logical surface with bounded proof-level displayed hit-test
+history. Current paint and semantic facts remain deterministic extension proofs,
+not the M5/M6 production products.
 
 ## Production profiles
 

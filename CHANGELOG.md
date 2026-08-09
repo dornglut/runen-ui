@@ -8,6 +8,24 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and guarded-squash-merged the complete M4D2 deterministic
+  trace-export, redaction, optional action-label, and subordinate bounded-sink
+  slice in [PR #41](https://github.com/dornglut/runen-ui/pull/41). The accepted
+  feature head `1bd7dcfdbb46dec52da62faabb739c835e971c80` passed canonical
+  exact-head CI run `31321448821` / #712 and the frozen complete-diff review;
+  the squash merge commit is `8c67655ffce438c2e35e6478e7299bd704033b8b`,
+  and all 23 changed-file blob identities match between the reviewed feature
+  head and accepted squash. The accepted implementation adds deterministic
+  JSONL v1 projection, default-redacted and explicit-full text/IME capture,
+  optional static non-`Debug` action labels, lazy bounded immutable-record sink
+  delivery with receiver-side serialization, same-record `Delivered`/`Full`/
+  first-`Closed` diagnostics, one-way sink retirement, exact JSON escaping, and
+  capacity-zero diagnostic dormancy without adding a second trace/history/order
+  authority. All ten `TRACE-EXPORT-*` rows become `owner-accepted` through this
+  post-merge authority reconciliation, producing 237 total / 227
+  owner-accepted / 0 proof-complete / 10 blocked rows. M4D3 remains blocked until
+  this reconciliation is owner-accepted and merged; M4 remains active and
+  incomplete.
 - Owner-accepted and squash-merged the complete M4D1 trace-schema and causal
   reconstruction slice in [PR #39](https://github.com/dornglut/runen-ui/pull/39).
   The accepted feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a`

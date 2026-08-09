@@ -15,19 +15,20 @@ Support labels:
 | `deferred` | Accepted later target outside the first foundation or release. |
 | `unsupported` | Not available and not safe to infer from current APIs. |
 
-M4B, M4C0–M4C5, and M4D1 are complete and owner-accepted. The accepted M4D1
-feature head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed exact-head CI run
-`31269401262` / #657 and was squash-merged in
-[PR #39](https://github.com/dornglut/runen-ui/pull/39) as
-`2fe269366386d7aee9de2a2573498b64ad486293`. This document promotes only the
-accepted normalized in-memory trace behavior; deterministic JSONL export,
-external sinks, replay, editable text, native host translation, and semantic
-accessibility resolution remain outside M4D1. M4D2 becomes the next
-implementation slice only after this post-merge authority reconciliation is
-accepted and merged. Exact branch, head, blocker, validation, and next-action
-state belongs in the [work-tracking system](work-tracking.md), GitHub issues, and
-pull requests. Historical acceptance evidence remains in the [public repository
-migration history](history/public-repository-migration.md).
+M4B, M4C0–M4C5, M4D1, and M4D2 are complete and owner-accepted. The accepted M4D2
+feature head `1bd7dcfdbb46dec52da62faabb739c835e971c80` passed exact-head CI run
+`31321448821` / #712 and was squash-merged in
+[PR #41](https://github.com/dornglut/runen-ui/pull/41) as
+`8c67655ffce438c2e35e6478e7299bd704033b8b`. This document promotes the
+accepted deterministic JSONL v1 projection, explicit text/IME capture policy,
+optional non-`Debug` action labels, and subordinate bounded trace sink. Replay,
+editable text, native host translation, and semantic accessibility resolution
+remain outside M4D2. M4D3 becomes the next implementation slice only after this
+post-merge authority reconciliation is accepted and merged. Exact branch, head,
+blocker, validation, and next-action state belongs in the
+[work-tracking system](work-tracking.md), GitHub issues, and pull requests.
+Historical acceptance evidence remains in the [public repository migration
+history](history/public-repository-migration.md).
 
 ## 1. Authoring and composition
 
@@ -100,7 +101,7 @@ migration history](history/public-repository-migration.md).
 |---|---|---|---|---|
 | Synchronous direct dispatch | `unsupported` | `AppRuntime::dispatch` and private dispatch authorities were removed | Callers must submit and explicitly pump | M4 |
 | Application action and command submission | `proof` | `submit_action` returns exact action recovery; `submit_command` returns `CommandSubmission` or exact owned target/command/origin recovery with distinct foreign/stale/missing/terminal/capacity outcomes; authored-ID automation resolves uniquely before the same command path | Semantic accessibility resolution remains M5 | M4B/M4C1/M4C5 owner-accepted |
-| Queue saturation | `proof` | Waiting-envelope, transaction output, live-family, completion, subscription-diagnostic, and trace limits; initial plans reserve aggregate allowance, while routed plans conservatively reserve the configured maximum-safe callback/output boundary before mutation | Exact callback-declared capacity is not an M4C1 API; external trace-sink limit remains M4D2 | M4B/M4C1 complete |
+| Queue saturation | `proof` | Waiting-envelope, transaction output, live-family, completion, subscription-diagnostic, and trace limits; initial plans reserve aggregate allowance, while routed plans conservatively reserve the configured maximum-safe callback/output boundary before mutation | Exact callback-declared capacity is not an M4C1 API; the M4D2 trace sink is subordinate and independently bounded | M4B/M4C1 complete; M4D2 owner-accepted |
 | Action queue and ordering | `proof` | One generalized FIFO sequences actions, commands, pointer/input bundles, focus notifications, reconciliation, work, timers, and mapped results; notification/initiating/default output order is explicit | Native host translation remains absent | M4B/M4C1/M4C3/M4C4/M4C5 owner-accepted |
 | Effects | `proof` | Opaque ordered application descriptions plus mounted lifecycle/activation/event contexts; routed event/default output commits invalidation, actions/commands, and exact-owner work atomically | Mounted host requests remain intentionally unavailable | M4B/M4C1 complete |
 | Processed-envelope pump budget | `proof` | Four-argument `PumpBudget`; exact report and outcome | None in implemented work scope | M4B complete, accepted, and merged |
@@ -235,13 +236,13 @@ migration history](history/public-repository-migration.md).
 | Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 harness and Ubuntu-only CI | M5, M11 |
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, fresh surface generation/revision context, and debug output | No stable severity/strict mode | M4C2 owner-accepted; M5–M7 |
-| Runtime trace | `partial` | One bounded M4D1-normalized canonical graph reconstructs scheduler/routed/surface/pointer/focus/modality/input/action/terminal/shutdown/publication causality; typed input/action/automation facts retain redacted identity and exact lineage | JSONL export, external sink, and replay remain M4D2–M4D3 | M4D1 owner-accepted; M4D2–M4D3 blocked |
-| Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, exclusive dropped-before watermark, and M4D1 normalized-schema proof | Retention alone does not provide export, sink delivery, or replay | M4D1 owner-accepted |
-| Bounded external trace sink | `unsupported` | Accepted bounded/try-based subordinate sink target contract only | No sink, backpressure diagnostic, or recursion guard | M4D2 |
+| Runtime trace | `partial` | One bounded canonical M4D1-normalized graph plus M4D2 deterministic JSONL v1 export, explicit redacted/full text and IME capture, optional static action labels, and same-record bounded-sink delivery diagnostics | Replay remains absent; export/sink are headless proof infrastructure rather than a production observability service | M4D1–M4D2 owner-accepted; M4D3 blocked until reconciliation |
+| Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, exclusive dropped-before watermark, normalized-schema proof, and deterministic v1 projection | Retention/export do not provide replay | M4D1–M4D2 owner-accepted |
+| Bounded external trace sink | `proof` | One-time public receiver; lazy atomic logical capacity; immutable canonical-record handoff; consumer-side JSON encoding; structured `Delivered`/`Full`/first `Closed` outcomes; shutdown closure; four-state isolation proof | Subordinate headless diagnostic transport only; no arbitrary callback/work capability or replay authority | M4D2 owner-accepted |
 | Public headless test harness | `planned` | Current tests prove demand | No `runenui_testing` public boundary | M5 |
 | Semantic/layout/hit/paint assertions | `planned` | Layout/frame internals are inspectable | No unified public assertions | M5–M6 |
 | Deterministic time/tasks | `proof` | Manual monotonic clock, wake-aware local tasks, injectable send executor | Unified M5 harness absent | M4B complete; M5 |
-| Snapshot/golden/replay tests | `unsupported` | Debug string assertions only | Scene and replay protocols absent | M5–M6 |
+| Snapshot/golden/replay tests | `partial` | Deterministic JSONL v1 repeated-execution and exact-escaping proofs provide export snapshot coverage | Replay protocol/engine remains absent | M4D2 owner-accepted; M4D3 blocked |
 | Property/fuzz testing | `unsupported` | None | Production hardening work | M11 |
 | Benchmarks and budgets | `unsupported` | None | No performance gates | M11 |
 | Cross-platform CI | `unsupported` | Ubuntu-only CI | Windows/macOS jobs absent | M11 |

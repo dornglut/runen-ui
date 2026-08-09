@@ -40,7 +40,7 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
-M4A, M4B, M4C0–M4C5, and M4D1 are complete and owner-accepted. The accepted
+M4A, M4B, M4C0–M4C5, M4D1, and M4D2 are complete and owner-accepted. The accepted
 M4C3 feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI
 run `29996101708` and was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`. The accepted M4C4 feature head
@@ -55,9 +55,14 @@ run `29996101708` and was squash-merged in PR #15 as
 `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed canonical exact-head CI run
 `31269401262` / #657 and the frozen complete-diff review, and was squash-merged in
 [PR #39](https://github.com/dornglut/runen-ui/pull/39) as
-`2fe269366386d7aee9de2a2573498b64ad486293`. M4D2 remains blocked until this
-post-merge authority reconciliation is accepted and merged; M4D3 remains blocked
-behind M4D2. The target M4 pipeline is active and incomplete.
+`2fe269366386d7aee9de2a2573498b64ad486293`. The accepted M4D2 feature head
+`1bd7dcfdbb46dec52da62faabb739c835e971c80` passed canonical exact-head CI run
+`31321448821` / #712 and was guarded-squash-merged in
+[PR #41](https://github.com/dornglut/runen-ui/pull/41) as
+`8c67655ffce438c2e35e6478e7299bd704033b8b`; all 23 changed-file blob identities
+match between reviewed feature head and accepted squash. M4D3 remains blocked
+until this post-merge authority reconciliation is accepted and merged. The
+target M4 pipeline is active and incomplete.
 
 ```text
 Application-owned State + Action
@@ -129,19 +134,25 @@ complete per-family causal scheduler trace proofs. The exact-target routed
 semantic-command kernel is accepted through M4C1, displayed-generation surface
 context through M4C2, pointer lifecycle through M4C3, focus scopes/modality
 through M4C4, keyboard, committed-text/composition, plus deterministic
-authored-ID automation resolution through M4C5, and normalized in-memory trace
-schema and full M4 causal reconstruction through M4D1. The accepted M4C5 behavior
-does not add editable text, native IME objects, a platform host, or semantic
-accessibility resolution. Public automation work/trace-sequence exhaustion is a
-deliberate recoverable exception that returns the exact authored request without
-terminalizing; direct commands and already-accepted mutable work retain ordinary
-terminal exhaustion policy. If mandatory composition cleanup cannot be delivered,
-the runtime records causal suppression, retires the exact lifetime, terminalizes,
-and preserves shutdown lineage rather than falsely claiming callback delivery.
-M4D1's accepted canonical in-memory trace retains typed/redacted input,
-composition, automation, action, terminal, shutdown, logical-time, work-sequence,
-and causal-parent facts without a second history. Deterministic JSONL export,
-external sink delivery, and replay remain unimplemented M4D2/M4D3 target
+authored-ID automation resolution through M4C5, normalized in-memory trace
+schema and full M4 causal reconstruction through M4D1, and deterministic JSONL
+projection plus subordinate bounded sink delivery through M4D2. The accepted
+M4C5 behavior does not add editable text, native IME objects, a platform host, or
+semantic accessibility resolution. Public automation work/trace-sequence
+exhaustion is a deliberate recoverable exception that returns the exact authored
+request without terminalizing; direct commands and already-accepted mutable work
+retain ordinary terminal exhaustion policy. If mandatory composition cleanup
+cannot be delivered, the runtime records causal suppression, retires the exact
+lifetime, terminalizes, and preserves shutdown lineage rather than falsely
+claiming callback delivery. M4D1's accepted canonical in-memory trace retains
+typed/redacted input, composition, automation, action, terminal, shutdown,
+logical-time, work-sequence, and causal-parent facts without a second history.
+M4D2 projects those immutable records as deterministic JSONL v1, retains raw
+committed text/preedit only under explicit independent `FullText` capture,
+accepts optional static action labels without an `Action: Debug` bound, and uses
+a subordinate lazily bounded sink whose serialization occurs only on consumer
+drain. `Delivered`, `Full`, and first `Closed` remain same-record diagnostic facts
+and consume no second trace sequence. Replay remains unimplemented M4D3 target
 architecture. See the [public API contract](architecture/public-api.md),
 [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
 [work-tracking contract](work-tracking.md).
@@ -254,8 +265,12 @@ work remains.
 Each send-task start makes one executor attempt. Refusal is a recoverable terminal
 outcome for that exact generation with no retry/pending queue or default action;
 an optional UI-thread failure mapper may enqueue an action. The bounded canonical
-trace remains authoritative over any bounded/try-based external sink, whose
-failure cannot block, alter behavior, or recursively redeliver its diagnostic.
+trace remains authoritative over the accepted M4D2 subordinate export sink.
+Atomic logical-capacity reservation bounds pending immutable record references;
+transport does not wait for receiver capacity, and JSON encoding occurs only
+when the consumer drains the receiver. Full or closed sink state cannot alter
+canonical sequence/order or application behavior and cannot recursively create
+or redeliver diagnostic records.
 
 ## Event model
 
@@ -361,10 +376,10 @@ effects/scheduling/trace are accepted in ADR 0005 and ADR 0006 and are the activ
 M4 implementation authorities. The current implementation contains their
 accepted queue, scheduler, routed semantic-command, displayed-generation
 surface, pointer, focus/modality, keyboard/text/composition/automation,
-terminal/shutdown, and M4D1-normalized in-memory trace authority. M4D2
-export/sink, M4D3 replay, and final milestone closure remain implementation
-gates. Public proof requirements are fixed in the M4 conformance matrix and
-directional-focus corpus.
+terminal/shutdown, M4D1-normalized in-memory trace, and M4D2 deterministic
+JSONL/redaction/bounded-sink authority. M4D3 replay and final milestone closure
+remain implementation gates. Public proof requirements are fixed in the M4
+conformance matrix and directional-focus corpus.
 
 The following later choices still require dedicated analysis and review:
 standard layout algorithm, production text stack, conventional renderer, crate
