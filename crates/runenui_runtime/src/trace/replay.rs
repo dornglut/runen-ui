@@ -144,9 +144,10 @@ impl TraceReplay {
     /// Parses and structurally validates one exported trace JSONL document.
     ///
     /// The first line must be the `runenui.trace` v1 header and every following
-    /// line must be a `runenui.trace.record` v1 record. Causal parents must refer
-    /// to an earlier retained record unless the parent is explicitly below the
-    /// header's dropped-prefix watermark.
+    /// line must be a `runenui.trace.record` v1 record. Retained trace sequences
+    /// must form the exact contiguous canonical segment described by the header.
+    /// Causal parents must refer to an earlier retained record unless the parent
+    /// is explicitly below the header's dropped-prefix watermark.
     ///
     /// # Errors
     ///
@@ -185,6 +186,12 @@ impl TraceReplay {
                 dropped_before_sequence,
                 previous_sequence,
                 &seen_sequences,
+            )?;
+            validate_contiguous_sequence(
+                line_number,
+                record.sequence,
+                dropped_before_sequence,
+                previous_sequence,
             )?;
             previous_sequence = Some(record.sequence);
             seen_sequences.insert(record.sequence.get());
@@ -288,6 +295,11 @@ pub enum TraceReplayError {
         previous: TraceReplaySequence,
         current: TraceReplaySequence,
     },
+    NonContiguousSequence {
+        line: usize,
+        expected: u64,
+        actual: TraceReplaySequence,
+    },
     SequenceBeforeDroppedPrefix {
         line: usize,
         sequence: TraceReplaySequence,
@@ -366,6 +378,15 @@ impl fmt::Display for TraceReplayError {
                 "trace replay line {line} sequence {} does not follow {}",
                 current.get(),
                 previous.get()
+            ),
+            Self::NonContiguousSequence {
+                line,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "trace replay line {line} has sequence {}; expected contiguous sequence {expected}",
+                actual.get()
             ),
             Self::SequenceBeforeDroppedPrefix {
                 line,
@@ -491,6 +512,26 @@ fn parse_record(
         reconciliation_after,
         instant_nanos,
     })
+}
+
+fn validate_contiguous_sequence(
+    line: usize,
+    current: TraceReplaySequence,
+    dropped_before_sequence: Option<TraceReplaySequence>,
+    previous: Option<TraceReplaySequence>,
+) -> Result<(), TraceReplayError> {
+    let expected = match previous {
+        Some(previous) => previous.get().checked_add(1).unwrap_or(u64::MAX),
+        None => dropped_before_sequence.map_or(1, TraceReplaySequence::get),
+    };
+    if current.get() != expected {
+        return Err(TraceReplayError::NonContiguousSequence {
+            line,
+            expected,
+            actual: current,
+        });
+    }
+    Ok(())
 }
 
 fn parse_json_line(line: usize, input: &str) -> Result<Value, TraceReplayError> {
@@ -706,11 +747,44 @@ mod tests {
         let input = format!(
             "{}\n{}\n",
             header("null", 1),
-            record(2, "1", "redraw_requested")
+            record(1, "2", "redraw_requested")
         );
         assert!(matches!(
             TraceReplay::parse_jsonl(&input),
-            Err(TraceReplayError::MissingCausalParent { .. })
+            Err(TraceReplayError::CausalParentNotEarlier { .. })
+        ));
+    }
+
+    #[test]
+    fn unexplained_sequence_gap_is_rejected() {
+        let input = format!(
+            "{}\n{}\n{}\n",
+            header("null", 2),
+            record(1, "null", "runtime_mounted"),
+            record(3, "null", "redraw_requested")
+        );
+        assert!(matches!(
+            TraceReplay::parse_jsonl(&input),
+            Err(TraceReplayError::NonContiguousSequence {
+                expected: 2,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn dropped_prefix_must_begin_at_the_declared_watermark() {
+        let input = format!(
+            "{}\n{}\n",
+            header("5", 1),
+            record(6, "null", "redraw_requested")
+        );
+        assert!(matches!(
+            TraceReplay::parse_jsonl(&input),
+            Err(TraceReplayError::NonContiguousSequence {
+                expected: 5,
+                ..
+            })
         ));
     }
 
