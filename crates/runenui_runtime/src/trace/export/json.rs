@@ -66,13 +66,7 @@ mod tests {
     #[test]
     fn json_string_escaping_is_exact_and_stable() {
         let mut output = String::new();
-        string(
-            &mut output,
-            "\"\\\u{08}\u{0c}\n\r\t\u{00}\u{1f}é",
-        );
-        assert_eq!(
-            output,
-            "\"\\\"\\\\\\b\\f\\n\\r\\t\\u0000\\u001fé\""
-        );
+        string(&mut output, "\"\\\u{08}\u{0c}\n\r\t\u{00}\u{1f}é");
+        assert_eq!(output, "\"\\\"\\\\\\b\\f\\n\\r\\t\\u0000\\u001fé\"");
     }
 }
