@@ -205,6 +205,7 @@ impl TraceReplay {
     }
 
     /// Returns retained replay records in strictly increasing sequence order.
+    #[must_use]
     pub fn records(&self) -> impl ExactSizeIterator<Item = &TraceReplayRecord> {
         self.records.iter()
     }
@@ -245,28 +246,12 @@ impl TraceReplay {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TraceReplayError {
     EmptyInput,
-    EmptyLine {
-        line: usize,
-    },
-    InvalidJson {
-        line: usize,
-        message: Box<str>,
-    },
-    ExpectedObject {
-        line: usize,
-    },
-    MissingField {
-        line: usize,
-        field: &'static str,
-    },
-    InvalidFieldType {
-        line: usize,
-        field: &'static str,
-    },
-    IntegerOutOfRange {
-        line: usize,
-        field: &'static str,
-    },
+    EmptyLine { line: usize },
+    InvalidJson { line: usize, message: Box<str> },
+    ExpectedObject { line: usize },
+    MissingField { line: usize, field: &'static str },
+    InvalidFieldType { line: usize, field: &'static str },
+    IntegerOutOfRange { line: usize, field: &'static str },
     SchemaMismatch {
         line: usize,
         expected: &'static str,
@@ -302,10 +287,7 @@ pub enum TraceReplayError {
         sequence: TraceReplaySequence,
         parent: TraceReplaySequence,
     },
-    RetainedRecordCountMismatch {
-        declared: usize,
-        actual: usize,
-    },
+    RetainedRecordCountMismatch { declared: usize, actual: usize },
 }
 
 impl fmt::Display for TraceReplayError {
