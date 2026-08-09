@@ -32,6 +32,7 @@ impl<App: UiApp> AppRuntime<App> {
     #[must_use]
     pub fn mount_with_config(state: App::State, config: RuntimeConfig) -> Self {
         let mut runtime = Runtime::mount(state, |state| App::root(state).into_element(), config);
+        runtime.trace_action_labeler = Some(App::trace_action_label);
         runtime.initialize_application_work::<App>();
         runtime.rearm_wake_if_needed();
         Self {
@@ -279,6 +280,16 @@ impl<App: UiApp> AppRuntime<App> {
     #[must_use]
     pub fn subscription_diagnostics(&self) -> &[crate::SubscriptionDiagnostic] {
         self.runtime.subscription_diagnostics()
+    }
+
+    /// Takes the configured bounded trace sink receiver exactly once.
+    ///
+    /// Returns `None` when sink delivery was not configured or the receiver was
+    /// already taken. Receiving is always nonblocking through
+    /// [`crate::TraceSinkReceiver::try_recv`].
+    #[must_use]
+    pub fn take_trace_sink_receiver(&mut self) -> Option<crate::TraceSinkReceiver> {
+        self.runtime.trace.take_sink_receiver()
     }
 
     #[must_use]

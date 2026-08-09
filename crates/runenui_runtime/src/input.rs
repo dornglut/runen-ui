@@ -793,7 +793,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .next_sequence()
             .unwrap_or_else(|| unreachable!("composition sequence was preflighted"));
         let instant = self.now();
-        let (trace_kind, context) = Self::existing_composition_trace(&event, composition);
+        let payload_capture = self.trace.payload_capture();
+        let (trace_kind, context) =
+            Self::existing_composition_trace(&event, composition, payload_capture);
         let parent = self.trace.record_draft(
             TraceRecordDraft::input_fact(trace_kind, instant, TraceContext::input_record(context))
                 .with_work_sequence(Some(sequence))
@@ -851,14 +853,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn existing_composition_trace(
         event: &CompositionEvent,
         composition: TraceCompositionContext,
+        payload_capture: crate::TracePayloadCapture,
     ) -> (TraceRecordKind, TraceInputContext) {
         match event {
             CompositionEvent::Update(update) => (
                 TraceRecordKind::CompositionUpdateSubmitted,
-                TraceInputContext::composition_update(
+                TraceInputContext::composition_update_with_capture(
                     composition,
                     update.preedit(),
                     update.range(),
+                    payload_capture,
                 ),
             ),
             CompositionEvent::End(_) => (
@@ -950,6 +954,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err((SubmitKeyboardErrorKind::WorkSequenceExhausted, payload));
         };
         let instant = self.now();
+        let payload_capture = self.trace.payload_capture();
         let (trace_kind, context) = match &payload {
             InputEnvelopePayload::Keyboard(event) => (
                 TraceRecordKind::KeyboardSubmissionAccepted,
@@ -957,7 +962,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             ),
             InputEnvelopePayload::CommittedText(event) => (
                 TraceRecordKind::CommittedTextSubmissionAccepted,
-                TraceInputContext::committed_text(event.text(), event.device_id()),
+                TraceInputContext::committed_text_with_capture(
+                    event.text(),
+                    event.device_id(),
+                    payload_capture,
+                ),
             ),
             InputEnvelopePayload::Composition(_) => {
                 unreachable!("composition has dedicated ingress")

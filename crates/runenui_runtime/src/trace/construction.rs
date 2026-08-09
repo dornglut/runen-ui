@@ -283,6 +283,7 @@ impl TraceRecordDraft {
             current_target,
             command_origin,
             context: self.context,
+            sink_delivery: None,
         }
     }
 }

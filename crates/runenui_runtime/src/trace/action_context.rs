@@ -12,13 +12,18 @@ pub enum TraceActionCategory {
 pub struct TraceActionIdentity {
     type_name: &'static str,
     category: TraceActionCategory,
+    label: Option<&'static str>,
 }
 
 impl TraceActionIdentity {
-    pub(crate) fn of<Action>(category: TraceActionCategory) -> Self {
+    pub(crate) fn of_labeled<Action>(
+        category: TraceActionCategory,
+        label: Option<&'static str>,
+    ) -> Self {
         Self {
             type_name: core::any::type_name::<Action>(),
             category,
+            label,
         }
     }
 
@@ -32,5 +37,11 @@ impl TraceActionIdentity {
     #[must_use]
     pub const fn category(self) -> TraceActionCategory {
         self.category
+    }
+
+    /// Returns the optional application-supplied static diagnostic label.
+    #[must_use]
+    pub const fn label(self) -> Option<&'static str> {
+        self.label
     }
 }
