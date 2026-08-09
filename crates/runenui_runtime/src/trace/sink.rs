@@ -177,10 +177,6 @@ impl TraceSink {
         })
     }
 
-    pub(super) fn retire_closed(&mut self) {
-        self.sender = None;
-    }
-
     pub(super) fn close(&mut self) {
         self.sender = None;
     }
