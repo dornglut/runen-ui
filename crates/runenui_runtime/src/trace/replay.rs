@@ -185,7 +185,7 @@ impl TraceReplay {
                 dropped_before_sequence,
                 previous_sequence,
             )?;
-            validate_causal_parent(line_number, &record, dropped_before_sequence)?;
+            validate_causal_parent(line_number, &record)?;
             previous_sequence = Some(record.sequence);
             records.push(record);
         }
@@ -282,6 +282,11 @@ pub enum TraceReplayError {
         field: &'static str,
         value: u64,
     },
+    NonIncreasingSequence {
+        line: usize,
+        previous: TraceReplaySequence,
+        current: TraceReplaySequence,
+    },
     NonContiguousSequence {
         line: usize,
         expected: u64,
@@ -345,6 +350,16 @@ impl fmt::Display for TraceReplayError {
             Self::InvalidSequence { line, field, value } => write!(
                 formatter,
                 "trace replay line {line} has invalid zero `{field}` sequence value {value}"
+            ),
+            Self::NonIncreasingSequence {
+                line,
+                previous,
+                current,
+            } => write!(
+                formatter,
+                "trace replay line {line} has non-increasing sequence {} after {}",
+                current.get(),
+                previous.get()
             ),
             Self::NonContiguousSequence {
                 line,
@@ -421,10 +436,27 @@ fn validate_contiguous_sequence(
     dropped_before_sequence: Option<TraceReplaySequence>,
     previous: Option<TraceReplaySequence>,
 ) -> Result<(), TraceReplayError> {
-    let expected = match previous {
-        Some(previous) => previous.get().checked_add(1).unwrap_or(u64::MAX),
-        None => dropped_before_sequence.map_or(1, TraceReplaySequence::get),
+    let Some(previous) = previous else {
+        let expected = dropped_before_sequence.map_or(1, TraceReplaySequence::get);
+        if current.get() != expected {
+            return Err(TraceReplayError::NonContiguousSequence {
+                line,
+                expected,
+                actual: current,
+            });
+        }
+        return Ok(());
     };
+
+    if current <= previous {
+        return Err(TraceReplayError::NonIncreasingSequence {
+            line,
+            previous,
+            current,
+        });
+    }
+
+    let expected = previous.get() + 1;
     if current.get() != expected {
         return Err(TraceReplayError::NonContiguousSequence {
             line,
@@ -438,7 +470,6 @@ fn validate_contiguous_sequence(
 fn validate_causal_parent(
     line: usize,
     record: &TraceReplayRecord,
-    dropped_before_sequence: Option<TraceReplaySequence>,
 ) -> Result<(), TraceReplayError> {
     let Some(parent) = record.causal_parent else {
         return Ok(());
@@ -449,11 +480,6 @@ fn validate_causal_parent(
             sequence: record.sequence,
             parent,
         });
-    }
-    if let Some(dropped_before) = dropped_before_sequence
-        && parent < dropped_before
-    {
-        return Ok(());
     }
     Ok(())
 }
@@ -729,6 +755,21 @@ mod tests {
         assert!(matches!(
             TraceReplay::parse_jsonl(&input),
             Err(TraceReplayError::NonContiguousSequence { expected: 5, .. })
+        ));
+    }
+
+    #[test]
+    fn maximum_sequence_cannot_be_duplicated_or_overrun() {
+        let maximum = u64::MAX;
+        let input = format!(
+            "{}\n{}\n{}\n",
+            header(&maximum.to_string(), 2),
+            record(maximum, "null", "runtime_mounted"),
+            record(maximum, "null", "redraw_requested")
+        );
+        assert!(matches!(
+            TraceReplay::parse_jsonl(&input),
+            Err(TraceReplayError::NonIncreasingSequence { .. })
         ));
     }
 
