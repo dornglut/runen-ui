@@ -104,6 +104,10 @@ pub(super) struct TraceSinkPermit {
 }
 
 impl TraceSinkPermit {
+    /// Delivers through Rust's asynchronous channel after a logical-capacity
+    /// permit has been acquired. `Sender::send` on this channel does not wait
+    /// for receiver capacity; the permit counter, not the transport buffer, is
+    /// the sink's bounded-admission authority.
     pub(super) fn deliver(self, record: Arc<TraceRecord>) -> Result<(), Arc<TraceRecord>> {
         self.sender.send(record).map_err(|SendError(record)| {
             let previous = self.queued.fetch_sub(1, Ordering::AcqRel);
@@ -113,6 +117,13 @@ impl TraceSinkPermit {
     }
 }
 
+/// Subordinate sink with a lazy logical bound.
+///
+/// The asynchronous channel intentionally does not preallocate the configured
+/// capacity. Every successful reservation increments `queued` before delivery;
+/// receive or failed delivery decrements it. Therefore at most `capacity`
+/// canonical record references can be pending even though the transport itself
+/// has no fixed-size buffer.
 pub(super) struct TraceSink {
     sender: Option<Sender<Arc<TraceRecord>>>,
     receiver: Option<TraceSinkReceiver>,
