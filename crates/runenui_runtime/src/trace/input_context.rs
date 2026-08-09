@@ -183,10 +183,6 @@ impl TraceInputContext {
         }
     }
 
-    pub(crate) fn committed_text(text: &str, device_id: Option<InputDeviceId>) -> Self {
-        Self::committed_text_with_capture(text, device_id, TracePayloadCapture::Redacted)
-    }
-
     pub(crate) fn committed_text_with_capture(
         text: &str,
         device_id: Option<InputDeviceId>,
@@ -205,19 +201,6 @@ impl TraceInputContext {
         Self {
             data: TraceInputContextData::CompositionIdentity { composition },
         }
-    }
-
-    pub(crate) fn composition_update(
-        composition: TraceCompositionContext,
-        preedit: &str,
-        range: Option<CompositionRange>,
-    ) -> Self {
-        Self::composition_update_with_capture(
-            composition,
-            preedit,
-            range,
-            TracePayloadCapture::Redacted,
-        )
     }
 
     pub(crate) fn composition_update_with_capture(
@@ -371,7 +354,11 @@ mod tests {
 
     #[test]
     fn committed_text_redaction_never_retains_a_payload_copy() {
-        let context = TraceInputContext::committed_text("hé", None);
+        let context = TraceInputContext::committed_text_with_capture(
+            "hé",
+            None,
+            TracePayloadCapture::Redacted,
+        );
 
         assert_eq!(context.role(), TraceInputRecordRole::CommittedText);
         assert_eq!(
