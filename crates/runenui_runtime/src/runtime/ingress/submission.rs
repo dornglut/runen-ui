@@ -135,9 +135,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(ActionCommitError::Integrity(action));
         };
         let trace_enabled = self.trace.is_enabled();
-        let action_label = self
-            .trace_action_labeler
-            .and_then(|labeler| labeler(&action));
+        let action_label = if trace_enabled {
+            self.trace_action_labeler
+                .and_then(|labeler| labeler(&action))
+        } else {
+            None
+        };
         let accepted = self.trace.record_draft(
             TraceRecordDraft::action_fact(
                 TraceRecordKind::ActionSubmissionAccepted,
