@@ -22,8 +22,12 @@ macro_rules! trace_kind_name {
             TraceRecordKind::KeyboardSpaceOwnershipCleared { .. } => {
                 "keyboard_space_ownership_cleared"
             }
-            TraceRecordKind::CommittedTextSubmissionAccepted => "committed_text_submission_accepted",
-            TraceRecordKind::CommittedTextSubmissionRejected => "committed_text_submission_rejected",
+            TraceRecordKind::CommittedTextSubmissionAccepted => {
+                "committed_text_submission_accepted"
+            }
+            TraceRecordKind::CommittedTextSubmissionRejected => {
+                "committed_text_submission_rejected"
+            }
             TraceRecordKind::CommittedTextProcessingValidated => {
                 "committed_text_processing_validated"
             }
@@ -55,7 +59,9 @@ macro_rules! trace_kind_name {
             TraceRecordKind::PointerStreamObserved { .. } => "pointer_stream_observed",
             TraceRecordKind::PointerStreamClosed { .. } => "pointer_stream_closed",
             TraceRecordKind::PointerPhysicalTargetResolved => "pointer_physical_target_resolved",
-            TraceRecordKind::PointerBoundaryBundlePlanned { .. } => "pointer_boundary_bundle_planned",
+            TraceRecordKind::PointerBoundaryBundlePlanned { .. } => {
+                "pointer_boundary_bundle_planned"
+            }
             TraceRecordKind::PointerDefaultApplied { .. } => "pointer_default_applied",
             TraceRecordKind::PointerDefaultSuppressed { .. } => "pointer_default_suppressed",
             TraceRecordKind::PointerInteractionCommitted { .. } => "pointer_interaction_committed",
@@ -69,9 +75,15 @@ macro_rules! trace_kind_name {
             TraceRecordKind::PointerLogicalScrollCollected { .. } => {
                 "pointer_logical_scroll_collected"
             }
-            TraceRecordKind::PointerStationaryRehitQueued { .. } => "pointer_stationary_rehit_queued",
-            TraceRecordKind::PointerCaptureRequestRejected { .. } => "pointer_capture_request_rejected",
-            TraceRecordKind::PointerIntegrityCleanupCommitted => "pointer_integrity_cleanup_committed",
+            TraceRecordKind::PointerStationaryRehitQueued { .. } => {
+                "pointer_stationary_rehit_queued"
+            }
+            TraceRecordKind::PointerCaptureRequestRejected { .. } => {
+                "pointer_capture_request_rejected"
+            }
+            TraceRecordKind::PointerIntegrityCleanupCommitted => {
+                "pointer_integrity_cleanup_committed"
+            }
             TraceRecordKind::SurfaceContextAccepted { .. } => "surface_context_accepted",
             TraceRecordKind::SurfaceTargetBound => "surface_target_bound",
             TraceRecordKind::SurfaceCommandRejected { .. } => "surface_command_rejected",
@@ -91,10 +103,14 @@ macro_rules! trace_kind_name {
             TraceRecordKind::SemanticDefaultSuppressed { .. } => "semantic_default_suppressed",
             TraceRecordKind::RoutedEventCommitted => "routed_event_committed",
             TraceRecordKind::RoutedIntegrityFailed { .. } => "routed_integrity_failed",
-            TraceRecordKind::RoutedEventAdmissionRejected { .. } => "routed_event_admission_rejected",
+            TraceRecordKind::RoutedEventAdmissionRejected { .. } => {
+                "routed_event_admission_rejected"
+            }
             TraceRecordKind::ActionSubmissionRejectedFull => "action_submission_rejected_full",
             TraceRecordKind::ActionSubmissionRejectedClosed => "action_submission_rejected_closed",
-            TraceRecordKind::ActionSubmissionRejectedTerminal => "action_submission_rejected_terminal",
+            TraceRecordKind::ActionSubmissionRejectedTerminal => {
+                "action_submission_rejected_terminal"
+            }
             TraceRecordKind::ApplicationActionTransactionStarted => {
                 "application_action_transaction_started"
             }
