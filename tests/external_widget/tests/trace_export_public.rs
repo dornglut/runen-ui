@@ -4,7 +4,8 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use runenui_core::{Effects, Element, NoHostProtocol, UiApp, View, button};
 use runenui_runtime::{
-    AppRuntime, PumpBudget, RuntimeConfig, TraceActionCategory, TraceConfig, TraceRecordKind,
+    AppRuntime, PumpBudget, RuntimeConfig, TraceActionCategory, TraceActionIdentity, TraceConfig,
+    TraceRecordKind,
 };
 
 static LABEL_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -116,7 +117,7 @@ fn trace_export_04_public_non_debug_labels_are_optional_and_dormant_when_trace_i
         effect
             .context()
             .action()
-            .and_then(|identity| identity.label()),
+            .and_then(TraceActionIdentity::label),
         Some("leaf")
     );
     let jsonl = runtime.trace().export_jsonl();
