@@ -344,9 +344,8 @@ fn trace_export_06_closed_sink_is_diagnosed_once_then_retired_before_shutdown() 
 }
 
 #[test]
-fn trace_export_07_09_10_sink_backpressure_cannot_change_runtime_or_canonical_order() {
-    fn execute(config: TraceConfig) -> ExecutionResult {
-        let mut runtime = mounted(config);
+fn trace_export_07_09_10_sink_delivery_state_cannot_change_runtime_or_canonical_order() {
+    fn execute_runtime(mut runtime: AppRuntime<TestApp>) -> ExecutionResult {
         runtime
             .submit_action(TestAction::Increment)
             .unwrap_or_else(|_| unreachable!("first action is admitted"));
@@ -357,13 +356,31 @@ fn trace_export_07_09_10_sink_backpressure_cannot_change_runtime_or_canonical_or
         (*runtime.state(), canonical_signature(&runtime))
     }
 
+    fn execute(config: TraceConfig) -> ExecutionResult {
+        execute_runtime(mounted(config))
+    }
+
+    fn execute_closed(config: TraceConfig) -> ExecutionResult {
+        let mut runtime = mounted(config);
+        let receiver = runtime
+            .take_trace_sink_receiver()
+            .unwrap_or_else(|| unreachable!("configured sink exposes one receiver"));
+        drop(receiver);
+        execute_runtime(runtime)
+    }
+
     let without_sink = execute(TraceConfig::new(128));
     let one = NonZeroUsize::new(1).unwrap_or_else(|| unreachable!("one is non-zero"));
+    let huge =
+        NonZeroUsize::new(usize::MAX).unwrap_or_else(|| unreachable!("usize max is non-zero"));
+    let with_delivered_sink = execute(TraceConfig::new(128).with_sink_capacity(huge));
     let with_full_sink = execute(TraceConfig::new(128).with_sink_capacity(one));
+    let with_closed_sink = execute_closed(TraceConfig::new(128).with_sink_capacity(huge));
 
-    assert_eq!(without_sink.0, 2);
-    assert_eq!(with_full_sink.0, 2);
-    assert_eq!(without_sink.1, with_full_sink.1);
+    for result in [&without_sink, &with_delivered_sink, &with_full_sink, &with_closed_sink] {
+        assert_eq!(result.0, 2);
+        assert_eq!(result.1, without_sink.1);
+    }
 }
 
 #[test]
