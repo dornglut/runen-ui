@@ -715,10 +715,7 @@ mod tests {
         );
         assert!(matches!(
             TraceReplay::parse_jsonl(&input),
-            Err(TraceReplayError::NonContiguousSequence {
-                expected: 2,
-                ..
-            })
+            Err(TraceReplayError::NonContiguousSequence { expected: 2, .. })
         ));
     }
 
@@ -731,16 +728,14 @@ mod tests {
         );
         assert!(matches!(
             TraceReplay::parse_jsonl(&input),
-            Err(TraceReplayError::NonContiguousSequence {
-                expected: 5,
-                ..
-            })
+            Err(TraceReplayError::NonContiguousSequence { expected: 5, .. })
         ));
     }
 
     #[test]
     fn wrong_typed_required_top_level_field_is_rejected() {
-        let malformed = record(1, "null", "runtime_mounted").replace("\"context\":{}", "\"context\":[]");
+        let malformed =
+            record(1, "null", "runtime_mounted").replace("\"context\":{}", "\"context\":[]");
         let input = format!("{}\n{malformed}\n", header("null", 1));
         assert!(matches!(
             TraceReplay::parse_jsonl(&input),
