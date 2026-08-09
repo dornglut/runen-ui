@@ -34,14 +34,6 @@ pub(super) fn optional_u64(output: &mut String, value: Option<u64>) {
     }
 }
 
-pub(super) fn optional_usize(output: &mut String, value: Option<usize>) {
-    if let Some(value) = value {
-        write!(output, "{value}").unwrap_or_else(|_| unreachable!("writing to String cannot fail"));
-    } else {
-        output.push_str("null");
-    }
-}
-
 pub(super) fn optional_string(output: &mut String, value: Option<&str>) {
     if let Some(value) = value {
         string(output, value);
@@ -59,10 +51,6 @@ pub(super) fn usize_value(output: &mut String, value: usize) {
 }
 
 pub(super) fn u64_value(output: &mut String, value: u64) {
-    write!(output, "{value}").unwrap_or_else(|_| unreachable!("writing to String cannot fail"));
-}
-
-pub(super) fn u32_value(output: &mut String, value: u32) {
     write!(output, "{value}").unwrap_or_else(|_| unreachable!("writing to String cannot fail"));
 }
 
