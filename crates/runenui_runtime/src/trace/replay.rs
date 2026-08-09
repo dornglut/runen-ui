@@ -166,11 +166,8 @@ impl TraceReplay {
         let header_value = parse_json_line(header_line_number, header_line)?;
         let header = object(header_line_number, &header_value)?;
         validate_schema_and_version(header_line_number, header, TRACE_SCHEMA)?;
-        let dropped_before_sequence = optional_replay_sequence(
-            header_line_number,
-            header,
-            "dropped_before_sequence",
-        )?;
+        let dropped_before_sequence =
+            optional_replay_sequence(header_line_number, header, "dropped_before_sequence")?;
         let retained_records = required_usize(header_line_number, header, "retained_records")?;
 
         let mut records = Vec::with_capacity(retained_records.min(4096));
@@ -317,13 +314,19 @@ impl fmt::Display for TraceReplayError {
             Self::EmptyInput => formatter.write_str("trace replay input is empty"),
             Self::EmptyLine { line } => write!(formatter, "trace replay line {line} is empty"),
             Self::InvalidJson { line, message } => {
-                write!(formatter, "trace replay line {line} is invalid JSON: {message}")
+                write!(
+                    formatter,
+                    "trace replay line {line} is invalid JSON: {message}"
+                )
             }
             Self::ExpectedObject { line } => {
                 write!(formatter, "trace replay line {line} must be a JSON object")
             }
             Self::MissingField { line, field } => {
-                write!(formatter, "trace replay line {line} is missing field `{field}`")
+                write!(
+                    formatter,
+                    "trace replay line {line} is missing field `{field}`"
+                )
             }
             Self::InvalidFieldType { line, field } => write!(
                 formatter,
@@ -466,8 +469,8 @@ fn parse_record(
             });
         }
         if !seen_sequences.contains(&parent.get()) {
-            let explained_by_drop = dropped_before_sequence
-                .is_some_and(|dropped_before| parent < dropped_before);
+            let explained_by_drop =
+                dropped_before_sequence.is_some_and(|dropped_before| parent < dropped_before);
             if !explained_by_drop {
                 return Err(TraceReplayError::MissingCausalParent {
                     line: line_number,
@@ -597,11 +600,7 @@ fn required_replay_sequence(
     field: &'static str,
 ) -> Result<TraceReplaySequence, TraceReplayError> {
     let value = required_u64(line, object, field)?;
-    TraceReplaySequence::new(value).ok_or(TraceReplayError::InvalidSequence {
-        line,
-        field,
-        value,
-    })
+    TraceReplaySequence::new(value).ok_or(TraceReplayError::InvalidSequence { line, field, value })
 }
 
 fn optional_replay_sequence(
