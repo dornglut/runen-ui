@@ -123,6 +123,20 @@ fn encode_work(output: &mut String, runtime: &RuntimeNamespace, work: Option<&Tr
 
 fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &TraceContext) {
     output.push('{');
+    encode_event_pointer_context(output, runtime, context);
+    encode_input_action_context(output, runtime, context);
+    encode_route_transition_context(output, runtime, context);
+    encode_publication_context(output, runtime, context);
+    output.push_str(",\"delivery\":");
+    json::optional_string(output, context.delivery().map(tokens::delivery_outcome));
+    output.push('}');
+}
+
+fn encode_event_pointer_context(
+    output: &mut String,
+    runtime: &RuntimeNamespace,
+    context: &TraceContext,
+) {
     json::name(output, "event");
     if let Some(event) = context.event() {
         output.push_str("{\"family\":");
@@ -164,6 +178,13 @@ fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &Tra
         output,
         context.focus_record_role().map(tokens::focus_record_role),
     );
+}
+
+fn encode_input_action_context(
+    output: &mut String,
+    runtime: &RuntimeNamespace,
+    context: &TraceContext,
+) {
     output.push_str(",\"input\":");
     encode_input(output, context.input());
     output.push_str(",\"automation\":");
@@ -187,6 +208,13 @@ fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &Tra
             .requested_pointer_id()
             .map(|pointer_id| pointer_id.get()),
     );
+}
+
+fn encode_route_transition_context(
+    output: &mut String,
+    runtime: &RuntimeNamespace,
+    context: &TraceContext,
+) {
     output.push_str(",\"route\":");
     encode_route(output, runtime, context.route());
     output.push_str(",\"physical_path\":");
@@ -209,6 +237,13 @@ fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &Tra
     } else {
         output.push_str("null");
     }
+}
+
+fn encode_publication_context(
+    output: &mut String,
+    runtime: &RuntimeNamespace,
+    context: &TraceContext,
+) {
     output.push_str(",\"publication\":");
     if let Some(publication) = context.publication() {
         output.push_str("{\"surface\":");
@@ -228,9 +263,6 @@ fn encode_context(output: &mut String, runtime: &RuntimeNamespace, context: &Tra
     } else {
         output.push_str("null");
     }
-    output.push_str(",\"delivery\":");
-    json::optional_string(output, context.delivery().map(tokens::delivery_outcome));
-    output.push('}');
 }
 
 fn encode_surface(
@@ -291,8 +323,7 @@ fn encode_input(output: &mut String, input: Option<&TraceInputContext>) {
         output.push_str("null");
     }
     output.push_str(",\"captured_text\":");
-    let captured = input.captured_text();
-    json::optional_string(output, captured.as_deref());
+    json::optional_string(output, input.captured_text());
     output.push_str(",\"composition_range\":");
     if let Some(range) = input.composition_range() {
         output.push_str("{\"byte_start\":");
