@@ -1,4 +1,4 @@
-use core::{cell::RefCell, fmt};
+use core::fmt;
 
 use runenui_core::{CompositionGeneration, CompositionRange, InputDeviceId};
 
@@ -127,11 +127,11 @@ impl TraceCompositionRange {
 }
 
 #[derive(Clone, Eq, PartialEq)]
-struct PendingTraceText(Box<str>);
+struct CapturedTraceText(Box<str>);
 
-impl PendingTraceText {
-    fn new(text: &str) -> Self {
-        Self(text.into())
+impl CapturedTraceText {
+    fn from_policy(text: &str, capture: TracePayloadCapture) -> Option<Self> {
+        matches!(capture, TracePayloadCapture::FullText).then(|| Self(text.into()))
     }
 
     const fn as_str(&self) -> &str {
@@ -139,9 +139,9 @@ impl PendingTraceText {
     }
 }
 
-impl fmt::Debug for PendingTraceText {
+impl fmt::Debug for CapturedTraceText {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("PendingTraceText(..)")
+        formatter.write_str("CapturedTraceText(..)")
     }
 }
 
@@ -153,7 +153,7 @@ enum TraceInputContextData {
     CommittedText {
         device_id: Option<InputDeviceId>,
         metrics: TraceTextMetrics,
-        captured: RefCell<Option<PendingTraceText>>,
+        captured: Option<CapturedTraceText>,
     },
     CompositionIdentity {
         composition: TraceCompositionContext,
@@ -162,7 +162,7 @@ enum TraceInputContextData {
         composition: TraceCompositionContext,
         metrics: TraceTextMetrics,
         range: Option<TraceCompositionRange>,
-        captured: RefCell<Option<PendingTraceText>>,
+        captured: Option<CapturedTraceText>,
     },
     CompositionCleanup {
         composition: TraceCompositionContext,
@@ -183,12 +183,16 @@ impl TraceInputContext {
         }
     }
 
-    pub(crate) fn committed_text(text: &str, device_id: Option<InputDeviceId>) -> Self {
+    pub(crate) fn committed_text(
+        text: &str,
+        device_id: Option<InputDeviceId>,
+        capture: TracePayloadCapture,
+    ) -> Self {
         Self {
             data: TraceInputContextData::CommittedText {
                 device_id,
                 metrics: TraceTextMetrics::redacted(text),
-                captured: RefCell::new(Some(PendingTraceText::new(text))),
+                captured: CapturedTraceText::from_policy(text, capture),
             },
         }
     }
@@ -203,13 +207,14 @@ impl TraceInputContext {
         composition: TraceCompositionContext,
         preedit: &str,
         range: Option<CompositionRange>,
+        capture: TracePayloadCapture,
     ) -> Self {
         Self {
             data: TraceInputContextData::CompositionUpdate {
                 composition,
                 metrics: TraceTextMetrics::redacted(preedit),
                 range: range.map(|range| TraceCompositionRange::from_validated(preedit, range)),
-                captured: RefCell::new(Some(PendingTraceText::new(preedit))),
+                captured: CapturedTraceText::from_policy(preedit, capture),
             },
         }
     }
@@ -223,21 +228,6 @@ impl TraceInputContext {
                 composition,
                 delivery,
             },
-        }
-    }
-
-    pub(in crate::trace) fn apply_payload_capture(&self, capture: TracePayloadCapture) {
-        if matches!(capture, TracePayloadCapture::FullText) {
-            return;
-        }
-        match &self.data {
-            TraceInputContextData::CommittedText { captured, .. }
-            | TraceInputContextData::CompositionUpdate { captured, .. } => {
-                *captured.borrow_mut() = None;
-            }
-            TraceInputContextData::Keyboard { .. }
-            | TraceInputContextData::CompositionIdentity { .. }
-            | TraceInputContextData::CompositionCleanup { .. } => {}
         }
     }
 
@@ -315,17 +305,17 @@ impl TraceInputContext {
         }
     }
 
-    /// Returns an owned copy of explicitly captured committed text or preedit.
+    /// Returns explicitly captured committed text or preedit without copying it.
     ///
-    /// Default-redacted traces return `None`.
+    /// Default-redacted traces return `None` and never allocate a trace-owned
+    /// payload copy.
     #[must_use]
-    pub fn captured_text(&self) -> Option<String> {
+    pub fn captured_text(&self) -> Option<&str> {
         match &self.data {
             TraceInputContextData::CommittedText { captured, .. }
-            | TraceInputContextData::CompositionUpdate { captured, .. } => captured
-                .borrow()
-                .as_ref()
-                .map(|captured| captured.as_str().to_owned()),
+            | TraceInputContextData::CompositionUpdate { captured, .. } => {
+                captured.as_ref().map(CapturedTraceText::as_str)
+            }
             TraceInputContextData::Keyboard { .. }
             | TraceInputContextData::CompositionIdentity { .. }
             | TraceInputContextData::CompositionCleanup { .. } => None,
@@ -360,13 +350,15 @@ mod tests {
     };
     use crate::{TraceDeliveryOutcome, TracePayloadCapture};
 
-    #[test]
-    fn committed_text_is_scrubbed_by_default_policy_without_debug_leakage() {
-        let context = TraceInputContext::committed_text("hé", None);
-        assert_eq!(context.captured_text().as_deref(), Some("hé"));
-        assert!(!format!("{context:?}").contains("hé"));
+    fn assert_send_sync<T: Send + Sync>() {}
 
-        context.apply_payload_capture(TracePayloadCapture::Redacted);
+    #[test]
+    fn committed_text_redaction_never_retains_a_payload_copy() {
+        let context = TraceInputContext::committed_text(
+            "hé",
+            None,
+            TracePayloadCapture::Redacted,
+        );
 
         assert_eq!(context.role(), TraceInputRecordRole::CommittedText);
         assert_eq!(
@@ -381,14 +373,23 @@ mod tests {
         assert_eq!(context.captured_text(), None);
         assert_eq!(context.composition(), None);
         assert_eq!(context.delivery(), None);
+        assert!(!format!("{context:?}").contains("hé"));
     }
 
     #[test]
     fn explicit_full_text_policy_retains_payload_without_debug_formatting_it() {
-        let context = TraceInputContext::committed_text("hé", None);
-        context.apply_payload_capture(TracePayloadCapture::FullText);
-        assert_eq!(context.captured_text().as_deref(), Some("hé"));
+        let context = TraceInputContext::committed_text(
+            "hé",
+            None,
+            TracePayloadCapture::FullText,
+        );
+        assert_eq!(context.captured_text(), Some("hé"));
         assert!(!format!("{context:?}").contains("hé"));
+    }
+
+    #[test]
+    fn trace_input_context_remains_send_and_sync() {
+        assert_send_sync::<TraceInputContext>();
     }
 
     #[test]
