@@ -54,7 +54,9 @@ const fn enter_down() -> KeyboardEvent {
 }
 
 fn kind<'a>(replay: &'a TraceReplay, name: &str) -> Option<&'a TraceReplayRecord> {
-    replay.records().find(|record| record.kind().as_str() == name)
+    replay
+        .records()
+        .find(|record| record.kind().as_str() == name)
 }
 
 fn descends_from(
@@ -213,10 +215,14 @@ fn replay_02_structurally_valid_divergent_projection_fails_counter_reconstructio
         "\"name\":\"application_state_diverged\"",
         1,
     );
-    assert_ne!(divergent, jsonl, "fixture must contain the state-update fact");
+    assert_ne!(
+        divergent, jsonl,
+        "fixture must contain the state-update fact"
+    );
 
-    let replay = TraceReplay::parse_jsonl(&divergent)
-        .unwrap_or_else(|error| unreachable!("unknown v1 kind remains structurally valid: {error}"));
+    let replay = TraceReplay::parse_jsonl(&divergent).unwrap_or_else(|error| {
+        unreachable!("unknown v1 kind remains structurally valid: {error}")
+    });
     assert!(replay.is_complete());
     assert!(!reconstructs_counter_activation(&replay));
 }
