@@ -24,12 +24,12 @@ M4C3  pointer lifecycle (complete, owner-accepted, and squash-merged)
 M4C4  focus scopes and modality (complete, owner-accepted, and squash-merged)
 M4C5  keyboard, text, IME, automation, and M4C closure (complete, owner-accepted, and squash-merged)
 M4D1  complete trace schema (complete, owner-accepted, and squash-merged)
-M4D2  export and sink (blocked pending M4D1 authority reconciliation)
-M4D3  replay and milestone closure (blocked by M4D2)
+M4D2  export and sink (complete, owner-accepted, and squash-merged)
+M4D3  replay and milestone closure (blocked pending M4D2 authority reconciliation)
 ```
 
-M4C1–M4C5 and M4D1 are complete and owner-accepted. M4C3's accepted feature head
-`01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
+M4C1–M4C5, M4D1, and M4D2 are complete and owner-accepted. M4C3's accepted
+feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
 `29996101708` and was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`. M4C4's accepted feature head
 `f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
@@ -43,10 +43,15 @@ M4C1–M4C5 and M4D1 are complete and owner-accepted. M4C3's accepted feature he
 `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed canonical exact-head CI run
 `31269401262` / #657 and the frozen complete-diff review, and was squash-merged in
 [PR #39](https://github.com/dornglut/runen-ui/pull/39) as
-`2fe269366386d7aee9de2a2573498b64ad486293`. M4D2 remains blocked until this
-post-merge authority reconciliation is accepted and merged; M4D3 remains blocked
-behind M4D2. M4B's implemented live-only producer authority remains unchanged,
-and M4 is active and incomplete.
+`2fe269366386d7aee9de2a2573498b64ad486293`. M4D2's accepted feature head
+`1bd7dcfdbb46dec52da62faabb739c835e971c80` passed canonical exact-head CI run
+`31321448821` / #712 and the frozen complete-diff review, and was guarded-squash-
+merged in [PR #41](https://github.com/dornglut/runen-ui/pull/41) as
+`8c67655ffce438c2e35e6478e7299bd704033b8b`; all 23 changed-file blob identities
+match between the reviewed feature head and accepted squash. M4D3 remains blocked
+until this post-merge authority reconciliation is accepted and merged. M4B's
+implemented live-only producer authority remains unchanged, and M4 is active and
+incomplete.
 
 ## Current application-work and scheduler implementation
 
@@ -74,10 +79,10 @@ commands, routed output mapping, and the command causal trace are implemented.
 Displayed-generation surface input context and exact current/historical target
 binding, pointer identity/capture/release-inside behavior, focus scopes with
 retained modality, raw keyboard, committed-text and composition streams bound to
-exact focused lifetimes, deterministic authored-ID automation resolution, and the
-M4D1-normalized in-memory trace schema are implemented and owner-accepted.
-Semantic accessibility mapping, deterministic JSONL export, external trace sinks,
-and replay remain unimplemented.
+exact focused lifetimes, deterministic authored-ID automation resolution, the
+M4D1-normalized in-memory trace schema, and M4D2 deterministic JSONL projection
+plus subordinate bounded sink delivery are implemented and owner-accepted.
+Semantic accessibility mapping and replay remain unimplemented.
 
 ## Canonical target path
 
@@ -192,8 +197,10 @@ activation. M4C4 added the single focus/scope authority, modality, current-
 publication directional selection, atomic focus transitions, and routed focus
 notifications. M4C5 adds owner-accepted keyboard/text/composition ingress and
 authored automation resolution. M4D1 adds the accepted normalized in-memory trace
-schema and complete causal reconstruction across these families. M4D2 export/sink,
-M4D3 replay, and M5 semantic accessibility mapping remain later work. See
+schema and complete causal reconstruction across these families. M4D2 adds the
+accepted deterministic JSONL v1 projection, explicit text/IME capture policy,
+optional static action labels, and subordinate bounded sink delivery. M4D3 replay
+and M5 semantic accessibility mapping remain later work. See
 [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md) for the
 accepted behavioral rules.
 
@@ -463,14 +470,30 @@ owner-accepted keyboard, committed-text, composition-lifecycle, Space-cleanup,
 automation-resolution, and cleanup-suppression causal facts. M4D1 normalizes the
 complete in-memory schema across those accepted families plus typed application
 action identity, terminal/cancellation/shutdown ancestry, logical time, and
-complete Counter/public publication reconstruction. Committed text and
-composition preedit are never retained in a trace record: typed input facts retain
-only redacted UTF-8 byte/Unicode scalar metrics, checked byte/scalar ranges,
-opaque lifetime/device identity, and delivery/suppression outcomes. Automation
-resolution records unique, missing, and ambiguous outcomes, parents an accepted
-ordinary command, and retains no rejection record when provisional sequence
-admission fails. Action facts retain type/category identity without payloads or a
-global `Action: Debug` bound.
+complete Counter/public publication reconstruction. M4D2 adds the accepted
+projection and sink layer over those immutable canonical records. Committed text
+and composition preedit are redacted by default: typed input facts retain only
+UTF-8 byte/Unicode scalar metrics, checked byte/scalar ranges, opaque lifetime/
+device identity, and delivery/suppression outcomes. Exact payload text is retained
+only when `TracePayloadCapture::FullText` is explicitly configured independently
+of debug formatting, action labels, and sink enablement. Automation resolution
+records unique, missing, and ambiguous outcomes, parents an accepted ordinary
+command, and retains no rejection record when provisional sequence admission
+fails. Action facts retain type/category identity plus an optional static label
+without payload serialization or a global `Action: Debug` bound.
+
+M4D2's `Trace::export_jsonl()` projects retained canonical records as versioned
+JSONL v1 with fixed field ordering, stable explicit tokens, deterministic
+runtime-local diagnostic identity, retained-prefix watermark metadata, and exact
+JSON escaping. The subordinate sink uses lazy atomic logical-capacity admission
+and transports permitted immutable canonical record references; JSON encoding
+occurs only when the consumer drains the one-time receiver, outside mutable
+runtime transactions. `Delivered`, `Full`, and first `Closed` are subordinate
+facts on the same canonical record, consume no second trace sequence, and cannot
+be recursively re-delivered. First `Closed` retires sink authority; an open sink
+attempts canonical `RuntimeShutdown` before sender closure. Capacity-zero tracing
+constructs no sink, captures no raw diagnostic payload, and invokes no action
+label hook.
 
 Transaction semantic request/invalidation facts preserve callback collector
 order separately from cleanup-before-start queue grouping. Mandatory trace
@@ -481,10 +504,11 @@ behavior. The accepted final action trace fact is recorded before append and cau
 application transaction that processes that envelope.
 
 Capacity is configurable. Dropping old records advances an explicit watermark.
-M4D1 retains the accepted in-memory redaction and normalized-schema boundary;
-versioned deterministic JSONL projection, external sinks, and replay remain
-blocked M4D2/M4D3 scope. The canonical in-memory trace is the sole current
-per-command outcome authority; `PumpReport` remains aggregate.
+M4D1 retains the accepted normalized in-memory schema, and M4D2 adds accepted
+versioned deterministic JSONL projection plus the behaviorally subordinate
+bounded sink. Replay remains blocked M4D3 scope. The canonical in-memory trace
+remains the sole per-command outcome/order authority; `PumpReport` remains
+aggregate.
 
 ## Ownership boundaries
 
@@ -518,14 +542,15 @@ the accepted M4C delivery charter is implementation/delivery authority, and the
 [M4 conformance matrix](m4-conformance-matrix.md) is observable acceptance
 authority.
 
-M4C1–M4C5 and M4D1 are complete and owner-accepted. The accepted M4D1 feature
-head `990c49edb5b68c37dd3b7d37dd3f1196a9557c7a` passed canonical exact-head CI
-run `31269401262` / #657 and the frozen complete-diff review, and was
-squash-merged in [PR #39](https://github.com/dornglut/runen-ui/pull/39) as
-`2fe269366386d7aee9de2a2573498b64ad486293`. This separate post-merge authority
-reconciliation records its ten `TRACE-EVENT-*` rows as owner-accepted. M4D2
-remains blocked until the reconciliation is accepted and merged; M4D3 remains
-blocked behind M4D2, and M4 remains active and incomplete.
+M4C1–M4C5, M4D1, and M4D2 are complete and owner-accepted. The accepted M4D2
+feature head `1bd7dcfdbb46dec52da62faabb739c835e971c80` passed canonical exact-
+head CI run `31321448821` / #712 and the frozen complete-diff review, and was
+guarded-squash-merged in [PR #41](https://github.com/dornglut/runen-ui/pull/41)
+as `8c67655ffce438c2e35e6478e7299bd704033b8b`; all 23 changed-file blob
+identities match between reviewed feature head and accepted squash. This separate
+post-merge authority reconciliation records its ten `TRACE-EXPORT-*` rows as
+owner-accepted. M4D3 remains blocked until the reconciliation is accepted and
+merged, and M4 remains active and incomplete.
 
 M4 does not implement a platform host, accessibility tree/adapter, editable text
 control, production renderer scene, production layout/style, broad control
