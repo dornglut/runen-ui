@@ -207,6 +207,6 @@ impl fmt::Debug for TraceSink {
             .field("receiver_available", &self.receiver.is_some())
             .field("queued", &self.queued.load(Ordering::Acquire))
             .field("capacity", &self.capacity)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
