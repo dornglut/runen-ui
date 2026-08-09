@@ -2,6 +2,156 @@ use crate::TraceRecordKind;
 
 use super::{json, tokens, value};
 
+macro_rules! trace_kind_name {
+    ($kind:expr) => {
+        match $kind {
+            TraceRecordKind::RuntimeMounted => "runtime_mounted",
+            TraceRecordKind::ActionSubmissionAccepted => "action_submission_accepted",
+            TraceRecordKind::CommandSubmissionAccepted => "command_submission_accepted",
+            TraceRecordKind::PointerSubmissionAccepted { .. } => "pointer_submission_accepted",
+            TraceRecordKind::KeyboardSubmissionAccepted => "keyboard_submission_accepted",
+            TraceRecordKind::KeyboardSubmissionRejected => "keyboard_submission_rejected",
+            TraceRecordKind::KeyboardProcessingValidated => "keyboard_processing_validated",
+            TraceRecordKind::KeyboardDefaultPrevented => "keyboard_default_prevented",
+            TraceRecordKind::KeyboardEnterActivationDerived => "keyboard_enter_activation_derived",
+            TraceRecordKind::KeyboardSpaceOwnershipEstablished => {
+                "keyboard_space_ownership_established"
+            }
+            TraceRecordKind::KeyboardSpaceReleaseMatched { .. } => "keyboard_space_release_matched",
+            TraceRecordKind::KeyboardSpaceActivationDerived => "keyboard_space_activation_derived",
+            TraceRecordKind::KeyboardSpaceOwnershipCleared { .. } => {
+                "keyboard_space_ownership_cleared"
+            }
+            TraceRecordKind::CommittedTextSubmissionAccepted => "committed_text_submission_accepted",
+            TraceRecordKind::CommittedTextSubmissionRejected => "committed_text_submission_rejected",
+            TraceRecordKind::CommittedTextProcessingValidated => {
+                "committed_text_processing_validated"
+            }
+            TraceRecordKind::CommittedTextDefaultPrevented => "committed_text_default_prevented",
+            TraceRecordKind::CompositionGenerationAllocated => "composition_generation_allocated",
+            TraceRecordKind::CompositionPendingBound => "composition_pending_bound",
+            TraceRecordKind::CompositionActiveBound => "composition_active_bound",
+            TraceRecordKind::CompositionProcessingValidated => "composition_processing_validated",
+            TraceRecordKind::CompositionUpdateSubmitted => "composition_update_submitted",
+            TraceRecordKind::CompositionEndSubmitted => "composition_end_submitted",
+            TraceRecordKind::CompositionCancelSubmitted => "composition_cancel_submitted",
+            TraceRecordKind::CompositionCancelled { .. } => "composition_cancelled",
+            TraceRecordKind::CompositionRetired => "composition_retired",
+            TraceRecordKind::CompositionProcessingStaleGeneration => {
+                "composition_processing_stale_generation"
+            }
+            TraceRecordKind::CompositionSubmissionRejected => "composition_submission_rejected",
+            TraceRecordKind::AutomationResolutionUnique => "automation_resolution_unique",
+            TraceRecordKind::AutomationResolutionMissing => "automation_resolution_missing",
+            TraceRecordKind::AutomationResolutionAmbiguous => "automation_resolution_ambiguous",
+            TraceRecordKind::AutomationTargetStaleAfterResolution => {
+                "automation_target_stale_after_resolution"
+            }
+            TraceRecordKind::PointerIngressRejected { .. } => "pointer_ingress_rejected",
+            TraceRecordKind::PointerIngressValidated { .. } => "pointer_ingress_validated",
+            TraceRecordKind::PointerContextUnavailable { .. } => "pointer_context_unavailable",
+            TraceRecordKind::PointerStreamResolved { .. } => "pointer_stream_resolved",
+            TraceRecordKind::PointerStreamRegistered { .. } => "pointer_stream_registered",
+            TraceRecordKind::PointerStreamObserved { .. } => "pointer_stream_observed",
+            TraceRecordKind::PointerStreamClosed { .. } => "pointer_stream_closed",
+            TraceRecordKind::PointerPhysicalTargetResolved => "pointer_physical_target_resolved",
+            TraceRecordKind::PointerBoundaryBundlePlanned { .. } => "pointer_boundary_bundle_planned",
+            TraceRecordKind::PointerDefaultApplied { .. } => "pointer_default_applied",
+            TraceRecordKind::PointerDefaultSuppressed { .. } => "pointer_default_suppressed",
+            TraceRecordKind::PointerInteractionCommitted { .. } => "pointer_interaction_committed",
+            TraceRecordKind::PointerCaptureNotificationResolved { .. } => {
+                "pointer_capture_notification_resolved"
+            }
+            TraceRecordKind::PointerBoundaryNotificationResolved { .. } => {
+                "pointer_boundary_notification_resolved"
+            }
+            TraceRecordKind::PointerActivateCollected { .. } => "pointer_activate_collected",
+            TraceRecordKind::PointerLogicalScrollCollected { .. } => {
+                "pointer_logical_scroll_collected"
+            }
+            TraceRecordKind::PointerStationaryRehitQueued { .. } => "pointer_stationary_rehit_queued",
+            TraceRecordKind::PointerCaptureRequestRejected { .. } => "pointer_capture_request_rejected",
+            TraceRecordKind::PointerIntegrityCleanupCommitted => "pointer_integrity_cleanup_committed",
+            TraceRecordKind::SurfaceContextAccepted { .. } => "surface_context_accepted",
+            TraceRecordKind::SurfaceTargetBound => "surface_target_bound",
+            TraceRecordKind::SurfaceCommandRejected { .. } => "surface_command_rejected",
+            TraceRecordKind::SurfacePublished => "surface_published",
+            TraceRecordKind::CommandProcessingRejected { .. } => "command_processing_rejected",
+            TraceRecordKind::RoutedEventStarted => "routed_event_started",
+            TraceRecordKind::RouteSnapshotCreated { .. } => "route_snapshot_created",
+            TraceRecordKind::EventPhaseInvoked { .. } => "event_phase_invoked",
+            TraceRecordKind::RoutedActionCollected => "routed_action_collected",
+            TraceRecordKind::DelegatedCommandCollected { .. } => "delegated_command_collected",
+            TraceRecordKind::PropagationStopped => "propagation_stopped",
+            TraceRecordKind::DefaultPrevented => "default_prevented",
+            TraceRecordKind::WidgetStateMutated => "widget_state_mutated",
+            TraceRecordKind::WidgetInvalidated { .. } => "widget_invalidated",
+            TraceRecordKind::MountedSubscriptionInvalidated => "mounted_subscription_invalidated",
+            TraceRecordKind::SemanticDefaultApplied { .. } => "semantic_default_applied",
+            TraceRecordKind::SemanticDefaultSuppressed { .. } => "semantic_default_suppressed",
+            TraceRecordKind::RoutedEventCommitted => "routed_event_committed",
+            TraceRecordKind::RoutedIntegrityFailed { .. } => "routed_integrity_failed",
+            TraceRecordKind::RoutedEventAdmissionRejected { .. } => "routed_event_admission_rejected",
+            TraceRecordKind::ActionSubmissionRejectedFull => "action_submission_rejected_full",
+            TraceRecordKind::ActionSubmissionRejectedClosed => "action_submission_rejected_closed",
+            TraceRecordKind::ActionSubmissionRejectedTerminal => "action_submission_rejected_terminal",
+            TraceRecordKind::ApplicationActionTransactionStarted => {
+                "application_action_transaction_started"
+            }
+            TraceRecordKind::ApplicationStateUpdated => "application_state_updated",
+            TraceRecordKind::TreeReconciled => "tree_reconciled",
+            TraceRecordKind::FocusRetained => "focus_retained",
+            TraceRecordKind::FocusCommandEvaluated { .. } => "focus_command_evaluated",
+            TraceRecordKind::FocusCandidateSelected { .. } => "focus_candidate_selected",
+            TraceRecordKind::FocusRestorationAccepted => "focus_restoration_accepted",
+            TraceRecordKind::FocusRestorationRejected => "focus_restoration_rejected",
+            TraceRecordKind::FocusTransitionCommitted { .. } => "focus_transition_committed",
+            TraceRecordKind::FocusNotificationResolved { .. } => "focus_notification_resolved",
+            TraceRecordKind::FocusWithinInvalidated { .. } => "focus_within_invalidated",
+            TraceRecordKind::ModalityChanged => "modality_changed",
+            TraceRecordKind::PumpBudgetExhausted => "pump_budget_exhausted",
+            TraceRecordKind::InitialEffectsCommitted { .. } => "initial_effects_committed",
+            TraceRecordKind::InitialApplicationTransactionStarted => {
+                "initial_application_transaction_started"
+            }
+            TraceRecordKind::UpdateEffectsCommitted { .. } => "update_effects_committed",
+            TraceRecordKind::WorkRequested => "work_requested",
+            TraceRecordKind::WorkGenerationCommitted => "work_generation_committed",
+            TraceRecordKind::WorkStartAttempted => "work_start_attempted",
+            TraceRecordKind::WorkStartAccepted => "work_start_accepted",
+            TraceRecordKind::WorkStartRefused { .. } => "work_start_refused",
+            TraceRecordKind::WorkLogicallyInvalidated => "work_logically_invalidated",
+            TraceRecordKind::WorkCancellationBound => "work_cancellation_bound",
+            TraceRecordKind::WorkCleanupProcessed => "work_cleanup_processed",
+            TraceRecordKind::WorkCompletionImported => "work_completion_imported",
+            TraceRecordKind::WorkCompletionRejectedStale => "work_completion_rejected_stale",
+            TraceRecordKind::WorkCompletionMapped => "work_completion_mapped",
+            TraceRecordKind::LocalWorkPolled => "local_work_polled",
+            TraceRecordKind::LocalWorkReady => "local_work_ready",
+            TraceRecordKind::TimerPromoted => "timer_promoted",
+            TraceRecordKind::ReadinessCheckpoint { .. } => "readiness_checkpoint",
+            TraceRecordKind::SubscriptionDeclared => "subscription_declared",
+            TraceRecordKind::SubscriptionDiffCommitted { .. } => "subscription_diff_committed",
+            TraceRecordKind::MountedSubscriptionReconciliationSuppressedStale => {
+                "mounted_subscription_reconciliation_suppressed_stale"
+            }
+            TraceRecordKind::TimerFired => "timer_fired",
+            TraceRecordKind::TimerTerminated { .. } => "timer_terminated",
+            TraceRecordKind::HostRequestExposed => "host_request_exposed",
+            TraceRecordKind::HostResponseAccepted => "host_response_accepted",
+            TraceRecordKind::HostResponseRejected => "host_response_rejected",
+            TraceRecordKind::WakeRequested => "wake_requested",
+            TraceRecordKind::WakeAcknowledged => "wake_acknowledged",
+            TraceRecordKind::RedrawRequested { .. } => "redraw_requested",
+            TraceRecordKind::RedrawTaken { .. } => "redraw_taken",
+            TraceRecordKind::RedrawAcknowledged { .. } => "redraw_acknowledged",
+            TraceRecordKind::QueuedWorkCancelled { .. } => "queued_work_cancelled",
+            TraceRecordKind::RuntimeTerminal { .. } => "runtime_terminal",
+            TraceRecordKind::RuntimeShutdown { .. } => "runtime_shutdown",
+        }
+    };
+}
+
 pub(super) fn encode(output: &mut String, kind: &TraceRecordKind) {
     output.push('{');
     json::name(output, "name");
@@ -13,154 +163,22 @@ pub(super) fn encode(output: &mut String, kind: &TraceRecordKind) {
     output.push_str("}}");
 }
 
-fn name(kind: &TraceRecordKind) -> &'static str {
-    match kind {
-        TraceRecordKind::RuntimeMounted => "runtime_mounted",
-        TraceRecordKind::ActionSubmissionAccepted => "action_submission_accepted",
-        TraceRecordKind::CommandSubmissionAccepted => "command_submission_accepted",
-        TraceRecordKind::PointerSubmissionAccepted { .. } => "pointer_submission_accepted",
-        TraceRecordKind::KeyboardSubmissionAccepted => "keyboard_submission_accepted",
-        TraceRecordKind::KeyboardSubmissionRejected => "keyboard_submission_rejected",
-        TraceRecordKind::KeyboardProcessingValidated => "keyboard_processing_validated",
-        TraceRecordKind::KeyboardDefaultPrevented => "keyboard_default_prevented",
-        TraceRecordKind::KeyboardEnterActivationDerived => "keyboard_enter_activation_derived",
-        TraceRecordKind::KeyboardSpaceOwnershipEstablished => {
-            "keyboard_space_ownership_established"
-        }
-        TraceRecordKind::KeyboardSpaceReleaseMatched { .. } => "keyboard_space_release_matched",
-        TraceRecordKind::KeyboardSpaceActivationDerived => "keyboard_space_activation_derived",
-        TraceRecordKind::KeyboardSpaceOwnershipCleared { .. } => "keyboard_space_ownership_cleared",
-        TraceRecordKind::CommittedTextSubmissionAccepted => "committed_text_submission_accepted",
-        TraceRecordKind::CommittedTextSubmissionRejected => "committed_text_submission_rejected",
-        TraceRecordKind::CommittedTextProcessingValidated => "committed_text_processing_validated",
-        TraceRecordKind::CommittedTextDefaultPrevented => "committed_text_default_prevented",
-        TraceRecordKind::CompositionGenerationAllocated => "composition_generation_allocated",
-        TraceRecordKind::CompositionPendingBound => "composition_pending_bound",
-        TraceRecordKind::CompositionActiveBound => "composition_active_bound",
-        TraceRecordKind::CompositionProcessingValidated => "composition_processing_validated",
-        TraceRecordKind::CompositionUpdateSubmitted => "composition_update_submitted",
-        TraceRecordKind::CompositionEndSubmitted => "composition_end_submitted",
-        TraceRecordKind::CompositionCancelSubmitted => "composition_cancel_submitted",
-        TraceRecordKind::CompositionCancelled { .. } => "composition_cancelled",
-        TraceRecordKind::CompositionRetired => "composition_retired",
-        TraceRecordKind::CompositionProcessingStaleGeneration => {
-            "composition_processing_stale_generation"
-        }
-        TraceRecordKind::CompositionSubmissionRejected => "composition_submission_rejected",
-        TraceRecordKind::AutomationResolutionUnique => "automation_resolution_unique",
-        TraceRecordKind::AutomationResolutionMissing => "automation_resolution_missing",
-        TraceRecordKind::AutomationResolutionAmbiguous => "automation_resolution_ambiguous",
-        TraceRecordKind::AutomationTargetStaleAfterResolution => {
-            "automation_target_stale_after_resolution"
-        }
-        TraceRecordKind::PointerIngressRejected { .. } => "pointer_ingress_rejected",
-        TraceRecordKind::PointerIngressValidated { .. } => "pointer_ingress_validated",
-        TraceRecordKind::PointerContextUnavailable { .. } => "pointer_context_unavailable",
-        TraceRecordKind::PointerStreamResolved { .. } => "pointer_stream_resolved",
-        TraceRecordKind::PointerStreamRegistered { .. } => "pointer_stream_registered",
-        TraceRecordKind::PointerStreamObserved { .. } => "pointer_stream_observed",
-        TraceRecordKind::PointerStreamClosed { .. } => "pointer_stream_closed",
-        TraceRecordKind::PointerPhysicalTargetResolved => "pointer_physical_target_resolved",
-        TraceRecordKind::PointerBoundaryBundlePlanned { .. } => "pointer_boundary_bundle_planned",
-        TraceRecordKind::PointerDefaultApplied { .. } => "pointer_default_applied",
-        TraceRecordKind::PointerDefaultSuppressed { .. } => "pointer_default_suppressed",
-        TraceRecordKind::PointerInteractionCommitted { .. } => "pointer_interaction_committed",
-        TraceRecordKind::PointerCaptureNotificationResolved { .. } => {
-            "pointer_capture_notification_resolved"
-        }
-        TraceRecordKind::PointerBoundaryNotificationResolved { .. } => {
-            "pointer_boundary_notification_resolved"
-        }
-        TraceRecordKind::PointerActivateCollected { .. } => "pointer_activate_collected",
-        TraceRecordKind::PointerLogicalScrollCollected { .. } => "pointer_logical_scroll_collected",
-        TraceRecordKind::PointerStationaryRehitQueued { .. } => "pointer_stationary_rehit_queued",
-        TraceRecordKind::PointerCaptureRequestRejected { .. } => "pointer_capture_request_rejected",
-        TraceRecordKind::PointerIntegrityCleanupCommitted => "pointer_integrity_cleanup_committed",
-        TraceRecordKind::SurfaceContextAccepted { .. } => "surface_context_accepted",
-        TraceRecordKind::SurfaceTargetBound => "surface_target_bound",
-        TraceRecordKind::SurfaceCommandRejected { .. } => "surface_command_rejected",
-        TraceRecordKind::SurfacePublished => "surface_published",
-        TraceRecordKind::CommandProcessingRejected { .. } => "command_processing_rejected",
-        TraceRecordKind::RoutedEventStarted => "routed_event_started",
-        TraceRecordKind::RouteSnapshotCreated { .. } => "route_snapshot_created",
-        TraceRecordKind::EventPhaseInvoked { .. } => "event_phase_invoked",
-        TraceRecordKind::RoutedActionCollected => "routed_action_collected",
-        TraceRecordKind::DelegatedCommandCollected { .. } => "delegated_command_collected",
-        TraceRecordKind::PropagationStopped => "propagation_stopped",
-        TraceRecordKind::DefaultPrevented => "default_prevented",
-        TraceRecordKind::WidgetStateMutated => "widget_state_mutated",
-        TraceRecordKind::WidgetInvalidated { .. } => "widget_invalidated",
-        TraceRecordKind::MountedSubscriptionInvalidated => "mounted_subscription_invalidated",
-        TraceRecordKind::SemanticDefaultApplied { .. } => "semantic_default_applied",
-        TraceRecordKind::SemanticDefaultSuppressed { .. } => "semantic_default_suppressed",
-        TraceRecordKind::RoutedEventCommitted => "routed_event_committed",
-        TraceRecordKind::RoutedIntegrityFailed { .. } => "routed_integrity_failed",
-        TraceRecordKind::RoutedEventAdmissionRejected { .. } => "routed_event_admission_rejected",
-        TraceRecordKind::ActionSubmissionRejectedFull => "action_submission_rejected_full",
-        TraceRecordKind::ActionSubmissionRejectedClosed => "action_submission_rejected_closed",
-        TraceRecordKind::ActionSubmissionRejectedTerminal => "action_submission_rejected_terminal",
-        TraceRecordKind::ApplicationActionTransactionStarted => {
-            "application_action_transaction_started"
-        }
-        TraceRecordKind::ApplicationStateUpdated => "application_state_updated",
-        TraceRecordKind::TreeReconciled => "tree_reconciled",
-        TraceRecordKind::FocusRetained => "focus_retained",
-        TraceRecordKind::FocusCommandEvaluated { .. } => "focus_command_evaluated",
-        TraceRecordKind::FocusCandidateSelected { .. } => "focus_candidate_selected",
-        TraceRecordKind::FocusRestorationAccepted => "focus_restoration_accepted",
-        TraceRecordKind::FocusRestorationRejected => "focus_restoration_rejected",
-        TraceRecordKind::FocusTransitionCommitted { .. } => "focus_transition_committed",
-        TraceRecordKind::FocusNotificationResolved { .. } => "focus_notification_resolved",
-        TraceRecordKind::FocusWithinInvalidated { .. } => "focus_within_invalidated",
-        TraceRecordKind::ModalityChanged => "modality_changed",
-        TraceRecordKind::PumpBudgetExhausted => "pump_budget_exhausted",
-        TraceRecordKind::InitialEffectsCommitted { .. } => "initial_effects_committed",
-        TraceRecordKind::InitialApplicationTransactionStarted => {
-            "initial_application_transaction_started"
-        }
-        TraceRecordKind::UpdateEffectsCommitted { .. } => "update_effects_committed",
-        TraceRecordKind::WorkRequested => "work_requested",
-        TraceRecordKind::WorkGenerationCommitted => "work_generation_committed",
-        TraceRecordKind::WorkStartAttempted => "work_start_attempted",
-        TraceRecordKind::WorkStartAccepted => "work_start_accepted",
-        TraceRecordKind::WorkStartRefused { .. } => "work_start_refused",
-        TraceRecordKind::WorkLogicallyInvalidated => "work_logically_invalidated",
-        TraceRecordKind::WorkCancellationBound => "work_cancellation_bound",
-        TraceRecordKind::WorkCleanupProcessed => "work_cleanup_processed",
-        TraceRecordKind::WorkCompletionImported => "work_completion_imported",
-        TraceRecordKind::WorkCompletionRejectedStale => "work_completion_rejected_stale",
-        TraceRecordKind::WorkCompletionMapped => "work_completion_mapped",
-        TraceRecordKind::LocalWorkPolled => "local_work_polled",
-        TraceRecordKind::LocalWorkReady => "local_work_ready",
-        TraceRecordKind::TimerPromoted => "timer_promoted",
-        TraceRecordKind::ReadinessCheckpoint { .. } => "readiness_checkpoint",
-        TraceRecordKind::SubscriptionDeclared => "subscription_declared",
-        TraceRecordKind::SubscriptionDiffCommitted { .. } => "subscription_diff_committed",
-        TraceRecordKind::MountedSubscriptionReconciliationSuppressedStale => {
-            "mounted_subscription_reconciliation_suppressed_stale"
-        }
-        TraceRecordKind::TimerFired => "timer_fired",
-        TraceRecordKind::TimerTerminated { .. } => "timer_terminated",
-        TraceRecordKind::HostRequestExposed => "host_request_exposed",
-        TraceRecordKind::HostResponseAccepted => "host_response_accepted",
-        TraceRecordKind::HostResponseRejected => "host_response_rejected",
-        TraceRecordKind::WakeRequested => "wake_requested",
-        TraceRecordKind::WakeAcknowledged => "wake_acknowledged",
-        TraceRecordKind::RedrawRequested { .. } => "redraw_requested",
-        TraceRecordKind::RedrawTaken { .. } => "redraw_taken",
-        TraceRecordKind::RedrawAcknowledged { .. } => "redraw_acknowledged",
-        TraceRecordKind::QueuedWorkCancelled { .. } => "queued_work_cancelled",
-        TraceRecordKind::RuntimeTerminal { .. } => "runtime_terminal",
-        TraceRecordKind::RuntimeShutdown { .. } => "runtime_shutdown",
-    }
+const fn name(kind: &TraceRecordKind) -> &'static str {
+    trace_kind_name!(kind)
 }
 
 fn data(output: &mut String, kind: &TraceRecordKind) {
+    if encode_input_data(output, kind) || encode_pointer_data(output, kind) {
+        return;
+    }
+    if encode_routed_focus_data(output, kind) {
+        return;
+    }
+    let _ = encode_runtime_data(output, kind);
+}
+
+fn encode_input_data(output: &mut String, kind: &TraceRecordKind) -> bool {
     match kind {
-        TraceRecordKind::PointerSubmissionAccepted { pointer_id, phase }
-        | TraceRecordKind::PointerIngressValidated { pointer_id, phase } => {
-            pointer_phase(output, *pointer_id, *phase);
-        }
         TraceRecordKind::KeyboardSpaceReleaseMatched { matched } => {
             field_bool(output, "matched", *matched);
         }
@@ -169,6 +187,19 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
         }
         TraceRecordKind::CompositionCancelled { reason } => {
             field_str(output, "reason", tokens::composition_cancel_reason(*reason));
+        }
+        _ => return false,
+    }
+    true
+}
+
+fn encode_pointer_data(output: &mut String, kind: &TraceRecordKind) -> bool {
+    match kind {
+        TraceRecordKind::PointerSubmissionAccepted { pointer_id, phase }
+        | TraceRecordKind::PointerIngressValidated { pointer_id, phase }
+        | TraceRecordKind::PointerDefaultApplied { pointer_id, phase }
+        | TraceRecordKind::PointerDefaultSuppressed { pointer_id, phase } => {
+            pointer_phase(output, *pointer_id, *phase);
         }
         TraceRecordKind::PointerIngressRejected {
             pointer_id,
@@ -213,10 +244,6 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
         TraceRecordKind::PointerBoundaryBundlePlanned { notifications } => {
             field_usize(output, "notifications", *notifications);
         }
-        TraceRecordKind::PointerDefaultApplied { pointer_id, phase }
-        | TraceRecordKind::PointerDefaultSuppressed { pointer_id, phase } => {
-            pointer_phase(output, *pointer_id, *phase);
-        }
         TraceRecordKind::PointerCaptureNotificationResolved { kind } => {
             field_str(output, "kind", tokens::pointer_capture_kind(*kind));
         }
@@ -240,6 +267,13 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
                 tokens::capture_request_rejection(*outcome),
             );
         }
+        _ => return false,
+    }
+    true
+}
+
+fn encode_routed_focus_data(output: &mut String, kind: &TraceRecordKind) -> bool {
+    match kind {
         TraceRecordKind::SurfaceContextAccepted { ingress } => {
             field_str(output, "ingress", tokens::surface_ingress(*ingress));
         }
@@ -315,6 +349,13 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
             output.push(',');
             field_usize(output, "entered", *entered);
         }
+        _ => return false,
+    }
+    true
+}
+
+fn encode_runtime_data(output: &mut String, kind: &TraceRecordKind) -> bool {
+    match kind {
         TraceRecordKind::InitialEffectsCommitted { count }
         | TraceRecordKind::UpdateEffectsCommitted { count }
         | TraceRecordKind::QueuedWorkCancelled { count } => {
@@ -364,79 +405,9 @@ fn data(output: &mut String, kind: &TraceRecordKind) {
             output.push(',');
             field_usize(output, "unmounted_lifetimes", *unmounted_lifetimes);
         }
-        TraceRecordKind::RuntimeMounted
-        | TraceRecordKind::ActionSubmissionAccepted
-        | TraceRecordKind::CommandSubmissionAccepted
-        | TraceRecordKind::KeyboardSubmissionAccepted
-        | TraceRecordKind::KeyboardSubmissionRejected
-        | TraceRecordKind::KeyboardProcessingValidated
-        | TraceRecordKind::KeyboardDefaultPrevented
-        | TraceRecordKind::KeyboardEnterActivationDerived
-        | TraceRecordKind::KeyboardSpaceOwnershipEstablished
-        | TraceRecordKind::KeyboardSpaceActivationDerived
-        | TraceRecordKind::CommittedTextSubmissionAccepted
-        | TraceRecordKind::CommittedTextSubmissionRejected
-        | TraceRecordKind::CommittedTextProcessingValidated
-        | TraceRecordKind::CommittedTextDefaultPrevented
-        | TraceRecordKind::CompositionGenerationAllocated
-        | TraceRecordKind::CompositionPendingBound
-        | TraceRecordKind::CompositionActiveBound
-        | TraceRecordKind::CompositionProcessingValidated
-        | TraceRecordKind::CompositionUpdateSubmitted
-        | TraceRecordKind::CompositionEndSubmitted
-        | TraceRecordKind::CompositionCancelSubmitted
-        | TraceRecordKind::CompositionRetired
-        | TraceRecordKind::CompositionProcessingStaleGeneration
-        | TraceRecordKind::CompositionSubmissionRejected
-        | TraceRecordKind::AutomationResolutionUnique
-        | TraceRecordKind::AutomationResolutionMissing
-        | TraceRecordKind::AutomationResolutionAmbiguous
-        | TraceRecordKind::AutomationTargetStaleAfterResolution
-        | TraceRecordKind::PointerPhysicalTargetResolved
-        | TraceRecordKind::PointerIntegrityCleanupCommitted
-        | TraceRecordKind::SurfaceTargetBound
-        | TraceRecordKind::SurfacePublished
-        | TraceRecordKind::RoutedEventStarted
-        | TraceRecordKind::RoutedActionCollected
-        | TraceRecordKind::PropagationStopped
-        | TraceRecordKind::DefaultPrevented
-        | TraceRecordKind::WidgetStateMutated
-        | TraceRecordKind::MountedSubscriptionInvalidated
-        | TraceRecordKind::RoutedEventCommitted
-        | TraceRecordKind::ActionSubmissionRejectedFull
-        | TraceRecordKind::ActionSubmissionRejectedClosed
-        | TraceRecordKind::ActionSubmissionRejectedTerminal
-        | TraceRecordKind::ApplicationActionTransactionStarted
-        | TraceRecordKind::ApplicationStateUpdated
-        | TraceRecordKind::TreeReconciled
-        | TraceRecordKind::FocusRetained
-        | TraceRecordKind::FocusRestorationAccepted
-        | TraceRecordKind::FocusRestorationRejected
-        | TraceRecordKind::ModalityChanged
-        | TraceRecordKind::PumpBudgetExhausted
-        | TraceRecordKind::InitialApplicationTransactionStarted
-        | TraceRecordKind::WorkRequested
-        | TraceRecordKind::WorkGenerationCommitted
-        | TraceRecordKind::WorkStartAttempted
-        | TraceRecordKind::WorkStartAccepted
-        | TraceRecordKind::WorkLogicallyInvalidated
-        | TraceRecordKind::WorkCancellationBound
-        | TraceRecordKind::WorkCleanupProcessed
-        | TraceRecordKind::WorkCompletionImported
-        | TraceRecordKind::WorkCompletionRejectedStale
-        | TraceRecordKind::WorkCompletionMapped
-        | TraceRecordKind::LocalWorkPolled
-        | TraceRecordKind::LocalWorkReady
-        | TraceRecordKind::TimerPromoted
-        | TraceRecordKind::SubscriptionDeclared
-        | TraceRecordKind::MountedSubscriptionReconciliationSuppressedStale
-        | TraceRecordKind::TimerFired
-        | TraceRecordKind::HostRequestExposed
-        | TraceRecordKind::HostResponseAccepted
-        | TraceRecordKind::HostResponseRejected
-        | TraceRecordKind::WakeRequested
-        | TraceRecordKind::WakeAcknowledged => {}
+        _ => return false,
     }
+    true
 }
 
 fn pointer_phase(
