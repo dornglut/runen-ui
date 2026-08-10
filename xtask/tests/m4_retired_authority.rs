@@ -188,10 +188,10 @@ fn retired_occurrences(contents: &str) -> Vec<Occurrence<'_>> {
     occurrences
 }
 
-fn collect_public_reexport_occurrences<'a>(
+fn collect_public_reexport_occurrences(
     line: usize,
     statement: &str,
-    occurrences: &mut Vec<Occurrence<'a>>,
+    occurrences: &mut Vec<Occurrence<'_>>,
 ) {
     for symbol in RETIRED_AUTHORITIES
         .iter()
@@ -301,7 +301,7 @@ mod scanner_tests {
 
     #[test]
     fn detects_declarations_and_external_public_reexports() {
-        let source = r#"
+        let source = r"
 struct InputIntent;
 pub struct RuntimeNodeId;
 pub fn dispatch(&mut self) {}
@@ -309,7 +309,7 @@ pub use crate::{
     FocusTargetResult,
     SomethingCurrent,
 };
-"#;
+";
         let occurrences = retired_occurrences(source);
         assert!(occurrences.iter().any(|item| item.symbol == "InputIntent"));
         assert!(
