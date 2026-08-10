@@ -401,9 +401,12 @@ fn m4_close_02_downstream_widget_composes_public_m4_protocols() {
             .iter()
             .any(|record| matches!(record.kind(), TraceRecordKind::LocalWorkReady))
     );
-    assert!(
+    assert_eq!(
         trace
             .iter()
-            .any(|record| matches!(record.kind(), TraceRecordKind::WorkCompletionMapped))
+            .filter(|record| matches!(record.kind(), TraceRecordKind::ApplicationStateUpdated))
+            .count(),
+        3,
+        "primary, auxiliary, and owner-local work outputs must all reach application update"
     );
 }
