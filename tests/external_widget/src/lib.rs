@@ -713,8 +713,8 @@ impl<Action> Widget<Action> for CustomColumn {
         _state: &Self::State,
         context: SemanticContributionContext,
     ) -> SemanticContribution {
-        let mut node = SemanticNodeContribution::primary(SemanticRole::Group)
-            .with_name("External panel");
+        let mut node =
+            SemanticNodeContribution::primary(SemanticRole::Group).with_name("External panel");
         if context.has_mounted_children() {
             node = node.with_mounted_children();
         }
@@ -755,8 +755,8 @@ impl<Action> Widget<Action> for CustomRow {
         _state: &Self::State,
         context: SemanticContributionContext,
     ) -> SemanticContribution {
-        let mut node = SemanticNodeContribution::primary(SemanticRole::Group)
-            .with_name("External row");
+        let mut node =
+            SemanticNodeContribution::primary(SemanticRole::Group).with_name("External row");
         if context.has_mounted_children() {
             node = node.with_mounted_children();
         }
