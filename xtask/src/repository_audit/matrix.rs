@@ -36,29 +36,17 @@ impl GatePolicy {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct MatrixSpec {
     path: &'static str,
-    required_with: Option<&'static str>,
     allowed_delivery_slices: &'static [&'static str],
     gate_policy: GatePolicy,
 }
 
-impl MatrixSpec {
-    fn is_required(self, root: &Path) -> bool {
-        self.required_with
-            .is_none_or(|required_with| root.join(required_with).is_file())
-    }
-}
-
 const M4_SPEC: MatrixSpec = MatrixSpec {
     path: "docs/architecture/m4-conformance-matrix.md",
-    required_with: None,
     allowed_delivery_slices: M4_DELIVERY_SLICES,
     gate_policy: GatePolicy::M4WithInheritedM5,
 };
 const M5_SPEC: MatrixSpec = MatrixSpec {
     path: "docs/architecture/m5-conformance-matrix.md",
-    // The canonical production roadmap activates M5 matrix authority. Minimal
-    // repository-audit fixtures deliberately omit that production roadmap.
-    required_with: Some("docs/roadmap.md"),
     allowed_delivery_slices: M5_DELIVERY_SLICES,
     gate_policy: GatePolicy::Required,
 };
@@ -120,9 +108,6 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<MatrixMe
     let mut seen_ids = BTreeSet::new();
 
     for spec in MATRIX_SPECS {
-        if !spec.is_required(root) {
-            continue;
-        }
         let analysis = audit_matrix(root, *spec, &mut seen_ids, findings)?;
         aggregate.absorb(&analysis.metrics);
     }
