@@ -11,6 +11,7 @@ use crate::ReconciliationDiagnostic;
 use super::{
     CachedCapability, CapabilityCaches, DirtyPhases, InteractionState, MountedNodeId,
     apply_invalidation,
+    invalidation::invalidate_semantic_structure,
     node::{MountedNode, state_is_corrupted},
     tree::{MountedIdentityExhausted, MountedTree, ReconcileStats, checked_public_slot},
 };
@@ -439,6 +440,7 @@ impl<Action> MountedTree<Action> {
                 node.children = new_children;
                 if structural {
                     apply_invalidation(node, WidgetInvalidation::LAYOUT);
+                    invalidate_semantic_structure(node);
                     node.dirty_phases.insert(DirtyPhases::TREE);
                 }
                 Ok(id)
@@ -508,14 +510,15 @@ impl<Action> MountedTree<Action> {
             node.widget = widget;
             // Capability declarations belong to the incoming widget instance,
             // not the retained state. A compatible update therefore cannot
-            // reuse a stale input cache even when the widget omitted an
-            // interaction invalidation.
+            // reuse stale input or semantic contribution caches even when the
+            // widget omitted those invalidations.
             node.caches.activation = CachedCapability::Unresolved;
             node.caches.text_input = CachedCapability::Unresolved;
             apply_invalidation(
                 node,
                 update_context.__runtime_take_invalidation() | common_invalidation,
             );
+            invalidate_semantic_structure(node);
             if tree_metadata_changed {
                 node.dirty_phases.insert(DirtyPhases::TREE);
             }
@@ -560,8 +563,8 @@ impl<Action> MountedTree<Action> {
                     .unwrap_or_else(|_| unreachable!("mounted arena exceeded public slot range"));
                 let id = runtime.__runtime_mounted_id(slot, generation);
                 MountedNode {
-                    semantic_id: runtime.__runtime_semantic_id(slot, generation),
                     id,
+                    semantic_bindings: Vec::new(),
                     parent,
                     children: Vec::new(),
                     authored_id,
