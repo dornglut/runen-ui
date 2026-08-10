@@ -2,7 +2,9 @@
 
 > **Category: Target architecture**
 >
-> **Status:** Review candidate for owner acceptance
+> **Status:** Accepted
+>
+> **Accepted by repository owner:** 2026-08-10
 >
 > **Milestone:** M5
 >
@@ -129,32 +131,38 @@ Each contributed node has one `SemanticKey` unique within its exact mounted
 owner. Runtime validates the complete contribution before accepting it as the
 owner's semantic description.
 
-A contribution is an ordered owner-local semantic forest. Its semantic child
-sequence may contain one explicit **mounted-children marker** at most once across
-the whole contribution. That marker inserts the semantic roots contributed by
-this mounted owner's direct mounted children in their deterministic mounted
-logical order. Local semantic nodes may appear before or after that marker.
+A contribution is an ordered owner-local semantic forest. Its top-level sequence
+and any local semantic child sequence may contain one explicit
+**mounted-children marker**, but the complete contribution may contain that
+marker at most once. The marker inserts the semantic roots contributed by this
+mounted owner's direct mounted children in deterministic mounted logical order.
+Local semantic nodes may appear before or after the marker at that exact sequence
+position.
 
 The marker deliberately represents all direct mounted-child semantic roots as
-one ownership boundary. A parent contribution cannot cherry-pick/reparent one
+one ownership boundary. A parent contribution cannot cherry-pick or reparent one
 child owner's private semantic descendants. If a mounted child needs virtual
 ordering inside its semantic subtree, that child owner expresses it in its own
 contribution. This keeps semantic identity and lifetime ownership local while
 still allowing transparent wrappers and virtual semantic descendants.
 
-Required composition behavior:
+Required composition behavior is exact:
 
-- an owner with no semantic roots is transparent; mounted child semantic roots
-  splice into the nearest semantic ancestor in mounted logical order;
-- a present mounted-children marker fixes the exact semantic parent and sequence
-  position of direct child semantic roots;
-- a contribution with mounted children and no explicit marker uses one
-  documented default placement only if its local forest has no semantic node
-  capable of owning the marker; otherwise the structurally ambiguous
-  contribution is rejected rather than guessed;
-- more than one mounted-children marker is invalid;
-- duplicate `SemanticKey` values or structurally invalid marker references are
-  rejected deterministically and diagnosed;
+- if an owner contributes **zero local semantic nodes**, it is transparent; no
+  mounted-children marker is permitted or required, and direct mounted-child
+  semantic roots propagate to the nearest semantic ancestor in mounted logical
+  order;
+- if an owner contributes **one or more local semantic nodes and has one or more
+  direct mounted children**, its contribution must contain **exactly one**
+  mounted-children marker;
+- if an owner has **no direct mounted children**, its contribution must contain
+  **no** mounted-children marker;
+- a present marker fixes the exact semantic parent and sequence position of all
+  direct mounted-child semantic roots;
+- missing, duplicate, or unnecessary mounted-children markers are invalid rather
+  than repaired by a default placement;
+- duplicate `SemanticKey` values or structurally invalid contribution references
+  are rejected deterministically and diagnosed;
 - invalid owner contribution never causes first/last-match recovery;
 - recursive component action mapping leaves semantic contribution unchanged.
 
@@ -328,7 +336,9 @@ deterministic, and independent from paint/debug strings.
 At minimum diagnostics distinguish:
 
 - duplicate owner-local semantic key;
-- invalid or duplicate mounted-children marker;
+- missing mounted-children marker;
+- duplicate mounted-children marker;
+- unnecessary mounted-children marker;
 - missing local relationship target;
 - missing cross-owner authored target;
 - ambiguous cross-owner authored target;
