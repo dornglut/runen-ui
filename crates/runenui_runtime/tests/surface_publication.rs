@@ -6,7 +6,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
-    SemanticNodeId, SurfaceBuildContext, SurfacePhase, render_debug_surface_frame,
+    SurfaceBuildContext, SurfacePhase, render_debug_surface_frame,
 };
 
 #[derive(Debug)]
@@ -134,9 +134,6 @@ fn assert_structural_alignment(
         assert_eq!(indexed.id(), framed.id());
         assert_eq!(indexed.id(), styled.id());
         assert_eq!(indexed.id(), laid_out.id());
-        assert_eq!(indexed.semantic_id(), framed.semantic_id());
-        assert_eq!(indexed.semantic_id(), styled.semantic_id());
-        assert_eq!(indexed.semantic_id(), laid_out.semantic_id());
         assert_eq!(indexed.parent(), framed.parent());
         assert_eq!(indexed.parent(), styled.parent());
         assert_eq!(indexed.parent(), laid_out.parent());
@@ -276,8 +273,6 @@ fn mounted_surface_products_align_and_hit_testing_targets_mounted_ids() {
     {
         assert_eq!(frame.id(), style.id());
         assert_eq!(frame.id(), layout.id());
-        assert_eq!(frame.semantic_id(), style.semantic_id());
-        assert_eq!(frame.semantic_id(), layout.semantic_id());
         assert!(frame.bounds().width().is_finite());
     }
     let debug = render_debug_surface_frame(publication.frame());
@@ -389,14 +384,14 @@ impl UiApp for CommonFieldsApp {
     }
 }
 
-type MountedIdentity = (MountedNodeId, SemanticNodeId);
+type MountedIdentity = MountedNodeId;
 
 fn mounted_identities(runtime: &mut AppRuntime<CommonFieldsApp>) -> Vec<MountedIdentity> {
     runtime
         .index()
         .nodes()
         .iter()
-        .map(|node| (node.id().clone(), node.semantic_id().clone()))
+        .map(|node| node.id().clone())
         .collect()
 }
 
