@@ -14,9 +14,7 @@ mod reconcile;
 mod routing;
 mod tree;
 
-pub(crate) use capability_cache::{
-    CachedCapability, CachedSemanticContribution, CapabilityCaches,
-};
+pub(crate) use capability_cache::{CachedCapability, CachedSemanticContribution, CapabilityCaches};
 pub use diagnostics::{DuplicateIdentityKind, IdentityDiagnostic};
 pub(crate) use interaction::InteractionState;
 pub use interaction::InteractionStateRef;
