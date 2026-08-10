@@ -416,8 +416,13 @@ mod tests {
 
         assert!(surface.contains("surface size=(240.0,160.0) nodes=7"));
         assert!(surface.contains("paint=text \"Counter\""));
-        assert!(surface.contains("authored=counter.increment"));
-        assert!(surface.contains("semantic=button \"+\" enabled=true actionable=true"));
+        let increment = surface
+            .lines()
+            .find(|line| line.contains("authored=counter.increment"))
+            .unwrap_or_else(|| unreachable!("increment node is present in debug surface"));
+        assert!(increment.contains("semantics=SemanticContribution"));
+        assert!(increment.contains("name: Some(\"+\")"));
+        assert!(increment.contains("Activate"));
     }
 
     #[test]
