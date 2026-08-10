@@ -239,16 +239,16 @@ impl<Action> MountedTree<Action> {
             if state_is_corrupted(node) {
                 SemanticEvaluation::StatePayloadMismatch
             } else {
-                match node.widget.semantics(&node.state, context) {
-                    Ok(contribution) => match contribution.validate(context) {
+                node.widget.semantics(&node.state, context).map_or(
+                    SemanticEvaluation::StatePayloadMismatch,
+                    |contribution| match contribution.validate(context) {
                         Ok(validation) => SemanticEvaluation::Ready {
                             ordered_keys: validation.ordered_keys().to_vec(),
                             contribution,
                         },
                         Err(error) => SemanticEvaluation::Invalid(error),
                     },
-                    Err(_) => SemanticEvaluation::StatePayloadMismatch,
-                }
+                )
             }
         };
 
@@ -262,26 +262,23 @@ impl<Action> MountedTree<Action> {
                     .map(|node| node.semantic_bindings.clone())
                     .unwrap_or_default();
                 let runtime = self.runtime.clone();
-                match self.semantic_store.reconcile_owner(
+                if let Ok(bindings) = self.semantic_store.reconcile_owner(
                     &runtime,
                     id,
                     &current,
                     &ordered_keys,
                     u64::from(u32::MAX) + 1,
                 ) {
-                    Ok(bindings) => {
-                        let node = self
-                            .node_mut(id)
-                            .unwrap_or_else(|| unreachable!("semantic owner remains live"));
-                        node.semantic_bindings = bindings;
-                        node.caches.semantics = CachedSemanticContribution::Ready(contribution);
-                    }
-                    Err(_) => {
-                        let node = self
-                            .node_mut(id)
-                            .unwrap_or_else(|| unreachable!("semantic owner remains live"));
-                        node.caches.semantics = CachedSemanticContribution::IdentityExhausted;
-                    }
+                    let node = self
+                        .node_mut(id)
+                        .unwrap_or_else(|| unreachable!("semantic owner remains live"));
+                    node.semantic_bindings = bindings;
+                    node.caches.semantics = CachedSemanticContribution::Ready(contribution);
+                } else {
+                    let node = self
+                        .node_mut(id)
+                        .unwrap_or_else(|| unreachable!("semantic owner remains live"));
+                    node.caches.semantics = CachedSemanticContribution::IdentityExhausted;
                 }
             }
             SemanticEvaluation::Invalid(error) => {
