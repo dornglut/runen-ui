@@ -8,17 +8,19 @@ mod ui;
 use app::{Counter, CounterApp};
 use runenui_core::{
     CommandOrigin, ElementId, EventSource, KeyLocation, KeyModifiers, KeyboardCompositionState,
-    KeyboardEvent, KeyboardPhase, LogicalDelta, LogicalKey, LogicalLength, LogicalPoint,
-    PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, SemanticCommand, StyleTokens,
+    KeyboardEvent, KeyboardPhase, LogicalDelta, LogicalKey, LogicalPoint, PhysicalKey,
+    PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
+    SemanticCommand, StyleTokens,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, SurfaceBuildContext,
     TraceConfig, TraceRecordKind, TraceReplay,
 };
 
-const SURFACE_SIZE: LogicalSize =
-    LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(160_u16));
+fn surface_size() -> LogicalSize {
+    LogicalSize::try_new(240.0, 160.0)
+        .unwrap_or_else(|_| unreachable!("counter proof surface size is finite"))
+}
 
 fn authored_id(value: &str) -> ElementId {
     ElementId::new(value).unwrap_or_else(|_| unreachable!("counter authored id is valid"))
@@ -132,7 +134,7 @@ fn m4_close_01_counter_converges_all_canonical_activation_origins() {
     let mut runtime = mounted_counter();
 
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::tight(&tokens, SURFACE_SIZE);
+    let context = SurfaceBuildContext::tight(&tokens, surface_size());
     let publication = runtime.publish_surface(&context);
     let increment = publication
         .frame()
