@@ -38,11 +38,7 @@ impl Widget<ChildAction> for SemanticProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         expected_contribution()
     }
 }
