@@ -20,20 +20,22 @@ Historical tags and removed legacy material are never active implementation auth
 
 ## Work tracking and pickup
 
-The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrix, GitHub issues, pull requests, and current-status documents. The M4 operational milestone is [public issue #3](https://github.com/dornglut/runen-ui/issues/3).
+The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrices, GitHub issues, pull requests, and current-status documents. Determine the active milestone from the accepted roadmap/status records, then use that milestone's GitHub umbrella/pickup issue. M4's public issue #3 is completed historical coordination after final M4 closure; the M5 successor pickup surface is [public issue #45](https://github.com/dornglut/runen-ui/issues/45).
 
 Use this pickup sequence:
 
-1. Read the umbrella issue.
-2. Open the active slice issue.
+1. Read the accepted roadmap/status records and the active milestone umbrella issue.
+2. Open the active slice issue or readiness/audit task named by that umbrella.
 3. Verify exact accepted `main`, branch, pull request, and head.
-4. Read linked ADRs, the accepted charter, matrix rows, and stable architecture contracts.
+4. Read linked ADRs, any accepted charter/matrix rows, and stable architecture contracts.
 5. Inspect current source, tests, and unresolved review findings.
 6. Execute only the active slice or explicitly linked prerequisite issue.
-7. Update the issue after every accepted head, review correction, and merge.
-8. Never begin the next slice from an unmerged feature branch.
+7. Update the issue after every reviewed green checkpoint, material review correction, readiness transition, and merge.
+8. Never begin the next slice or milestone from an unmerged feature or authority branch.
 
-A future thread should need only the repository, umbrella issue, and active slice issue to locate current work.
+For the M4 -> M5 cutover, issue #45 remains blocked until the final M4 authority reconciliation is exact-head validated, critically reviewed, accepted, merged, and accepted-main verified. After that gate, perform the decision-complete M5 readiness/architecture audit from the exact accepted closure base before creating any M5 implementation branch.
+
+A future thread should need only the repository, umbrella issue, and active slice/audit issue to locate current work.
 
 ## Preflight and scope
 
@@ -55,6 +57,6 @@ A future thread should need only the repository, umbrella issue, and active slic
 
 ## Validation and delivery
 
-Format intentional Rust changes with `cargo +stable fmt --all`. Run `cargo validate` before every commit and again before handoff. It is the locked, read-only shared local/CI baseline and includes stable formatting checks, locked tests, Clippy with denied warnings, MSRV tests, repository metadata checks, and workspace-root Markdown relative-link checks. Also run slice-specific checks, the matrix uniqueness/status/schema/count audit, public API and removed-symbol audits, unsafe-code audit, cross-document truth audit, exact base/head/remote verification, clean-worktree verification, and `git diff --check`.
+Format intentional Rust changes with `cargo +stable fmt --all`. Run `cargo validate` before every commit and again before handoff. It is the locked, read-only shared local/CI baseline and includes stable formatting checks, locked tests, Clippy with denied warnings, MSRV tests, repository metadata checks, and workspace-root Markdown relative-link checks. Also run slice-specific checks, the applicable conformance-matrix uniqueness/status/schema/count audit, public API and removed-symbol audits, unsafe-code audit, cross-document truth audit, exact base/head/remote verification, clean-worktree verification, and `git diff --check`.
 
 Do not reuse validation or exact-head CI claims from an earlier head. Critically review the complete diff for stale references, broken links, false support claims, accidental scope, duplicate authority, premature later-slice APIs, and missing migrations. Commit coherent slices separately. Open draft PRs unless the owner explicitly requests ready-for-review, and never merge them without explicit owner authorization.
