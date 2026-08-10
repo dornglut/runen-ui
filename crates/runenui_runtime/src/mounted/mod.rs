@@ -14,11 +14,15 @@ mod reconcile;
 mod routing;
 mod tree;
 
-pub(crate) use capability_cache::{CachedCapability, CapabilityCaches};
+pub(crate) use capability_cache::{
+    CachedCapability, CachedSemanticContribution, CapabilityCaches,
+};
 pub use diagnostics::{DuplicateIdentityKind, IdentityDiagnostic};
 pub(crate) use interaction::InteractionState;
 pub use interaction::InteractionStateRef;
-pub(crate) use invalidation::{DirtyPhases, apply_invalidation, publication_is_dirty};
+pub(crate) use invalidation::{
+    DirtyPhases, apply_invalidation, invalidate_semantic_structure, publication_is_dirty,
+};
 pub use node::{MountedNodeRef, MountedTreeIndex};
 pub(crate) use reconcile::{PlannedInvalidation, PlannedLifetimeReason};
 pub(crate) use routing::RouteBuildError;
