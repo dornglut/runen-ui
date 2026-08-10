@@ -10,12 +10,12 @@ use runenui_core::{
 
 use super::{
     CapabilityCaches, DirtyPhases, IdentityDiagnostic, InteractionState, InteractionStateRef,
-    MountedNodeId, SemanticNodeId,
+    MountedNodeId, semantic::SemanticBinding,
 };
 
 pub(crate) struct MountedNode<Action> {
     pub(crate) id: MountedNodeId,
-    pub(crate) semantic_id: SemanticNodeId,
+    pub(crate) semantic_bindings: Vec<SemanticBinding>,
     pub(crate) parent: Option<MountedNodeId>,
     pub(crate) children: Vec<MountedNodeId>,
     pub(crate) authored_id: Option<ElementId>,
@@ -49,7 +49,7 @@ impl<Action> fmt::Debug for MountedNode<Action> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MountedNode")
             .field("id", &self.id)
-            .field("semantic_id", &self.semantic_id)
+            .field("semantic_binding_count", &self.semantic_bindings.len())
             .field("parent", &self.parent)
             .field("children", &self.children)
             .field("authored_id", &self.authored_id)
@@ -75,10 +75,6 @@ impl<'a, Action> MountedNodeRef<'a, Action> {
     #[must_use]
     pub const fn id(&self) -> &'a MountedNodeId {
         &self.node.id
-    }
-    #[must_use]
-    pub const fn semantic_id(&self) -> &'a SemanticNodeId {
-        &self.node.semantic_id
     }
     #[must_use]
     pub const fn parent(&self) -> Option<&'a MountedNodeId> {
