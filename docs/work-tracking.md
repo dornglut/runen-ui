@@ -14,13 +14,23 @@ workflow for contributors and automated agents.
 scope, explicit non-goals, exit criteria, and the long-term production sequence.
 It must not become a branch or pull-request log.
 
-### M4 conformance matrix
+### Conformance matrices
 
 [`architecture/m4-conformance-matrix.md`](architecture/m4-conformance-matrix.md)
 owns permanent M4 behavioral acceptance IDs, observable requirements, positive
 proof ownership, negative proof ownership, trace proof ownership, delivery slice,
 status, and gate classification. After M4 closure its two remaining blocked rows
 are M5-owned semantic/accessibility inputs rather than unfinished M4 work.
+
+[`architecture/m5-conformance-matrix.md`](architecture/m5-conformance-matrix.md)
+owns the separate M5-specific behavioral acceptance inventory. It deliberately
+does not duplicate inherited M4 `ACCESS-01` and `ACCESS-02`; M5C completes those
+rows in the M4 matrix while M5-specific semantic identity, product, action,
+testing, migration, and closure observations remain in the M5 matrix.
+
+The canonical repository audit validates every configured matrix, each matrix's
+own declared status/schema/count truth, delivery/gate policy, and permanent ID
+uniqueness across the configured matrix set.
 
 Matrix rows are not GitHub issues. One slice issue may own many matrix rows.
 
@@ -29,8 +39,8 @@ Matrix rows are not GitHub issues. One slice issue may own many matrix rows.
 The closed [M4 umbrella issue](https://github.com/dornglut/runen-ui/issues/3)
 and its linked execution issues preserve M4's volatile delivery history. The
 successor [M5 umbrella issue #45](https://github.com/dornglut/runen-ui/issues/45)
-is the M5 coordination and pickup surface. Each active milestone issue owns
-volatile state such as:
+is the active M5 coordination and pickup surface. Each active milestone issue
+owns volatile state such as:
 
 - exact accepted base SHA;
 - active branch and draft pull request;
@@ -81,15 +91,16 @@ as archive references. They are never active execution authority.
 
 M4's public operational milestone was
 [issue #3](https://github.com/dornglut/runen-ui/issues/3). Its execution graph is
-complete through M4D3 and becomes historical coordination after the final M4
-authority reconciliation is accepted and merged.
+complete through M4D3 and the final M4 authority reconciliation. It is historical
+coordination.
 
-M5 uses [issue #45](https://github.com/dornglut/runen-ui/issues/45) as its
-successor coordination and pickup authority. That issue must remain blocked while
-the final M4 reconciliation is unmerged. After the reconciliation is accepted,
-guarded-squash-merged, and accepted-main verified, #45 is updated with that exact
-accepted base and becomes the active pickup surface. No M5 implementation branch
-may precede its decision-complete readiness/architecture audit.
+M5 uses [issue #45](https://github.com/dornglut/runen-ui/issues/45) as its active
+coordination and pickup authority. Its decision-complete readiness audit passed
+against exact accepted M4 closure base
+`a63a249de9d4d53eeef4104ae3384e7898aacad1`. The current execution issue is
+[M5A0 #46](https://github.com/dornglut/runen-ui/issues/46), which freezes M5
+architecture/conformance authority and the minimum matrix-audit tooling before
+feature implementation begins.
 
 The completed public M4 execution graph is:
 
@@ -100,13 +111,24 @@ The completed public M4 execution graph is:
 - [#6 — M4C5 keyboard, text, IME, automation, and M4C closure](https://github.com/dornglut/runen-ui/issues/6), after #5;
 - [#7 — M4D1 complete trace schema and causality](https://github.com/dornglut/runen-ui/issues/7), after #6;
 - [#8 — M4D2 export, redaction, and bounded sink](https://github.com/dornglut/runen-ui/issues/8), after #7;
-- [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8;
-- [#45 — M5 semantics and deterministic public testing](https://github.com/dornglut/runen-ui/issues/45), only after final M4 reconciliation acceptance.
+- [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8.
+
+The accepted M5 execution graph is sequential:
+
+- [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), current;
+- [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), after accepted #46;
+- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), after accepted #47;
+- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), after accepted #48;
+- [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), after accepted #49;
+- [#51 — M5E integrated conformance, migration, and M5 closure](https://github.com/dornglut/runen-ui/issues/51), after accepted #50.
+
+No later M5 branch begins from an unmerged predecessor. M6 is eligible only from
+the exact accepted M5 closure base.
 
 Architecture and tooling follow-up:
 
-- [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10), non-blocking unless a later readiness audit proves otherwise;
-- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12), eligible for reconsideration during post-M4 readiness work but not automatically part of M5.
+- [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10) remains open and non-blocking; M5 uses the focused semantic ownership seam unless concrete coupling proves broader work necessary;
+- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12) is closed completed with the post-M4 decision that current capacity is sufficient for accepted M5 work; semantic actions are ingress to the canonical command authority, not a new widget-output family.
 
 M4A through M4C2 are accepted imported history. They are recorded in the
 [public-repository migration history](history/public-repository-migration.md)
@@ -177,15 +199,17 @@ issue per matrix row.
 
 ## Acceptance transitions
 
-Where an accepted conformance matrix uses the M4 status vocabulary, use it exactly:
+Where an accepted conformance matrix uses the repository status vocabulary, use
+it exactly:
 
 - `blocked`: the owning implementation slice has not been accepted;
 - `implementation-complete`: public behavior exists but the complete proof package has not passed;
 - `proof-complete`: the exact-head proof package passes but owner acceptance and merge are pending;
 - `owner-accepted`: public behavior, complete proof, validation, owner review, and merge have passed, together with either successful exact-head CI or a documented infrastructure-only owner waiver satisfying the policy below.
 
-Later milestone plans may define additional bounded status vocabularies only
-through reviewed authority; do not silently reinterpret the M4 matrix terms.
+Later milestone plans may define a different bounded status vocabulary only
+through reviewed authority; do not silently reinterpret an accepted matrix's
+terms.
 
 Exact-head CI means the workflow explicitly checks out and verifies the feature
 head SHA. GitHub's synthetic pull-request merge ref does not qualify. Any head
