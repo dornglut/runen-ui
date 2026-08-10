@@ -113,6 +113,16 @@
 //! if let Some(sequence) = trace { accept_work(sequence); }
 //! ```
 //!
+//! Replay work identities are inert projection values and cannot become live
+//! queue-issued work identities:
+//!
+//! ```compile_fail
+//! use runenui_runtime::{TraceReplayWorkSequence, WorkSequence};
+//! fn into_live(sequence: TraceReplayWorkSequence) -> WorkSequence {
+//!     sequence.into()
+//! }
+//! ```
+//!
 //! Runtime configuration remains accessor-based and extensible:
 //!
 //! ```compile_fail
@@ -135,10 +145,34 @@
 //! runtime.dispatch(());
 //! ```
 //!
+//! The pre-M4 direct runtime activation bypass is also removed; semantic
+//! activation enters through command submission or authored-ID automation:
+//!
+//! ```compile_fail
+//! # use runenui_core::{IntoEffects, NoHostProtocol, UiApp, View, text};
+//! # use runenui_runtime::AppRuntime;
+//! # struct App;
+//! # impl UiApp for App {
+//! #   type State = (); type Action = (); type HostProtocol = NoHostProtocol;
+//! #   fn root(_: &()) -> impl View<()> { text("x") }
+//! #   fn update(_: &mut (), _: ()) -> impl IntoEffects<(), NoHostProtocol> {}
+//! # }
+//! fn direct_activate(runtime: &mut AppRuntime<App>) {
+//!     let _ = runtime.activate("counter.increment");
+//! }
+//! ```
+//!
 //! M4C3 removes the public pointer proof helpers and unchecked target path:
 //!
 //! ```compile_fail
 //! use runenui_runtime::{InputEvent, PointerFocusResult, resolve_pointer_event_target};
+//! ```
+//!
+//! M4C5 removed the transitional runtime `Key`/`KeyPhase` vocabulary in favor
+//! of the physical/logical key model plus `KeyboardPhase`:
+//!
+//! ```compile_fail
+//! use runenui_runtime::{Key, KeyPhase};
 //! ```
 
 #![forbid(unsafe_code)]
