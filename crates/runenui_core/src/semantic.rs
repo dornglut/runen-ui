@@ -168,7 +168,7 @@ impl SemanticState {
     }
 }
 
-/// Semantic actions with real RunenUI behavior in the accepted M5 design.
+/// Semantic actions with real `RunenUI` behavior in the accepted M5 design.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SemanticAction {
@@ -238,14 +238,14 @@ pub enum SemanticBounds {
 /// One item in an owner-local semantic sequence.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SemanticItem {
-    Node(SemanticNodeContribution),
+    Node(Box<SemanticNodeContribution>),
     MountedChildren,
 }
 
 impl SemanticItem {
     #[must_use]
-    pub const fn node(node: SemanticNodeContribution) -> Self {
-        Self::Node(node)
+    pub fn node(node: SemanticNodeContribution) -> Self {
+        Self::Node(Box::new(node))
     }
 
     #[must_use]
@@ -272,7 +272,7 @@ pub struct SemanticNodeContribution {
 
 impl SemanticNodeContribution {
     #[must_use]
-    pub fn new(key: SemanticKey, role: SemanticRole) -> Self {
+    pub const fn new(key: SemanticKey, role: SemanticRole) -> Self {
         Self {
             key,
             role,
@@ -290,7 +290,7 @@ impl SemanticNodeContribution {
 
     /// Creates a node using the reserved primary owner-local semantic key.
     #[must_use]
-    pub fn primary(role: SemanticRole) -> Self {
+    pub const fn primary(role: SemanticRole) -> Self {
         Self::new(SemanticKey::PRIMARY, role)
     }
 
@@ -353,8 +353,8 @@ impl SemanticNodeContribution {
     }
 
     #[must_use]
-    pub fn with_child(mut self, child: SemanticNodeContribution) -> Self {
-        self.children.push(SemanticItem::Node(child));
+    pub fn with_child(mut self, child: Self) -> Self {
+        self.children.push(SemanticItem::node(child));
         self
     }
 
@@ -462,13 +462,13 @@ impl SemanticContribution {
     }
 
     #[must_use]
-    pub fn new(roots: Vec<SemanticItem>) -> Self {
+    pub const fn new(roots: Vec<SemanticItem>) -> Self {
         Self { roots }
     }
 
     #[must_use]
     pub fn single(node: SemanticNodeContribution) -> Self {
-        Self::new(vec![SemanticItem::Node(node)])
+        Self::new(vec![SemanticItem::node(node)])
     }
 
     #[must_use]
@@ -661,7 +661,7 @@ mod tests {
         );
         assert_eq!(
             SemanticContribution::new(vec![
-                SemanticItem::Node(group_with_marker()),
+                SemanticItem::node(group_with_marker()),
                 SemanticItem::MountedChildren,
             ])
             .validate(children),
@@ -672,8 +672,8 @@ mod tests {
     #[test]
     fn duplicate_keys_and_missing_local_relationships_never_first_match() {
         let duplicate = SemanticContribution::new(vec![
-            SemanticItem::Node(SemanticNodeContribution::primary(SemanticRole::Text)),
-            SemanticItem::Node(SemanticNodeContribution::primary(SemanticRole::Button)),
+            SemanticItem::node(SemanticNodeContribution::primary(SemanticRole::Text)),
+            SemanticItem::node(SemanticNodeContribution::primary(SemanticRole::Button)),
         ]);
         assert_eq!(
             duplicate.validate(SemanticContributionContext::default()),
