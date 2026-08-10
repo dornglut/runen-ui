@@ -1,12 +1,11 @@
 use super::{
-    LogicalRect,
     measure::{
         MeasuredSurfaceLayout, child_layout_axis_without_diagnostic, finite_sum, resolved_padding,
     },
     resolve::{ResolvedSurfaceNode, ResolvedSurfaceTree},
 };
 use crate::LogicalPoint;
-use runenui_core::Axis;
+use runenui_core::{Axis, LogicalRect};
 
 pub(super) struct SurfaceArrangementBuilder<'a> {
     measured_layout: &'a MeasuredSurfaceLayout,
