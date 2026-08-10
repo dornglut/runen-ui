@@ -17,10 +17,8 @@ use runenui_runtime::{
     TraceConfig, TraceRecordKind, TraceReplay,
 };
 
-const SURFACE_SIZE: LogicalSize = LogicalSize::new(
-    LogicalLength::from(240_u16),
-    LogicalLength::from(160_u16),
-);
+const SURFACE_SIZE: LogicalSize =
+    LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(160_u16));
 
 fn authored_id(value: &str) -> ElementId {
     ElementId::new(value).unwrap_or_else(|_| unreachable!("counter authored id is valid"))
