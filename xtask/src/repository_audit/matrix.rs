@@ -14,8 +14,7 @@ const ALLOWED_STATUSES: &[&str] = &[
 ];
 
 const M4_DELIVERY_SLICES: &[&str] = &[
-    "M4A", "M4B", "M4C0", "M4C1", "M4C2", "M4C3", "M4C4", "M4C5", "M4D1", "M4D2",
-    "M4D3", "M5",
+    "M4A", "M4B", "M4C0", "M4C1", "M4C2", "M4C3", "M4C4", "M4C5", "M4D1", "M4D2", "M4D3", "M5",
 ];
 const M5_DELIVERY_SLICES: &[&str] = &["M5A0", "M5A", "M5B", "M5C", "M5D", "M5E"];
 
@@ -26,28 +25,12 @@ enum GatePolicy {
 }
 
 impl GatePolicy {
-    const fn expected(self, delivery_slice: &str) -> &'static str {
+    fn expected(self, delivery_slice: &str) -> &'static str {
         match self {
-            Self::M4WithInheritedM5 if const_str_eq(delivery_slice, "M5") => "M5 gate",
+            Self::M4WithInheritedM5 if delivery_slice == "M5" => "M5 gate",
             Self::M4WithInheritedM5 | Self::Required => "Required",
         }
     }
-}
-
-const fn const_str_eq(left: &str, right: &str) -> bool {
-    let left = left.as_bytes();
-    let right = right.as_bytes();
-    if left.len() != right.len() {
-        return false;
-    }
-    let mut index = 0;
-    while index < left.len() {
-        if left[index] != right[index] {
-            return false;
-        }
-        index += 1;
-    }
-    true
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -351,11 +334,7 @@ fn compare_declared_summary(
     );
 }
 
-fn parse_rows(
-    contents: &str,
-    path: &str,
-    findings: &mut Vec<Finding>,
-) -> (Vec<MatrixRow>, usize) {
+fn parse_rows(contents: &str, path: &str, findings: &mut Vec<Finding>) -> (Vec<MatrixRow>, usize) {
     let mut rows = Vec::new();
     let mut invalid_schemas = 0;
 
@@ -489,9 +468,7 @@ fn compare_optional_zero_summary(
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{
-        M4_SPEC, M5_SPEC, analyze_contents, declared_metric, parse_rows, valid_id,
-    };
+    use super::{M4_SPEC, M5_SPEC, analyze_contents, declared_metric, parse_rows, valid_id};
 
     #[test]
     fn permanent_id_parser_accepts_multi_segment_families() {
