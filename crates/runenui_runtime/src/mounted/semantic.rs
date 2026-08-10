@@ -274,7 +274,7 @@ mod tests {
                 &runtime,
                 &owner,
                 &first,
-                &[b.clone(), SemanticKey::PRIMARY, a.clone()],
+                &[b, SemanticKey::PRIMARY, a],
                 8,
             )
             .unwrap_or_else(|_| unreachable!());
@@ -295,7 +295,7 @@ mod tests {
                 &runtime,
                 &owner,
                 &[],
-                &[SemanticKey::PRIMARY, extra.clone()],
+                &[SemanticKey::PRIMARY, extra],
                 2,
             )
             .unwrap_or_else(|_| unreachable!());
