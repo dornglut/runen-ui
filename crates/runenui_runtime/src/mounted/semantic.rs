@@ -123,9 +123,7 @@ impl SemanticStore {
             if let Some(binding) = existing.remove(key) {
                 plan.push(PlannedBinding::Existing(binding));
             } else {
-                additions = additions
-                    .checked_add(1)
-                    .ok_or(SemanticIdentityExhausted)?;
+                additions = additions.checked_add(1).ok_or(SemanticIdentityExhausted)?;
                 plan.push(PlannedBinding::New(key.clone()));
             }
         }
@@ -172,13 +170,12 @@ impl SemanticStore {
                     let key_for_record = key.clone();
                     let (slot, generation) = self
                         .arena
-                        .insert_with_public_slot_limit(
-                            public_slot_limit,
-                            move |_, _| SemanticRecord {
+                        .insert_with_public_slot_limit(public_slot_limit, move |_, _| {
+                            SemanticRecord {
                                 owner: owner_for_record,
                                 key: key_for_record,
-                            },
-                        )
+                            }
+                        })
                         .unwrap_or_else(|_| {
                             unreachable!("semantic identity capacity was preflighted")
                         });
@@ -212,14 +209,21 @@ impl SemanticStore {
         binding: &SemanticBinding,
     ) {
         let Some((slot, generation)) = runtime.__runtime_semantic_parts(binding.id()) else {
-            debug_assert!(false, "semantic store binding belongs to its runtime namespace");
+            debug_assert!(
+                false,
+                "semantic store binding belongs to its runtime namespace"
+            );
             return;
         };
         let slot = slot as usize;
-        let matches = self.arena.get(slot, generation).is_some_and(|record| {
-            record.owner() == owner && record.key() == binding.key()
-        });
-        debug_assert!(matches, "semantic store binding must match its exact record");
+        let matches = self
+            .arena
+            .get(slot, generation)
+            .is_some_and(|record| record.owner() == owner && record.key() == binding.key());
+        debug_assert!(
+            matches,
+            "semantic store binding must match its exact record"
+        );
         if matches {
             let _ = self.arena.remove(slot, generation);
         }
@@ -297,15 +301,12 @@ mod tests {
             .unwrap_or_else(|_| unreachable!());
         let removed = first[1].id().clone();
         let retained = store
-            .reconcile_owner(
-                &runtime,
-                &owner,
-                &first,
-                &[SemanticKey::PRIMARY],
-                2,
-            )
+            .reconcile_owner(&runtime, &owner, &first, &[SemanticKey::PRIMARY], 2)
             .unwrap_or_else(|_| unreachable!());
-        assert_eq!(store.target_status(&runtime, &removed), SemanticTargetStatus::Stale);
+        assert_eq!(
+            store.target_status(&runtime, &removed),
+            SemanticTargetStatus::Stale
+        );
 
         let replacement_key = key("replacement");
         let replacement = store
@@ -326,7 +327,10 @@ mod tests {
             .unwrap_or_else(|| unreachable!());
         assert_eq!(removed_parts.0, replacement_parts.0);
         assert!(replacement_parts.1 > removed_parts.1);
-        assert_eq!(store.target_status(&runtime, &removed), SemanticTargetStatus::Stale);
+        assert_eq!(
+            store.target_status(&runtime, &removed),
+            SemanticTargetStatus::Stale
+        );
         assert_eq!(
             store.target_status(&runtime, replacement_id),
             SemanticTargetStatus::Live
@@ -354,7 +358,10 @@ mod tests {
         store.revoke_owner(&runtime, &owner, bindings);
         assert_eq!(store.live_count(), 0);
         for id in ids {
-            assert_eq!(store.target_status(&runtime, &id), SemanticTargetStatus::Stale);
+            assert_eq!(
+                store.target_status(&runtime, &id),
+                SemanticTargetStatus::Stale
+            );
         }
     }
 
@@ -365,8 +372,14 @@ mod tests {
         let store = SemanticStore::new();
         let missing = runtime.__runtime_semantic_id(0, 1);
         let foreign = foreign_runtime.__runtime_semantic_id(0, 1);
-        assert_eq!(store.target_status(&runtime, &missing), SemanticTargetStatus::Missing);
-        assert_eq!(store.target_status(&runtime, &foreign), SemanticTargetStatus::Foreign);
+        assert_eq!(
+            store.target_status(&runtime, &missing),
+            SemanticTargetStatus::Missing
+        );
+        assert_eq!(
+            store.target_status(&runtime, &foreign),
+            SemanticTargetStatus::Foreign
+        );
     }
 
     #[test]
