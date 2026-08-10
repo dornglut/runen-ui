@@ -100,6 +100,23 @@ fn assert_activation_source(
     );
 }
 
+fn activate_command(
+    runtime: &mut AppRuntime<CounterApp>,
+    target: &MountedNodeId,
+    origin: CommandOrigin,
+    expected_count: i32,
+    expected_source: EventSource,
+) {
+    let trace_start = runtime.trace().len();
+    runtime
+        .submit_command(target.clone(), SemanticCommand::Activate, origin)
+        .unwrap_or_else(|_| unreachable!("exact semantic activation is accepted"));
+    settle(runtime);
+    assert_eq!(runtime.state().count, expected_count);
+    assert_activation_source(runtime, trace_start, expected_source);
+    assert_increment_identity(runtime, target);
+}
+
 fn primary_pointer_event(
     pointer_id: PointerId,
     phase: PointerPhase,
@@ -132,7 +149,6 @@ const fn enter_down() -> KeyboardEvent {
 #[test]
 fn m4_close_01_counter_converges_all_canonical_activation_origins() {
     let mut runtime = mounted_counter();
-
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::tight(&tokens, surface_size());
     let publication = runtime.publish_surface(&context);
@@ -193,31 +209,20 @@ fn m4_close_01_counter_converges_all_canonical_activation_origins() {
     assert_activation_source(&runtime, trace_start, EventSource::Keyboard);
     assert_increment_identity(&mut runtime, &mounted_increment);
 
-    let trace_start = runtime.trace().len();
-    runtime
-        .submit_command(
-            mounted_increment.clone(),
-            SemanticCommand::Activate,
-            CommandOrigin::controller(),
-        )
-        .unwrap_or_else(|_| unreachable!("controller activation is accepted"));
-    settle(&mut runtime);
-    assert_eq!(runtime.state().count, 3);
-    assert_activation_source(&runtime, trace_start, EventSource::Controller);
-    assert_increment_identity(&mut runtime, &mounted_increment);
-
-    let trace_start = runtime.trace().len();
-    runtime
-        .submit_command(
-            mounted_increment.clone(),
-            SemanticCommand::Activate,
-            CommandOrigin::accessibility(),
-        )
-        .unwrap_or_else(|_| unreachable!("accessibility activation is accepted"));
-    settle(&mut runtime);
-    assert_eq!(runtime.state().count, 4);
-    assert_activation_source(&runtime, trace_start, EventSource::Accessibility);
-    assert_increment_identity(&mut runtime, &mounted_increment);
+    activate_command(
+        &mut runtime,
+        &mounted_increment,
+        CommandOrigin::controller(),
+        3,
+        EventSource::Controller,
+    );
+    activate_command(
+        &mut runtime,
+        &mounted_increment,
+        CommandOrigin::accessibility(),
+        4,
+        EventSource::Accessibility,
+    );
 
     let trace_start = runtime.trace().len();
     runtime
@@ -228,18 +233,13 @@ fn m4_close_01_counter_converges_all_canonical_activation_origins() {
     assert_activation_source(&runtime, trace_start, EventSource::Automation);
     assert_increment_identity(&mut runtime, &mounted_increment);
 
-    let trace_start = runtime.trace().len();
-    runtime
-        .submit_command(
-            mounted_increment.clone(),
-            SemanticCommand::Activate,
-            CommandOrigin::programmatic(),
-        )
-        .unwrap_or_else(|_| unreachable!("programmatic activation is accepted"));
-    settle(&mut runtime);
-    assert_eq!(runtime.state().count, 6);
-    assert_activation_source(&runtime, trace_start, EventSource::Programmatic);
-    assert_increment_identity(&mut runtime, &mounted_increment);
+    activate_command(
+        &mut runtime,
+        &mounted_increment,
+        CommandOrigin::programmatic(),
+        6,
+        EventSource::Programmatic,
+    );
 
     let jsonl = runtime.trace().export_jsonl();
     let replay = TraceReplay::parse_jsonl(&jsonl)
