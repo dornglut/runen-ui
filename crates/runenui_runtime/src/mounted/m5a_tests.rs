@@ -110,7 +110,8 @@ fn compatible_update_reorders_keys_without_reissuing_semantic_ids() {
     assert_eq!(binding_id(&reordered, &SemanticKey::PRIMARY), primary_id);
     assert_eq!(binding_id(&reordered, &extra), extra_id);
     assert_eq!(
-        tree.semantic_store.target_status(&tree.runtime, &primary_id),
+        tree.semantic_store
+            .target_status(&tree.runtime, &primary_id),
         SemanticTargetStatus::Live
     );
     assert_eq!(
