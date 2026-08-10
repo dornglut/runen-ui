@@ -7,8 +7,8 @@
 use core::fmt;
 use std::collections::BTreeSet;
 
-use crate::{ElementId, IdentifierError, LogicalRect, LogicalScrollCommand};
 use crate::identity::{IdentifierText, validate_identifier};
+use crate::{ElementId, IdentifierError, LogicalRect, LogicalScrollCommand};
 
 /// Stable owner-local identity for one contributed semantic node.
 ///
@@ -307,7 +307,7 @@ impl SemanticNodeContribution {
     }
 
     #[must_use]
-    pub const fn with_value(mut self, value: SemanticValue) -> Self {
+    pub fn with_value(mut self, value: SemanticValue) -> Self {
         self.value = Some(value);
         self
     }
@@ -536,7 +536,9 @@ impl SemanticContributionValidation {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SemanticContributionError {
-    DuplicateKey { key: SemanticKey },
+    DuplicateKey {
+        key: SemanticKey,
+    },
     MissingMountedChildrenMarker,
     DuplicateMountedChildrenMarker,
     UnnecessaryMountedChildrenMarker,
@@ -619,9 +621,9 @@ fn validate_local_references(
 #[cfg(test)]
 mod tests {
     use super::{
-        SemanticContribution, SemanticContributionContext, SemanticContributionError,
-        SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
-        SemanticRelationship, SemanticRelationshipKind, SemanticRole,
+        SemanticContribution, SemanticContributionContext, SemanticContributionError, SemanticItem,
+        SemanticKey, SemanticNodeContribution, SemanticReference, SemanticRelationship,
+        SemanticRelationshipKind, SemanticRole,
     };
 
     fn group_with_marker() -> SemanticNodeContribution {
@@ -689,8 +691,7 @@ mod tests {
             ),
         );
         assert_eq!(
-            SemanticContribution::single(source)
-                .validate(SemanticContributionContext::default()),
+            SemanticContribution::single(source).validate(SemanticContributionContext::default()),
             Err(SemanticContributionError::MissingLocalReference {
                 source: SemanticKey::PRIMARY,
                 target: missing,
