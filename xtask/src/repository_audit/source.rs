@@ -392,11 +392,9 @@ fn audit_surface_publication_entrypoint(
     let mut locations = Vec::new();
     for (metrics, contents) in production {
         for (index, line) in contents.lines().enumerate() {
-            if declaration_symbol(line)
-                .is_some_and(|(symbol, externally_public)| {
-                    externally_public && symbol == SURFACE_PUBLICATION_ENTRYPOINT
-                })
-            {
+            if declaration_symbol(line).is_some_and(|(symbol, externally_public)| {
+                externally_public && symbol == SURFACE_PUBLICATION_ENTRYPOINT
+            }) {
                 locations.push(format!("{}:{}", path_text(&metrics.relative), index + 1));
             }
         }
@@ -798,7 +796,10 @@ mod tests {
     };
 
     fn production_source(path: &str, contents: &str) -> (super::ModuleMetrics, String) {
-        (module_metrics(Path::new(path), contents), contents.to_owned())
+        (
+            module_metrics(Path::new(path), contents),
+            contents.to_owned(),
+        )
     }
 
     #[test]
