@@ -33,7 +33,11 @@ impl CachedSemanticContribution {
     pub(crate) fn ready(&self) -> Option<SemanticContribution> {
         match self {
             Self::Ready(value) => Some(value.clone()),
-            Self::Unresolved | Self::Invalid(_) | Self::StatePayloadMismatch => None,
+            Self::Invalid(error) => {
+                let _ = error;
+                None
+            }
+            Self::Unresolved | Self::StatePayloadMismatch => None,
         }
     }
 }
