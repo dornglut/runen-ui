@@ -7,14 +7,14 @@ struct Slot<T> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct MountedArenaCapacityError;
+pub(crate) struct ArenaCapacityError;
 
-pub(crate) struct MountedArena<T> {
+pub(crate) struct GenerationalArena<T> {
     slots: Vec<Slot<T>>,
     live_count: usize,
 }
 
-impl<T> MountedArena<T> {
+impl<T> GenerationalArena<T> {
     pub(crate) const fn new() -> Self {
         Self {
             slots: Vec::new(),
@@ -26,38 +26,77 @@ impl<T> MountedArena<T> {
         &self,
         live_count: usize,
         public_slot_limit: u64,
-    ) -> Result<(), MountedArenaCapacityError> {
+    ) -> Result<(), ArenaCapacityError> {
+        self.preflight_live_count_after_retirement(live_count, 0, public_slot_limit)
+    }
+
+    pub(crate) fn preflight_live_count_after_retirement(
+        &self,
+        live_count: usize,
+        additionally_retired: usize,
+        public_slot_limit: u64,
+    ) -> Result<(), ArenaCapacityError> {
         let bounded_limit = public_slot_limit.min(u64::from(u32::MAX) + 1);
-        let retired = self.slots.iter().filter(|slot| slot.retired).count();
-        let retired = u64::try_from(retired).map_err(|_| MountedArenaCapacityError)?;
+        let unavailable = self
+            .slots
+            .iter()
+            .filter(|slot| {
+                slot.retired || (slot.value.is_none() && slot.generation == u64::MAX)
+            })
+            .count()
+            .checked_add(additionally_retired)
+            .ok_or(ArenaCapacityError)?;
+        let unavailable = u64::try_from(unavailable).map_err(|_| ArenaCapacityError)?;
         let usable = bounded_limit
-            .checked_sub(retired)
-            .ok_or(MountedArenaCapacityError)?;
-        let live_count = u64::try_from(live_count).map_err(|_| MountedArenaCapacityError)?;
+            .checked_sub(unavailable)
+            .ok_or(ArenaCapacityError)?;
+        let live_count = u64::try_from(live_count).map_err(|_| ArenaCapacityError)?;
         (live_count <= usable)
             .then_some(())
-            .ok_or(MountedArenaCapacityError)
+            .ok_or(ArenaCapacityError)
     }
 
     pub(crate) fn insert_with(
         &mut self,
         create: impl FnOnce(usize, u64) -> T,
-    ) -> Result<(usize, u64), MountedArenaCapacityError> {
+    ) -> Result<(usize, u64), ArenaCapacityError> {
+        self.insert_with_public_slot_limit(u64::from(u32::MAX) + 1, create)
+    }
+
+    pub(crate) fn insert_with_public_slot_limit(
+        &mut self,
+        public_slot_limit: u64,
+        create: impl FnOnce(usize, u64) -> T,
+    ) -> Result<(usize, u64), ArenaCapacityError> {
+        let bounded_limit = public_slot_limit.min(u64::from(u32::MAX) + 1);
+        let mut create = Some(create);
+
         for (index, slot) in self.slots.iter_mut().enumerate() {
+            let public_index = u64::try_from(index).map_err(|_| ArenaCapacityError)?;
+            if public_index >= bounded_limit {
+                break;
+            }
             if slot.value.is_none() && !slot.retired {
                 let Some(generation) = slot.generation.checked_add(1) else {
                     slot.retired = true;
                     continue;
                 };
                 slot.generation = generation;
+                let create = create.take().ok_or(ArenaCapacityError)?;
                 slot.value = Some(create(index, generation));
                 self.live_count += 1;
                 return Ok((index, generation));
             }
         }
+
         let index = self.slots.len();
-        let _ = u32::try_from(index).map_err(|_| MountedArenaCapacityError)?;
+        let public_index = u64::try_from(index).map_err(|_| ArenaCapacityError)?;
+        if public_index >= bounded_limit {
+            return Err(ArenaCapacityError);
+        }
+        let _ = u32::try_from(index).map_err(|_| ArenaCapacityError)?;
         let generation = 1;
+        let create = create.take().ok_or(ArenaCapacityError)?;
         self.slots.push(Slot {
             generation,
             value: Some(create(index, generation)),
@@ -117,13 +156,16 @@ impl<T> MountedArena<T> {
     }
 }
 
+pub(crate) type MountedArena<T> = GenerationalArena<T>;
+pub(crate) type MountedArenaCapacityError = ArenaCapacityError;
+
 #[cfg(test)]
 mod tests {
-    use super::{MountedArena, MountedArenaCapacityError};
+    use super::{ArenaCapacityError, GenerationalArena};
 
     #[test]
     fn allocation_removal_and_lowest_reuse_are_generational() {
-        let mut arena = MountedArena::new();
+        let mut arena = GenerationalArena::new();
         assert_eq!(arena.insert_with(|_, _| "a"), Ok((0, 1)));
         assert_eq!(arena.insert_with(|_, _| "b"), Ok((1, 1)));
         assert_eq!(arena.live_count(), 2);
@@ -136,36 +178,63 @@ mod tests {
     }
 
     #[test]
-    fn public_slot_capacity_is_preflighted_before_create_runs() {
-        let mut arena = MountedArena::new();
+    fn public_slot_capacity_is_checked_before_create_runs() {
+        let mut arena = GenerationalArena::new();
         let mut calls = 0usize;
         assert_eq!(
             arena.preflight_live_count(2, 1),
-            Err(MountedArenaCapacityError)
+            Err(ArenaCapacityError)
         );
         assert_eq!(calls, 0);
         assert_eq!(arena.preflight_live_count(1, 1), Ok(()));
         assert_eq!(
-            arena.insert_with(|_, _| {
+            arena.insert_with_public_slot_limit(1, |_, _| {
                 calls += 1;
                 "only"
             }),
             Ok((0, 1))
         );
         assert_eq!(calls, 1);
-        assert_eq!(arena.preflight_live_count(1, 1), Ok(()));
         assert_eq!(
-            arena.preflight_live_count(2, 1),
-            Err(MountedArenaCapacityError)
+            arena.insert_with_public_slot_limit(1, |_, _| {
+                calls += 1;
+                "overflow"
+            }),
+            Err(ArenaCapacityError)
         );
+        assert_eq!(calls, 1);
     }
 
     #[test]
-    fn overflow_retires_slot_permanently() {
-        let mut arena = MountedArena::new();
+    fn exhausted_vacancy_is_skipped_and_counted_unusable() {
+        let mut arena = GenerationalArena::new();
         arena.seed_vacant(u64::MAX);
-        assert_eq!(arena.insert_with(|_, _| 1), Ok((1, 1)));
-        assert_eq!(arena.remove(1, 1), Some(1));
-        assert_eq!(arena.insert_with(|_, _| 2), Ok((1, 2)));
+        assert_eq!(
+            arena.preflight_live_count(1, 1),
+            Err(ArenaCapacityError)
+        );
+        assert_eq!(arena.insert_with(|_, _| "next"), Ok((1, 1)));
+        assert_eq!(arena.get(1, 1), Some(&"next"));
+    }
+
+    #[test]
+    fn removal_at_max_generation_retires_slot_permanently() {
+        let mut arena = GenerationalArena::new();
+        arena.seed_vacant(u64::MAX - 1);
+        assert_eq!(arena.insert_with(|_, _| 1), Ok((0, u64::MAX)));
+        assert_eq!(arena.remove(0, u64::MAX), Some(1));
+        assert_eq!(arena.insert_with(|_, _| 2), Ok((1, 1)));
+    }
+
+    #[test]
+    fn transition_preflight_accounts_for_newly_retired_removed_slots() {
+        let mut arena = GenerationalArena::new();
+        arena.seed_vacant(u64::MAX - 1);
+        assert_eq!(arena.insert_with(|_, _| "old"), Ok((0, u64::MAX)));
+        assert_eq!(
+            arena.preflight_live_count_after_retirement(1, 1, 1),
+            Err(ArenaCapacityError)
+        );
+        assert_eq!(arena.preflight_live_count_after_retirement(1, 1, 2), Ok(()));
     }
 }
