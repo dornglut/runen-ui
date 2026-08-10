@@ -278,7 +278,9 @@ fn collect_production_rust_files(
             continue;
         }
         if path.extension() == Some(OsStr::new("rs"))
-            && path.components().any(|component| component.as_os_str() == "src")
+            && path
+                .components()
+                .any(|component| component.as_os_str() == "src")
         {
             files.push(
                 path.strip_prefix(root)
@@ -307,9 +309,17 @@ pub use crate::{
 "#;
         let occurrences = retired_occurrences(source);
         assert!(occurrences.iter().any(|item| item.symbol == "InputIntent"));
-        assert!(occurrences.iter().any(|item| item.symbol == "RuntimeNodeId"));
+        assert!(
+            occurrences
+                .iter()
+                .any(|item| item.symbol == "RuntimeNodeId")
+        );
         assert!(occurrences.iter().any(|item| item.symbol == "dispatch"));
-        assert!(occurrences.iter().any(|item| item.symbol == "FocusTargetResult"));
+        assert!(
+            occurrences
+                .iter()
+                .any(|item| item.symbol == "FocusTargetResult")
+        );
     }
 
     #[test]
