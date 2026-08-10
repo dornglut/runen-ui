@@ -6,15 +6,17 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M4A through M4D2 are complete and owner-accepted. M4D3 is the
-active implementation/proof candidate: its replay foundation, Counter causal
-reconstruction, final migration-authority audit, canonical-source Counter
-closure, and downstream public-only closure proofs are independently validated,
-and its five feature rows are `proof-complete`. M4D3 remains unaccepted and
-unmerged; its three final M4 closure rows remain blocked, M4 remains active and
-incomplete, and M5 remains blocked. Current maturity, durable sequence, work
-ownership, and historical acceptance evidence live in the [status map](docs/status-map.md),
-[roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and
+Milestone status: M0 through M4 are complete and owner-accepted. The accepted
+M4D3 feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d` passed exact-head
+CI run `31398930987` / #765 and was guarded-squash-merged in
+[PR #43](https://github.com/dornglut/runen-ui/pull/43) as
+`596f0d823b9833d71a038cc4aebe834c7b94e4a6`; all 16 changed-file blob
+identities match between reviewed feature head and accepted squash. The final M4
+authority reconciliation records all eight M4D3-owned rows as owner-accepted,
+closes M4, and activates M5 semantics and deterministic public testing. Current
+maturity, durable sequence, work ownership, and historical acceptance evidence
+live in the [status map](docs/status-map.md), [roadmap](docs/roadmap.md),
+[work-tracking contract](docs/work-tracking.md), and
 [public repository migration history](docs/history/public-repository-migration.md).
 
 ## What exists today
@@ -67,8 +69,8 @@ The active workspace proves:
   and capture notifications; stationary publication re-hit; integrity-only
   unavailable-context cleanup; release-inside activation; route-only logical
   scrolling; and slice-local causal trace;
-- deterministic JSONL v1 trace projection plus an M4D3 proof-candidate offline
-  replay model with replay-only trace/work identities, contiguous-sequence and
+- deterministic JSONL v1 trace projection plus the accepted M4D3 offline replay
+  foundation with replay-only trace/work identities, contiguous-sequence and
   causal-parent validation, explicit dropped-prefix incompleteness, and serialized
   Counter reconstruction without live runtime authority;
 - typed style values, tokens, computed style, provenance, and diagnostics;
@@ -88,16 +90,17 @@ proof without native host translation or production scrolling; text measurement
 is deterministic character counting; M4C5's owner-accepted raw keyboard,
 committed-text, composition, and authored-ID automation remain host-neutral
 proof behavior without editable text or native translation; M4D1's accepted
-in-memory trace schema is normalized and causally reconstructable, and M4D2 adds
+in-memory trace schema is normalized and causally reconstructable; M4D2 adds
 accepted deterministic JSONL v1 projection, default-redacted/explicit-full
 text/IME capture, optional static action labels, and a subordinate lazily bounded
-nonblocking trace sink. M4D3's offline replay surface is still an unaccepted proof
-candidate until its owner gate and guarded merge. Production semantics/accessibility,
-paint/hit scenes, production layout/style/text, native hosts, renderer backends,
-and production controls remain absent. The current runtime has one mounted root,
-one focus domain, and one logical surface with bounded proof-level displayed
-hit-test history. Current paint and semantic facts remain deterministic extension
-proofs, not the M5/M6 production products.
+nonblocking trace sink; and M4D3 adds an accepted inert offline causal replay
+model over that serialized projection. Replay is not yet the M5 public testing
+harness or an app-specific semantic expectation engine. Production
+semantics/accessibility, paint/hit scenes, production layout/style/text, native
+hosts, renderer backends, and production controls remain absent. The current
+runtime has one mounted root, one focus domain, and one logical surface with
+bounded proof-level displayed hit-test history. Current paint and semantic facts
+remain deterministic extension proofs, not the M5/M6 production products.
 
 ## Production profiles
 

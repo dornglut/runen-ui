@@ -8,6 +8,24 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and guarded-squash-merged the complete M4D3 replay and M4
+  closure slice in [PR #43](https://github.com/dornglut/runen-ui/pull/43). The
+  accepted feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d`
+  passed canonical exact-head CI run `31398930987` / #765 and the final critical
+  cold review; the squash merge commit is
+  `596f0d823b9833d71a038cc4aebe834c7b94e4a6`, and all 16 changed-file blob
+  identities match between the reviewed feature head and accepted squash. The
+  accepted implementation adds inert offline JSONL v1 replay with replay-only
+  identities, exact retained-sequence and causal-parent validation, explicit
+  dropped-prefix incompleteness, Counter serialized causal reconstruction,
+  deterministic retired/transitional-authority enforcement, and final public
+  Counter/downstream M4 closure proofs without creating a second live runtime,
+  queue, history, or ordering authority. The final M4 authority reconciliation
+  records all eight M4D3-owned rows as `owner-accepted`, producing 237 total /
+  235 owner-accepted / 0 proof-complete / 2 blocked rows. The only remaining
+  blocked rows are M5-owned `ACCESS-01` and `ACCESS-02`; M4 is complete and M5
+  semantics and deterministic public testing becomes the active successor after
+  this reconciliation itself is accepted and merged.
 - Owner-accepted and guarded-squash-merged the complete M4D2 deterministic
   trace-export, redaction, optional action-label, and subordinate bounded-sink
   slice in [PR #41](https://github.com/dornglut/runen-ui/pull/41). The accepted

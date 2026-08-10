@@ -40,9 +40,9 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape:
 
-M4A, M4B, M4C0–M4C5, M4D1, and M4D2 are complete and owner-accepted. The accepted
-M4C3 feature head `01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI
-run `29996101708` and was squash-merged in PR #15 as
+M4 is complete and owner-accepted through M4D3. The accepted M4C3 feature head
+`01b7ae018abeaff8d316764afba5bc8cde074381` passed exact-head CI run
+`29996101708` and was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`. The accepted M4C4 feature head
 `f3201a83583af0c1d148bec87cd9140ff42795b7` passed exact-head CI run
 `30006170403` and was squash-merged in
@@ -60,9 +60,14 @@ run `29996101708` and was squash-merged in PR #15 as
 `31321448821` / #712 and was guarded-squash-merged in
 [PR #41](https://github.com/dornglut/runen-ui/pull/41) as
 `8c67655ffce438c2e35e6478e7299bd704033b8b`; all 23 changed-file blob identities
-match between reviewed feature head and accepted squash. M4D3 remains blocked
-until this post-merge authority reconciliation is accepted and merged. The
-target M4 pipeline is active and incomplete.
+match between reviewed feature head and accepted squash. The accepted M4D3
+feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d` passed canonical
+exact-head CI run `31398930987` / #765 and the final critical cold review, then
+was guarded-squash-merged in [PR #43](https://github.com/dornglut/runen-ui/pull/43)
+as `596f0d823b9833d71a038cc4aebe834c7b94e4a6`; all 16 changed-file blob
+identities match between reviewed feature head and accepted squash. The final M4
+authority reconciliation records all eight M4D3-owned rows as owner-accepted,
+closes M4, and activates M5 semantics and deterministic public testing.
 
 ```text
 Application-owned State + Action
@@ -126,7 +131,7 @@ M3 replaces the seam with the mounted authority described by
 [ADR 0006](adr/0006-effects-scheduling-and-trace-v2.md), the normative
 [M4 conformance matrix](architecture/m4-conformance-matrix.md), and the
 [directional-focus corpus](architecture/m4-directional-focus-corpus.md) define
-M4. The current M4B implementation adds the core-owned application-work
+M4. The accepted M4B implementation adds the core-owned application-work
 contract, one ordered transaction planner, state-current application and
 mounted subscription reconciliation, generational tasks/timers/host work,
 four-budget readiness scheduling, wake/redraw handshakes, terminal closure, and
@@ -135,10 +140,11 @@ semantic-command kernel is accepted through M4C1, displayed-generation surface
 context through M4C2, pointer lifecycle through M4C3, focus scopes/modality
 through M4C4, keyboard, committed-text/composition, plus deterministic
 authored-ID automation resolution through M4C5, normalized in-memory trace
-schema and full M4 causal reconstruction through M4D1, and deterministic JSONL
-projection plus subordinate bounded sink delivery through M4D2. The accepted
-M4C5 behavior does not add editable text, native IME objects, a platform host, or
-semantic accessibility resolution. Public automation work/trace-sequence
+schema and full M4 causal reconstruction through M4D1, deterministic JSONL
+projection plus subordinate bounded sink delivery through M4D2, and inert
+offline JSONL replay plus final migration and closure proofs through M4D3. The
+accepted M4C5 behavior does not add editable text, native IME objects, a platform
+host, or semantic accessibility resolution. Public automation work/trace-sequence
 exhaustion is a deliberate recoverable exception that returns the exact authored
 request without terminalizing; direct commands and already-accepted mutable work
 retain ordinary terminal exhaustion policy. If mandatory composition cleanup
@@ -152,9 +158,12 @@ committed text/preedit only under explicit independent `FullText` capture,
 accepts optional static action labels without an `Action: Debug` bound, and uses
 a subordinate lazily bounded sink whose serialization occurs only on consumer
 drain. `Delivered`, `Full`, and first `Closed` remain same-record diagnostic facts
-and consume no second trace sequence. Replay remains unimplemented M4D3 target
-architecture. See the [public API contract](architecture/public-api.md),
-[ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
+and consume no second trace sequence. M4D3 consumes only that serialized
+projection in an inert offline causal model with replay-only identities,
+contiguous retained-sequence and parent validation, explicit dropped-prefix
+incompleteness, and Counter reconstruction after the live runtime is gone. It is
+not the M5 public test harness or semantic expectation engine. See the
+[public API contract](architecture/public-api.md), [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
 [work-tracking contract](work-tracking.md).
 
 ## Ownership rules
@@ -173,8 +182,8 @@ architecture. See the [public API contract](architecture/public-api.md),
 
 External crates can define widgets and participate in mounted state, lifecycle,
 activation, layout, paint, semantic, diagnostic, invalidation, and inspection
-paths without modifying RunenUI. M4–M8 own the remaining production subsystem
-contracts.
+paths without modifying RunenUI. M5–M8 own the remaining production subsystem
+contracts before host/backend production work.
 
 ## Application and effect model
 
@@ -349,12 +358,12 @@ and one current publication domain; it has no independent per-surface focus,
 multiple roots, surface lifecycle, cross-surface movement, or per-surface
 generations.
 
-Accepted M4 architecture adds an opaque single-domain surface-input context to
-event ingress. It names the logical `SurfaceId`, coordinate-space revision, and
-exact retained displayed generation; retired/foreign/missing contexts are
-rejected without retargeting. This is a forward-compatible target seam, not a
-claim that surface-input handling or multi-surface lifecycle exists in the
-current implementation or before M10.
+Accepted M4 architecture includes an opaque single-domain surface-input context
+in event ingress. It names the logical `SurfaceId`, coordinate-space revision,
+and exact retained displayed generation; retired/foreign/missing contexts are
+rejected without retargeting. This is current single-domain headless proof
+behavior and a forward-compatible seam, not a claim that multi-surface lifecycle
+or per-window host integration exists before M10.
 
 The required profiles are headless/test, standalone desktop, and embedded host. The renderer-neutral scene protocol is stabilized first, then proven by deterministic consumers, one conventional desktop backend, and only afterward an embedded/SDF consumer.
 
@@ -372,14 +381,15 @@ surface.
 
 The View/Widget/type-erasure protocol and mounted reconciliation/storage
 decisions are accepted in ADR 0003 and ADR 0004. Event routing/commands and
-effects/scheduling/trace are accepted in ADR 0005 and ADR 0006 and are the active
-M4 implementation authorities. The current implementation contains their
+effects/scheduling/trace are accepted in ADR 0005 and ADR 0006 and define the
+completed M4 runtime authorities. The current implementation contains their
 accepted queue, scheduler, routed semantic-command, displayed-generation
 surface, pointer, focus/modality, keyboard/text/composition/automation,
-terminal/shutdown, M4D1-normalized in-memory trace, and M4D2 deterministic
-JSONL/redaction/bounded-sink authority. M4D3 replay and final milestone closure
-remain implementation gates. Public proof requirements are fixed in the M4
-conformance matrix and directional-focus corpus.
+terminal/shutdown, M4D1-normalized in-memory trace, M4D2 deterministic
+JSONL/redaction/bounded-sink authority, and M4D3 inert offline replay/final
+closure proof surface. Public M4 proof requirements are fixed in the M4
+conformance matrix and directional-focus corpus. M5 semantics and deterministic
+public testing is the active next architecture milestone.
 
 The following later choices still require dedicated analysis and review:
 standard layout algorithm, production text stack, conventional renderer, crate

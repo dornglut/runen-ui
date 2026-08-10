@@ -17,22 +17,26 @@ It must not become a branch or pull-request log.
 ### M4 conformance matrix
 
 [`architecture/m4-conformance-matrix.md`](architecture/m4-conformance-matrix.md)
-owns permanent behavioral acceptance IDs, observable requirements, positive proof
-ownership, negative proof ownership, trace proof ownership, delivery slice,
-status, and M4-gate classification.
+owns permanent M4 behavioral acceptance IDs, observable requirements, positive
+proof ownership, negative proof ownership, trace proof ownership, delivery slice,
+status, and gate classification. After M4 closure its two remaining blocked rows
+are M5-owned semantic/accessibility inputs rather than unfinished M4 work.
 
 Matrix rows are not GitHub issues. One slice issue may own many matrix rows.
 
 ### GitHub umbrella and execution issues
 
-The [public M4 umbrella issue](https://github.com/dornglut/runen-ui/issues/3)
-and its linked execution issues own volatile state:
+The closed [M4 umbrella issue](https://github.com/dornglut/runen-ui/issues/3)
+and its linked execution issues preserve M4's volatile delivery history. The
+successor [M5 umbrella issue #45](https://github.com/dornglut/runen-ui/issues/45)
+is the M5 coordination and pickup surface. Each active milestone issue owns
+volatile state such as:
 
 - exact accepted base SHA;
 - active branch and draft pull request;
 - current reviewed checkpoint head;
 - dependencies and blockers;
-- matrix-row checklists for the active slice;
+- conformance/proof checklists for the active slice;
 - latest validation and exact-head CI or an explicit infrastructure-only waiver;
 - acceptance state;
 - next action and next unblocked issue.
@@ -73,16 +77,21 @@ owns the mapping from the former private repository to this public repository.
 Private issue and pull-request numbers are historical only and must be qualified
 as archive references. They are never active execution authority.
 
-## M4 operational milestone
+## Operational milestones
 
-The public operational milestone is
-[issue #3](https://github.com/dornglut/runen-ui/issues/3). A formal GitHub
-milestone should be named `M4 — Events, Effects, Scheduling, and Trace v2`.
-Until that milestone is configured through GitHub UI or another reviewed
-administration surface, the umbrella issue remains the pickup surface and
-dependency graph.
+M4's public operational milestone was
+[issue #3](https://github.com/dornglut/runen-ui/issues/3). Its execution graph is
+complete through M4D3 and becomes historical coordination after the final M4
+authority reconciliation is accepted and merged.
 
-The public execution graph is:
+M5 uses [issue #45](https://github.com/dornglut/runen-ui/issues/45) as its
+successor coordination and pickup authority. That issue must remain blocked while
+the final M4 reconciliation is unmerged. After the reconciliation is accepted,
+guarded-squash-merged, and accepted-main verified, #45 is updated with that exact
+accepted base and becomes the active pickup surface. No M5 implementation branch
+may precede its decision-complete readiness/architecture audit.
+
+The completed public M4 execution graph is:
 
 - [#2 — public RunenUI authority cutover](https://github.com/dornglut/runen-ui/issues/2);
 - [#11 — deterministic repository structure and authority audit](https://github.com/dornglut/runen-ui/issues/11), after #2;
@@ -91,12 +100,13 @@ The public execution graph is:
 - [#6 — M4C5 keyboard, text, IME, automation, and M4C closure](https://github.com/dornglut/runen-ui/issues/6), after #5;
 - [#7 — M4D1 complete trace schema and causality](https://github.com/dornglut/runen-ui/issues/7), after #6;
 - [#8 — M4D2 export, redaction, and bounded sink](https://github.com/dornglut/runen-ui/issues/8), after #7;
-- [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8.
+- [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8;
+- [#45 — M5 semantics and deterministic public testing](https://github.com/dornglut/runen-ui/issues/45), only after final M4 reconciliation acceptance.
 
 Architecture and tooling follow-up:
 
 - [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10), non-blocking unless a later readiness audit proves otherwise;
-- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12), explicitly deferred until after M4.
+- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12), eligible for reconsideration during post-M4 readiness work but not automatically part of M5.
 
 M4A through M4C2 are accepted imported history. They are recorded in the
 [public-repository migration history](history/public-repository-migration.md)
@@ -104,21 +114,22 @@ rather than recreated as false closed public issues.
 
 ## Required pickup sequence
 
-1. Read the public M4 umbrella issue.
-2. Open the execution issue it identifies as current.
+1. Read the roadmap and status map to identify the active milestone.
+2. Open that milestone's GitHub umbrella/pickup issue; for M5 this is #45.
 3. Verify exact accepted `main`, branch, pull request, and live head.
-4. Read linked ADRs, the accepted charter, matrix rows, and stable architecture contracts.
+4. Read linked ADRs, accepted charters/matrices where applicable, and stable architecture contracts.
 5. Inspect current source, tests, unresolved review findings, and exact-head CI.
 6. Execute only the current issue or an explicitly linked prerequisite.
 7. Update execution records after each reviewed green checkpoint, material review correction, readiness transition, and merge.
-8. Never begin the next slice from an unmerged feature branch.
+8. Never begin the next slice from an unmerged feature or authority branch.
 
-A new thread should need only:
+A new M5 thread should need only:
 
 ```text
 Repository: dornglut/runen-ui
-Umbrella issue: #3
-Current execution issue: read from #3
+Current milestone: M5
+Umbrella issue: #45
+Current execution issue: read from #45
 ```
 
 ## Execution and branch discipline
@@ -152,26 +163,29 @@ Every slice issue records:
 - authority documents;
 - exact prerequisite and accepted base SHA;
 - dependencies;
-- included matrix rows;
+- included conformance/proof rows where applicable;
 - included work and explicit non-goals;
-- positive, negative, and trace proof ownership;
+- positive, negative, and trace proof ownership where applicable;
 - validation commands;
 - target branch and draft PR title;
 - current reviewed checkpoint head and blockers;
 - acceptance state;
 - next unblocked issue.
 
-The matrix-row checklist is updated only for the owning slice. Do not create one
+A matrix-row checklist is updated only for the owning slice. Do not create one
 issue per matrix row.
 
 ## Acceptance transitions
 
-Use matrix statuses exactly:
+Where an accepted conformance matrix uses the M4 status vocabulary, use it exactly:
 
 - `blocked`: the owning implementation slice has not been accepted;
 - `implementation-complete`: public behavior exists but the complete proof package has not passed;
 - `proof-complete`: the exact-head proof package passes but owner acceptance and merge are pending;
 - `owner-accepted`: public behavior, complete proof, validation, owner review, and merge have passed, together with either successful exact-head CI or a documented infrastructure-only owner waiver satisfying the policy below.
+
+Later milestone plans may define additional bounded status vocabularies only
+through reviewed authority; do not silently reinterpret the M4 matrix terms.
 
 Exact-head CI means the workflow explicitly checks out and verifies the feature
 head SHA. GitHub's synthetic pull-request merge ref does not qualify. Any head
@@ -203,7 +217,7 @@ than waived.
 Every repository pull request runs the baseline documented in
 [`tooling/validation.md`](tooling/validation.md), plus slice-specific tests and:
 
-- matrix uniqueness/status/schema/count audit;
+- applicable conformance-matrix uniqueness/status/schema/count audits;
 - public API and removed-symbol audit;
 - unsafe-code audit;
 - cross-document truth audit;
