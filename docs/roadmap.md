@@ -153,7 +153,7 @@ matrix passes. M4 boundaries remain intact.
 
 ## M4 — Events, effects, scheduling, and trace v2
 
-**Status:** `active`.
+**Status:** `complete`.
 
 **Goal:** Provide one correct interaction pipeline and deterministic application-work runtime.
 
@@ -538,7 +538,8 @@ reconciliation.
 
 #### M4D3 — Replay and milestone closure
 
-**Status:** `active`.
+**Status:** `complete`; owner-accepted and guarded-squash-merged in
+[PR #43](https://github.com/dornglut/runen-ui/pull/43).
 
 **Goal:** Complete replay foundation, Counter causal reconstruction, final
 migration/current-document cleanup, and the exact M4 acceptance gate.
@@ -556,10 +557,21 @@ editable text, native hosts, or later milestone work.
 M4 conformance, repository truth audit, `cargo validate`, exact-head CI, owner
 review, and merge.
 
-**Acceptance gate:** M4D3 implementation/proof rows may become `proof-complete`
-before owner review. M4D3 and M4 remain incomplete until explicit owner
-acceptance, guarded feature merge, and the final M4 authority reconciliation are
-complete. M5 remains blocked until that final M4 closure.
+**Completion record:** The accepted feature head
+`b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d` passed canonical exact-head CI run
+`31398930987` / #765, including exact checkout-revision proof and the stable plus
+Rust 1.93.0 repository validation authority, and passed the final critical cold
+review. PR #43 was guarded-squash-merged as
+`596f0d823b9833d71a038cc4aebe834c7b94e4a6`; all 16 feature changed-file blob
+identities are byte-identical between the reviewed feature head and accepted
+squash. The accepted implementation adds an inert offline JSONL v1 replay model
+with replay-only identities, exact retained-sequence/causal validation, explicit
+dropped-prefix incompleteness, Counter serialized causal reconstruction, final
+retired-authority enforcement, and public Counter/downstream M4 closure proofs.
+All eight M4D3-owned rows are `owner-accepted` through the final M4 authority
+reconciliation. The normative matrix is `237 total / 235 owner-accepted / 0
+proof-complete / 2 blocked`; the only blocked rows are M5-owned `ACCESS-01` and
+`ACCESS-02`. M4 is complete.
 
 **Exit criteria:** Every M4-gating matrix row is owner-accepted, M4 is explicitly
 accepted and merged, and no transitional authority remains.
@@ -574,7 +586,7 @@ accepted and merged, and no transitional authority remains.
 
 ## M5 — Semantics and deterministic public testing
 
-**Status:** `blocked` by M4.
+**Status:** `active`.
 
 **Goal:** Make renderer-independent accessibility semantics and framework-level testing first-class.
 
@@ -584,7 +596,7 @@ accepted and merged, and no transitional authority remains.
 
 **Explicit non-goals:** Native platform accessibility bridge, production text ranges, full control library, renderer backend.
 
-**Dependencies:** Mounted identity and canonical commands/effects.
+**Dependencies:** M4 complete; mounted identity and canonical commands/effects are accepted inputs.
 
 **Required proofs/tests:** Counter and custom-widget proofs operate via semantic queries/actions; keyboard-only, semantic navigation/activation, accessibility-action, and controller-only deterministic headless interaction tests that require no platform device translation; stable IDs across compatible updates; disabled/hidden/inert behavior; tests use public harness rather than private runtime internals.
 
@@ -617,7 +629,7 @@ public scenes.
 
 ## M7 — Production layout and styling
 
-**Status:** `blocked` by M4–M6.
+**Status:** `blocked` by M5–M6.
 
 **Goal:** Support normal responsive applications, tools, scrolling, overlays, and stateful visual policy.
 
@@ -637,7 +649,7 @@ public scenes.
 
 ## M8 — Production text subsystem
 
-**Status:** `blocked` by M4–M7.
+**Status:** `blocked` by M5–M7.
 
 **Goal:** Support internationalized display and editable text through a mature text stack.
 
@@ -657,7 +669,7 @@ public scenes.
 
 ## M9 — Standard control library
 
-**Status:** `blocked` by M2–M8.
+**Status:** `blocked` by M5–M8.
 
 **Goal:** Provide coherent production controls built on public framework contracts.
 
@@ -677,7 +689,7 @@ public scenes.
 
 ## M10 — Host and backend production profiles
 
-**Status:** `blocked` by M4–M9.
+**Status:** `blocked` by M5–M9.
 
 **Goal:** Run real standalone desktop applications and embedded-host UI through common contracts.
 
@@ -697,7 +709,7 @@ public scenes.
 
 ## M11 — Production hardening and first stable release
 
-**Status:** `blocked` by M0–M10.
+**Status:** `blocked` by M5–M10.
 
 **Goal:** Make support, compatibility, security, performance, and release claims enforceable, then deliberately release `1.0.0`.
 
