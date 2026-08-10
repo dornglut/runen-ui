@@ -1,11 +1,11 @@
 use runenui_core::{
-    __runtime::WidgetBridgeError, WidgetActivation, WidgetActivationContext, WidgetInvalidation,
-    WidgetTextInput,
+    __runtime::WidgetBridgeError, SemanticContributionContext, WidgetActivation,
+    WidgetActivationContext, WidgetInvalidation, WidgetTextInput,
 };
 
 use super::{
-    CachedCapability, MountedNodeId, apply_invalidation, node::state_is_corrupted,
-    tree::MountedTree,
+    CachedCapability, CachedSemanticContribution, MountedNodeId, apply_invalidation,
+    node::state_is_corrupted, tree::MountedTree,
 };
 
 #[allow(
@@ -214,19 +214,31 @@ impl<Action> MountedTree<Action> {
     }
 
     pub(crate) fn ensure_semantics_capability(&mut self, id: &MountedNodeId) {
+        let direct_mounted_children = self.node(id).map_or(0, |node| node.children.len());
+        let context = SemanticContributionContext::__runtime_new(direct_mounted_children);
         let Some(node) = self.node_mut(id) else {
             return;
         };
         if state_is_corrupted(node) {
             node.integrity_failed = true;
-            node.caches.semantics = CachedCapability::StatePayloadMismatch;
-        } else if matches!(node.caches.semantics, CachedCapability::Unresolved) {
-            let result = node.widget.semantics(&node.state);
-            cache_result(
-                result,
-                &mut node.caches.semantics,
-                &mut node.integrity_failed,
-            );
+            node.caches.semantics = CachedSemanticContribution::StatePayloadMismatch;
+            return;
+        }
+        if !matches!(node.caches.semantics, CachedSemanticContribution::Unresolved) {
+            return;
+        }
+        match node.widget.semantics(&node.state, context) {
+            Ok(value) => match value.validate(context) {
+                Ok(_) => node.caches.semantics = CachedSemanticContribution::Ready(value),
+                Err(error) => {
+                    node.integrity_failed = true;
+                    node.caches.semantics = CachedSemanticContribution::Invalid(error);
+                }
+            },
+            Err(_) => {
+                node.integrity_failed = true;
+                node.caches.semantics = CachedSemanticContribution::StatePayloadMismatch;
+            }
         }
     }
 
