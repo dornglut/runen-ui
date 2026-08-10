@@ -13,6 +13,8 @@ const BROAD_REEXPORTS: usize = 10;
 const HIGH_TEST_LINES: usize = 800;
 const HIGH_TEST_COUNT: usize = 20;
 const MULTI_RESPONSIBILITY_COUNT: usize = 5;
+const SURFACE_PUBLICATION_ENTRYPOINT: &str = "publish_surface";
+const SURFACE_PUBLICATION_ENTRYPOINT_PATH: &str = "crates/runenui_runtime/src/app/surface.rs";
 
 const RESPONSIBILITY_TERMS: &[&str] = &[
     "application",
@@ -130,7 +132,27 @@ const RETIRED_AUTHORITIES: &[RetiredAuthoritySpec] = &[
         scope: RetiredAuthorityScope::AnyDeclaration,
     },
     RetiredAuthoritySpec {
+        symbol: "ActivationCapacity",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "ActivationCommit",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
         symbol: "ActivationResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "PointerActivationResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "KeyboardActivationResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "InputEventResult",
         scope: RetiredAuthorityScope::AnyDeclaration,
     },
     RetiredAuthoritySpec {
@@ -158,11 +180,51 @@ const RETIRED_AUTHORITIES: &[RetiredAuthoritySpec] = &[
         scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
     },
     RetiredAuthoritySpec {
+        symbol: "activate",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "activate_node",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "handle_pointer_activation",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "handle_keyboard_activation",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "handle_input_event",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
         symbol: "on_press",
         scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
     },
     RetiredAuthoritySpec {
         symbol: "resolve_pointer_event_target",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "set_focus",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "focus_first",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "focus_last",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "focus_next",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "focus_previous",
         scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
     },
     RetiredAuthoritySpec {
@@ -174,7 +236,7 @@ const RETIRED_AUTHORITIES: &[RetiredAuthoritySpec] = &[
         scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
     },
     RetiredAuthoritySpec {
-        symbol: "publish_surface",
+        symbol: SURFACE_PUBLICATION_ENTRYPOINT,
         scope: RetiredAuthorityScope::PublicReexportOnly,
     },
 ];
@@ -198,6 +260,7 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMe
     }
 
     audit_authority_definitions(&production_metrics, findings);
+    audit_surface_publication_entrypoint(&production_metrics, findings);
     audit_retired_authorities(&production_metrics, findings);
     audit_volatile_architecture_state(root, findings)?;
 
@@ -322,6 +385,50 @@ fn audit_authority_definitions(
     }
 }
 
+fn audit_surface_publication_entrypoint(
+    production: &[(ModuleMetrics, String)],
+    findings: &mut Vec<Finding>,
+) {
+    let mut locations = Vec::new();
+    for (metrics, contents) in production {
+        for (index, line) in contents.lines().enumerate() {
+            if declaration_symbol(line)
+                .is_some_and(|(symbol, externally_public)| {
+                    externally_public && symbol == SURFACE_PUBLICATION_ENTRYPOINT
+                })
+            {
+                locations.push(format!("{}:{}", path_text(&metrics.relative), index + 1));
+            }
+        }
+    }
+
+    match locations.as_slice() {
+        [location] if location.starts_with(SURFACE_PUBLICATION_ENTRYPOINT_PATH) => {}
+        [location] => findings.push(Finding::fatal(
+            "source.surface_publication_entrypoint_authority",
+            Some(location.clone()),
+            format!(
+                "the sole public `{SURFACE_PUBLICATION_ENTRYPOINT}` declaration must remain the `AppRuntime` method in {SURFACE_PUBLICATION_ENTRYPOINT_PATH}"
+            ),
+        )),
+        [] => findings.push(Finding::fatal(
+            "source.surface_publication_entrypoint_authority",
+            Some(SURFACE_PUBLICATION_ENTRYPOINT_PATH.to_owned()),
+            format!(
+                "the canonical public `{SURFACE_PUBLICATION_ENTRYPOINT}` declaration is missing"
+            ),
+        )),
+        _ => findings.push(Finding::fatal(
+            "source.surface_publication_entrypoint_authority",
+            None::<String>,
+            format!(
+                "public `{SURFACE_PUBLICATION_ENTRYPOINT}` authority is declared multiple times: {}",
+                locations.join(", ")
+            ),
+        )),
+    }
+}
+
 fn audit_retired_authorities(production: &[(ModuleMetrics, String)], findings: &mut Vec<Finding>) {
     for (metrics, contents) in production {
         let path = path_text(&metrics.relative);
@@ -374,14 +481,25 @@ fn declaration_symbol(line: &str) -> Option<(&str, bool)> {
         return None;
     }
     let externally_public = trimmed.starts_with("pub ");
-    let declaration = trimmed
+    let mut declaration = trimmed
         .strip_prefix("pub(crate) ")
         .or_else(|| trimmed.strip_prefix("pub(super) "))
         .or_else(|| trimmed.strip_prefix("pub(self) "))
         .or_else(|| trimmed.strip_prefix("pub "))
         .or_else(|| strip_pub_in(trimmed))
         .unwrap_or(trimmed);
-    let declaration = declaration.strip_prefix("async ").unwrap_or(declaration);
+
+    loop {
+        if let Some(rest) = declaration.strip_prefix("async ") {
+            declaration = rest;
+        } else if let Some(rest) = declaration.strip_prefix("const ") {
+            declaration = rest;
+        } else if let Some(rest) = declaration.strip_prefix("unsafe ") {
+            declaration = rest;
+        } else {
+            break;
+        }
+    }
 
     for prefix in ["struct ", "enum ", "trait ", "type ", "fn "] {
         if let Some(rest) = declaration.strip_prefix(prefix) {
@@ -673,7 +791,15 @@ fn normalized_identifier(token: &str) -> &str {
 mod tests {
     use std::path::Path;
 
-    use super::{defines_struct, module_metrics, normalized_identifier};
+    use super::{
+        SURFACE_PUBLICATION_ENTRYPOINT_PATH, audit_retired_authorities,
+        audit_surface_publication_entrypoint, declaration_symbol, defines_struct, module_metrics,
+        normalized_identifier,
+    };
+
+    fn production_source(path: &str, contents: &str) -> (super::ModuleMetrics, String) {
+        (module_metrics(Path::new(path), contents), contents.to_owned())
+    }
 
     #[test]
     fn authority_definition_parser_handles_visibility_and_generics() {
@@ -683,6 +809,18 @@ mod tests {
         ));
         assert!(defines_struct("pub struct Trace;", "Trace"));
         assert!(!defines_struct("let trace = Trace::new();", "Trace"));
+    }
+
+    #[test]
+    fn declaration_parser_handles_visibility_and_function_modifiers() {
+        assert_eq!(
+            declaration_symbol("pub const fn dispatch() {}"),
+            Some(("dispatch", true))
+        );
+        assert_eq!(
+            declaration_symbol("pub(crate) async unsafe fn internal() {}"),
+            Some(("internal", false))
+        );
     }
 
     #[test]
@@ -703,5 +841,46 @@ mod tests {
         assert!(metrics.responsibilities.contains("surface"));
         assert!(metrics.responsibilities.contains("queue"));
         assert!(metrics.responsibilities.contains("trace"));
+    }
+
+    #[test]
+    fn retired_authority_audit_rejects_declarations_and_reexports() {
+        let production = vec![production_source(
+            "crates/example/src/lib.rs",
+            "pub enum ActivationCapacity {}\npub const fn focus_next() {}\npub use crate::legacy::KeyboardActivationResult;\n",
+        )];
+        let mut findings = Vec::new();
+        audit_retired_authorities(&production, &mut findings);
+        assert_eq!(findings.len(), 3);
+        assert!(findings.iter().all(|finding| {
+            finding.code == "source.retired_m4_authority"
+                && finding.severity == super::super::Severity::Fatal
+        }));
+    }
+
+    #[test]
+    fn surface_publication_entrypoint_must_be_unique_and_canonical() {
+        let canonical = production_source(
+            SURFACE_PUBLICATION_ENTRYPOINT_PATH,
+            "pub fn publish_surface(&mut self) {}\n",
+        );
+        let mut findings = Vec::new();
+        audit_surface_publication_entrypoint(std::slice::from_ref(&canonical), &mut findings);
+        assert!(findings.is_empty());
+
+        let production = vec![
+            canonical,
+            production_source(
+                "crates/runenui_runtime/src/lib.rs",
+                "pub fn publish_surface() {}\n",
+            ),
+        ];
+        audit_surface_publication_entrypoint(&production, &mut findings);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].code,
+            "source.surface_publication_entrypoint_authority"
+        );
+        assert_eq!(findings[0].severity, super::super::Severity::Fatal);
     }
 }
