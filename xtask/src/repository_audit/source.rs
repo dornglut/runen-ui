@@ -401,19 +401,13 @@ fn audit_surface_publication_entrypoint(
     }
 
     match locations.as_slice() {
+        [] => {}
         [location] if location.starts_with(SURFACE_PUBLICATION_ENTRYPOINT_PATH) => {}
         [location] => findings.push(Finding::fatal(
             "source.surface_publication_entrypoint_authority",
             Some(location.clone()),
             format!(
-                "the sole public `{SURFACE_PUBLICATION_ENTRYPOINT}` declaration must remain the `AppRuntime` method in {SURFACE_PUBLICATION_ENTRYPOINT_PATH}"
-            ),
-        )),
-        [] => findings.push(Finding::fatal(
-            "source.surface_publication_entrypoint_authority",
-            Some(SURFACE_PUBLICATION_ENTRYPOINT_PATH.to_owned()),
-            format!(
-                "the canonical public `{SURFACE_PUBLICATION_ENTRYPOINT}` declaration is missing"
+                "any public `{SURFACE_PUBLICATION_ENTRYPOINT}` declaration must remain the `AppRuntime` method in {SURFACE_PUBLICATION_ENTRYPOINT_PATH}"
             ),
         )),
         _ => findings.push(Finding::fatal(
@@ -860,23 +854,32 @@ mod tests {
     }
 
     #[test]
-    fn surface_publication_entrypoint_must_be_unique_and_canonical() {
+    fn surface_publication_entrypoint_rejects_alternative_or_duplicate_authority() {
+        let mut findings = Vec::new();
+        audit_surface_publication_entrypoint(&[], &mut findings);
+        assert!(findings.is_empty());
+
         let canonical = production_source(
             SURFACE_PUBLICATION_ENTRYPOINT_PATH,
             "pub fn publish_surface(&mut self) {}\n",
         );
-        let mut findings = Vec::new();
         audit_surface_publication_entrypoint(std::slice::from_ref(&canonical), &mut findings);
         assert!(findings.is_empty());
 
-        let production = vec![
-            canonical,
-            production_source(
-                "crates/runenui_runtime/src/lib.rs",
-                "pub fn publish_surface() {}\n",
-            ),
-        ];
-        audit_surface_publication_entrypoint(&production, &mut findings);
+        let alternative = production_source(
+            "crates/runenui_runtime/src/lib.rs",
+            "pub fn publish_surface() {}\n",
+        );
+        audit_surface_publication_entrypoint(std::slice::from_ref(&alternative), &mut findings);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].code,
+            "source.surface_publication_entrypoint_authority"
+        );
+        assert_eq!(findings[0].severity, super::super::Severity::Fatal);
+
+        findings.clear();
+        audit_surface_publication_entrypoint(&[canonical, alternative], &mut findings);
         assert_eq!(findings.len(), 1);
         assert_eq!(
             findings[0].code,
