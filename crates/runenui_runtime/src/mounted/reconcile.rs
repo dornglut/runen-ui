@@ -508,17 +508,15 @@ impl<Action> MountedTree<Action> {
             node.focus_scope = focus_scope;
             node.authoring_diagnostics = authoring_diagnostics;
             node.widget = widget;
-            // Capability declarations belong to the incoming widget instance,
-            // not the retained state. A compatible update therefore cannot
-            // reuse stale input or semantic contribution caches even when the
-            // widget omitted those invalidations.
+            // Input capability declarations belong to the incoming widget instance,
+            // not the retained state. Semantic contribution remains cached unless
+            // the widget explicitly invalidates semantics or mounted-child structure changes.
             node.caches.activation = CachedCapability::Unresolved;
             node.caches.text_input = CachedCapability::Unresolved;
             apply_invalidation(
                 node,
                 update_context.__runtime_take_invalidation() | common_invalidation,
             );
-            invalidate_semantic_structure(node);
             if tree_metadata_changed {
                 node.dirty_phases.insert(DirtyPhases::TREE);
             }
