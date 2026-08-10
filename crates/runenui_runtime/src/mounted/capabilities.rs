@@ -224,7 +224,10 @@ impl<Action> MountedTree<Action> {
             node.caches.semantics = CachedSemanticContribution::StatePayloadMismatch;
             return;
         }
-        if !matches!(node.caches.semantics, CachedSemanticContribution::Unresolved) {
+        if !matches!(
+            node.caches.semantics,
+            CachedSemanticContribution::Unresolved
+        ) {
             return;
         }
         match node.widget.semantics(&node.state, context) {
