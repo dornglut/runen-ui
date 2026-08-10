@@ -2,12 +2,13 @@ use core::fmt;
 
 use crate::{
     Axis, ColorValue, ElementId, ElementKey, IntoElementId, IntoElementKey, LayoutStyle,
-    LogicalLength, RadiusValue, SpacingValue, StyleIntent, WidgetActivationContext,
-    WidgetInvalidation, WidgetUpdateContext,
+    LogicalLength, RadiusValue, SemanticAction, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticRole, SemanticState, SemanticText, SpacingValue,
+    StyleIntent, WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
     element::{
         AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View,
         Views, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetPaintProof,
-        WidgetSemanticProof, WidgetTextKind,
+        WidgetTextKind,
     },
     widget_erasure::{ChildLayoutWidgetAdapter, ErasedWidget, WidgetAdapter},
 };
@@ -105,8 +106,16 @@ impl<Action> Widget<Action> for TextWidget {
     fn paint(&self, _: &Self::State) -> WidgetPaintProof {
         WidgetPaintProof::new("text", self.content.clone())
     }
-    fn semantics(&self, _: &Self::State) -> WidgetSemanticProof {
-        WidgetSemanticProof::new("text", self.content.clone())
+    fn semantics(
+        &self,
+        state: &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Text)
+                .with_name(state.clone())
+                .with_text(SemanticText::plain(state.clone())),
+        )
     }
 }
 
@@ -286,14 +295,18 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
             ),
         )
     }
-    fn semantics(&self, _: &Self::State) -> WidgetSemanticProof {
-        let semantics =
-            WidgetSemanticProof::new("button", self.label.clone()).with_enabled(self.enabled);
-        if self.actionable {
-            semantics.with_action("activate")
-        } else {
-            semantics
+    fn semantics(
+        &self,
+        state: &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node = SemanticNodeContribution::primary(SemanticRole::Button)
+            .with_name(state.label.clone())
+            .with_state(SemanticState::ENABLED.with_disabled(!state.enabled));
+        if state.actionable {
+            node = node.with_action(SemanticAction::Activate);
         }
+        SemanticContribution::single(node)
     }
 }
 
@@ -388,8 +401,16 @@ impl<Action> Widget<Action> for LinearContainerWidget {
     fn paint(&self, _: &Self::State) -> WidgetPaintProof {
         WidgetPaintProof::new("container", format!("axis={:?}", self.axis))
     }
-    fn semantics(&self, _: &Self::State) -> WidgetSemanticProof {
-        WidgetSemanticProof::new("group", "")
+    fn semantics(
+        &self,
+        _: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node = SemanticNodeContribution::primary(SemanticRole::Group);
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
     }
 }
 
