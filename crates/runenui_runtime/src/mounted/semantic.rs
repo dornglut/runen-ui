@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use runenui_core::{MountedNodeId, SemanticKey, SemanticNodeId};
 use runenui_core::__runtime::RuntimeNamespace;
+use runenui_core::{MountedNodeId, SemanticKey, SemanticNodeId};
 
 use super::arena::{ArenaCapacityError, GenerationalArena};
 
@@ -46,6 +46,7 @@ impl From<ArenaCapacityError> for SemanticIdentityExhausted {
     }
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SemanticTargetStatus {
     Live,
@@ -65,10 +66,12 @@ impl SemanticStore {
         }
     }
 
+    #[cfg(test)]
     pub(super) const fn live_count(&self) -> usize {
         self.arena.live_count()
     }
 
+    #[cfg(test)]
     pub(super) fn target_status(
         &self,
         runtime: &RuntimeNamespace,
@@ -164,21 +167,25 @@ impl SemanticStore {
                     bindings.push(binding);
                 }
                 PlannedBinding::New(key) => {
-                    let runtime_for_id = runtime.clone();
                     let owner_for_record = owner.clone();
                     let key_for_record = key.clone();
-                    let (slot, generation) = self.arena.insert_with_public_slot_limit(
-                        public_slot_limit,
-                        move |slot, generation| SemanticRecord {
-                            owner: owner_for_record,
-                            key: key_for_record,
-                        },
-                    )?;
+                    let (slot, generation) = self
+                        .arena
+                        .insert_with_public_slot_limit(
+                            public_slot_limit,
+                            move |_, _| SemanticRecord {
+                                owner: owner_for_record,
+                                key: key_for_record,
+                            },
+                        )
+                        .unwrap_or_else(|_| {
+                            unreachable!("semantic identity capacity was preflighted")
+                        });
                     let slot = u32::try_from(slot)
-                        .map_err(|_| SemanticIdentityExhausted)?;
+                        .unwrap_or_else(|_| unreachable!("semantic arena uses public slots"));
                     bindings.push(SemanticBinding {
                         key,
-                        id: runtime_for_id.__runtime_semantic_id(slot, generation),
+                        id: runtime.__runtime_semantic_id(slot, generation),
                     });
                 }
             }
@@ -221,4 +228,161 @@ impl SemanticStore {
 enum PlannedBinding {
     Existing(SemanticBinding),
     New(SemanticKey),
+}
+
+#[cfg(test)]
+mod tests {
+    use runenui_core::__runtime::RuntimeNamespace;
+    use runenui_core::SemanticKey;
+
+    use super::{SemanticIdentityExhausted, SemanticStore, SemanticTargetStatus};
+
+    fn key(value: &'static str) -> SemanticKey {
+        SemanticKey::from_static(value).unwrap_or_else(|_| unreachable!("test key is valid"))
+    }
+
+    #[test]
+    fn owner_local_keys_receive_independent_stable_ids_across_reorder() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let owner = runtime.__runtime_mounted_id(7, 1);
+        let mut store = SemanticStore::new();
+        let a = key("a");
+        let b = key("b");
+        let first = store
+            .reconcile_owner(
+                &runtime,
+                &owner,
+                Vec::new(),
+                &[SemanticKey::PRIMARY, a.clone(), b.clone()],
+                8,
+            )
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(first.len(), 3);
+        assert_ne!(first[0].id(), first[1].id());
+        assert_ne!(first[1].id(), first[2].id());
+        let primary = first[0].id().clone();
+        let a_id = first[1].id().clone();
+        let b_id = first[2].id().clone();
+
+        let reordered = store
+            .reconcile_owner(
+                &runtime,
+                &owner,
+                first,
+                &[b.clone(), SemanticKey::PRIMARY, a.clone()],
+                8,
+            )
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(reordered[0].id(), &b_id);
+        assert_eq!(reordered[1].id(), &primary);
+        assert_eq!(reordered[2].id(), &a_id);
+        assert_eq!(store.live_count(), 3);
+    }
+
+    #[test]
+    fn removed_key_becomes_stale_and_reused_slot_gets_later_generation() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let owner = runtime.__runtime_mounted_id(1, 1);
+        let mut store = SemanticStore::new();
+        let extra = key("extra");
+        let first = store
+            .reconcile_owner(
+                &runtime,
+                &owner,
+                Vec::new(),
+                &[SemanticKey::PRIMARY, extra.clone()],
+                2,
+            )
+            .unwrap_or_else(|_| unreachable!());
+        let removed = first[1].id().clone();
+        let retained = store
+            .reconcile_owner(
+                &runtime,
+                &owner,
+                first,
+                &[SemanticKey::PRIMARY],
+                2,
+            )
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(store.target_status(&runtime, &removed), SemanticTargetStatus::Stale);
+
+        let replacement_key = key("replacement");
+        let replacement = store
+            .reconcile_owner(
+                &runtime,
+                &owner,
+                retained,
+                &[SemanticKey::PRIMARY, replacement_key],
+                2,
+            )
+            .unwrap_or_else(|_| unreachable!());
+        let replacement_id = replacement[1].id();
+        let removed_parts = runtime
+            .__runtime_semantic_parts(&removed)
+            .unwrap_or_else(|| unreachable!());
+        let replacement_parts = runtime
+            .__runtime_semantic_parts(replacement_id)
+            .unwrap_or_else(|| unreachable!());
+        assert_eq!(removed_parts.0, replacement_parts.0);
+        assert!(replacement_parts.1 > removed_parts.1);
+        assert_eq!(store.target_status(&runtime, &removed), SemanticTargetStatus::Stale);
+        assert_eq!(
+            store.target_status(&runtime, replacement_id),
+            SemanticTargetStatus::Live
+        );
+    }
+
+    #[test]
+    fn owner_revocation_stales_every_owned_semantic_lifetime() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let owner = runtime.__runtime_mounted_id(1, 1);
+        let mut store = SemanticStore::new();
+        let bindings = store
+            .reconcile_owner(
+                &runtime,
+                &owner,
+                Vec::new(),
+                &[SemanticKey::PRIMARY, key("virtual")],
+                4,
+            )
+            .unwrap_or_else(|_| unreachable!());
+        let ids = bindings
+            .iter()
+            .map(|binding| binding.id().clone())
+            .collect::<Vec<_>>();
+        store.revoke_owner(&runtime, &owner, bindings);
+        assert_eq!(store.live_count(), 0);
+        for id in ids {
+            assert_eq!(store.target_status(&runtime, &id), SemanticTargetStatus::Stale);
+        }
+    }
+
+    #[test]
+    fn foreign_and_missing_ids_are_distinguished_without_retargeting() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let foreign_runtime = RuntimeNamespace::__runtime_new();
+        let store = SemanticStore::new();
+        let missing = runtime.__runtime_semantic_id(0, 1);
+        let foreign = foreign_runtime.__runtime_semantic_id(0, 1);
+        assert_eq!(store.target_status(&runtime, &missing), SemanticTargetStatus::Missing);
+        assert_eq!(store.target_status(&runtime, &foreign), SemanticTargetStatus::Foreign);
+    }
+
+    #[test]
+    fn semantic_capacity_failure_is_preflighted_without_partial_mutation() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let owner = runtime.__runtime_mounted_id(1, 1);
+        let mut store = SemanticStore::new();
+        assert_eq!(
+            store.reconcile_owner(
+                &runtime,
+                &owner,
+                Vec::new(),
+                &[SemanticKey::PRIMARY, key("extra")],
+                1,
+            ),
+            Err(SemanticIdentityExhausted)
+        );
+        assert_eq!(store.live_count(), 0);
+    }
 }
