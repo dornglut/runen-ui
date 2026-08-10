@@ -62,7 +62,7 @@ pub(super) struct MatrixMetrics {
 }
 
 impl MatrixMetrics {
-    fn absorb(&mut self, other: &Self) {
+    const fn absorb(&mut self, other: &Self) {
         self.total_rows += other.total_rows;
         self.owner_accepted += other.owner_accepted;
         self.implementation_complete += other.implementation_complete;
