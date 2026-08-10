@@ -15,6 +15,7 @@ use super::{
     arena::{MountedArena, MountedArenaCapacityError},
     node::MountedNode,
     reconcile::IncomingNode,
+    semantic::SemanticStore,
 };
 use crate::ReconciliationDiagnostic;
 
@@ -110,6 +111,7 @@ pub(crate) enum AutomationResolution {
 pub(crate) struct MountedTree<Action> {
     pub(super) runtime: RuntimeNamespace,
     pub(super) arena: MountedArena<MountedNode<Action>>,
+    pub(super) semantic_store: SemanticStore,
     pub(super) root: Option<MountedNodeId>,
     pub(super) shutdown: bool,
 }
@@ -119,6 +121,7 @@ impl<Action> MountedTree<Action> {
         Self {
             runtime: RuntimeNamespace::__runtime_new(),
             arena: MountedArena::new(),
+            semantic_store: SemanticStore::new(),
             root: None,
             shutdown: false,
         }
