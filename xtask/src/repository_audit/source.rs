@@ -322,10 +322,7 @@ fn audit_authority_definitions(
     }
 }
 
-fn audit_retired_authorities(
-    production: &[(ModuleMetrics, String)],
-    findings: &mut Vec<Finding>,
-) {
+fn audit_retired_authorities(production: &[(ModuleMetrics, String)], findings: &mut Vec<Finding>) {
     for (metrics, contents) in production {
         let path = path_text(&metrics.relative);
         for (line_index, line) in contents.lines().enumerate() {
