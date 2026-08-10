@@ -291,8 +291,7 @@ fn exercise_capture(runtime: &mut AppRuntime<App>) {
     let tokens = StyleTokens::new();
     let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
         &tokens,
-        LogicalSize::try_new(64.0, 64.0)
-            .unwrap_or_else(|_| unreachable!("surface size is finite")),
+        LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("surface size is finite")),
     ));
     let context = publication.input_context().clone();
     let node = publication
@@ -307,8 +306,8 @@ fn exercise_capture(runtime: &mut AppRuntime<App>) {
     let bounds = node.bounds();
     let inside = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
         .unwrap_or_else(|_| unreachable!("published point is finite"));
-    let outside = LogicalPoint::new(65.0, 65.0)
-        .unwrap_or_else(|_| unreachable!("outside point is finite"));
+    let outside =
+        LogicalPoint::new(65.0, 65.0).unwrap_or_else(|_| unreachable!("outside point is finite"));
 
     for event in [
         pointer_event(PointerPhase::Down, inside, context.clone()),
@@ -354,8 +353,16 @@ fn m4_close_02_downstream_widget_composes_public_m4_protocols() {
 
     facts.borrow_mut().clear();
     exercise_capture(&mut runtime);
-    assert!(facts.borrow().contains(&Fact::Capture(PointerCaptureKind::Gained)));
-    assert!(facts.borrow().contains(&Fact::Capture(PointerCaptureKind::Lost)));
+    assert!(
+        facts
+            .borrow()
+            .contains(&Fact::Capture(PointerCaptureKind::Gained))
+    );
+    assert!(
+        facts
+            .borrow()
+            .contains(&Fact::Capture(PointerCaptureKind::Lost))
+    );
     assert!(facts.borrow().contains(&Fact::CapturedMoveOutside));
 
     facts.borrow_mut().clear();
@@ -378,7 +385,11 @@ fn m4_close_02_downstream_widget_composes_public_m4_protocols() {
         ]
     );
 
-    let trace = runtime.trace().records().skip(trace_start).collect::<Vec<_>>();
+    let trace = runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .collect::<Vec<_>>();
     assert!(trace.iter().any(|record| matches!(
         record.kind(),
         TraceRecordKind::SemanticDefaultApplied {
