@@ -3,9 +3,9 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, Element, NoHostProtocol, StyleTokens, UiApp, View, Widget,
-    WidgetActivation, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetPaintProof,
-    WidgetSemanticProof, WidgetUpdateContext,
+    ChildLayout, ChildLayoutWidget, Element, NoHostProtocol, SemanticContribution,
+    SemanticContributionContext, StyleTokens, UiApp, View, Widget, WidgetActivation,
+    WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetPaintProof, WidgetUpdateContext,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase,
@@ -60,9 +60,13 @@ impl Widget<()> for InvalidationProbe {
         self.calls.paint.set(self.calls.paint.get() + 1);
         WidgetPaintProof::default()
     }
-    fn semantics(&self, (): &Self::State) -> WidgetSemanticProof {
+    fn semantics(
+        &self,
+        (): &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
         self.calls.semantics.set(self.calls.semantics.get() + 1);
-        WidgetSemanticProof::default()
+        SemanticContribution::empty()
     }
     fn diagnostics(&self, (): &Self::State) -> Vec<WidgetDiagnostic> {
         self.calls.diagnostics.set(self.calls.diagnostics.get() + 1);
