@@ -60,11 +60,7 @@ impl Widget<()> for InvalidationProbe {
         self.calls.paint.set(self.calls.paint.get() + 1);
         WidgetPaintProof::default()
     }
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         self.calls.semantics.set(self.calls.semantics.get() + 1);
         SemanticContribution::empty()
     }
