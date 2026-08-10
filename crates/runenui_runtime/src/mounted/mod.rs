@@ -12,6 +12,7 @@ mod namespace;
 mod node;
 mod reconcile;
 mod routing;
+mod semantic;
 mod tree;
 
 pub(crate) use capability_cache::{CachedCapability, CachedSemanticContribution, CapabilityCaches};
