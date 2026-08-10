@@ -270,13 +270,7 @@ mod tests {
         let b_id = first[2].id().clone();
 
         let reordered = store
-            .reconcile_owner(
-                &runtime,
-                &owner,
-                &first,
-                &[b, SemanticKey::PRIMARY, a],
-                8,
-            )
+            .reconcile_owner(&runtime, &owner, &first, &[b, SemanticKey::PRIMARY, a], 8)
             .unwrap_or_else(|_| unreachable!());
         assert_eq!(reordered[0].id(), &b_id);
         assert_eq!(reordered[1].id(), &primary);
@@ -291,13 +285,7 @@ mod tests {
         let mut store = SemanticStore::new();
         let extra = key("extra");
         let first = store
-            .reconcile_owner(
-                &runtime,
-                &owner,
-                &[],
-                &[SemanticKey::PRIMARY, extra],
-                2,
-            )
+            .reconcile_owner(&runtime, &owner, &[], &[SemanticKey::PRIMARY, extra], 2)
             .unwrap_or_else(|_| unreachable!());
         let removed = first[1].id().clone();
         let retained = store
