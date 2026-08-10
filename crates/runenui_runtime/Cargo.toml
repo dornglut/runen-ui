@@ -11,6 +11,7 @@ rust-version.workspace = true
 
 [dependencies]
 runenui_core = { path = "../runenui_core", version = "0.1.0" }
+serde_json = "1.0.151"
 
 [features]
 internal-test-seams = ["runenui_core/internal-test-seams"]

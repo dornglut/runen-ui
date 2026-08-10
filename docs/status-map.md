@@ -2,15 +2,17 @@
 
 > **Category: Current contract**
 
-This map reports the maturity of the active implementation at the current revision. It does not treat types, target documents, or historical code as implemented behavior.
+This map reports accepted framework maturity rather than treating unmerged proof
+branches, target documents, or historical code as supported behavior.
 
 M4D2 is complete, owner-accepted, and squash-merged. Its ten owned
 `TRACE-EXPORT-*` conformance rows are accepted support at the current headless
 proof level. M4D2 adds deterministic JSONL projection, explicit text/IME capture
 policy, optional non-`Debug` action labels, and a subordinate bounded trace sink
-without creating a second trace authority. Replay remains absent. M4D3 becomes
-the next implementation slice only after this post-merge authority reconciliation
-is accepted and merged.
+without creating a second trace authority. M4D3 is now the active proof candidate
+in draft PR #43, with its five implementation/proof rows independently validated
+as `proof-complete`; it remains unaccepted and unmerged. Replay therefore remains
+absent from accepted support until the M4D3 owner gate and guarded merge complete.
 
 ## Maturity states
 
@@ -56,8 +58,8 @@ No framework subsystem is currently `stable`.
 | Host neutrality | `usable` | Active core/runtime have no native window, GPU, ECS, platform-controller, or legacy dependencies | Neutrality alone is not a host integration contract | M10 |
 | Host/platform integration | `absent` | Core application host protocol and runtime wake acknowledgment are host-neutral seams only | No native event loop/window, DPI, clipboard, cursor, IME, drag/drop, accessibility bridge, or multi-window adapter | M4, M10 |
 | Raw controller/gamepad platform input | `absent` | None | No device connection/identity, raw button/axis translation, normalization/dead zones, or embedded-host mapping | M10 |
-| Testing and diagnostics | `partial` | Substantial proof-level integration tests; genuine downstream widget conformance; deterministic clock/tasks and open widget/style/layout inspection; strict lints; deterministic trace export/sink conformance | No unified M5 public harness, stable semantic queries, replay, UI/scene snapshots, fuzzing, property tests, benchmarks, or platform tests | M4–M5, M11 |
-| Trace and observability | `partial` | One bounded canonical M4D1-normalized sequence plus M4D2 deterministic JSONL v1 projection, default-redacted/explicit-full text and IME capture, optional static action labels, and a subordinate lazily bounded nonblocking sink with same-record delivery diagnostics | Replay remains absent; the sink/export surface is still headless proof infrastructure rather than a production observability service | M4D1–M4D2 owner-accepted; M4D3 blocked until reconciliation |
+| Testing and diagnostics | `partial` | Substantial proof-level integration tests; genuine downstream widget conformance; deterministic clock/tasks and open widget/style/layout inspection; strict lints; deterministic trace export/sink conformance | No unified M5 public harness, stable semantic queries, accepted replay, UI/scene snapshots, fuzzing, property tests, benchmarks, or platform tests | M4–M5, M11 |
+| Trace and observability | `partial` | Accepted support remains one bounded canonical M4D1-normalized sequence plus M4D2 deterministic JSONL v1 projection, default-redacted/explicit-full text and IME capture, optional static action labels, and a subordinate lazily bounded nonblocking sink with same-record delivery diagnostics | M4D3 replay exists only as an unaccepted proof candidate in draft PR #43; the sink/export surface remains headless proof infrastructure rather than a production observability service | M4D1–M4D2 owner-accepted; M4D3 proof candidate |
 | Source formats and devtools | `deferred` | Context-export tooling only; no UI source system | No parser, source mapping, inspector, hot reload, live preview, or visual authoring | M12 |
 | Advanced editor/game systems | `deferred` | Product direction only | No virtualization, advanced data controls, animation, overlays, docking, workspaces, or advanced multi-surface systems | M12 |
 | Legacy archive | `archived` | Git history and annotated tag `legacy-runenwerk-ui-archive-2026-07-11` preserve the audited tree | Removed from active content; salvage remains opt-in and must follow current architecture | M0B complete |
@@ -72,9 +74,15 @@ The accepted M4D2 feature head
 [PR #41](https://github.com/dornglut/runen-ui/pull/41) as
 `8c67655ffce438c2e35e6478e7299bd704033b8b`. All 23 changed-file blob
 identities match between the reviewed feature head and accepted squash. Its ten
-owned `TRACE-EXPORT-*` rows are `owner-accepted` through this authority
-reconciliation. M4D3 becomes the next implementation slice only after this
-post-merge reconciliation is accepted and merged. Semantic accessibility mapping
-and replay are not upgraded. M4 remains active and incomplete.
+owned `TRACE-EXPORT-*` rows are `owner-accepted` through the accepted post-merge
+M4D2 authority reconciliation.
+
+M4D3 is the active implementation/proof candidate in draft
+[PR #43](https://github.com/dornglut/runen-ui/pull/43). Its replay foundation,
+Counter reconstruction, migration authority audit, canonical-source Counter
+closure, and downstream public-only closure proofs are independently validated,
+and the five owned matrix rows are `proof-complete`. None of that is accepted
+support yet: the PR remains draft and unmerged, the three final M4 closure rows
+remain blocked, M4 remains active and incomplete, and M5 remains blocked.
 
 Merged acceptance evidence belongs in pull requests and the [public repository migration history](history/public-repository-migration.md). Volatile branch, head, blocker, and next-action state belongs in the [work-tracking system](work-tracking.md) and GitHub issues.

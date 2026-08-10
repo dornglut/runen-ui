@@ -13,6 +13,8 @@ const BROAD_REEXPORTS: usize = 10;
 const HIGH_TEST_LINES: usize = 800;
 const HIGH_TEST_COUNT: usize = 20;
 const MULTI_RESPONSIBILITY_COUNT: usize = 5;
+const SURFACE_PUBLICATION_ENTRYPOINT: &str = "publish_surface";
+const SURFACE_PUBLICATION_ENTRYPOINT_PATH: &str = "crates/runenui_runtime/src/app/surface.rs";
 
 const RESPONSIBILITY_TERMS: &[&str] = &[
     "application",
@@ -87,6 +89,154 @@ const AUTHORITIES: &[AuthoritySpec] = &[
     },
 ];
 
+#[derive(Clone, Copy)]
+enum RetiredAuthorityScope {
+    AnyDeclaration,
+    ExternallyPublicDeclaration,
+    PublicReexportOnly,
+}
+
+#[derive(Clone, Copy)]
+struct RetiredAuthoritySpec {
+    symbol: &'static str,
+    scope: RetiredAuthorityScope,
+}
+
+const RETIRED_AUTHORITIES: &[RetiredAuthoritySpec] = &[
+    RetiredAuthoritySpec {
+        symbol: "RuntimeNodeId",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "RuntimeNodeRef",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "RuntimeTreeIndex",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "WidgetState",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "WidgetStateMismatch",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "WidgetLifecycle",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "WidgetLifecycleRequest",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "ActivationCapacity",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "ActivationCommit",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "ActivationResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "PointerActivationResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "KeyboardActivationResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "InputEventResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "InputIntent",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "InputEvent",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "PointerFocusResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "FocusTargetResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "KeyboardFocusResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "dispatch",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "activate_node",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "handle_pointer_activation",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "handle_keyboard_activation",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "handle_input_event",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "on_press",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "resolve_pointer_event_target",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "set_focus",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "focus_first",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "focus_last",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "focus_next",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "focus_previous",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "handle_keyboard_focus",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "node_by_authored_id",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: SURFACE_PUBLICATION_ENTRYPOINT,
+        scope: RetiredAuthorityScope::PublicReexportOnly,
+    },
+];
+
 pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMetrics, String> {
     let production_files = collect_rust_files(root, &root.join("crates"), FileKind::Production)?;
     let test_files = collect_test_files(root)?;
@@ -106,6 +256,8 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMe
     }
 
     audit_authority_definitions(&production_metrics, findings);
+    audit_surface_publication_entrypoint(&production_metrics, findings);
+    audit_retired_authorities(&production_metrics, findings);
     audit_volatile_architecture_state(root, findings)?;
 
     Ok(SourceMetrics {
@@ -227,6 +379,165 @@ fn audit_authority_definitions(
             )),
         }
     }
+}
+
+fn audit_surface_publication_entrypoint(
+    production: &[(ModuleMetrics, String)],
+    findings: &mut Vec<Finding>,
+) {
+    let mut locations = Vec::new();
+    for (metrics, contents) in production {
+        for (index, line) in contents.lines().enumerate() {
+            if declaration_symbol(line).is_some_and(|(symbol, externally_public)| {
+                externally_public && symbol == SURFACE_PUBLICATION_ENTRYPOINT
+            }) {
+                locations.push(format!("{}:{}", path_text(&metrics.relative), index + 1));
+            }
+        }
+    }
+
+    match locations.as_slice() {
+        [] => {}
+        [location] if location.starts_with(SURFACE_PUBLICATION_ENTRYPOINT_PATH) => {}
+        [location] => findings.push(Finding::fatal(
+            "source.surface_publication_entrypoint_authority",
+            Some(location.clone()),
+            format!(
+                "any public `{SURFACE_PUBLICATION_ENTRYPOINT}` declaration must remain the `AppRuntime` method in {SURFACE_PUBLICATION_ENTRYPOINT_PATH}"
+            ),
+        )),
+        _ => findings.push(Finding::fatal(
+            "source.surface_publication_entrypoint_authority",
+            None::<String>,
+            format!(
+                "public `{SURFACE_PUBLICATION_ENTRYPOINT}` authority is declared multiple times: {}",
+                locations.join(", ")
+            ),
+        )),
+    }
+}
+
+fn audit_retired_authorities(production: &[(ModuleMetrics, String)], findings: &mut Vec<Finding>) {
+    for (metrics, contents) in production {
+        let path = path_text(&metrics.relative);
+        for (line_index, line) in contents.lines().enumerate() {
+            let Some((symbol, externally_public)) = declaration_symbol(line) else {
+                continue;
+            };
+            let Some(retired) = RETIRED_AUTHORITIES
+                .iter()
+                .find(|retired| retired.symbol == symbol)
+            else {
+                continue;
+            };
+            let forbidden = match retired.scope {
+                RetiredAuthorityScope::AnyDeclaration => true,
+                RetiredAuthorityScope::ExternallyPublicDeclaration => externally_public,
+                RetiredAuthorityScope::PublicReexportOnly => false,
+            };
+            if forbidden {
+                findings.push(Finding::fatal(
+                    "source.retired_m4_authority",
+                    Some(format!("{path}:{}", line_index + 1)),
+                    format!(
+                        "retired M1-M4 transitional authority `{symbol}` must not be declared in production source"
+                    ),
+                ));
+            }
+        }
+
+        for (line, statement) in public_reexport_statements(contents) {
+            for retired in RETIRED_AUTHORITIES {
+                if statement_identifiers(&statement).any(|token| token == retired.symbol) {
+                    findings.push(Finding::fatal(
+                        "source.retired_m4_authority",
+                        Some(format!("{path}:{line}")),
+                        format!(
+                            "retired M1-M4 transitional authority `{}` must not be externally re-exported",
+                            retired.symbol
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn declaration_symbol(line: &str) -> Option<(&str, bool)> {
+    let trimmed = line.trim_start();
+    if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with('#') {
+        return None;
+    }
+    let externally_public = trimmed.starts_with("pub ");
+    let mut declaration = trimmed
+        .strip_prefix("pub(crate) ")
+        .or_else(|| trimmed.strip_prefix("pub(super) "))
+        .or_else(|| trimmed.strip_prefix("pub(self) "))
+        .or_else(|| trimmed.strip_prefix("pub "))
+        .or_else(|| strip_pub_in(trimmed))
+        .unwrap_or(trimmed);
+
+    loop {
+        if let Some(rest) = declaration.strip_prefix("async ") {
+            declaration = rest;
+        } else if let Some(rest) = declaration.strip_prefix("const ") {
+            declaration = rest;
+        } else if let Some(rest) = declaration.strip_prefix("unsafe ") {
+            declaration = rest;
+        } else {
+            break;
+        }
+    }
+
+    for prefix in ["struct ", "enum ", "trait ", "type ", "fn "] {
+        if let Some(rest) = declaration.strip_prefix(prefix) {
+            let symbol = rest
+                .split(|character: char| {
+                    character.is_whitespace()
+                        || matches!(character, '<' | '(' | '{' | ';' | ':' | '=')
+                })
+                .next()
+                .unwrap_or_default();
+            if !symbol.is_empty() {
+                return Some((symbol, externally_public));
+            }
+        }
+    }
+    None
+}
+
+fn public_reexport_statements(contents: &str) -> Vec<(usize, String)> {
+    let mut statements = Vec::new();
+    let mut current: Option<(usize, String)> = None;
+
+    for (index, line) in contents.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim_start();
+        if let Some((start, statement)) = current.as_mut() {
+            statement.push(' ');
+            statement.push_str(trimmed);
+            if trimmed.contains(';') {
+                statements.push((*start, core::mem::take(statement)));
+                current = None;
+            }
+            continue;
+        }
+        if trimmed.starts_with("pub use ") {
+            if trimmed.contains(';') {
+                statements.push((line_number, trimmed.to_owned()));
+            } else {
+                current = Some((line_number, trimmed.to_owned()));
+            }
+        }
+    }
+
+    statements
+}
+
+fn statement_identifiers(statement: &str) -> impl Iterator<Item = &str> {
+    statement
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .filter(|token| !token.is_empty())
 }
 
 fn audit_volatile_architecture_state(
@@ -468,7 +779,18 @@ fn normalized_identifier(token: &str) -> &str {
 mod tests {
     use std::path::Path;
 
-    use super::{defines_struct, module_metrics, normalized_identifier};
+    use super::{
+        SURFACE_PUBLICATION_ENTRYPOINT_PATH, audit_retired_authorities,
+        audit_surface_publication_entrypoint, declaration_symbol, defines_struct, module_metrics,
+        normalized_identifier,
+    };
+
+    fn production_source(path: &str, contents: &str) -> (super::ModuleMetrics, String) {
+        (
+            module_metrics(Path::new(path), contents),
+            contents.to_owned(),
+        )
+    }
 
     #[test]
     fn authority_definition_parser_handles_visibility_and_generics() {
@@ -478,6 +800,18 @@ mod tests {
         ));
         assert!(defines_struct("pub struct Trace;", "Trace"));
         assert!(!defines_struct("let trace = Trace::new();", "Trace"));
+    }
+
+    #[test]
+    fn declaration_parser_handles_visibility_and_function_modifiers() {
+        assert_eq!(
+            declaration_symbol("pub const fn dispatch() {}"),
+            Some(("dispatch", true))
+        );
+        assert_eq!(
+            declaration_symbol("pub(crate) async unsafe fn internal() {}"),
+            Some(("internal", false))
+        );
     }
 
     #[test]
@@ -498,5 +832,55 @@ mod tests {
         assert!(metrics.responsibilities.contains("surface"));
         assert!(metrics.responsibilities.contains("queue"));
         assert!(metrics.responsibilities.contains("trace"));
+    }
+
+    #[test]
+    fn retired_authority_audit_rejects_declarations_and_reexports() {
+        let production = vec![production_source(
+            "crates/example/src/lib.rs",
+            "pub enum ActivationCapacity {}\npub const fn focus_next() {}\npub use crate::legacy::KeyboardActivationResult;\n",
+        )];
+        let mut findings = Vec::new();
+        audit_retired_authorities(&production, &mut findings);
+        assert_eq!(findings.len(), 3);
+        assert!(findings.iter().all(|finding| {
+            finding.code == "source.retired_m4_authority"
+                && finding.severity == super::super::Severity::Fatal
+        }));
+    }
+
+    #[test]
+    fn surface_publication_entrypoint_rejects_alternative_or_duplicate_authority() {
+        let mut findings = Vec::new();
+        audit_surface_publication_entrypoint(&[], &mut findings);
+        assert!(findings.is_empty());
+
+        let canonical = production_source(
+            SURFACE_PUBLICATION_ENTRYPOINT_PATH,
+            "pub fn publish_surface(&mut self) {}\n",
+        );
+        audit_surface_publication_entrypoint(std::slice::from_ref(&canonical), &mut findings);
+        assert!(findings.is_empty());
+
+        let alternative = production_source(
+            "crates/runenui_runtime/src/lib.rs",
+            "pub fn publish_surface() {}\n",
+        );
+        audit_surface_publication_entrypoint(std::slice::from_ref(&alternative), &mut findings);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].code,
+            "source.surface_publication_entrypoint_authority"
+        );
+        assert_eq!(findings[0].severity, super::super::Severity::Fatal);
+
+        findings.clear();
+        audit_surface_publication_entrypoint(&[canonical, alternative], &mut findings);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].code,
+            "source.surface_publication_entrypoint_authority"
+        );
+        assert_eq!(findings[0].severity, super::super::Severity::Fatal);
     }
 }

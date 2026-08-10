@@ -34,10 +34,11 @@ feature head `1bd7dcfdbb46dec52da62faabb739c835e971c80` after canonical exact-he
 CI run `31321448821` / #712 and the frozen complete-diff review passed. It was
 guarded-squash-merged in [PR #41](https://github.com/dornglut/runen-ui/pull/41)
 as `8c67655ffce438c2e35e6478e7299bd704033b8b`, and all 23 changed-file blob
-identities match between reviewed feature head and accepted squash. This separate
-post-merge authority reconciliation records the accepted M4D2 public/trace
-status; M4D3 remains blocked until this reconciliation is accepted and merged,
-and M4 remains active and incomplete. The accepted
+identities match between reviewed feature head and accepted squash. The M4D2
+post-merge authority reconciliation is also accepted and merged. M4D3 is now the
+active implementation/proof candidate: its five feature rows are
+`proof-complete`, but the slice remains unaccepted and unmerged, the three final
+M4 closure rows remain blocked, and M4 remains active and incomplete. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
 records target ownership and transaction decisions. The
 [M4 conformance matrix](m4-conformance-matrix.md) owns observable acceptance, and
@@ -81,12 +82,17 @@ vocabulary includes:
   `TraceRecordKind`, `TraceSurfaceIngressKind`, `TraceSurfaceSnapshotKind`,
   `TraceSurfaceRejection`, `TraceTarget`, `TraceSinkDeliveryOutcome`, `Trace`,
   `TraceJsonlLine`, `TraceSinkReceiveError`, and `TraceSinkReceiver`;
+- M4D3 proof-candidate offline replay types `TraceReplay`,
+  `TraceReplayCompleteness`, `TraceReplayError`, `TraceReplayKind`,
+  `TraceReplayRecord`, `TraceReplaySequence`, and `TraceReplayWorkSequence`;
 - read-only frame, style-report, layout-report, and publication products.
 
 The ordinary preludes remain narrow. Specialist runtime/mounted/lifecycle
 inspection is imported explicitly from crate roots. Generated IDs and
 sequences, queue/envelope storage, mounted state, arena storage, reconciliation
 reports, trace records, and publication products have no public constructors.
+Replay identities are separately typed observational values and have no
+conversion into live runtime-issued `TraceSequence` or `WorkSequence` authority.
 
 ## Queue, pump, and runtime status
 
@@ -450,8 +456,9 @@ not a public `CommandOrigin::keyboard()` constructor. M4C2 owns surface context,
 M4C3 implements pointer lifecycle/release-inside activation, M4C4 implements
 focus scopes/modality, M4C5 implements keyboard/text/composition and automation
 resolution, M4D1 implements normalized in-memory trace reconstruction, M4D2
-implements deterministic export and bounded subordinate sink delivery, M4D3
-owns replay, and M5 owns semantic accessibility mapping.
+implements deterministic export and bounded subordinate sink delivery, the M4D3
+proof candidate implements offline replay and final migration/closure proofs, and
+M5 owns semantic accessibility mapping.
 
 One runtime-owned `FocusState` retains the exact focused mounted lifetime, its
 committed focus-within route, exact-generation scope memories, last
@@ -687,6 +694,40 @@ path. An open sink receives the canonical `RuntimeShutdown` attempt before sende
 closure. The public sink surface exposes no arbitrary callback or runtime-work
 submission capability.
 
+## Offline trace replay
+
+The M4D3 proof candidate adds `TraceReplay::parse_jsonl(&str)` as an inert
+offline consumer of the serialized JSONL v1 projection. The manual M4D2 encoder
+remains protocol authority; replay does not consume live `TraceRecord` values and
+does not receive runtime, queue, host, callback, scheduler, or mutation
+capabilities.
+
+A replay document must begin with the `runenui.trace` version-1 header and then
+contain `runenui.trace.record` version-1 objects. The parser validates required
+field shapes, non-zero trace/work sequence identities, exact retained-record
+count, one contiguous retained canonical sequence segment, and strictly earlier
+causal parents. An export with no dropped watermark is `Complete`; an export
+with `dropped_before_sequence` is explicitly
+`TraceReplayCompleteness::DroppedPrefix` and never claims full causal history.
+Because retained records are contiguous from the declared watermark, every
+causal parent at or above that watermark is retained and every earlier missing
+parent is explained by the dropped prefix.
+
+`TraceReplaySequence` and `TraceReplayWorkSequence` deliberately duplicate only
+the serialized numeric observation in separate replay-only types. They expose
+`get()` for diagnostics and reconstruction, but no conversion or constructor can
+produce live `TraceSequence` or `WorkSequence` authority. `TraceReplayRecord`
+exposes stable kind name, replay-only sequence/work sequence, causal parent,
+reconciliation before/after generations, and optional logical instant. A Counter
+proof destroys the live runtime, parses only its owned JSONL string, and then
+reconstructs automation/focus, raw-keyboard derivation, routed default,
+application action/update/reconciliation, redraw, and publication ancestry. A
+structurally valid divergent projection fails that reconstruction instead of
+silently claiming equivalent behavior.
+
+This replay surface is part of the unmerged M4D3 proof candidate. It is not yet
+accepted support and does not close M4 by itself.
+
 M4C3 adds pointer submission, ordered validation and stream resolution,
 physical-path and boundary-bundle planning, default applied/suppressed,
 interaction commit, capture/boundary notification, activation/logical-scroll
@@ -729,8 +770,8 @@ longer retained. Ordinary eviction cannot affect application behavior. When
 enabled mandatory trace sequencing cannot advance for direct commands or
 already-accepted mutable work, the runtime becomes terminal before the pending
 mutable callback and cancels queued work. The accepted M4D2 export/sink surface
-is a projection/transport over the same canonical in-memory authority; replay
-remains M4D3 scope.
+remains the sole live projection/transport over the canonical in-memory
+authority; the M4D3 replay candidate consumes only its serialized output offline.
 
 ## Breaking migrations
 
@@ -790,7 +831,11 @@ Added:
 - M4D2 `TracePayloadCapture`, explicit FullText opt-in, deterministic
   `Trace::export_jsonl()`, optional static action labels, `TraceSinkDeliveryOutcome`,
   and the one-time `TraceSinkReceiver`/`TraceJsonlLine` nonblocking subordinate
-  sink surface.
+  sink surface;
+- M4D3 proof-candidate `TraceReplay`, `TraceReplayCompleteness`,
+  `TraceReplayError`, `TraceReplayKind`, `TraceReplayRecord`,
+  `TraceReplaySequence`, and `TraceReplayWorkSequence` for inert offline JSONL
+  validation and causal reconstruction.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
@@ -800,7 +845,8 @@ semantic commands, M4C2 displayed-generation surface context, the M4C3
 host-neutral pointer lifecycle, the owner-accepted M4C4 focus-scope/modality
 protocol, the owner-accepted M4C5 keyboard/text/composition and authored-ID
 automation implementation, the owner-accepted M4D1 normalized in-memory trace
-schema, and the owner-accepted M4D2 deterministic export/redaction/bounded-sink
-surface. It does not imply native host translation, production scrolling,
-editable text, platform IME objects, M4D3 replay, M5 semantic accessibility
-mapping, or M4 completion.
+schema, the owner-accepted M4D2 deterministic export/redaction/bounded-sink
+surface, and the unaccepted M4D3 offline replay proof candidate. It does not
+imply native host translation, production scrolling, editable text, platform IME
+objects, M5 semantic accessibility mapping, accepted M4D3 support, or M4
+completion.

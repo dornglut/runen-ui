@@ -12,22 +12,19 @@ M4C0–M4D3 delivery sequence. This matrix defines observable acceptance and pro
 ownership; neither the charter nor a private implementation seam can weaken a
 row here.
 
-Current audited branch state after M4D2 owner acceptance and guarded squash
-merge. The accepted feature head
-`1bd7dcfdbb46dec52da62faabb739c835e971c80` passed exact-head CI run
-`31321448821` / #712 and was squash-merged in
-[PR #41](https://github.com/dornglut/runen-ui/pull/41) as
-`8c67655ffce438c2e35e6478e7299bd704033b8b`. All 23 changed-file blob
-identities match between the reviewed feature head and accepted squash. All ten
-M4D2-owned `TRACE-EXPORT-*` rows are owner-accepted through this post-merge
-authority reconciliation. M4D3 and M4 closure remain blocked until this
-reconciliation itself is accepted and merged:
+Current audited branch candidate after M4D2 owner acceptance and guarded squash
+merge. M4A through M4D2 remain owner-accepted. The M4D3 replay, migration, Counter,
+and downstream closure proof package is present in draft PR #43; its five
+M4D3-owned implementation/proof rows are proof-complete pending explicit owner
+acceptance and merge. The three final M4 closure rows remain blocked until that
+owner gate and merge complete. M4 therefore remains active and incomplete, and
+M5 remains blocked:
 
 ```text
 237 total unique rows
 227 owner-accepted
-0 proof-complete
-10 blocked
+5 proof-complete
+5 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -324,8 +321,8 @@ not imply routed-event or M4D support.
 | TRACE-EXPORT-08 | Sink diagnostic recursion guard never redelivers a failure diagnostic through the same failing path. | Recursion-guard test | Repeated/unbounded diagnostic proof | One canonical sink diagnostic | M4D2 | owner-accepted | Required |
 | TRACE-EXPORT-09 | Sink refusal/failure cannot remove, reorder, or alter the canonical retained trace or application/runtime behavior. | Behavioral-isolation test | Canonical diff and output equality proof | Canonical/sink comparison | M4D2 | owner-accepted | Required |
 | TRACE-EXPORT-10 | Sink delivery is bounded or try-based and never blocks or runs arbitrary work inside a mutable runtime transaction. | Sink transaction-isolation test | Blocking, reentrancy, and lock-held callback proof | M4D2 sink-delivery diagnostics | M4D2 | owner-accepted | Required |
-| REPLAY-01 | Replay foundation consumes the versioned causal projection without becoming a second live runtime authority. | Replay protocol conformance | Mutation/queue authority and unsupported-version proof | M4D3 replay diagnostics | M4D3 | blocked | Required |
-| REPLAY-02 | Counter reconstructs command/input, route/default, interaction transition, action/update/reconciliation, work, wake/redraw, and publication at the exact head. | End-to-end Counter replay proof | Missing-parent, dropped-prefix, and divergent-output proof | M4D3 replay trace | M4D3 | blocked | Required |
+| REPLAY-01 | Replay foundation consumes the versioned causal projection without becoming a second live runtime authority. | `m4d3_trace_replay` serialized projection conformance | Unsupported-version/gap/truncation proof plus replay-to-live work compile-fail | Versioned JSONL replay projection | M4D3 | proof-complete | Required |
+| REPLAY-02 | Counter reconstructs command/input, route/default, interaction transition, action/update/reconciliation, work, wake/redraw, and publication at the exact head. | `examples/counter/tests/replay_reconstruction.rs` | Missing-parent/dropped-prefix and divergent-projection proof | Counter causal replay reconstruction | M4D3 | proof-complete | Required |
 
 ## Migration and M4 closure
 
@@ -338,9 +335,9 @@ not imply routed-event or M4D support.
 | MIGRATION-05 | Any temporarily retained focus-only helper emits no action, invokes no activation, and names its exact M4C3/M4C4/M4C5 removal owner. | Transitional API conformance | Action/activation bypass proof | Focus-helper trace absence/command trace proof | M4C1 | owner-accepted | Required |
 | MIGRATION-06 | Remaining pointer proof helpers are removed after the M4C3 public pointer path lands. | Public API/compile migration | Repository symbol audit | M4C3 canonical pointer trace | M4C3 | owner-accepted | Required |
 | MIGRATION-07 | Remaining keyboard/input proof helpers and transitional result types are removed after M4C5 convergence. | Public API/compile migration | Repository symbol audit | M4C5 canonical input trace | M4C5 | owner-accepted | Required |
-| MIGRATION-08 | Final M1–M3/M4A compatibility stores, bypasses, and transitional public authority are absent before M4 closes. | Repository API and symbol audit | Downstream compile-fail and no-parallel-path proof | M4D3 reconstruction audit | M4D3 | blocked | Required |
-| M4-CLOSE-01 | Counter completes pointer, keyboard, controller, accessibility-stub, automation, and programmatic interaction through public canonical paths. | Counter M4 conformance | Cancellation/stale/disabled source proofs | End-to-end Counter trace | M4D3 | blocked | Required |
-| M4-CLOSE-02 | A downstream widget completes routing, defaults, focus/capture/composition, work output, and action mapping through public APIs. | Downstream M4 conformance | No privileged bridge/registry/bypass proof | Downstream causal trace | M4D3 | blocked | Required |
+| MIGRATION-08 | Final M1–M3/M4A compatibility stores, bypasses, and transitional public authority are absent before M4 closes. | Canonical `cargo xtask audit-repository` source authority audit | Core/runtime/downstream compile-fail boundaries and synthetic audit rejection fixtures | M4D3 Counter reconstruction over the canonical trace | M4D3 | proof-complete | Required |
+| M4-CLOSE-01 | Counter completes pointer, keyboard, controller, accessibility-stub, automation, and programmatic interaction through public canonical paths. | `examples/counter/tests/m4_closure.rs` | Existing cancellation/stale/disabled source proofs | Counter closure JSONL/replay trace | M4D3 | proof-complete | Required |
+| M4-CLOSE-02 | A downstream widget completes routing, defaults, focus/capture/composition, work output, and action mapping through public APIs. | `tests/external_widget/tests/m4_closure.rs` | Public-only downstream boundary and no privileged registry/bypass proof | Composed route/default/capture/composition/local-work trace | M4D3 | proof-complete | Required |
 | M4-CLOSE-03 | Every Required row is owner-accepted on stable and Rust 1.93.0 at one exact head. | `cargo validate` and matrix audit | Duplicate/missing row, failed validation, and dirty-head proof | Exact-head trace fixtures | M4D3 | blocked | Required |
 | M4-CLOSE-04 | Exact-head GitHub CI passes, current API/status/support documents are truthful, and M4 is explicitly owner-accepted and merged. | CI and owner review | Stale claim/link/diff audit | Exact-head CI artifacts | M4D3 | blocked | Required |
 | M4-CLOSE-05 | Only after M4 closure may M5 implementation become unblocked; M5 ordering and scope remain unchanged. | Roadmap/status audit | Premature M5 work proof | Milestone acceptance record | M4D3 | blocked | Required |

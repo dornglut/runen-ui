@@ -284,10 +284,6 @@ completion.
 repository owner accepted M4C0, and no runtime implementation or API scaffold was
 introduced.
 
-**Subsequent record:** M4C1–M4C5, M4D1, and M4D2 are complete, owner-accepted,
-and merged. M4D3 remains blocked until the M4D2 post-merge authority
-reconciliation is accepted and merged.
-
 #### M4C1 — Routed semantic-command kernel
 
 **Status:** `complete`; owner-accepted and squash-merged in [archive PR #77](history/public-repository-migration.md#accepted-imported-milestone-history).
@@ -332,8 +328,6 @@ widget use public command APIs. All 36 corrected M4C1 rows are `owner-accepted`.
 was owner-accepted. [archive PR #77](history/public-repository-migration.md#accepted-imported-milestone-history) was squash-merged on 2026-07-19 as
 `44ceee29c73cea1237fefbd30db4baf2cd97b93d`.
 
-**Next implementation slice:** M4C2 is complete, owner-accepted, and squash-merged; M4C3 follows the public prerequisites recorded in the work-tracking system.
-
 #### M4C2 — Displayed-generation surface context
 
 **Status:** `complete`; owner-accepted and squash-merged in [archive PR #99](history/public-repository-migration.md#accepted-imported-milestone-history).
@@ -369,8 +363,6 @@ baseline and final review. Hosted CI run `29802050579` failed before step 1 with
 no job steps; the owner recorded the documented infrastructure-only waiver.
 [archive PR #99](history/public-repository-migration.md#accepted-imported-milestone-history) was squash-merged as `9dbf2b6bc781b4e29e3e9ce10388742eccc90124`.
 
-**Next implementation slice:** M4C3 follows the public prerequisites recorded in the work-tracking system.
-
 #### M4C3 — Pointer lifecycle
 
 **Status:** `complete`; owner-accepted and squash-merged in
@@ -401,10 +393,6 @@ release-inside; no press-only pointer helper remains.
 `2fc165b9386f55c061d61232400375b13ad175bf`. All 28 M4C3 rows are
 `owner-accepted`; M4 remains active and incomplete.
 
-**Subsequent record:** M4C4, M4C5, M4D1, and M4D2 subsequently completed and
-were owner-accepted. M4D3 remains blocked until the M4D2 post-merge authority
-reconciliation is accepted and merged.
-
 #### M4C4 — Focus scopes and modality
 
 **Status:** `complete`; owner-accepted and squash-merged in
@@ -434,10 +422,6 @@ no direct focus-command bypass remains.
 `30006170403` and was owner-accepted. PR #22 was squash-merged as
 `f95571634a9c6528e5834e9589b048ad5197bd15`. All 32 M4C4 rows are
 `owner-accepted`; M4 remains active and incomplete.
-
-**Subsequent record:** M4C5, M4D1, and M4D2 are complete, owner-accepted, and
-squash-merged. M4D3 remains blocked until the M4D2 post-merge authority
-reconciliation is accepted and merged.
 
 #### M4C5 — Keyboard, text, IME, automation, and M4C closure
 
@@ -478,10 +462,6 @@ automation work/trace-sequence exhaustion is inert and recoverable rather than
 terminalizing the runtime. Direct commands and already-accepted work retain the
 ordinary terminal exhaustion policy.
 
-**Subsequent record:** M4D1 and M4D2 subsequently completed, were owner-accepted,
-and were squash-merged. M4D3 remains blocked until M4D2's post-merge authority
-reconciliation is accepted and merged.
-
 #### M4D1 — Complete trace schema
 
 **Status:** `complete`; owner-accepted and squash-merged in
@@ -514,10 +494,6 @@ checked ranges; reconstructs cleanup/terminal/shutdown ancestry; proves
 non-`Debug` action identity; and closes the full Counter/public reconstruction.
 All ten `TRACE-EVENT-*` rows are owner-accepted through the post-merge authority
 reconciliation.
-
-**Subsequent record:** M4D2 subsequently completed, was owner-accepted, and was
-squash-merged. M4D3 remains blocked until M4D2's post-merge authority
-reconciliation is accepted and merged.
 
 #### M4D2 — Export and external sink
 
@@ -558,14 +534,11 @@ capacity-zero diagnostic dormancy without a second trace/history authority. All
 ten `TRACE-EXPORT-*` rows become owner-accepted through this post-merge authority
 reconciliation.
 
-**Next unblocked slice:** M4D3 only after this post-merge authority
-reconciliation is owner-accepted, squash-merged, and recorded on accepted
-`main`.
+**Unblocks:** M4D3.
 
 #### M4D3 — Replay and milestone closure
 
-**Status:** `blocked` pending acceptance and merge of the M4D2 post-merge
-authority reconciliation.
+**Status:** `active`.
 
 **Goal:** Complete replay foundation, Counter causal reconstruction, final
 migration/current-document cleanup, and the exact M4 acceptance gate.
@@ -583,10 +556,15 @@ editable text, native hosts, or later milestone work.
 M4 conformance, repository truth audit, `cargo validate`, exact-head CI, owner
 review, and merge.
 
+**Acceptance gate:** M4D3 implementation/proof rows may become `proof-complete`
+before owner review. M4D3 and M4 remain incomplete until explicit owner
+acceptance, guarded feature merge, and the final M4 authority reconciliation are
+complete. M5 remains blocked until that final M4 closure.
+
 **Exit criteria:** Every M4-gating matrix row is owner-accepted, M4 is explicitly
 accepted and merged, and no transitional authority remains.
 
-**Next unblocked slice:** M5 semantics and deterministic public testing.
+**Unblocks after completion:** M5 semantics and deterministic public testing.
 
 **Required proofs/tests:** The normative [M4 conformance matrix](architecture/m4-conformance-matrix.md) and every vector in the [directional-focus corpus](architecture/m4-directional-focus-corpus.md) must pass through public APIs. They cover exact event-family and command-default policy; current/previous/retired/foreign/missing surface generations, no retargeting, and terminal pointer cleanup; cross-pointer publication order; pointer/keyboard/normalized-controller/accessibility-stub/automation/programmatic convergence; deterministic focus/scopes/restoration; capture/composition/boundary/cancellation/release cases; exact initial work ordering, state-derived application subscriptions, and owner-local complete mounted declarations; readiness checkpoints and separate pump budgets; deterministic task/timer/subscription/host ordering; one-attempt executor start/refusal and optional failure mapping; all four same-batch keyed cancellation/start cases; exact host response-kind validation; queue limits and no-silent-drop behavior; wake/redraw races; terminal integrity; bounded canonical trace reconstruction and bounded sink backpressure/recursion behavior; and idempotent shutdown.
 

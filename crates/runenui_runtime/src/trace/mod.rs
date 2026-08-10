@@ -10,6 +10,7 @@ mod context;
 mod export;
 mod input_context;
 mod model;
+mod replay;
 mod sink;
 mod store;
 
@@ -36,6 +37,10 @@ pub use model::{
     TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
     TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
     TraceWorkStartRefusal,
+};
+pub use replay::{
+    TraceReplay, TraceReplayCompleteness, TraceReplayError, TraceReplayKind, TraceReplayRecord,
+    TraceReplaySequence, TraceReplayWorkSequence,
 };
 use sink::TraceSink;
 pub use sink::{TraceJsonlLine, TraceSinkReceiveError, TraceSinkReceiver};
