@@ -1,8 +1,8 @@
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
-use crate::{MountedNodeId, SemanticNodeId};
+use crate::MountedNodeId;
 use runenui_core::{
-    Axis, ChildLayout, ElementId, LayoutStyle, StyleResolution, StyleTokens, WidgetDiagnostic,
-    WidgetMeasure, WidgetPaintProof, WidgetSemanticProof, WidgetTypeId, resolve_style,
+    Axis, ChildLayout, ElementId, LayoutStyle, SemanticContribution, StyleResolution, StyleTokens,
+    WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetTypeId, resolve_style,
 };
 
 /// Topology and publication-alignment facts for one mounted preorder.
@@ -16,7 +16,6 @@ pub(super) struct SurfaceTopologySnapshot {
 #[derive(Clone, Debug)]
 pub(super) struct SurfaceTopologyNode {
     pub(super) id: MountedNodeId,
-    pub(super) semantic_id: SemanticNodeId,
     pub(super) parent: Option<MountedNodeId>,
     pub(super) authored_id: Option<ElementId>,
     pub(super) widget_type_id: WidgetTypeId,
@@ -37,7 +36,6 @@ pub(super) fn collect_topology<Action>(
                 .unwrap_or_else(|| unreachable!("publication preorder remains live"));
             SurfaceTopologyNode {
                 id: node.id.clone(),
-                semantic_id: node.semantic_id.clone(),
                 parent: node.parent.clone(),
                 authored_id: node.authored_id.clone(),
                 widget_type_id: node.widget.widget_type_id(),
@@ -103,7 +101,6 @@ pub(super) fn resolve_styles<Action>(
             .map(|(node, resolution)| {
                 SurfaceStyleNode::new(
                     node.id.clone(),
-                    node.semantic_id.clone(),
                     node.parent.clone(),
                     node.authored_id.clone(),
                     resolution.clone(),
@@ -187,9 +184,6 @@ impl ResolvedSurfaceNode {
     pub(super) const fn id(&self) -> &MountedNodeId {
         &self.topology.id
     }
-    pub(super) const fn semantic_id(&self) -> &SemanticNodeId {
-        &self.topology.semantic_id
-    }
     pub(super) const fn parent(&self) -> Option<&MountedNodeId> {
         self.topology.parent.as_ref()
     }
@@ -234,7 +228,7 @@ pub(super) fn resolve_paint<Action>(
 pub(super) fn resolve_semantics<Action>(
     tree: &mut crate::mounted::MountedTree<Action>,
     topology: &SurfaceTopologySnapshot,
-) -> Vec<WidgetSemanticProof> {
+) -> Vec<SemanticContribution> {
     #[cfg(test)]
     super::cache::note_semantics_phase_execution();
     topology
