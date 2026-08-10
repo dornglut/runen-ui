@@ -1,6 +1,6 @@
 use runenui_core::{
-    ChildLayout, WidgetActivation, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
-    WidgetSemanticProof, WidgetTextInput,
+    ChildLayout, SemanticContribution, SemanticContributionError, WidgetActivation,
+    WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetTextInput,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -20,6 +20,24 @@ impl<T: Clone> CachedCapability<T> {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub(crate) enum CachedSemanticContribution {
+    #[default]
+    Unresolved,
+    Ready(SemanticContribution),
+    Invalid(SemanticContributionError),
+    StatePayloadMismatch,
+}
+
+impl CachedSemanticContribution {
+    pub(crate) fn ready(&self) -> Option<SemanticContribution> {
+        match self {
+            Self::Ready(value) => Some(value.clone()),
+            Self::Unresolved | Self::Invalid(_) | Self::StatePayloadMismatch => None,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct CapabilityCaches {
     pub(crate) activation: CachedCapability<WidgetActivation>,
@@ -27,6 +45,6 @@ pub(crate) struct CapabilityCaches {
     pub(crate) measurement: CachedCapability<WidgetMeasure>,
     pub(crate) child_layout: CachedCapability<Option<ChildLayout>>,
     pub(crate) paint: CachedCapability<WidgetPaintProof>,
-    pub(crate) semantics: CachedCapability<WidgetSemanticProof>,
+    pub(crate) semantics: CachedSemanticContribution,
     pub(crate) diagnostics: CachedCapability<Vec<WidgetDiagnostic>>,
 }
