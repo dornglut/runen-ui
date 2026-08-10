@@ -40,9 +40,7 @@ impl<T> GenerationalArena<T> {
         let unavailable = self
             .slots
             .iter()
-            .filter(|slot| {
-                slot.retired || (slot.value.is_none() && slot.generation == u64::MAX)
-            })
+            .filter(|slot| slot.retired || (slot.value.is_none() && slot.generation == u64::MAX))
             .count()
             .checked_add(additionally_retired)
             .ok_or(ArenaCapacityError)?;
@@ -181,10 +179,7 @@ mod tests {
     fn public_slot_capacity_is_checked_before_create_runs() {
         let mut arena = GenerationalArena::new();
         let mut calls = 0usize;
-        assert_eq!(
-            arena.preflight_live_count(2, 1),
-            Err(ArenaCapacityError)
-        );
+        assert_eq!(arena.preflight_live_count(2, 1), Err(ArenaCapacityError));
         assert_eq!(calls, 0);
         assert_eq!(arena.preflight_live_count(1, 1), Ok(()));
         assert_eq!(
@@ -209,10 +204,7 @@ mod tests {
     fn exhausted_vacancy_is_skipped_and_counted_unusable() {
         let mut arena = GenerationalArena::new();
         arena.seed_vacant(u64::MAX);
-        assert_eq!(
-            arena.preflight_live_count(1, 1),
-            Err(ArenaCapacityError)
-        );
+        assert_eq!(arena.preflight_live_count(1, 1), Err(ArenaCapacityError));
         assert_eq!(arena.insert_with(|_, _| "next"), Ok((1, 1)));
         assert_eq!(arena.get(1, 1), Some(&"next"));
     }
