@@ -370,7 +370,7 @@ fn audit_retired_authorities(production: &[(ModuleMetrics, String)], findings: &
 
 fn declaration_symbol(line: &str) -> Option<(&str, bool)> {
     let trimmed = line.trim_start();
-    if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("#") {
+    if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with('#') {
         return None;
     }
     let externally_public = trimmed.starts_with("pub ");
