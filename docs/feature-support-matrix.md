@@ -19,12 +19,13 @@ M4B, M4C0–M4C5, M4D1, and M4D2 are complete and owner-accepted. The accepted M
 feature head `1bd7dcfdbb46dec52da62faabb739c835e971c80` passed exact-head CI run
 `31321448821` / #712 and was squash-merged in
 [PR #41](https://github.com/dornglut/runen-ui/pull/41) as
-`8c67655ffce438c2e35e6478e7299bd704033b8b`. This document promotes the
-accepted deterministic JSONL v1 projection, explicit text/IME capture policy,
-optional non-`Debug` action labels, and subordinate bounded trace sink. Replay,
-editable text, native host translation, and semantic accessibility resolution
-remain outside M4D2. M4D3 becomes the next implementation slice only after this
-post-merge authority reconciliation is accepted and merged. Exact branch, head,
+`8c67655ffce438c2e35e6478e7299bd704033b8b`. Its post-merge authority
+reconciliation is also accepted and merged. Accepted support therefore includes
+the deterministic JSONL v1 projection, explicit text/IME capture policy,
+optional non-`Debug` action labels, and subordinate bounded trace sink. M4D3 is
+the active proof candidate and its five implementation/proof rows are
+`proof-complete`, but the slice remains unaccepted and unmerged; its offline
+replay surface is not promoted to accepted support here. Exact branch, head,
 blocker, validation, and next-action state belongs in the
 [work-tracking system](work-tracking.md), GitHub issues, and pull requests.
 Historical acceptance evidence remains in the [public repository migration
@@ -236,13 +237,13 @@ history](history/public-repository-migration.md).
 | Workspace unit/integration tests | `supported` | Substantial deterministic proof suite plus a public-only downstream custom-widget package | No unified M5 harness and Ubuntu-only CI | M5, M11 |
 | Strict formatting and linting | `supported` | Shared `cargo validate` runs stable rustfmt, locked tests, Clippy `-D warnings`, MSRV tests, and link checks locally and in CI | Current CI is Ubuntu-only; the production platform matrix remains later work | M0 |
 | Style/layout diagnostics | `supported` | Mounted-aligned reports, runtime mismatch diagnostics, fresh surface generation/revision context, and debug output | No stable severity/strict mode | M4C2 owner-accepted; M5–M7 |
-| Runtime trace | `partial` | One bounded canonical M4D1-normalized graph plus M4D2 deterministic JSONL v1 export, explicit redacted/full text and IME capture, optional static action labels, and same-record bounded-sink delivery diagnostics | Replay remains absent; export/sink are headless proof infrastructure rather than a production observability service | M4D1–M4D2 owner-accepted; M4D3 blocked until reconciliation |
-| Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, exclusive dropped-before watermark, normalized-schema proof, and deterministic v1 projection | Retention/export do not provide replay | M4D1–M4D2 owner-accepted |
+| Runtime trace | `partial` | Accepted support is one bounded canonical M4D1-normalized graph plus M4D2 deterministic JSONL v1 export, explicit redacted/full text and IME capture, optional static action labels, and same-record bounded-sink delivery diagnostics | M4D3 adds an unaccepted offline replay proof candidate over serialized JSONL; export/sink remain headless proof infrastructure rather than a production observability service | M4D1–M4D2 owner-accepted; M4D3 proof candidate |
+| Bounded canonical trace retention | `proof` | Configured capacity including zero, oldest-first eviction, non-wrapping `TraceSequence`, borrowed iteration, exclusive dropped-before watermark, normalized-schema proof, and deterministic v1 projection | Accepted retention/export do not themselves imply replay; the M4D3 candidate consumes the serialized projection offline | M4D1–M4D2 owner-accepted; M4D3 proof candidate |
 | Bounded external trace sink | `proof` | One-time public receiver; lazy atomic logical capacity; immutable canonical-record handoff; consumer-side JSON encoding; structured `Delivered`/`Full`/first `Closed` outcomes; shutdown closure; four-state isolation proof | Subordinate headless diagnostic transport only; no arbitrary callback/work capability or replay authority | M4D2 owner-accepted |
 | Public headless test harness | `planned` | Current tests prove demand | No `runenui_testing` public boundary | M5 |
 | Semantic/layout/hit/paint assertions | `planned` | Layout/frame internals are inspectable | No unified public assertions | M5–M6 |
 | Deterministic time/tasks | `proof` | Manual monotonic clock, wake-aware local tasks, injectable send executor | Unified M5 harness absent | M4B complete; M5 |
-| Snapshot/golden/replay tests | `partial` | Deterministic JSONL v1 repeated-execution and exact-escaping proofs provide export snapshot coverage | Replay protocol/engine remains absent | M4D2 owner-accepted; M4D3 blocked |
+| Snapshot/golden/replay tests | `partial` | Accepted M4D2 deterministic JSONL snapshots are byte-stable; the M4D3 proof candidate additionally round-trips real exported JSONL, diagnoses dropped-prefix incompleteness, and reconstructs Counter causality after the live runtime is gone | Replay remains unaccepted until the M4D3 owner gate/merge, and the unified public M5 testing harness is absent | M4D2 owner-accepted; M4D3 proof candidate; M5 |
 | Property/fuzz testing | `unsupported` | None | Production hardening work | M11 |
 | Benchmarks and budgets | `unsupported` | None | No performance gates | M11 |
 | Cross-platform CI | `unsupported` | Ubuntu-only CI | Windows/macOS jobs absent | M11 |
