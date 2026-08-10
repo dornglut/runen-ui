@@ -27,8 +27,9 @@ fn typed_builders_use_the_open_widget_protocol() {
     let semantics = button_widget
         .semantics(&button_state, SemanticContributionContext::default())
         .unwrap_or_else(|_| unreachable!());
-    let [SemanticItem::Node(button_node)] = semantics.roots() else {
-        panic!("button contributes exactly one semantic node");
+    assert_eq!(semantics.roots().len(), 1);
+    let SemanticItem::Node(button_node) = &semantics.roots()[0] else {
+        unreachable!("button contributes one semantic node")
     };
     assert_eq!(button_node.role(), SemanticRole::Button);
     assert_eq!(button_node.name(), Some("Save"));
