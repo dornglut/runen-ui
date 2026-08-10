@@ -97,6 +97,12 @@ responsibilities:
 - plain-text semantic content with an extension boundary that can grow into the
   M8 text-range model without giving M5 fake editing behavior.
 
+`SemanticKey` has one reserved primary value for the ordinary one-semantic-node
+widget case. A simple text/button/custom control therefore does not invent a
+string merely to receive stable identity. Additional/virtual semantic nodes use
+explicit owner-local keys. The reserved primary key participates in the same
+uniqueness and lifetime rules as every other key.
+
 The vocabulary is `#[non_exhaustive]` where later controls/text legitimately add
 variants. M5 does not add placeholder actions that silently do nothing.
 
@@ -123,18 +129,31 @@ Each contributed node has one `SemanticKey` unique within its exact mounted
 owner. Runtime validates the complete contribution before accepting it as the
 owner's semantic description.
 
-A contribution is an owner-local forest. It may designate one explicit splice
-point at which the semantic forests of mounted child elements are inserted.
-This prevents renderer/mounted topology from being copied blindly while still
-allowing transparent wrappers and virtual semantic descendants.
+A contribution is an ordered owner-local semantic forest. Its semantic child
+sequence may contain one explicit **mounted-children marker** at most once across
+the whole contribution. That marker inserts the semantic roots contributed by
+this mounted owner's direct mounted children in their deterministic mounted
+logical order. Local semantic nodes may appear before or after that marker.
+
+The marker deliberately represents all direct mounted-child semantic roots as
+one ownership boundary. A parent contribution cannot cherry-pick/reparent one
+child owner's private semantic descendants. If a mounted child needs virtual
+ordering inside its semantic subtree, that child owner expresses it in its own
+contribution. This keeps semantic identity and lifetime ownership local while
+still allowing transparent wrappers and virtual semantic descendants.
 
 Required composition behavior:
 
 - an owner with no semantic roots is transparent; mounted child semantic roots
-  splice into the nearest semantic ancestor;
-- an explicit mounted-child splice point fixes parent and ordering; no implicit
-  first/last semantic root is selected;
-- duplicate `SemanticKey` values or structurally invalid splice references are
+  splice into the nearest semantic ancestor in mounted logical order;
+- a present mounted-children marker fixes the exact semantic parent and sequence
+  position of direct child semantic roots;
+- a contribution with mounted children and no explicit marker uses one
+  documented default placement only if its local forest has no semantic node
+  capable of owning the marker; otherwise the structurally ambiguous
+  contribution is rejected rather than guessed;
+- more than one mounted-children marker is invalid;
+- duplicate `SemanticKey` values or structurally invalid marker references are
   rejected deterministically and diagnosed;
 - invalid owner contribution never causes first/last-match recovery;
 - recursive component action mapping leaves semantic contribution unchanged.
@@ -259,9 +278,14 @@ snapshot is independently typed and consumable. A renderer can consume the
 frame without semantic vocabulary; an accessibility/test consumer can consume
 semantics without interpreting paint proof kinds.
 
-The semantic snapshot exposes deterministic tree order and read-only lookup by
-exact `SemanticNodeId`. It contains the complete current semantic product needed
-by an adapter or test query.
+The semantic snapshot exposes deterministic tree order, an ordered top-level
+`roots` list, and read-only lookup by exact `SemanticNodeId`. RunenUI does not
+fabricate a semantic wrapper node solely because one platform adapter expects a
+single root. An adapter that requires one platform root may synthesize an
+adapter-local root outside RunenUI semantic identity authority.
+
+The snapshot contains the complete current semantic product needed by an
+adapter or test query.
 
 ## Incremental semantic updates
 
@@ -277,6 +301,13 @@ previous revision to the next revision. Updates can represent:
 - relationship changes;
 - runtime focus changes;
 - logical bounds changes.
+
+Update ordering is fixed rather than map-iteration-dependent:
+
+- removals follow the previous semantic snapshot's deterministic semantic order;
+- added/changed node payloads follow the new snapshot's deterministic semantic
+  order;
+- root order and focus are explicit update facts when they change.
 
 An unchanged publication retains its semantic revision and reports no fabricated
 update.
@@ -297,7 +328,7 @@ deterministic, and independent from paint/debug strings.
 At minimum diagnostics distinguish:
 
 - duplicate owner-local semantic key;
-- invalid mounted-child splice reference;
+- invalid or duplicate mounted-children marker;
 - missing local relationship target;
 - missing cross-owner authored target;
 - ambiguous cross-owner authored target;
@@ -322,10 +353,31 @@ Submission performs no callback. It:
 7. submits through the accepted canonical command preflight/FIFO/wake/routed
    transaction authority.
 
-M5 semantic action vocabulary contains only commands with real accepted
-behavior. Expected initial mappings include activation, focus request,
-menu/context-menu, and logical scrolling where semantically valid. M8/M9 own
-value mutation and text editing actions.
+The exact initial M5 action vocabulary is:
+
+```text
+SemanticAction::Activate
+  -> SemanticCommand::Activate
+SemanticAction::RequestFocus
+  -> SemanticCommand::RequestFocus
+SemanticAction::OpenMenu
+  -> SemanticCommand::OpenMenu
+SemanticAction::OpenContextMenu
+  -> SemanticCommand::OpenContextMenu
+SemanticAction::LogicalScroll(command)
+  -> SemanticCommand::LogicalScroll(command)
+```
+
+The enum remains non-exhaustive for later real behavior. `CancelOrBack`, focus
+navigation/restoration, value mutation, selection, and text editing are not
+fabricated as node actions in M5. Controller navigation continues to use the
+accepted normalized command path, while M8/M9 own value/text semantic actions.
+
+A semantic action is admitted against the **current published semantic product**
+for that live semantic lifetime. Stable identity is the target authority;
+current published hidden/inert/disabled/action support is the admission
+authority. M5 does not invent a second retained accessibility-snapshot target
+system merely to mirror pointer geometry generations.
 
 Rejection returns the exact owned request and consumes no work/trace sequence,
 invokes no callback, mutates no state/focus, and requests no wake.
@@ -481,8 +533,8 @@ semantic authority from renderer-facing frame/debug products.
 
 ### M5C — semantic actions and accessibility resolution
 
-Owns semantic-action request/result/error API, exact semantic->mounted resolution,
-canonical command convergence, semantic action trace, and inherited
+Owns semantic-action request/result/error API, exact semantic-to-mounted
+resolution, canonical command convergence, semantic action trace, and inherited
 `ACCESS-01`/`ACCESS-02` behavior/proofs.
 
 ### M5D — public deterministic testing
