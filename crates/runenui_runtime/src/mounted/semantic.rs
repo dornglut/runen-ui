@@ -103,7 +103,7 @@ impl SemanticStore {
         &mut self,
         runtime: &RuntimeNamespace,
         owner: &MountedNodeId,
-        current: Vec<SemanticBinding>,
+        current: &[SemanticBinding],
         ordered_keys: &[SemanticKey],
         public_slot_limit: u64,
     ) -> Result<Vec<SemanticBinding>, SemanticIdentityExhausted> {
@@ -113,7 +113,8 @@ impl SemanticStore {
         );
 
         let mut existing = current
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|binding| (binding.key.clone(), binding))
             .collect::<BTreeMap<_, _>>();
         let mut plan = Vec::with_capacity(ordered_keys.len());
@@ -252,7 +253,7 @@ mod tests {
             .reconcile_owner(
                 &runtime,
                 &owner,
-                Vec::new(),
+                &[],
                 &[SemanticKey::PRIMARY, a.clone(), b.clone()],
                 8,
             )
@@ -268,7 +269,7 @@ mod tests {
             .reconcile_owner(
                 &runtime,
                 &owner,
-                first,
+                &first,
                 &[b.clone(), SemanticKey::PRIMARY, a.clone()],
                 8,
             )
@@ -289,7 +290,7 @@ mod tests {
             .reconcile_owner(
                 &runtime,
                 &owner,
-                Vec::new(),
+                &[],
                 &[SemanticKey::PRIMARY, extra.clone()],
                 2,
             )
@@ -299,7 +300,7 @@ mod tests {
             .reconcile_owner(
                 &runtime,
                 &owner,
-                first,
+                &first,
                 &[SemanticKey::PRIMARY],
                 2,
             )
@@ -311,7 +312,7 @@ mod tests {
             .reconcile_owner(
                 &runtime,
                 &owner,
-                retained,
+                &retained,
                 &[SemanticKey::PRIMARY, replacement_key],
                 2,
             )
@@ -341,7 +342,7 @@ mod tests {
             .reconcile_owner(
                 &runtime,
                 &owner,
-                Vec::new(),
+                &[],
                 &[SemanticKey::PRIMARY, key("virtual")],
                 4,
             )
@@ -377,7 +378,7 @@ mod tests {
             store.reconcile_owner(
                 &runtime,
                 &owner,
-                Vec::new(),
+                &[],
                 &[SemanticKey::PRIMARY, key("extra")],
                 1,
             ),
