@@ -219,8 +219,8 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("test rectangle is valid"));
         let inside = LogicalPoint::new(2.999, 9.999)
             .unwrap_or_else(|_| unreachable!("test point is finite"));
-        let right_edge = LogicalPoint::new(3.0, 4.0)
-            .unwrap_or_else(|_| unreachable!("test point is finite"));
+        let right_edge =
+            LogicalPoint::new(3.0, 4.0).unwrap_or_else(|_| unreachable!("test point is finite"));
         assert!(rect.contains(inside));
         assert!(!rect.contains(right_edge));
     }
