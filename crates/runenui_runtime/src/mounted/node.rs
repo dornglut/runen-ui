@@ -15,7 +15,7 @@ use super::{
 
 pub(crate) struct MountedNode<Action> {
     pub(crate) id: MountedNodeId,
-    pub(crate) semantic_bindings: Vec<SemanticBinding>,
+    pub(super) semantic_bindings: Vec<SemanticBinding>,
     pub(crate) parent: Option<MountedNodeId>,
     pub(crate) children: Vec<MountedNodeId>,
     pub(crate) authored_id: Option<ElementId>,
