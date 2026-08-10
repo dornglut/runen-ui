@@ -8,6 +8,8 @@ mod inspection;
 mod interaction;
 mod invalidation;
 mod lifecycle;
+#[cfg(test)]
+mod m5a_tests;
 mod namespace;
 mod node;
 mod reconcile;
