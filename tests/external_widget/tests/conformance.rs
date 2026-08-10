@@ -3,10 +3,11 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, Element, LogicalLength, NoHostProtocol, SemanticCommand, StyleTokens, UiApp,
-    View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
-    WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetMountContext, WidgetPaintProof,
-    WidgetSemanticProof, WidgetUnmountContext, WidgetUpdateContext, column,
+    CommandOrigin, Element, LogicalLength, NoHostProtocol, SemanticAction, SemanticCommand,
+    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
+    StyleTokens, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
+    WidgetActivationOutput, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetMountContext,
+    WidgetPaintProof, WidgetUnmountContext, WidgetUpdateContext, column,
 };
 use runenui_runtime::{
     AppRuntime, FocusReason, LayoutConstraints, MountedNodeId, PumpBudget, SubmitCommandErrorKind,
@@ -127,9 +128,16 @@ impl Widget<()> for StatefulPulse {
             format!("{}:{}", self.name, state.activations),
         )
     }
-    fn semantics(&self, state: &Self::State) -> WidgetSemanticProof {
-        WidgetSemanticProof::new("pulse", format!("{}:{}", self.name, state.activations))
-            .with_action("pulse")
+    fn semantics(
+        &self,
+        state: &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Button)
+                .with_name(format!("{}:{}", self.name, state.activations))
+                .with_action(SemanticAction::Activate),
+        )
     }
     fn diagnostics(&self, state: &Self::State) -> Vec<WidgetDiagnostic> {
         vec![WidgetDiagnostic::new(
@@ -199,7 +207,7 @@ fn node_id(runtime: &mut AppRuntime<TreeApp>, authored: &str) -> MountedNodeId {
 }
 
 #[test]
-fn keyed_reorder_preserves_mounted_semantic_state_focus_and_slots() {
+fn keyed_reorder_preserves_mounted_state_focus_and_slots() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<TreeApp>::mount(TreeState {
         order: ["a", "b"],
@@ -208,25 +216,11 @@ fn keyed_reorder_preserves_mounted_semantic_state_focus_and_slots() {
     });
     settle_initial_mounted_declarations(&mut runtime);
     let a = node_id(&mut runtime, "probe.a");
-    let semantic = runtime
-        .index()
-        .node(&a)
-        .unwrap_or_else(|| unreachable!())
-        .semantic_id()
-        .clone();
     route_focus(&mut runtime, a.clone());
     route_activate(&mut runtime, a.clone());
     process_one(&mut runtime, TreeAction::Swap);
     let after = node_id(&mut runtime, "probe.a");
     assert_eq!(after, a);
-    assert_eq!(
-        runtime
-            .index()
-            .node(&after)
-            .unwrap_or_else(|| unreachable!())
-            .semantic_id(),
-        &semantic
-    );
     assert_eq!(runtime.focus().focused_node(), Some(&a));
     assert!(
         !runtime
@@ -348,7 +342,7 @@ fn mounted_publication_products_are_exactly_aligned() {
         .index()
         .nodes()
         .iter()
-        .map(|n| (n.id().clone(), n.semantic_id().clone(), n.parent().cloned()))
+        .map(|node| (node.id().clone(), node.parent().cloned()))
         .collect();
     let tokens = StyleTokens::new();
     let publication = runtime.publish_surface(&context(&tokens));
@@ -356,19 +350,19 @@ fn mounted_publication_products_are_exactly_aligned() {
         .frame()
         .nodes()
         .iter()
-        .map(|n| (n.id().clone(), n.semantic_id().clone(), n.parent().cloned()))
+        .map(|node| (node.id().clone(), node.parent().cloned()))
         .collect();
     let style_ids: Vec<_> = publication
         .style_report()
         .nodes()
         .iter()
-        .map(|n| (n.id().clone(), n.semantic_id().clone(), n.parent().cloned()))
+        .map(|node| (node.id().clone(), node.parent().cloned()))
         .collect();
     let layout_ids: Vec<_> = publication
         .layout_report()
         .nodes()
         .iter()
-        .map(|n| (n.id().clone(), n.semantic_id().clone(), n.parent().cloned()))
+        .map(|node| (node.id().clone(), node.parent().cloned()))
         .collect();
     assert_eq!(index_ids, frame_ids);
     assert_eq!(index_ids, style_ids);
