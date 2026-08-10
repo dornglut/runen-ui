@@ -87,6 +87,98 @@ const AUTHORITIES: &[AuthoritySpec] = &[
     },
 ];
 
+#[derive(Clone, Copy)]
+enum RetiredAuthorityScope {
+    AnyDeclaration,
+    ExternallyPublicDeclaration,
+    PublicReexportOnly,
+}
+
+#[derive(Clone, Copy)]
+struct RetiredAuthoritySpec {
+    symbol: &'static str,
+    scope: RetiredAuthorityScope,
+}
+
+const RETIRED_AUTHORITIES: &[RetiredAuthoritySpec] = &[
+    RetiredAuthoritySpec {
+        symbol: "RuntimeNodeId",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "RuntimeNodeRef",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "RuntimeTreeIndex",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "WidgetState",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "WidgetStateMismatch",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "WidgetLifecycle",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "WidgetLifecycleRequest",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "ActivationResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "InputIntent",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "InputEvent",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "PointerFocusResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "FocusTargetResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "KeyboardFocusResult",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "dispatch",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "on_press",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "resolve_pointer_event_target",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "handle_keyboard_focus",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "node_by_authored_id",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "publish_surface",
+        scope: RetiredAuthorityScope::PublicReexportOnly,
+    },
+];
+
 pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMetrics, String> {
     let production_files = collect_rust_files(root, &root.join("crates"), FileKind::Production)?;
     let test_files = collect_test_files(root)?;
@@ -106,6 +198,7 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMe
     }
 
     audit_authority_definitions(&production_metrics, findings);
+    audit_retired_authorities(&production_metrics, findings);
     audit_volatile_architecture_state(root, findings)?;
 
     Ok(SourceMetrics {
@@ -227,6 +320,121 @@ fn audit_authority_definitions(
             )),
         }
     }
+}
+
+fn audit_retired_authorities(
+    production: &[(ModuleMetrics, String)],
+    findings: &mut Vec<Finding>,
+) {
+    for (metrics, contents) in production {
+        let path = path_text(&metrics.relative);
+        for (line_index, line) in contents.lines().enumerate() {
+            let Some((symbol, externally_public)) = declaration_symbol(line) else {
+                continue;
+            };
+            let Some(retired) = RETIRED_AUTHORITIES
+                .iter()
+                .find(|retired| retired.symbol == symbol)
+            else {
+                continue;
+            };
+            let forbidden = match retired.scope {
+                RetiredAuthorityScope::AnyDeclaration => true,
+                RetiredAuthorityScope::ExternallyPublicDeclaration => externally_public,
+                RetiredAuthorityScope::PublicReexportOnly => false,
+            };
+            if forbidden {
+                findings.push(Finding::fatal(
+                    "source.retired_m4_authority",
+                    Some(format!("{path}:{}", line_index + 1)),
+                    format!(
+                        "retired M1-M4 transitional authority `{symbol}` must not be declared in production source"
+                    ),
+                ));
+            }
+        }
+
+        for (line, statement) in public_reexport_statements(contents) {
+            for retired in RETIRED_AUTHORITIES {
+                if statement_identifiers(&statement).any(|token| token == retired.symbol) {
+                    findings.push(Finding::fatal(
+                        "source.retired_m4_authority",
+                        Some(format!("{path}:{line}")),
+                        format!(
+                            "retired M1-M4 transitional authority `{}` must not be externally re-exported",
+                            retired.symbol
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn declaration_symbol(line: &str) -> Option<(&str, bool)> {
+    let trimmed = line.trim_start();
+    if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("#") {
+        return None;
+    }
+    let externally_public = trimmed.starts_with("pub ");
+    let declaration = trimmed
+        .strip_prefix("pub(crate) ")
+        .or_else(|| trimmed.strip_prefix("pub(super) "))
+        .or_else(|| trimmed.strip_prefix("pub(self) "))
+        .or_else(|| trimmed.strip_prefix("pub "))
+        .or_else(|| strip_pub_in(trimmed))
+        .unwrap_or(trimmed);
+    let declaration = declaration.strip_prefix("async ").unwrap_or(declaration);
+
+    for prefix in ["struct ", "enum ", "trait ", "type ", "fn "] {
+        if let Some(rest) = declaration.strip_prefix(prefix) {
+            let symbol = rest
+                .split(|character: char| {
+                    character.is_whitespace()
+                        || matches!(character, '<' | '(' | '{' | ';' | ':' | '=')
+                })
+                .next()
+                .unwrap_or_default();
+            if !symbol.is_empty() {
+                return Some((symbol, externally_public));
+            }
+        }
+    }
+    None
+}
+
+fn public_reexport_statements(contents: &str) -> Vec<(usize, String)> {
+    let mut statements = Vec::new();
+    let mut current: Option<(usize, String)> = None;
+
+    for (index, line) in contents.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim_start();
+        if let Some((start, statement)) = current.as_mut() {
+            statement.push(' ');
+            statement.push_str(trimmed);
+            if trimmed.contains(';') {
+                statements.push((*start, core::mem::take(statement)));
+                current = None;
+            }
+            continue;
+        }
+        if trimmed.starts_with("pub use ") {
+            if trimmed.contains(';') {
+                statements.push((line_number, trimmed.to_owned()));
+            } else {
+                current = Some((line_number, trimmed.to_owned()));
+            }
+        }
+    }
+
+    statements
+}
+
+fn statement_identifiers(statement: &str) -> impl Iterator<Item = &str> {
+    statement
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .filter(|token| !token.is_empty())
 }
 
 fn audit_volatile_architecture_state(
