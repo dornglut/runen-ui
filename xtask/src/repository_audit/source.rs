@@ -180,10 +180,6 @@ const RETIRED_AUTHORITIES: &[RetiredAuthoritySpec] = &[
         scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
     },
     RetiredAuthoritySpec {
-        symbol: "activate",
-        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
-    },
-    RetiredAuthoritySpec {
         symbol: "activate_node",
         scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
     },
