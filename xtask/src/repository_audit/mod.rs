@@ -404,7 +404,7 @@ fn audit_repository_governance(root: &Path, findings: &mut Vec<Finding>) -> Resu
         findings.push(Finding::fatal(
             "metadata.current_repository_identity",
             Some("Cargo.toml".to_owned()),
-            error,
+            format!("workspace metadata must contain {CURRENT_REPOSITORY_DECLARATION:?}"),
         ));
     }
     if manifest.contains(HISTORICAL_OWNER_TOKEN) {
