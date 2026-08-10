@@ -404,7 +404,7 @@ fn audit_repository_governance(root: &Path, findings: &mut Vec<Finding>) -> Resu
         findings.push(Finding::fatal(
             "metadata.current_repository_identity",
             Some("Cargo.toml".to_owned()),
-            format!("workspace metadata must contain {CURRENT_REPOSITORY_DECLARATION:?}"),
+            error,
         ));
     }
     if manifest.contains(HISTORICAL_OWNER_TOKEN) {
@@ -988,6 +988,10 @@ mod tests {
             self.write(
                 "docs/architecture/m4-conformance-matrix.md",
                 "```text\n1 total unique rows\n0 owner-accepted\n0 implementation-complete\n0 proof-complete\n1 blocked\n0 duplicate IDs\n0 invalid statuses\n0 invalid schemas\n```\n\n| ID | Required observation | Positive proof owner | Negative proof owner | Trace proof owner | Delivery slice | Status | M4 gate |\n|---|---|---|---|---|---|---|---|\n| PTR-01 | observation | positive | negative | trace | M4C3 | blocked | Required |\n",
+            )?;
+            self.write(
+                "docs/architecture/m5-conformance-matrix.md",
+                "```text\n1 total unique rows\n0 owner-accepted\n0 implementation-complete\n0 proof-complete\n1 blocked\n0 duplicate IDs\n0 invalid statuses\n0 invalid schemas\n```\n\n| ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |\n|---|---|---|---|---|---|---|---|\n| SEM-ID-01 | observation | positive | negative | diagnostic | M5A | blocked | Required |\n",
             )?;
             self.write(
                 "docs/work-tracking.md",
