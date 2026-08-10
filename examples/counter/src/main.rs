@@ -142,8 +142,8 @@ fn main() {
 mod tests {
     use runenui_core::{
         LogicalDelta, LogicalKey, LogicalLength, LogicalPoint, PhysicalKey, PointerButton,
-        PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
-        SemanticCommand, SemanticContribution, SemanticItem, StyleTokens,
+        PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand,
+        SemanticContribution, SemanticItem, StyleTokens,
     };
     use runenui_runtime::{
         AppRuntime, LogicalSize, PumpBudget, RuntimeStatus, RuntimeTerminalReason,
