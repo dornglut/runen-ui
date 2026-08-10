@@ -130,11 +130,7 @@ impl Widget<NonCloneAction> for NonCloneWidget {
             WidgetActivationOutput::changed_with_action,
         )
     }
-    fn semantics(
-        &self,
-        _: &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::Generic)
                 .with_name("non-clone")
