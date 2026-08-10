@@ -1,7 +1,7 @@
 use runenui_core::{
-    Element, NoHostProtocol, SemanticAction, SemanticContribution, SemanticContributionContext,
-    SemanticItem, SemanticKey, SemanticNodeContribution, SemanticRole, SemanticText, SemanticValue,
-    StyleTokens, UiApp, View, Widget, column,
+    Element, IntoEffects, NoHostProtocol, SemanticAction, SemanticContribution,
+    SemanticContributionContext, SemanticItem, SemanticKey, SemanticNodeContribution,
+    SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget, column,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -50,7 +50,7 @@ impl UiApp for MappedSemanticApp {
     type Action = AppAction;
     type HostProtocol = NoHostProtocol;
 
-    fn root((): &Self::State) -> Element<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         let child: Element<ChildAction> = Element::new(SemanticProbe).id("semantic.child");
         column(vec![child])
             .key("semantic.root")
@@ -59,7 +59,11 @@ impl UiApp for MappedSemanticApp {
             .map_action(|_: MiddleAction| AppAction)
     }
 
-    fn update((): &mut Self::State, _: Self::Action) {}
+    fn update(
+        (): &mut Self::State,
+        _: Self::Action,
+    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    }
 }
 
 #[test]
