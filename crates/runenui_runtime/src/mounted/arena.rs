@@ -154,9 +154,6 @@ impl<T> GenerationalArena<T> {
     }
 }
 
-pub(crate) type MountedArena<T> = GenerationalArena<T>;
-pub(crate) type MountedArenaCapacityError = ArenaCapacityError;
-
 #[cfg(test)]
 mod tests {
     use super::{ArenaCapacityError, GenerationalArena};
