@@ -250,7 +250,10 @@ fn is_declaration_keyword(value: &str) -> bool {
 }
 
 fn clean_identifier(value: &str) -> &str {
-    value.trim_matches(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+    let end = value
+        .find(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .unwrap_or(value.len());
+    &value[..end]
 }
 
 fn identifiers(statement: &str) -> impl Iterator<Item = &str> {
