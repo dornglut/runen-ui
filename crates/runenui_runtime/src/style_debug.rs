@@ -6,7 +6,7 @@ use runenui_core::{
     ComputedStyle, ElementId, StyleProvenance, StyleResolution, UnresolvedStyleToken,
 };
 
-use crate::{MountedNodeId, SemanticNodeId};
+use crate::MountedNodeId;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SurfaceStyleReport {
@@ -38,7 +38,6 @@ impl SurfaceStyleReport {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceStyleNode {
     id: MountedNodeId,
-    semantic_id: SemanticNodeId,
     parent: Option<MountedNodeId>,
     authored_id: Option<ElementId>,
     resolution: StyleResolution,
@@ -48,14 +47,12 @@ impl SurfaceStyleNode {
     #[must_use]
     pub(crate) const fn new(
         id: MountedNodeId,
-        semantic_id: SemanticNodeId,
         parent: Option<MountedNodeId>,
         authored_id: Option<ElementId>,
         resolution: StyleResolution,
     ) -> Self {
         Self {
             id,
-            semantic_id,
             parent,
             authored_id,
             resolution,
@@ -65,11 +62,6 @@ impl SurfaceStyleNode {
     #[must_use]
     pub const fn id(&self) -> &MountedNodeId {
         &self.id
-    }
-
-    #[must_use]
-    pub const fn semantic_id(&self) -> &SemanticNodeId {
-        &self.semantic_id
     }
 
     #[must_use]
