@@ -444,13 +444,7 @@ mod tests {
             .unwrap_or_else(|_| unreachable!());
         let duplicate = vec![first[0].clone(), first[0].clone()];
         assert_eq!(
-            store.reconcile_owner(
-                &runtime,
-                &owner,
-                &duplicate,
-                &[SemanticKey::PRIMARY],
-                2,
-            ),
+            store.reconcile_owner(&runtime, &owner, &duplicate, &[SemanticKey::PRIMARY], 2,),
             Err(SemanticReconcileError::Integrity(
                 SemanticStoreIntegrityError::DuplicateCurrentKey(SemanticKey::PRIMARY)
             ))
@@ -468,13 +462,7 @@ mod tests {
             .reconcile_owner(&runtime, &owner, &[], &[SemanticKey::PRIMARY], 2)
             .unwrap_or_else(|_| unreachable!());
         assert_eq!(
-            store.reconcile_owner(
-                &runtime,
-                &other,
-                &first,
-                &[SemanticKey::PRIMARY],
-                2,
-            ),
+            store.reconcile_owner(&runtime, &other, &first, &[SemanticKey::PRIMARY], 2,),
             Err(SemanticReconcileError::Integrity(
                 SemanticStoreIntegrityError::BindingRecordMismatch
             ))
