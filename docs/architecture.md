@@ -118,7 +118,7 @@ hook, and state drops after removal. Semantic owner lifetimes are revoked before
 mounted removal. Focus survives compatible updates and clears only when its
 mounted lifetime or actionable/focusable facts cease to be valid. Semantic
 contribution is cached separately: unrelated compatible updates do not requery
-it, while widget semantic invalidation and direct mounted-child-count structural
+it, while widget semantic invalidation and direct mounted-child structural
 change do. Invalid authored contribution withdraws that owner's semantics without
 falsely marking mounted-state corruption; erased state/bridge mismatch and
 semantic-index corruption fail closed and retain the integrity distinction.

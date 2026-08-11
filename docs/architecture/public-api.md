@@ -481,9 +481,9 @@ After a valid widget contribution is produced, the runtime reconciles its
 validated ordered semantic keys against the mounted owner's existing semantic
 bindings. Surviving owner/key pairs retain IDs regardless of contribution order;
 removed keys are revoked; additions receive semantic-arena identities. A direct
-mounted-child-count structural change invalidates the contribution context so
-marker validity is recomputed. Unrelated compatible layout/paint/diagnostic
-changes do not requery unchanged semantic contribution.
+mounted-child structural change invalidates semantic structure so marker
+validity is recomputed. Unrelated compatible layout/paint/diagnostic changes do
+not requery unchanged semantic contribution.
 
 ## Lifecycle and shutdown
 
@@ -685,11 +685,11 @@ owner/key reconciliation cannot partially consume bindings on failed preflight.
 
 `INTERACTION` alone does not clear paint or semantic widget facts. Structural
 and common authored changes add runtime-detected phase work; they do not
-automatically requery unrelated clean capabilities. Direct mounted-child-count
-change specifically invalidates semantic structure because it changes
-`SemanticContributionContext`; unrelated compatible updates do not. A later M5B
-layout-only bounds publication may dirty semantic **publication** without
-requerying unchanged widget contribution.
+automatically requery unrelated clean capabilities. Direct mounted-child
+structural change invalidates semantic structure conservatively; child-count
+changes also change `SemanticContributionContext`. Unrelated compatible updates
+do not. A later M5B layout-only bounds publication may dirty semantic
+**publication** without requerying unchanged widget contribution.
 
 Publication-context changes compare root constraints, exact style-token content,
 and measurement-provider identity/revision. Providers must change identity or
