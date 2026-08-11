@@ -238,8 +238,8 @@ pub enum SemanticBounds {
 /// One item in an owner-local semantic sequence.
 ///
 /// The variants are semantic vocabulary. Recursive child storage is carried by
-/// each node's private `Vec<SemanticItem>`; no heap-indirection type is exposed
-/// as part of the public structural vocabulary.
+/// each node's private `Vec<SemanticItem>`; no explicit boxed-node representation
+/// is part of the public structural vocabulary.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SemanticItem {
     Node(SemanticNodeContribution),
