@@ -27,6 +27,7 @@ pub(crate) enum CachedSemanticContribution {
     Ready(SemanticContribution),
     Invalid(SemanticContributionError),
     IdentityExhausted,
+    IndexIntegrityFailure,
     StatePayloadMismatch,
 }
 
@@ -38,7 +39,10 @@ impl CachedSemanticContribution {
                 let _ = error;
                 None
             }
-            Self::Unresolved | Self::IdentityExhausted | Self::StatePayloadMismatch => None,
+            Self::Unresolved
+            | Self::IdentityExhausted
+            | Self::IndexIntegrityFailure
+            | Self::StatePayloadMismatch => None,
         }
     }
 }
