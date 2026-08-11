@@ -37,7 +37,7 @@ impl<Action> MountedTree<Action> {
         let runtime = self.runtime.clone();
         if self
             .semantic_store
-            .revoke_owner(&runtime, id, bindings)
+            .revoke_owner(&runtime, id, &bindings)
             .is_err()
         {
             debug_assert!(
