@@ -11,6 +11,7 @@ use super::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ContributionMode {
+    PrimaryOnly,
     Ordered,
     Reversed,
     Invalid,
@@ -43,6 +44,7 @@ impl Widget<()> for SemanticProbe {
         let primary = SemanticNodeContribution::primary(SemanticRole::Group);
         let extra = SemanticNodeContribution::new(extra_key(), SemanticRole::Text);
         match state {
+            ContributionMode::PrimaryOnly => SemanticContribution::single(primary),
             ContributionMode::Ordered => SemanticContribution::new(vec![
                 SemanticItem::node(primary),
                 SemanticItem::node(extra),
@@ -169,6 +171,50 @@ fn invalid_contribution_revokes_semantics_without_replacing_owner_and_can_recove
         );
         assert!(!old_ids.iter().any(|old| old == binding.id()));
     }
+}
+
+#[test]
+fn capacity_failure_withdraws_complete_owner_semantics_and_recovers_cleanly() {
+    let (mut tree, _) = MountedTree::mount(probe(ContributionMode::PrimaryOnly, "probe"));
+    let owner = root_id(&tree);
+    tree.ensure_semantics_capability_with_public_slot_limit_for_test(&owner, 1);
+    let old = binding_id(&bindings(&tree, &owner), &SemanticKey::PRIMARY);
+    assert_eq!(tree.semantic_store.live_count(), 1);
+
+    tree.reconcile(probe(ContributionMode::Ordered, "probe"));
+    tree.ensure_semantics_capability_with_public_slot_limit_for_test(&owner, 1);
+    let exhausted = tree
+        .node(&owner)
+        .unwrap_or_else(|| unreachable!("capacity-rejected semantic owner remains mounted"));
+    assert!(!exhausted.integrity_failed);
+    assert!(exhausted.semantic_bindings.is_empty());
+    assert!(matches!(
+        exhausted.caches.semantics,
+        CachedSemanticContribution::IdentityExhausted
+    ));
+    assert_eq!(tree.semantic_store.live_count(), 0);
+    assert_eq!(
+        tree.semantic_store.target_status(&tree.runtime, &old),
+        SemanticTargetStatus::Stale
+    );
+
+    tree.reconcile(probe(ContributionMode::PrimaryOnly, "probe"));
+    tree.ensure_semantics_capability_with_public_slot_limit_for_test(&owner, 1);
+    let recovered = tree
+        .node(&owner)
+        .unwrap_or_else(|| unreachable!("capacity-recovered semantic owner remains mounted"));
+    assert!(!recovered.integrity_failed);
+    assert_eq!(recovered.semantic_bindings.len(), 1);
+    assert!(matches!(
+        recovered.caches.semantics,
+        CachedSemanticContribution::Ready(_)
+    ));
+    let replacement = recovered.semantic_bindings[0].id().clone();
+    assert_ne!(replacement, old);
+    assert_eq!(
+        tree.semantic_store.target_status(&tree.runtime, &replacement),
+        SemanticTargetStatus::Live
+    );
 }
 
 fn column_tree(with_child: bool) -> Element<()> {
