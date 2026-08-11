@@ -16,8 +16,10 @@ squash. The M5A post-merge authority reconciliation records the twelve M5A rows
 as owner-accepted. The M5 matrix therefore becomes `50 total / 12
 owner-accepted / 0 proof-complete / 38 blocked`. The only remaining blocked M4
 matrix rows remain the two M5C-owned semantic/accessibility gates `ACCESS-01`
-and `ACCESS-02`. M5B remains blocked until this reconciliation itself is
-accepted, merged, and accepted-main verified.
+and `ACCESS-02`. M5B remains blocked. This reconciliation must first be
+accepted, merged, and accepted-main verified; the post-M5A critical readiness
+review then makes #55 the next authority gate to freeze semantic publication,
+focus, and virtual-action target semantics before M5B #48 may begin.
 
 ## Maturity states
 
@@ -93,12 +95,15 @@ total / 247 owner-accepted / 0 proof-complete / 40 blocked`, where the 40
 blocked rows are the remaining 38 M5 rows plus inherited M4 `ACCESS-01` and
 `ACCESS-02`.
 
-M5B semantic tree publication and incremental updates is the next sequential
-slice, but it remains blocked until this reconciliation itself is exact-head
-validated, critically reviewed, explicitly owner-accepted, merged, and
-accepted-main verified. The accepted M5 charter and
-[M5 conformance matrix](architecture/m5-conformance-matrix.md) remain the
-behavioral/slice authority; the roadmap remains the durable milestone authority.
+M5B semantic tree publication and incremental updates remains the next
+implementation slice, but it is not the next execution action. This reconciliation
+must first be exact-head validated, critically reviewed, explicitly owner-
+accepted, merged, and accepted-main verified. The post-M5A critical readiness
+review then requires #55 to freeze semantic publication, focus, relationship,
+revision, and virtual-action target authority before #48 may begin. The accepted
+M5 charter and [M5 conformance matrix](architecture/m5-conformance-matrix.md)
+remain the current behavioral/slice authority until that explicit amendment is
+reviewed and accepted; the roadmap remains the durable milestone authority.
 
 Merged acceptance evidence belongs in pull requests and the
 [public repository migration history](history/public-repository-migration.md).
