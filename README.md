@@ -188,3 +188,84 @@ renderer-neutral paint and hit-test scenes begin in M6.
 - [Production roadmap](docs/roadmap.md)
 - [Work tracking](docs/work-tracking.md)
 - [Detailed architecture](docs/architecture.md)
+- [Public repository migration history](docs/history/public-repository-migration.md)
+- [Documentation retention and disposition](docs/documentation-retention-plan.md)
+- [Validation details](docs/tooling/validation.md)
+- [API stability](docs/api-stability.md)
+- [Release policy](docs/release-policy.md)
+
+When sources disagree, accepted ADR behavior, the active execution charter, the conformance matrix, stable architecture contracts, current implementation/tests, and current status records take precedence over pull-request descriptions and historical material. See [Work tracking](docs/work-tracking.md) for the full authority split and pickup sequence.
+
+## Current API proof
+
+The Builder API is the semantic foundation; `element!` is optional sugar over the same open view protocol:
+
+```rust
+use runenui_core::{Element, View, button, children, column, text};
+
+#[derive(Clone, Copy)]
+enum CounterAction {
+    Increment,
+}
+
+fn counter_screen(value: i32) -> Element<CounterAction> {
+    column(children![
+        text(format!("Count: {value}")),
+        button("+").on_activate(|| CounterAction::Increment),
+    ])
+    .gap(8_u16)
+    .into_element()
+}
+```
+
+Typed builders reject incompatible configuration at compile time, `children!`
+has no fixed arity ceiling, and dynamic numeric/identifier constructors validate
+their inputs. Components can author a local action and map their subtree into a
+parent action without knowing that parent type:
+
+```rust
+use runenui_core::{Element, View, button};
+
+enum ChildAction { Save }
+enum ParentAction { Child(ChildAction) }
+
+fn child() -> Element<ChildAction> {
+    button("Save").on_activate(|| ChildAction::Save).into_element()
+}
+
+fn parent() -> Element<ParentAction> {
+    child().map_action(ParentAction::Child)
+}
+```
+
+Every widget explicitly declares and creates state (`type State = ();` for a
+stateless widget). Mounted activation may mutate it, every capability can observe
+it, and compatible reconciliation retains it. Widgets may also author canonical
+M5A semantic contribution through the same state-aware contract; this does not
+imply the M5B public semantic tree, semantic action ingress, accessibility
+adapter, production control semantics, paint scenes, or native rendering.
+
+## Validation
+
+The repository baseline is:
+
+```powershell
+cargo +stable fmt --all
+cargo validate
+```
+
+Format intentional changes with latest stable rustfmt, matching CI. `cargo validate` is the locked, read-only shared local/CI implementation. It runs stable formatting checks, locked tests, Clippy with denied warnings, Rust 1.93.0 MSRV tests, repository metadata checks, and repository-relative Markdown link validation from the resolved workspace root. Also run `git diff --check` and slice-specific checks. See [Testing and validation](TESTING.md).
+
+Generated context exports are written to the ignored `context/` directory:
+
+```powershell
+py tools/context/export_repo_context.py
+```
+
+Normal profiles exclude historical legacy material. See [Context Export](tools/context/README.md).
+
+## Release status
+
+RunenUI has not reached a stable public API or production release. All workspace packages are `0.1.0` and publication is disabled until release infrastructure and milestone gates exist. `1.0.0` is reserved for completion of the required production profiles and the M11 hardening gate.
+
+RunenUI is licensed under the [MIT License](LICENSE).
