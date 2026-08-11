@@ -1,7 +1,7 @@
 use runenui_core::{
-    Element, IntoEffects, NoHostProtocol, SemanticAction, SemanticContribution,
-    SemanticContributionContext, SemanticKey, SemanticNodeContribution, SemanticRole, SemanticText,
-    SemanticValue, StyleTokens, UiApp, View, Widget, column,
+    Element, IntoEffects, LogicalRect, NoHostProtocol, SemanticAction, SemanticBounds,
+    SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
+    SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget, column,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -17,6 +17,11 @@ struct AppAction;
 #[derive(Debug)]
 struct SemanticProbe;
 
+fn detail_bounds() -> LogicalRect {
+    LogicalRect::try_new(4.0, 6.0, 18.0, 10.0)
+        .unwrap_or_else(|_| unreachable!("owner-local semantic bounds are valid"))
+}
+
 fn expected_contribution() -> SemanticContribution {
     let detail = SemanticKey::from_static("detail")
         .unwrap_or_else(|_| unreachable!("static semantic key is valid"));
@@ -28,6 +33,7 @@ fn expected_contribution() -> SemanticContribution {
                 SemanticNodeContribution::new(detail, SemanticRole::Text)
                     .with_name("detail")
                     .with_value(SemanticValue::Integer(7))
+                    .with_bounds(SemanticBounds::OwnerLocal(detail_bounds()))
                     .with_text(SemanticText::plain("mapped detail")),
             ),
     )
@@ -66,15 +72,13 @@ impl UiApp for MappedSemanticApp {
     }
 }
 
-#[test]
-fn recursive_action_mapping_preserves_semantic_contribution_exactly() {
-    let mut runtime = AppRuntime::<MappedSemanticApp>::mount(());
+fn published_semantic_child(runtime: &mut AppRuntime<MappedSemanticApp>) -> SemanticContribution {
     let tokens = StyleTokens::new();
     let publication = runtime.publish_surface(&SurfaceBuildContext::new(
         &tokens,
         LayoutConstraints::unbounded(),
     ));
-    let semantic_child = publication
+    publication
         .frame()
         .nodes()
         .iter()
@@ -82,14 +86,44 @@ fn recursive_action_mapping_preserves_semantic_contribution_exactly() {
             node.authored_id()
                 .is_some_and(|id| id.as_str() == "semantic.child")
         })
-        .unwrap_or_else(|| unreachable!("mapped semantic child is published"));
+        .unwrap_or_else(|| unreachable!("mapped semantic child is published"))
+        .semantics()
+        .clone()
+}
 
-    assert_eq!(semantic_child.semantics(), &expected_contribution());
+#[test]
+fn recursive_action_mapping_preserves_semantic_contribution_exactly() {
+    let mut runtime = AppRuntime::<MappedSemanticApp>::mount(());
+    let semantics = published_semantic_child(&mut runtime);
+
+    assert_eq!(semantics, expected_contribution());
     assert!(
-        semantic_child
-            .semantics()
+        semantics
             .roots()
             .first()
             .is_some_and(|item| item.as_node().is_some())
     );
+}
+
+#[test]
+fn downstream_widget_authors_validated_owner_local_semantic_bounds() {
+    let mut runtime = AppRuntime::<MappedSemanticApp>::mount(());
+    let semantics = published_semantic_child(&mut runtime);
+    let primary = semantics
+        .roots()
+        .first()
+        .and_then(|item| item.as_node())
+        .unwrap_or_else(|| unreachable!("semantic probe has a primary node"));
+    let detail = primary
+        .children()
+        .first()
+        .and_then(|item| item.as_node())
+        .unwrap_or_else(|| unreachable!("semantic probe has a virtual detail node"));
+
+    assert_eq!(
+        detail.bounds(),
+        SemanticBounds::OwnerLocal(detail_bounds())
+    );
+    assert!(LogicalRect::try_new(f32::NAN, 0.0, 1.0, 1.0).is_err());
+    assert!(LogicalRect::try_new(0.0, 0.0, -1.0, 1.0).is_err());
 }
