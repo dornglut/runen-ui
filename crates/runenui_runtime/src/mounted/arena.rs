@@ -1,5 +1,7 @@
 #![allow(clippy::redundant_pub_crate)]
 
+use std::collections::BTreeSet;
+
 struct Slot<T> {
     generation: u64,
     value: Option<T>,
@@ -11,13 +13,17 @@ pub(crate) struct ArenaCapacityError;
 
 pub(crate) struct GenerationalArena<T> {
     slots: Vec<Slot<T>>,
+    reusable: BTreeSet<usize>,
+    retired_count: usize,
     live_count: usize,
 }
 
 impl<T> GenerationalArena<T> {
-    pub(crate) const fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             slots: Vec::new(),
+            reusable: BTreeSet::new(),
+            retired_count: 0,
             live_count: 0,
         }
     }
@@ -37,11 +43,16 @@ impl<T> GenerationalArena<T> {
         public_slot_limit: u64,
     ) -> Result<(), ArenaCapacityError> {
         let bounded_limit = public_slot_limit.min(u64::from(u32::MAX) + 1);
-        let unavailable = self
-            .slots
-            .iter()
-            .filter(|slot| slot.retired || (slot.value.is_none() && slot.generation == u64::MAX))
-            .count()
+        let bounded_limit_usize = usize::try_from(bounded_limit).map_err(|_| ArenaCapacityError)?;
+        let retired = if bounded_limit_usize >= self.slots.len() {
+            self.retired_count
+        } else {
+            self.slots[..bounded_limit_usize]
+                .iter()
+                .filter(|slot| slot.retired)
+                .count()
+        };
+        let unavailable = retired
             .checked_add(additionally_retired)
             .ok_or(ArenaCapacityError)?;
         let unavailable = u64::try_from(unavailable).map_err(|_| ArenaCapacityError)?;
@@ -67,24 +78,25 @@ impl<T> GenerationalArena<T> {
         create: impl FnOnce(usize, u64) -> T,
     ) -> Result<(usize, u64), ArenaCapacityError> {
         let bounded_limit = public_slot_limit.min(u64::from(u32::MAX) + 1);
-        let mut create = Some(create);
+        let bounded_limit_usize = usize::try_from(bounded_limit).map_err(|_| ArenaCapacityError)?;
 
-        for (index, slot) in self.slots.iter_mut().enumerate() {
-            let public_index = u64::try_from(index).map_err(|_| ArenaCapacityError)?;
-            if public_index >= bounded_limit {
-                break;
-            }
-            if slot.value.is_none() && !slot.retired {
-                let Some(generation) = slot.generation.checked_add(1) else {
-                    slot.retired = true;
-                    continue;
-                };
-                slot.generation = generation;
-                let create = create.take().ok_or(ArenaCapacityError)?;
-                slot.value = Some(create(index, generation));
-                self.live_count += 1;
-                return Ok((index, generation));
-            }
+        if let Some(index) = self.reusable.range(..bounded_limit_usize).next().copied() {
+            let removed = self.reusable.remove(&index);
+            debug_assert!(removed, "selected reusable arena slot remains indexed");
+            let slot = self
+                .slots
+                .get_mut(index)
+                .unwrap_or_else(|| unreachable!("reusable slot remains in the arena"));
+            debug_assert!(slot.value.is_none(), "reusable slot is vacant");
+            debug_assert!(!slot.retired, "retired slot is never reusable");
+            let generation = slot
+                .generation
+                .checked_add(1)
+                .unwrap_or_else(|| unreachable!("exhausted generations are retired on removal"));
+            slot.generation = generation;
+            slot.value = Some(create(index, generation));
+            self.live_count += 1;
+            return Ok((index, generation));
         }
 
         let index = self.slots.len();
@@ -94,7 +106,6 @@ impl<T> GenerationalArena<T> {
         }
         let _ = u32::try_from(index).map_err(|_| ArenaCapacityError)?;
         let generation = 1;
-        let create = create.take().ok_or(ArenaCapacityError)?;
         self.slots.push(Slot {
             generation,
             value: Some(create(index, generation)),
@@ -136,6 +147,10 @@ impl<T> GenerationalArena<T> {
         self.live_count -= 1;
         if slot.generation == u64::MAX {
             slot.retired = true;
+            self.retired_count += 1;
+        } else {
+            let inserted = self.reusable.insert(index);
+            debug_assert!(inserted, "newly vacant reusable slot is indexed once");
         }
         Some(value)
     }
@@ -144,13 +159,37 @@ impl<T> GenerationalArena<T> {
         self.live_count
     }
 
+    pub(crate) fn live_indices_where(
+        &self,
+        mut predicate: impl FnMut(&T) -> bool,
+    ) -> Vec<(usize, u64)> {
+        self.slots
+            .iter()
+            .enumerate()
+            .filter_map(|(index, slot)| {
+                slot.value
+                    .as_ref()
+                    .filter(|value| predicate(value))
+                    .map(|_| (index, slot.generation))
+            })
+            .collect()
+    }
+
     #[cfg(test)]
     fn seed_vacant(&mut self, generation: u64) {
+        let index = self.slots.len();
+        let retired = generation == u64::MAX;
         self.slots.push(Slot {
             generation,
             value: None,
-            retired: false,
+            retired,
         });
+        if retired {
+            self.retired_count += 1;
+        } else {
+            let inserted = self.reusable.insert(index);
+            debug_assert!(inserted, "seeded reusable slot is indexed once");
+        }
     }
 }
 
@@ -170,6 +209,19 @@ mod tests {
         assert_eq!(arena.get(0, 2), Some(&"c"));
         assert!(arena.get(0, 1).is_none());
         assert_eq!(arena.live_count(), 2);
+    }
+
+    #[test]
+    fn lowest_reusable_slot_is_selected_without_slot_order_scan_authority() {
+        let mut arena = GenerationalArena::new();
+        for value in 0..5 {
+            let expected = usize::try_from(value).unwrap_or_else(|_| unreachable!());
+            assert_eq!(arena.insert_with(|index, _| index), Ok((expected, 1)));
+        }
+        assert_eq!(arena.remove(3, 1), Some(3));
+        assert_eq!(arena.remove(1, 1), Some(1));
+        assert_eq!(arena.insert_with(|index, _| index), Ok((1, 2)));
+        assert_eq!(arena.insert_with(|index, _| index), Ok((3, 2)));
     }
 
     #[test]
