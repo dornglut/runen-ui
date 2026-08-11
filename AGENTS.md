@@ -33,19 +33,24 @@ Use this pickup sequence:
 7. Update the issue after every reviewed green checkpoint, material review correction, readiness transition, and merge.
 8. Never begin the next slice or milestone from an unmerged feature or authority branch.
 
-M5A semantic contribution and independent identity was owner-accepted at exact
-feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`, passed exact-head CI
-run `31497457992` / #889, and was guarded-squash-merged in PR #53 as
-`e3c304600ec1777cd17a1973946a43c765df1c31`. All 38 changed-file blob
-identities are byte-identical between the reviewed feature head and accepted
-squash. The post-merge M5A authority/current-contract reconciliation is the
-current execution gate. Do not close #47 until that reconciliation is exact-head
-validated, critically reviewed, explicitly owner-accepted, merged, and accepted-
-main verified. The post-M5A critical readiness review additionally opened #55 to
-freeze semantic publication, focus, and virtual-action target authority before
-any M5B implementation branch. After the reconciliation is accepted and merged,
-#55 becomes the next authority gate; M5B #48 remains blocked until #55 is itself
-accepted, merged, and accepted-main verified.
+M5A semantic contribution and independent identity is complete. Its feature was
+owner-accepted at exact head `8377ced53c08d7b5be3020368ceddd3ee81294a5`,
+passed exact-head CI #889, and was guarded-squash-merged in PR #53 as
+`e3c304600ec1777cd17a1973946a43c765df1c31`. Its mandatory post-merge
+reconciliation was explicitly owner-accepted at exact head
+`66c2e2a5e2adf3709f93e8d45821a5844986dc0c`, guarded-squash-merged in PR #54
+as `d7189d9d145b20edc6ad931ead1589f6277373d2`, proved exact reviewed/squash
+tree identity, and passed accepted-main CI #898 at that squash. Issue #47 is
+closed.
+
+Issue #55 is the sole active M5 execution gate. It freezes semantic publication,
+focus, support/availability, surface-scoped action targeting, publication
+atomicity/failure semantics, and the renderer/semantic cutover before M5B. It
+also owns one bounded pre-1.0 vocabulary correction: remove route-bound semantic
+LogicalScroll while preserving accepted M4 routed scrolling. #55 is not M5B or
+M5C implementation. M5B #48 remains blocked until #55 is exact-head validated,
+critically reviewed, explicitly owner-accepted, merged/reconciled as required,
+and accepted-main verified.
 
 A future thread should need only the repository, umbrella issue, and active slice/audit issue to locate current work.
 
