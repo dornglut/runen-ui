@@ -212,9 +212,41 @@ fn capacity_failure_withdraws_complete_owner_semantics_and_recovers_cleanly() {
     let replacement = recovered.semantic_bindings[0].id().clone();
     assert_ne!(replacement, old);
     assert_eq!(
-        tree.semantic_store
-            .target_status(&tree.runtime, &replacement),
+        tree.semantic_store.target_status(&tree.runtime, &replacement),
         SemanticTargetStatus::Live
+    );
+}
+
+#[test]
+fn semantic_index_corruption_withdraws_owner_and_marks_integrity_failure() {
+    let (mut tree, _) = MountedTree::mount(probe(ContributionMode::PrimaryOnly, "probe"));
+    let owner = root_id(&tree);
+    tree.ensure_semantics_capability(&owner);
+    let old = binding_id(&bindings(&tree, &owner), &SemanticKey::PRIMARY);
+
+    {
+        let node = tree
+            .node_mut(&owner)
+            .unwrap_or_else(|| unreachable!("semantic owner remains mounted"));
+        let duplicate = node.semantic_bindings[0].clone();
+        node.semantic_bindings.push(duplicate);
+        node.caches.semantics = CachedSemanticContribution::Unresolved;
+    }
+
+    tree.ensure_semantics_capability(&owner);
+    let failed = tree
+        .node(&owner)
+        .unwrap_or_else(|| unreachable!("integrity-failed semantic owner remains mounted"));
+    assert!(failed.integrity_failed);
+    assert!(failed.semantic_bindings.is_empty());
+    assert!(matches!(
+        failed.caches.semantics,
+        CachedSemanticContribution::IndexIntegrityFailure
+    ));
+    assert_eq!(tree.semantic_store.live_count(), 0);
+    assert_eq!(
+        tree.semantic_store.target_status(&tree.runtime, &old),
+        SemanticTargetStatus::Stale
     );
 }
 
