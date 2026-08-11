@@ -35,7 +35,16 @@ impl<Action> MountedTree<Action> {
             .map(|node| core::mem::take(&mut node.semantic_bindings))
             .unwrap_or_default();
         let runtime = self.runtime.clone();
-        self.semantic_store.revoke_owner(&runtime, id, bindings);
+        if self
+            .semantic_store
+            .revoke_owner(&runtime, id, bindings)
+            .is_err()
+        {
+            debug_assert!(
+                false,
+                "semantic-store corruption fallback purged the unmounted owner"
+            );
+        }
 
         before_unmount(id);
         stats.unmounted_owners.push(id.clone());
