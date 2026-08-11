@@ -236,6 +236,9 @@ pub enum SemanticBounds {
 }
 
 /// One item in an owner-local semantic sequence.
+///
+/// The variants are semantic vocabulary. Recursive storage remains hidden by the
+/// opaque [`SemanticNodeContribution`] representation.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SemanticItem {
     Node(SemanticNodeContribution),
@@ -271,7 +274,10 @@ impl SemanticItem {
 
 /// One owner-local semantic node description.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SemanticNodeContribution {
+pub struct SemanticNodeContribution(Box<SemanticNodeData>);
+
+#[derive(Clone, Debug, PartialEq)]
+struct SemanticNodeData {
     key: SemanticKey,
     role: SemanticRole,
     name: Option<String>,
@@ -288,7 +294,7 @@ pub struct SemanticNodeContribution {
 impl SemanticNodeContribution {
     #[must_use]
     pub fn new(key: SemanticKey, role: SemanticRole) -> Self {
-        Self {
+        Self(Box::new(SemanticNodeData {
             key,
             role,
             name: None,
@@ -300,7 +306,7 @@ impl SemanticNodeContribution {
             bounds: SemanticBounds::Owner,
             text: None,
             children: Vec::new(),
-        }
+        }))
     }
 
     /// Creates a node using the reserved primary owner-local semantic key.
@@ -311,127 +317,127 @@ impl SemanticNodeContribution {
 
     #[must_use]
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
+        self.0.name = Some(name.into());
         self
     }
 
     #[must_use]
     pub fn with_description(mut self, description: impl Into<String>) -> Self {
-        self.description = Some(description.into());
+        self.0.description = Some(description.into());
         self
     }
 
     #[must_use]
     pub fn with_value(mut self, value: SemanticValue) -> Self {
-        self.value = Some(value);
+        self.0.value = Some(value);
         self
     }
 
     #[must_use]
     pub fn with_state(mut self, state: SemanticState) -> Self {
-        self.state = state;
+        self.0.state = state;
         self
     }
 
     #[must_use]
     pub fn with_action(mut self, action: SemanticAction) -> Self {
-        if !self.actions.contains(&action) {
-            self.actions.push(action);
+        if !self.0.actions.contains(&action) {
+            self.0.actions.push(action);
         }
         self
     }
 
     #[must_use]
     pub fn with_relationship(mut self, relationship: SemanticRelationship) -> Self {
-        if !self.relationships.contains(&relationship) {
-            self.relationships.push(relationship);
+        if !self.0.relationships.contains(&relationship) {
+            self.0.relationships.push(relationship);
         }
         self
     }
 
     #[must_use]
     pub fn with_bounds(mut self, bounds: SemanticBounds) -> Self {
-        self.bounds = bounds;
+        self.0.bounds = bounds;
         self
     }
 
     #[must_use]
     pub fn with_text(mut self, text: SemanticText) -> Self {
-        self.text = Some(text);
+        self.0.text = Some(text);
         self
     }
 
     #[must_use]
     pub fn with_children(mut self, children: Vec<SemanticItem>) -> Self {
-        self.children = children;
+        self.0.children = children;
         self
     }
 
     #[must_use]
     pub fn with_child(mut self, child: Self) -> Self {
-        self.children.push(SemanticItem::node(child));
+        self.0.children.push(SemanticItem::node(child));
         self
     }
 
     #[must_use]
     pub fn with_mounted_children(mut self) -> Self {
-        self.children.push(SemanticItem::mounted_children());
+        self.0.children.push(SemanticItem::mounted_children());
         self
     }
 
     #[must_use]
     pub const fn key(&self) -> &SemanticKey {
-        &self.key
+        &self.0.key
     }
 
     #[must_use]
     pub const fn role(&self) -> SemanticRole {
-        self.role
+        self.0.role
     }
 
     #[must_use]
     pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+        self.0.name.as_deref()
     }
 
     #[must_use]
     pub fn description(&self) -> Option<&str> {
-        self.description.as_deref()
+        self.0.description.as_deref()
     }
 
     #[must_use]
     pub const fn value(&self) -> Option<&SemanticValue> {
-        self.value.as_ref()
+        self.0.value.as_ref()
     }
 
     #[must_use]
     pub const fn state(&self) -> SemanticState {
-        self.state
+        self.0.state
     }
 
     #[must_use]
     pub const fn actions(&self) -> &[SemanticAction] {
-        self.actions.as_slice()
+        self.0.actions.as_slice()
     }
 
     #[must_use]
     pub const fn relationships(&self) -> &[SemanticRelationship] {
-        self.relationships.as_slice()
+        self.0.relationships.as_slice()
     }
 
     #[must_use]
     pub const fn bounds(&self) -> SemanticBounds {
-        self.bounds
+        self.0.bounds
     }
 
     #[must_use]
     pub const fn text(&self) -> Option<&SemanticText> {
-        self.text.as_ref()
+        self.0.text.as_ref()
     }
 
     #[must_use]
     pub const fn children(&self) -> &[SemanticItem] {
-        self.children.as_slice()
+        self.0.children.as_slice()
     }
 }
 
