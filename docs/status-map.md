@@ -71,8 +71,15 @@ No framework subsystem is currently `stable`.
 
 ## Current milestone
 
-M0–M4 are complete and owner-accepted. M5 is active. M5A semantic contribution
-and independent identity is owner-accepted at reviewed feature head
+M0–M4 are complete and owner-accepted. ADR 0005 remains routed-behavior
+authority, ADR 0006 remains scheduler-behavior authority, the accepted
+[M4C delivery charter](architecture/m4c-delivery-and-routed-transaction-charter.md)
+continues to own M4 implementation/delivery constraints, and the accepted
+[M4 conformance matrix](architecture/m4-conformance-matrix.md) remains M4
+observable-acceptance authority.
+
+M5 is active. M5A semantic contribution and independent identity is
+owner-accepted at reviewed feature head
 `8377ced53c08d7b5be3020368ceddd3ee81294a5`; canonical exact-head CI run
 `31497457992` / #889 passed, PR #53 was guarded-squash-merged as
 `e3c304600ec1777cd17a1973946a43c765df1c31`, all 38 changed-file blob
