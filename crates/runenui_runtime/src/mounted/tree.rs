@@ -12,7 +12,7 @@ use runenui_core::{
 
 use super::{
     DirtyPhases, MountedNodeId,
-    arena::{MountedArena, MountedArenaCapacityError},
+    arena::{ArenaCapacityError, GenerationalArena},
     node::MountedNode,
     reconcile::IncomingNode,
     semantic::SemanticStore,
@@ -53,8 +53,8 @@ impl<Action> Default for ReconcileStats<Action> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct MountedIdentityExhausted;
 
-impl From<MountedArenaCapacityError> for MountedIdentityExhausted {
-    fn from(_: MountedArenaCapacityError) -> Self {
+impl From<ArenaCapacityError> for MountedIdentityExhausted {
+    fn from(_: ArenaCapacityError) -> Self {
         Self
     }
 }
@@ -110,7 +110,7 @@ pub(crate) enum AutomationResolution {
 
 pub(crate) struct MountedTree<Action> {
     pub(super) runtime: RuntimeNamespace,
-    pub(super) arena: MountedArena<MountedNode<Action>>,
+    pub(super) arena: GenerationalArena<MountedNode<Action>>,
     pub(super) semantic_store: SemanticStore,
     pub(super) root: Option<MountedNodeId>,
     pub(super) shutdown: bool,
@@ -120,7 +120,7 @@ impl<Action> MountedTree<Action> {
     pub(crate) fn empty() -> Self {
         Self {
             runtime: RuntimeNamespace::__runtime_new(),
-            arena: MountedArena::new(),
+            arena: GenerationalArena::new(),
             semantic_store: SemanticStore::new(),
             root: None,
             shutdown: false,
