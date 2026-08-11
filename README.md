@@ -6,14 +6,18 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M0 through M4 are complete and owner-accepted. The accepted
-M4D3 feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d` passed exact-head
-CI run `31398930987` / #765 and was guarded-squash-merged in
-[PR #43](https://github.com/dornglut/runen-ui/pull/43) as
-`596f0d823b9833d71a038cc4aebe834c7b94e4a6`; all 16 changed-file blob
-identities match between reviewed feature head and accepted squash. The final M4
-authority reconciliation records all eight M4D3-owned rows as owner-accepted,
-closes M4, and activates M5 semantics and deterministic public testing. Current
+Milestone status: M0 through M4 are complete and owner-accepted. M5 is active,
+and M5A semantic contribution and independent identity is now owner-accepted.
+The accepted M5A feature head
+`8377ced53c08d7b5be3020368ceddd3ee81294a5` passed exact-head CI run
+`31497457992` / #889 and was guarded-squash-merged in
+[PR #53](https://github.com/dornglut/runen-ui/pull/53) as
+`e3c304600ec1777cd17a1973946a43c765df1c31`; all 38 changed-file blob
+identities are byte-identical between the reviewed feature head and accepted
+squash. The M5A post-merge authority reconciliation records exactly the twelve
+M5A-owned rows as owner-accepted. M5B semantic tree publication and incremental
+updates remains the next sequential slice and cannot begin until that
+reconciliation itself is accepted, merged, and accepted-main verified. Current
 maturity, durable sequence, work ownership, and historical acceptance evidence
 live in the [status map](docs/status-map.md), [roadmap](docs/roadmap.md),
 [work-tracking contract](docs/work-tracking.md), and
@@ -35,7 +39,22 @@ The active workspace proves:
 - a persistent generational mounted tree with sibling-local keyed reconciliation,
   unkeyed ordinal matching, retained local state/focus/interaction slots,
   deterministic mount/update/unmount/shutdown, stale/foreign target rejection,
-  separate semantic identity, capability caches, and reconciliation reports;
+  capability caches, and reconciliation reports;
+- an owner-accepted, platform-neutral semantic contribution contract in which a
+  widget contributes an action-type-independent forest of zero or more
+  owner-local semantic nodes keyed by stable `SemanticKey` values, with strict
+  mounted-child marker and local-reference validation, roles/names/descriptions,
+  values/states/action intent/relationships/text facts, and exact owner or
+  validated owner-local logical bounds;
+- a separate runtime-owned generational semantic arena and owner/key binding
+  store issuing opaque `SemanticNodeId` lifetimes independently from mounted
+  arena allocation; compatible owner/key retention and contribution reorder
+  preserve identity, while key/owner removal revokes the exact lifetime and
+  later slot reuse advances generation;
+- core-owned canonical `LogicalSize` and `LogicalRect` geometry shared by
+  authoring and runtime; semantic contribution has no absolute surface-coordinate
+  authority, and recursive action mapping preserves semantic contribution
+  content exactly;
 - core-owned opaque mounted/time/work-sequence protocol values plus a narrow
   semantic-command event vocabulary, checked downstream event capability,
   immutable capture/target/bubble routing, independent propagation/default
@@ -78,8 +97,10 @@ The active workspace proves:
   and separate one-query intrinsic/child-layout snapshots per publication;
 - constrained row/column measurement and arrangement with aligned frame, style, and layout diagnostics;
 - mounted-preorder/parent-aligned index, frame, style, and layout products with
-  matching mounted/semantic identities, parent and authored metadata, including
-  after warmed structural cache changes;
+  matching mounted identities, parent and authored metadata, including after
+  warmed structural cache changes; semantic identities are deliberately not a
+  singular projection of those renderer-facing products and remain runtime-owned
+  until M5B publishes the independent semantic product;
 - a proof-level whole-surface cache with topology-only structural snapshots,
   current-mounted style/layout phase input, exact token-content context keys,
   and independently tested actual-execution phase reports;
@@ -94,13 +115,18 @@ in-memory trace schema is normalized and causally reconstructable; M4D2 adds
 accepted deterministic JSONL v1 projection, default-redacted/explicit-full
 text/IME capture, optional static action labels, and a subordinate lazily bounded
 nonblocking trace sink; and M4D3 adds an accepted inert offline causal replay
-model over that serialized projection. Replay is not yet the M5 public testing
-harness or an app-specific semantic expectation engine. Production
-semantics/accessibility, paint/hit scenes, production layout/style/text, native
-hosts, renderer backends, and production controls remain absent. The current
-runtime has one mounted root, one focus domain, and one logical surface with
-bounded proof-level displayed hit-test history. Current paint and semantic facts
-remain deterministic extension proofs, not the M5/M6 production products.
+model over that serialized projection. M5A now supplies production semantic
+contribution authoring and independent runtime semantic lifetimes, but it does
+**not** yet publish the independent semantic tree, translate owner-local bounds
+into absolute semantic bounds, derive runtime focus into that product, resolve
+cross-owner relationships, expose semantic-node action ingress, provide the
+public `runenui_testing` harness, or add AccessKit/native accessibility. Those
+remain M5B–M5D work. Paint/hit scenes, production layout/style/text, native
+hosts, renderer backends, and production controls also remain absent. The
+current runtime has one mounted root, one focus domain, and one logical surface
+with bounded proof-level displayed hit-test history. `SurfaceNode::semantics()`
+temporarily carries the canonical M5A contribution during the M5B cutover; it is
+not the independent semantic product and carries no public semantic identity.
 
 ## Production profiles
 
@@ -127,16 +153,21 @@ Application state
 ```
 
 The transient authored tree is consumed by reconciliation and is not persistent
-runtime state. The mounted tree now retains generational and semantic identity,
+runtime state. The mounted tree now retains mounted generational identity,
 widget-local state, lifecycle, focus, interaction slots, operational phases,
-integrity-aware capability caches, and a proof-level retained publication cache.
-Tree changes rebuild every topology-dependent fact from one current mounted
-preorder snapshot. Compatible style and layout changes retain topology and read
-the current mounted `StyleIntent` and `LayoutStyle`; authored token-reference
-changes are scheduled by reconciliation even when token content is unchanged.
-No production retained-layout claim is implied.
-Application and exact-mounted-generation task/subscription ownership is current;
-renderer-neutral paint and hit-test scenes begin in M6.
+integrity-aware capability caches, a separate semantic arena/binding store, and
+a proof-level retained renderer-facing publication cache. Widgets contribute
+canonical semantic forests independently of action type; the runtime validates
+and reconciles their owner-local keys into independent semantic lifetimes.
+M5B owns composition of those accepted contributions into a separately typed,
+absolute-bounds/focus-aware semantic snapshot and update product. Tree changes
+rebuild every topology-dependent renderer fact from one current mounted preorder
+snapshot. Compatible style and layout changes retain topology and read the
+current mounted `StyleIntent` and `LayoutStyle`; authored token-reference changes
+are scheduled by reconciliation even when token content is unchanged. No
+production retained-layout claim is implied. Application and exact-mounted-
+generation task/subscription ownership is current; renderer-neutral paint and
+hit-test scenes begin in M6.
 
 ## Canonical project documents
 
@@ -199,8 +230,10 @@ fn parent() -> Element<ParentAction> {
 
 Every widget explicitly declares and creates state (`type State = ();` for a
 stateless widget). Mounted activation may mutate it, every capability can observe
-it, and compatible reconciliation retains it. This does not imply production
-control semantics, accessibility, paint scenes, or native rendering.
+it, and compatible reconciliation retains it. Widgets may also author canonical
+M5A semantic contribution through the same state-aware contract; this does not
+imply the M5B public semantic tree, semantic action ingress, accessibility
+adapter, production control semantics, paint scenes, or native rendering.
 
 ## Validation
 
