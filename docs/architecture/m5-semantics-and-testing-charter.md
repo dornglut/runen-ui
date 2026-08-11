@@ -7,22 +7,20 @@
 > **Accepted by repository owner:** 2026-08-10
 >
 > **Milestone:** M5
->
-> **Accepted implementation base:** `a63a249de9d4d53eeef4104ae3384e7898aacad1`
 
-This charter turns the M5 roadmap goal into decision-complete implementation
-boundaries. It does not claim that M5 behavior exists. The
-[M5 conformance matrix](m5-conformance-matrix.md) owns M5-specific observable
-acceptance. The accepted
+This charter owns the durable M5 implementation boundaries. It does not claim
+that blocked M5 behavior exists. The
+[M5 conformance matrix](m5-conformance-matrix.md) owns exact observable
+acceptance, while the accepted
 [M4 conformance matrix](m4-conformance-matrix.md) continues to own inherited
-`ACCESS-01` and `ACCESS-02` until M5C completes and accepts them.
+`ACCESS-01` and `ACCESS-02` until M5C accepts them.
 
-The M4 command, event, scheduler, trace, export, and replay authorities remain
-inputs. M5 must not create replacements for them.
+The M4 command, event, scheduler, trace, export, replay, focus, and mounted-tree
+authorities remain inputs. M5 extends them; it does not replace them.
 
 ## Delivery sequence
 
-M5 is deliberately sequential:
+M5 implementation remains deliberately sequential:
 
 ```text
 M5A0  architecture/conformance authority + matrix-audit tooling
@@ -33,570 +31,538 @@ M5A0  architecture/conformance authority + matrix-audit tooling
           -> M5E  integrated conformance, migration, and M5 closure
 ```
 
-The public execution issues are #46 through #51 under umbrella issue #45.
-Every implementation branch begins from the accepted `main` produced by the
-preceding accepted slice. No M5 implementation branch may be stacked on an
-unmerged predecessor.
+The public implementation issues are #46 through #51 under umbrella issue #45.
+Every implementation branch begins from accepted `main` produced by the
+preceding accepted slice. No implementation branch may stack on an unmerged
+predecessor or a pending required authority reconciliation/readiness amendment.
 
-M5A0 changes architecture/conformance authority and the minimum repository-audit
-tooling needed to validate multiple milestone matrices. It changes no
-`runenui_core` or `runenui_runtime` behavior.
+The post-M5A readiness gate #55 is not an additional implementation slice. It
+freezes the successor contract before M5B/M5C source work and performs one
+bounded pre-1.0 vocabulary correction: route-bound semantic LogicalScroll is
+removed from semantic authoring while accepted routed M4 scrolling remains.
 
-## Inherited implementation facts
+## Accepted M5A baseline
 
-M4 leaves useful semantic infrastructure but not a production semantic system:
+M5A is accepted and reconciled. The accepted baseline now provides:
 
-- `WidgetSemanticProof` is a flat M2 proof capability on `Widget`;
-- mounted nodes have a cached semantic capability and a semantic dirty phase;
-- `SemanticNodeId` is currently generated from the mounted arena's slot and
-  generation;
-- semantic proof data is embedded in renderer-facing `SurfaceNode`/
-  `SurfaceFrame` and debug rendering;
-- public `AppRuntime` already owns deterministic mounting, canonical ingress,
-  bounded pumping, deterministic time, inspection, surface publication, trace,
-  export, and offline replay;
-- the only inherited blocked M4 matrix rows are M5-owned `ACCESS-01` and
-  `ACCESS-02`.
+- platform-neutral `SemanticContribution` with zero or more owner-local semantic
+  nodes per mounted owner;
+- stable owner-local `SemanticKey`, including reserved `SemanticKey::PRIMARY`;
+- strict duplicate-key, relationship, and mounted-children-marker validation;
+- canonical core-owned `LogicalSize` and `LogicalRect` plus validated owner-local
+  semantic bounds;
+- an independent checked generational semantic arena and owner/key binding
+  store;
+- stable identity retention across compatible updates/reordering and exact
+  stale/revoked/foreign behavior;
+- fail-closed semantic withdrawal on invalid contribution, identity exhaustion,
+  or semantic-index integrity failure.
 
-M5 preserves the useful scheduling/invalidating authority and replaces the
-proof-only semantic payload, identity coupling, publication ownership, and test
-surface.
+M5A does **not** provide the independent M5B semantic publication product,
+semantic-node action ingress, native accessibility integration, or the public
+M5D testing crate.
 
 ## Authority principles
 
-M5 follows six hard boundaries:
+M5 follows these hard boundaries:
 
 1. **Semantic truth is not renderer truth.** Semantic tree, layout, hit-test,
-   paint, style, and diagnostics are distinct authoritative products.
+   paint, style, and diagnostics are distinct products.
 2. **Runtime IDs are runtime authority.** Widgets author stable local semantic
    keys, never live `SemanticNodeId` values.
 3. **Mounted ownership is not semantic identity.** One mounted lifetime may own
    zero, one, or many semantic lifetimes.
-4. **Accessibility actions are command ingress.** They resolve to the exact
-   mounted owner and enter the accepted M4 command queue; they never activate a
-   widget directly.
-5. **Testing is downstream ergonomics.** The public testing crate may compose
-   public runtime APIs but receives no private mutation authority.
-6. **Platform adapters are adapters.** AccessKit or native accessibility types
-   never become core/runtime semantic vocabulary.
+4. **Mounted focus is the focus authority.** Semantic focus is a projection of
+   current mounted focus, never a competing focus model.
+5. **Accessibility actions are command ingress.** They resolve exact current
+   semantic authority and converge on the accepted M4 queue/routed/default path.
+6. **Testing is downstream ergonomics.** Public testing composes public runtime
+   APIs and receives no private mutation authority.
+7. **Platform adapters are adapters.** AccessKit/native accessibility types do
+   not become core/runtime semantic vocabulary.
+8. **Publication is atomic.** A new renderer/input/semantic product is exposed
+   only after its required capacities and staged state can commit coherently.
 
 ## Core semantic vocabulary
 
-`runenui_core` owns the platform-neutral semantic description vocabulary. The
-exact public names may be refined during M5A only if they preserve these
-responsibilities:
+`runenui_core` owns platform-neutral semantic description vocabulary:
 
-- `SemanticKey`: stable owner-local authored identity for one semantic node;
-- `SemanticContribution`: one widget's action-type-independent semantic forest;
-- `SemanticNodeContribution`: one owner-local node description;
-- `SemanticRole`: non-platform semantic role vocabulary;
-- names and descriptions as owned Unicode text;
-- values and typed states needed by actual M5 semantics;
-- `SemanticRelationship` and `SemanticReference`;
-- `SemanticAction`: only actions with real RunenUI behavior in the accepted
-  milestone;
-- semantic bounds policy using canonical logical geometry;
-- plain-text semantic content with an extension boundary that can grow into the
-  M8 text-range model without giving M5 fake editing behavior.
+- `SemanticKey`;
+- `SemanticContribution` and `SemanticNodeContribution`;
+- `SemanticRole`;
+- names, descriptions, values, state, relationships, bounds, and plain text;
+- `SemanticAction` only for actions with real M5 RunenUI semantics.
 
-`SemanticKey` has one reserved primary value for the ordinary one-semantic-node
-widget case. A simple text/button/custom control therefore does not invent a
-string merely to receive stable identity. Additional/virtual semantic nodes use
-explicit owner-local keys. The reserved primary key participates in the same
-uniqueness and lifetime rules as every other key.
+The M5 semantic action vocabulary is exactly:
 
-The vocabulary is `#[non_exhaustive]` where later controls/text legitimately add
-variants. M5 does not add placeholder actions that silently do nothing.
+```text
+Activate
+RequestFocus
+OpenMenu
+OpenContextMenu
+```
 
-### Roles and later controls
+Route/device/session-specific scrolling is not semantic-authoring authority.
+`SemanticCommand::LogicalScroll`, `LogicalScrollCommand`, pointer-derived scroll,
+focus logical-scroll derivation, routed callbacks, and accepted M4 scrolling
+remain unchanged. M5 defines no compatibility semantic-scroll alias and invents
+no fake pointer identity. M7 may introduce device-independent semantic scrolling
+once production scrolling owns an appropriate contract.
 
-M5 implements the roles required by built-ins, Counter, and genuine downstream
-custom-widget proofs. Later M8/M9 controls may add roles without changing
-semantic identity, tree ownership, action ingress, or adapter boundaries.
+Semantic vocabulary is `#[non_exhaustive]` where later real controls/text may add
+behavior. Placeholder actions that silently do nothing are not added.
 
-### Values and text
-
-M5 may publish real read-only semantic values and plain text. Production text
-selection/ranges/editing remain M8. The M5 node model must allow a later text
-extension without replacing `SemanticNodeId` or the semantic tree/update
-protocol.
-
-## Owner-local semantic contribution
+## Owner-local contribution and identity
 
 A compatible mounted widget contributes **0..N** semantic nodes. Contribution is
 read-only with respect to application/runtime behavior and independent of the
 widget's `Action` type.
 
-Each contributed node has one `SemanticKey` unique within its exact mounted
-owner. Runtime validates the complete contribution before accepting it as the
-owner's semantic description.
+Every contributed node owns one `SemanticKey` unique within its exact mounted
+owner. The complete owner-local contribution is validated before acceptance.
+One explicit mounted-children marker can splice all direct mounted-child semantic
+roots at one deterministic position. Exact rules are:
 
-A contribution is an ordered owner-local semantic forest. Its top-level sequence
-and any local semantic child sequence may contain one explicit
-**mounted-children marker**, but the complete contribution may contain that
-marker at most once. The marker inserts the semantic roots contributed by this
-mounted owner's direct mounted children in deterministic mounted logical order.
-Local semantic nodes may appear before or after the marker at that exact sequence
-position.
-
-The marker deliberately represents all direct mounted-child semantic roots as
-one ownership boundary. A parent contribution cannot cherry-pick or reparent one
-child owner's private semantic descendants. If a mounted child needs virtual
-ordering inside its semantic subtree, that child owner expresses it in its own
-contribution. This keeps semantic identity and lifetime ownership local while
-still allowing transparent wrappers and virtual semantic descendants.
-
-Required composition behavior is exact:
-
-- if an owner contributes **zero local semantic nodes**, it is transparent; no
-  mounted-children marker is permitted or required, and direct mounted-child
-  semantic roots propagate to the nearest semantic ancestor in mounted logical
-  order;
-- if an owner contributes **one or more local semantic nodes and has one or more
-  direct mounted children**, its contribution must contain **exactly one**
-  mounted-children marker;
-- if an owner has **no direct mounted children**, its contribution must contain
-  **no** mounted-children marker;
-- a present marker fixes the exact semantic parent and sequence position of all
-  direct mounted-child semantic roots;
-- missing, duplicate, or unnecessary mounted-children markers are invalid rather
-  than repaired by a default placement;
-- duplicate `SemanticKey` values or structurally invalid contribution references
-  are rejected deterministically and diagnosed;
-- invalid owner contribution never causes first/last-match recovery;
+- zero local semantic nodes make an owner transparent; no marker is allowed;
+- one or more local nodes plus direct mounted children require exactly one
+  marker;
+- no direct mounted children permits no marker;
+- missing, duplicate, or unnecessary markers reject rather than receive an
+  inferred placement;
+- duplicate keys or invalid local references reject deterministically;
+- invalid owner-local authoring contributes no local semantic nodes or
+  fabricated marker, while independently valid direct child-owner roots remain
+  transparent through that owner;
 - recursive component action mapping leaves semantic contribution unchanged.
 
-The contribution contract does not expose mounted arena access, runtime focus,
-absolute surface coordinates, semantic arena allocation, or platform adapter
-objects.
-
-## Semantic identity model
-
-`SemanticNodeId` remains an opaque core-owned runtime-local ID sharing the M4
-runtime namespace, but M5 removes its mounted-arena allocation coupling.
-
-Runtime owns a separate checked generational semantic arena/index. Conceptually
-one live record binds:
+Runtime owns the private binding:
 
 ```text
 SemanticNodeId
   -> exact mounted owner lifetime
-  -> owner-local SemanticKey
-  -> accepted semantic contribution node
+  -> SemanticKey
 ```
 
-Identity rules are exact:
+Retaining owner lifetime + key preserves identity across compatible updates and
+reordering. Removing the key or owner revokes that lifetime. Later arena reuse
+uses a later checked generation; stale and foreign IDs never retarget.
 
-- runtime issues IDs; downstream code cannot construct, decompose, serialize
-  into live authority, or extract the runtime namespace;
-- owner lifetime + `SemanticKey` retention preserves the exact semantic ID across
-  compatible updates and contribution reorder;
-- removing a local key revokes that semantic lifetime;
-- removing/replacing a mounted owner revokes every semantic lifetime it owns;
-- later reuse of an arena slot uses a later non-wrapping generation;
-- an old ID is stale and never retargets a replacement;
-- a foreign runtime ID is foreign even if its opaque internal slot/generation
-  values would otherwise coincide;
-- public-slot conversion and generation advancement are checked, never truncated
-  or wrapped.
+The public semantic product does not expose `MountedNodeId` as a routing
+shortcut. Widgets cannot author runtime namespace, live semantic identity,
+absolute surface coordinates, mounted identity, or adapter objects.
 
-Canonical runtime-issued IDs are unique. `ACCESS-02`'s ambiguous-identity branch
-therefore represents semantic-index integrity failure, not an ordinary authored
-state. An integrity failure rejects without selecting first or last.
+## Geometry
 
-## Logical geometry ownership
+Canonical `LogicalPoint`, `LogicalLength`, `LogicalSize`, and `LogicalRect` are
+core-owned host-neutral geometry. A semantic node uses exact arranged owner
+bounds or a validated owner-local logical rectangle translated by runtime.
+Widgets do not author absolute surface coordinates.
 
-M5 semantics need bounds independent of renderer output and virtual semantic
-nodes may need sub-bounds inside one mounted widget.
+Layout changes may change semantic bounds/product without rerunning an unchanged
+semantic contribution callback. `WidgetInvalidation::SEMANTICS` continues to
+mean contribution content/structure may have changed.
 
-`LogicalPoint` and `LogicalLength` are already core-owned. M5A cleanly moves
-canonical `LogicalSize` and `LogicalRect` ownership to `runenui_core`; runtime may
-re-export those same canonical types where its public APIs require them.
+M6 may refine transforms/clips/scene geometry without merging semantic and
+hit/paint authority.
 
-A semantic node's bounds policy is one of:
+## Composition, state, support, and focus
 
-- the exact arranged owner bounds; or
-- a validated owner-local logical rectangle translated into publication
-  coordinates by runtime.
+`SemanticNodeContribution` is authoring input. M5B publishes composed semantic
+state plus supported actions. M5C evaluates current availability separately.
 
-A widget does not author absolute surface coordinates.
+For every semantic node owned by one mounted widget:
 
-Layout changes mark semantic publication/bounds dirty even if the cached widget
-semantic contribution remains valid. Runtime recomposes absolute bounds without
-calling an unchanged semantic contribution again. `WidgetInvalidation::SEMANTICS`
-continues to mean that the contribution itself changed.
+```text
+published_disabled = authored SemanticState.disabled
+                   || !current WidgetActivation.enabled
+```
 
-M6 may later add transforms/clips/scene geometry. That work must refine mapping
-without merging semantic and hit/paint authority.
+The accepted activation distinctions remain meaningful:
 
-## Semantic states and runtime-derived facts
+- `WidgetActivation::NONE` means enabled but not directly owner-actionable;
+  virtual semantic children may still support actions;
+- `WidgetActivation::disabled()` disables interaction owner-wide;
+- a named semantic node may additionally author its own disabled state;
+- hidden is semantic-subtree scoped;
+- inert is authored semantic state;
+- disabled/inert nodes may retain supported-action identity while execution is
+  unavailable.
 
-The semantic contribution owns semantic facts derived from widget state; runtime
-owns runtime facts.
+Owner `actionable` is **not** a universal semantic-node gate:
 
-Runtime-derived facts include:
+- PRIMARY `Activate` support = authored Activate + owner `actionable`;
+- named/virtual `Activate` support = exact authored Activate without an owner
+  `actionable` requirement;
+- `RequestFocus` support exists only on a visible PRIMARY node; `Focusable`
+  support is independent of `actionable`, while `Automatic` requires
+  `actionable`; current owner enabled/live focus eligibility remains admission
+  and default authority;
+- `OpenMenu` / `OpenContextMenu` support follows exact authored support without
+  fabricating an activation/default requirement.
 
-- live `SemanticNodeId`;
-- exact mounted owner;
-- absolute logical bounds;
-- exact runtime focus;
-- publication/update revision;
-- semantic-action target resolution.
+If required capability authority is unresolved, publication/admission is stale
+rather than guessed. Structural contradictions omit support and produce a typed,
+deterministic diagnostic.
 
-Required state policy:
+Mounted `FocusState` is the sole runtime focus authority. A focused mounted owner
+projects to its **currently published visible `SemanticKey::PRIMARY`** only.
+There is no first/only/root/named fallback. If there is no visible PRIMARY,
+semantic focus is `None` and publication records a deterministic typed projection
+diagnostic. A hidden PRIMARY is not semantic focus. Active-descendant/composite
+focus semantics are later work; non-primary `RequestFocus` is unsupported in M5.
 
-- **disabled:** remains observable with disabled state; an unavailable action
-  cannot execute;
-- **hidden:** absent from the published semantic tree and action surface; a live
-  owner/local-key record may be retained so reappearance can preserve identity;
-- **inert:** may remain observable but exposes no executable action and action
-  ingress rejects it;
-- **focused:** derived from exact mounted runtime focus, never authored as a
-  contradictory widget fact.
-
-Later states may extend this model without changing identity/lifetime authority.
-
-## Relationships
-
-M5 supports real semantic relationships without exposing live runtime IDs to
-widget authoring.
+## Relationships and hidden composition
 
 A relationship target is either:
 
-- another `SemanticKey` within the same mounted owner; or
-- a unique authored `ElementId` plus an optional owner-local `SemanticKey` in
-  that target owner.
+- another owner-local `SemanticKey`; or
+- a unique authored `ElementId` plus an optional semantic key in that target
+  owner.
 
-Runtime resolves relationships only after semantic identities for the current
-product are known.
+`SemanticReference::Authored { semantic_key: None }` means the exact target
+owner's `SemanticKey::PRIMARY`. Missing PRIMARY is missing; no first/root/named
+fallback is permitted. Ambiguous authored `ElementId` remains ambiguous.
+Runtime resolves relationships after current semantic identities are known using
+deterministic publication-local indexes.
 
-Missing or ambiguous authored element references, missing local semantic keys,
-hidden targets, and stale owner transitions produce deterministic semantic
-diagnostics. They never pick a first/last candidate or fabricate a replacement
-relationship.
+Hidden nodes/subtrees are absent from the published tree/action surface but may
+retain semantic identity for reappearance. Diagnostics never become fallback
+routing authority.
 
 ## Independent semantic publication
 
-M5B removes production semantic authority from `SurfaceNode`, `SurfaceFrame`, and
-`DebugSurfaceRenderer`.
+M5B removes production semantic authority from renderer-facing `SurfaceNode`,
+`SurfaceFrame`, and debug rendering. The semantic snapshot/update becomes an
+independently typed sibling product.
 
-The public surface publication may carry semantics as a **sibling product** so
-one publication can align logical bounds and displayed state, but the semantic
-snapshot is independently typed and consumable. A renderer can consume the
-frame without semantic vocabulary; an accessibility/test consumer can consume
-semantics without interpreting paint proof kinds.
+Semantic composition consumes canonical layout facts rather than renderer output.
+A renderer can consume its product without semantic vocabulary; an accessibility
+or test consumer can consume semantics without interpreting paint proof kinds.
+The public semantic product exposes semantic identity/tree/content, not mounted
+routing authority.
 
-The semantic snapshot exposes deterministic tree order, an ordered top-level
-`roots` list, and read-only lookup by exact `SemanticNodeId`. RunenUI does not
-fabricate a semantic wrapper node solely because one platform adapter expects a
-single root. An adapter that requires one platform root may synthesize an
-adapter-local root outside RunenUI semantic identity authority.
+Any aggregate equality or consuming API must not silently ignore the semantic
+sibling. Where both concepts are useful, APIs distinguish renderer-only from
+all-product comparison/extraction rather than retaining a compatibility alias.
 
-The snapshot contains the complete current semantic product needed by an
-adapter or test query.
+The snapshot contains deterministic roots/tree order, exact-ID lookup, composed
+state/support, relationships, bounds, and semantic focus required by adapters
+and tests. RunenUI does not fabricate a semantic wrapper solely for a platform
+that wants one root; such a root is adapter-local.
 
-## Incremental semantic updates
+## Semantic revision and updates
 
-M5B owns one non-wrapping semantic publication revision authority.
+Semantic snapshot/update authority is scoped by exact opaque `SurfaceId`, not by
+`SurfaceInputContext`, hit-test generation, or coordinate revision.
 
-Each accepted semantic change produces a deterministic update from the exact
-previous revision to the next revision. Updates can represent:
+For each surface:
 
-- added nodes;
-- changed node content/states/actions;
-- removed semantic IDs;
-- parent/child/root changes;
-- relationship changes;
-- runtime focus changes;
-- logical bounds changes.
+- the first committed snapshot is revision `1` with no synthetic `0 -> 1` delta;
+- an unchanged adapter-visible semantic product keeps the same revision and
+  produces no update;
+- a changed product advances one checked, non-wrapping revision;
+- removals follow previous semantic order;
+- additions/changes follow new semantic order;
+- roots and semantic focus are explicit update facts when changed;
+- wrong surface or wrong prior revision requires full resynchronization;
+- diagnostics/readiness-only changes do not bump semantic revision.
 
-Update ordering is fixed rather than map-iteration-dependent:
+Updates are deltas derived from runtime-owned current product, not an independent
+mutable semantic store.
 
-- removals follow the previous semantic snapshot's deterministic semantic order;
-- added/changed node payloads follow the new snapshot's deterministic semantic
-  order;
-- root order and focus are explicit update facts when they change.
+## Surface publication transaction
 
-An unchanged publication retains its semantic revision and reports no fabricated
-update.
+M5B must replace the current imperative append-style publication flow with one
+transaction:
 
-An update is not an independent mutable semantic store. It is a delta derived
-from the runtime-owned current semantic product. Consumers that apply a delta to
-the wrong prior revision have invalid state and must resynchronize from a full
-snapshot.
+```text
+admit -> plan -> candidate-dependent final preflight -> commit
+```
 
-This model is intentionally compatible with adapters that accept atomic partial
-tree updates while remaining RunenUI-owned.
+### Admission
+
+Before downstream capability callbacks, preflight every failure knowable at that
+point, including runtime status, required hit-test/coordinate counter capacity,
+stationary-rehit queue/work capacity when needed, trace reservation capacity, and
+redraw/control validity.
+
+Ordinary queue `Full` while a stationary rehit is required is **recoverable
+publication backpressure**:
+
+- return a typed recoverable refusal;
+- commit no new publication/cache/semantic/snapshot/trace/redraw/rehit state;
+- leave redraw pending/unacknowledged;
+- caller may pump work and retry.
+
+Queue fullness is not generic terminal `Poisoned` once publication is atomic.
+Work-sequence exhaustion, trace-sequence exhaustion, publication-counter
+exhaustion, and genuine integrity failure remain terminal under their owning
+authority.
+
+### Plan
+
+After admission succeeds, contractually read-only widget capability callbacks may
+run. Stage RunenUI-owned capability-cache results, semantic identity
+reconciliation, semantic candidate, and renderer/layout/hit/diagnostic products.
+
+Widget state is not cloned and RunenUI does not promise rollback of arbitrary
+interior mutation that violates the read-only callback contract. Semantic-store
+reconciliation uses a non-mutating plan/reservation so currently published IDs
+are not revoked/allocated during planning.
+
+M5A fail-closed semantics remain exact: invalid contribution, state/bridge
+mismatch, semantic identity exhaustion, or semantic-index integrity failure
+stages the required owner withdrawal/error state. Identity exhaustion is not
+converted into “keep old semantics and continue.”
+
+### Candidate-dependent final preflight
+
+After the candidate product exists, preflight requirements that depend on it,
+including semantic revision advancement only if the adapter-visible semantic
+product changed. A trace reservation acquired during admission must be releasable
+without consuming `TraceSequence` when commit is refused.
+
+If semantic refresh staged a fail-closed owner withdrawal and final preflight
+succeeds, withdrawal/revocation, semantic-removal update/diagnostic, capability
+cache, and publication commit atomically.
+
+If a terminal final-preflight failure prevents commit, none of the staged
+RunenUI-owned semantic mutations commit and no partial new publication is
+exposed; runtime becomes terminal rather than remaining live against an
+unrepresented transition.
+
+### Commit
+
+Only after all preflights succeed commit semantic store/bindings, capability and
+derived caches, dirty completion, semantic revision/update, retained input
+snapshot, publication trace, stationary rehit, and redraw acknowledgement.
+
+Recoverable refusal preserves the prior coherent semantic IDs/product/revision
+and leaves required dirty/redraw work pending. Terminal failure exposes no
+partial new product.
+
+### Failure taxonomy
+
+The public publication boundary becomes fallible or equivalent and distinguishes
+at least:
+
+1. recoverable backpressure/refusal, including required stationary-rehit queue
+   full;
+2. terminal surface-publication exhaustion with exact redraw-revision,
+   hit-test-generation, coordinate-revision, or semantic-revision subreason;
+3. `WorkSequenceExhausted`;
+4. `TraceSequenceExhausted`;
+5. terminal integrity failure.
+
+Ordinary monotonic exhaustion must not use `unreachable!`, wrap, or saturate.
+No refusal may lose a reservation, clear dirty/redraw authority, or expose a
+partial commit.
+
+## Semantic action ingress and M4 convergence
+
+M5C public submission uses an exact surface-scoped request equivalent to:
+
+```text
+SemanticActionRequest {
+    surface: SurfaceId,
+    target: SemanticNodeId,
+    action: SemanticAction,
+}
+```
+
+No semantic revision is carried in the request; admission evaluates current
+truth. Node-only public submission is not the long-term contract. M5 still owns
+one logical surface; M10 owns multi-surface lifecycle.
+
+Submission performs **no widget callback**. It validates runtime namespace,
+exact current surface, semantic lifetime, membership in that surface product,
+current support/composed state, and clean/current action readiness. Wrong/foreign
+surface, absent target, unresolved semantic/structural authority, or relevant
+readiness dirtiness rejects before callback, mutation, wake, `WorkSequence`, or
+`TraceSequence`. Layout-only bounds dirtiness need not block action admission.
+
+Accepted semantic-origin work privately retains at least:
+
+```text
+SurfaceId
+SemanticNodeId
+SemanticKey
+exact mounted owner lifetime
+original SemanticAction
+mapped SemanticCommand
+```
+
+That metadata travels through the **existing** command envelope/routed
+transaction/trace. No second queue, callback engine, activation engine, or trace
+is introduced. Semantic-origin callbacks may observe exact read-only target
+metadata through non-forgeable vocabulary; ordinary commands carry none and
+delegated commands do not inherit it implicitly.
+
+Before the first routed callback, processing revalidates exact surface, semantic
+lifetime, owner/key binding, mounted owner, surface membership, support, composed
+state, owner enabled state, and action-specific readiness. There is no
+replacement, cross-surface, owner-only, or first/last retarget. Failure after
+acceptance consumes the accepted `WorkSequence` and performs no callback/default.
+
+For semantic-origin defaults (`Activate`, `RequestFocus`), callbacks may invalidate
+semantic/action authority after queue-front validation. Before default execution,
+if required authority became dirty/unresolved, runtime does **not** synchronously
+refresh semantics: delivered callbacks and work sequence remain, default is
+suppressed fail-closed, a deterministic target-invalidated suppression fact is
+traced, and no retarget occurs. Explicit `prevent_default` remains a distinct
+suppression reason.
+
+PRIMARY Activate uses the existing enabled/actionable probe. Named Activate does
+not require owner `actionable`, but does require owner-wide enabled plus exact
+named node non-disabled/non-inert state. RequestFocus uses current M4 focus
+eligibility.
+
+### Target-aware canonical activation
+
+Existing mounted-owner `Widget::activate` remains the sole activation default
+execution path. Semantic-targeted Activate passes immutable exact semantic target
+metadata into that existing activation context so a custom owner can distinguish
+virtual keys. M5 adds no `activate_semantic`, per-node closure registry, or second
+default engine. Non-semantic activation remains unchanged.
 
 ## Semantic diagnostics
 
-Semantic contribution/tree/relationship integrity diagnostics are typed,
-deterministic, and independent from paint/debug strings.
+Semantic contribution/tree/relationship/state/publication diagnostics are typed,
+deterministic, and independent from paint/debug strings. They distinguish the
+relevant duplicate/missing/ambiguous/stale/integrity/projection/publication
+failure classes and never become fallback authority.
 
-At minimum diagnostics distinguish:
+## Trace and replay
 
-- duplicate owner-local semantic key;
-- missing mounted-children marker;
-- duplicate mounted-children marker;
-- unnecessary mounted-children marker;
-- missing local relationship target;
-- missing cross-owner authored target;
-- ambiguous cross-owner authored target;
-- missing cross-owner semantic key;
-- semantic index integrity ambiguity.
+There remains one canonical bounded/redacted trace. M5C extends its lineage to
+prove semantic request -> exact surface/node/key/private owner -> mapped canonical
+command -> existing routed/default/update/reconciliation behavior.
 
-Diagnostics never become fallback routing authority.
-
-## Semantic actions and M4 convergence
-
-M5C introduces a public semantic-action request targeted by exact
-`SemanticNodeId`.
-
-Submission performs no callback. It:
-
-1. validates runtime namespace and semantic-index integrity;
-2. classifies the target live/stale/missing/foreign;
-3. checks current published hidden/inert/disabled/action-support policy;
-4. resolves the semantic record's exact live mounted owner;
-5. maps the accepted `SemanticAction` to an existing `SemanticCommand`;
-6. uses `CommandOrigin::accessibility()`;
-7. submits through the accepted canonical command preflight/FIFO/wake/routed
-   transaction authority.
-
-The exact initial M5 action vocabulary is:
-
-```text
-SemanticAction::Activate
-  -> SemanticCommand::Activate
-SemanticAction::RequestFocus
-  -> SemanticCommand::RequestFocus
-SemanticAction::OpenMenu
-  -> SemanticCommand::OpenMenu
-SemanticAction::OpenContextMenu
-  -> SemanticCommand::OpenContextMenu
-SemanticAction::LogicalScroll(command)
-  -> SemanticCommand::LogicalScroll(command)
-```
-
-The enum remains non-exhaustive for later real behavior. `CancelOrBack`, focus
-navigation/restoration, value mutation, selection, and text editing are not
-fabricated as node actions in M5. Controller navigation continues to use the
-accepted normalized command path, while M8/M9 own value/text semantic actions.
-
-A semantic action is admitted against the **current published semantic product**
-for that live semantic lifetime. Stable identity is the target authority;
-current published hidden/inert/disabled/action support is the admission
-authority. M5 does not invent a second retained accessibility-snapshot target
-system merely to mirror pointer geometry generations.
-
-Rejection returns the exact owned request and consumes no work/trace sequence,
-invokes no callback, mutates no state/focus, and requests no wake.
-
-Required rejection classes include semantic identity status, integrity
-ambiguity, hidden/inert/disabled/action-support failures, exact mounted-owner
-status/integrity, canonical queue/status, and sequence exhaustion.
-
-## Trace and replay integration
-
-There remains one canonical trace.
-
-M5C extends it with semantic action resolution/admission/rejection facts needed
-to prove:
-
-```text
-semantic request
-  -> exact SemanticNodeId
-  -> exact mounted owner
-  -> canonical SemanticCommand
-  -> existing routed/default/update/reconciliation lineage
-```
-
-M4D2 bounded retention, redaction, and external-sink guarantees remain intact.
-M4D3 replay remains inert offline causal proof. M5 testing may consume replay;
-replay never submits live semantic actions or reconstructs runtime authority.
+M4D3 replay remains inert offline causal observation. It never submits live
+semantic actions or reconstructs live runtime authority.
 
 ## AccessKit-neutral adapter foundation
 
-RunenUI does not adopt AccessKit as core vocabulary in M5.
+RunenUI does not adopt AccessKit/native accessibility types as core vocabulary in
+M5. The semantic tree/update/action model is designed to map to stable node
+identity, roots/focus, atomic partial updates, properties/bounds/actions, and
+targeted action requests without making those platform types authoritative.
 
-The M5 tree/update/action model is designed so a later adapter can map to the
-current AccessKit concepts of stable node identity, tree/root/focus state,
-partial atomic tree updates, node properties/bounds/actions, and targeted action
-requests. M5E records an explicit source-grounded mapping review against the
-then-current AccessKit API.
-
-Primary references used during the readiness audit include:
-
-- <https://docs.rs/accesskit/latest/accesskit/struct.TreeUpdate.html>
-- <https://docs.rs/accesskit/latest/accesskit/>
-- <https://developer.android.com/reference/androidx/customview/widget/ExploreByTouchHelper>
-
-These sources support stable accessibility node identity, incremental updates,
-targeted actions, and virtual logical hierarchies. They do not define RunenUI's
-public types.
-
-No AccessKit dependency or native platform bridge is required for M5A-M5D.
-M10 owns native host/accessibility adapter integration.
+M5E performs a fresh source-grounded mapping review against the then-current
+adapter API. No AccessKit dependency/native bridge is required for M5A-M5D; M10
+owns native host/accessibility integration.
 
 ## Public deterministic testing crate
 
-M5D adds a genuine downstream workspace crate, `runenui_testing`, after M5C
-stabilizes semantic query/action APIs.
+M5D adds genuine downstream workspace crate `runenui_testing` only after M5C
+stabilizes public semantic query/action APIs. It depends on public core/runtime
+behavior and must not enable private test seams, call hidden mutation bridges,
+seed runtime sequences/generations, replace snapshots, invoke callbacks directly,
+or maintain parallel expected runtime state.
 
-The crate depends only on public `runenui_core` and `runenui_runtime` behavior.
-It must not:
+The harness delegates deterministic mounting, bounded pumping/time, explicit
+publication, semantic query/action, existing public interaction sources, and
+read-only inspection to `AppRuntime`.
 
-- enable `internal-test-seams`;
-- call doc-hidden runtime construction bridges;
-- seed runtime sequences/generations;
-- corrupt mounted state;
-- replace surface snapshots;
-- invoke widget callbacks directly;
-- maintain a parallel expected runtime/semantic state.
+Semantic query results are snapshot-scoped. Action helpers carry exact
+`SurfaceId` + `SemanticNodeId` from that product, or act on a query proven unique;
+they never reconstruct `MountedNodeId`, bypass semantic ingress, or invent a
+LogicalScroll semantic helper.
 
-### Harness responsibilities
+Any settle convenience takes an explicit finite budget and returns structured
+quiescent/exhausted/closed/terminal outcome. Assertions prefer typed data and
+ordinary Rust assertions over a macro-heavy DSL or snapshot-golden framework.
 
-A typed harness owns a public `AppRuntime<App>` and deterministic publication
-configuration. It provides ergonomic delegation for:
+## Deferred architecture
 
-- mounting/configuration;
-- bounded pump;
-- deterministic time advancement;
-- explicit publication;
-- semantic queries;
-- public semantic actions;
-- pointer, keyboard, committed text, composition, automation, and direct action
-  submission;
-- normalized controller commands through existing `SemanticCommand` plus
-  `CommandOrigin::controller()`;
-- read-only state/focus/reconciliation/semantic/layout/hit/current-paint/trace/
-  replay inspection.
+Issue #10 (Element/Widget concentration) is not an M5 prerequisite. Focused
+semantic ownership should remain cohesive rather than trigger unrelated broad
+reorganization.
 
-### Query policy
+Issue #12 (widget event-output capacity) is resolved: current capacity is
+sufficient because semantic contribution is observational and semantic actions
+are ingress into existing command authority, not new widget outputs.
 
-Semantic queries return deterministic match sets or structured unique-match
-results. A unique lookup distinguishes missing from ambiguous. Mutation helpers
-never choose first/last from an ambiguous result.
-
-### Pump/settle policy
-
-`pump` is explicit and takes public `PumpBudget`.
-
-A convenience settle operation is allowed only if it takes an explicit bounded
-settle budget and returns a structured quiescent/exhausted/closed/terminal
-outcome. No unbounded hidden loop is permitted.
-
-### Assertion style
-
-Prefer typed data/query APIs and ordinary Rust assertions. M5 does not add a
-macro-heavy expectation DSL or a snapshot/golden framework.
-
-M6 will later replace current proof-level hit/paint products; the testing crate
-may adapt cleanly because it does not own those products.
-
-## Deferred architecture issues
-
-### Issue #10 — Element/Widget concentration
-
-Not an M5 prerequisite. M5A creates a focused core semantic module and removes
-semantic type ownership from `element.rs` rather than broadly reorganizing the
-whole public protocol during a semantic-contract cutover. #10 remains a later
-complete coupling/responsibility audit.
-
-### Issue #12 — widget event-output capacity
-
-Resolved after M4 with outcome 1: current capacity is sufficient for accepted M5
-requirements. Semantic contribution is observational and semantic actions are
-new ingress into the existing command authority, not new widget outputs.
-
-## M5 conformance ownership
-
-The [M5 conformance matrix](m5-conformance-matrix.md) uses the repository's
-accepted status vocabulary:
-
-- `blocked`;
-- `implementation-complete`;
-- `proof-complete`;
-- `owner-accepted`.
-
-M5A0 owns no behavioral rows; the initial M5 matrix therefore begins with every
-M5 behavior row `blocked`. This avoids inventing feature acceptance for the
-documentation/tooling gate.
-
-The inherited M4 `ACCESS-01` and `ACCESS-02` rows remain in the M4 matrix and are
-completed by M5C. No duplicate IDs are created in the M5 matrix.
+M7 owns possible device-independent semantic scrolling. M8/M9 own production
+text/editing and later control semantics. M10 owns multi-surface lifecycle and
+native host/accessibility integration.
 
 ## Slice boundaries
 
 ### M5A — contribution and independent identity
 
 Owns core semantic vocabulary, logical size/rect core cutover, contribution,
-semantic arena/index, identity lifecycle, and proof-semantic callback migration.
-It does not publish the complete production semantic tree or accept semantic
-actions.
+semantic arena/index, identity lifecycle, and proof-semantic migration. Accepted.
 
 ### M5B — semantic product and incremental updates
 
-Owns semantic tree composition, relationships, runtime-derived state/bounds,
-separate publication, semantic diagnostics, revisions/diffs, and removal of
-semantic authority from renderer-facing frame/debug products.
+Owns tree composition, relationships, composed state/support/focus/bounds,
+private owner resolution, independent surface-scoped snapshot/update, semantic
+diagnostics, revisions/diffs, staged atomic publication/failure taxonomy, and
+clean removal of production semantic authority from renderer-facing products.
+It does not accept semantic action requests.
 
 ### M5C — semantic actions and accessibility resolution
 
-Owns semantic-action request/result/error API, exact semantic-to-mounted
-resolution, canonical command convergence, semantic action trace, and inherited
-`ACCESS-01`/`ACCESS-02` behavior/proofs.
+Owns surface-scoped semantic request/result/error API, exact private target
+lineage, support/availability admission, queue-front and post-callback
+revalidation, target-aware convergence on existing activation/default authority,
+semantic action trace, and inherited `ACCESS-01`/`ACCESS-02` proofs.
 
 ### M5D — public deterministic testing
 
-Owns `runenui_testing`, bounded harness ergonomics, semantic queries, public
-interaction helpers, deterministic settle, assertions, and replay integration.
+Owns `runenui_testing`, bounded harness ergonomics, snapshot-scoped semantic
+queries, exact surface/node action helpers, deterministic settle, assertions, and
+replay integration.
 
 ### M5E — integrated closure
 
-Owns cross-source conformance, AccessKit-neutral mapping review, final migration
-audit, current-document truth, complete M5 matrix proof, and M5 closure. It does
-not implement M6.
+Owns cross-source conformance, fresh adapter mapping review, final migration
+audit, current-document truth, complete then-current M5 matrix proof, and M5
+closure. It does not implement M6.
 
 ## Migration policy
 
 RunenUI is pre-1.0. M5 uses a clean cutover:
 
-- no compatibility alias for `WidgetSemanticProof`;
+- no compatibility alias for retired semantic proof authority;
 - no second old/new semantic callback;
-- no retained production `SurfaceNode::semantics()` after its assigned removal;
-- no semantic ID compatibility coupling to mounted arena allocation;
-- no direct semantic activation path;
-- no parallel accessibility queue or trace;
+- no retained production renderer semantic authority after M5B cutover;
+- no semantic identity coupling to mounted arena allocation;
+- no public semantic -> `MountedNodeId` routing shortcut;
+- no route-bound LogicalScroll semantic action or compatibility alias;
+- no direct semantic activation path, second semantic queue/trace/default engine;
 - no public testing API that preserves private/internal test seams.
 
-Repository authority audit must enforce the final retired-surface rules by M5E.
+Repository authority audit must enforce final retired-surface rules by M5E.
 
 ## Stop conditions
 
-Stop a slice instead of widening it when:
+Stop a slice rather than widening it when:
 
 - accepted `main` drifts with overlapping semantic/testing work;
-- semantic truth would be merged into renderer/hit/layout authority;
-- semantic actions would bypass canonical M4 command admission;
-- a public testing requirement needs private mutation authority;
-- implementation needs a native accessibility bridge, production text editing,
-  M6 scenes, or broad M7+ behavior;
-- a new production crate has no independent ownership/consumer pressure;
-- an accepted row cannot be proven without changing the charter/matrix first.
+- semantic truth would merge into renderer/hit/layout authority;
+- semantic actions would bypass canonical M4 admission/routing/default authority;
+- publication cannot fail without exposing partial state;
+- public testing needs private mutation authority;
+- implementation needs native accessibility, production text editing, M6 scene
+  behavior, or broad M7+ behavior;
+- a new production crate lacks independent ownership/consumer pressure;
+- an accepted row cannot be proven without first amending charter/matrix.
 
 ## M5 exit gate
 
 M5 closes only after:
 
-- all M5-specific required matrix rows are `owner-accepted`;
+- every then-current required M5 matrix row is `owner-accepted`;
 - inherited M4 `ACCESS-01` and `ACCESS-02` are `owner-accepted`;
 - stable and Rust 1.93.0 validation pass at the exact reviewed closure head;
 - exact-head CI proves checkout of that head;
 - current public API/status/support/roadmap truth is reconciled;
-- retired M2 semantic authority and private testing bypasses are absent;
+- retired semantic authority/private testing bypasses are absent;
 - complete critical review finds no unresolved defect;
-- guarded merge and accepted-main content identity are verified;
+- guarded merge and reviewed-head/squash content identity are verified;
+- accepted-main validation succeeds;
 - any required non-circular post-merge acceptance reconciliation is accepted.
 
 Only the exact accepted M5 closure base may activate M6.
