@@ -6,9 +6,7 @@ use runenui_core::{
 
 use super::{
     CachedCapability, CachedSemanticContribution, MountedNodeId, apply_invalidation,
-    node::state_is_corrupted,
-    semantic::SemanticReconcileError,
-    tree::MountedTree,
+    node::state_is_corrupted, semantic::SemanticReconcileError, tree::MountedTree,
 };
 
 #[allow(
@@ -227,10 +225,7 @@ impl<Action> MountedTree<Action> {
     }
 
     pub(crate) fn ensure_semantics_capability(&mut self, id: &MountedNodeId) {
-        self.ensure_semantics_capability_with_public_slot_limit(
-            id,
-            u64::from(u32::MAX) + 1,
-        );
+        self.ensure_semantics_capability_with_public_slot_limit(id, u64::from(u32::MAX) + 1);
     }
 
     #[cfg(test)]
@@ -316,11 +311,7 @@ impl<Action> MountedTree<Action> {
                 }
             }
             SemanticEvaluation::Invalid(error) => {
-                self.withdraw_semantic_owner(
-                    id,
-                    CachedSemanticContribution::Invalid(error),
-                    false,
-                );
+                self.withdraw_semantic_owner(id, CachedSemanticContribution::Invalid(error), false);
             }
             SemanticEvaluation::StatePayloadMismatch => {
                 self.withdraw_semantic_owner(
