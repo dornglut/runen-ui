@@ -212,7 +212,8 @@ fn capacity_failure_withdraws_complete_owner_semantics_and_recovers_cleanly() {
     let replacement = recovered.semantic_bindings[0].id().clone();
     assert_ne!(replacement, old);
     assert_eq!(
-        tree.semantic_store.target_status(&tree.runtime, &replacement),
+        tree.semantic_store
+            .target_status(&tree.runtime, &replacement),
         SemanticTargetStatus::Live
     );
 }
