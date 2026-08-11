@@ -8,6 +8,22 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Refined the post-M5A successor contract before M5B/M5C implementation. The
+  readiness authority freezes PRIMARY semantic-focus projection, composed
+  disabled state and support-versus-availability semantics, private
+  semantic-to-mounted resolution, exact `SurfaceId`-scoped semantic products and
+  action requests, stale/post-callback revalidation, staged atomic surface
+  publication with recoverable backpressure versus exact terminal failure, and
+  the clean renderer/semantic publication cutover. As the one bounded pre-1.0
+  source correction in this readiness gate, `SemanticAction` no longer exposes
+  route-bound `LogicalScroll(LogicalScrollCommand)`; M5 semantic authoring is
+  limited to `Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`.
+  `SemanticCommand::LogicalScroll`, `LogicalScrollCommand`, pointer/focus scroll
+  derivation, routed callbacks, and accepted M4 scrolling remain unchanged.
+  The candidate M5 matrix contains 53 rows: the twelve accepted M5A rows remain
+  `owner-accepted`, while the strengthened successor inventory has 41 blocked
+  rows including new `SEM-SUPPORT-01`, `SEM-PUB-04`, and `SEM-ACT-07`. This
+  readiness change implements no M5B semantic publication or M5C action ingress.
 - Owner-accepted and guarded-squash-merged M5A semantic contribution and
   independent identity in [PR #53](https://github.com/dornglut/runen-ui/pull/53).
   The reviewed feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`
@@ -23,13 +39,18 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   retention/revocation/reuse and fail-closed capacity/index integrity. Genuine
   downstream proofs cover action-mapping neutrality and owner-local geometry.
   No AccessKit/native dependency, independent semantic publication product,
-  semantic-node action ingress, or public testing harness is introduced. This
-  post-merge authority reconciliation promotes exactly the twelve M5A rows to
-  `owner-accepted`, producing `50 total / 12 owner-accepted / 0 proof-complete /
-  38 blocked` in the M5 matrix and `287 total / 247 owner-accepted / 0
-  proof-complete / 40 blocked` across configured matrices. M5B remains blocked
-  until this reconciliation itself is accepted, merged, and accepted-main
-  verified.
+  semantic-node action ingress, or public testing harness is introduced. Its
+  mandatory post-merge authority/current-contract reconciliation was explicitly
+  owner-accepted at exact head `66c2e2a5e2adf3709f93e8d45821a5844986dc0c`,
+  passed exact-head CI #897, and was guarded-squash-merged in
+  [PR #54](https://github.com/dornglut/runen-ui/pull/54) as
+  `d7189d9d145b20edc6ad931ead1589f6277373d2`. Reviewed reconciliation and
+  squash trees are identical and accepted-main CI #898 passed at that exact
+  squash. The reconciliation records exactly the twelve M5A rows as
+  `owner-accepted`, producing accepted-main M5 state `50 total / 12
+  owner-accepted / 38 blocked` and aggregate configured-matrix state `287 total /
+  247 owner-accepted / 40 blocked`. The separate #55 readiness gate now blocks
+  M5B #48 until its own acceptance.
 - Owner-accepted and guarded-squash-merged the complete M4D3 replay and M4
   closure slice in [PR #43](https://github.com/dornglut/runen-ui/pull/43). The
   accepted feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d`
