@@ -58,6 +58,12 @@ impl From<ArenaCapacityError> for SemanticReconcileError {
     }
 }
 
+impl From<SemanticStoreIntegrityError> for SemanticReconcileError {
+    fn from(error: SemanticStoreIntegrityError) -> Self {
+        Self::Integrity(error)
+    }
+}
+
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SemanticTargetStatus {
