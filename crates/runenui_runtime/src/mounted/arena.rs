@@ -19,7 +19,7 @@ pub(crate) struct GenerationalArena<T> {
 }
 
 impl<T> GenerationalArena<T> {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             slots: Vec::new(),
             reusable: BTreeSet::new(),
