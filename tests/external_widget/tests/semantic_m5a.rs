@@ -120,10 +120,7 @@ fn downstream_widget_authors_validated_owner_local_semantic_bounds() {
         .and_then(|item| item.as_node())
         .unwrap_or_else(|| unreachable!("semantic probe has a virtual detail node"));
 
-    assert_eq!(
-        detail.bounds(),
-        SemanticBounds::OwnerLocal(detail_bounds())
-    );
+    assert_eq!(detail.bounds(), SemanticBounds::OwnerLocal(detail_bounds()));
     assert!(LogicalRect::try_new(f32::NAN, 0.0, 1.0, 1.0).is_err());
     assert!(LogicalRect::try_new(0.0, 0.0, -1.0, 1.0).is_err());
 }
