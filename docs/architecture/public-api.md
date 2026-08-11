@@ -37,14 +37,18 @@ guarded-squash-merged in [PR #41](https://github.com/dornglut/runen-ui/pull/41)
 as `8c67655ffce438c2e35e6478e7299bd704033b8b`, and all 23 changed-file blob
 identities match between reviewed feature head and accepted squash. The M4D2
 post-merge authority reconciliation is also accepted and merged. M4D3 was
-owner-accepted at feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d`
-after canonical exact-head CI run `31398930987` / #765 and the final critical
-cold review passed. It was guarded-squash-merged in
+owner-accepted at feature head `b5f72ccaa89a9fb54d64ae64a346525d4e3c9c155` after canonical exact-head CI run
+`31398930987` / #765 and the final critical cold review passed. It was
+guarded-squash-merged in
 [PR #43](https://github.com/dornglut/runen-ui/pull/43) as
 `596f0d823b9833d71a038cc4aebe834c7b94e4a6`, and all 16 changed-file blob
 identities match between reviewed feature head and accepted squash. The final M4
 authority reconciliation records all eight M4D3-owned rows as owner-accepted,
-closes M4, and activates M5 semantics and deterministic public testing.
+closes M4, and activates M5 semantics and deterministic public testing. The accepted
+[M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
+continues to record M4 target ownership and transaction decisions, and the
+[M4 conformance matrix](m4-conformance-matrix.md) remains M4 observable-
+acceptance authority.
 
 M5A semantic contribution and independent identity is now owner-accepted. The
 reviewed M5A feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`
