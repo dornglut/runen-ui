@@ -8,9 +8,9 @@ use crate::widget_mapping::MappedWidget;
 use crate::{
     Axis, ColorValue, ElementId, ElementKey, EventContext, FocusScope, Focusability,
     IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, LogicalLength, RadiusValue,
-    SpacingValue, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
-    WidgetEventOutput, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext,
+    SemanticContribution, SemanticContributionContext, SpacingValue, StyleIntent, SubscriptionSet,
+    UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetInvalidation, WidgetMountContext,
+    WidgetUnmountContext, WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -125,73 +125,6 @@ impl WidgetPaintProof {
 impl Default for WidgetPaintProof {
     fn default() -> Self {
         Self::new("none", "")
-    }
-}
-
-/// Minimal renderer-independent semantic facts used only by the M2 proof.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WidgetSemanticProof {
-    role: String,
-    name: String,
-    enabled: bool,
-    actionable: bool,
-    action_intent: Option<String>,
-}
-
-impl WidgetSemanticProof {
-    #[must_use]
-    pub fn new(role: impl Into<String>, name: impl Into<String>) -> Self {
-        Self {
-            role: role.into(),
-            name: name.into(),
-            enabled: true,
-            actionable: false,
-            action_intent: None,
-        }
-    }
-
-    #[must_use]
-    pub const fn with_enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
-        self
-    }
-
-    #[must_use]
-    pub fn with_action(mut self, intent: impl Into<String>) -> Self {
-        self.actionable = true;
-        self.action_intent = Some(intent.into());
-        self
-    }
-
-    #[must_use]
-    pub const fn role(&self) -> &str {
-        self.role.as_str()
-    }
-
-    #[must_use]
-    pub const fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    #[must_use]
-    pub const fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    #[must_use]
-    pub const fn actionable(&self) -> bool {
-        self.actionable
-    }
-
-    #[must_use]
-    pub fn action_intent(&self) -> Option<&str> {
-        self.action_intent.as_deref()
-    }
-}
-
-impl Default for WidgetSemanticProof {
-    fn default() -> Self {
-        Self::new("generic", "")
     }
 }
 
@@ -387,10 +320,11 @@ impl WidgetActivation {
 
 /// Public downstream widget implementation contract.
 ///
-/// Methods contribute bounded M2 proof behavior. Later milestones replace or
-/// expand the corresponding production event, layout, paint, and semantic APIs.
+/// Methods contribute bounded runtime behavior. Semantic contribution is the
+/// production M5 owner-local semantic description contract; paint and measurement
+/// remain their current proof-level capabilities until their later milestones.
 pub trait Widget<Action>: fmt::Debug {
-    /// Runtime-local state type to be stored by the future mounted runtime.
+    /// Runtime-local state type stored by the mounted runtime.
     type State: 'static;
 
     /// Creates initial runtime-local state. Stateless widgets explicitly declare
@@ -451,9 +385,17 @@ pub trait Widget<Action>: fmt::Debug {
         WidgetPaintProof::default()
     }
 
-    /// Returns deterministic proof-level semantic facts.
-    fn semantics(&self, _state: &Self::State) -> WidgetSemanticProof {
-        WidgetSemanticProof::default()
+    /// Returns this mounted owner's complete action-type-independent semantic contribution.
+    ///
+    /// The context contains only structural child-count facts needed to satisfy
+    /// the explicit mounted-child splice contract. It exposes no runtime IDs,
+    /// focus, layout, or absolute coordinates.
+    fn semantics(
+        &self,
+        _state: &Self::State,
+        _context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        SemanticContribution::empty()
     }
 
     /// Returns widget-owned diagnostics in deterministic order.

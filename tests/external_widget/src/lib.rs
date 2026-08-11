@@ -96,11 +96,12 @@ use std::{
 use runenui_core::{
     Axis, ChildLayout, ChildLayoutWidget, CompositionCancelReason, CompositionEvent, Container,
     EdgeInsets, Element, EventContext, EventPhase, FocusEventKind, FocusReason, IntoEffects,
-    KeyboardPhase, LogicalLength, NoHostProtocol, SubscriptionSet, UiApp, UiEvent, View, Views,
-    Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic,
-    WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetMountContext, WidgetPaintProof,
-    WidgetSemanticProof, WidgetTextKind, WidgetUnmountContext, WidgetUpdateContext, WorkKey,
-    button, children, column, container, text,
+    KeyboardPhase, LogicalLength, NoHostProtocol, SemanticAction, SemanticContribution,
+    SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
+    SubscriptionSet, UiApp, UiEvent, View, Views, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput,
+    WidgetInvalidation, WidgetMeasure, WidgetMountContext, WidgetPaintProof, WidgetTextKind,
+    WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children, column, container, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -642,10 +643,16 @@ impl Widget<ChildAction> for PulseButton {
         WidgetPaintProof::new("pulse", format!("label={:?}", self.label))
     }
 
-    fn semantics(&self, _state: &Self::State) -> WidgetSemanticProof {
-        WidgetSemanticProof::new("pulse-button", self.label.clone())
-            .with_enabled(self.enabled)
-            .with_action("pulse")
+    fn semantics(
+        &self,
+        _state: &Self::State,
+        _context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let node = SemanticNodeContribution::primary(SemanticRole::Button)
+            .with_name(self.label.clone())
+            .with_state(SemanticState::ENABLED.with_disabled(!self.enabled))
+            .with_action(SemanticAction::Activate);
+        SemanticContribution::single(node)
     }
 
     fn diagnostics(&self, _state: &Self::State) -> Vec<WidgetDiagnostic> {
@@ -701,8 +708,17 @@ impl<Action> Widget<Action> for CustomColumn {
     fn paint(&self, _state: &Self::State) -> WidgetPaintProof {
         WidgetPaintProof::new("external-panel", "axis=Vertical")
     }
-    fn semantics(&self, _state: &Self::State) -> WidgetSemanticProof {
-        WidgetSemanticProof::new("group", "External panel")
+    fn semantics(
+        &self,
+        _state: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node =
+            SemanticNodeContribution::primary(SemanticRole::Group).with_name("External panel");
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
     }
     fn diagnostics(&self, _state: &Self::State) -> Vec<WidgetDiagnostic> {
         vec![WidgetDiagnostic::new(
@@ -734,8 +750,17 @@ impl<Action> Widget<Action> for CustomRow {
     fn paint(&self, _state: &Self::State) -> WidgetPaintProof {
         WidgetPaintProof::new("external-row", "axis=Horizontal")
     }
-    fn semantics(&self, _state: &Self::State) -> WidgetSemanticProof {
-        WidgetSemanticProof::new("group", "External row")
+    fn semantics(
+        &self,
+        _state: &Self::State,
+        context: SemanticContributionContext,
+    ) -> SemanticContribution {
+        let mut node =
+            SemanticNodeContribution::primary(SemanticRole::Group).with_name("External row");
+        if context.has_mounted_children() {
+            node = node.with_mounted_children();
+        }
+        SemanticContribution::single(node)
     }
 }
 

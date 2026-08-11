@@ -70,10 +70,13 @@ fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication
             .unwrap_or_else(|| unreachable!())
             .id()
     );
-    assert!(
-        render_debug_surface_frame(publication.frame())
-            .contains("semantic=button \"A\" enabled=true actionable=false")
-    );
+    let debug = render_debug_surface_frame(publication.frame());
+    let button_a = debug
+        .lines()
+        .find(|line| line.contains("name: Some(\"A\")"))
+        .unwrap_or_else(|| unreachable!("button A semantics are present in debug output"));
+    assert!(button_a.contains("semantics=SemanticContribution"));
+    assert!(button_a.contains("role: Button"));
 }
 
 struct StyledApp;

@@ -143,7 +143,7 @@ mod tests {
     use runenui_core::{
         LogicalDelta, LogicalKey, LogicalLength, LogicalPoint, PhysicalKey, PointerButton,
         PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand,
-        StyleTokens,
+        SemanticContribution, SemanticItem, StyleTokens,
     };
     use runenui_runtime::{
         AppRuntime, LogicalSize, PumpBudget, RuntimeStatus, RuntimeTerminalReason,
@@ -159,6 +159,27 @@ mod tests {
         runtime
     }
 
+    fn primary_semantic_name(contribution: &SemanticContribution) -> String {
+        fn find(items: &[SemanticItem]) -> Option<&str> {
+            for item in items {
+                let SemanticItem::Node(node) = item else {
+                    continue;
+                };
+                if node.key().is_primary()
+                    && let Some(name) = node.name()
+                {
+                    return Some(name);
+                }
+                if let Some(name) = find(node.children()) {
+                    return Some(name);
+                }
+            }
+            None
+        }
+
+        find(contribution.roots()).unwrap_or_default().to_owned()
+    }
+
     fn published_names(counter: Counter) -> Vec<String> {
         let mut runtime = mounted_counter(counter);
         let tokens = StyleTokens::new();
@@ -171,7 +192,7 @@ mod tests {
             .frame()
             .nodes()
             .iter()
-            .map(|node| node.semantics().name().to_owned())
+            .map(|node| primary_semantic_name(node.semantics()))
             .collect()
     }
 
@@ -353,12 +374,6 @@ mod tests {
             .focused_node()
             .cloned()
             .unwrap_or_else(|| unreachable!("automation focus committed"));
-        let semantic = runtime
-            .index()
-            .node(&increment)
-            .unwrap_or_else(|| unreachable!())
-            .semantic_id()
-            .clone();
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
         let before = runtime.publish_surface(&context);
@@ -377,14 +392,6 @@ mod tests {
         );
         assert_eq!(runtime.state(), &Counter::new());
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
-        assert_eq!(
-            runtime
-                .index()
-                .node(&increment)
-                .unwrap_or_else(|| unreachable!())
-                .semantic_id(),
-            &semantic
-        );
         assert_eq!(runtime.reconciliation_report(), &report);
         let after = runtime.publish_surface(&context);
         assert_eq!(
@@ -409,8 +416,13 @@ mod tests {
 
         assert!(surface.contains("surface size=(240.0,160.0) nodes=7"));
         assert!(surface.contains("paint=text \"Counter\""));
-        assert!(surface.contains("authored=counter.increment"));
-        assert!(surface.contains("semantic=button \"+\" enabled=true actionable=true"));
+        let increment = surface
+            .lines()
+            .find(|line| line.contains("authored=counter.increment"))
+            .unwrap_or_else(|| unreachable!("increment node is present in debug surface"));
+        assert!(increment.contains("semantics=SemanticContribution"));
+        assert!(increment.contains("name: Some(\"+\")"));
+        assert!(increment.contains("Activate"));
     }
 
     #[test]
@@ -452,25 +464,11 @@ mod tests {
             .focused_node()
             .cloned()
             .unwrap_or_else(|| unreachable!("automation focus committed"));
-        let semantic = runtime
-            .index()
-            .node(&increment)
-            .unwrap_or_else(|| unreachable!())
-            .semantic_id()
-            .clone();
         runtime
             .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves increment"));
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
-        assert_eq!(
-            runtime
-                .index()
-                .node(&increment)
-                .unwrap_or_else(|| unreachable!())
-                .semantic_id(),
-            &semantic
-        );
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
         assert!(

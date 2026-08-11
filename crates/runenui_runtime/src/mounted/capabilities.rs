@@ -1,11 +1,12 @@
 use runenui_core::{
-    __runtime::WidgetBridgeError, WidgetActivation, WidgetActivationContext, WidgetInvalidation,
-    WidgetTextInput,
+    __runtime::WidgetBridgeError, SemanticContribution, SemanticContributionContext,
+    SemanticContributionError, SemanticKey, WidgetActivation, WidgetActivationContext,
+    WidgetInvalidation, WidgetTextInput,
 };
 
 use super::{
-    CachedCapability, MountedNodeId, apply_invalidation, node::state_is_corrupted,
-    tree::MountedTree,
+    CachedCapability, CachedSemanticContribution, MountedNodeId, apply_invalidation,
+    node::state_is_corrupted, semantic::SemanticReconcileError, tree::MountedTree,
 };
 
 #[allow(
@@ -19,6 +20,15 @@ pub(crate) struct MountedActivationOutput<Action> {
     pub(crate) state_changed: bool,
     pub(crate) overflowed: bool,
     pub(crate) remaining_outputs: usize,
+}
+
+enum SemanticEvaluation {
+    Ready {
+        contribution: SemanticContribution,
+        ordered_keys: Vec<SemanticKey>,
+    },
+    Invalid(SemanticContributionError),
+    StatePayloadMismatch,
 }
 
 impl<Action> MountedTree<Action> {
@@ -80,6 +90,7 @@ impl<Action> MountedTree<Action> {
             },
         }
     }
+
     pub(crate) fn activate(
         &mut self,
         id: &MountedNodeId,
@@ -214,19 +225,131 @@ impl<Action> MountedTree<Action> {
     }
 
     pub(crate) fn ensure_semantics_capability(&mut self, id: &MountedNodeId) {
-        let Some(node) = self.node_mut(id) else {
-            return;
+        self.ensure_semantics_capability_with_public_slot_limit(id, u64::from(u32::MAX) + 1);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ensure_semantics_capability_with_public_slot_limit_for_test(
+        &mut self,
+        id: &MountedNodeId,
+        public_slot_limit: u64,
+    ) {
+        self.ensure_semantics_capability_with_public_slot_limit(id, public_slot_limit);
+    }
+
+    fn ensure_semantics_capability_with_public_slot_limit(
+        &mut self,
+        id: &MountedNodeId,
+        public_slot_limit: u64,
+    ) {
+        let direct_mounted_children = self.node(id).map_or(0, |node| node.children.len());
+        let context = SemanticContributionContext::__runtime_new(direct_mounted_children);
+        let evaluation = {
+            let Some(node) = self.node_mut(id) else {
+                return;
+            };
+            if !matches!(
+                node.caches.semantics,
+                CachedSemanticContribution::Unresolved
+            ) {
+                return;
+            }
+            if state_is_corrupted(node) {
+                SemanticEvaluation::StatePayloadMismatch
+            } else {
+                node.widget.semantics(&node.state, context).map_or(
+                    SemanticEvaluation::StatePayloadMismatch,
+                    |contribution| match contribution.validate(context) {
+                        Ok(validation) => SemanticEvaluation::Ready {
+                            ordered_keys: validation.ordered_keys().to_vec(),
+                            contribution,
+                        },
+                        Err(error) => SemanticEvaluation::Invalid(error),
+                    },
+                )
+            }
         };
-        if state_is_corrupted(node) {
+
+        match evaluation {
+            SemanticEvaluation::Ready {
+                contribution,
+                ordered_keys,
+            } => {
+                let current = self
+                    .node(id)
+                    .map(|node| node.semantic_bindings.clone())
+                    .unwrap_or_default();
+                let runtime = self.runtime.clone();
+                match self.semantic_store.reconcile_owner(
+                    &runtime,
+                    id,
+                    &current,
+                    &ordered_keys,
+                    public_slot_limit,
+                ) {
+                    Ok(bindings) => {
+                        let node = self
+                            .node_mut(id)
+                            .unwrap_or_else(|| unreachable!("semantic owner remains live"));
+                        node.semantic_bindings = bindings;
+                        node.caches.semantics = CachedSemanticContribution::Ready(contribution);
+                    }
+                    Err(SemanticReconcileError::IdentityExhausted) => {
+                        self.withdraw_semantic_owner(
+                            id,
+                            CachedSemanticContribution::IdentityExhausted,
+                            false,
+                        );
+                    }
+                    Err(SemanticReconcileError::Integrity(_)) => {
+                        self.withdraw_semantic_owner(
+                            id,
+                            CachedSemanticContribution::IndexIntegrityFailure,
+                            true,
+                        );
+                    }
+                }
+            }
+            SemanticEvaluation::Invalid(error) => {
+                self.withdraw_semantic_owner(id, CachedSemanticContribution::Invalid(error), false);
+            }
+            SemanticEvaluation::StatePayloadMismatch => {
+                self.withdraw_semantic_owner(
+                    id,
+                    CachedSemanticContribution::StatePayloadMismatch,
+                    true,
+                );
+            }
+        }
+    }
+
+    fn withdraw_semantic_owner(
+        &mut self,
+        id: &MountedNodeId,
+        cache: CachedSemanticContribution,
+        mark_integrity_failed: bool,
+    ) {
+        let bindings = {
+            let node = self
+                .node_mut(id)
+                .unwrap_or_else(|| unreachable!("semantic owner remains live"));
+            if mark_integrity_failed {
+                node.integrity_failed = true;
+            }
+            node.caches.semantics = cache;
+            core::mem::take(&mut node.semantic_bindings)
+        };
+        let runtime = self.runtime.clone();
+        if self
+            .semantic_store
+            .revoke_owner(&runtime, id, &bindings)
+            .is_err()
+        {
+            let node = self
+                .node_mut(id)
+                .unwrap_or_else(|| unreachable!("semantic owner remains live"));
             node.integrity_failed = true;
-            node.caches.semantics = CachedCapability::StatePayloadMismatch;
-        } else if matches!(node.caches.semantics, CachedCapability::Unresolved) {
-            let result = node.widget.semantics(&node.state);
-            cache_result(
-                result,
-                &mut node.caches.semantics,
-                &mut node.integrity_failed,
-            );
+            node.caches.semantics = CachedSemanticContribution::IndexIntegrityFailure;
         }
     }
 

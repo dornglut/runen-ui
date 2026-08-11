@@ -8,13 +8,16 @@ mod inspection;
 mod interaction;
 mod invalidation;
 mod lifecycle;
+#[cfg(test)]
+mod m5a_tests;
 mod namespace;
 mod node;
 mod reconcile;
 mod routing;
+mod semantic;
 mod tree;
 
-pub(crate) use capability_cache::{CachedCapability, CapabilityCaches};
+pub(crate) use capability_cache::{CachedCapability, CachedSemanticContribution, CapabilityCaches};
 pub use diagnostics::{DuplicateIdentityKind, IdentityDiagnostic};
 pub(crate) use interaction::InteractionState;
 pub use interaction::InteractionStateRef;

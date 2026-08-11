@@ -1,6 +1,6 @@
 use runenui_core::WidgetInvalidation;
 
-use super::{CachedCapability, node::MountedNode};
+use super::{CachedCapability, CachedSemanticContribution, node::MountedNode};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct DirtyPhases(u16);
@@ -40,6 +40,11 @@ pub(crate) const fn publication_is_dirty(invalidation: WidgetInvalidation) -> bo
     phases.0 != 0
 }
 
+pub(crate) fn invalidate_semantic_structure<Action>(node: &mut MountedNode<Action>) {
+    node.caches.semantics = CachedSemanticContribution::Unresolved;
+    node.dirty_phases.insert(DirtyPhases::SEMANTICS);
+}
+
 pub(crate) fn apply_invalidation<Action>(
     node: &mut MountedNode<Action>,
     invalidation: WidgetInvalidation,
@@ -56,7 +61,7 @@ pub(crate) fn apply_invalidation<Action>(
         node.caches.paint = CachedCapability::Unresolved;
     }
     if invalidation.contains(WidgetInvalidation::SEMANTICS) {
-        node.caches.semantics = CachedCapability::Unresolved;
+        invalidate_semantic_structure(node);
     }
     if invalidation.contains(WidgetInvalidation::DIAGNOSTICS) {
         node.caches.diagnostics = CachedCapability::Unresolved;

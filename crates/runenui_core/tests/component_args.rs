@@ -1,4 +1,7 @@
-use runenui_core::{Axis, ChildLayout, View, WidgetMeasure, button, children, column, text};
+use runenui_core::{
+    Axis, ChildLayout, SemanticContributionContext, SemanticRole, View, WidgetMeasure, button,
+    children, column, text,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Action {
@@ -21,13 +24,17 @@ fn typed_builders_use_the_open_widget_protocol() {
     ));
     let (_, _, _, _, _, _, _, button_widget, _) = button_element.into_runtime_parts().into_parts();
     let button_state = button_widget.create_state();
-    assert_eq!(
-        button_widget
-            .semantics(&button_state)
-            .unwrap_or_else(|_| unreachable!())
-            .role(),
-        "button"
-    );
+    let semantics = button_widget
+        .semantics(&button_state, SemanticContributionContext::default())
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(semantics.roots().len(), 1);
+    let button_node = semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("button contributes one semantic node"));
+    assert_eq!(button_node.role(), SemanticRole::Button);
+    assert_eq!(button_node.name(), Some("Save"));
+    assert!(button_node.state().disabled());
+
     let text = text("Title").id("title").into_element();
     let button = button("Save")
         .id("save")

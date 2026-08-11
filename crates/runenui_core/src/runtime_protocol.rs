@@ -101,6 +101,14 @@ impl RuntimeNamespace {
 
     #[doc(hidden)]
     #[must_use]
+    pub fn __runtime_semantic_parts(&self, id: &SemanticNodeId) -> Option<(u32, u64)> {
+        id.namespace
+            .same_as(self)
+            .then_some((id.slot, id.generation))
+    }
+
+    #[doc(hidden)]
+    #[must_use]
     pub fn __runtime_surface_parts(&self, id: &SurfaceId) -> Option<(u32, u64)> {
         id.namespace
             .same_as(self)
@@ -173,7 +181,7 @@ runtime_id!(
 );
 runtime_id!(
     SemanticNodeId,
-    "Distinct mounted-lifetime semantic identity sharing the runtime namespace."
+    "Opaque runtime-local identity for one exact semantic-node lifetime."
 );
 runtime_id!(
     SurfaceId,

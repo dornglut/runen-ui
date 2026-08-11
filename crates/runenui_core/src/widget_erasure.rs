@@ -1,13 +1,13 @@
 use crate::element::{
     AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, Widget,
     WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
-    WidgetSemanticProof, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
+    WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
 use crate::{
     CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, FocusScope, Focusability,
-    LayoutStyle, MonotonicInstant, MountedNodeId, PointerId, StyleIntent, SubscriptionSet, UiEvent,
-    WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext, WorkSequence,
+    LayoutStyle, MonotonicInstant, MountedNodeId, PointerId, SemanticContribution,
+    SemanticContributionContext, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
+    WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
@@ -53,7 +53,11 @@ pub trait ErasedWidget<Action>: fmt::Debug {
     fn measure(&self, state: &dyn Any) -> Result<WidgetMeasure, WidgetBridgeError>;
     fn child_layout(&self, state: &dyn Any) -> Result<Option<ChildLayout>, WidgetBridgeError>;
     fn paint(&self, state: &dyn Any) -> Result<WidgetPaintProof, WidgetBridgeError>;
-    fn semantics(&self, state: &dyn Any) -> Result<WidgetSemanticProof, WidgetBridgeError>;
+    fn semantics(
+        &self,
+        state: &dyn Any,
+        context: SemanticContributionContext,
+    ) -> Result<SemanticContribution, WidgetBridgeError>;
     fn diagnostics(&self, state: &dyn Any) -> Result<Vec<WidgetDiagnostic>, WidgetBridgeError>;
 }
 
@@ -161,10 +165,14 @@ where
     fn paint(&self, state: &dyn Any) -> Result<WidgetPaintProof, WidgetBridgeError> {
         Ok(self.0.paint(downcast_ref::<Implementation::State>(state)?))
     }
-    fn semantics(&self, state: &dyn Any) -> Result<WidgetSemanticProof, WidgetBridgeError> {
+    fn semantics(
+        &self,
+        state: &dyn Any,
+        context: SemanticContributionContext,
+    ) -> Result<SemanticContribution, WidgetBridgeError> {
         Ok(self
             .0
-            .semantics(downcast_ref::<Implementation::State>(state)?))
+            .semantics(downcast_ref::<Implementation::State>(state)?, context))
     }
     fn diagnostics(&self, state: &dyn Any) -> Result<Vec<WidgetDiagnostic>, WidgetBridgeError> {
         Ok(self
@@ -275,10 +283,14 @@ where
     fn paint(&self, state: &dyn Any) -> Result<WidgetPaintProof, WidgetBridgeError> {
         Ok(self.0.paint(downcast_ref::<Implementation::State>(state)?))
     }
-    fn semantics(&self, state: &dyn Any) -> Result<WidgetSemanticProof, WidgetBridgeError> {
+    fn semantics(
+        &self,
+        state: &dyn Any,
+        context: SemanticContributionContext,
+    ) -> Result<SemanticContribution, WidgetBridgeError> {
         Ok(self
             .0
-            .semantics(downcast_ref::<Implementation::State>(state)?))
+            .semantics(downcast_ref::<Implementation::State>(state)?, context))
     }
     fn diagnostics(&self, state: &dyn Any) -> Result<Vec<WidgetDiagnostic>, WidgetBridgeError> {
         Ok(self
@@ -526,8 +538,9 @@ impl<Action> MountedWidget<Action> {
     pub fn semantics(
         &self,
         state: &MountedWidgetState,
-    ) -> Result<WidgetSemanticProof, WidgetBridgeError> {
-        self.inner.semantics(state.value.as_ref())
+        context: SemanticContributionContext,
+    ) -> Result<SemanticContribution, WidgetBridgeError> {
+        self.inner.semantics(state.value.as_ref(), context)
     }
     pub fn diagnostics(
         &self,

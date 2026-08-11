@@ -1,11 +1,11 @@
 use crate::element::{
     ChildLayout, WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure,
-    WidgetPaintProof, WidgetSemanticProof, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
+    WidgetPaintProof, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
 use crate::widget_erasure::{ErasedWidget, WidgetBridgeError};
-use crate::{EventContext, UiEvent, WidgetEventOutput};
 use crate::{
-    SubscriptionSet, WidgetActivationContext, WidgetMountContext, WidgetUnmountContext,
+    EventContext, SemanticContribution, SemanticContributionContext, SubscriptionSet, UiEvent,
+    WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
     WidgetUpdateContext,
 };
 use core::{any::Any, fmt};
@@ -153,8 +153,12 @@ where
     fn paint(&self, state: &dyn Any) -> Result<WidgetPaintProof, WidgetBridgeError> {
         self.child.paint(state)
     }
-    fn semantics(&self, state: &dyn Any) -> Result<WidgetSemanticProof, WidgetBridgeError> {
-        self.child.semantics(state)
+    fn semantics(
+        &self,
+        state: &dyn Any,
+        context: SemanticContributionContext,
+    ) -> Result<SemanticContribution, WidgetBridgeError> {
+        self.child.semantics(state, context)
     }
     fn diagnostics(&self, state: &dyn Any) -> Result<Vec<WidgetDiagnostic>, WidgetBridgeError> {
         self.child.diagnostics(state)

@@ -1,8 +1,9 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp, View, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetSemanticProof, button, children, column,
+    CommandOrigin, Element, NoHostProtocol, SemanticAction, SemanticCommand, SemanticContribution,
+    SemanticContributionContext, SemanticNodeContribution, SemanticRole, UiApp, View, Widget,
+    WidgetActivation, WidgetActivationContext, WidgetActivationOutput, button, children, column,
     text,
 };
 use runenui_runtime::{AppRuntime, PumpBudget, TraceRecordKind};
@@ -129,8 +130,12 @@ impl Widget<NonCloneAction> for NonCloneWidget {
             WidgetActivationOutput::changed_with_action,
         )
     }
-    fn semantics(&self, _: &Self::State) -> WidgetSemanticProof {
-        WidgetSemanticProof::new("custom", "non-clone").with_action("activate")
+    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Generic)
+                .with_name("non-clone")
+                .with_action(SemanticAction::Activate),
+        )
     }
 }
 struct NonCloneApp;

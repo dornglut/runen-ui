@@ -15,154 +15,25 @@ pub(crate) use cache::SurfaceCache;
 use cache::{CachedLayoutFacts, build_hit_test_facts, context_key};
 pub use cache::{SurfacePhase, SurfacePhaseReport};
 pub use context::SurfaceBuildContext;
-use measure::{finite_saturating_add, layout_resolved_surface, logical_extent_from_arithmetic};
+use measure::layout_resolved_surface;
 use resolve::{
     ResolvedSurfaceTree, collect_topology, resolve_diagnostics, resolve_paint, resolve_semantics,
     resolve_styles,
 };
 
 use runenui_core::{
-    ComputedStyle, ElementId, LogicalLength, WidgetDiagnostic, WidgetPaintProof,
-    WidgetSemanticProof, WidgetTypeId,
+    ComputedStyle, ElementId, LogicalLength, LogicalRect, LogicalSize, SemanticContribution,
+    WidgetDiagnostic, WidgetPaintProof, WidgetTypeId,
 };
 
 use crate::mounted::DirtyPhases;
 use crate::style_debug::SurfaceStyleReport;
-use crate::{LayoutConstraints, LogicalPoint, MountedNodeId, SemanticNodeId};
-
-/// Logical size in UI coordinate space.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LogicalSize {
-    width: LogicalLength,
-    height: LogicalLength,
-}
-
-impl LogicalSize {
-    /// Creates a logical size.
-    #[must_use]
-    pub const fn new(width: LogicalLength, height: LogicalLength) -> Self {
-        Self { width, height }
-    }
-
-    /// Validates scalar width and height values.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`runenui_core::LogicalLengthError`] if either extent is
-    /// non-finite or negative.
-    pub fn try_new(width: f32, height: f32) -> Result<Self, runenui_core::LogicalLengthError> {
-        Ok(Self::new(
-            LogicalLength::new(width)?,
-            LogicalLength::new(height)?,
-        ))
-    }
-
-    pub(crate) fn from_arithmetic(width: f32, height: f32) -> Self {
-        Self::new(
-            logical_extent_from_arithmetic(width),
-            logical_extent_from_arithmetic(height),
-        )
-    }
-
-    /// Returns the horizontal extent.
-    #[must_use]
-    pub const fn width(&self) -> f32 {
-        self.width.get()
-    }
-
-    /// Returns the vertical extent.
-    #[must_use]
-    pub const fn height(&self) -> f32 {
-        self.height.get()
-    }
-
-    pub(crate) const fn width_length(self) -> LogicalLength {
-        self.width
-    }
-    pub(crate) const fn height_length(self) -> LogicalLength {
-        self.height
-    }
-}
-
-/// Logical rectangle in UI coordinate space.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LogicalRect {
-    origin: LogicalPoint,
-    size: LogicalSize,
-}
-
-impl LogicalRect {
-    /// Creates a logical rectangle from an origin and size.
-    #[must_use]
-    pub(crate) const fn new(origin: LogicalPoint, size: LogicalSize) -> Self {
-        Self { origin, size }
-    }
-
-    /// Creates a logical rectangle from scalar components.
-    #[must_use]
-    /// Returns the top-left origin.
-    pub const fn origin(&self) -> LogicalPoint {
-        self.origin
-    }
-
-    /// Returns the rectangle size.
-    #[must_use]
-    pub const fn size(&self) -> LogicalSize {
-        self.size
-    }
-
-    /// Returns the left edge.
-    #[must_use]
-    pub const fn x(&self) -> f32 {
-        self.origin.x()
-    }
-
-    /// Returns the top edge.
-    #[must_use]
-    pub const fn y(&self) -> f32 {
-        self.origin.y()
-    }
-
-    /// Returns the rectangle width.
-    #[must_use]
-    pub const fn width(&self) -> f32 {
-        self.size.width()
-    }
-
-    /// Returns the rectangle height.
-    #[must_use]
-    pub const fn height(&self) -> f32 {
-        self.size.height()
-    }
-
-    /// Returns the right edge, saturating finite arithmetic overflow.
-    #[must_use]
-    pub fn max_x(&self) -> f32 {
-        finite_saturating_add(self.x(), self.width())
-    }
-
-    /// Returns the bottom edge, saturating finite arithmetic overflow.
-    #[must_use]
-    pub fn max_y(&self) -> f32 {
-        finite_saturating_add(self.y(), self.height())
-    }
-
-    /// Returns whether the point is inside this rectangle.
-    ///
-    /// Containment is left/top inclusive and right/bottom exclusive. This makes
-    /// adjacent bounds deterministic during hit testing.
-    #[must_use]
-    pub fn contains(&self, point: LogicalPoint) -> bool {
-        (self.x()..self.max_x()).contains(&point.x())
-            && (self.y()..self.max_y()).contains(&point.y())
-    }
-}
+use crate::{LayoutConstraints, LogicalPoint, MountedNodeId};
 
 /// One ordered node in a renderer-facing surface frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceNode {
     id: MountedNodeId,
-    semantic_id: SemanticNodeId,
     parent: Option<MountedNodeId>,
     authored_id: Option<ElementId>,
     bounds: LogicalRect,
@@ -174,7 +45,7 @@ pub struct SurfaceNode {
 struct SurfaceWidgetProof {
     widget_type_id: WidgetTypeId,
     paint: WidgetPaintProof,
-    semantics: WidgetSemanticProof,
+    semantics: SemanticContribution,
     diagnostics: Vec<WidgetDiagnostic>,
 }
 
@@ -183,7 +54,6 @@ impl SurfaceNode {
     #[must_use]
     const fn new(
         id: MountedNodeId,
-        semantic_id: SemanticNodeId,
         parent: Option<MountedNodeId>,
         authored_id: Option<ElementId>,
         bounds: LogicalRect,
@@ -192,7 +62,6 @@ impl SurfaceNode {
     ) -> Self {
         Self {
             id,
-            semantic_id,
             parent,
             authored_id,
             bounds,
@@ -205,11 +74,6 @@ impl SurfaceNode {
     #[must_use]
     pub const fn id(&self) -> &MountedNodeId {
         &self.id
-    }
-
-    #[must_use]
-    pub const fn semantic_id(&self) -> &SemanticNodeId {
-        &self.semantic_id
     }
 
     /// Returns the generated runtime parent ID, if present.
@@ -242,9 +106,12 @@ impl SurfaceNode {
         &self.widget_proof.paint
     }
 
-    /// Returns proof-level renderer-neutral semantic facts.
+    /// Returns the temporary M5A canonical semantic contribution.
+    ///
+    /// M5B removes semantic authority from `SurfaceFrame` and publishes the
+    /// independent renderer-neutral semantic product instead.
     #[must_use]
-    pub const fn semantics(&self) -> &WidgetSemanticProof {
+    pub const fn semantics(&self) -> &SemanticContribution {
         &self.widget_proof.semantics
     }
 
@@ -359,7 +226,6 @@ impl LayoutOverflow {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceLayoutNode {
     id: MountedNodeId,
-    semantic_id: SemanticNodeId,
     parent: Option<MountedNodeId>,
     authored_id: Option<ElementId>,
     outer_constraints: LayoutConstraints,
@@ -372,11 +238,10 @@ pub struct SurfaceLayoutNode {
 }
 
 impl SurfaceLayoutNode {
-    fn placeholder(id: MountedNodeId, semantic_id: SemanticNodeId) -> Self {
+    fn placeholder(id: MountedNodeId) -> Self {
         let zero = LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO);
         Self::new(
             id,
-            semantic_id,
             None,
             None,
             [LayoutConstraints::unbounded(); 2],
@@ -387,7 +252,6 @@ impl SurfaceLayoutNode {
 
     const fn new(
         id: MountedNodeId,
-        semantic_id: SemanticNodeId,
         parent: Option<MountedNodeId>,
         authored_id: Option<ElementId>,
         constraints: [LayoutConstraints; 2],
@@ -396,7 +260,6 @@ impl SurfaceLayoutNode {
     ) -> Self {
         Self {
             id,
-            semantic_id,
             parent,
             authored_id,
             outer_constraints: constraints[0],
@@ -418,11 +281,6 @@ impl SurfaceLayoutNode {
     #[must_use]
     pub const fn id(&self) -> &MountedNodeId {
         &self.id
-    }
-
-    #[must_use]
-    pub const fn semantic_id(&self) -> &SemanticNodeId {
-        &self.semantic_id
     }
 
     #[must_use]
@@ -726,7 +584,6 @@ fn compose_publication(cache: &SurfaceCache) -> SurfacePublication {
         .map(|(index, node)| {
             SurfaceNode::new(
                 node.id.clone(),
-                node.semantic_id.clone(),
                 node.parent.clone(),
                 node.authored_id.clone(),
                 cache.hit_test.bounds[index],
@@ -764,11 +621,9 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
         let style = &cache.styles.report.nodes()[index];
         let layout = &cache.layout.report.nodes()[index];
         if style.id() != &topology.id
-            || style.semantic_id() != &topology.semantic_id
             || style.parent() != topology.parent.as_ref()
             || style.authored_id() != topology.authored_id.as_ref()
             || layout.id() != &topology.id
-            || layout.semantic_id() != &topology.semantic_id
             || layout.parent() != topology.parent.as_ref()
             || layout.authored_id() != topology.authored_id.as_ref()
         {

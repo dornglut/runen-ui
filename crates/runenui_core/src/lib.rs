@@ -43,6 +43,11 @@
 //! ```
 //!
 //! ```compile_fail
+//! use runenui_core::SemanticNodeId;
+//! let _ = SemanticNodeId { slot: 1, generation: 1 };
+//! ```
+//!
+//! ```compile_fail
 //! use runenui_core::SurfaceId;
 //! let _ = SurfaceId { slot: 0, generation: 1 };
 //! ```
@@ -119,6 +124,16 @@
 //! let _ = LogicalPoint::from_finite;
 //! ```
 //!
+//! Semantic contributions cannot forge runtime semantic identity:
+//!
+//! ```compile_fail
+//! use runenui_core::{SemanticNodeContribution, SemanticNodeId, SemanticRole};
+//! let _ = SemanticNodeContribution::new(
+//!     SemanticNodeId { slot: 1, generation: 1 },
+//!     SemanticRole::Button,
+//! );
+//! ```
+//!
 //! Transient elements cannot execute mounted lifecycle or capabilities:
 //!
 //! ```compile_fail
@@ -184,12 +199,14 @@ mod element;
 mod event;
 mod event_context;
 mod focus;
+mod geometry;
 mod identity;
 mod input;
 mod layout;
 mod pointer;
 pub mod prelude;
 mod runtime_protocol;
+mod semantic;
 mod style;
 mod style_resolution;
 mod style_tokens;
@@ -213,7 +230,7 @@ pub use effects::{Effects, IntoEffects};
 pub use element::{
     AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
     WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
-    WidgetSemanticProof, WidgetStateTypeId, WidgetTextInput, WidgetTextKind, WidgetTypeId,
+    WidgetStateTypeId, WidgetTextInput, WidgetTextKind, WidgetTypeId,
 };
 pub use event::{
     CommandDerivation, CommandOrigin, EventPhase, EventSource, SemanticCommand,
@@ -224,6 +241,7 @@ pub use focus::{
     FocusBoundaryPolicy, FocusDirection, FocusEvent, FocusEventKind, FocusReason, FocusScope,
     FocusScopePolicy, Focusability, InputModality,
 };
+pub use geometry::{LogicalRect, LogicalRectError, LogicalSize};
 pub use input::{
     CommittedTextError, CommittedTextEvent, CompositionCancel, CompositionCancelReason,
     CompositionEnd, CompositionEvent, CompositionGeneration, CompositionRange,
@@ -259,6 +277,12 @@ pub use pointer::{
 pub use runtime_protocol::{
     MonotonicInstant, MonotonicTimeError, MountedNodeId, SemanticNodeId, SurfaceId,
     SurfaceInputContext, WorkSequence,
+};
+pub use semantic::{
+    SemanticAction, SemanticBounds, SemanticContribution, SemanticContributionContext,
+    SemanticContributionError, SemanticContributionValidation, SemanticItem, SemanticKey,
+    SemanticNodeContribution, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
+    SemanticRole, SemanticState, SemanticText, SemanticValue,
 };
 pub use style::{
     Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,

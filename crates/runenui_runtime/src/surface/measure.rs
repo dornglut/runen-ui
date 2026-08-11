@@ -1,5 +1,5 @@
 use super::{
-    LayoutOverflow, LogicalRect, LogicalSize, SurfaceLayoutNode, SurfaceLayoutReport,
+    LayoutOverflow, SurfaceLayoutNode, SurfaceLayoutReport,
     arrange::SurfaceArrangementBuilder,
     resolve::{ResolvedSurfaceNode, ResolvedSurfaceTree},
 };
@@ -8,7 +8,8 @@ use crate::{
     TextMeasurementKind, TextMeasurementRequest,
 };
 use runenui_core::{
-    Axis, ChildLayout, EdgeInsets, LogicalLength, WidgetDiagnostic, WidgetMeasure, WidgetTextKind,
+    Axis, ChildLayout, EdgeInsets, LogicalLength, LogicalRect, LogicalSize, WidgetDiagnostic,
+    WidgetMeasure, WidgetTextKind,
 };
 
 pub(super) fn layout_resolved_surface(
@@ -48,9 +49,7 @@ impl MeasuredSurfaceLayout {
             nodes: resolved
                 .nodes()
                 .iter()
-                .map(|node| {
-                    SurfaceLayoutNode::placeholder(node.id().clone(), node.semantic_id().clone())
-                })
+                .map(|node| SurfaceLayoutNode::placeholder(node.id().clone()))
                 .collect(),
             measured: vec![false; resolved.nodes().len()],
         }
@@ -159,7 +158,6 @@ impl<'a> SurfaceMeasurer<'a> {
         );
         let measured = SurfaceLayoutNode::new(
             node.id().clone(),
-            node.semantic_id().clone(),
             node.parent().cloned(),
             node.authored_id().cloned(),
             [outer_constraints, content_constraints],
@@ -222,7 +220,7 @@ impl<'a> SurfaceMeasurer<'a> {
             }
         }
 
-        LogicalSize::from_arithmetic(width, height)
+        logical_size_from_arithmetic(width, height)
     }
 }
 
@@ -231,7 +229,7 @@ fn apply_minimum(
     minimum_width: LogicalLength,
     minimum_height: LogicalLength,
 ) -> LogicalSize {
-    LogicalSize::from_arithmetic(
+    logical_size_from_arithmetic(
         max_extent(size.width(), minimum_width.get()),
         max_extent(size.height(), minimum_height.get()),
     )
@@ -242,7 +240,7 @@ const fn zero_size() -> LogicalSize {
 }
 
 fn component_max_size(left: LogicalSize, right: LogicalSize) -> LogicalSize {
-    LogicalSize::from_arithmetic(
+    logical_size_from_arithmetic(
         left.width().max(right.width()),
         left.height().max(right.height()),
     )
@@ -323,7 +321,7 @@ fn content_axis_constraints(axis: AxisConstraints, padding: f32) -> AxisConstrai
 }
 
 fn expand_size_by_padding(size: LogicalSize, padding: EdgeInsets) -> LogicalSize {
-    LogicalSize::from_arithmetic(
+    logical_size_from_arithmetic(
         finite_sum(size.width(), horizontal_padding(padding)),
         finite_sum(size.height(), vertical_padding(padding)),
     )
@@ -413,6 +411,13 @@ fn extent_from_arithmetic(value: f32) -> f32 {
 
 pub(super) fn logical_extent_from_arithmetic(value: f32) -> LogicalLength {
     LogicalLength::new(extent_from_arithmetic(value)).unwrap_or_default()
+}
+
+fn logical_size_from_arithmetic(width: f32, height: f32) -> LogicalSize {
+    LogicalSize::new(
+        logical_extent_from_arithmetic(width),
+        logical_extent_from_arithmetic(height),
+    )
 }
 
 const fn measurement_kind(kind: WidgetTextKind) -> TextMeasurementKind {
