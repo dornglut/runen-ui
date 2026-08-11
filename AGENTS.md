@@ -33,7 +33,15 @@ Use this pickup sequence:
 7. Update the issue after every reviewed green checkpoint, material review correction, readiness transition, and merge.
 8. Never begin the next slice or milestone from an unmerged feature or authority branch.
 
-For the M4 -> M5 cutover, issue #45 remains blocked until the final M4 authority reconciliation is exact-head validated, critically reviewed, accepted, merged, and accepted-main verified. After that gate, perform the decision-complete M5 readiness/architecture audit from the exact accepted closure base before creating any M5 implementation branch.
+M5A semantic contribution and independent identity was owner-accepted at exact
+feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`, passed exact-head CI
+run `31497457992` / #889, and was guarded-squash-merged in PR #53 as
+`e3c304600ec1777cd17a1973946a43c765df1c31`. All 38 changed-file blob
+identities are byte-identical between the reviewed feature head and accepted
+squash. The post-merge M5A authority/current-contract reconciliation is the
+current execution gate. Do not close #47 or begin M5B #48 until that
+reconciliation is exact-head validated, critically reviewed, explicitly
+owner-accepted, merged, and accepted-main verified.
 
 A future thread should need only the repository, umbrella issue, and active slice/audit issue to locate current work.
 
