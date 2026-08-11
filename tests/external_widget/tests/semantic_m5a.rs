@@ -1,7 +1,7 @@
 use runenui_core::{
     Element, IntoEffects, NoHostProtocol, SemanticAction, SemanticContribution,
-    SemanticContributionContext, SemanticItem, SemanticKey, SemanticNodeContribution, SemanticRole,
-    SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget, column,
+    SemanticContributionContext, SemanticKey, SemanticNodeContribution, SemanticRole, SemanticText,
+    SemanticValue, StyleTokens, UiApp, View, Widget, column,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -85,8 +85,11 @@ fn recursive_action_mapping_preserves_semantic_contribution_exactly() {
         .unwrap_or_else(|| unreachable!("mapped semantic child is published"));
 
     assert_eq!(semantic_child.semantics(), &expected_contribution());
-    assert!(matches!(
-        semantic_child.semantics().roots(),
-        [SemanticItem::Node(_)]
-    ));
+    assert!(
+        semantic_child
+            .semantics()
+            .roots()
+            .first()
+            .is_some_and(|item| item.as_node().is_some())
+    );
 }
