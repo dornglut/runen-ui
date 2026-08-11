@@ -1,6 +1,6 @@
 use runenui_core::{
-    Axis, ChildLayout, SemanticContributionContext, SemanticItem, SemanticRole, View,
-    WidgetMeasure, button, children, column, text,
+    Axis, ChildLayout, SemanticContributionContext, SemanticRole, View, WidgetMeasure, button,
+    children, column, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -28,9 +28,9 @@ fn typed_builders_use_the_open_widget_protocol() {
         .semantics(&button_state, SemanticContributionContext::default())
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(semantics.roots().len(), 1);
-    let SemanticItem::Node(button_node) = &semantics.roots()[0] else {
-        unreachable!("button contributes one semantic node")
-    };
+    let button_node = semantics.roots()[0]
+        .as_node()
+        .unwrap_or_else(|| unreachable!("button contributes one semantic node"));
     assert_eq!(button_node.role(), SemanticRole::Button);
     assert_eq!(button_node.name(), Some("Save"));
     assert!(button_node.state().disabled());
