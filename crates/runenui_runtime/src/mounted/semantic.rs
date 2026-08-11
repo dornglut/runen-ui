@@ -37,12 +37,24 @@ impl SemanticBinding {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct SemanticIdentityExhausted;
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum SemanticStoreIntegrityError {
+    DuplicateCurrentKey(SemanticKey),
+    DuplicateRequestedKey(SemanticKey),
+    ForeignBinding,
+    MissingBindingRecord,
+    BindingRecordMismatch,
+}
 
-impl From<ArenaCapacityError> for SemanticIdentityExhausted {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum SemanticReconcileError {
+    IdentityExhausted,
+    Integrity(SemanticStoreIntegrityError),
+}
+
+impl From<ArenaCapacityError> for SemanticReconcileError {
     fn from(_: ArenaCapacityError) -> Self {
-        Self
+        Self::IdentityExhausted
     }
 }
 
@@ -60,7 +72,7 @@ pub(super) struct SemanticStore {
 }
 
 impl SemanticStore {
-    pub(super) const fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             arena: GenerationalArena::new(),
         }
@@ -106,24 +118,26 @@ impl SemanticStore {
         current: &[SemanticBinding],
         ordered_keys: &[SemanticKey],
         public_slot_limit: u64,
-    ) -> Result<Vec<SemanticBinding>, SemanticIdentityExhausted> {
-        debug_assert!(
-            ordered_keys.iter().collect::<BTreeSet<_>>().len() == ordered_keys.len(),
-            "semantic contribution validation guarantees unique owner-local keys"
-        );
+    ) -> Result<Vec<SemanticBinding>, SemanticReconcileError> {
+        let mut requested = BTreeSet::new();
+        for key in ordered_keys {
+            if !requested.insert(key.clone()) {
+                return Err(SemanticReconcileError::Integrity(
+                    SemanticStoreIntegrityError::DuplicateRequestedKey(key.clone()),
+                ));
+            }
+        }
 
-        let mut existing = current
-            .iter()
-            .cloned()
-            .map(|binding| (binding.key.clone(), binding))
-            .collect::<BTreeMap<_, _>>();
+        let mut existing = self.validate_current(runtime, owner, current)?;
         let mut plan = Vec::with_capacity(ordered_keys.len());
         let mut additions = 0usize;
         for key in ordered_keys {
             if let Some(binding) = existing.remove(key) {
                 plan.push(PlannedBinding::Existing(binding));
             } else {
-                additions = additions.checked_add(1).ok_or(SemanticIdentityExhausted)?;
+                additions = additions
+                    .checked_add(1)
+                    .ok_or(SemanticReconcileError::IdentityExhausted)?;
                 plan.push(PlannedBinding::New(key.clone()));
             }
         }
@@ -134,14 +148,10 @@ impl SemanticStore {
             .live_count()
             .checked_sub(removals.len())
             .and_then(|count| count.checked_add(additions))
-            .ok_or(SemanticIdentityExhausted)?;
+            .ok_or(SemanticReconcileError::IdentityExhausted)?;
         let additionally_retired = removals
             .iter()
-            .filter(|binding| {
-                runtime
-                    .__runtime_semantic_parts(binding.id())
-                    .is_some_and(|(_, generation)| generation == u64::MAX)
-            })
+            .filter(|binding| binding.generation == u64::MAX)
             .count();
         self.arena.preflight_live_count_after_retirement(
             desired_live_count,
@@ -150,21 +160,13 @@ impl SemanticStore {
         )?;
 
         for binding in removals {
-            self.revoke_binding(runtime, owner, &binding);
+            self.remove_validated(binding);
         }
 
         let mut bindings = Vec::with_capacity(plan.len());
         for entry in plan {
             match entry {
-                PlannedBinding::Existing(binding) => {
-                    debug_assert!(
-                        self.record(runtime, binding.id()).is_some_and(|record| {
-                            record.owner() == owner && record.key() == binding.key()
-                        }),
-                        "retained semantic binding must still name its exact owner and key"
-                    );
-                    bindings.push(binding);
-                }
+                PlannedBinding::Existing(binding) => bindings.push(binding.binding),
                 PlannedBinding::New(key) => {
                     let owner_for_record = owner.clone();
                     let key_for_record = key.clone();
@@ -196,42 +198,82 @@ impl SemanticStore {
         runtime: &RuntimeNamespace,
         owner: &MountedNodeId,
         bindings: Vec<SemanticBinding>,
-    ) {
-        for binding in bindings {
-            self.revoke_binding(runtime, owner, &binding);
+    ) -> Result<(), SemanticStoreIntegrityError> {
+        match self.validate_current(runtime, owner, &bindings) {
+            Ok(validated) => {
+                for binding in validated.into_values() {
+                    self.remove_validated(binding);
+                }
+                Ok(())
+            }
+            Err(error) => {
+                self.purge_owner_records(owner);
+                Err(error)
+            }
         }
     }
 
-    fn revoke_binding(
-        &mut self,
+    fn validate_current(
+        &self,
         runtime: &RuntimeNamespace,
         owner: &MountedNodeId,
-        binding: &SemanticBinding,
-    ) {
-        let Some((slot, generation)) = runtime.__runtime_semantic_parts(binding.id()) else {
-            debug_assert!(
-                false,
-                "semantic store binding belongs to its runtime namespace"
+        current: &[SemanticBinding],
+    ) -> Result<BTreeMap<SemanticKey, ValidatedBinding>, SemanticStoreIntegrityError> {
+        let mut existing = BTreeMap::new();
+        for binding in current {
+            if existing.contains_key(binding.key()) {
+                return Err(SemanticStoreIntegrityError::DuplicateCurrentKey(
+                    binding.key().clone(),
+                ));
+            }
+            let Some((slot, generation)) = runtime.__runtime_semantic_parts(binding.id()) else {
+                return Err(SemanticStoreIntegrityError::ForeignBinding);
+            };
+            let slot = slot as usize;
+            let Some(record) = self.arena.get(slot, generation) else {
+                return Err(SemanticStoreIntegrityError::MissingBindingRecord);
+            };
+            if record.owner() != owner || record.key() != binding.key() {
+                return Err(SemanticStoreIntegrityError::BindingRecordMismatch);
+            }
+            existing.insert(
+                binding.key().clone(),
+                ValidatedBinding {
+                    binding: binding.clone(),
+                    slot,
+                    generation,
+                },
             );
-            return;
-        };
-        let slot = slot as usize;
-        let matches = self
-            .arena
-            .get(slot, generation)
-            .is_some_and(|record| record.owner() == owner && record.key() == binding.key());
+        }
+        Ok(existing)
+    }
+
+    fn remove_validated(&mut self, binding: ValidatedBinding) {
+        let removed = self.arena.remove(binding.slot, binding.generation);
         debug_assert!(
-            matches,
-            "semantic store binding must match its exact record"
+            removed.is_some(),
+            "validated semantic binding remains live until commit"
         );
-        if matches {
+    }
+
+    fn purge_owner_records(&mut self, owner: &MountedNodeId) {
+        let records = self
+            .arena
+            .live_indices_where(|record| record.owner() == owner);
+        for (slot, generation) in records {
             let _ = self.arena.remove(slot, generation);
         }
     }
 }
 
+struct ValidatedBinding {
+    binding: SemanticBinding,
+    slot: usize,
+    generation: u64,
+}
+
 enum PlannedBinding {
-    Existing(SemanticBinding),
+    Existing(ValidatedBinding),
     New(SemanticKey),
 }
 
@@ -240,7 +282,9 @@ mod tests {
     use runenui_core::__runtime::RuntimeNamespace;
     use runenui_core::SemanticKey;
 
-    use super::{SemanticIdentityExhausted, SemanticStore, SemanticTargetStatus};
+    use super::{
+        SemanticReconcileError, SemanticStore, SemanticStoreIntegrityError, SemanticTargetStatus,
+    };
 
     fn key(value: &'static str) -> SemanticKey {
         SemanticKey::from_static(value).unwrap_or_else(|_| unreachable!("test key is valid"))
@@ -343,7 +387,9 @@ mod tests {
             .iter()
             .map(|binding| binding.id().clone())
             .collect::<Vec<_>>();
-        store.revoke_owner(&runtime, &owner, bindings);
+        store
+            .revoke_owner(&runtime, &owner, bindings)
+            .unwrap_or_else(|_| unreachable!("valid owner bindings revoke exactly"));
         assert_eq!(store.live_count(), 0);
         for id in ids {
             assert_eq!(
@@ -383,8 +429,56 @@ mod tests {
                 &[SemanticKey::PRIMARY, key("extra")],
                 1,
             ),
-            Err(SemanticIdentityExhausted)
+            Err(SemanticReconcileError::IdentityExhausted)
         );
         assert_eq!(store.live_count(), 0);
+    }
+
+    #[test]
+    fn duplicate_current_bindings_fail_closed_without_first_or_last_match() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let owner = runtime.__runtime_mounted_id(3, 1);
+        let mut store = SemanticStore::new();
+        let first = store
+            .reconcile_owner(&runtime, &owner, &[], &[SemanticKey::PRIMARY], 2)
+            .unwrap_or_else(|_| unreachable!());
+        let duplicate = vec![first[0].clone(), first[0].clone()];
+        assert_eq!(
+            store.reconcile_owner(
+                &runtime,
+                &owner,
+                &duplicate,
+                &[SemanticKey::PRIMARY],
+                2,
+            ),
+            Err(SemanticReconcileError::Integrity(
+                SemanticStoreIntegrityError::DuplicateCurrentKey(SemanticKey::PRIMARY)
+            ))
+        );
+        assert_eq!(store.live_count(), 1);
+    }
+
+    #[test]
+    fn binding_for_a_different_owner_is_an_integrity_failure() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let owner = runtime.__runtime_mounted_id(1, 1);
+        let other = runtime.__runtime_mounted_id(2, 1);
+        let mut store = SemanticStore::new();
+        let first = store
+            .reconcile_owner(&runtime, &owner, &[], &[SemanticKey::PRIMARY], 2)
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(
+            store.reconcile_owner(
+                &runtime,
+                &other,
+                &first,
+                &[SemanticKey::PRIMARY],
+                2,
+            ),
+            Err(SemanticReconcileError::Integrity(
+                SemanticStoreIntegrityError::BindingRecordMismatch
+            ))
+        );
+        assert_eq!(store.live_count(), 1);
     }
 }
