@@ -117,11 +117,14 @@ M5B/M5C boundary for semantic focus projection, virtual semantic-node action
 target preservation, relationship default targeting, hidden/invalid-owner
 composition, and publication revision/cutover atomicity. Issue
 [#55](https://github.com/dornglut/runen-ui/issues/55) records the required
-authority-only amendment. It must not begin on a stacked branch while the M5A
-reconciliation is unmerged. After that reconciliation is accepted/merged and
-#47 closes, #55 becomes the next execution gate. M5B #48 remains blocked until
-#55 is itself exact-head validated, critically reviewed, explicitly owner-
-accepted, merged, and accepted-main verified.
+readiness/authority amendment plus one bounded pre-1.0 semantic-vocabulary
+correction needed to keep its eventual accepted base truthful; it does not own
+M5B semantic publication or M5C action-ingress implementation. It must not begin
+on a stacked branch while the M5A reconciliation is unmerged. After that
+reconciliation is accepted/merged and #47 closes, #55 becomes the next execution
+gate. M5B #48 remains blocked until #55 is itself exact-head validated,
+critically reviewed, explicitly owner-accepted, merged, and accepted-main
+verified.
 
 The completed public M4 execution graph is:
 
@@ -135,8 +138,9 @@ The completed public M4 execution graph is:
 - [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8.
 
 The accepted M5 implementation sequence remains sequential; #55 is a blocking
-authority amendment between the accepted M5A reconciliation and M5B
-implementation rather than a new durable milestone slice:
+readiness/authority amendment with one bounded semantic-vocabulary correction
+between the accepted M5A reconciliation and M5B implementation, rather than a
+new durable milestone slice or a hidden M5B implementation step:
 
 - [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), accepted and closed;
 - [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), feature accepted/merged; post-merge authority reconciliation is the current gate;
