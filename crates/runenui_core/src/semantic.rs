@@ -235,9 +235,15 @@ pub enum SemanticBounds {
     OwnerLocal(LogicalRect),
 }
 
-/// One item in an owner-local semantic sequence.
+/// One opaque item in an owner-local semantic sequence.
+///
+/// Construction and inspection deliberately hide recursive storage so internal
+/// indirection can evolve without becoming part of the public widget contract.
 #[derive(Clone, Debug, PartialEq)]
-pub enum SemanticItem {
+pub struct SemanticItem(SemanticItemKind);
+
+#[derive(Clone, Debug, PartialEq)]
+enum SemanticItemKind {
     Node(Box<SemanticNodeContribution>),
     MountedChildren,
 }
@@ -245,12 +251,27 @@ pub enum SemanticItem {
 impl SemanticItem {
     #[must_use]
     pub fn node(node: SemanticNodeContribution) -> Self {
-        Self::Node(Box::new(node))
+        Self(SemanticItemKind::Node(Box::new(node)))
     }
 
     #[must_use]
     pub const fn mounted_children() -> Self {
-        Self::MountedChildren
+        Self(SemanticItemKind::MountedChildren)
+    }
+
+    /// Returns the contributed node when this item is a local semantic node.
+    #[must_use]
+    pub fn as_node(&self) -> Option<&SemanticNodeContribution> {
+        match &self.0 {
+            SemanticItemKind::Node(node) => Some(node.as_ref()),
+            SemanticItemKind::MountedChildren => None,
+        }
+    }
+
+    /// Returns whether this item is the explicit mounted-children splice marker.
+    #[must_use]
+    pub const fn is_mounted_children(&self) -> bool {
+        matches!(&self.0, SemanticItemKind::MountedChildren)
     }
 }
 
@@ -360,7 +381,7 @@ impl SemanticNodeContribution {
 
     #[must_use]
     pub fn with_mounted_children(mut self) -> Self {
-        self.children.push(SemanticItem::MountedChildren);
+        self.children.push(SemanticItem::mounted_children());
         self
     }
 
@@ -578,19 +599,19 @@ fn collect_structure(
     marker_count: &mut usize,
 ) -> Result<(), SemanticContributionError> {
     for item in items {
-        match item {
-            SemanticItem::MountedChildren => {
-                *marker_count = marker_count.saturating_add(1);
-            }
-            SemanticItem::Node(node) => {
-                let key = node.key().clone();
-                if !keys.insert(key.clone()) {
-                    return Err(SemanticContributionError::DuplicateKey { key });
-                }
-                ordered_keys.push(key);
-                collect_structure(node.children(), keys, ordered_keys, marker_count)?;
-            }
+        if item.is_mounted_children() {
+            *marker_count = marker_count.saturating_add(1);
+            continue;
         }
+        let node = item
+            .as_node()
+            .unwrap_or_else(|| unreachable!("semantic item is node or mounted-children marker"));
+        let key = node.key().clone();
+        if !keys.insert(key.clone()) {
+            return Err(SemanticContributionError::DuplicateKey { key });
+        }
+        ordered_keys.push(key);
+        collect_structure(node.children(), keys, ordered_keys, marker_count)?;
     }
     Ok(())
 }
@@ -600,7 +621,7 @@ fn validate_local_references(
     keys: &BTreeSet<SemanticKey>,
 ) -> Result<(), SemanticContributionError> {
     for item in items {
-        let SemanticItem::Node(node) = item else {
+        let Some(node) = item.as_node() else {
             continue;
         };
         for relationship in node.relationships() {
@@ -640,6 +661,20 @@ mod tests {
     }
 
     #[test]
+    fn semantic_items_hide_recursive_storage_but_preserve_typed_inspection() {
+        let node = SemanticNodeContribution::primary(SemanticRole::Text);
+        let item = SemanticItem::node(node);
+        assert_eq!(
+            item.as_node().map(SemanticNodeContribution::role),
+            Some(SemanticRole::Text)
+        );
+        assert!(!item.is_mounted_children());
+        let marker = SemanticItem::mounted_children();
+        assert!(marker.as_node().is_none());
+        assert!(marker.is_mounted_children());
+    }
+
+    #[test]
     fn exact_mounted_child_marker_contract_is_validated_without_repair() {
         let children = SemanticContributionContext::__runtime_new(1);
         let leaf = SemanticContributionContext::__runtime_new(0);
@@ -662,7 +697,7 @@ mod tests {
         assert_eq!(
             SemanticContribution::new(vec![
                 SemanticItem::node(group_with_marker()),
-                SemanticItem::MountedChildren,
+                SemanticItem::mounted_children(),
             ])
             .validate(children),
             Err(SemanticContributionError::DuplicateMountedChildrenMarker)
