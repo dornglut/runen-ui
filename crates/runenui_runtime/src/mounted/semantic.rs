@@ -78,7 +78,7 @@ pub(super) struct SemanticStore {
 }
 
 impl SemanticStore {
-    pub(super) fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self {
             arena: GenerationalArena::new(),
         }
@@ -106,15 +106,6 @@ impl SemanticStore {
         } else {
             SemanticTargetStatus::Missing
         }
-    }
-
-    pub(super) fn record(
-        &self,
-        runtime: &RuntimeNamespace,
-        id: &SemanticNodeId,
-    ) -> Option<&SemanticRecord> {
-        let (slot, generation) = runtime.__runtime_semantic_parts(id)?;
-        self.arena.get(slot as usize, generation)
     }
 
     pub(super) fn reconcile_owner(
@@ -165,7 +156,7 @@ impl SemanticStore {
             public_slot_limit,
         )?;
 
-        for binding in removals {
+        for binding in &removals {
             self.remove_validated(binding);
         }
 
@@ -203,11 +194,11 @@ impl SemanticStore {
         &mut self,
         runtime: &RuntimeNamespace,
         owner: &MountedNodeId,
-        bindings: Vec<SemanticBinding>,
+        bindings: &[SemanticBinding],
     ) -> Result<(), SemanticStoreIntegrityError> {
-        match self.validate_current(runtime, owner, &bindings) {
+        match self.validate_current(runtime, owner, bindings) {
             Ok(validated) => {
-                for binding in validated.into_values() {
+                for binding in validated.values() {
                     self.remove_validated(binding);
                 }
                 Ok(())
@@ -254,7 +245,7 @@ impl SemanticStore {
         Ok(existing)
     }
 
-    fn remove_validated(&mut self, binding: ValidatedBinding) {
+    fn remove_validated(&mut self, binding: &ValidatedBinding) {
         let removed = self.arena.remove(binding.slot, binding.generation);
         debug_assert!(
             removed.is_some(),
@@ -394,7 +385,7 @@ mod tests {
             .map(|binding| binding.id().clone())
             .collect::<Vec<_>>();
         store
-            .revoke_owner(&runtime, &owner, bindings)
+            .revoke_owner(&runtime, &owner, &bindings)
             .unwrap_or_else(|_| unreachable!("valid owner bindings revoke exactly"));
         assert_eq!(store.live_count(), 0);
         for id in ids {
