@@ -3,7 +3,8 @@
 > **Category: Current contract**
 
 This document records the reviewed public surface for application work, the
-deterministic scheduler, routed semantic commands, and canonical trace. Source-level Rust
+deterministic scheduler, routed semantic commands, canonical trace, and the
+accepted M5A semantic contribution/identity foundation. Source-level Rust
 documentation is authoritative for signatures. [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md)
 defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
 defines mounted ownership and reconciliation; accepted
@@ -43,37 +44,52 @@ cold review passed. It was guarded-squash-merged in
 `596f0d823b9833d71a038cc4aebe834c7b94e4a6`, and all 16 changed-file blob
 identities match between reviewed feature head and accepted squash. The final M4
 authority reconciliation records all eight M4D3-owned rows as owner-accepted,
-closes M4, and activates M5 semantics and deterministic public testing. The accepted
-[M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
-records target ownership and transaction decisions. The
-[M4 conformance matrix](m4-conformance-matrix.md) owns observable acceptance, and
-[work tracking](../work-tracking.md) owns volatile branch, head, blocker, and
-next-action state.
+closes M4, and activates M5 semantics and deterministic public testing.
+
+M5A semantic contribution and independent identity is now owner-accepted. The
+reviewed M5A feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`
+passed exact-head CI run `31497457992` / #889 and the final critical review,
+then was guarded-squash-merged in
+[PR #53](https://github.com/dornglut/runen-ui/pull/53) as
+`e3c304600ec1777cd17a1973946a43c765df1c31`. All 38 changed-file blob
+identities are byte-identical between reviewed feature head and accepted squash,
+and accepted `main` was verified at that exact squash. The accepted
+[M5 semantics and testing charter](m5-semantics-and-testing-charter.md) owns the
+remaining sequential M5B–M5E boundaries; the
+[M5 conformance matrix](m5-conformance-matrix.md) owns observable acceptance;
+and [work tracking](../work-tracking.md) owns volatile branch, head, blocker,
+and next-action state.
 
 ## Ownership and inventory
 
 `runenui_core` owns `UiApp`, host-neutral effects/subscriptions/work protocols,
-validated authored values and identity, style intent and
-resolution, transient `View`/`Element` authoring, typed built-in views, the open
-state-aware `Widget`/`ChildLayoutWidget` contracts, proof capability values,
-lifecycle contexts, `WidgetInvalidation`, the shared runtime namespace and
-opaque `MountedNodeId`/`SemanticNodeId`/`SurfaceId`/`SurfaceInputContext`/
-`MonotonicInstant`/`WorkSequence` protocol values, routed event/command vocabulary,
-`EventContext`, and typed
-recursive action mapping.
+validated authored values and identity, style intent and resolution, transient
+`View`/`Element` authoring, typed built-in views, the open state-aware
+`Widget`/`ChildLayoutWidget` contracts, lifecycle contexts,
+`WidgetInvalidation`, the shared runtime namespace and opaque
+`MountedNodeId`/`SemanticNodeId`/`SurfaceId`/`SurfaceInputContext`/
+`MonotonicInstant`/`WorkSequence` protocol values, routed event/command
+vocabulary, `EventContext`, typed recursive action mapping, canonical
+`LogicalSize`/`LogicalRect`, and the platform-neutral M5A semantic authoring
+vocabulary: `SemanticKey`, `SemanticRole`, `SemanticValue`, `SemanticText`,
+`SemanticState`, `SemanticAction`, `SemanticRelationshipKind`,
+`SemanticReference`, `SemanticRelationship`, `SemanticBounds`, `SemanticItem`,
+`SemanticNodeContribution`, `SemanticContribution`,
+`SemanticContributionValidation`, `SemanticContributionError`, and
+`SemanticContributionContext`.
 
 `runenui_runtime` owns `AppRuntime`, the canonical generalized FIFO and pump,
-persistent mounted storage, reconciliation,
-lifecycle execution, focus and interaction slots, mounted targeting,
-invalidation scheduling, capability caches, measurement/layout execution,
-bounded trace, live work registry, clocks, completion ingress, wake/redraw, and
-mounted publication. The public runtime, mounted inspection, and integrity
-vocabulary includes:
+persistent mounted storage, reconciliation, lifecycle execution, focus and
+interaction slots, mounted targeting, invalidation scheduling, capability
+caches, the separate runtime semantic generational arena and mounted-owner/
+semantic-key binding store, measurement/layout execution, bounded trace, live
+work registry, clocks, completion ingress, wake/redraw, and mounted publication.
+The public runtime, mounted inspection, and integrity vocabulary includes:
 
 - core-owned `MountedNodeId`, `SemanticNodeId`, `SurfaceId`,
   `SurfaceInputContext`, `MonotonicInstant`, `MonotonicTimeError`, and
   `WorkSequence`, deliberately re-exported by runtime;
-- `MountedNodeRef` and `MountedTreeIndex`;
+- `MountedNodeRef` and `MountedTreeIndex` for mounted inspection only;
 - `ReconciliationGeneration` and `ReconciliationReport`;
 - `RuntimeConfig`, `SubmitActionResult`, `CommandSubmission`,
   `UnacceptedCommand`, `SubmitCommandError`, `UnacceptedSurfaceCommand`,
@@ -94,10 +110,12 @@ vocabulary includes:
 
 The ordinary preludes remain narrow. Specialist runtime/mounted/lifecycle
 inspection is imported explicitly from crate roots. Generated IDs and
-sequences, queue/envelope storage, mounted state, arena storage, reconciliation
-reports, trace records, and publication products have no public constructors.
-Replay identities are separately typed observational values and have no
-conversion into live runtime-issued `TraceSequence` or `WorkSequence` authority.
+sequences, queue/envelope storage, mounted state, mounted/semantic arena storage,
+semantic owner bindings, reconciliation reports, trace records, and publication
+products have no public constructors. Replay identities are separately typed
+observational values and have no conversion into live runtime-issued
+`TraceSequence` or `WorkSequence` authority. M5A intentionally does not expose a
+public semantic snapshot/index yet; that product belongs to M5B.
 
 ## Queue, pump, and runtime status
 
@@ -140,7 +158,9 @@ exhaustion. Every rejection returns the exact owned target, command, and origin
 through `UnacceptedCommand`; it invokes no widget callback and consumes no work
 or trace sequence, allocates no trace record, and emits no wake. Accepted-then-
 stale processing rejection is instead a canonical trace outcome causally owned
-by the already accepted command.
+by the already accepted command. M5A's `SemanticAction` is semantic authoring
+intent only; public exact-`SemanticNodeId` semantic-action ingress and mapping to
+this canonical command path remains M5C.
 
 `AppRuntime::submit_surface_command(context, logical_point, command, origin)` and
 `submit_resolved_surface_command(context, target, command, origin)` are the checked
@@ -241,13 +261,17 @@ position as persistent identity.
 
 Components are ordinary Rust composition and typed action mapping. They do not
 automatically create mounted identity or state. Stable reorderable collections
-must author sibling-local unique keys.
+must author sibling-local unique keys. Recursive `Element::map_action` preserves
+M5A semantic contribution exactly because contribution contains no application
+action type.
 
 The private mounted tree is the sole runtime authority. `MountedTreeIndex`
 traverses logical mounted preorder; arena slot order is never observable as tree
 order. A mounted node owns parent/ordered children, authored metadata, current
 widget description, persistent erased state, interaction slots, replacement
-status, capability caches, and internal dirty phases.
+status, capability caches, private semantic owner bindings, and internal dirty
+phases. `MountedTreeIndex` does not publish semantic-node identities; M5B owns the
+independent public semantic snapshot/index.
 
 ## State-aware widget contract
 
@@ -256,10 +280,41 @@ widgets use `State = ()`. The runtime passes persistent state to:
 
 - `mount`, `update`, and `unmount`;
 - routed `event` callbacks;
-- immutable activation facts, text-input facts, measurement, paint, semantics,
-  and diagnostics;
+- immutable activation facts, text-input facts, measurement, paint,
+  `semantics`, and diagnostics;
 - mutable activation;
 - `ChildLayoutWidget::child_layout`.
+
+M5A changes the semantic capability from the M2 proof payload to:
+
+```rust
+fn semantics(
+    &self,
+    state: &Self::State,
+    context: SemanticContributionContext,
+) -> SemanticContribution
+```
+
+`SemanticContributionContext` exposes only the direct mounted-child count; it
+contains no mounted/semantic ID, runtime namespace, layout coordinate, focus, or
+action authority. A widget contribution is an ordered action-type-independent
+owner-local forest. `SemanticKey::PRIMARY` is reserved and distinct from a named
+`"primary"` key. Additional nodes use validated named keys. A zero-node owner is
+transparent. When a nonempty owner has direct mounted children, the contribution
+contains exactly one `SemanticItem::MountedChildren`; when it has none, that
+marker is forbidden. Validation rejects duplicate keys, missing/duplicate/
+unnecessary markers, and missing local relationship targets without implicit
+repair or first/last selection.
+
+`SemanticNodeContribution` carries platform-neutral role, optional name and
+description, value, authored `SemanticState` (`disabled`, `hidden`, `inert`),
+deduplicated semantic action intent, relationships, `SemanticBounds`, optional
+plain text, and recursive local semantic children. `SemanticBounds::Owner` uses
+the mounted owner's future runtime-derived bounds; `OwnerLocal(LogicalRect)` is
+validated owner-local geometry only. Widgets cannot author absolute surface
+coordinates or runtime focus through the contribution contract. `SemanticAction`
+currently describes intent; executable semantic-node action ingress remains M5C.
+AccessKit/native types are absent.
 
 `WidgetMountContext<Action>`, `WidgetUpdateContext<Action>`, and
 `WidgetActivationContext<Action>` can request `WidgetInvalidation`, invalidate
@@ -292,11 +347,11 @@ default plus ordered capture/release requests for the current pointer. Recursive
 mapping preserves every staged capture request. `WidgetEventOutput` reports only
 independent persistent-state mutation. Mapping moves non-`Clone` actions and
 recursively maps mounted work while preserving commands, controls, invalidation,
-and the state-change fact. Only the checked erased widget bridge constructs and
-extracts `EventContext`; runtime supplies its validated facts and output bound.
-Public origin constructors are direct-only, while `emit_command` is the sole
-authority that turns callback output into a delegated origin targeting the
-current node. `UiEvent::as_semantic_command` returns
+semantic contribution, and the state-change fact. Only the checked erased widget
+bridge constructs and extracts `EventContext`; runtime supplies its validated
+facts and output bound. Public origin constructors are direct-only, while
+`emit_command` is the sole authority that turns callback output into a delegated
+origin targeting the current node. `UiEvent::as_semantic_command` returns
 `Option<&SemanticCommandEvent>` so later event variants do not require a
 command-shaped accessor.
 
@@ -306,13 +361,15 @@ Button callback replacement requires no `Clone`, `Copy`, `Debug`, `Eq`, or
 `PartialEq` on `Action` and does not itself invalidate visual capabilities.
 `Button::on_activate(callback: impl FnMut() -> Action + 'static)` installs an
 owned action factory invoked for every accepted routed semantic default. `on_press` is
-removed without an alias.
+removed without an alias. Built-in Text, Button, and Container now author the
+canonical M5A semantic contribution vocabulary rather than `WidgetSemanticProof`.
 
 `Element::map_action` replaces only action plumbing. It recursively delegates
-every state-aware capability and preserves underlying widget/state type IDs.
-Compatible reconciliation installs the newly authored description, mapper, and
-activation factory while retaining state and mounted identity. No global
-`Action: Clone`, `Send`, `Sync`, or `'static` bound exists.
+every state-aware capability and preserves underlying widget/state type IDs and
+semantic contribution content. Compatible reconciliation installs the newly
+authored description, mapper, and activation factory while retaining state and
+mounted identity. No global `Action: Clone`, `Send`, `Sync`, or `'static` bound
+exists.
 
 ## Safe core/runtime bridge
 
@@ -337,43 +394,58 @@ uses deterministic disabled/zero/vertical/default fallbacks. Activation exposes
 `RuntimeError::WidgetStatePayloadMismatch`. A mismatch during compatible update
 replaces immediately without partially committing the new description; a
 mismatch discovered by another capability replaces on the next reconciliation.
+For semantics specifically, an erased state/widget payload mismatch withdraws
+all owner semantic lifetimes and marks mounted integrity failure; authored
+semantic contribution invalidity instead withdraws owner semantics without
+misclassifying mounted state as corrupt.
 
 ## Identity and targeting
 
-Core-owned `MountedNodeId` privately stores:
+Core-owned `MountedNodeId` privately stores one exact mounted identity under the
+shared runtime namespace:
 
 ```text
-shared opaque runtime namespace + checked u32 arena slot + u64 generation
+opaque runtime namespace + checked u32 mounted-arena slot + u64 generation
 ```
 
 It is `Clone`, `Debug`, `Eq`, and `Hash`, but not `Copy`. Equality and hashing
-include namespace identity, slot, and generation.
-There is no global counter, random ID, serialization, or preorder identity.
+include namespace identity, slot, and generation. There is no global counter,
+random ID, serialization, or preorder identity.
 
-`SemanticNodeId` is a distinct type using the same runtime namespace and mounted
-lifetime triplet. It survives compatible update and keyed reorder, and changes on
-replacement. It is not yet a semantic-tree node or accessibility identity
-contract.
+`SemanticNodeId` is a distinct opaque type using the same runtime namespace but
+a **separate runtime-owned semantic arena slot/generation**. It is not coupled to
+or reconstructed from the mounted arena address. A mounted owner may own zero,
+one, or many live semantic IDs. Runtime binds each live semantic ID to the exact
+mounted owner lifetime plus one stable owner-local `SemanticKey`.
 
-Both IDs are process-local and runtime-instance-local. Validation checks the
-runtime namespace first. A different namespace is foreign; an issued slot whose
-generation/lifetime no longer matches is stale; a same-runtime slot beyond the
-addressable arena is missing. Old IDs never
-target slot replacements, even when the deterministic arena reuses the same
-index.
+Compatible mounted-owner retention plus the same semantic key preserves the
+exact semantic ID even when the contribution order changes. Removing a semantic
+key revokes only that semantic lifetime; removing/replacing the mounted owner
+revokes all of its semantic lifetimes. Reusing a vacated semantic arena slot
+advances generation, so old IDs remain stale and never retarget replacements.
+The shared generational arena preflights capacity and generation retirement; the
+semantic store validates existing bindings before mutation and rejects duplicate,
+foreign, missing, or owner/key-mismatched index state instead of choosing first
+or last. Capacity failure is fail-closed for the complete owner semantic set and
+does not partially mutate arena/bindings.
 
-`MountedNodeId`, `MonotonicInstant`, `MonotonicTimeError`, and `WorkSequence`
-have one core-owned type authority. Runtime alone creates the live namespace,
-checks `usize -> u32` slot conversion, allocates non-wrapping generations and
-work sequences, advances clocks, and schedules timers. Hidden bridges carry no
-arena, clock, queue, or validation-bypass authority.
+Both mounted and semantic IDs are process-local and runtime-instance-local.
+Runtime namespace validation occurs before slot interpretation. Foreign semantic
+IDs, stale generations, missing addresses, checked public-slot overflow, and
+generation exhaustion do not truncate or wrap. Ordinary downstream code cannot
+construct live IDs or extract/reconstruct their private parts. M5A intentionally
+publishes the opaque `SemanticNodeId` type without yet publishing the independent
+semantic snapshot that contains live IDs; M5B owns that product.
 
 Authored `ElementId` remains a validated lookup/diagnostic handle. It does not
-affect reconciliation compatibility and may change while mounted identity
-survives. M4C1 command submission accepts only an exact mounted target. The
-owner-accepted M4C5 implementation adds deterministic logical-preorder
-authored-ID resolution for automation only; it never changes mounted identity or
-creates a first-match fallback.
+affect mounted reconciliation compatibility and may change while mounted
+identity survives. Semantic relationships may author a local `SemanticKey` or a
+future cross-owner target of unique authored `ElementId` plus optional semantic
+key. M5A validates local references only; M5B owns runtime cross-owner resolution
+and ambiguity/staleness policy. M4C1 command submission accepts only an exact
+mounted target. The owner-accepted M4C5 implementation adds deterministic
+logical-preorder authored-ID resolution for automation only; it never changes
+mounted/semantic identity or creates a first-match fallback.
 
 ## Reconciliation
 
@@ -382,8 +454,8 @@ match and it has no recorded integrity failure. `None` root keys compare equal.
 
 For children, keys are sibling-local. A unique keyed child matches a unique old
 sibling with the same key and compatible widget/state types regardless of
-position. Keyed reorder preserves IDs, state, interaction slots, focus, and
-clean caches. A key change, type incompatibility, or cross-parent placement
+position. Keyed reorder preserves mounted IDs, state, interaction slots, focus,
+and clean caches. A key change, type incompatibility, or cross-parent placement
 remounts.
 
 Unkeyed children match by ordinal among unkeyed siblings, not absolute child
@@ -400,31 +472,42 @@ Final mounted child order exactly follows new authored order. `moved_count`
 counts only a preserved node whose sibling position changed under the same
 parent. Cross-parent changes are remounts.
 
+Semantic identity reconciliation is independent from mounted sibling matching.
+After a valid widget contribution is produced, the runtime reconciles its
+validated ordered semantic keys against the mounted owner's existing semantic
+bindings. Surviving owner/key pairs retain IDs regardless of contribution order;
+removed keys are revoked; additions receive semantic-arena identities. A direct
+mounted-child-count structural change invalidates the contribution context so
+marker validity is recomputed. Unrelated compatible layout/paint/diagnostic
+changes do not requery unchanged semantic contribution.
+
 ## Lifecycle and shutdown
 
 Initial mount and compatible update run parent-before-child in new authored
 preorder. Each preserved node receives exactly one checked update from the new
 description before that description is committed. Removal revokes every
 exact-owner producer token, queued completion payload, source, mapper, timer,
-and registry record children-before-parent before the corresponding unmount
-hook begins. Each node remains arena-live through its hook;
-arena removal, stale identity, and state drop follow the hook. Replacement
-fully unmounts and drops the old subtree before mounting the new subtree.
+registry record, and semantic lifetime children-before-parent before the
+corresponding unmount hook begins. Each node remains mounted-arena-live through
+its hook; arena removal, stale mounted identity, and state drop follow the hook.
+Replacement fully unmounts and drops the old subtree before mounting the new
+subtree.
 
-State drops after its unmount hook. Interaction slots and caches disappear with
-the mounted lifetime. Explicit `AppRuntime::shutdown`, `into_state`, and `Drop`
-share one idempotent postorder `RuntimeShutdown` authority; every remaining node
-receives exactly one shutdown unmount.
+State drops after its unmount hook. Interaction slots, caches, and semantic
+owner bindings disappear with the mounted lifetime. Explicit
+`AppRuntime::shutdown`, `into_state`, and `Drop` share one idempotent postorder
+`RuntimeShutdown` authority; every remaining node receives exactly one shutdown
+unmount.
 
 ## Routed commands, focus, and interaction slots
 
 `AppRuntime::submit_command` appends one non-reentrant semantic-command
-envelope. At the queue front runtime revalidates the exact target, snapshots one
-owned root-to-target route, validates every route node and erased event bridge,
-and admits the complete configured transaction boundary before the first
-callback. Capture visits root-to-parent, target runs once, and bubble visits
-parent-to-root. Stopping propagation affects only later callbacks; preventing
-default affects only the cancelable semantic default.
+envelope. At the queue front runtime revalidates the exact mounted target,
+snapshots one owned root-to-target route, validates every route node and erased
+event bridge, and admits the complete configured transaction boundary before the
+first callback. Capture visits root-to-parent, target runs once, and bubble
+visits parent-to-root. Stopping propagation affects only later callbacks;
+preventing default affects only the cancelable semantic default.
 
 One bounded transaction ledger counts routed actions, delegated commands,
 semantic-default output, mounted effects/cancellation, and unique exact-owner
@@ -449,9 +532,10 @@ existing widget activation capability, exactly once, as semantic default.
 Prevented activation never invokes its factory. `CancelOrBack`, `OpenMenu`, and
 `OpenContextMenu` route once and have no default action, runtime mutation, or
 second ancestor pass. Programmatic, automation, accessibility-stub, and
-normalized-controller origins use this same exact-target path. M4C5 automation
-resolves exactly one authored ID before this command ingress; semantic
-accessibility resolution remains unimplemented.
+normalized-controller origins use this same exact-mounted-target path. M4C5
+automation resolves exactly one authored ID before this command ingress. M5A
+semantic contribution can advertise action intent, but exact semantic-ID action
+submission/resolution remains M5C and does not create a second queue.
 
 Direct programmatic activation, direct focus mutation/traversal helpers, the
 transitional `FocusTargetResult`, and the old pointer/keyboard
@@ -462,8 +546,9 @@ M4C3 implements pointer lifecycle/release-inside activation, M4C4 implements
 focus scopes/modality, M4C5 implements keyboard/text/composition and automation
 resolution, M4D1 implements normalized in-memory trace reconstruction, M4D2
 implements deterministic export and bounded subordinate sink delivery, M4D3
-implements accepted offline replay plus final migration/closure proofs, and M5
-owns semantic accessibility mapping.
+implements accepted offline replay plus final migration/closure proofs, M5A
+implements semantic contribution/identity, M5B owns the semantic product, and
+M5C owns semantic accessibility action resolution.
 
 One runtime-owned `FocusState` retains the exact focused mounted lifetime, its
 committed focus-within route, exact-generation scope memories, last
@@ -580,39 +665,56 @@ emptiness, `BitOr`, and `BitOrAssign`.
 | `INTERACTION` | activation and text-input capability | focus/input validation, interaction, semantics, paint |
 | `LAYOUT` | measurement, child layout | layout, hit testing, semantic bounds, paint placement |
 | `PAINT` | paint | paint output |
-| `SEMANTICS` | semantics | semantic output |
+| `SEMANTICS` | semantic contribution | semantic output |
 | `DIAGNOSTICS` | widget diagnostics | diagnostic output |
 | `ALL` | all capabilities | all dependent phases |
 
-Each capability cache retains unresolved, ready, or payload-mismatch state.
-`INTERACTION` alone does not clear paint or semantic widget facts. Structural and
-common authored changes add runtime-detected phase work; they do not
-automatically requery unrelated clean capabilities. Publication-context changes
-compare root constraints, exact style-token content, and measurement-provider
-identity/revision. Providers must change identity or revision whenever behavior
-changes. Runtime-owned proof publication products and an inspectable
-`SurfacePhaseReport` allow clean tree/style/layout/hit-test/paint/semantics/
-diagnostics branches to be genuinely skipped while preserving clean widget
-caches. Topology snapshots retain structural/alignment metadata only. Style and
-layout execution use current mounted authored values, and reconciliation—not the
-context key—detects authored token-reference or gap changes. The report lists
-actual executed phase functions; private test-only counters are incremented at
-the phase entry points and are independent from report recording.
-M3 does not claim a production retained layout cache.
+Ordinary capability caches retain unresolved, ready, or payload-mismatch state.
+The semantic contribution cache additionally distinguishes authored
+`Invalid(SemanticContributionError)`, semantic `IdentityExhausted`, semantic
+index-integrity failure, and state-payload mismatch so failure meaning is not
+collapsed. Valid contribution is structurally validated before runtime semantic
+identity reconciliation. Invalid contribution withdraws the complete owner
+semantic set; identity capacity failure is preflighted/fail-closed; index
+corruption withdraws the owner and marks mounted integrity failure. Semantic
+owner/key reconciliation cannot partially consume bindings on failed preflight.
+
+`INTERACTION` alone does not clear paint or semantic widget facts. Structural
+and common authored changes add runtime-detected phase work; they do not
+automatically requery unrelated clean capabilities. Direct mounted-child-count
+change specifically invalidates semantic structure because it changes
+`SemanticContributionContext`; unrelated compatible updates do not. A later M5B
+layout-only bounds publication may dirty semantic **publication** without
+requerying unchanged widget contribution.
+
+Publication-context changes compare root constraints, exact style-token content,
+and measurement-provider identity/revision. Providers must change identity or
+revision whenever behavior changes. Runtime-owned proof publication products and
+an inspectable `SurfacePhaseReport` allow clean tree/style/layout/hit-test/paint/
+semantics/diagnostics branches to be genuinely skipped while preserving clean
+widget caches. Topology snapshots retain structural/alignment metadata only.
+Style and layout execution use current mounted authored values, and
+reconciliation—not the context key—detects authored token-reference or gap
+changes. The report lists actual executed phase functions; private test-only
+counters are incremented at the phase entry points and are independent from
+report recording. M3 does not claim a production retained layout cache.
 
 ## Reports and publication
 
 Initial mount completes reconciliation generation 1. Each successfully processed
 application action increments once using `checked_add`; the action processor and
-routed transaction admission preflight relevant exhaustion before application, widget,
-mounted, factory, focus, cache, or reconciliation-report mutation. Processing-
-rejection, routed-integrity, or terminal trace facts remain permitted when trace
-sequencing is available; submission-time rejection never allocates one.
+routed transaction admission preflight relevant exhaustion before application,
+widget, mounted, factory, focus, cache, or reconciliation-report mutation.
+Processing-rejection, routed-integrity, or terminal trace facts remain permitted
+when trace sequencing is available; submission-time rejection never allocates
+one.
 
 `ReconciliationReport` defines counts by mounted lifetime: live nodes after
 completion, new lifetimes mounted, preserved nodes updated once, lifetimes
 ended, same-parent preserved moves, retained-focus truth, and structured
 deterministic diagnostics containing complete duplicate-key old/new occurrences.
+Semantic identity is not counted as mounted lifetime and is owned by the private
+M5A semantic store until M5B publishes semantic product/update diagnostics.
 
 `AppRuntime::publish_surface(&mut self, context)` is the only public surface
 publication authority. Every call returns `SurfacePublication` with a fresh opaque
@@ -620,15 +722,24 @@ publication authority. Every call returns `SurfacePublication` with a fresh opaq
 and the exact displayed hit-test generation. The runtime retains a configurable
 nonzero bounded `VecDeque` of immutable hit-test snapshots; oldest retirement is
 deterministic, and retained contexts never re-hit-test current geometry.
+
 `MountedTreeIndex`, `SurfaceFrame`, `SurfaceStyleReport`, and
-`SurfaceLayoutReport` expose equal mounted/semantic ID, parent, authored-ID, and
-current preorder sequences with no ghost actionable/focusable node. A tree change
-rebuilds every aligned renderer product from one current topology snapshot.
-Compatible common-field changes retain that topology but refresh style/layout facts
-from current mounted nodes. Publication equality deliberately compares only the
-renderer-facing frame/style/layout products; callers compare `input_context()`
-explicitly when exact displayed-snapshot identity matters. The free transient
-publication function is removed.
+`SurfaceLayoutReport` expose equal **mounted** ID, parent, authored-ID, and current
+preorder sequences for renderer/layout inspection. M5A removes the old singular
+semantic-ID projection from mounted/frame/style/layout nodes because one mounted
+owner may contribute zero or many semantic nodes. `SurfaceNode::semantics()`
+temporarily carries the canonical `SemanticContribution` only; it exposes no
+runtime semantic IDs, resolved tree topology, absolute semantic bounds, runtime
+focus, revisions, or incremental semantic update authority. M5B owns the
+independent semantic snapshot/update sibling product and the final removal of
+production semantic authority from renderer-facing `SurfaceFrame`.
+
+A tree change rebuilds every aligned renderer product from one current topology
+snapshot. Compatible common-field changes retain that topology but refresh
+style/layout facts from current mounted nodes. Publication equality deliberately
+compares only the renderer-facing frame/style/layout products; callers compare
+`input_context()` explicitly when exact displayed-snapshot identity matters. The
+free transient publication function is removed.
 
 ## Bounded canonical trace
 
@@ -730,7 +841,7 @@ structurally valid divergent projection fails that reconstruction instead of
 silently claiming equivalent behavior.
 
 This replay surface is accepted M4 headless causal-proof infrastructure. It does
-not provide the M5 public test harness, semantic query/action model, or an
+not provide the M5D public test harness, semantic query/action model, or an
 application-specific semantic expectation engine.
 
 M4C3 adds pointer submission, ordered validation and stream resolution,
@@ -777,6 +888,8 @@ already-accepted mutable work, the runtime becomes terminal before the pending
 mutable callback and cancels queued work. The accepted M4D2 export/sink surface
 remains the sole live projection/transport over the canonical in-memory
 authority; accepted M4D3 replay consumes only its serialized output offline.
+M5A introduces no second trace; semantic action causality remains M5C work over
+the same canonical trace.
 
 ## Breaking migrations
 
@@ -797,6 +910,8 @@ Removed without aliases:
   `KeyboardFocusResult`, `handle_keyboard_focus`, and the transitional runtime
   policy module;
 - first-match `MountedTreeIndex::node_by_authored_id` lookup authority;
+- M2 `WidgetSemanticProof` and singular mounted/renderer-facing semantic-ID
+  projection authority;
 - duplicated, unbounded runtime-event/trace storage.
 
 Added:
@@ -840,7 +955,12 @@ Added:
 - accepted M4D3 `TraceReplay`, `TraceReplayCompleteness`, `TraceReplayError`,
   `TraceReplayKind`, `TraceReplayRecord`, `TraceReplaySequence`, and
   `TraceReplayWorkSequence` for inert offline JSONL validation and causal
-  reconstruction.
+  reconstruction;
+- M5A core-owned canonical `LogicalSize`/`LogicalRect` geometry and
+  platform-neutral semantic authoring vocabulary (`SemanticKey`, role/value/text/
+  state/action/relationship/bounds types, `SemanticItem`,
+  `SemanticNodeContribution`, `SemanticContribution`, validation/error/context),
+  plus runtime-owned independent semantic arena/binding reconciliation.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
@@ -851,7 +971,10 @@ host-neutral pointer lifecycle, the owner-accepted M4C4 focus-scope/modality
 protocol, the owner-accepted M4C5 keyboard/text/composition and authored-ID
 automation implementation, the owner-accepted M4D1 normalized in-memory trace
 schema, the owner-accepted M4D2 deterministic export/redaction/bounded-sink
-surface, and the owner-accepted M4D3 offline replay and M4 closure proof surface.
-M4 is complete. It does not imply native host translation, production scrolling,
-editable text, platform IME objects, or M5 semantic accessibility mapping/public
-testing implementation.
+surface, the owner-accepted M4D3 offline replay/M4 closure proof surface, and the
+owner-accepted M5A semantic contribution/independent-identity foundation.
+M4 is complete and M5 is active. M5A does not imply the M5B independent semantic
+snapshot/update product, runtime-derived semantic focus/absolute bounds,
+relationship resolution, M5C semantic-node action ingress, M5D public testing
+harness, AccessKit/native accessibility, native host translation, production
+scrolling, editable text, or platform IME objects.
