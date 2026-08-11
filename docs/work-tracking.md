@@ -97,10 +97,34 @@ coordination.
 M5 uses [issue #45](https://github.com/dornglut/runen-ui/issues/45) as its active
 coordination and pickup authority. Its decision-complete readiness audit passed
 against exact accepted M4 closure base
-`a63a249de9d4d53eeef4104ae3384e7898aacad1`. The current execution issue is
-[M5A0 #46](https://github.com/dornglut/runen-ui/issues/46), which freezes M5
-architecture/conformance authority and the minimum matrix-audit tooling before
-feature implementation begins.
+`a63a249de9d4d53eeef4104ae3384e7898aacad1`. M5A0 #46 is accepted and closed.
+M5A semantic contribution and independent identity #47 was owner-accepted at
+exact reviewed feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`
+after exact-head CI run `31497457992` / #889 passed, then guarded-squash-merged
+in PR #53 as `e3c304600ec1777cd17a1973946a43c765df1c31`. All 38 feature
+changed-file blob identities are byte-identical between reviewed head and
+accepted squash, and accepted `main` was verified at that squash.
+
+The current execution gate is the separate M5A post-merge authority/current-
+contract reconciliation from exact base `e3c304600ec1777cd17a1973946a43c765df1c31`.
+It promotes exactly the twelve M5A-owned matrix rows to `owner-accepted` and
+reconciles accepted public/status/pickup truth. #47 remains open until that
+reconciliation itself is exact-head validated, critically reviewed, explicitly
+owner-accepted, merged, and accepted-main verified.
+
+The post-M5A critical readiness review found material under-specification at the
+M5B/M5C boundary for semantic focus projection, virtual semantic-node action
+target preservation, relationship default targeting, hidden/invalid-owner
+composition, and publication revision/cutover atomicity. Issue
+[#55](https://github.com/dornglut/runen-ui/issues/55) records the required
+readiness/authority amendment plus one bounded pre-1.0 semantic-vocabulary
+correction needed to keep its eventual accepted base truthful; it does not own
+M5B semantic publication or M5C action-ingress implementation. It must not begin
+on a stacked branch while the M5A reconciliation is unmerged. After that
+reconciliation is accepted/merged and #47 closes, #55 becomes the next execution
+gate. M5B #48 remains blocked until #55 is itself exact-head validated,
+critically reviewed, explicitly owner-accepted, merged, and accepted-main
+verified.
 
 The completed public M4 execution graph is:
 
@@ -113,17 +137,22 @@ The completed public M4 execution graph is:
 - [#8 — M4D2 export, redaction, and bounded sink](https://github.com/dornglut/runen-ui/issues/8), after #7;
 - [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8.
 
-The accepted M5 execution graph is sequential:
+The accepted M5 implementation sequence remains sequential; #55 is a blocking
+readiness/authority amendment with one bounded semantic-vocabulary correction
+between the accepted M5A reconciliation and M5B implementation, rather than a
+new durable milestone slice or a hidden M5B implementation step:
 
-- [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), current;
-- [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), after accepted #46;
-- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), after accepted #47;
+- [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), accepted and closed;
+- [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), feature accepted/merged; post-merge authority reconciliation is the current gate;
+- [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), after accepted #47 reconciliation and before any M5B branch;
+- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), after accepted #55 authority amendment;
 - [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), after accepted #48;
 - [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), after accepted #49;
 - [#51 — M5E integrated conformance, migration, and M5 closure](https://github.com/dornglut/runen-ui/issues/51), after accepted #50.
 
-No later M5 branch begins from an unmerged predecessor. M6 is eligible only from
-the exact accepted M5 closure base.
+No later M5 branch begins from an unmerged predecessor or from a feature merge
+whose required post-merge authority reconciliation/readiness amendment is still
+pending. M6 is eligible only from the exact accepted M5 closure base.
 
 Architecture and tooling follow-up:
 
@@ -216,7 +245,9 @@ head SHA. GitHub's synthetic pull-request merge ref does not qualify. Any head
 movement invalidates the prior exact-head result.
 
 After a squash merge, record the accepted feature head and squash merge commit
-separately. Do not require feature-head ancestry from the squash commit.
+separately. Do not require feature-head ancestry from the squash commit. Verify
+changed-file content identity between the reviewed feature head and squash
+before treating the merge as accepted implementation evidence.
 
 ## Infrastructure-only exact-head CI waiver
 

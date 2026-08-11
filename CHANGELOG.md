@@ -8,6 +8,28 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and guarded-squash-merged M5A semantic contribution and
+  independent identity in [PR #53](https://github.com/dornglut/runen-ui/pull/53).
+  The reviewed feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`
+  passed canonical exact-head CI run `31497457992` / #889 and the final critical
+  review; the squash merge commit is
+  `e3c304600ec1777cd17a1973946a43c765df1c31`, and all 38 changed-file blob
+  identities are byte-identical between the reviewed feature head and accepted
+  squash. The accepted implementation replaces M2 semantic proof authority with
+  platform-neutral `SemanticContribution`, 0..N owner-local semantic nodes keyed
+  by stable `SemanticKey`, strict marker/reference validation, core-owned
+  `LogicalSize`/`LogicalRect`, validated owner-local bounds, and a separate
+  runtime-owned generational semantic arena/binding store with stale-safe
+  retention/revocation/reuse and fail-closed capacity/index integrity. Genuine
+  downstream proofs cover action-mapping neutrality and owner-local geometry.
+  No AccessKit/native dependency, independent semantic publication product,
+  semantic-node action ingress, or public testing harness is introduced. This
+  post-merge authority reconciliation promotes exactly the twelve M5A rows to
+  `owner-accepted`, producing `50 total / 12 owner-accepted / 0 proof-complete /
+  38 blocked` in the M5 matrix and `287 total / 247 owner-accepted / 0
+  proof-complete / 40 blocked` across configured matrices. M5B remains blocked
+  until this reconciliation itself is accepted, merged, and accepted-main
+  verified.
 - Owner-accepted and guarded-squash-merged the complete M4D3 replay and M4
   closure slice in [PR #43](https://github.com/dornglut/runen-ui/pull/43). The
   accepted feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d`
