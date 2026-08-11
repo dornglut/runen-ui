@@ -37,7 +37,7 @@ guarded-squash-merged in [PR #41](https://github.com/dornglut/runen-ui/pull/41)
 as `8c67655ffce438c2e35e6478e7299bd704033b8b`, and all 23 changed-file blob
 identities match between reviewed feature head and accepted squash. The M4D2
 post-merge authority reconciliation is also accepted and merged. M4D3 was
-owner-accepted at feature head `b5f72ccaa89a9fb54d64ae64a346525d4e3c9c155` after canonical exact-head CI run
+owner-accepted at feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d` after canonical exact-head CI run
 `31398930987` / #765 and the final critical cold review passed. It was
 guarded-squash-merged in
 [PR #43](https://github.com/dornglut/runen-ui/pull/43) as
