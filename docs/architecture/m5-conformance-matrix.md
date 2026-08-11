@@ -27,14 +27,14 @@ Allowed statuses remain:
 - `proof-complete`;
 - `owner-accepted`.
 
-Initial audited summary:
+Current audited summary:
 
 ```text
 50 total unique rows
 0 owner-accepted
 0 implementation-complete
-0 proof-complete
-50 blocked
+12 proof-complete
+38 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -44,18 +44,18 @@ Initial audited summary:
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| SEM-ID-01 | Every live semantic node has one opaque runtime-issued `SemanticNodeId` independent of mounted arena slot/generation allocation. | Runtime semantic-arena identity tests | Compile/API construction and mounted-coupling exclusion | Semantic identity diagnostics | M5A | blocked | Required |
-| SEM-ID-02 | Retaining the same mounted owner lifetime and owner-local `SemanticKey` preserves the exact semantic identity across compatible updates. | Runtime + downstream compatible-update proof | Replacement/removal contrast proof | Identity retention diagnostics | M5A | blocked | Required |
-| SEM-ID-03 | Reordering owner-local semantic contributions preserves identities by `SemanticKey`, not contribution position. | Downstream reorder proof | Position-derived identity rejection | Identity/reconciliation diagnostics | M5A | blocked | Required |
-| SEM-ID-04 | Removing a local semantic key or removing/replacing its mounted owner revokes the exact semantic lifetime; later reuse never retargets the stale ID. | Runtime removal/replacement/generation-reuse proof | Stale-to-replacement no-retarget proof | Semantic lifetime diagnostics | M5A | blocked | Required |
-| SEM-ID-05 | Foreign IDs, semantic-slot overflow, and generation exhaustion are rejected without truncation, wrapping, or live-namespace forgery. | Runtime boundary tests | Compile/API namespace extraction and overflow proof | Semantic identity failure diagnostics | M5A | blocked | Required |
-| SEM-CONTRIB-01 | A widget contributes an action-type-independent semantic forest containing zero or more owner-local semantic nodes. | Core + downstream custom-widget proof | Action-mapping semantic-coupling proof | Contribution diagnostics | M5A | blocked | Required |
-| SEM-CONTRIB-02 | Every contributed semantic node has one owner-local `SemanticKey` unique within its exact mounted owner. | Core/runtime contribution validation | Duplicate-key first/last-match rejection | Duplicate semantic-key diagnostic | M5A | blocked | Required |
-| SEM-CONTRIB-03 | A zero-node owner is transparent; otherwise an owner with direct mounted children contains exactly one mounted-children marker, while an owner without mounted children contains none. | Core/runtime composition fixture | Missing/duplicate/unnecessary marker and implicit-placement rejection | Contribution-structure diagnostics | M5A | blocked | Required |
-| SEM-CONTRIB-04 | Semantic contribution carries platform-neutral roles, names/descriptions, real values/states/actions, relationships, and plain-text extension facts without AccessKit/native types. | Built-in + downstream semantic vocabulary proof | Platform-vocabulary/dependency exclusion audit | Contribution diagnostics | M5A | blocked | Required |
-| SEM-CONTRIB-05 | Recursive component action mapping leaves semantic contribution identity and content unchanged. | Downstream mapped-component proof | Mapped semantic mutation/callback duplication proof | Contribution comparison diagnostics | M5A | blocked | Required |
-| SEM-GEOM-01 | Canonical `LogicalSize` and `LogicalRect` are core-owned host-neutral geometry types and runtime deliberately re-exports the same authority where needed. | Core/runtime API conformance | Duplicate runtime geometry type/compatibility alias audit | Repository authority audit | M5A | blocked | Required |
-| SEM-GEOM-02 | A semantic node uses exact owner bounds or a validated owner-local logical rectangle; widgets cannot author absolute surface coordinates. | Runtime virtual-semantic-bounds proof | Non-finite/negative/absolute-coordinate rejection | Semantic geometry diagnostics | M5A | blocked | Required |
+| SEM-ID-01 | Every live semantic node has one opaque runtime-issued `SemanticNodeId` independent of mounted arena slot/generation allocation. | Runtime semantic-arena identity tests | Compile/API construction and mounted-coupling exclusion | Semantic identity diagnostics | M5A | proof-complete | Required |
+| SEM-ID-02 | Retaining the same mounted owner lifetime and owner-local `SemanticKey` preserves the exact semantic identity across compatible updates. | Runtime + downstream compatible-update proof | Replacement/removal contrast proof | Identity retention diagnostics | M5A | proof-complete | Required |
+| SEM-ID-03 | Reordering owner-local semantic contributions preserves identities by `SemanticKey`, not contribution position. | Downstream reorder proof | Position-derived identity rejection | Identity/reconciliation diagnostics | M5A | proof-complete | Required |
+| SEM-ID-04 | Removing a local semantic key or removing/replacing its mounted owner revokes the exact semantic lifetime; later reuse never retargets the stale ID. | Runtime removal/replacement/generation-reuse proof | Stale-to-replacement no-retarget proof | Semantic lifetime diagnostics | M5A | proof-complete | Required |
+| SEM-ID-05 | Foreign IDs, semantic-slot overflow, and generation exhaustion are rejected without truncation, wrapping, or live-namespace forgery. | Runtime boundary tests | Compile/API namespace extraction and overflow proof | Semantic identity failure diagnostics | M5A | proof-complete | Required |
+| SEM-CONTRIB-01 | A widget contributes an action-type-independent semantic forest containing zero or more owner-local semantic nodes. | Core + downstream custom-widget proof | Action-mapping semantic-coupling proof | Contribution diagnostics | M5A | proof-complete | Required |
+| SEM-CONTRIB-02 | Every contributed semantic node has one owner-local `SemanticKey` unique within its exact mounted owner. | Core/runtime contribution validation | Duplicate-key first/last-match rejection | Duplicate semantic-key diagnostic | M5A | proof-complete | Required |
+| SEM-CONTRIB-03 | A zero-node owner is transparent; otherwise an owner with direct mounted children contains exactly one mounted-children marker, while an owner without mounted children contains none. | Core/runtime composition fixture | Missing/duplicate/unnecessary marker and implicit-placement rejection | Contribution-structure diagnostics | M5A | proof-complete | Required |
+| SEM-CONTRIB-04 | Semantic contribution carries platform-neutral roles, names/descriptions, real values/states/actions, relationships, and plain-text extension facts without AccessKit/native types. | Built-in + downstream semantic vocabulary proof | Platform-vocabulary/dependency exclusion audit | Contribution diagnostics | M5A | proof-complete | Required |
+| SEM-CONTRIB-05 | Recursive component action mapping leaves semantic contribution identity and content unchanged. | Downstream mapped-component proof | Mapped semantic mutation/callback duplication proof | Contribution comparison diagnostics | M5A | proof-complete | Required |
+| SEM-GEOM-01 | Canonical `LogicalSize` and `LogicalRect` are core-owned host-neutral geometry types and runtime deliberately re-exports the same authority where needed. | Core/runtime API conformance | Duplicate runtime geometry type/compatibility alias audit | Repository authority audit | M5A | proof-complete | Required |
+| SEM-GEOM-02 | A semantic node uses exact owner bounds or a validated owner-local logical rectangle; widgets cannot author absolute surface coordinates. | Runtime virtual-semantic-bounds proof | Non-finite/negative/absolute-coordinate rejection | Semantic geometry diagnostics | M5A | proof-complete | Required |
 
 ## M5B — semantic tree publication and incremental updates
 
