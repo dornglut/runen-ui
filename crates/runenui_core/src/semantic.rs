@@ -235,49 +235,49 @@ pub enum SemanticBounds {
     OwnerLocal(LogicalRect),
 }
 
-/// One opaque item in an owner-local semantic sequence.
+/// One item in an owner-local semantic sequence.
 ///
-/// Construction and inspection deliberately hide recursive storage so internal
-/// indirection can evolve without becoming part of the public widget contract.
+/// The variants are semantic vocabulary. Recursive storage remains hidden by the
+/// opaque [`SemanticNodeContribution`] representation.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SemanticItem(SemanticItemKind);
-
-#[derive(Clone, Debug, PartialEq)]
-enum SemanticItemKind {
-    Node(Box<SemanticNodeContribution>),
+pub enum SemanticItem {
+    Node(SemanticNodeContribution),
     MountedChildren,
 }
 
 impl SemanticItem {
     #[must_use]
-    pub fn node(node: SemanticNodeContribution) -> Self {
-        Self(SemanticItemKind::Node(Box::new(node)))
+    pub const fn node(node: SemanticNodeContribution) -> Self {
+        Self::Node(node)
     }
 
     #[must_use]
     pub const fn mounted_children() -> Self {
-        Self(SemanticItemKind::MountedChildren)
+        Self::MountedChildren
     }
 
     /// Returns the contributed node when this item is a local semantic node.
     #[must_use]
-    pub fn as_node(&self) -> Option<&SemanticNodeContribution> {
-        match &self.0 {
-            SemanticItemKind::Node(node) => Some(node.as_ref()),
-            SemanticItemKind::MountedChildren => None,
+    pub const fn as_node(&self) -> Option<&SemanticNodeContribution> {
+        match self {
+            Self::Node(node) => Some(node),
+            Self::MountedChildren => None,
         }
     }
 
     /// Returns whether this item is the explicit mounted-children splice marker.
     #[must_use]
     pub const fn is_mounted_children(&self) -> bool {
-        matches!(&self.0, SemanticItemKind::MountedChildren)
+        matches!(self, Self::MountedChildren)
     }
 }
 
 /// One owner-local semantic node description.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SemanticNodeContribution {
+pub struct SemanticNodeContribution(Box<SemanticNodeData>);
+
+#[derive(Clone, Debug, PartialEq)]
+struct SemanticNodeData {
     key: SemanticKey,
     role: SemanticRole,
     name: Option<String>,
@@ -293,8 +293,8 @@ pub struct SemanticNodeContribution {
 
 impl SemanticNodeContribution {
     #[must_use]
-    pub const fn new(key: SemanticKey, role: SemanticRole) -> Self {
-        Self {
+    pub fn new(key: SemanticKey, role: SemanticRole) -> Self {
+        Self(Box::new(SemanticNodeData {
             key,
             role,
             name: None,
@@ -306,138 +306,138 @@ impl SemanticNodeContribution {
             bounds: SemanticBounds::Owner,
             text: None,
             children: Vec::new(),
-        }
+        }))
     }
 
     /// Creates a node using the reserved primary owner-local semantic key.
     #[must_use]
-    pub const fn primary(role: SemanticRole) -> Self {
+    pub fn primary(role: SemanticRole) -> Self {
         Self::new(SemanticKey::PRIMARY, role)
     }
 
     #[must_use]
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
+        self.0.name = Some(name.into());
         self
     }
 
     #[must_use]
     pub fn with_description(mut self, description: impl Into<String>) -> Self {
-        self.description = Some(description.into());
+        self.0.description = Some(description.into());
         self
     }
 
     #[must_use]
     pub fn with_value(mut self, value: SemanticValue) -> Self {
-        self.value = Some(value);
+        self.0.value = Some(value);
         self
     }
 
     #[must_use]
-    pub const fn with_state(mut self, state: SemanticState) -> Self {
-        self.state = state;
+    pub fn with_state(mut self, state: SemanticState) -> Self {
+        self.0.state = state;
         self
     }
 
     #[must_use]
     pub fn with_action(mut self, action: SemanticAction) -> Self {
-        if !self.actions.contains(&action) {
-            self.actions.push(action);
+        if !self.0.actions.contains(&action) {
+            self.0.actions.push(action);
         }
         self
     }
 
     #[must_use]
     pub fn with_relationship(mut self, relationship: SemanticRelationship) -> Self {
-        if !self.relationships.contains(&relationship) {
-            self.relationships.push(relationship);
+        if !self.0.relationships.contains(&relationship) {
+            self.0.relationships.push(relationship);
         }
         self
     }
 
     #[must_use]
-    pub const fn with_bounds(mut self, bounds: SemanticBounds) -> Self {
-        self.bounds = bounds;
+    pub fn with_bounds(mut self, bounds: SemanticBounds) -> Self {
+        self.0.bounds = bounds;
         self
     }
 
     #[must_use]
     pub fn with_text(mut self, text: SemanticText) -> Self {
-        self.text = Some(text);
+        self.0.text = Some(text);
         self
     }
 
     #[must_use]
     pub fn with_children(mut self, children: Vec<SemanticItem>) -> Self {
-        self.children = children;
+        self.0.children = children;
         self
     }
 
     #[must_use]
     pub fn with_child(mut self, child: Self) -> Self {
-        self.children.push(SemanticItem::node(child));
+        self.0.children.push(SemanticItem::node(child));
         self
     }
 
     #[must_use]
     pub fn with_mounted_children(mut self) -> Self {
-        self.children.push(SemanticItem::mounted_children());
+        self.0.children.push(SemanticItem::mounted_children());
         self
     }
 
     #[must_use]
     pub const fn key(&self) -> &SemanticKey {
-        &self.key
+        &self.0.key
     }
 
     #[must_use]
     pub const fn role(&self) -> SemanticRole {
-        self.role
+        self.0.role
     }
 
     #[must_use]
     pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+        self.0.name.as_deref()
     }
 
     #[must_use]
     pub fn description(&self) -> Option<&str> {
-        self.description.as_deref()
+        self.0.description.as_deref()
     }
 
     #[must_use]
     pub const fn value(&self) -> Option<&SemanticValue> {
-        self.value.as_ref()
+        self.0.value.as_ref()
     }
 
     #[must_use]
     pub const fn state(&self) -> SemanticState {
-        self.state
+        self.0.state
     }
 
     #[must_use]
     pub const fn actions(&self) -> &[SemanticAction] {
-        self.actions.as_slice()
+        self.0.actions.as_slice()
     }
 
     #[must_use]
     pub const fn relationships(&self) -> &[SemanticRelationship] {
-        self.relationships.as_slice()
+        self.0.relationships.as_slice()
     }
 
     #[must_use]
     pub const fn bounds(&self) -> SemanticBounds {
-        self.bounds
+        self.0.bounds
     }
 
     #[must_use]
     pub const fn text(&self) -> Option<&SemanticText> {
-        self.text.as_ref()
+        self.0.text.as_ref()
     }
 
     #[must_use]
     pub const fn children(&self) -> &[SemanticItem] {
-        self.children.as_slice()
+        self.0.children.as_slice()
     }
 }
 
@@ -599,19 +599,19 @@ fn collect_structure(
     marker_count: &mut usize,
 ) -> Result<(), SemanticContributionError> {
     for item in items {
-        if item.is_mounted_children() {
-            *marker_count = marker_count.saturating_add(1);
-            continue;
+        match item {
+            SemanticItem::MountedChildren => {
+                *marker_count = marker_count.saturating_add(1);
+            }
+            SemanticItem::Node(node) => {
+                let key = node.key().clone();
+                if !keys.insert(key.clone()) {
+                    return Err(SemanticContributionError::DuplicateKey { key });
+                }
+                ordered_keys.push(key);
+                collect_structure(node.children(), keys, ordered_keys, marker_count)?;
+            }
         }
-        let node = item
-            .as_node()
-            .unwrap_or_else(|| unreachable!("semantic item is node or mounted-children marker"));
-        let key = node.key().clone();
-        if !keys.insert(key.clone()) {
-            return Err(SemanticContributionError::DuplicateKey { key });
-        }
-        ordered_keys.push(key);
-        collect_structure(node.children(), keys, ordered_keys, marker_count)?;
     }
     Ok(())
 }
@@ -621,7 +621,7 @@ fn validate_local_references(
     keys: &BTreeSet<SemanticKey>,
 ) -> Result<(), SemanticContributionError> {
     for item in items {
-        let Some(node) = item.as_node() else {
+        let SemanticItem::Node(node) = item else {
             continue;
         };
         for relationship in node.relationships() {
@@ -661,9 +661,8 @@ mod tests {
     }
 
     #[test]
-    fn semantic_items_hide_recursive_storage_but_preserve_typed_inspection() {
-        let node = SemanticNodeContribution::primary(SemanticRole::Text);
-        let item = SemanticItem::node(node);
+    fn semantic_items_hide_node_storage_while_preserving_typed_variants() {
+        let item = SemanticItem::node(SemanticNodeContribution::primary(SemanticRole::Text));
         assert_eq!(
             item.as_node().map(SemanticNodeContribution::role),
             Some(SemanticRole::Text)
