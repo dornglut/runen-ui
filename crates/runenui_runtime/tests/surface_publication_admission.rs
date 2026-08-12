@@ -4,8 +4,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    Element, LogicalLength, LogicalPoint, NoHostProtocol, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, StyleTokens, SurfaceInputContext, UiApp, Widget, WidgetMeasure,
+    Element, LogicalLength, LogicalPoint, NoHostProtocol, PointerDeviceKind, PointerEvent,
+    PointerId, PointerPhase, StyleTokens, SurfaceInputContext, UiApp, Widget, WidgetMeasure,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PublishSurfaceError, PumpBudget, RuntimeConfig, RuntimeStatus,
@@ -319,7 +319,10 @@ fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 
     let trace_after_retry = publication_trace_state(&runtime);
-    assert_eq!(trace_after_retry.published, trace_before_retry.published + 1);
+    assert_eq!(
+        trace_after_retry.published,
+        trace_before_retry.published + 1
+    );
     assert_eq!(
         trace_after_retry.stationary_rehit_queued,
         trace_before_retry.stationary_rehit_queued + 1
