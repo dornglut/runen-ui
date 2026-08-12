@@ -11,7 +11,7 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, FocusReason, LayoutConstraints, MountedNodeId, PumpBudget, SubmitCommandErrorKind,
-    SurfaceBuildContext,
+    SurfaceBuildContext, SurfacePublication,
 };
 
 fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
@@ -71,6 +71,12 @@ fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>
 
 fn context(tokens: &StyleTokens) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(tokens, LayoutConstraints::unbounded())
+}
+
+fn publish<App: UiApp>(runtime: &mut AppRuntime<App>, tokens: &StyleTokens) -> SurfacePublication {
+    runtime
+        .publish_surface(&context(tokens))
+        .unwrap_or_else(|_| unreachable!("external conformance publication is admitted"))
 }
 
 #[derive(Debug)]
@@ -231,7 +237,7 @@ fn keyed_reorder_preserves_mounted_state_focus_and_slots() {
             .pressed()
     );
     let tokens = StyleTokens::new();
-    let publication = runtime.publish_surface(&context(&tokens));
+    let publication = publish(&mut runtime, &tokens);
     assert_eq!(
         publication
             .frame()
@@ -345,7 +351,7 @@ fn mounted_publication_products_are_exactly_aligned() {
         .map(|node| (node.id().clone(), node.parent().cloned()))
         .collect();
     let tokens = StyleTokens::new();
-    let publication = runtime.publish_surface(&context(&tokens));
+    let publication = publish(&mut runtime, &tokens);
     let frame_ids: Vec<_> = publication
         .frame()
         .nodes()
