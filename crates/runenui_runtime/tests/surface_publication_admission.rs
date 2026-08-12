@@ -31,7 +31,11 @@ impl UiApp for App {
         Element::new(MeasureProbe {
             calls: Rc::clone(&state.measure_calls),
         })
-        .key(if state.replaced { "replacement" } else { "initial" })
+        .key(if state.replaced {
+            "replacement"
+        } else {
+            "initial"
+        })
     }
 
     fn update(state: &mut Self::State, _: Self::Action) {
