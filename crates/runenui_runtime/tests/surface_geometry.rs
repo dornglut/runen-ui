@@ -6,8 +6,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, DeterministicMeasurementProvider, LayoutConstraints, LogicalPoint, LogicalSize,
-    MeasurementProvider, SurfaceBuildContext, TextMeasurement, TextMeasurementRequest,
-    render_debug_surface_frame, render_debug_surface_style_report,
+    MeasurementProvider, SurfaceBuildContext, SurfacePublication, TextMeasurement,
+    TextMeasurementRequest, render_debug_surface_frame, render_debug_surface_style_report,
 };
 
 fn length(value: f32) -> LogicalLength {
@@ -16,6 +16,15 @@ fn length(value: f32) -> LogicalLength {
 
 fn size(width: f32, height: f32) -> LogicalSize {
     LogicalSize::try_new(width, height).unwrap_or_else(|_| unreachable!())
+}
+
+fn publish<App: UiApp>(
+    runtime: &mut AppRuntime<App>,
+    context: &SurfaceBuildContext<'_>,
+) -> SurfacePublication {
+    runtime
+        .publish_surface(context)
+        .unwrap_or_else(|_| unreachable!("surface geometry publication is admitted"))
 }
 
 struct CompositeApp;
@@ -42,7 +51,8 @@ fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication
     let mut runtime = AppRuntime::<CompositeApp>::mount(());
     let tokens = StyleTokens::new();
     let provider = DeterministicMeasurementProvider::new(length(10.0), length(20.0));
-    let publication = runtime.publish_surface(
+    let publication = publish(
+        &mut runtime,
         &SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(300.0, 200.0)))
             .with_measurement_provider(&provider),
     );
@@ -103,10 +113,10 @@ fn resolved_padding_and_token_provenance_align_in_one_mounted_publication() {
         .define_color(color_token!("color.text"), Color::WHITE)
         .unwrap_or_else(|_| unreachable!());
     let mut runtime = AppRuntime::<StyledApp>::mount(());
-    let publication = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::unbounded(),
-    ));
+    let publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+    );
     let root = publication.frame().root().unwrap_or_else(|| unreachable!());
     assert_eq!(root.computed_style().foreground(), Some(Color::WHITE));
     assert!((root.bounds().width() - 20.0).abs() <= f32::EPSILON);
@@ -190,7 +200,8 @@ fn derived_geometry_saturates_without_non_finite_bounds_or_maxima() {
         BoundaryCase::Padded,
     ] {
         let mut runtime = AppRuntime::<BoundaryApp>::mount(case);
-        let publication = runtime.publish_surface(
+        let publication = publish(
+            &mut runtime,
             &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded())
                 .with_measurement_provider(&provider),
         );
@@ -218,10 +229,10 @@ fn invalid_dynamic_sizes_and_tight_constraint_overflow_are_explicit() {
     assert!(LogicalSize::try_new(-1.0, 10.0).is_err());
     let mut runtime = AppRuntime::<CompositeApp>::mount(());
     let tokens = StyleTokens::new();
-    let publication = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::loose(size(2.0, 2.0)),
-    ));
+    let publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(2.0, 2.0))),
+    );
     assert!(
         publication
             .layout_report()
