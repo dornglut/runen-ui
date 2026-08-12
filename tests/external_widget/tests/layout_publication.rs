@@ -180,10 +180,7 @@ impl UiApp for UnsupportedApp {
 fn unsupported_measurement_is_explicit_and_deterministic() {
     let mut runtime = AppRuntime::<UnsupportedApp>::mount(());
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::loose(size(100.0, 100.0)),
-    );
+    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(100.0, 100.0)));
     let publication = publish(&mut runtime, &context);
     let diagnostic = &publication
         .layout_report()
@@ -215,10 +212,8 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         });
         settle_initial_mounted_declarations(&mut runtime);
         let tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::new(
-            &tokens,
-            LayoutConstraints::loose(size(600.0, 400.0)),
-        );
+        let context =
+            SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(600.0, 400.0)));
         let publication = publish(&mut runtime, &context);
         let indexed: Vec<_> = runtime
             .index()
@@ -313,10 +308,8 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
             activations: 0,
         });
         let tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::new(
-            &tokens,
-            LayoutConstraints::loose(size(600.0, 400.0)),
-        );
+        let context =
+            SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(600.0, 400.0)));
         let publication = publish(&mut runtime, &context);
         let first = publication.frame().nodes()[1].bounds();
         let second = publication.frame().nodes()[2].bounds();
@@ -332,10 +325,8 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
         activations: 0,
     });
     let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::loose(size(600.0, 400.0)),
-    );
+    let context =
+        SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(600.0, 400.0)));
     let publication = publish(&mut runtime, &context);
     let nodes = publication.frame().nodes();
     assert!((nodes[2].bounds().y() - nodes[1].bounds().max_y() - 13.0).abs() <= f32::EPSILON);
