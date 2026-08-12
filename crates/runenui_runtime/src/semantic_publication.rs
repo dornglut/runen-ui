@@ -398,6 +398,9 @@ impl SemanticPublication {
 
 #[cfg(test)]
 mod tests {
+    use core::num::NonZeroU64;
+    use std::collections::HashMap;
+
     use runenui_core::{
         __runtime::RuntimeNamespace, LogicalPoint, LogicalRect, LogicalSize, SemanticRole,
     };
@@ -410,15 +413,11 @@ mod tests {
     fn rect() -> LogicalRect {
         LogicalRect::new(
             LogicalPoint::new(0.0, 0.0).unwrap_or_else(|_| unreachable!("finite test point")),
-            LogicalSize::try_new(10.0, 10.0)
-                .unwrap_or_else(|_| unreachable!("valid test size")),
+            LogicalSize::try_new(10.0, 10.0).unwrap_or_else(|_| unreachable!("valid test size")),
         )
     }
 
-    fn snapshot(
-        namespace: &RuntimeNamespace,
-        revision: SemanticRevision,
-    ) -> SemanticSnapshot {
+    fn snapshot(namespace: &RuntimeNamespace, revision: SemanticRevision) -> SemanticSnapshot {
         let surface = namespace.__runtime_surface_id(0, 1);
         let id = namespace.__runtime_semantic_id(0, 1);
         let node = SemanticNode {
@@ -445,8 +444,6 @@ mod tests {
         }
     }
 
-    use std::collections::HashMap;
-
     #[test]
     fn exact_id_lookup_is_independent_from_tree_position() {
         let namespace = RuntimeNamespace::__runtime_new();
@@ -459,7 +456,9 @@ mod tests {
     #[test]
     fn update_selection_requires_exact_surface_and_previous_revision() {
         let namespace = RuntimeNamespace::__runtime_new();
-        let current_revision = SemanticRevision(NonZeroU64::new(2).unwrap());
+        let current_revision = SemanticRevision(
+            NonZeroU64::new(2).unwrap_or_else(|| unreachable!("test revision is non-zero")),
+        );
         let snapshot = snapshot(&namespace, current_revision);
         let previous_revision = SemanticRevision::FIRST;
         let update = SemanticUpdate {
