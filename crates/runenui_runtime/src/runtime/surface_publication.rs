@@ -185,36 +185,42 @@ impl SurfacePublicationState {
         context: &SurfaceBuildContext<'_>,
         admission: SurfacePublicationAdmission,
     ) -> SurfacePublication {
+        let SurfacePublicationAdmission {
+            hit_test_generation,
+            coordinate_revision,
+        } = admission;
         let (products, report) = publish_mounted_surface_cached(tree, context, &mut self.cache);
         self.phase_report = report;
         let nodes = HitTestSnapshot::nodes_from(&products);
-        let input_context = self.retain_new_snapshot(nodes, admission);
+        let input_context =
+            self.retain_new_snapshot(nodes, hit_test_generation, coordinate_revision);
         SurfacePublication::new(input_context, products)
     }
 
     fn retain_new_snapshot(
         &mut self,
         nodes: Vec<HitTestNode>,
-        admission: SurfacePublicationAdmission,
+        hit_test_generation: u64,
+        coordinate_revision: u64,
     ) -> SurfaceInputContext {
         debug_assert_eq!(
             self.next_hit_test_generation,
-            Some(admission.hit_test_generation),
+            Some(hit_test_generation),
             "surface publication admission names the current hit-test generation"
         );
         debug_assert_eq!(
             self.next_coordinate_revision,
-            Some(admission.coordinate_revision),
+            Some(coordinate_revision),
             "surface publication admission names the current coordinate revision"
         );
-        self.next_hit_test_generation = admission.hit_test_generation.checked_add(1);
-        self.next_coordinate_revision = admission.coordinate_revision.checked_add(1);
+        self.next_hit_test_generation = hit_test_generation.checked_add(1);
+        self.next_coordinate_revision = coordinate_revision.checked_add(1);
         let context = self
             .runtime_namespace
             .__runtime_surface_context(
                 self.surface_id.clone(),
-                admission.coordinate_revision,
-                admission.hit_test_generation,
+                coordinate_revision,
+                hit_test_generation,
             )
             .unwrap_or_else(|| unreachable!("surface identity shares the runtime namespace"));
         if self.snapshots.len() == self.retained_snapshot_limit.get()
