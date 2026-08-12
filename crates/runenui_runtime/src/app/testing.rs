@@ -47,10 +47,11 @@ impl<App: UiApp> AppRuntime<App> {
         hit_test_generation: Option<u64>,
         coordinate_revision: Option<u64>,
     ) {
-        self.runtime.seed_next_surface_publication_counters_for_test(
-            hit_test_generation,
-            coordinate_revision,
-        );
+        self.runtime
+            .seed_next_surface_publication_counters_for_test(
+                hit_test_generation,
+                coordinate_revision,
+            );
     }
 
     #[cfg(feature = "internal-test-seams")]
