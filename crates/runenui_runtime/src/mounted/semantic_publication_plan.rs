@@ -135,12 +135,18 @@ impl<Action> MountedTree<Action> {
                 Ok(value) => (value, CachedCapability::Ready(value)),
                 Err(_) => {
                     mark_integrity_failed = true;
-                    (WidgetActivation::disabled(), CachedCapability::StatePayloadMismatch)
+                    (
+                        WidgetActivation::disabled(),
+                        CachedCapability::StatePayloadMismatch,
+                    )
                 }
             },
             CachedCapability::StatePayloadMismatch => {
                 mark_integrity_failed = true;
-                (WidgetActivation::disabled(), CachedCapability::StatePayloadMismatch)
+                (
+                    WidgetActivation::disabled(),
+                    CachedCapability::StatePayloadMismatch,
+                )
             }
         };
 
@@ -250,7 +256,10 @@ mod tests {
             live.caches.semantics,
             CachedSemanticContribution::Unresolved
         ));
-        assert!(matches!(live.caches.activation, CachedCapability::Unresolved));
+        assert!(matches!(
+            live.caches.activation,
+            CachedCapability::Unresolved
+        ));
         assert!(live.semantic_bindings.is_empty());
         assert_eq!(tree.semantic_store.live_count(), 0);
     }
