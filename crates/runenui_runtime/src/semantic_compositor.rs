@@ -326,7 +326,7 @@ impl SemanticCompositor<'_> {
                 );
                 return None;
             }
-            [owner] => *owner,
+            [owner] => owner.id.clone(),
             _ => {
                 self.diagnostics.push(
                     SemanticCompositionDiagnostic::AmbiguousAuthoredRelationshipOwner {
@@ -338,7 +338,7 @@ impl SemanticCompositor<'_> {
             }
         };
         let key = semantic_key.cloned().unwrap_or(SemanticKey::PRIMARY);
-        match self.visible_id(&target_owner.id, &key).cloned() {
+        match self.visible_id(&target_owner, &key).cloned() {
             Some(target) => Some(target),
             None => {
                 self.diagnostics.push(
@@ -369,7 +369,9 @@ fn supported_actions(
         .actions()
         .iter()
         .filter(|action| match action {
-            SemanticAction::Activate => !authored.key().is_primary() || owner.activation.is_actionable(),
+            SemanticAction::Activate => {
+                !authored.key().is_primary() || owner.activation.is_actionable()
+            }
             SemanticAction::RequestFocus => {
                 authored.key().is_primary()
                     && match owner.focusability {
@@ -420,9 +422,7 @@ mod tests {
         SemanticRelationshipKind, SemanticRole, SemanticState, WidgetActivation,
     };
 
-    use super::{
-        SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics,
-    };
+    use super::{SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics};
 
     fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
         LogicalRect::new(
@@ -514,18 +514,14 @@ mod tests {
         );
         assert_eq!(candidate.nodes[1].parent, Some(control_primary.clone()));
         assert_eq!(candidate.nodes[2].parent, Some(control_primary.clone()));
-        assert_eq!(candidate.nodes[3].parent, Some(control_primary));
+        assert_eq!(candidate.nodes[3].parent, Some(control_primary.clone()));
         assert_eq!(
-            candidate.nodes.iter().map(|node| node.id.clone()).collect::<Vec<_>>(),
-            vec![before_id.clone(); 0]
-                .into_iter()
-                .chain([
-                    owners[1].bindings[0].1.clone(),
-                    before_id,
-                    leaf_primary,
-                    after_id,
-                ])
-                .collect::<Vec<_>>()
+            candidate
+                .nodes
+                .iter()
+                .map(|node| node.id.clone())
+                .collect::<Vec<_>>(),
+            vec![control_primary, before_id, leaf_primary, after_id]
         );
     }
 
@@ -619,7 +615,10 @@ mod tests {
         );
         assert_eq!(primary.bounds, rect(12.0, 23.0, 4.0, 5.0));
         assert!(virtual_node.disabled);
-        assert_eq!(virtual_node.supported_actions, vec![SemanticAction::Activate]);
+        assert_eq!(
+            virtual_node.supported_actions,
+            vec![SemanticAction::Activate]
+        );
         assert_eq!(virtual_node.id, virtual_id);
         assert_eq!(primary.id, primary_id);
     }
