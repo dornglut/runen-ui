@@ -96,7 +96,10 @@ fn prepared_runtime() -> (
     runtime
         .submit_action(Replace)
         .unwrap_or_else(|_| unreachable!("replacement action is admitted"));
-    assert_eq!(runtime.pump(full_budget()).processed_envelopes(), 1);
+    let calls_before_replacement = measure_calls.get();
+    assert!(runtime.pump(full_budget()).is_quiescent());
+    assert!(runtime.state().replaced);
+    assert_eq!(measure_calls.get(), calls_before_replacement);
     (runtime, measure_calls, first.input_context().clone())
 }
 
