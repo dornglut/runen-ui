@@ -194,6 +194,7 @@ mod pump;
 mod queue;
 mod redraw;
 mod runtime;
+mod semantic_compositor;
 mod semantic_publication;
 mod style_debug;
 mod surface;
