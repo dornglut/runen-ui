@@ -160,9 +160,7 @@ pub(super) const fn runtime_terminal_reason(value: RuntimeTerminalReason) -> &'s
         RuntimeTerminalReason::TraceSequenceExhausted => "trace_sequence_exhausted",
         RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter) => match counter {
             SurfacePublicationCounter::RedrawRevision => "surface_redraw_revision_exhausted",
-            SurfacePublicationCounter::HitTestGeneration => {
-                "surface_hit_test_generation_exhausted"
-            }
+            SurfacePublicationCounter::HitTestGeneration => "surface_hit_test_generation_exhausted",
             SurfacePublicationCounter::CoordinateRevision => {
                 "surface_coordinate_revision_exhausted"
             }
