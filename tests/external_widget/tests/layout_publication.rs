@@ -325,8 +325,7 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
         activations: 0,
     });
     let tokens = StyleTokens::new();
-    let context =
-        SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(600.0, 400.0)));
+    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(600.0, 400.0)));
     let publication = publish(&mut runtime, &context);
     let nodes = publication.frame().nodes();
     assert!((nodes[2].bounds().y() - nodes[1].bounds().max_y() - 13.0).abs() <= f32::EPSILON);
