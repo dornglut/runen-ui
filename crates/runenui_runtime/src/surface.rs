@@ -21,7 +21,7 @@ use resolve::{
     ResolvedSurfaceTree, collect_topology, resolve_diagnostics, resolve_paint, resolve_semantics,
     resolve_styles,
 };
-pub(crate) use transaction::{PlannedSurfacePublication, SurfacePublicationCommit};
+pub(crate) use transaction::PlannedSurfacePublication;
 
 use runenui_core::{
     ComputedStyle, ElementId, LogicalLength, LogicalRect, LogicalSize, SemanticContribution,
@@ -464,7 +464,7 @@ fn layout_context_changed(current: &SurfaceCache, next: &cache::SurfaceContextKe
 pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
-    cache: &Option<SurfaceCache>,
+    cache: Option<&SurfaceCache>,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let next_context = context_key(context);
     let pending = tree.pending_phases();
@@ -474,7 +474,7 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     }
 
     let mut current = cache
-        .clone()
+        .cloned()
         .unwrap_or_else(|| unreachable!("non-structural publication has a cache"));
     let style_dirty = pending.contains(DirtyPhases::STYLE)
         || current
@@ -636,7 +636,7 @@ fn publish_mounted_surface_cached<Action>(
     context: &SurfaceBuildContext<'_>,
     cache: &mut Option<SurfaceCache>,
 ) -> Result<(SurfacePublication, SurfacePhaseReport), SurfacePlanningError> {
-    let planned = plan_mounted_surface_cached(tree, context, cache)?;
+    let planned = plan_mounted_surface_cached(tree, context, cache.as_ref())?;
     let commit = planned.commit_store();
     Ok(commit.commit(tree, cache))
 }

@@ -103,7 +103,10 @@ mod tests {
     use runenui_core::{StyleTokens, View, text};
 
     use super::super::{SurfaceBuildContext, plan_mounted_surface_cached};
-    use crate::{LayoutConstraints, mounted::MountedTree};
+    use crate::{
+        LayoutConstraints,
+        mounted::{DirtyPhases, MountedTree},
+    };
 
     #[test]
     fn planning_keeps_surface_cache_and_dirty_completion_uncommitted() {
@@ -113,14 +116,14 @@ mod tests {
         let mut cache = None;
         let dirty_before = tree.pending_phases();
 
-        let planned = plan_mounted_surface_cached(&mut tree, &context, &cache)
+        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
             .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
         assert!(!planned.publication().frame().is_empty());
         drop(planned);
         assert!(cache.is_none());
         assert_eq!(tree.pending_phases(), dirty_before);
 
-        let planned = plan_mounted_surface_cached(&mut tree, &context, &cache)
+        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
             .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
         let commit = planned.commit_store();
         assert!(cache.is_none());
@@ -130,6 +133,6 @@ mod tests {
         assert!(!publication.frame().is_empty());
         assert!(!report.executed().is_empty());
         assert!(cache.is_some());
-        assert_eq!(tree.pending_phases(), Default::default());
+        assert_eq!(tree.pending_phases(), DirtyPhases::default());
     }
 }
