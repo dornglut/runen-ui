@@ -84,7 +84,9 @@ fn publish(runtime: &mut AppRuntime<RetentionApp>) -> runenui_runtime::SurfacePu
     let tokens = StyleTokens::new();
     let size = LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(48_u16));
     let context = SurfaceBuildContext::tight(&tokens, size);
-    runtime.publish_surface(&context)
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("retention geometry publication is admitted"))
 }
 
 fn first_center(publication: &runenui_runtime::SurfacePublication) -> LogicalPoint {
