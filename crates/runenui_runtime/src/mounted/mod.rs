@@ -15,6 +15,8 @@ mod node;
 mod reconcile;
 mod routing;
 mod semantic;
+#[cfg(test)]
+mod semantic_publication_plan;
 mod tree;
 
 pub(crate) use capability_cache::{CachedCapability, CachedSemanticContribution, CapabilityCaches};
