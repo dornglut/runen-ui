@@ -260,10 +260,10 @@ pub use runenui_core::{
     PointerEvent, PointerId, PointerPhase, SurfaceId, SurfaceInputContext,
 };
 pub use runtime::{
-    HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
-    ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
-    SubscriptionDiagnostic, SubscriptionOwnerKind, SurfacePublicationCounter, TimerFiringOutcome,
-    TimerStartOutcome,
+    HostRequestCancelError, HostResponseError, PublishSurfaceError, ReconciliationDiagnostic,
+    ReconciliationGeneration, ReconciliationReport, RuntimeError, RuntimeStatus,
+    RuntimeTerminalReason, ShutdownReport, SubscriptionDiagnostic, SubscriptionOwnerKind,
+    SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
 };
 pub use semantic_publication::{
     SemanticFocusChange, SemanticNode, SemanticNodeState, SemanticPublication,
