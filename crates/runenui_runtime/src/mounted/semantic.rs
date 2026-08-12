@@ -279,11 +279,12 @@ impl SemanticStoreTransaction<'_> {
                             SemanticStoreIntegrityError::PlanningStateMismatch,
                         ),
                     )?;
-                    existing_index = existing_index
-                        .checked_add(1)
-                        .ok_or(SemanticReconcileError::Integrity(
-                            SemanticStoreIntegrityError::PlanningStateMismatch,
-                        ))?;
+                    existing_index =
+                        existing_index
+                            .checked_add(1)
+                            .ok_or(SemanticReconcileError::Integrity(
+                                SemanticStoreIntegrityError::PlanningStateMismatch,
+                            ))?;
                     final_bindings.push(binding);
                 }
                 OwnerPlanEntry::New(key) => {
