@@ -44,9 +44,7 @@ pub(crate) struct SemanticCandidateNode {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum SemanticCompositionDiagnostic {
-    MissingOwnerBinding {
-        key: SemanticKey,
-    },
+    MissingOwnerBinding { key: SemanticKey },
     MissingMountedOwner,
     MissingLocalRelationshipTarget {
         source: SemanticNodeId,
@@ -93,7 +91,7 @@ pub(crate) fn compose_semantics(
         diagnostics: Vec::new(),
     };
     let roots = match root.and_then(|id| compositor.owner_index(id)) {
-        Some(root_index) => compositor.compose_owner(root_index, None, false),
+        Some(root_index) => compositor.compose_owner(root_index, None),
         None if root.is_some() => {
             compositor
                 .diagnostics
@@ -146,16 +144,12 @@ impl SemanticCompositor<'_> {
         &mut self,
         owner_index: usize,
         parent: Option<&SemanticNodeId>,
-        hidden_ancestor: bool,
     ) -> Vec<SemanticNodeId> {
-        if hidden_ancestor {
-            return Vec::new();
-        }
         let owner = &self.owners[owner_index];
         if !contains_semantic_node(owner.contribution.roots()) {
-            return self.compose_mounted_children(owner_index, parent, false);
+            return self.compose_mounted_children(owner_index, parent);
         }
-        self.compose_items(owner_index, owner.contribution.roots(), parent, false)
+        self.compose_items(owner_index, owner.contribution.roots(), parent)
     }
 
     fn compose_items(
@@ -163,19 +157,15 @@ impl SemanticCompositor<'_> {
         owner_index: usize,
         items: &[SemanticItem],
         parent: Option<&SemanticNodeId>,
-        hidden_ancestor: bool,
     ) -> Vec<SemanticNodeId> {
-        if hidden_ancestor {
-            return Vec::new();
-        }
         let mut roots = Vec::new();
         for item in items {
             match item {
                 SemanticItem::Node(node) => {
-                    roots.extend(self.compose_node(owner_index, node, parent, false));
+                    roots.extend(self.compose_node(owner_index, node, parent));
                 }
                 SemanticItem::MountedChildren => {
-                    roots.extend(self.compose_mounted_children(owner_index, parent, false));
+                    roots.extend(self.compose_mounted_children(owner_index, parent));
                 }
             }
         }
@@ -187,9 +177,8 @@ impl SemanticCompositor<'_> {
         owner_index: usize,
         authored: &SemanticNodeContribution,
         parent: Option<&SemanticNodeId>,
-        hidden_ancestor: bool,
     ) -> Vec<SemanticNodeId> {
-        if hidden_ancestor || authored.state().hidden() {
+        if authored.state().hidden() {
             return Vec::new();
         }
         let owner = &self.owners[owner_index];
@@ -227,7 +216,7 @@ impl SemanticCompositor<'_> {
                 text: authored.text().cloned(),
             },
         });
-        let children = self.compose_items(owner_index, authored.children(), Some(&id), false);
+        let children = self.compose_items(owner_index, authored.children(), Some(&id));
         self.drafts[draft_index].node.children = children;
         vec![id]
     }
@@ -236,18 +225,12 @@ impl SemanticCompositor<'_> {
         &mut self,
         owner_index: usize,
         parent: Option<&SemanticNodeId>,
-        hidden_ancestor: bool,
     ) -> Vec<SemanticNodeId> {
-        if hidden_ancestor {
-            return Vec::new();
-        }
         let children = self.owners[owner_index].mounted_children.clone();
         let mut roots = Vec::new();
         for child in children {
             match self.owner_index(&child) {
-                Some(child_index) => {
-                    roots.extend(self.compose_owner(child_index, parent, false));
-                }
+                Some(child_index) => roots.extend(self.compose_owner(child_index, parent)),
                 None => self
                     .diagnostics
                     .push(SemanticCompositionDiagnostic::MissingMountedOwner),
@@ -271,20 +254,18 @@ impl SemanticCompositor<'_> {
             let mut relationships = Vec::with_capacity(authored.len());
             for relationship in authored {
                 let target = match relationship.target() {
-                    SemanticReference::Local(key) => {
-                        match self.visible_id(&owner, key).cloned() {
-                            Some(target) => Some(target),
-                            None => {
-                                self.diagnostics.push(
-                                    SemanticCompositionDiagnostic::MissingLocalRelationshipTarget {
-                                        source: source.clone(),
-                                        key: key.clone(),
-                                    },
-                                );
-                                None
-                            }
+                    SemanticReference::Local(key) => match self.visible_id(&owner, key).cloned() {
+                        Some(target) => Some(target),
+                        None => {
+                            self.diagnostics.push(
+                                SemanticCompositionDiagnostic::MissingLocalRelationshipTarget {
+                                    source: source.clone(),
+                                    key: key.clone(),
+                                },
+                            );
+                            None
                         }
-                    }
+                    },
                     SemanticReference::Authored {
                         element_id,
                         semantic_key,
@@ -355,10 +336,9 @@ impl SemanticCompositor<'_> {
 }
 
 fn contains_semantic_node(items: &[SemanticItem]) -> bool {
-    items.iter().any(|item| match item {
-        SemanticItem::Node(_) => true,
-        SemanticItem::MountedChildren => false,
-    })
+    items
+        .iter()
+        .any(|item| matches!(item, SemanticItem::Node(_)))
 }
 
 fn supported_actions(
@@ -677,7 +657,7 @@ mod tests {
                 focusability: Focusability::Focusable,
             },
             SemanticOwnerFacts {
-                id: target_owner.clone(),
+                id: target_owner,
                 authored_id: Some(target_element),
                 mounted_children: Vec::new(),
                 contribution: SemanticContribution::single(SemanticNodeContribution::primary(
@@ -692,7 +672,7 @@ mod tests {
 
         let candidate = compose_semantics(&owners, Some(&root), Some(&source_owner));
         assert!(candidate.diagnostics.is_empty());
-        assert_eq!(candidate.focused, Some(source_primary.clone()));
+        assert_eq!(candidate.focused, Some(source_primary));
         assert_eq!(candidate.nodes[0].relationships.len(), 2);
         assert_eq!(candidate.nodes[0].relationships[0].target, source_named);
         assert_eq!(candidate.nodes[0].relationships[1].target, target_primary);
