@@ -224,6 +224,26 @@ impl SemanticStore {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct SemanticOwnerPlan(usize);
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct SemanticFinalizeFailure {
+    owner: SemanticOwnerPlan,
+    error: SemanticReconcileError,
+}
+
+impl SemanticFinalizeFailure {
+    pub(super) const fn owner(&self) -> SemanticOwnerPlan {
+        self.owner
+    }
+
+    pub(super) const fn error(&self) -> &SemanticReconcileError {
+        &self.error
+    }
+
+    fn into_error(self) -> SemanticReconcileError {
+        self.error
+    }
+}
+
 /// Borrow-scoped semantic identity planning transaction for one publication.
 ///
 /// Owner staging validates live bindings and records every removal in the virtual
@@ -284,20 +304,37 @@ impl<'a> SemanticStoreTransaction<'a> {
     }
 
     pub(super) fn finalize(
-        mut self,
+        self,
         runtime: &RuntimeNamespace,
     ) -> Result<SemanticStorePlan<'a>, SemanticReconcileError> {
+        self.finalize_attributed(runtime)
+            .map_err(SemanticFinalizeFailure::into_error)
+    }
+
+    pub(super) fn finalize_attributed(
+        mut self,
+        runtime: &RuntimeNamespace,
+    ) -> Result<SemanticStorePlan<'a>, SemanticFinalizeFailure> {
         let mut inserts = Vec::new();
         let mut owner_bindings = Vec::with_capacity(self.owners.len());
-        for staged in self.owners {
+        for (owner_index, staged) in self.owners.into_iter().enumerate() {
+            let owner_plan = SemanticOwnerPlan(owner_index);
             let mut bindings = Vec::with_capacity(staged.entries.len());
             for entry in staged.entries {
                 match entry {
                     StagedSemanticEntry::Existing(binding) => bindings.push(binding),
                     StagedSemanticEntry::New(key) => {
-                        let (slot, generation) = self.planner.allocate(staged.public_slot_limit)?;
-                        let public_slot = u32::try_from(slot)
-                            .map_err(|_| SemanticReconcileError::IdentityExhausted)?;
+                        let (slot, generation) = self
+                            .planner
+                            .allocate(staged.public_slot_limit)
+                            .map_err(|error| SemanticFinalizeFailure {
+                                owner: owner_plan,
+                                error: error.into(),
+                            })?;
+                        let public_slot = u32::try_from(slot).map_err(|_| SemanticFinalizeFailure {
+                            owner: owner_plan,
+                            error: SemanticReconcileError::IdentityExhausted,
+                        })?;
                         let binding = SemanticBinding {
                             key: key.clone(),
                             id: runtime.__runtime_semantic_id(public_slot, generation),
@@ -659,6 +696,34 @@ mod tests {
         assert_eq!(old_parts.0, new_parts.0);
         assert!(new_parts.1 > old_parts.1);
         assert_eq!(store.live_count(), 1);
+    }
+
+    #[test]
+    fn attributed_finalize_reports_exact_exhausted_owner_without_mutation() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let first_owner = runtime.__runtime_mounted_id(1, 1);
+        let second_owner = runtime.__runtime_mounted_id(2, 1);
+        let mut store = SemanticStore::new();
+
+        let (first_plan, second_plan, failure) = {
+            let mut transaction = store.transaction();
+            let first_plan = transaction
+                .stage_owner(&runtime, &first_owner, &[], &[SemanticKey::PRIMARY], 1)
+                .unwrap_or_else(|_| unreachable!("first owner stages"));
+            let second_plan = transaction
+                .stage_owner(&runtime, &second_owner, &[], &[SemanticKey::PRIMARY], 1)
+                .unwrap_or_else(|_| unreachable!("second owner stages"));
+            let failure = match transaction.finalize_attributed(&runtime) {
+                Ok(_) => unreachable!("second owner must exceed the one-slot limit"),
+                Err(failure) => failure,
+            };
+            (first_plan, second_plan, failure)
+        };
+
+        assert_ne!(first_plan, second_plan);
+        assert_eq!(failure.owner(), second_plan);
+        assert_eq!(failure.error(), &SemanticReconcileError::IdentityExhausted);
+        assert_eq!(store.live_count(), 0);
     }
 
     #[test]
