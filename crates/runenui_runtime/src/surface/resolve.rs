@@ -1,5 +1,5 @@
 use crate::MountedNodeId;
-use crate::mounted::SurfaceCapabilityPlan;
+use crate::mounted::{FinalizedSemanticPublication, SurfaceCapabilityPlan};
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
     Axis, ChildLayout, ElementId, LayoutStyle, SemanticContribution, StyleResolution, StyleTokens,
@@ -230,22 +230,12 @@ pub(super) fn resolve_paint(
         .collect()
 }
 
-pub(super) fn resolve_semantics<Action>(
-    tree: &mut crate::mounted::MountedTree<Action>,
-    topology: &SurfaceTopologySnapshot,
+pub(super) fn resolve_semantics(
+    finalized: &FinalizedSemanticPublication<'_>,
 ) -> Vec<SemanticContribution> {
     #[cfg(test)]
     super::cache::note_semantics_phase_execution();
-    topology
-        .nodes
-        .iter()
-        .map(|node| {
-            tree.ensure_semantics_capability(&node.id);
-            tree.node(&node.id)
-                .and_then(|mounted| mounted.caches.semantics.ready())
-                .unwrap_or_default()
-        })
-        .collect()
+    finalized.contributions()
 }
 
 pub(super) fn resolve_diagnostics(
