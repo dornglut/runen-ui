@@ -337,10 +337,10 @@ pub(super) struct SemanticStorePlan<'a> {
 
 impl SemanticStorePlan<'_> {
     pub(super) fn bindings(&self, owner: SemanticOwnerPlan) -> &[SemanticBinding] {
-        self.owner_bindings
-            .get(owner.0)
-            .map(Vec::as_slice)
-            .unwrap_or_else(|| unreachable!("semantic owner plan belongs to this transaction"))
+        self.owner_bindings.get(owner.0).map_or_else(
+            || unreachable!("semantic owner plan belongs to this transaction"),
+            Vec::as_slice,
+        )
     }
 
     pub(super) fn commit(self) {
