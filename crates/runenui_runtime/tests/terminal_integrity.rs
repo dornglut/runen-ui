@@ -14,9 +14,9 @@ use runenui_core::{
     SemanticCommand, StyleTokens, UiApp, View, Widget, WidgetMountContext, button, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, PumpOutcome, RuntimeStatus,
-    RuntimeTerminalReason, SubmitActionErrorKind, SubmitCommandErrorKind, SurfaceBuildContext,
-    TraceRecordKind,
+    AppRuntime, LayoutConstraints, MountedNodeId, PublishSurfaceError, PumpBudget, PumpOutcome,
+    RuntimeStatus, RuntimeTerminalReason, SubmitActionErrorKind, SubmitCommandErrorKind,
+    SurfaceBuildContext, TraceRecordKind,
 };
 
 fn focus<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNodeId) {
@@ -243,7 +243,9 @@ fn command_submission_sequence_exhaustion_recovers_inputs_and_closes_mutation() 
 
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
-    let publication_before = runtime.publish_surface(&context);
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("pre-terminal publication is admitted"));
     let report_before = runtime.reconciliation_report().clone();
 
     runtime.__seed_next_work_sequence_for_test(0);
@@ -269,7 +271,12 @@ fn command_submission_sequence_exhaustion_recovers_inputs_and_closes_mutation() 
     assert_eq!(runtime.focus().focused_node(), Some(&target));
     assert_eq!(runtime.reconciliation_report(), &report_before);
     assert_eq!(runtime.index().nodes()[0].id(), &target);
-    assert_eq!(runtime.publish_surface(&context), publication_before);
+    assert_eq!(
+        runtime.publish_surface(&context),
+        Err(PublishSurfaceError::Terminal(
+            RuntimeTerminalReason::WorkSequenceExhausted,
+        ))
+    );
 }
 
 #[test]
@@ -318,7 +325,9 @@ fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
     let target = runtime.index().nodes()[0].id().clone();
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
-    let publication_before = runtime.publish_surface(&context);
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("pre-terminal publication is admitted"));
     let report_before = runtime.reconciliation_report().clone();
 
     runtime
@@ -340,7 +349,12 @@ fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
     assert!(runtime.state().updates.is_empty());
     assert_eq!(runtime.reconciliation_report(), &report_before);
     assert_eq!(runtime.index().nodes()[0].id(), &target);
-    assert_eq!(runtime.publish_surface(&context), publication_before);
+    assert_eq!(
+        runtime.publish_surface(&context),
+        Err(PublishSurfaceError::Terminal(
+            RuntimeTerminalReason::TraceSequenceExhausted,
+        ))
+    );
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
@@ -376,7 +390,9 @@ fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
     focus(&mut runtime, target.clone());
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
-    let publication_before = runtime.publish_surface(&context);
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("pre-terminal publication is admitted"));
     let report_before = runtime.reconciliation_report().clone();
 
     runtime
@@ -401,7 +417,12 @@ fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
     assert_eq!(runtime.reconciliation_report(), &report_before);
     assert_eq!(runtime.focus().focused_node(), Some(&target));
     assert_eq!(runtime.index().nodes()[0].id(), &target);
-    assert_eq!(runtime.publish_surface(&context), publication_before);
+    assert_eq!(
+        runtime.publish_surface(&context),
+        Err(PublishSurfaceError::Terminal(
+            RuntimeTerminalReason::ReconciliationGenerationExhausted,
+        ))
+    );
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::ReconciliationGenerationExhausted)
