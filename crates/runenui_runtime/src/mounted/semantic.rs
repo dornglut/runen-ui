@@ -322,11 +322,11 @@ impl<'a> SemanticStoreTransaction<'a> {
             planner.remove(*slot, *generation)?;
         }
         self.planner = planner;
-        self.removals
-            .extend(records.into_iter().map(|(slot, generation)| SemanticRemoval {
-                slot,
-                generation,
-            }));
+        self.removals.extend(
+            records
+                .into_iter()
+                .map(|(slot, generation)| SemanticRemoval { slot, generation }),
+        );
         let index = self.owners.len();
         self.owners.push(StagedSemanticOwner {
             owner: owner.clone(),
@@ -481,7 +481,8 @@ impl<'a> SemanticStoreTransaction<'a> {
             .unwrap_or_else(|| unreachable!("failed semantic owner belongs to this transaction"));
         for entry in &staged.entries {
             if let StagedSemanticEntry::Existing(binding) = entry {
-                let Some((slot, generation)) = runtime.__runtime_semantic_parts(binding.id()) else {
+                let Some((slot, generation)) = runtime.__runtime_semantic_parts(binding.id())
+                else {
                     return Err(SemanticStoreIntegrityError::ForeignBinding.into());
                 };
                 self.removals.push(SemanticRemoval {
