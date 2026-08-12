@@ -125,6 +125,12 @@ pub(in crate::runtime) struct SurfacePublicationAdmission {
     coordinate_revision: u64,
 }
 
+impl SurfacePublicationAdmission {
+    const fn into_parts(self) -> (u64, u64) {
+        (self.hit_test_generation, self.coordinate_revision)
+    }
+}
+
 /// Sole runtime-owned state for current surface publication, redraw revision,
 /// and bounded displayed hit-test generations.
 pub(crate) struct SurfacePublicationState {
@@ -185,10 +191,7 @@ impl SurfacePublicationState {
         context: &SurfaceBuildContext<'_>,
         admission: SurfacePublicationAdmission,
     ) -> SurfacePublication {
-        let SurfacePublicationAdmission {
-            hit_test_generation,
-            coordinate_revision,
-        } = admission;
+        let (hit_test_generation, coordinate_revision) = admission.into_parts();
         let (products, report) = publish_mounted_surface_cached(tree, context, &mut self.cache);
         self.phase_report = report;
         let nodes = HitTestSnapshot::nodes_from(&products);
