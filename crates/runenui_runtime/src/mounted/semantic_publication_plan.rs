@@ -197,6 +197,7 @@ fn stage_activation_capability<Action>(node: &MountedNode<Action>) -> StagedActi
 #[cfg(test)]
 mod tests {
     use core::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     use runenui_core::{
         Element, SemanticContribution, SemanticContributionContext, SemanticItem,
@@ -205,11 +206,10 @@ mod tests {
 
     use super::*;
 
-    static SEMANTIC_CALLBACKS: AtomicUsize = AtomicUsize::new(0);
-
     #[derive(Debug)]
     struct Probe {
         invalid: bool,
+        semantic_callbacks: Arc<AtomicUsize>,
     }
 
     impl Widget<()> for Probe {
@@ -228,7 +228,7 @@ mod tests {
             state: &Self::State,
             _: SemanticContributionContext,
         ) -> SemanticContribution {
-            SEMANTIC_CALLBACKS.fetch_add(1, Ordering::SeqCst);
+            self.semantic_callbacks.fetch_add(1, Ordering::SeqCst);
             let primary = SemanticNodeContribution::primary(SemanticRole::Group);
             if *state {
                 SemanticContribution::new(vec![
@@ -241,6 +241,17 @@ mod tests {
         }
     }
 
+    fn probe(invalid: bool) -> (Probe, Arc<AtomicUsize>) {
+        let semantic_callbacks = Arc::new(AtomicUsize::new(0));
+        (
+            Probe {
+                invalid,
+                semantic_callbacks: Arc::clone(&semantic_callbacks),
+            },
+            semantic_callbacks,
+        )
+    }
+
     fn root_id(tree: &MountedTree<()>) -> MountedNodeId {
         tree.root
             .clone()
@@ -249,13 +260,13 @@ mod tests {
 
     #[test]
     fn unresolved_capabilities_are_staged_without_mutating_live_authority() {
-        SEMANTIC_CALLBACKS.store(0, Ordering::SeqCst);
-        let (tree, _) = MountedTree::mount(Element::new(Probe { invalid: false }));
+        let (probe, semantic_callbacks) = probe(false);
+        let (tree, _) = MountedTree::mount(Element::new(probe));
         let root = root_id(&tree);
         let plan = tree.plan_semantic_publication_capabilities(core::slice::from_ref(&root));
         let staged = &plan.owners[0];
 
-        assert_eq!(SEMANTIC_CALLBACKS.load(Ordering::SeqCst), 1);
+        assert_eq!(semantic_callbacks.load(Ordering::SeqCst), 1);
         assert_eq!(staged.owner, root);
         assert_eq!(staged.ordered_keys, vec![SemanticKey::PRIMARY]);
         assert_eq!(staged.activation, WidgetActivation::actionable(true));
@@ -286,11 +297,11 @@ mod tests {
 
     #[test]
     fn valid_cached_semantics_are_reused_without_callback_reentry() {
-        SEMANTIC_CALLBACKS.store(0, Ordering::SeqCst);
-        let (mut tree, _) = MountedTree::mount(Element::new(Probe { invalid: false }));
+        let (probe, semantic_callbacks) = probe(false);
+        let (mut tree, _) = MountedTree::mount(Element::new(probe));
         let root = root_id(&tree);
         tree.ensure_semantics_capability(&root);
-        assert_eq!(SEMANTIC_CALLBACKS.load(Ordering::SeqCst), 1);
+        assert_eq!(semantic_callbacks.load(Ordering::SeqCst), 1);
         let bindings_before = tree
             .node(&root)
             .unwrap_or_else(|| unreachable!("root remains mounted"))
@@ -299,7 +310,7 @@ mod tests {
         let live_count_before = tree.semantic_store.live_count();
 
         let plan = tree.plan_semantic_publication_capabilities(core::slice::from_ref(&root));
-        assert_eq!(SEMANTIC_CALLBACKS.load(Ordering::SeqCst), 1);
+        assert_eq!(semantic_callbacks.load(Ordering::SeqCst), 1);
         assert_eq!(plan.owners[0].ordered_keys, vec![SemanticKey::PRIMARY]);
         assert_eq!(
             tree.node(&root)
@@ -312,8 +323,8 @@ mod tests {
 
     #[test]
     fn invalid_authoring_stages_complete_owner_withdrawal_without_live_revocation() {
-        SEMANTIC_CALLBACKS.store(0, Ordering::SeqCst);
-        let (tree, _) = MountedTree::mount(Element::new(Probe { invalid: true }));
+        let (probe, _) = probe(true);
+        let (tree, _) = MountedTree::mount(Element::new(probe));
         let root = root_id(&tree);
         let plan = tree.plan_semantic_publication_capabilities(core::slice::from_ref(&root));
         let staged = &plan.owners[0];
@@ -336,7 +347,8 @@ mod tests {
 
     #[test]
     fn corrupted_state_stages_fail_closed_withdrawal_without_marking_live_node() {
-        let (mut tree, _) = MountedTree::mount(Element::new(Probe { invalid: false }));
+        let (probe, _) = probe(false);
+        let (mut tree, _) = MountedTree::mount(Element::new(probe));
         let root = root_id(&tree);
         tree.node_mut(&root)
             .unwrap_or_else(|| unreachable!("root remains mounted"))
