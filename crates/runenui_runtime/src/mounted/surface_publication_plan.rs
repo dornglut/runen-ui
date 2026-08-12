@@ -78,20 +78,23 @@ impl SurfaceCapabilityPlan {
 impl<Action> MountedTree<Action> {
     pub(crate) fn plan_surface_publication_capabilities(
         &self,
-        owners: &[MountedNodeId],
         phases: DirtyPhases,
     ) -> SurfaceCapabilityPlan {
         let needs_layout = phases.contains(DirtyPhases::LAYOUT);
         let needs_paint = phases.contains(DirtyPhases::PAINT);
         let needs_diagnostics = phases.contains(DirtyPhases::DIAGNOSTICS);
-        let owners = owners
-            .iter()
+        if !needs_layout && !needs_paint && !needs_diagnostics {
+            return SurfaceCapabilityPlan { owners: Vec::new() };
+        }
+        let owners = self
+            .publication_preorder_ids()
+            .into_iter()
             .map(|owner| {
                 let node = self
-                    .node(owner)
+                    .node(&owner)
                     .unwrap_or_else(|| unreachable!("surface capability owner remains live"));
                 let mut planned = PlannedSurfaceCapabilities {
-                    owner: owner.clone(),
+                    owner,
                     measurement: None,
                     child_layout: None,
                     paint: None,
