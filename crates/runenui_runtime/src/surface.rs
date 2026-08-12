@@ -26,7 +26,7 @@ use runenui_core::{
     WidgetDiagnostic, WidgetPaintProof, WidgetTypeId,
 };
 
-use crate::mounted::DirtyPhases;
+use crate::mounted::{DirtyPhases, SemanticReconcileError};
 use crate::style_debug::SurfaceStyleReport;
 use crate::{LayoutConstraints, LogicalPoint, MountedNodeId};
 
@@ -418,6 +418,17 @@ impl SurfacePublication {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SurfacePlanningError {
+    SemanticIntegrity,
+}
+
+impl From<SemanticReconcileError> for SurfacePlanningError {
+    fn from(_: SemanticReconcileError) -> Self {
+        Self::SemanticIntegrity
+    }
+}
+
 /// Resolves style once per node and publishes aligned frame and diagnostic products.
 ///
 /// The row/column layout consumes concrete computed padding for intrinsic outer
@@ -427,7 +438,7 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
     tree: &mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     cache: &mut Option<SurfaceCache>,
-) -> (SurfacePublication, SurfacePhaseReport) {
+) -> Result<(SurfacePublication, SurfacePhaseReport), SurfacePlanningError> {
     let next_context = context_key(context);
     let pending = tree.pending_phases();
     let tree_dirty = cache.is_none() || pending.contains(DirtyPhases::TREE);
@@ -436,7 +447,8 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
     }
 
     let mut current = cache
-        .take()
+        .as_ref()
+        .cloned()
         .unwrap_or_else(|| unreachable!("non-structural publication has a cache"));
     let style_dirty = pending.contains(DirtyPhases::STYLE)
         || current
@@ -475,6 +487,8 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
         capability_phases.insert(DirtyPhases::DIAGNOSTICS);
     }
     let capability_plan = tree.plan_surface_publication_capabilities(capability_phases);
+    let semantic_capability_plan =
+        semantics_dirty.then(|| tree.plan_semantic_publication_capabilities());
 
     if layout_dirty {
         let resolved = ResolvedSurfaceTree::for_layout(
@@ -509,30 +523,38 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
         report.record(SurfacePhase::Paint);
         completed.insert(DirtyPhases::PAINT);
     }
-    if semantics_dirty {
-        current.semantics = resolve_semantics(tree, &current.topology);
-        report.record(SurfacePhase::Semantics);
-        completed.insert(DirtyPhases::SEMANTICS);
-    }
     if diagnostics_dirty {
         current.diagnostics = resolve_diagnostics(&current.topology, &capability_plan);
         report.record(SurfacePhase::Diagnostics);
         completed.insert(DirtyPhases::DIAGNOSTICS);
     }
 
+    let finalized_semantics = semantic_capability_plan
+        .map(|plan| tree.finalize_semantic_publication(plan))
+        .transpose()?;
+    if let Some(finalized) = finalized_semantics.as_ref() {
+        current.semantics = resolve_semantics(finalized);
+        report.record(SurfacePhase::Semantics);
+        completed.insert(DirtyPhases::SEMANTICS);
+    }
+
     if report.executed().is_empty() {
         let publication = current.publication.clone();
         current.context_key = next_context;
         *cache = Some(current);
-        return (publication, report);
+        return Ok((publication, report));
     }
     current.context_key = next_context;
     current.publication = compose_publication(&current);
+    let semantic_commit = finalized_semantics.map(|finalized| finalized.commit_store());
+    if let Some(semantic_commit) = semantic_commit {
+        tree.commit_semantic_publication(semantic_commit);
+    }
     tree.commit_surface_publication_capabilities(capability_plan);
     tree.finish_publication(completed);
     let publication = current.publication.clone();
     *cache = Some(current);
-    (publication, report)
+    Ok((publication, report))
 }
 
 fn rebuild_structural_surface<Action>(
@@ -540,13 +562,14 @@ fn rebuild_structural_surface<Action>(
     context: &SurfaceBuildContext<'_>,
     context_key: cache::SurfaceContextKey,
     cache: &mut Option<SurfaceCache>,
-) -> (SurfacePublication, SurfacePhaseReport) {
+) -> Result<(SurfacePublication, SurfacePhaseReport), SurfacePlanningError> {
     let mut report = SurfacePhaseReport::default();
     let topology = collect_topology(tree);
     report.record(SurfacePhase::Tree);
     let styles = resolve_styles(tree, &topology, context.style_tokens());
     report.record(SurfacePhase::Style);
     let capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::ALL);
+    let semantic_capability_plan = tree.plan_semantic_publication_capabilities();
     let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles, &capability_plan);
     let (size, bounds, layout_report) = layout_resolved_surface(
         &resolved,
@@ -563,10 +586,11 @@ fn rebuild_structural_surface<Action>(
     report.record(SurfacePhase::HitTesting);
     let paint = resolve_paint(&topology, &capability_plan);
     report.record(SurfacePhase::Paint);
-    let semantics = resolve_semantics(tree, &topology);
-    report.record(SurfacePhase::Semantics);
     let diagnostics = resolve_diagnostics(&topology, &capability_plan);
     report.record(SurfacePhase::Diagnostics);
+    let finalized_semantics = tree.finalize_semantic_publication(semantic_capability_plan)?;
+    let semantics = resolve_semantics(&finalized_semantics);
+    report.record(SurfacePhase::Semantics);
 
     let placeholder = SurfacePublication::new(
         SurfaceFrame::new(
@@ -588,11 +612,13 @@ fn rebuild_structural_surface<Action>(
         publication: placeholder,
     };
     rebuilt.publication = compose_publication(&rebuilt);
+    let semantic_commit = finalized_semantics.commit_store();
+    tree.commit_semantic_publication(semantic_commit);
     tree.commit_surface_publication_capabilities(capability_plan);
     tree.finish_publication(DirtyPhases::ALL);
     let publication = rebuilt.publication.clone();
     *cache = Some(rebuilt);
-    (publication, report)
+    Ok((publication, report))
 }
 
 fn compose_publication(cache: &SurfaceCache) -> SurfacePublication {
@@ -659,10 +685,20 @@ mod tests {
     use runenui_core::{Color, StyleTokens, View, WidgetInvalidation, children, column, text};
 
     use super::{
-        SurfaceBuildContext, cache::phase_function_counts, cache::reset_phase_function_counts,
+        SurfaceBuildContext, SurfacePhaseReport, SurfacePublication, cache::SurfaceCache,
+        cache::phase_function_counts, cache::reset_phase_function_counts,
         publish_mounted_surface_cached,
     };
     use crate::{LayoutConstraints, mounted::MountedTree, mounted::apply_invalidation};
+
+    fn publish<Action>(
+        tree: &mut MountedTree<Action>,
+        context: &SurfaceBuildContext<'_>,
+        cache: &mut Option<SurfaceCache>,
+    ) -> (SurfacePublication, SurfacePhaseReport) {
+        publish_mounted_surface_cached(tree, context, cache)
+            .unwrap_or_else(|_| unreachable!("surface test semantic planning remains valid"))
+    }
 
     #[test]
     fn phase_function_counters_track_only_actual_execution_branches() {
@@ -672,11 +708,11 @@ mod tests {
         let mut cache = None;
         reset_phase_function_counts();
 
-        let (_, initial) = publish_mounted_surface_cached(&mut tree, &context, &mut cache);
+        let (_, initial) = publish(&mut tree, &context, &mut cache);
         assert_eq!(initial.executed().len(), 7);
         assert_eq!(phase_function_counts(), [1, 1, 1, 1, 1, 1, 1]);
 
-        let (_, clean) = publish_mounted_surface_cached(&mut tree, &context, &mut cache);
+        let (_, clean) = publish(&mut tree, &context, &mut cache);
         assert!(clean.executed().is_empty());
         assert_eq!(phase_function_counts(), [1, 1, 1, 1, 1, 1, 1]);
 
@@ -685,7 +721,7 @@ mod tests {
             .node_mut(&root)
             .unwrap_or_else(|| unreachable!("test root remains live"));
         apply_invalidation(node, WidgetInvalidation::PAINT);
-        let (_, paint) = publish_mounted_surface_cached(&mut tree, &context, &mut cache);
+        let (_, paint) = publish(&mut tree, &context, &mut cache);
         assert_eq!(paint.executed(), &[super::SurfacePhase::Paint]);
         assert_eq!(phase_function_counts(), [1, 1, 1, 1, 2, 1, 1]);
     }
@@ -714,7 +750,7 @@ mod tests {
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
         let mut cache = None;
-        let _ = publish_mounted_surface_cached(&mut tree, &context, &mut cache);
+        let _ = publish(&mut tree, &context, &mut cache);
         let root = tree.publication_preorder_ids()[0].clone();
 
         let cases = [
@@ -746,7 +782,7 @@ mod tests {
                 .node_mut(&root)
                 .unwrap_or_else(|| unreachable!("test root remains live"));
             apply_invalidation(node, invalidation);
-            let (_, report) = publish_mounted_surface_cached(&mut tree, &context, &mut cache);
+            let (_, report) = publish(&mut tree, &context, &mut cache);
             assert_eq!(report.executed(), expected_report);
             assert_eq!(phase_function_counts(), expected_counts);
         }
@@ -758,7 +794,7 @@ mod tests {
                 .key("root")
                 .into_element(),
         );
-        let (_, style) = publish_mounted_surface_cached(&mut tree, &context, &mut cache);
+        let (_, style) = publish(&mut tree, &context, &mut cache);
         assert_eq!(
             style.executed(),
             &[super::SurfacePhase::Style, super::SurfacePhase::Paint]
@@ -772,7 +808,7 @@ mod tests {
                 .into_element(),
         );
         reset_phase_function_counts();
-        let (_, clean) = publish_mounted_surface_cached(&mut tree, &context, &mut cache);
+        let (_, clean) = publish(&mut tree, &context, &mut cache);
         assert!(clean.executed().is_empty());
         assert_eq!(phase_function_counts(), [0; 7]);
     }
@@ -783,7 +819,7 @@ mod tests {
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
         let mut cache = None;
-        let _ = publish_mounted_surface_cached(&mut tree, &context, &mut cache);
+        let _ = publish(&mut tree, &context, &mut cache);
         tree.reconcile(
             column(children![text("new").key("child")])
                 .key("root")
@@ -791,7 +827,7 @@ mod tests {
         );
         reset_phase_function_counts();
 
-        let (_, report) = publish_mounted_surface_cached(&mut tree, &context, &mut cache);
+        let (_, report) = publish(&mut tree, &context, &mut cache);
         assert_eq!(
             report.executed(),
             &[
