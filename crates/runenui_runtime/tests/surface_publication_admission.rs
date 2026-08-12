@@ -78,6 +78,8 @@ fn published_count(runtime: &AppRuntime<App>) -> usize {
 struct PublicationTraceState {
     published: usize,
     stationary_rehit_queued: usize,
+    pointer_stream_registered: usize,
+    pointer_stream_closed: usize,
     redraw_taken: usize,
     redraw_acknowledged: usize,
     latest_redraw_requested: Option<u64>,
@@ -92,6 +94,10 @@ fn publication_trace_state(runtime: &AppRuntime<App>) -> PublicationTraceState {
             TraceRecordKind::PointerStationaryRehitQueued { .. } => {
                 state.stationary_rehit_queued += 1;
             }
+            TraceRecordKind::PointerStreamRegistered { .. } => {
+                state.pointer_stream_registered += 1;
+            }
+            TraceRecordKind::PointerStreamClosed { .. } => state.pointer_stream_closed += 1,
             TraceRecordKind::RedrawRequested { revision } => {
                 state.latest_redraw_requested = Some(*revision);
             }
@@ -261,6 +267,9 @@ fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
     let registration = runtime.pump(full_budget());
     assert!(registration.is_quiescent());
     assert_eq!(registration.processed_envelopes(), 1);
+    let trace_after_registration = publication_trace_state(&runtime);
+    assert_eq!(trace_after_registration.pointer_stream_registered, 1);
+    assert_eq!(trace_after_registration.pointer_stream_closed, 0);
 
     runtime
         .submit_action(Replace)
@@ -269,12 +278,17 @@ fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
     assert!(runtime.pump(full_budget()).is_quiescent());
     assert!(runtime.state().replaced);
     assert_eq!(measure_calls.get(), calls_before_update);
+    let trace_after_update = publication_trace_state(&runtime);
+    assert_eq!(trace_after_update.pointer_stream_registered, 1);
+    assert_eq!(trace_after_update.pointer_stream_closed, 0);
 
     runtime
         .submit_pointer(pointer_move(first.input_context(), point))
         .unwrap_or_else(|_| unreachable!("the queue-filling pointer move is accepted"));
     let calls_before_refusal = measure_calls.get();
     let trace_before_refusal = publication_trace_state(&runtime);
+    assert_eq!(trace_before_refusal.pointer_stream_registered, 1);
+    assert_eq!(trace_before_refusal.pointer_stream_closed, 0);
     assert!(has_pending_redraw(trace_before_refusal));
 
     let refused = runtime.publish_surface(&build_context);
@@ -290,6 +304,8 @@ fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
     assert_eq!(filler.processed_envelopes(), 1);
     let calls_before_retry = measure_calls.get();
     let trace_before_retry = publication_trace_state(&runtime);
+    assert_eq!(trace_before_retry.pointer_stream_registered, 1);
+    assert_eq!(trace_before_retry.pointer_stream_closed, 0);
     assert_eq!(calls_before_retry, calls_before_refusal);
     assert!(has_pending_redraw(trace_before_retry));
 
