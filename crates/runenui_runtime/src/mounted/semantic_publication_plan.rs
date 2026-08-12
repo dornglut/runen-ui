@@ -1,3 +1,4 @@
+use runenui_core::__runtime::RuntimeNamespace;
 use runenui_core::{
     SemanticContribution, SemanticContributionContext, SemanticKey, WidgetActivation,
 };
@@ -8,7 +9,7 @@ use super::{
     semantic::{SemanticBinding, SemanticOwnerPlan, SemanticReconcileError, SemanticStorePlan},
 };
 
-const PUBLIC_SEMANTIC_SLOT_LIMIT: u64 = u64::from(u32::MAX) + 1;
+const PUBLIC_SEMANTIC_SLOT_LIMIT: u64 = 1_u64 << u32::BITS;
 
 #[derive(Clone, Debug)]
 pub(crate) struct StagedSemanticOwnerCapabilities {
@@ -158,19 +159,60 @@ impl<Action> MountedTree<Action> {
     /// Finalizes semantic identity transitions publication-wide without mutating
     /// the live semantic store or mounted owner records.
     ///
-    /// A corrupt current binding vector forces that exact owner into a staged
-    /// purge and restarts the whole transaction, so no tentative allocation can
-    /// survive a newly discovered withdrawal.
+    /// Fail-closed owner withdrawals are first classified in disposable,
+    /// borrow-scoped transaction attempts. A failed attempt is dropped in full
+    /// before the exact owner is retried as a staged purge, so no tentative
+    /// transaction-local removal survives a newly discovered withdrawal. Once
+    /// classification is stable, one fresh borrow-scoped transaction produces
+    /// the returned store plan and keeps the live store protected until commit.
     pub(crate) fn finalize_semantic_publication(
         &mut self,
         capability_plan: SemanticCapabilityPlan,
     ) -> Result<FinalizedSemanticPublication<'_>, SemanticReconcileError> {
         let runtime = self.runtime.clone();
+        let forced = self.classify_semantic_withdrawals(&runtime, &capability_plan)?;
+        let mut transaction = self.semantic_store.transaction();
+        let mut owner_plans = Vec::with_capacity(capability_plan.owners.len());
+
+        for (index, staged) in capability_plan.owners.iter().enumerate() {
+            let ready = forced[index].is_none()
+                && matches!(staged.semantic_cache, CachedSemanticContribution::Ready(_));
+            let owner_plan = if ready {
+                transaction.stage_owner(
+                    &runtime,
+                    &staged.owner,
+                    &staged.current_bindings,
+                    &staged.ordered_keys,
+                    PUBLIC_SEMANTIC_SLOT_LIMIT,
+                )?
+            } else {
+                transaction.stage_owner_purge(&staged.owner, PUBLIC_SEMANTIC_SLOT_LIMIT)?
+            };
+            owner_plans.push(owner_plan);
+        }
+
+        let store_plan = transaction.finalize_fail_closed(&runtime)?;
+        let owners = capability_plan
+            .owners
+            .into_iter()
+            .zip(owner_plans)
+            .enumerate()
+            .map(|(index, (staged, owner_plan))| {
+                finalize_owner(&store_plan, owner_plan, staged, forced[index])
+            })
+            .collect();
+        Ok(FinalizedSemanticPublication { store_plan, owners })
+    }
+
+    fn classify_semantic_withdrawals(
+        &mut self,
+        runtime: &RuntimeNamespace,
+        capability_plan: &SemanticCapabilityPlan,
+    ) -> Result<Vec<Option<ForcedWithdrawal>>, SemanticReconcileError> {
         let mut forced = vec![None; capability_plan.owners.len()];
 
         loop {
             let mut transaction = self.semantic_store.transaction();
-            let mut owner_plans = Vec::with_capacity(capability_plan.owners.len());
             let mut restart = false;
 
             for (index, staged) in capability_plan.owners.iter().enumerate() {
@@ -178,7 +220,7 @@ impl<Action> MountedTree<Action> {
                     && matches!(staged.semantic_cache, CachedSemanticContribution::Ready(_));
                 let result = if ready {
                     transaction.stage_owner(
-                        &runtime,
+                        runtime,
                         &staged.owner,
                         &staged.current_bindings,
                         &staged.ordered_keys,
@@ -189,7 +231,7 @@ impl<Action> MountedTree<Action> {
                 };
 
                 match result {
-                    Ok(owner_plan) => owner_plans.push(owner_plan),
+                    Ok(_) => {}
                     Err(SemanticReconcileError::Integrity(_)) if ready => {
                         forced[index] = Some(ForcedWithdrawal::IndexIntegrityFailure);
                         restart = true;
@@ -204,22 +246,9 @@ impl<Action> MountedTree<Action> {
                 }
             }
 
-            if restart {
-                continue;
+            if !restart {
+                return Ok(forced);
             }
-
-            let store_plan = transaction.finalize_fail_closed(&runtime)?;
-            let owners = capability_plan
-                .owners
-                .iter()
-                .cloned()
-                .zip(owner_plans)
-                .enumerate()
-                .map(|(index, (staged, owner_plan))| {
-                    finalize_owner(&store_plan, owner_plan, staged, forced[index])
-                })
-                .collect();
-            return Ok(FinalizedSemanticPublication { store_plan, owners });
         }
     }
 
