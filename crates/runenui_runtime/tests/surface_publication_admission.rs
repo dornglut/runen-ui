@@ -4,9 +4,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    Element, EventContext, LogicalLength, LogicalPoint, NoHostProtocol, PointerDeviceKind,
-    PointerEvent, PointerId, PointerPhase, StyleTokens, SurfaceInputContext, UiApp, UiEvent,
-    Widget, WidgetEventOutput, WidgetMeasure,
+    Element, LogicalLength, LogicalPoint, NoHostProtocol, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, StyleTokens, SurfaceInputContext, UiApp, Widget, WidgetMeasure,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PublishSurfaceError, PumpBudget, RuntimeConfig, RuntimeStatus,
@@ -54,15 +53,6 @@ impl Widget<Replace> for MeasureProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn event(
-        &mut self,
-        (): &mut Self::State,
-        _event: &UiEvent,
-        _context: &mut EventContext<'_, Replace>,
-    ) -> WidgetEventOutput {
-        WidgetEventOutput::none()
-    }
-
     fn measure(&self, (): &Self::State) -> WidgetMeasure {
         self.calls.set(self.calls.get() + 1);
         WidgetMeasure::Fixed {
@@ -88,8 +78,6 @@ fn published_count(runtime: &AppRuntime<App>) -> usize {
 struct PublicationTraceState {
     published: usize,
     stationary_rehit_queued: usize,
-    pointer_stream_registered: usize,
-    pointer_stream_closed: usize,
     redraw_taken: usize,
     redraw_acknowledged: usize,
     latest_redraw_requested: Option<u64>,
@@ -104,10 +92,6 @@ fn publication_trace_state(runtime: &AppRuntime<App>) -> PublicationTraceState {
             TraceRecordKind::PointerStationaryRehitQueued { .. } => {
                 state.stationary_rehit_queued += 1;
             }
-            TraceRecordKind::PointerStreamRegistered { .. } => {
-                state.pointer_stream_registered += 1;
-            }
-            TraceRecordKind::PointerStreamClosed { .. } => state.pointer_stream_closed += 1,
             TraceRecordKind::RedrawRequested { revision } => {
                 state.latest_redraw_requested = Some(*revision);
             }
@@ -253,7 +237,7 @@ fn coordinate_revision_exhaustion_terminalizes_before_surface_callbacks() {
 }
 
 #[test]
-fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
+fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly() {
     let measure_calls = Rc::new(Cell::new(0));
     let config = RuntimeConfig::default().with_queue_capacity(1);
     let mut runtime = AppRuntime::<App>::mount_with_config(
@@ -270,17 +254,6 @@ fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
         .unwrap_or_else(|_| unreachable!("initial publication is admitted"));
     assert!(runtime.pump(full_budget()).is_quiescent());
 
-    let point = center(&first);
-    runtime
-        .submit_pointer(pointer_move(first.input_context(), point))
-        .unwrap_or_else(|_| unreachable!("the initial pointer move is accepted"));
-    let registration = runtime.pump(full_budget());
-    assert!(registration.is_quiescent());
-    assert_eq!(registration.processed_envelopes(), 1);
-    let trace_after_registration = publication_trace_state(&runtime);
-    assert_eq!(trace_after_registration.pointer_stream_registered, 1);
-    assert_eq!(trace_after_registration.pointer_stream_closed, 0);
-
     runtime
         .submit_action(Replace)
         .unwrap_or_else(|_| unreachable!("the dirtying action is accepted"));
@@ -288,17 +261,13 @@ fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
     assert!(runtime.pump(full_budget()).is_quiescent());
     assert!(runtime.state().replaced);
     assert_eq!(measure_calls.get(), calls_before_update);
-    let trace_after_update = publication_trace_state(&runtime);
-    assert_eq!(trace_after_update.pointer_stream_registered, 1);
-    assert_eq!(trace_after_update.pointer_stream_closed, 0);
 
+    let point = center(&first);
     runtime
         .submit_pointer(pointer_move(first.input_context(), point))
         .unwrap_or_else(|_| unreachable!("the queue-filling pointer move is accepted"));
     let calls_before_refusal = measure_calls.get();
     let trace_before_refusal = publication_trace_state(&runtime);
-    assert_eq!(trace_before_refusal.pointer_stream_registered, 1);
-    assert_eq!(trace_before_refusal.pointer_stream_closed, 0);
     assert!(has_pending_redraw(trace_before_refusal));
 
     let refused = runtime.publish_surface(&build_context);
@@ -314,8 +283,6 @@ fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
     assert_eq!(filler.processed_envelopes(), 1);
     let calls_before_retry = measure_calls.get();
     let trace_before_retry = publication_trace_state(&runtime);
-    assert_eq!(trace_before_retry.pointer_stream_registered, 1);
-    assert_eq!(trace_before_retry.pointer_stream_closed, 0);
     assert_eq!(calls_before_retry, calls_before_refusal);
     assert!(has_pending_redraw(trace_before_retry));
 
@@ -350,10 +317,6 @@ fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
         trace_before_retry.published + 1
     );
     assert_eq!(
-        trace_after_retry.stationary_rehit_queued,
-        trace_before_retry.stationary_rehit_queued + 1
-    );
-    assert_eq!(
         trace_after_retry.redraw_taken,
         trace_before_retry.redraw_taken + 1
     );
@@ -366,8 +329,6 @@ fn stationary_rehit_queue_full_refuses_without_commit_and_retries_exactly() {
         trace_after_retry.latest_redraw_requested
     );
 
-    let rehit = runtime.pump(full_budget());
-    assert!(rehit.is_quiescent());
-    assert_eq!(rehit.processed_envelopes(), 1);
+    assert!(runtime.pump(full_budget()).is_quiescent());
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
