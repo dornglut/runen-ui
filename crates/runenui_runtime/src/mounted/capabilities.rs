@@ -275,7 +275,7 @@ impl<Action> MountedTree<Action> {
                 contribution,
                 ordered_keys,
             } => {
-                self.commit_semantic_evaluation(id, contribution, &ordered_keys, public_slot_limit)
+                self.commit_semantic_evaluation(id, contribution, &ordered_keys, public_slot_limit);
             }
             SemanticEvaluation::Invalid(error) => {
                 self.withdraw_semantic_owner(id, CachedSemanticContribution::Invalid(error), false);
@@ -369,20 +369,7 @@ impl<Action> MountedTree<Action> {
         mark_integrity_failed: bool,
     ) {
         let runtime = self.runtime.clone();
-        let planned_purge_succeeded = {
-            let mut transaction = self.semantic_store.transaction();
-            match transaction.stage_owner_purge(id, u64::from(u32::MAX) + 1) {
-                Ok(owner_plan) => match transaction.finalize_fail_closed(&runtime) {
-                    Ok(plan) => {
-                        debug_assert!(plan.bindings(owner_plan).is_empty());
-                        plan.commit();
-                        true
-                    }
-                    Err(_) => false,
-                },
-                Err(_) => false,
-            }
-        };
+        let planned_purge_succeeded = self.try_commit_semantic_owner_purge(id, &runtime);
 
         let purge_failed = if planned_purge_succeeded {
             false
@@ -408,6 +395,23 @@ impl<Action> MountedTree<Action> {
         } else {
             cache
         };
+    }
+
+    fn try_commit_semantic_owner_purge(
+        &mut self,
+        id: &MountedNodeId,
+        runtime: &runenui_core::__runtime::RuntimeNamespace,
+    ) -> bool {
+        let mut transaction = self.semantic_store.transaction();
+        let Ok(owner_plan) = transaction.stage_owner_purge(id, u64::from(u32::MAX) + 1) else {
+            return false;
+        };
+        let Ok(plan) = transaction.finalize_fail_closed(runtime) else {
+            return false;
+        };
+        debug_assert!(plan.bindings(owner_plan).is_empty());
+        plan.commit();
+        true
     }
 
     pub(crate) fn ensure_diagnostics_capability(&mut self, id: &MountedNodeId) {
