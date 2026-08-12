@@ -33,7 +33,7 @@ verified.
 |---|---|
 | `absent` | No accepted implementation exists. |
 | `planned` | Accepted roadmap target; implementation has not started. |
-| `proof` | Narrow deterministic behavior exists and is tested. |
+| `proof` | Narrow deterministic case is implemented and tested. |
 | `partial` | Real implementation exists with major production behavior missing. |
 | `usable` | Suitable for current internal examples within documented limits. |
 | `stable` | Public compatibility and production support are intentionally guaranteed. |
@@ -68,7 +68,7 @@ No framework subsystem is currently `stable`.
 | Production text subsystem | `absent` | None | No font discovery, shaping, fallback, bidi, wrapping, editing, selection, clipboard, or native IME integration | M8 |
 | Button behavior | `proof` | Label/enabled state and repeatable typed `on_activate` factory invoked only by routed `Activate` default; programmatic, physical release-inside, raw Enter, and matched raw Space paths converge; built-in Button authors canonical M5A role/name/state/Activate contribution | No independent semantic publication/action-resolution/accessibility contract, recipes, or production control breadth | M4 complete; M5A complete; M9 later |
 | Standard control library | `absent` | None beyond text/button proofs | No complete lifecycle/event/semantic/style/layout/keyboard/accessibility contracts | M9 |
-| Host neutrality | `usable` | Active core/runtime have no native window, GPU, ECS, platform-controller, AccessKit, or legacy dependencies | Neutrality alone is not an embedding contract | M10 |
+| Host neutrality | `usable` | Active core/runtime have no native window, GPU, ECS, platform-controller, AccessKit, or legacy dependencies | Neutrality alone is not a host integration contract | M10 |
 | Host/platform integration | `absent` | Core application host protocol and runtime wake acknowledgment are host-neutral seams only | No native event loop/window, DPI, clipboard, cursor, IME, drag/drop, accessibility bridge, or multi-window adapter | M10 |
 | Raw controller/gamepad platform input | `absent` | None | No device connection/identity, raw button/axis translation, normalization/dead zones, or embedded-host mapping | M10 |
 | Testing and diagnostics | `partial` | Substantial proof-level integration tests; genuine downstream widget and M5A semantic conformance; deterministic clock/tasks and open widget/style/layout inspection; strict lints; deterministic trace export/sink plus accepted offline replay foundation | No unified M5D public harness, stable semantic queries/actions, UI/scene snapshots, fuzzing, property tests, benchmarks, or platform tests | M5D; M11 |
