@@ -33,7 +33,7 @@ verified.
 |---|---|
 | `absent` | No accepted implementation exists. |
 | `planned` | Accepted roadmap target; implementation has not started. |
-| `proof` | Narrow deterministic case is implemented and tested. |
+| `proof` | Narrow deterministic behavior exists and is tested. |
 | `partial` | Real implementation exists with major production behavior missing. |
 | `usable` | Suitable for current internal examples within documented limits. |
 | `stable` | Public compatibility and production support are intentionally guaranteed. |
