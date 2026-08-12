@@ -96,7 +96,7 @@ impl StagedSemanticCapability {
         )
     }
 
-    fn withdrawn(cache: CachedSemanticContribution, integrity_failed: bool) -> Self {
+    const fn withdrawn(cache: CachedSemanticContribution, integrity_failed: bool) -> Self {
         Self {
             contribution: SemanticContribution::empty(),
             ordered_keys: Vec::new(),
