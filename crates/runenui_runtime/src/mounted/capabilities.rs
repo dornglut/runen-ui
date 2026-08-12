@@ -274,12 +274,9 @@ impl<Action> MountedTree<Action> {
             SemanticEvaluation::Ready {
                 contribution,
                 ordered_keys,
-            } => self.commit_semantic_evaluation(
-                id,
-                contribution,
-                &ordered_keys,
-                public_slot_limit,
-            ),
+            } => {
+                self.commit_semantic_evaluation(id, contribution, &ordered_keys, public_slot_limit)
+            }
             SemanticEvaluation::Invalid(error) => {
                 self.withdraw_semantic_owner(id, CachedSemanticContribution::Invalid(error), false);
             }
