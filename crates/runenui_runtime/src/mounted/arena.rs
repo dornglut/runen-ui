@@ -11,6 +11,86 @@ struct Slot<T> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ArenaCapacityError;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ArenaPlanStateError;
+
+/// Non-mutating allocation/removal model for one borrowed arena transaction.
+///
+/// The planner mirrors the exact lowest-reusable-slot/generation rules used by
+/// [`GenerationalArena`] without touching live values. A higher-level
+/// transaction can therefore preflight several related owner changes before any
+/// live identity is revoked or allocated.
+pub(crate) struct ArenaPlanner {
+    slots: Vec<PlannedSlot>,
+    reusable: BTreeSet<usize>,
+}
+
+#[derive(Clone, Copy)]
+struct PlannedSlot {
+    generation: u64,
+    occupied: bool,
+    retired: bool,
+}
+
+impl ArenaPlanner {
+    pub(crate) fn remove(
+        &mut self,
+        index: usize,
+        generation: u64,
+    ) -> Result<(), ArenaPlanStateError> {
+        let slot = self.slots.get_mut(index).ok_or(ArenaPlanStateError)?;
+        if slot.generation != generation || !slot.occupied {
+            return Err(ArenaPlanStateError);
+        }
+        slot.occupied = false;
+        if slot.generation == u64::MAX {
+            slot.retired = true;
+        } else if !self.reusable.insert(index) {
+            return Err(ArenaPlanStateError);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn allocate(
+        &mut self,
+        public_slot_limit: u64,
+    ) -> Result<(usize, u64), ArenaCapacityError> {
+        let bounded_limit = public_slot_limit.min(u64::from(u32::MAX) + 1);
+        let bounded_limit_usize = usize::try_from(bounded_limit).map_err(|_| ArenaCapacityError)?;
+
+        if let Some(index) = self.reusable.range(..bounded_limit_usize).next().copied() {
+            let removed = self.reusable.remove(&index);
+            debug_assert!(removed, "selected planned reusable slot remains indexed");
+            let slot = self
+                .slots
+                .get_mut(index)
+                .unwrap_or_else(|| unreachable!("planned reusable slot remains present"));
+            debug_assert!(!slot.occupied, "planned reusable slot is vacant");
+            debug_assert!(!slot.retired, "planned retired slot is never reusable");
+            let generation = slot
+                .generation
+                .checked_add(1)
+                .ok_or(ArenaCapacityError)?;
+            slot.generation = generation;
+            slot.occupied = true;
+            return Ok((index, generation));
+        }
+
+        let index = self.slots.len();
+        let public_index = u64::try_from(index).map_err(|_| ArenaCapacityError)?;
+        if public_index >= bounded_limit {
+            return Err(ArenaCapacityError);
+        }
+        let _ = u32::try_from(index).map_err(|_| ArenaCapacityError)?;
+        self.slots.push(PlannedSlot {
+            generation: 1,
+            occupied: true,
+            retired: false,
+        });
+        Ok((index, 1))
+    }
+}
+
 pub(crate) struct GenerationalArena<T> {
     slots: Vec<Slot<T>>,
     reusable: BTreeSet<usize>,
@@ -25,6 +105,21 @@ impl<T> GenerationalArena<T> {
             reusable: BTreeSet::new(),
             retired_count: 0,
             live_count: 0,
+        }
+    }
+
+    pub(crate) fn planner(&self) -> ArenaPlanner {
+        ArenaPlanner {
+            slots: self
+                .slots
+                .iter()
+                .map(|slot| PlannedSlot {
+                    generation: slot.generation,
+                    occupied: slot.value.is_some(),
+                    retired: slot.retired,
+                })
+                .collect(),
+            reusable: self.reusable.clone(),
         }
     }
 
@@ -277,5 +372,32 @@ mod tests {
             Err(ArenaCapacityError)
         );
         assert_eq!(arena.preflight_live_count_after_retirement(1, 1, 2), Ok(()));
+    }
+
+    #[test]
+    fn planner_models_removal_reuse_without_mutating_live_arena() {
+        let mut arena = GenerationalArena::new();
+        assert_eq!(arena.insert_with(|_, _| "a"), Ok((0, 1)));
+        assert_eq!(arena.insert_with(|_, _| "b"), Ok((1, 1)));
+
+        let mut planner = arena.planner();
+        planner
+            .remove(0, 1)
+            .unwrap_or_else(|_| unreachable!("live slot plans removal"));
+        assert_eq!(planner.allocate(2), Ok((0, 2)));
+
+        assert_eq!(arena.get(0, 1), Some(&"a"));
+        assert_eq!(arena.get(1, 1), Some(&"b"));
+        assert_eq!(arena.live_count(), 2);
+    }
+
+    #[test]
+    fn planner_tracks_allocations_across_multiple_owner_plans() {
+        let arena = GenerationalArena::<()>::new();
+        let mut planner = arena.planner();
+        assert_eq!(planner.allocate(2), Ok((0, 1)));
+        assert_eq!(planner.allocate(2), Ok((1, 1)));
+        assert_eq!(planner.allocate(2), Err(ArenaCapacityError));
+        assert_eq!(arena.live_count(), 0);
     }
 }
