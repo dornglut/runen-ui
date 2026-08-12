@@ -6,12 +6,12 @@ use super::{
     HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeStatus,
     RuntimeTerminalReason, TraceRecordKind, TraceSequence,
 };
+use crate::runtime::surface_publication::SurfacePublicationAdmission;
 use crate::{
     PublishSurfaceError, SurfacePublicationCounter, TracePublicationContext, TraceSurfaceContext,
     TraceSurfaceSnapshotKind,
     trace::{TraceRecordDraft, TraceReservation},
 };
-use crate::runtime::surface_publication::SurfacePublicationAdmission;
 
 struct PublicationAdmission {
     surface: SurfacePublicationAdmission,
@@ -155,13 +155,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             RuntimeStatus::Closed => return Err(PublishSurfaceError::Closed),
         }
 
-        let surface = self.surface_publication.admit_publication().map_err(|counter| {
-            let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
-            self.enter_terminal(reason, 0);
-            PublishSurfaceError::Terminal(reason)
-        })?;
+        let surface = self
+            .surface_publication
+            .admit_publication()
+            .map_err(|counter| {
+                let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
+                self.enter_terminal(reason, 0);
+                PublishSurfaceError::Terminal(reason)
+            })?;
 
-        let stationary_rehit = self.pointer_registry.has_streams() || self.queue.has_pointer_envelopes();
+        let stationary_rehit =
+            self.pointer_registry.has_streams() || self.queue.has_pointer_envelopes();
         if stationary_rehit {
             match self.queue.preflight_commit(1) {
                 Ok(()) => {}
@@ -178,10 +182,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.surface_publication.is_dirty(),
             stationary_rehit,
         );
-        if !self.trace.can_replace_reservation(
-            self.surface_trace.publication_reservation,
-            trace_plan,
-        ) {
+        if !self
+            .trace
+            .can_replace_reservation(self.surface_trace.publication_reservation, trace_plan)
+        {
             let reason = RuntimeTerminalReason::TraceSequenceExhausted;
             self.enter_terminal(reason, 0);
             return Err(PublishSurfaceError::Terminal(reason));
