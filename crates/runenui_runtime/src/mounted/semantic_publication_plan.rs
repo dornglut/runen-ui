@@ -129,8 +129,8 @@ impl<Action> MountedTree<Action> {
                 ),
             };
 
-        let (activation, activation_cache) = match node.caches.activation {
-            CachedCapability::Ready(value) => (value, CachedCapability::Ready(value)),
+        let (activation, activation_cache) = match &node.caches.activation {
+            CachedCapability::Ready(value) => (*value, CachedCapability::Ready(*value)),
             CachedCapability::Unresolved => match node.widget.activation(&node.state) {
                 Ok(value) => (value, CachedCapability::Ready(value)),
                 Err(_) => {
@@ -194,7 +194,7 @@ mod tests {
         }
 
         fn activation(&self, _: &Self::State) -> WidgetActivation {
-            WidgetActivation::actionable()
+            WidgetActivation::actionable(true)
         }
 
         fn semantics(
@@ -232,14 +232,14 @@ mod tests {
         assert_eq!(SEMANTIC_CALLBACKS.load(Ordering::SeqCst), 1);
         assert_eq!(staged.owner, root);
         assert_eq!(staged.ordered_keys, vec![SemanticKey::PRIMARY]);
-        assert_eq!(staged.activation, WidgetActivation::actionable());
+        assert_eq!(staged.activation, WidgetActivation::actionable(true));
         assert!(matches!(
             staged.semantic_cache,
             CachedSemanticContribution::Ready(_)
         ));
         assert!(matches!(
             staged.activation_cache,
-            CachedCapability::Ready(value) if value == WidgetActivation::actionable()
+            CachedCapability::Ready(value) if value == WidgetActivation::actionable(true)
         ));
         assert!(!staged.mark_integrity_failed);
 
