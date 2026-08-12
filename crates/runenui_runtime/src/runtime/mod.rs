@@ -72,7 +72,8 @@ pub(in crate::runtime) use model::{ActionCommitError, MutationPhase};
 pub use model::{
     HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
     ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
-    SubscriptionDiagnostic, SubscriptionOwnerKind, TimerFiringOutcome, TimerStartOutcome,
+    SubscriptionDiagnostic, SubscriptionOwnerKind, SurfacePublicationCounter, TimerFiringOutcome,
+    TimerStartOutcome,
 };
 use pointer::PointerRegistry;
 pub(crate) use routed::PointerDispatchFacts;
