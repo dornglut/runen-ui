@@ -183,47 +183,6 @@ impl<Action> MountedTree<Action> {
         }
     }
 
-    pub(crate) fn ensure_layout_capabilities(&mut self, id: &MountedNodeId) {
-        let Some(node) = self.node_mut(id) else {
-            return;
-        };
-        if state_is_corrupted(node) {
-            node.integrity_failed = true;
-            node.caches.measurement = CachedCapability::StatePayloadMismatch;
-            node.caches.child_layout = CachedCapability::StatePayloadMismatch;
-            return;
-        }
-        if matches!(node.caches.measurement, CachedCapability::Unresolved) {
-            let result = node.widget.measure(&node.state);
-            cache_result(
-                result,
-                &mut node.caches.measurement,
-                &mut node.integrity_failed,
-            );
-        }
-        if matches!(node.caches.child_layout, CachedCapability::Unresolved) {
-            let result = node.widget.child_layout(&node.state);
-            cache_result(
-                result,
-                &mut node.caches.child_layout,
-                &mut node.integrity_failed,
-            );
-        }
-    }
-
-    pub(crate) fn ensure_paint_capability(&mut self, id: &MountedNodeId) {
-        let Some(node) = self.node_mut(id) else {
-            return;
-        };
-        if state_is_corrupted(node) {
-            node.integrity_failed = true;
-            node.caches.paint = CachedCapability::StatePayloadMismatch;
-        } else if matches!(node.caches.paint, CachedCapability::Unresolved) {
-            let result = node.widget.paint(&node.state);
-            cache_result(result, &mut node.caches.paint, &mut node.integrity_failed);
-        }
-    }
-
     pub(crate) fn ensure_semantics_capability(&mut self, id: &MountedNodeId) {
         self.ensure_semantics_capability_with_public_slot_limit(id, u64::from(u32::MAX) + 1);
     }
@@ -412,35 +371,5 @@ impl<Action> MountedTree<Action> {
         debug_assert!(plan.bindings(owner_plan).is_empty());
         plan.commit();
         true
-    }
-
-    pub(crate) fn ensure_diagnostics_capability(&mut self, id: &MountedNodeId) {
-        let Some(node) = self.node_mut(id) else {
-            return;
-        };
-        if state_is_corrupted(node) {
-            node.integrity_failed = true;
-            node.caches.diagnostics = CachedCapability::StatePayloadMismatch;
-        } else if matches!(node.caches.diagnostics, CachedCapability::Unresolved) {
-            if let Ok(value) = node.widget.diagnostics(&node.state) {
-                node.caches.diagnostics = CachedCapability::Ready(value);
-            } else {
-                node.integrity_failed = true;
-                node.caches.diagnostics = CachedCapability::StatePayloadMismatch;
-            }
-        }
-    }
-}
-
-fn cache_result<T>(
-    result: Result<T, WidgetBridgeError>,
-    cache: &mut CachedCapability<T>,
-    integrity_failed: &mut bool,
-) {
-    if let Ok(value) = result {
-        *cache = CachedCapability::Ready(value);
-    } else {
-        *integrity_failed = true;
-        *cache = CachedCapability::StatePayloadMismatch;
     }
 }
