@@ -1,8 +1,6 @@
 use runenui_core::{ChildLayout, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof};
 
-use super::{
-    CachedCapability, DirtyPhases, MountedNodeId, MountedTree, node::state_is_corrupted,
-};
+use super::{CachedCapability, DirtyPhases, MountedNodeId, MountedTree, node::state_is_corrupted};
 
 pub(crate) struct SurfaceCapabilityPlan {
     owners: Vec<PlannedSurfaceCapabilities>,
@@ -112,7 +110,8 @@ impl<Action> MountedTree<Action> {
                     if needs_diagnostics {
                         planned.diagnostics = Some(CachedCapability::StatePayloadMismatch);
                     }
-                    planned.mark_integrity_failed = needs_layout || needs_paint || needs_diagnostics;
+                    planned.mark_integrity_failed =
+                        needs_layout || needs_paint || needs_diagnostics;
                     return planned;
                 }
 
@@ -128,7 +127,8 @@ impl<Action> MountedTree<Action> {
                         cached => cached.clone(),
                     });
                     planned.child_layout = Some(match &node.caches.child_layout {
-                        CachedCapability::Unresolved => match node.widget.child_layout(&node.state) {
+                        CachedCapability::Unresolved => match node.widget.child_layout(&node.state)
+                        {
                             Ok(value) => CachedCapability::Ready(value),
                             Err(_) => {
                                 planned.mark_integrity_failed = true;
@@ -152,13 +152,15 @@ impl<Action> MountedTree<Action> {
                 }
                 if needs_diagnostics {
                     planned.diagnostics = Some(match &node.caches.diagnostics {
-                        CachedCapability::Unresolved => match node.widget.diagnostics(&node.state) {
-                            Ok(value) => CachedCapability::Ready(value),
-                            Err(_) => {
-                                planned.mark_integrity_failed = true;
-                                CachedCapability::StatePayloadMismatch
+                        CachedCapability::Unresolved => {
+                            match node.widget.diagnostics(&node.state) {
+                                Ok(value) => CachedCapability::Ready(value),
+                                Err(_) => {
+                                    planned.mark_integrity_failed = true;
+                                    CachedCapability::StatePayloadMismatch
+                                }
                             }
-                        },
+                        }
                         cached => cached.clone(),
                     });
                 }
@@ -168,10 +170,7 @@ impl<Action> MountedTree<Action> {
         SurfaceCapabilityPlan { owners }
     }
 
-    pub(crate) fn commit_surface_publication_capabilities(
-        &mut self,
-        plan: SurfaceCapabilityPlan,
-    ) {
+    pub(crate) fn commit_surface_publication_capabilities(&mut self, plan: SurfaceCapabilityPlan) {
         for planned in plan.owners {
             let node = self
                 .node_mut(&planned.owner)
