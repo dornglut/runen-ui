@@ -27,15 +27,17 @@ impl SurfaceCapabilityPlan {
             .and_then(CachedCapability::ready)
     }
 
-    pub(crate) fn child_layout_at(
+    pub(crate) fn child_layout_at_or_else(
         &self,
         position: usize,
         owner: &MountedNodeId,
-    ) -> Option<Option<ChildLayout>> {
+        fallback: impl FnOnce() -> Option<ChildLayout>,
+    ) -> Option<ChildLayout> {
         self.owner_at(position, owner)
             .child_layout
             .as_ref()
             .and_then(CachedCapability::ready)
+            .unwrap_or_else(fallback)
     }
 
     pub(crate) fn paint_at(
@@ -116,53 +118,30 @@ impl<Action> MountedTree<Action> {
                 }
 
                 if needs_layout {
-                    planned.measurement = Some(match &node.caches.measurement {
-                        CachedCapability::Unresolved => match node.widget.measure(&node.state) {
-                            Ok(value) => CachedCapability::Ready(value),
-                            Err(_) => {
-                                planned.mark_integrity_failed = true;
-                                CachedCapability::StatePayloadMismatch
-                            }
-                        },
-                        cached => cached.clone(),
-                    });
-                    planned.child_layout = Some(match &node.caches.child_layout {
-                        CachedCapability::Unresolved => match node.widget.child_layout(&node.state)
-                        {
-                            Ok(value) => CachedCapability::Ready(value),
-                            Err(_) => {
-                                planned.mark_integrity_failed = true;
-                                CachedCapability::StatePayloadMismatch
-                            }
-                        },
-                        cached => cached.clone(),
-                    });
+                    planned.measurement = Some(stage_capability(
+                        &node.caches.measurement,
+                        || node.widget.measure(&node.state),
+                        &mut planned.mark_integrity_failed,
+                    ));
+                    planned.child_layout = Some(stage_capability(
+                        &node.caches.child_layout,
+                        || node.widget.child_layout(&node.state),
+                        &mut planned.mark_integrity_failed,
+                    ));
                 }
                 if needs_paint {
-                    planned.paint = Some(match &node.caches.paint {
-                        CachedCapability::Unresolved => match node.widget.paint(&node.state) {
-                            Ok(value) => CachedCapability::Ready(value),
-                            Err(_) => {
-                                planned.mark_integrity_failed = true;
-                                CachedCapability::StatePayloadMismatch
-                            }
-                        },
-                        cached => cached.clone(),
-                    });
+                    planned.paint = Some(stage_capability(
+                        &node.caches.paint,
+                        || node.widget.paint(&node.state),
+                        &mut planned.mark_integrity_failed,
+                    ));
                 }
                 if needs_diagnostics {
-                    planned.diagnostics = Some(match &node.caches.diagnostics {
-                        CachedCapability::Unresolved => {
-                            match node.widget.diagnostics(&node.state) {
-                                Ok(value) => CachedCapability::Ready(value),
-                                Err(_) => {
-                                    planned.mark_integrity_failed = true;
-                                    CachedCapability::StatePayloadMismatch
-                                }
-                            }
-                        }
-                        cached => cached.clone(),
-                    });
+                    planned.diagnostics = Some(stage_capability(
+                        &node.caches.diagnostics,
+                        || node.widget.diagnostics(&node.state),
+                        &mut planned.mark_integrity_failed,
+                    ));
                 }
                 planned
             })
@@ -189,5 +168,22 @@ impl<Action> MountedTree<Action> {
             }
             node.integrity_failed |= planned.mark_integrity_failed;
         }
+    }
+}
+
+fn stage_capability<T: Clone, E>(
+    cached: &CachedCapability<T>,
+    resolve: impl FnOnce() -> Result<T, E>,
+    mark_integrity_failed: &mut bool,
+) -> CachedCapability<T> {
+    match cached {
+        CachedCapability::Unresolved => resolve().map_or_else(
+            |_| {
+                *mark_integrity_failed = true;
+                CachedCapability::StatePayloadMismatch
+            },
+            CachedCapability::Ready,
+        ),
+        cached => cached.clone(),
     }
 }
