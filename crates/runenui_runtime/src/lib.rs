@@ -194,6 +194,7 @@ mod pump;
 mod queue;
 mod redraw;
 mod runtime;
+mod semantic_publication;
 mod style_debug;
 mod surface;
 mod surface_command;
@@ -252,6 +253,10 @@ pub use runtime::{
     HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
     ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
     SubscriptionDiagnostic, SubscriptionOwnerKind, TimerFiringOutcome, TimerStartOutcome,
+};
+pub use semantic_publication::{
+    SemanticFocusChange, SemanticNode, SemanticNodeState, SemanticPublication,
+    SemanticRelationship, SemanticRevision, SemanticSnapshot, SemanticUpdate, SemanticUpdateResult,
 };
 pub use style_debug::{SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report};
 pub use surface::{
