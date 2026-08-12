@@ -71,6 +71,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn seed_next_surface_publication_counters_for_test(
+        &mut self,
+        hit_test_generation: Option<u64>,
+        coordinate_revision: Option<u64>,
+    ) {
+        self.surface_publication
+            .seed_next_publication_counters_for_test(hit_test_generation, coordinate_revision);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
     pub(crate) fn replace_surface_snapshot_target_for_test(
         &mut self,
         context: &SurfaceInputContext,
