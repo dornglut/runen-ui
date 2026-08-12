@@ -429,11 +429,28 @@ impl From<SemanticReconcileError> for SurfacePlanningError {
     }
 }
 
+fn surface_capability_phases(
+    layout_dirty: bool,
+    paint_dirty: bool,
+    diagnostics_dirty: bool,
+) -> DirtyPhases {
+    let mut phases = DirtyPhases::default();
+    if layout_dirty {
+        phases.insert(DirtyPhases::LAYOUT);
+    }
+    if paint_dirty {
+        phases.insert(DirtyPhases::PAINT);
+    }
+    if diagnostics_dirty {
+        phases.insert(DirtyPhases::DIAGNOSTICS);
+    }
+    phases
+}
+
 /// Resolves style once per node and publishes aligned frame and diagnostic products.
 ///
 /// The row/column layout consumes concrete computed padding for intrinsic outer
 /// sizing, container content origins, root child placement, and hit testing.
-#[must_use]
 pub(crate) fn publish_mounted_surface_cached<Action>(
     tree: &mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
@@ -447,8 +464,7 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
     }
 
     let mut current = cache
-        .as_ref()
-        .cloned()
+        .clone()
         .unwrap_or_else(|| unreachable!("non-structural publication has a cache"));
     let style_dirty = pending.contains(DirtyPhases::STYLE)
         || current
@@ -476,17 +492,11 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
         completed.insert(DirtyPhases::STYLE);
     }
 
-    let mut capability_phases = DirtyPhases::default();
-    if layout_dirty {
-        capability_phases.insert(DirtyPhases::LAYOUT);
-    }
-    if paint_dirty {
-        capability_phases.insert(DirtyPhases::PAINT);
-    }
-    if diagnostics_dirty {
-        capability_phases.insert(DirtyPhases::DIAGNOSTICS);
-    }
-    let capability_plan = tree.plan_surface_publication_capabilities(capability_phases);
+    let capability_plan = tree.plan_surface_publication_capabilities(surface_capability_phases(
+        layout_dirty,
+        paint_dirty,
+        diagnostics_dirty,
+    ));
     let semantic_capability_plan =
         semantics_dirty.then(|| tree.plan_semantic_publication_capabilities());
 
@@ -546,8 +556,8 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
     }
     current.context_key = next_context;
     current.publication = compose_publication(&current);
-    let semantic_commit = finalized_semantics.map(|finalized| finalized.commit_store());
-    if let Some(semantic_commit) = semantic_commit {
+    if let Some(finalized) = finalized_semantics {
+        let semantic_commit = finalized.commit_store();
         tree.commit_semantic_publication(semantic_commit);
     }
     tree.commit_surface_publication_capabilities(capability_plan);
