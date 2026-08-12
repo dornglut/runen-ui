@@ -305,6 +305,37 @@ impl<'a> SemanticStoreTransaction<'a> {
         Ok(SemanticOwnerPlan(index))
     }
 
+    /// Stages a fail-closed owner purge without trusting the owner's current
+    /// binding vector. This mirrors the existing M5A integrity-recovery behavior,
+    /// but performs only virtual removals until the surrounding plan commits.
+    pub(super) fn stage_owner_purge(
+        &mut self,
+        owner: &MountedNodeId,
+        public_slot_limit: u64,
+    ) -> Result<SemanticOwnerPlan, SemanticReconcileError> {
+        let records = self
+            .store
+            .arena
+            .live_indices_where(|record| record.owner() == owner);
+        let mut planner = self.rebuild_planner()?;
+        for (slot, generation) in &records {
+            planner.remove(*slot, *generation)?;
+        }
+        self.planner = planner;
+        self.removals
+            .extend(records.into_iter().map(|(slot, generation)| SemanticRemoval {
+                slot,
+                generation,
+            }));
+        let index = self.owners.len();
+        self.owners.push(StagedSemanticOwner {
+            owner: owner.clone(),
+            entries: Vec::new(),
+            public_slot_limit,
+        });
+        Ok(SemanticOwnerPlan(index))
+    }
+
     pub(super) fn finalize(
         self,
         runtime: &RuntimeNamespace,
@@ -362,7 +393,105 @@ impl<'a> SemanticStoreTransaction<'a> {
             removals: self.removals,
             inserts,
             owner_bindings,
+            identity_exhausted: BTreeSet::new(),
         })
+    }
+
+    /// Finalizes publication-wide semantic IDs with owner-local fail-closed
+    /// capacity handling. Tentative allocations are rebuilt from the live arena
+    /// and the complete staged removal set after every newly exhausted owner, so
+    /// no earlier allocation becomes authority before all withdrawals are known.
+    pub(super) fn finalize_fail_closed(
+        mut self,
+        runtime: &RuntimeNamespace,
+    ) -> Result<SemanticStorePlan<'a>, SemanticReconcileError> {
+        let mut identity_exhausted = BTreeSet::new();
+        loop {
+            let mut planner = self.rebuild_planner()?;
+            let mut inserts = Vec::new();
+            let mut owner_bindings = Vec::with_capacity(self.owners.len());
+            let mut failed_owner = None;
+
+            'owners: for (owner_index, staged) in self.owners.iter().enumerate() {
+                let mut bindings = Vec::with_capacity(staged.entries.len());
+                for entry in &staged.entries {
+                    match entry {
+                        StagedSemanticEntry::Existing(binding) => bindings.push(binding.clone()),
+                        StagedSemanticEntry::New(key) => {
+                            let Ok((slot, generation)) = planner.allocate(staged.public_slot_limit)
+                            else {
+                                failed_owner = Some(owner_index);
+                                break 'owners;
+                            };
+                            let Ok(public_slot) = u32::try_from(slot) else {
+                                failed_owner = Some(owner_index);
+                                break 'owners;
+                            };
+                            bindings.push(SemanticBinding {
+                                key: key.clone(),
+                                id: runtime.__runtime_semantic_id(public_slot, generation),
+                            });
+                            inserts.push(SemanticInsert {
+                                slot,
+                                generation,
+                                public_slot_limit: staged.public_slot_limit,
+                                record: SemanticRecord {
+                                    owner: staged.owner.clone(),
+                                    key: key.clone(),
+                                },
+                            });
+                        }
+                    }
+                }
+                owner_bindings.push(bindings);
+            }
+
+            if let Some(owner_index) = failed_owner {
+                self.stage_identity_exhaustion(runtime, owner_index)?;
+                identity_exhausted.insert(owner_index);
+                continue;
+            }
+
+            return Ok(SemanticStorePlan {
+                store: self.store,
+                removals: self.removals,
+                inserts,
+                owner_bindings,
+                identity_exhausted,
+            });
+        }
+    }
+
+    fn rebuild_planner(&self) -> Result<ArenaPlanner, SemanticReconcileError> {
+        let mut planner = self.store.arena.planner();
+        for removal in &self.removals {
+            planner.remove(removal.slot, removal.generation)?;
+        }
+        Ok(planner)
+    }
+
+    fn stage_identity_exhaustion(
+        &mut self,
+        runtime: &RuntimeNamespace,
+        owner_index: usize,
+    ) -> Result<(), SemanticReconcileError> {
+        let staged = self
+            .owners
+            .get_mut(owner_index)
+            .unwrap_or_else(|| unreachable!("failed semantic owner belongs to this transaction"));
+        for entry in &staged.entries {
+            if let StagedSemanticEntry::Existing(binding) = entry {
+                let Some((slot, generation)) = runtime.__runtime_semantic_parts(binding.id()) else {
+                    return Err(SemanticStoreIntegrityError::ForeignBinding.into());
+                };
+                self.removals.push(SemanticRemoval {
+                    slot: slot as usize,
+                    generation,
+                });
+            }
+        }
+        staged.entries.clear();
+        Ok(())
     }
 }
 
@@ -373,6 +502,7 @@ pub(super) struct SemanticStorePlan<'a> {
     removals: Vec<SemanticRemoval>,
     inserts: Vec<SemanticInsert>,
     owner_bindings: Vec<Vec<SemanticBinding>>,
+    identity_exhausted: BTreeSet<usize>,
 }
 
 impl SemanticStorePlan<'_> {
@@ -381,6 +511,10 @@ impl SemanticStorePlan<'_> {
             || unreachable!("semantic owner plan belongs to this transaction"),
             Vec::as_slice,
         )
+    }
+
+    pub(super) fn identity_exhausted(&self, owner: SemanticOwnerPlan) -> bool {
+        self.identity_exhausted.contains(&owner.0)
     }
 
     pub(super) fn commit(self) {
@@ -726,6 +860,76 @@ mod tests {
         assert_eq!(failure.owner(), second_plan);
         assert_eq!(failure.error(), &SemanticReconcileError::IdentityExhausted);
         assert_eq!(store.live_count(), 0);
+    }
+
+    #[test]
+    fn fail_closed_finalize_withdraws_only_exhausted_owner_and_replans() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let new_owner = runtime.__runtime_mounted_id(1, 1);
+        let retained_owner = runtime.__runtime_mounted_id(2, 1);
+        let mut store = SemanticStore::new();
+        let retained = store
+            .reconcile_owner(&runtime, &retained_owner, &[], &[SemanticKey::PRIMARY], 1)
+            .unwrap_or_else(|_| unreachable!("retained owner fits"));
+        let retained_id = retained[0].id().clone();
+
+        let mut transaction = store.transaction();
+        let new_plan = transaction
+            .stage_owner(&runtime, &new_owner, &[], &[SemanticKey::PRIMARY], 1)
+            .unwrap_or_else(|_| unreachable!("new owner stages"));
+        let retained_plan = transaction
+            .stage_owner(
+                &runtime,
+                &retained_owner,
+                &retained,
+                &[SemanticKey::PRIMARY],
+                1,
+            )
+            .unwrap_or_else(|_| unreachable!("retained owner stages"));
+        let plan = transaction
+            .finalize_fail_closed(&runtime)
+            .unwrap_or_else(|_| unreachable!("owner-local withdrawal finalizes"));
+
+        assert!(plan.identity_exhausted(new_plan));
+        assert!(!plan.identity_exhausted(retained_plan));
+        assert!(plan.bindings(new_plan).is_empty());
+        assert_eq!(plan.bindings(retained_plan)[0].id(), &retained_id);
+        plan.commit();
+        assert_eq!(store.live_count(), 1);
+        assert_eq!(
+            store.target_status(&runtime, &retained_id),
+            SemanticTargetStatus::Live
+        );
+    }
+
+    #[test]
+    fn staged_owner_purge_is_non_mutating_until_commit() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let owner = runtime.__runtime_mounted_id(4, 1);
+        let mut store = SemanticStore::new();
+        let binding = store
+            .reconcile_owner(&runtime, &owner, &[], &[SemanticKey::PRIMARY], 1)
+            .unwrap_or_else(|_| unreachable!("owner fits"));
+        let id = binding[0].id().clone();
+
+        let plan = {
+            let mut transaction = store.transaction();
+            let owner_plan = transaction
+                .stage_owner_purge(&owner, 1)
+                .unwrap_or_else(|_| unreachable!("owner purge stages"));
+            let plan = transaction
+                .finalize_fail_closed(&runtime)
+                .unwrap_or_else(|_| unreachable!("purge plan finalizes"));
+            assert!(plan.bindings(owner_plan).is_empty());
+            plan
+        };
+        assert_eq!(plan.store.live_count(), 1);
+        plan.commit();
+        assert_eq!(store.live_count(), 0);
+        assert_eq!(
+            store.target_status(&runtime, &id),
+            SemanticTargetStatus::Stale
+        );
     }
 
     #[test]
