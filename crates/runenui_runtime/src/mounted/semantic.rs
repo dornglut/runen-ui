@@ -331,10 +331,11 @@ impl<'a> SemanticStoreTransaction<'a> {
                                 owner: owner_plan,
                                 error: error.into(),
                             })?;
-                        let public_slot = u32::try_from(slot).map_err(|_| SemanticFinalizeFailure {
-                            owner: owner_plan,
-                            error: SemanticReconcileError::IdentityExhausted,
-                        })?;
+                        let public_slot =
+                            u32::try_from(slot).map_err(|_| SemanticFinalizeFailure {
+                                owner: owner_plan,
+                                error: SemanticReconcileError::IdentityExhausted,
+                            })?;
                         let binding = SemanticBinding {
                             key: key.clone(),
                             id: runtime.__runtime_semantic_id(public_slot, generation),
