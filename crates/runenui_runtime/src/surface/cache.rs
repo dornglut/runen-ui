@@ -160,6 +160,7 @@ pub(super) fn build_hit_test_facts(layout: &CachedLayoutFacts) -> CachedHitTestF
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct SurfaceCache {
     // Context key.
     pub(super) context_key: SurfaceContextKey,
