@@ -4,7 +4,7 @@ use runenui_core::MonotonicInstant;
 
 use super::{
     HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeTerminalReason,
-    TraceRecordKind, TraceSequence,
+    SurfacePublicationCounter, TraceRecordKind, TraceSequence,
 };
 use crate::{
     TracePublicationContext, TraceSurfaceContext, TraceSurfaceSnapshotKind,
@@ -22,7 +22,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return;
         }
         let Some(next) = self.surface_publication.request_redraw() else {
-            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            self.enter_terminal(
+                RuntimeTerminalReason::SurfacePublicationCounterExhausted(
+                    SurfacePublicationCounter::RedrawRevision,
+                ),
+                0,
+            );
             return;
         };
         let requested = if self.trace.is_enabled() {
