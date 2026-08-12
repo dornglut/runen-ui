@@ -447,6 +447,12 @@ fn surface_capability_phases(
     phases
 }
 
+fn layout_context_changed(current: &SurfaceCache, next: &cache::SurfaceContextKey) -> bool {
+    current.context_key.constraints != next.constraints
+        || current.context_key.measurement_identity != next.measurement_identity
+        || current.context_key.measurement_revision != next.measurement_revision
+}
+
 /// Resolves style once per node and publishes aligned frame and diagnostic products.
 ///
 /// The row/column layout consumes concrete computed padding for intrinsic outer
@@ -471,12 +477,8 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
             .context_key
             .style_tokens
             .content_differs(&next_context.style_tokens);
-    let constraints_changed = current.context_key.constraints != next_context.constraints;
-    let measurement_changed = current.context_key.measurement_identity
-        != next_context.measurement_identity
-        || current.context_key.measurement_revision != next_context.measurement_revision;
     let mut layout_dirty =
-        pending.contains(DirtyPhases::LAYOUT) || constraints_changed || measurement_changed;
+        pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
     let mut paint_dirty = pending.contains(DirtyPhases::PAINT);
     let semantics_dirty = pending.contains(DirtyPhases::SEMANTICS);
     let diagnostics_dirty = pending.contains(DirtyPhases::DIAGNOSTICS);
