@@ -298,7 +298,7 @@ mod tests {
         let plan = tree.plan_semantic_publication_capabilities(core::slice::from_ref(&root));
         let staged = &plan.owners[0];
 
-        assert!(staged.contribution.is_empty());
+        assert!(staged.contribution.roots().is_empty());
         assert!(staged.ordered_keys.is_empty());
         assert!(matches!(
             staged.semantic_cache,
@@ -324,7 +324,7 @@ mod tests {
 
         let plan = tree.plan_semantic_publication_capabilities(core::slice::from_ref(&root));
         let staged = &plan.owners[0];
-        assert!(staged.contribution.is_empty());
+        assert!(staged.contribution.roots().is_empty());
         assert!(staged.ordered_keys.is_empty());
         assert!(matches!(
             staged.semantic_cache,
