@@ -142,13 +142,15 @@ impl ResolvedSurfaceTree {
                     measurement: capabilities
                         .measurement_at(position, &topology.id)
                         .unwrap_or_default(),
-                    child_layout: capabilities
-                        .child_layout_at(position, &topology.id)
-                        .unwrap_or_else(|| {
+                    child_layout: capabilities.child_layout_at_or_else(
+                        position,
+                        &topology.id,
+                        || {
                             (!mounted.children.is_empty()).then_some(ChildLayout::Linear {
                                 axis: Axis::Vertical,
                             })
-                        }),
+                        },
+                    ),
                     resolution: resolution.clone(),
                 }
             })
