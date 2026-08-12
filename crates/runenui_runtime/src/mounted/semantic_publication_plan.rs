@@ -37,10 +37,7 @@ struct StagedActivationCapability {
 }
 
 impl StagedSemanticCapability {
-    fn ready(
-        contribution: SemanticContribution,
-        context: SemanticContributionContext,
-    ) -> Self {
+    fn ready(contribution: SemanticContribution, context: SemanticContributionContext) -> Self {
         contribution.validate(context).map_or_else(
             |error| Self {
                 contribution: SemanticContribution::empty(),
@@ -140,10 +137,8 @@ fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemant
         CachedSemanticContribution::Ready(contribution) => {
             StagedSemanticCapability::ready(contribution.clone(), context)
         }
-        CachedSemanticContribution::Unresolved => node
-            .widget
-            .semantics(&node.state, context)
-            .map_or_else(
+        CachedSemanticContribution::Unresolved => {
+            node.widget.semantics(&node.state, context).map_or_else(
                 |_| {
                     StagedSemanticCapability::withdrawn(
                         CachedSemanticContribution::StatePayloadMismatch,
@@ -151,7 +146,8 @@ fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemant
                     )
                 },
                 |contribution| StagedSemanticCapability::ready(contribution, context),
-            ),
+            )
+        }
         CachedSemanticContribution::Invalid(error) => StagedSemanticCapability::withdrawn(
             CachedSemanticContribution::Invalid(error.clone()),
             false,
