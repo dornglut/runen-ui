@@ -88,7 +88,9 @@ fn dropping_runtime_closes_active_pointer_before_one_widget_unmount_without_call
     let tokens = StyleTokens::default();
     let size = LogicalSize::try_new(64.0, 64.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(&tokens, size));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+        .unwrap_or_else(|_| unreachable!("the test surface publication is admitted"));
     let authored =
         ElementId::new("target").unwrap_or_else(|_| unreachable!("the test id is valid"));
     let node = publication
