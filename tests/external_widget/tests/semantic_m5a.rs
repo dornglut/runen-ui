@@ -74,10 +74,12 @@ impl UiApp for MappedSemanticApp {
 
 fn published_semantic_child(runtime: &mut AppRuntime<MappedSemanticApp>) -> SemanticContribution {
     let tokens = StyleTokens::new();
-    let publication = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::unbounded(),
-    ));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::new(
+            &tokens,
+            LayoutConstraints::unbounded(),
+        ))
+        .unwrap_or_else(|_| unreachable!("M5A conformance publication is admitted"));
     publication
         .frame()
         .nodes()
