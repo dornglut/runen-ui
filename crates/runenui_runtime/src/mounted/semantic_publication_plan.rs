@@ -5,22 +5,49 @@ use runenui_core::{
 use super::{
     CachedCapability, CachedSemanticContribution, MountedNodeId, MountedTree,
     node::{MountedNode, state_is_corrupted},
+    semantic::{SemanticBinding, SemanticOwnerPlan, SemanticReconcileError, SemanticStorePlan},
 };
 
+const PUBLIC_SEMANTIC_SLOT_LIMIT: u64 = u64::from(u32::MAX) + 1;
+
 #[derive(Clone, Debug)]
-pub(super) struct StagedSemanticOwnerCapabilities {
-    pub(super) owner: MountedNodeId,
-    pub(super) contribution: SemanticContribution,
-    pub(super) ordered_keys: Vec<SemanticKey>,
-    pub(super) activation: WidgetActivation,
-    pub(super) semantic_cache: CachedSemanticContribution,
-    pub(super) activation_cache: CachedCapability<WidgetActivation>,
-    pub(super) mark_integrity_failed: bool,
+pub(crate) struct StagedSemanticOwnerCapabilities {
+    owner: MountedNodeId,
+    contribution: SemanticContribution,
+    ordered_keys: Vec<SemanticKey>,
+    current_bindings: Vec<SemanticBinding>,
+    semantic_cache: CachedSemanticContribution,
+    activation_cache: CachedCapability<WidgetActivation>,
+    mark_integrity_failed: bool,
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct SemanticCapabilityPlan {
-    pub(super) owners: Vec<StagedSemanticOwnerCapabilities>,
+pub(crate) struct SemanticCapabilityPlan {
+    owners: Vec<StagedSemanticOwnerCapabilities>,
+}
+
+pub(crate) struct FinalizedSemanticPublication<'a> {
+    store_plan: SemanticStorePlan<'a>,
+    owners: Vec<FinalizedSemanticOwner>,
+}
+
+pub(crate) struct SemanticMountedCommit {
+    owners: Vec<FinalizedSemanticOwner>,
+}
+
+struct FinalizedSemanticOwner {
+    owner: MountedNodeId,
+    contribution: SemanticContribution,
+    bindings: Vec<SemanticBinding>,
+    semantic_cache: CachedSemanticContribution,
+    activation_cache: CachedCapability<WidgetActivation>,
+    mark_integrity_failed: bool,
+}
+
+#[derive(Clone, Copy)]
+enum ForcedWithdrawal {
+    IdentityExhausted,
+    IndexIntegrityFailure,
 }
 
 struct StagedSemanticCapability {
@@ -31,9 +58,23 @@ struct StagedSemanticCapability {
 }
 
 struct StagedActivationCapability {
-    activation: WidgetActivation,
     cache: CachedCapability<WidgetActivation>,
     integrity_failed: bool,
+}
+
+impl FinalizedSemanticPublication<'_> {
+    pub(crate) fn contributions(&self) -> Vec<SemanticContribution> {
+        self.owners
+            .iter()
+            .map(|owner| owner.contribution.clone())
+            .collect()
+    }
+
+    pub(crate) fn commit_store(self) -> SemanticMountedCommit {
+        let Self { store_plan, owners } = self;
+        store_plan.commit();
+        SemanticMountedCommit { owners }
+    }
 }
 
 impl StagedSemanticCapability {
@@ -67,18 +108,12 @@ impl StagedSemanticCapability {
 impl<Action> MountedTree<Action> {
     /// Evaluates semantic-publication capabilities without mutating mounted
     /// caches, semantic bindings, semantic identity storage, or integrity state.
-    ///
-    /// This is the read-only capability stage used by the future atomic surface
-    /// publication transaction. A later identity/finalization stage decides
-    /// whether these staged facts can commit.
-    pub(super) fn plan_semantic_publication_capabilities(
-        &self,
-        owners: &[MountedNodeId],
-    ) -> SemanticCapabilityPlan {
+    pub(crate) fn plan_semantic_publication_capabilities(&self) -> SemanticCapabilityPlan {
         SemanticCapabilityPlan {
-            owners: owners
-                .iter()
-                .filter_map(|owner| self.stage_semantic_owner_capabilities(owner))
+            owners: self
+                .publication_preorder_ids()
+                .into_iter()
+                .map(|owner| self.stage_semantic_owner_capabilities(&owner))
                 .collect(),
         }
     }
@@ -86,45 +121,176 @@ impl<Action> MountedTree<Action> {
     fn stage_semantic_owner_capabilities(
         &self,
         owner: &MountedNodeId,
-    ) -> Option<StagedSemanticOwnerCapabilities> {
-        let node = self.node(owner)?;
+    ) -> StagedSemanticOwnerCapabilities {
+        let node = self
+            .node(owner)
+            .unwrap_or_else(|| unreachable!("semantic publication owner remains live"));
         if state_is_corrupted(node) {
-            return Some(integrity_withdrawal(owner));
+            return integrity_withdrawal(owner, node.semantic_bindings.clone());
         }
 
         let semantic = stage_semantic_capability(node);
         let activation = stage_activation_capability(node);
         let mark_integrity_failed = semantic.integrity_failed || activation.integrity_failed;
         if mark_integrity_failed {
-            return Some(StagedSemanticOwnerCapabilities {
+            return StagedSemanticOwnerCapabilities {
                 owner: owner.clone(),
                 contribution: SemanticContribution::empty(),
                 ordered_keys: Vec::new(),
-                activation: activation.activation,
+                current_bindings: node.semantic_bindings.clone(),
                 semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
                 activation_cache: activation.cache,
                 mark_integrity_failed,
-            });
+            };
         }
 
-        Some(StagedSemanticOwnerCapabilities {
+        StagedSemanticOwnerCapabilities {
             owner: owner.clone(),
             contribution: semantic.contribution,
             ordered_keys: semantic.ordered_keys,
-            activation: activation.activation,
+            current_bindings: node.semantic_bindings.clone(),
             semantic_cache: semantic.cache,
             activation_cache: activation.cache,
             mark_integrity_failed,
-        })
+        }
+    }
+
+    /// Finalizes semantic identity transitions publication-wide without mutating
+    /// the live semantic store or mounted owner records.
+    ///
+    /// A corrupt current binding vector forces that exact owner into a staged
+    /// purge and restarts the whole transaction, so no tentative allocation can
+    /// survive a newly discovered withdrawal.
+    pub(crate) fn finalize_semantic_publication(
+        &mut self,
+        capability_plan: SemanticCapabilityPlan,
+    ) -> Result<FinalizedSemanticPublication<'_>, SemanticReconcileError> {
+        let runtime = self.runtime.clone();
+        let mut forced = vec![None; capability_plan.owners.len()];
+
+        loop {
+            let mut transaction = self.semantic_store.transaction();
+            let mut owner_plans = Vec::with_capacity(capability_plan.owners.len());
+            let mut restart = false;
+
+            for (index, staged) in capability_plan.owners.iter().enumerate() {
+                let ready = forced[index].is_none()
+                    && matches!(staged.semantic_cache, CachedSemanticContribution::Ready(_));
+                let result = if ready {
+                    transaction.stage_owner(
+                        &runtime,
+                        &staged.owner,
+                        &staged.current_bindings,
+                        &staged.ordered_keys,
+                        PUBLIC_SEMANTIC_SLOT_LIMIT,
+                    )
+                } else {
+                    transaction.stage_owner_purge(&staged.owner, PUBLIC_SEMANTIC_SLOT_LIMIT)
+                };
+
+                match result {
+                    Ok(owner_plan) => owner_plans.push(owner_plan),
+                    Err(SemanticReconcileError::Integrity(_)) if ready => {
+                        forced[index] = Some(ForcedWithdrawal::IndexIntegrityFailure);
+                        restart = true;
+                        break;
+                    }
+                    Err(SemanticReconcileError::IdentityExhausted) if ready => {
+                        forced[index] = Some(ForcedWithdrawal::IdentityExhausted);
+                        restart = true;
+                        break;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+
+            if restart {
+                continue;
+            }
+
+            let store_plan = transaction.finalize_fail_closed(&runtime)?;
+            let owners = capability_plan
+                .owners
+                .iter()
+                .cloned()
+                .zip(owner_plans)
+                .enumerate()
+                .map(|(index, (staged, owner_plan))| {
+                    finalize_owner(&store_plan, owner_plan, staged, forced[index])
+                })
+                .collect();
+            return Ok(FinalizedSemanticPublication { store_plan, owners });
+        }
+    }
+
+    pub(crate) fn commit_semantic_publication(&mut self, commit: SemanticMountedCommit) {
+        for finalized in commit.owners {
+            let node = self
+                .node_mut(&finalized.owner)
+                .unwrap_or_else(|| unreachable!("finalized semantic owner remains live"));
+            node.semantic_bindings = finalized.bindings;
+            node.caches.semantics = finalized.semantic_cache;
+            node.caches.activation = finalized.activation_cache;
+            node.integrity_failed |= finalized.mark_integrity_failed;
+        }
     }
 }
 
-fn integrity_withdrawal(owner: &MountedNodeId) -> StagedSemanticOwnerCapabilities {
+fn finalize_owner(
+    store_plan: &SemanticStorePlan<'_>,
+    owner_plan: SemanticOwnerPlan,
+    staged: StagedSemanticOwnerCapabilities,
+    forced: Option<ForcedWithdrawal>,
+) -> FinalizedSemanticOwner {
+    let bindings = store_plan.bindings(owner_plan).to_vec();
+    if store_plan.identity_exhausted(owner_plan) {
+        return FinalizedSemanticOwner {
+            owner: staged.owner,
+            contribution: SemanticContribution::empty(),
+            bindings,
+            semantic_cache: CachedSemanticContribution::IdentityExhausted,
+            activation_cache: staged.activation_cache,
+            mark_integrity_failed: staged.mark_integrity_failed,
+        };
+    }
+
+    match forced {
+        Some(ForcedWithdrawal::IdentityExhausted) => FinalizedSemanticOwner {
+            owner: staged.owner,
+            contribution: SemanticContribution::empty(),
+            bindings,
+            semantic_cache: CachedSemanticContribution::IdentityExhausted,
+            activation_cache: staged.activation_cache,
+            mark_integrity_failed: staged.mark_integrity_failed,
+        },
+        Some(ForcedWithdrawal::IndexIntegrityFailure) => FinalizedSemanticOwner {
+            owner: staged.owner,
+            contribution: SemanticContribution::empty(),
+            bindings,
+            semantic_cache: CachedSemanticContribution::IndexIntegrityFailure,
+            activation_cache: staged.activation_cache,
+            mark_integrity_failed: true,
+        },
+        None => FinalizedSemanticOwner {
+            owner: staged.owner,
+            contribution: staged.contribution,
+            bindings,
+            semantic_cache: staged.semantic_cache,
+            activation_cache: staged.activation_cache,
+            mark_integrity_failed: staged.mark_integrity_failed,
+        },
+    }
+}
+
+fn integrity_withdrawal(
+    owner: &MountedNodeId,
+    current_bindings: Vec<SemanticBinding>,
+) -> StagedSemanticOwnerCapabilities {
     StagedSemanticOwnerCapabilities {
         owner: owner.clone(),
         contribution: SemanticContribution::empty(),
         ordered_keys: Vec::new(),
-        activation: WidgetActivation::disabled(),
+        current_bindings,
         semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
         activation_cache: CachedCapability::StatePayloadMismatch,
         mark_integrity_failed: true,
@@ -170,24 +336,20 @@ fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemant
 fn stage_activation_capability<Action>(node: &MountedNode<Action>) -> StagedActivationCapability {
     match &node.caches.activation {
         CachedCapability::Ready(value) => StagedActivationCapability {
-            activation: *value,
             cache: CachedCapability::Ready(*value),
             integrity_failed: false,
         },
         CachedCapability::Unresolved => node.widget.activation(&node.state).map_or_else(
             |_| StagedActivationCapability {
-                activation: WidgetActivation::disabled(),
                 cache: CachedCapability::StatePayloadMismatch,
                 integrity_failed: true,
             },
             |value| StagedActivationCapability {
-                activation: value,
                 cache: CachedCapability::Ready(value),
                 integrity_failed: false,
             },
         ),
         CachedCapability::StatePayloadMismatch => StagedActivationCapability {
-            activation: WidgetActivation::disabled(),
             cache: CachedCapability::StatePayloadMismatch,
             integrity_failed: true,
         },
@@ -263,13 +425,12 @@ mod tests {
         let (probe, semantic_callbacks) = probe(false);
         let (tree, _) = MountedTree::mount(Element::new(probe));
         let root = root_id(&tree);
-        let plan = tree.plan_semantic_publication_capabilities(core::slice::from_ref(&root));
+        let plan = tree.plan_semantic_publication_capabilities();
         let staged = &plan.owners[0];
 
         assert_eq!(semantic_callbacks.load(Ordering::SeqCst), 1);
         assert_eq!(staged.owner, root);
         assert_eq!(staged.ordered_keys, vec![SemanticKey::PRIMARY]);
-        assert_eq!(staged.activation, WidgetActivation::actionable(true));
         assert!(matches!(
             staged.semantic_cache,
             CachedSemanticContribution::Ready(_)
@@ -309,7 +470,7 @@ mod tests {
             .clone();
         let live_count_before = tree.semantic_store.live_count();
 
-        let plan = tree.plan_semantic_publication_capabilities(core::slice::from_ref(&root));
+        let plan = tree.plan_semantic_publication_capabilities();
         assert_eq!(semantic_callbacks.load(Ordering::SeqCst), 1);
         assert_eq!(plan.owners[0].ordered_keys, vec![SemanticKey::PRIMARY]);
         assert_eq!(
@@ -322,11 +483,46 @@ mod tests {
     }
 
     #[test]
+    fn finalized_semantics_commit_store_before_mounted_owner_facts() {
+        let (probe, _) = probe(false);
+        let (mut tree, _) = MountedTree::mount(Element::new(probe));
+        let root = root_id(&tree);
+        let plan = tree.plan_semantic_publication_capabilities();
+        let finalized = tree
+            .finalize_semantic_publication(plan)
+            .unwrap_or_else(|_| unreachable!("valid semantic plan finalizes"));
+        assert_eq!(finalized.contributions().len(), 1);
+        let mounted_commit = finalized.commit_store();
+
+        assert_eq!(tree.semantic_store.live_count(), 1);
+        assert!(
+            tree.node(&root)
+                .unwrap_or_else(|| unreachable!("root remains mounted"))
+                .semantic_bindings
+                .is_empty()
+        );
+
+        tree.commit_semantic_publication(mounted_commit);
+        let live = tree
+            .node(&root)
+            .unwrap_or_else(|| unreachable!("root remains mounted"));
+        assert_eq!(live.semantic_bindings.len(), 1);
+        assert!(matches!(
+            live.caches.semantics,
+            CachedSemanticContribution::Ready(_)
+        ));
+        assert!(matches!(
+            live.caches.activation,
+            CachedCapability::Ready(value) if value == WidgetActivation::actionable(true)
+        ));
+    }
+
+    #[test]
     fn invalid_authoring_stages_complete_owner_withdrawal_without_live_revocation() {
         let (probe, _) = probe(true);
         let (tree, _) = MountedTree::mount(Element::new(probe));
         let root = root_id(&tree);
-        let plan = tree.plan_semantic_publication_capabilities(core::slice::from_ref(&root));
+        let plan = tree.plan_semantic_publication_capabilities();
         let staged = &plan.owners[0];
 
         assert!(staged.contribution.roots().is_empty());
@@ -354,7 +550,7 @@ mod tests {
             .unwrap_or_else(|| unreachable!("root remains mounted"))
             .state_corrupted = true;
 
-        let plan = tree.plan_semantic_publication_capabilities(core::slice::from_ref(&root));
+        let plan = tree.plan_semantic_publication_capabilities();
         let staged = &plan.owners[0];
         assert!(staged.contribution.roots().is_empty());
         assert!(staged.ordered_keys.is_empty());
