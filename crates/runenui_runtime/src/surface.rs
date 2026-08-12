@@ -10,6 +10,7 @@ mod cache;
 mod context;
 mod measure;
 mod resolve;
+mod transaction;
 
 pub(crate) use cache::SurfaceCache;
 use cache::{CachedLayoutFacts, build_hit_test_facts, context_key};
@@ -20,6 +21,7 @@ use resolve::{
     ResolvedSurfaceTree, collect_topology, resolve_diagnostics, resolve_paint, resolve_semantics,
     resolve_styles,
 };
+pub(crate) use transaction::{PlannedSurfacePublication, SurfacePublicationCommit};
 
 use runenui_core::{
     ComputedStyle, ElementId, LogicalLength, LogicalRect, LogicalSize, SemanticContribution,
@@ -453,20 +455,22 @@ fn layout_context_changed(current: &SurfaceCache, next: &cache::SurfaceContextKe
         || current.context_key.measurement_revision != next.measurement_revision
 }
 
-/// Resolves style once per node and publishes aligned frame and diagnostic products.
+/// Plans aligned renderer-facing and diagnostic products without committing
+/// RunenUI-owned publication state.
 ///
-/// The row/column layout consumes concrete computed padding for intrinsic outer
-/// sizing, container content origins, root child placement, and hit testing.
-pub(crate) fn publish_mounted_surface_cached<Action>(
-    tree: &mut crate::mounted::MountedTree<Action>,
+/// The returned move-only plan may retain the semantic-store borrow guard. The
+/// caller must perform every candidate-dependent preflight before consuming the
+/// plan through `commit_store`.
+pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
+    tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
-    cache: &mut Option<SurfaceCache>,
-) -> Result<(SurfacePublication, SurfacePhaseReport), SurfacePlanningError> {
+    cache: &Option<SurfaceCache>,
+) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let next_context = context_key(context);
     let pending = tree.pending_phases();
     let tree_dirty = cache.is_none() || pending.contains(DirtyPhases::TREE);
     if tree_dirty {
-        return rebuild_structural_surface(tree, context, next_context, cache);
+        return plan_structural_surface(tree, context, next_context);
     }
 
     let mut current = cache
@@ -550,31 +554,24 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
         completed.insert(DirtyPhases::DIAGNOSTICS);
     }
 
-    if report.executed().is_empty() {
-        let publication = current.publication.clone();
-        current.context_key = next_context;
-        *cache = Some(current);
-        return Ok((publication, report));
-    }
     current.context_key = next_context;
-    current.publication = compose_publication(&current);
-    if let Some(finalized) = finalized_semantics {
-        let semantic_commit = finalized.commit_store();
-        tree.commit_semantic_publication(semantic_commit);
+    if !report.executed().is_empty() {
+        current.publication = compose_publication(&current);
     }
-    tree.commit_surface_publication_capabilities(capability_plan);
-    tree.finish_publication(completed);
-    let publication = current.publication.clone();
-    *cache = Some(current);
-    Ok((publication, report))
+    Ok(PlannedSurfacePublication::new(
+        current,
+        report,
+        completed,
+        capability_plan,
+        finalized_semantics,
+    ))
 }
 
-fn rebuild_structural_surface<Action>(
-    tree: &mut crate::mounted::MountedTree<Action>,
+fn plan_structural_surface<'tree, Action>(
+    tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     context_key: cache::SurfaceContextKey,
-    cache: &mut Option<SurfaceCache>,
-) -> Result<(SurfacePublication, SurfacePhaseReport), SurfacePlanningError> {
+) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let mut report = SurfacePhaseReport::default();
     let topology = collect_topology(tree);
     report.record(SurfacePhase::Tree);
@@ -624,13 +621,24 @@ fn rebuild_structural_surface<Action>(
         publication: placeholder,
     };
     rebuilt.publication = compose_publication(&rebuilt);
-    let semantic_commit = finalized_semantics.commit_store();
-    tree.commit_semantic_publication(semantic_commit);
-    tree.commit_surface_publication_capabilities(capability_plan);
-    tree.finish_publication(DirtyPhases::ALL);
-    let publication = rebuilt.publication.clone();
-    *cache = Some(rebuilt);
-    Ok((publication, report))
+    Ok(PlannedSurfacePublication::new(
+        rebuilt,
+        report,
+        DirtyPhases::ALL,
+        capability_plan,
+        Some(finalized_semantics),
+    ))
+}
+
+#[cfg(test)]
+fn publish_mounted_surface_cached<Action>(
+    tree: &mut crate::mounted::MountedTree<Action>,
+    context: &SurfaceBuildContext<'_>,
+    cache: &mut Option<SurfaceCache>,
+) -> Result<(SurfacePublication, SurfacePhaseReport), SurfacePlanningError> {
+    let planned = plan_mounted_surface_cached(tree, context, cache)?;
+    let commit = planned.commit_store();
+    Ok(commit.commit(tree, cache))
 }
 
 fn compose_publication(cache: &SurfaceCache) -> SurfacePublication {

@@ -8,7 +8,7 @@ use crate::{
     SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication,
     SurfacePublicationCounter, TraceSurfaceContext, TraceSurfaceSnapshotKind,
     mounted::MountedTree,
-    surface::{SurfaceCache, SurfacePlanningError, publish_mounted_surface_cached},
+    surface::{SurfaceCache, SurfacePlanningError, plan_mounted_surface_cached},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -192,9 +192,11 @@ impl SurfacePublicationState {
         admission: SurfacePublicationAdmission,
     ) -> Result<SurfacePublication, SurfacePlanningError> {
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
-        let (products, report) = publish_mounted_surface_cached(tree, context, &mut self.cache)?;
+        let planned = plan_mounted_surface_cached(tree, context, &self.cache)?;
+        let nodes = HitTestSnapshot::nodes_from(planned.publication());
+        let commit = planned.commit_store();
+        let (products, report) = commit.commit(tree, &mut self.cache);
         self.phase_report = report;
-        let nodes = HitTestSnapshot::nodes_from(&products);
         let input_context =
             self.retain_new_snapshot(nodes, hit_test_generation, coordinate_revision);
         Ok(SurfacePublication::new(input_context, products))
