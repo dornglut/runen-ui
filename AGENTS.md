@@ -43,14 +43,21 @@ as `d7189d9d145b20edc6ad931ead1589f6277373d2`, proved exact reviewed/squash
 tree identity, and passed accepted-main CI #898 at that squash. Issue #47 is
 closed.
 
-Issue #55 is the sole active M5 execution gate. It freezes semantic publication,
+The M5 readiness gate #55 is also accepted. Its exact reviewed head
+`15c90424a0fbae4312b0cb0c5fb76932b3ce1ee1` passed exact-head CI #902 and was
+guarded-squash-merged in PR #56 as
+`d2f8fabd33860ec1510f82d5792b5bd8f2db8f43`. Reviewed head and squash share
+exact tree `3be7ed95d5879c5d4dc9639583c5ef8490522267`, and accepted-main push CI
+#903 passed at that squash. The accepted readiness authority freezes semantic
 focus, support/availability, surface-scoped action targeting, publication
-atomicity/failure semantics, and the renderer/semantic cutover before M5B. It
-also owns one bounded pre-1.0 vocabulary correction: remove route-bound semantic
-LogicalScroll while preserving accepted M4 routed scrolling. #55 is not M5B or
-M5C implementation. M5B #48 remains blocked until #55 is exact-head validated,
-critically reviewed, explicitly owner-accepted, merged/reconciled as required,
-and accepted-main verified.
+atomicity/failure semantics, and the renderer/semantic cutover, and removes
+route-bound semantic LogicalScroll authoring while preserving accepted M4 routed
+scrolling.
+
+M5B #48 is the next implementation slice. Its branch may be created only from an
+accepted `main` that already contains the #55 post-merge acceptance/current-
+contract reconciliation. M5B must follow the accepted #55-amended M5 charter and
+matrix and must not recreate semantic LogicalScroll or begin M5C work.
 
 A future thread should need only the repository, umbrella issue, and active slice/audit issue to locate current work.
 

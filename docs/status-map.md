@@ -15,17 +15,24 @@ guarded-squash-merged in [PR #54](https://github.com/dornglut/runen-ui/pull/54)
 as `d7189d9d145b20edc6ad931ead1589f6277373d2`; reviewed and squash trees
 are identical and accepted-main CI #898 passed at that exact squash.
 
-Accepted `main` therefore still owns the reconciled M5 matrix state `50 total /
-12 owner-accepted / 0 implementation-complete / 0 proof-complete / 38 blocked`.
-The only remaining blocked M4 rows are M5C-owned `ACCESS-01` and `ACCESS-02`.
-Issue #55 is the current readiness/authority gate before M5B. Its candidate
-matrix authority strengthens successor observations and adds only
-`SEM-SUPPORT-01`, `SEM-PUB-04`, and `SEM-ACT-07`, producing candidate state `53
-total / 12 owner-accepted / 41 blocked`. Those three added rows are not accepted
-framework behavior merely because they exist on the active branch. M5B #48
-remains blocked until #55 is exact-head validated, critically reviewed,
-explicitly owner-accepted, merged/reconciled as required, and accepted-main
-verified.
+The M5 readiness gate #55 is also accepted. Reviewed head
+`15c90424a0fbae4312b0cb0c5fb76932b3ce1ee1` passed exact-head CI #902 and was
+guarded-squash-merged in [PR #56](https://github.com/dornglut/runen-ui/pull/56)
+as `d2f8fabd33860ec1510f82d5792b5bd8f2db8f43`; reviewed and squash trees share
+exact tree `3be7ed95d5879c5d4dc9639583c5ef8490522267`, and accepted-main CI #903
+passed at that exact squash.
+
+The accepted M5 matrix now contains `53 total / 12 owner-accepted / 0
+implementation-complete / 0 proof-complete / 41 blocked`. Aggregate configured
+accepted truth is `290 total / 247 owner-accepted / 0 implementation-complete /
+0 proof-complete / 43 blocked`, where the 43 blocked rows are the remaining 41
+M5 rows plus inherited M4 `ACCESS-01` and `ACCESS-02`. The three #55-added rows
+remain blocked implementation observations; accepting their authority does not
+claim M5B/M5C behavior exists.
+
+M5B #48 is the next implementation slice. Its branch may be cut only from an
+accepted `main` that already contains the #55 post-merge acceptance/current-
+contract reconciliation.
 
 ## Maturity states
 
@@ -57,9 +64,9 @@ No framework subsystem is currently `stable`.
 | Effects and scheduling | `proof` | One atomic planner; live-only generational producers; routed exact-owner work output; before-unmount revocation; `Starting -> Running` send subscriptions; tombstone-free host authority; checked mandatory trace plans; once-claimed serialized wake callbacks | Runtime supplies executor/source adapters rather than a default thread pool | M4 complete |
 | Styling | `partial` | Colors, padding, radius, typed tokens, computed style, provenance, missing-token diagnostics | No themes, recipes, variants, interaction states, typography, borders, fallback, or preferences | M7–M8 |
 | Layout and measurement | `proof` | Separate one-query intrinsic/child-layout snapshots; component-wise minimum combination; padding/gaps; unsupported/unknown fallbacks; aligned index/frame/style/layout products | Linear M2 proof only; no production sizing/alignment/flex/grid/scroll/incremental layout | M7–M8 |
-| Focusability facts | `proof` | Widgets declare automatic/explicit/hidden focusability and nested scope policy; runtime revalidates live enabled eligibility | Runtime focus is not yet projected into the M5B semantic product; #55 freezes PRIMARY-only projection before implementation | M4 complete; #55 gate; M5B later |
-| Semantic contribution and identity | `partial` | Owner-accepted M5A platform-neutral `SemanticContribution`; 0..N owner-local nodes keyed by stable `SemanticKey`; roles, names/descriptions, values/states/action intent, relationships, plain text, owner/owner-local bounds; strict marker/reference validation; separate opaque semantic lifetimes reconciled by exact mounted owner + key; downstream action-mapping and geometry conformance | No independently published semantic tree/update product, absolute semantic bounds, runtime-derived focus, resolved cross-owner relationships, semantic-node action ingress, public semantic queries, or accessibility adapter | M5A complete; #55 readiness; M5B–M5D sequential |
-| Surface publication | `proof` | Context-bearing publication with fresh coordinate revision/displayed hit-test generation, topology-only renderer-product cache, current mounted style/layout reads, exact token-content key, bounded immutable snapshot retention, independent phase-entry/report proofs, and temporary carriage of canonical M5A `SemanticContribution` on `SurfaceNode` | One mounted root and one logical surface; renderer-facing semantics carriage is transitional and has no semantic IDs; #55 freezes atomic publication/cutover semantics and M5B implements them | M4 complete; #55 gate; M5B/M6/M10 later |
+| Focusability facts | `proof` | Widgets declare automatic/explicit/hidden focusability and nested scope policy; runtime revalidates live enabled eligibility | Runtime focus is not yet projected into the M5B semantic product; accepted #55 requires visible-PRIMARY-only projection | M4/#55 complete; M5B next |
+| Semantic contribution and identity | `partial` | Owner-accepted M5A platform-neutral `SemanticContribution`; 0..N owner-local nodes keyed by stable `SemanticKey`; roles, names/descriptions, values/states/action intent, relationships, plain text, owner/owner-local bounds; strict marker/reference validation; separate opaque semantic lifetimes reconciled by exact mounted owner + key; downstream action-mapping and geometry conformance | No independently published semantic tree/update product, absolute semantic bounds, runtime-derived focus, resolved cross-owner relationships, semantic-node action ingress, public semantic queries, or accessibility adapter | M5A/#55 complete; M5B–M5D sequential |
+| Surface publication | `proof` | Context-bearing publication with fresh coordinate revision/displayed hit-test generation, topology-only renderer-product cache, current mounted style/layout reads, exact token-content key, bounded immutable snapshot retention, independent phase-entry/report proofs, and temporary carriage of canonical M5A `SemanticContribution` on `SurfaceNode` | One mounted root and one logical surface; renderer-facing semantics carriage is transitional and has no semantic IDs; accepted #55 freezes atomic publication/cutover semantics and M5B implements them | M4/#55 complete; M5B/M6/M10 later |
 | Hit testing | `proof` | Reverse-order rectangle hit testing over exact current or retained immutable publication snapshots feeds generation-safe physical pointer paths and stationary re-hit | No explicit hit scene, stacking contract, clips, transforms, visibility/inertness, or M6 pointer policy | M4 complete; M6 later |
 | Debug/semantic frame consumption | `proof` | Deterministic text rendering can inspect temporary canonical semantic contribution alongside paint/diagnostic facts | Debug output is not the M5B semantic tree/update product, accessibility adapter, paint scene, or backend | M5B–M6 |
 | Renderer-neutral paint scene | `absent` | M2 publishes deterministic open widget paint/debug facts | Proof facts are not primitives/resources and have no clips, transforms, layers, or damage | M6 |
@@ -86,33 +93,23 @@ continues to own M4 implementation/delivery constraints, and the accepted
 [M4 conformance matrix](architecture/m4-conformance-matrix.md) remains M4
 observable-acceptance authority.
 
-M5 is active. M5A semantic contribution and independent identity plus its
-mandatory reconciliation are complete. The accepted reconciliation squash and
-current accepted `main` checkpoint is
-`d7189d9d145b20edc6ad931ead1589f6277373d2`, with accepted-main CI #898
-successful at that exact SHA.
+M5 is active. M5A and the #55 readiness authority are accepted. The current
+accepted `main` checkpoint after #55 is
+`d2f8fabd33860ec1510f82d5792b5bd8f2db8f43`; reviewed #55 head and squash
+share tree `3be7ed95d5879c5d4dc9639583c5ef8490522267`, and accepted-main CI #903
+passed at that exact SHA.
 
-Accepted-main M5 conformance remains `50 total / 12 owner-accepted / 0
-implementation-complete / 0 proof-complete / 38 blocked`; aggregate configured
-accepted truth remains `287 total / 247 owner-accepted / 0
-implementation-complete / 0 proof-complete / 40 blocked`, where the 40 blocked
-rows are the remaining 38 M5 rows plus inherited M4 `ACCESS-01` and `ACCESS-02`.
+Accepted M5 conformance is `53 total / 12 owner-accepted / 0
+implementation-complete / 0 proof-complete / 41 blocked`; aggregate configured
+accepted truth is `290 total / 247 owner-accepted / 0 implementation-complete /
+0 proof-complete / 43 blocked`. The two inherited M4 blocked rows remain
+`ACCESS-01` and `ACCESS-02`, owned by M5C.
 
-Issue [#55](https://github.com/dornglut/runen-ui/issues/55) is now the sole
-execution gate. It freezes the under-specified M5B/M5C successor authority for
-PRIMARY semantic focus, composed disabled/support semantics, private
-semantic-to-mounted resolution, surface-scoped requests/revisions, exact stale
-and post-callback revalidation, staged atomic publication and failure taxonomy,
-and clean renderer/semantic cutover. It also performs only the bounded pre-1.0
-removal of route-bound semantic LogicalScroll; no M5B publication or M5C ingress
-implementation belongs to #55.
-
-The #55 candidate conformance authority is `53 total / 12 owner-accepted / 41
-blocked`, adding only `SEM-SUPPORT-01`, `SEM-PUB-04`, and `SEM-ACT-07` while
-leaving all M5B+ observations blocked. M5B #48 may begin only after #55 is
-exact-head validated, critically reviewed, explicitly owner-accepted,
-merged/reconciled as required, and accepted-main verified. The roadmap remains
-the durable milestone authority.
+M5B [#48](https://github.com/dornglut/runen-ui/issues/48) is the next
+implementation slice under the #55-amended M5 charter/matrix. Its branch may be
+created only from accepted `main` after this #55 acceptance/current-contract
+reconciliation is present there. The roadmap remains the durable milestone
+authority.
 
 Merged acceptance evidence belongs in pull requests and the
 [public repository migration history](history/public-repository-migration.md).

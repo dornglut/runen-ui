@@ -47,8 +47,15 @@ reconciliation are complete. The reviewed M5A feature head
 reconciliation head `66c2e2a5e2adf3709f93e8d45821a5844986dc0c` was guarded-squash-merged
 in [PR #54](https://github.com/dornglut/runen-ui/pull/54) as
 `d7189d9d145b20edc6ad931ead1589f6277373d2`; reviewed and squash trees are
-identical and accepted-main CI #898 passed at that exact squash. Issue #55 is
-the current readiness/authority gate before any M5B branch.
+identical and accepted-main CI #898 passed at that exact squash. The M5
+readiness gate #55 is also accepted: reviewed head
+`15c90424a0fbae4312b0cb0c5fb76932b3ce1ee1` passed exact-head CI #902 and was
+guarded-squash-merged in [PR #56](https://github.com/dornglut/runen-ui/pull/56)
+as `d2f8fabd33860ec1510f82d5792b5bd8f2db8f43`; reviewed and squash trees share
+exact tree `3be7ed95d5879c5d4dc9639583c5ef8490522267`, and accepted-main CI #903
+passed at that exact squash. M5B #48 is the next implementation slice and may
+branch only from accepted `main` containing the #55 acceptance/current-contract
+reconciliation.
 
 The accepted M4 history remains unchanged: M4C3 was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`, M4C4 in
@@ -132,8 +139,8 @@ semantic-index corruption fail closed and retain the integrity distinction.
 M5A-to-M5B transition, `SurfaceNode::semantics()` temporarily carries only the
 canonical `SemanticContribution`; it carries no `SemanticNodeId` and does not
 publish runtime focus, resolved relationships, absolute semantic bounds,
-semantic revisions, or incremental semantic updates. #55 freezes the clean
-cutover and publication transaction: M5B owns an independently typed,
+semantic revisions, or incremental semantic updates. Accepted #55 freezes the
+clean cutover and publication transaction: M5B owns an independently typed,
 `SurfaceId`-scoped semantic snapshot/update sibling, private semantic-to-mounted
 resolution, composed state/support/focus, and staged atomic publication; renderer
 products lose production semantic authority rather than growing a second mixed
@@ -192,8 +199,8 @@ preserves semantic contribution content exactly. The implementation has no
 AccessKit/native dependency and no second semantic action queue. The accepted
 [M5 semantics and testing charter](architecture/m5-semantics-and-testing-charter.md)
 and [M5 conformance matrix](architecture/m5-conformance-matrix.md) define the
-remaining M5B–M5E work. The #55 readiness gate amends that successor authority
-before M5B implementation; it does not implement M5B or M5C.
+remaining M5B–M5E work. Accepted #55 amends that successor authority before M5B
+implementation; it does not implement M5B or M5C.
 
 The accepted M4C5 behavior does not add editable text, native IME objects, or a
 platform host. Public automation work/trace-sequence exhaustion is a deliberate
@@ -405,10 +412,10 @@ RunenUI will use a mature text stack behind RunenUI-owned contracts; it will not
 Accessibility is mandatory for production controls. M5A implements the
 platform-neutral authoring half of semantic roles, labels/descriptions, values,
 authored state/action intent, relationships, bounds policy, text facts, and
-independent runtime semantic identity. #55 freezes the successor contract:
-semantic focus projects only through a visible PRIMARY node; composed disabled
-state and supported actions remain distinct from current availability; public
-action requests are exact `SurfaceId` + `SemanticNodeId`; mounted-owner/key
+independent runtime semantic identity. Accepted #55 freezes the successor
+contract: semantic focus projects only through a visible PRIMARY node; composed
+disabled state and supported actions remain distinct from current availability;
+public action requests are exact `SurfaceId` + `SemanticNodeId`; mounted-owner/key
 resolution stays private; publication is surface-scoped and atomic. M5B composes
 those contributions into the renderer-independent semantic tree/update product
 with runtime-derived absolute bounds/focus/support; M5C adds exact semantic-node
@@ -463,13 +470,13 @@ closure proof surface. Public M4 proof requirements are fixed in the M4
 conformance matrix and directional-focus corpus.
 
 The accepted M5 semantics/testing charter and M5 conformance matrix own the
-active semantics/testing program. M5A is owner-accepted and reconciled. Issue
-#55 is the required current readiness/authority amendment before M5B; it freezes
-the successor publication/focus/support/action-target contract and removes only
-the route-bound semantic LogicalScroll variant. M5B semantic tree publication
-and incremental updates remains the next implementation slice only after #55 is
-exact-head validated, critically reviewed, explicitly owner-accepted,
-merged/reconciled as required, and accepted-main verified. M5C, M5D, and M5E
+active semantics/testing program. M5A is owner-accepted and reconciled, and #55
+is accepted in PR #56 with exact reviewed/squash tree identity and accepted-main
+CI. The #55-amended authority freezes the successor
+publication/focus/support/action-target contract and removes route-bound semantic
+LogicalScroll authoring while preserving accepted M4 routed scrolling. M5B #48
+is the next implementation slice and may branch only from accepted `main`
+containing the #55 acceptance/current-contract reconciliation. M5C, M5D, and M5E
 remain blocked in order.
 
 The following later choices still require dedicated analysis and review:

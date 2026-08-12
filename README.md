@@ -15,13 +15,15 @@ reconciliation are complete. The accepted M5A feature head
 reconciliation head `66c2e2a5e2adf3709f93e8d45821a5844986dc0c` was guarded-squash-merged
 in [PR #54](https://github.com/dornglut/runen-ui/pull/54) as
 `d7189d9d145b20edc6ad931ead1589f6277373d2`; reviewed and squash trees are
-identical, and accepted-main CI #898 passed at that exact squash. Issue #55 is
-the current readiness/authority gate before M5B: it freezes publication,
-focus/support, surface-scoped semantic action targeting, publication atomicity,
-and clean renderer/semantic cutover semantics, plus one bounded pre-1.0 removal
-of route-bound semantic LogicalScroll. M5B #48 remains blocked until #55 is
-separately accepted and merged. Current maturity, durable sequence, work
-ownership, and historical acceptance evidence live in the
+identical, and accepted-main CI #898 passed at that exact squash. The M5
+readiness gate #55 is also accepted: reviewed head
+`15c90424a0fbae4312b0cb0c5fb76932b3ce1ee1` passed exact-head CI #902 and was
+guarded-squash-merged in [PR #56](https://github.com/dornglut/runen-ui/pull/56)
+as `d2f8fabd33860ec1510f82d5792b5bd8f2db8f43`; reviewed and squash trees are
+identical and accepted-main CI #903 passed at that exact squash. M5B #48 is the
+next implementation slice and may branch only from accepted `main` after the #55
+acceptance/current-contract reconciliation is present there. Current maturity,
+durable sequence, work ownership, and historical acceptance evidence live in the
 [status map](docs/status-map.md), [roadmap](docs/roadmap.md),
 [work-tracking contract](docs/work-tracking.md), and
 [public repository migration history](docs/history/public-repository-migration.md).
@@ -127,8 +129,8 @@ contribution authoring and independent runtime semantic lifetimes, but it does
 **not** yet publish the independent semantic tree, translate owner-local bounds
 into absolute semantic bounds, derive runtime focus into that product, resolve
 cross-owner relationships, expose semantic-node action ingress, provide the
-public `runenui_testing` harness, or add AccessKit/native accessibility. #55
-freezes those successor contracts but implements none of M5B/M5C runtime
+public `runenui_testing` harness, or add AccessKit/native accessibility. Accepted
+#55 freezes those successor contracts but implements none of M5B/M5C runtime
 behavior. Those remain M5B–M5D work. Paint/hit scenes, production
 layout/style/text, native hosts, renderer backends, and production controls also
 remain absent. The current runtime has one mounted root, one focus domain, and
@@ -167,16 +169,16 @@ widget-local state, lifecycle, focus, interaction slots, operational phases,
 integrity-aware capability caches, a separate semantic arena/binding store, and
 a proof-level retained renderer-facing publication cache. Widgets contribute
 canonical semantic forests independently of action type; the runtime validates
-and reconciles their owner-local keys into independent semantic lifetimes. #55
-freezes the successor publication/action contract before implementation. M5B
-then owns composition of those accepted contributions into a separately typed,
-absolute-bounds/focus-aware, surface-scoped semantic snapshot and update product.
-Tree changes rebuild every topology-dependent renderer fact from one current
-mounted preorder snapshot. Compatible style and layout changes retain topology
-and read the current mounted `StyleIntent` and `LayoutStyle`; authored
-token-reference changes are scheduled by reconciliation even when token content
-is unchanged. No production retained-layout claim is implied. Application and
-exact-mounted-generation task/subscription ownership is current;
+and reconciles their owner-local keys into independent semantic lifetimes.
+Accepted #55 freezes the successor publication/action contract before
+implementation. M5B then owns composition of those accepted contributions into a
+separately typed, absolute-bounds/focus-aware, surface-scoped semantic snapshot
+and update product. Tree changes rebuild every topology-dependent renderer fact
+from one current mounted preorder snapshot. Compatible style and layout changes
+retain topology and read the current mounted `StyleIntent` and `LayoutStyle`;
+authored token-reference changes are scheduled by reconciliation even when token
+content is unchanged. No production retained-layout claim is implied.
+Application and exact-mounted-generation task/subscription ownership is current;
 renderer-neutral paint and hit-test scenes begin in M6.
 
 ## Canonical project documents
