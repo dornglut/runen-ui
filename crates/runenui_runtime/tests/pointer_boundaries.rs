@@ -136,7 +136,9 @@ fn harness() -> Harness {
     let tokens = StyleTokens::default();
     let size = LogicalSize::try_new(96.0, 48.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(&tokens, size));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+        .unwrap_or_else(|_| unreachable!("the test surface publication is admitted"));
     let left_authored =
         ElementId::new("left").unwrap_or_else(|_| unreachable!("the test id is valid"));
     let right_authored =
