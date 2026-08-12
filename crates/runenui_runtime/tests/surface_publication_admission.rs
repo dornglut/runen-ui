@@ -8,7 +8,8 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PublishSurfaceError, PumpBudget, RuntimeStatus,
-    RuntimeTerminalReason, SurfaceBuildContext, SurfacePublicationCounter, TraceRecordKind,
+    RuntimeTerminalReason, SurfaceBuildContext, SurfacePublication, SurfacePublicationCounter,
+    TraceRecordKind,
 };
 
 #[derive(Clone, Copy)]
@@ -74,6 +75,22 @@ fn published_count(runtime: &AppRuntime<App>) -> usize {
         .count()
 }
 
+fn expect_counter_exhaustion(
+    result: Result<SurfacePublication, PublishSurfaceError>,
+    expected: SurfacePublicationCounter,
+) {
+    let error = match result {
+        Ok(_) => panic!("surface publication unexpectedly succeeded after counter exhaustion"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error,
+        PublishSurfaceError::Terminal(
+            RuntimeTerminalReason::SurfacePublicationCounterExhausted(expected),
+        )
+    );
+}
+
 fn prepared_runtime() -> (
     AppRuntime<App>,
     Rc<Cell<usize>>,
@@ -120,14 +137,7 @@ fn hit_test_generation_exhaustion_terminalizes_before_surface_callbacks() {
         LayoutConstraints::unbounded(),
     ));
 
-    assert!(matches!(
-        result,
-        Err(PublishSurfaceError::Terminal(
-            RuntimeTerminalReason::SurfacePublicationCounterExhausted(
-                SurfacePublicationCounter::HitTestGeneration,
-            )
-        ))
-    ));
+    expect_counter_exhaustion(result, SurfacePublicationCounter::HitTestGeneration);
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::SurfacePublicationCounterExhausted(
@@ -155,14 +165,7 @@ fn coordinate_revision_exhaustion_terminalizes_before_surface_callbacks() {
         LayoutConstraints::unbounded(),
     ));
 
-    assert!(matches!(
-        result,
-        Err(PublishSurfaceError::Terminal(
-            RuntimeTerminalReason::SurfacePublicationCounterExhausted(
-                SurfacePublicationCounter::CoordinateRevision,
-            )
-        ))
-    ));
+    expect_counter_exhaustion(result, SurfacePublicationCounter::CoordinateRevision);
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::SurfacePublicationCounterExhausted(
