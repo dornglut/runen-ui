@@ -122,17 +122,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Result<crate::SurfacePublication, PublishSurfaceError> {
         let admission = self.admit_surface_publication()?;
         let instant = self.now();
-        let publication = match self
-            .surface_publication
-            .publish(&mut self.tree, context, admission.surface)
-        {
-            Ok(publication) => publication,
-            Err(SurfacePlanningError::SemanticIntegrity) => {
-                let reason = RuntimeTerminalReason::Poisoned;
-                self.enter_terminal(reason, 0);
-                return Err(PublishSurfaceError::Terminal(reason));
-            }
-        };
+        let publication =
+            match self
+                .surface_publication
+                .publish(&mut self.tree, context, admission.surface)
+            {
+                Ok(publication) => publication,
+                Err(SurfacePlanningError::SemanticIntegrity) => {
+                    let reason = RuntimeTerminalReason::Poisoned;
+                    self.enter_terminal(reason, 0);
+                    return Err(PublishSurfaceError::Terminal(reason));
+                }
+            };
         let redraw = self.take_redraw_request_at(instant);
         let publication_reservation = mem::replace(
             &mut self.surface_trace.publication_reservation,
