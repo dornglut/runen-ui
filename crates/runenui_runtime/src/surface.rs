@@ -217,7 +217,7 @@ impl LayoutOverflow {
 
     /// Returns whether either axis overflowed.
     #[must_use]
-    pub const fn any(&self) -> bool {
+    pub const fn any(self) -> bool {
         self.width || self.height
     }
 }
@@ -523,11 +523,6 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
         report.record(SurfacePhase::Paint);
         completed.insert(DirtyPhases::PAINT);
     }
-    if diagnostics_dirty {
-        current.diagnostics = resolve_diagnostics(&current.topology, &capability_plan);
-        report.record(SurfacePhase::Diagnostics);
-        completed.insert(DirtyPhases::DIAGNOSTICS);
-    }
 
     let finalized_semantics = semantic_capability_plan
         .map(|plan| tree.finalize_semantic_publication(plan))
@@ -536,6 +531,11 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
         current.semantics = resolve_semantics(finalized);
         report.record(SurfacePhase::Semantics);
         completed.insert(DirtyPhases::SEMANTICS);
+    }
+    if diagnostics_dirty {
+        current.diagnostics = resolve_diagnostics(&current.topology, &capability_plan);
+        report.record(SurfacePhase::Diagnostics);
+        completed.insert(DirtyPhases::DIAGNOSTICS);
     }
 
     if report.executed().is_empty() {
@@ -586,11 +586,11 @@ fn rebuild_structural_surface<Action>(
     report.record(SurfacePhase::HitTesting);
     let paint = resolve_paint(&topology, &capability_plan);
     report.record(SurfacePhase::Paint);
-    let diagnostics = resolve_diagnostics(&topology, &capability_plan);
-    report.record(SurfacePhase::Diagnostics);
     let finalized_semantics = tree.finalize_semantic_publication(semantic_capability_plan)?;
     let semantics = resolve_semantics(&finalized_semantics);
     report.record(SurfacePhase::Semantics);
+    let diagnostics = resolve_diagnostics(&topology, &capability_plan);
+    report.record(SurfacePhase::Diagnostics);
 
     let placeholder = SurfacePublication::new(
         SurfaceFrame::new(
