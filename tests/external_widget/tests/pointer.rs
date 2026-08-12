@@ -152,11 +152,13 @@ fn downstream_widget_uses_public_pointer_capture_boundary_and_wheel_protocol() {
     });
     settle(&mut runtime);
     let tokens = StyleTokens::new();
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
-        &tokens,
-        LogicalSize::try_new(64.0, 64.0)
-            .unwrap_or_else(|_| unreachable!("the surface size is finite")),
-    ));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &tokens,
+            LogicalSize::try_new(64.0, 64.0)
+                .unwrap_or_else(|_| unreachable!("the surface size is finite")),
+        ))
+        .unwrap_or_else(|_| unreachable!("pointer conformance publication is admitted"));
     let context = publication.input_context().clone();
     let bounds = publication.frame().nodes()[0].bounds();
     let inside = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0)
