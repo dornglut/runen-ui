@@ -274,42 +274,12 @@ impl<Action> MountedTree<Action> {
             SemanticEvaluation::Ready {
                 contribution,
                 ordered_keys,
-            } => {
-                let current = self
-                    .node(id)
-                    .map(|node| node.semantic_bindings.clone())
-                    .unwrap_or_default();
-                let runtime = self.runtime.clone();
-                match self.semantic_store.reconcile_owner(
-                    &runtime,
-                    id,
-                    &current,
-                    &ordered_keys,
-                    public_slot_limit,
-                ) {
-                    Ok(bindings) => {
-                        let node = self
-                            .node_mut(id)
-                            .unwrap_or_else(|| unreachable!("semantic owner remains live"));
-                        node.semantic_bindings = bindings;
-                        node.caches.semantics = CachedSemanticContribution::Ready(contribution);
-                    }
-                    Err(SemanticReconcileError::IdentityExhausted) => {
-                        self.withdraw_semantic_owner(
-                            id,
-                            CachedSemanticContribution::IdentityExhausted,
-                            false,
-                        );
-                    }
-                    Err(SemanticReconcileError::Integrity(_)) => {
-                        self.withdraw_semantic_owner(
-                            id,
-                            CachedSemanticContribution::IndexIntegrityFailure,
-                            true,
-                        );
-                    }
-                }
-            }
+            } => self.commit_semantic_evaluation(
+                id,
+                contribution,
+                &ordered_keys,
+                public_slot_limit,
+            ),
             SemanticEvaluation::Invalid(error) => {
                 self.withdraw_semantic_owner(id, CachedSemanticContribution::Invalid(error), false);
             }
@@ -323,34 +293,124 @@ impl<Action> MountedTree<Action> {
         }
     }
 
+    fn commit_semantic_evaluation(
+        &mut self,
+        id: &MountedNodeId,
+        contribution: SemanticContribution,
+        ordered_keys: &[SemanticKey],
+        public_slot_limit: u64,
+    ) {
+        let current = self
+            .node(id)
+            .map(|node| node.semantic_bindings.clone())
+            .unwrap_or_default();
+        let runtime = self.runtime.clone();
+        let mut transaction = self.semantic_store.transaction();
+        let owner_plan = match transaction.stage_owner(
+            &runtime,
+            id,
+            &current,
+            ordered_keys,
+            public_slot_limit,
+        ) {
+            Ok(owner_plan) => owner_plan,
+            Err(SemanticReconcileError::IdentityExhausted) => {
+                self.withdraw_semantic_owner(
+                    id,
+                    CachedSemanticContribution::IdentityExhausted,
+                    false,
+                );
+                return;
+            }
+            Err(SemanticReconcileError::Integrity(_)) => {
+                self.withdraw_semantic_owner(
+                    id,
+                    CachedSemanticContribution::IndexIntegrityFailure,
+                    true,
+                );
+                return;
+            }
+        };
+        let plan = match transaction.finalize_fail_closed(&runtime) {
+            Ok(plan) => plan,
+            Err(SemanticReconcileError::IdentityExhausted) => {
+                self.withdraw_semantic_owner(
+                    id,
+                    CachedSemanticContribution::IdentityExhausted,
+                    false,
+                );
+                return;
+            }
+            Err(SemanticReconcileError::Integrity(_)) => {
+                self.withdraw_semantic_owner(
+                    id,
+                    CachedSemanticContribution::IndexIntegrityFailure,
+                    true,
+                );
+                return;
+            }
+        };
+        let identity_exhausted = plan.identity_exhausted(owner_plan);
+        let bindings = plan.bindings(owner_plan).to_vec();
+        plan.commit();
+
+        let node = self
+            .node_mut(id)
+            .unwrap_or_else(|| unreachable!("semantic owner remains live"));
+        node.semantic_bindings = bindings;
+        node.caches.semantics = if identity_exhausted {
+            CachedSemanticContribution::IdentityExhausted
+        } else {
+            CachedSemanticContribution::Ready(contribution)
+        };
+    }
+
     fn withdraw_semantic_owner(
         &mut self,
         id: &MountedNodeId,
         cache: CachedSemanticContribution,
         mark_integrity_failed: bool,
     ) {
-        let bindings = {
-            let node = self
-                .node_mut(id)
-                .unwrap_or_else(|| unreachable!("semantic owner remains live"));
-            if mark_integrity_failed {
-                node.integrity_failed = true;
-            }
-            node.caches.semantics = cache;
-            core::mem::take(&mut node.semantic_bindings)
-        };
         let runtime = self.runtime.clone();
-        if self
-            .semantic_store
-            .revoke_owner(&runtime, id, &bindings)
-            .is_err()
-        {
-            let node = self
-                .node_mut(id)
-                .unwrap_or_else(|| unreachable!("semantic owner remains live"));
+        let planned_purge_succeeded = {
+            let mut transaction = self.semantic_store.transaction();
+            match transaction.stage_owner_purge(id, u64::from(u32::MAX) + 1) {
+                Ok(owner_plan) => match transaction.finalize_fail_closed(&runtime) {
+                    Ok(plan) => {
+                        debug_assert!(plan.bindings(owner_plan).is_empty());
+                        plan.commit();
+                        true
+                    }
+                    Err(_) => false,
+                },
+                Err(_) => false,
+            }
+        };
+
+        let purge_failed = if planned_purge_succeeded {
+            false
+        } else {
+            let bindings = self
+                .node(id)
+                .map(|node| node.semantic_bindings.clone())
+                .unwrap_or_default();
+            self.semantic_store
+                .revoke_owner(&runtime, id, &bindings)
+                .is_err()
+        };
+
+        let node = self
+            .node_mut(id)
+            .unwrap_or_else(|| unreachable!("semantic owner remains live"));
+        node.semantic_bindings.clear();
+        if mark_integrity_failed || purge_failed {
             node.integrity_failed = true;
-            node.caches.semantics = CachedSemanticContribution::IndexIntegrityFailure;
         }
+        node.caches.semantics = if purge_failed {
+            CachedSemanticContribution::IndexIntegrityFailure
+        } else {
+            cache
+        };
     }
 
     pub(crate) fn ensure_diagnostics_capability(&mut self, id: &MountedNodeId) {
