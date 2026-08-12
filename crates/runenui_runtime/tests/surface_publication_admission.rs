@@ -85,9 +85,9 @@ fn expect_counter_exhaustion(
     };
     assert_eq!(
         error,
-        PublishSurfaceError::Terminal(
-            RuntimeTerminalReason::SurfacePublicationCounterExhausted(expected),
-        )
+        PublishSurfaceError::Terminal(RuntimeTerminalReason::SurfacePublicationCounterExhausted(
+            expected,
+        ))
     );
 }
 
