@@ -1,13 +1,18 @@
 use runenui_core::{
-    __runtime::WidgetBridgeError, SemanticContribution, SemanticContributionContext,
-    SemanticContributionError, SemanticKey, WidgetActivation, WidgetActivationContext,
-    WidgetInvalidation, WidgetTextInput,
+    __runtime::WidgetBridgeError, WidgetActivation, WidgetActivationContext, WidgetInvalidation,
+    WidgetTextInput,
+};
+#[cfg(test)]
+use runenui_core::{
+    SemanticContribution, SemanticContributionContext, SemanticContributionError, SemanticKey,
 };
 
 use super::{
-    CachedCapability, CachedSemanticContribution, MountedNodeId, apply_invalidation,
-    node::state_is_corrupted, semantic::SemanticReconcileError, tree::MountedTree,
+    CachedCapability, MountedNodeId, apply_invalidation, node::state_is_corrupted,
+    tree::MountedTree,
 };
+#[cfg(test)]
+use super::{CachedSemanticContribution, semantic::SemanticReconcileError};
 
 #[allow(
     clippy::struct_excessive_bools,
@@ -22,6 +27,7 @@ pub(crate) struct MountedActivationOutput<Action> {
     pub(crate) remaining_outputs: usize,
 }
 
+#[cfg(test)]
 enum SemanticEvaluation {
     Ready {
         contribution: SemanticContribution,
@@ -183,6 +189,7 @@ impl<Action> MountedTree<Action> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn ensure_semantics_capability(&mut self, id: &MountedNodeId) {
         self.ensure_semantics_capability_with_public_slot_limit(id, u64::from(u32::MAX) + 1);
     }
@@ -196,6 +203,7 @@ impl<Action> MountedTree<Action> {
         self.ensure_semantics_capability_with_public_slot_limit(id, public_slot_limit);
     }
 
+    #[cfg(test)]
     fn ensure_semantics_capability_with_public_slot_limit(
         &mut self,
         id: &MountedNodeId,
@@ -249,6 +257,7 @@ impl<Action> MountedTree<Action> {
         }
     }
 
+    #[cfg(test)]
     fn commit_semantic_evaluation(
         &mut self,
         id: &MountedNodeId,
@@ -321,6 +330,7 @@ impl<Action> MountedTree<Action> {
         };
     }
 
+    #[cfg(test)]
     fn withdraw_semantic_owner(
         &mut self,
         id: &MountedNodeId,
@@ -356,6 +366,7 @@ impl<Action> MountedTree<Action> {
         };
     }
 
+    #[cfg(test)]
     fn try_commit_semantic_owner_purge(
         &mut self,
         id: &MountedNodeId,

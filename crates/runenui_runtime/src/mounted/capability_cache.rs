@@ -31,22 +31,6 @@ pub(crate) enum CachedSemanticContribution {
     StatePayloadMismatch,
 }
 
-impl CachedSemanticContribution {
-    pub(crate) fn ready(&self) -> Option<SemanticContribution> {
-        match self {
-            Self::Ready(value) => Some(value.clone()),
-            Self::Invalid(error) => {
-                let _ = error;
-                None
-            }
-            Self::Unresolved
-            | Self::IdentityExhausted
-            | Self::IndexIntegrityFailure
-            | Self::StatePayloadMismatch => None,
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 pub(crate) struct CapabilityCaches {
     pub(crate) activation: CachedCapability<WidgetActivation>,
