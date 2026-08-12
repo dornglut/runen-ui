@@ -70,10 +70,10 @@ pub(in crate::runtime) use lifecycle::revoke_generation_authority;
 pub(crate) use model::CollectedRoutedOutput;
 pub(in crate::runtime) use model::{ActionCommitError, MutationPhase};
 pub use model::{
-    HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
-    ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
-    SubscriptionDiagnostic, SubscriptionOwnerKind, SurfacePublicationCounter, TimerFiringOutcome,
-    TimerStartOutcome,
+    HostRequestCancelError, HostResponseError, PublishSurfaceError, ReconciliationDiagnostic,
+    ReconciliationGeneration, ReconciliationReport, RuntimeError, RuntimeStatus,
+    RuntimeTerminalReason, ShutdownReport, SubscriptionDiagnostic, SubscriptionOwnerKind,
+    SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
 };
 use pointer::PointerRegistry;
 pub(crate) use routed::PointerDispatchFacts;
