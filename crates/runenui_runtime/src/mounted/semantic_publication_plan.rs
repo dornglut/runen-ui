@@ -4,7 +4,7 @@ use runenui_core::{
 
 use super::{
     CachedCapability, CachedSemanticContribution, MountedNodeId, MountedTree,
-    node::state_is_corrupted,
+    node::{MountedNode, state_is_corrupted},
 };
 
 #[derive(Clone, Debug)]
@@ -21,6 +21,50 @@ pub(super) struct StagedSemanticOwnerCapabilities {
 #[derive(Clone, Debug)]
 pub(super) struct SemanticCapabilityPlan {
     pub(super) owners: Vec<StagedSemanticOwnerCapabilities>,
+}
+
+struct StagedSemanticCapability {
+    contribution: SemanticContribution,
+    ordered_keys: Vec<SemanticKey>,
+    cache: CachedSemanticContribution,
+    integrity_failed: bool,
+}
+
+struct StagedActivationCapability {
+    activation: WidgetActivation,
+    cache: CachedCapability<WidgetActivation>,
+    integrity_failed: bool,
+}
+
+impl StagedSemanticCapability {
+    fn ready(
+        contribution: SemanticContribution,
+        context: SemanticContributionContext,
+    ) -> Self {
+        contribution.validate(context).map_or_else(
+            |error| Self {
+                contribution: SemanticContribution::empty(),
+                ordered_keys: Vec::new(),
+                cache: CachedSemanticContribution::Invalid(error),
+                integrity_failed: false,
+            },
+            |validation| Self {
+                ordered_keys: validation.ordered_keys().to_vec(),
+                cache: CachedSemanticContribution::Ready(contribution.clone()),
+                contribution,
+                integrity_failed: false,
+            },
+        )
+    }
+
+    fn withdrawn(cache: CachedSemanticContribution, integrity_failed: bool) -> Self {
+        Self {
+            contribution: SemanticContribution::empty(),
+            ordered_keys: Vec::new(),
+            cache,
+            integrity_failed,
+        }
+    }
 }
 
 impl<Action> MountedTree<Action> {
@@ -48,129 +92,109 @@ impl<Action> MountedTree<Action> {
     ) -> Option<StagedSemanticOwnerCapabilities> {
         let node = self.node(owner)?;
         if state_is_corrupted(node) {
-            return Some(StagedSemanticOwnerCapabilities {
-                owner: owner.clone(),
-                contribution: SemanticContribution::empty(),
-                ordered_keys: Vec::new(),
-                activation: WidgetActivation::disabled(),
-                semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
-                activation_cache: CachedCapability::StatePayloadMismatch,
-                mark_integrity_failed: true,
-            });
+            return Some(integrity_withdrawal(owner));
         }
 
-        let direct_mounted_children = node.children.len();
-        let context = SemanticContributionContext::__runtime_new(direct_mounted_children);
-        let (contribution, ordered_keys, semantic_cache, mut mark_integrity_failed) =
-            match &node.caches.semantics {
-                CachedSemanticContribution::Ready(contribution) => {
-                    match contribution.validate(context) {
-                        Ok(validation) => (
-                            contribution.clone(),
-                            validation.ordered_keys().to_vec(),
-                            CachedSemanticContribution::Ready(contribution.clone()),
-                            false,
-                        ),
-                        Err(error) => (
-                            SemanticContribution::empty(),
-                            Vec::new(),
-                            CachedSemanticContribution::Invalid(error),
-                            false,
-                        ),
-                    }
-                }
-                CachedSemanticContribution::Unresolved => {
-                    match node.widget.semantics(&node.state, context) {
-                        Ok(contribution) => match contribution.validate(context) {
-                            Ok(validation) => (
-                                contribution.clone(),
-                                validation.ordered_keys().to_vec(),
-                                CachedSemanticContribution::Ready(contribution),
-                                false,
-                            ),
-                            Err(error) => (
-                                SemanticContribution::empty(),
-                                Vec::new(),
-                                CachedSemanticContribution::Invalid(error),
-                                false,
-                            ),
-                        },
-                        Err(_) => (
-                            SemanticContribution::empty(),
-                            Vec::new(),
-                            CachedSemanticContribution::StatePayloadMismatch,
-                            true,
-                        ),
-                    }
-                }
-                CachedSemanticContribution::Invalid(error) => (
-                    SemanticContribution::empty(),
-                    Vec::new(),
-                    CachedSemanticContribution::Invalid(error.clone()),
-                    false,
-                ),
-                CachedSemanticContribution::IdentityExhausted => (
-                    SemanticContribution::empty(),
-                    Vec::new(),
-                    CachedSemanticContribution::IdentityExhausted,
-                    false,
-                ),
-                CachedSemanticContribution::IndexIntegrityFailure => (
-                    SemanticContribution::empty(),
-                    Vec::new(),
-                    CachedSemanticContribution::IndexIntegrityFailure,
-                    true,
-                ),
-                CachedSemanticContribution::StatePayloadMismatch => (
-                    SemanticContribution::empty(),
-                    Vec::new(),
-                    CachedSemanticContribution::StatePayloadMismatch,
-                    true,
-                ),
-            };
-
-        let (activation, activation_cache) = match &node.caches.activation {
-            CachedCapability::Ready(value) => (*value, CachedCapability::Ready(*value)),
-            CachedCapability::Unresolved => match node.widget.activation(&node.state) {
-                Ok(value) => (value, CachedCapability::Ready(value)),
-                Err(_) => {
-                    mark_integrity_failed = true;
-                    (
-                        WidgetActivation::disabled(),
-                        CachedCapability::StatePayloadMismatch,
-                    )
-                }
-            },
-            CachedCapability::StatePayloadMismatch => {
-                mark_integrity_failed = true;
-                (
-                    WidgetActivation::disabled(),
-                    CachedCapability::StatePayloadMismatch,
-                )
-            }
-        };
-
+        let semantic = stage_semantic_capability(node);
+        let activation = stage_activation_capability(node);
+        let mark_integrity_failed = semantic.integrity_failed || activation.integrity_failed;
         if mark_integrity_failed {
             return Some(StagedSemanticOwnerCapabilities {
                 owner: owner.clone(),
                 contribution: SemanticContribution::empty(),
                 ordered_keys: Vec::new(),
-                activation,
+                activation: activation.activation,
                 semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
-                activation_cache,
+                activation_cache: activation.cache,
                 mark_integrity_failed,
             });
         }
 
         Some(StagedSemanticOwnerCapabilities {
             owner: owner.clone(),
-            contribution,
-            ordered_keys,
-            activation,
-            semantic_cache,
-            activation_cache,
+            contribution: semantic.contribution,
+            ordered_keys: semantic.ordered_keys,
+            activation: activation.activation,
+            semantic_cache: semantic.cache,
+            activation_cache: activation.cache,
             mark_integrity_failed,
         })
+    }
+}
+
+fn integrity_withdrawal(owner: &MountedNodeId) -> StagedSemanticOwnerCapabilities {
+    StagedSemanticOwnerCapabilities {
+        owner: owner.clone(),
+        contribution: SemanticContribution::empty(),
+        ordered_keys: Vec::new(),
+        activation: WidgetActivation::disabled(),
+        semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
+        activation_cache: CachedCapability::StatePayloadMismatch,
+        mark_integrity_failed: true,
+    }
+}
+
+fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemanticCapability {
+    let context = SemanticContributionContext::__runtime_new(node.children.len());
+    match &node.caches.semantics {
+        CachedSemanticContribution::Ready(contribution) => {
+            StagedSemanticCapability::ready(contribution.clone(), context)
+        }
+        CachedSemanticContribution::Unresolved => node
+            .widget
+            .semantics(&node.state, context)
+            .map_or_else(
+                |_| {
+                    StagedSemanticCapability::withdrawn(
+                        CachedSemanticContribution::StatePayloadMismatch,
+                        true,
+                    )
+                },
+                |contribution| StagedSemanticCapability::ready(contribution, context),
+            ),
+        CachedSemanticContribution::Invalid(error) => StagedSemanticCapability::withdrawn(
+            CachedSemanticContribution::Invalid(error.clone()),
+            false,
+        ),
+        CachedSemanticContribution::IdentityExhausted => StagedSemanticCapability::withdrawn(
+            CachedSemanticContribution::IdentityExhausted,
+            false,
+        ),
+        CachedSemanticContribution::IndexIntegrityFailure => StagedSemanticCapability::withdrawn(
+            CachedSemanticContribution::IndexIntegrityFailure,
+            true,
+        ),
+        CachedSemanticContribution::StatePayloadMismatch => StagedSemanticCapability::withdrawn(
+            CachedSemanticContribution::StatePayloadMismatch,
+            true,
+        ),
+    }
+}
+
+fn stage_activation_capability<Action>(node: &MountedNode<Action>) -> StagedActivationCapability {
+    match &node.caches.activation {
+        CachedCapability::Ready(value) => StagedActivationCapability {
+            activation: *value,
+            cache: CachedCapability::Ready(*value),
+            integrity_failed: false,
+        },
+        CachedCapability::Unresolved => node.widget.activation(&node.state).map_or_else(
+            |_| StagedActivationCapability {
+                activation: WidgetActivation::disabled(),
+                cache: CachedCapability::StatePayloadMismatch,
+                integrity_failed: true,
+            },
+            |value| StagedActivationCapability {
+                activation: value,
+                cache: CachedCapability::Ready(value),
+                integrity_failed: false,
+            },
+        ),
+        CachedCapability::StatePayloadMismatch => StagedActivationCapability {
+            activation: WidgetActivation::disabled(),
+            cache: CachedCapability::StatePayloadMismatch,
+            integrity_failed: true,
+        },
     }
 }
 
