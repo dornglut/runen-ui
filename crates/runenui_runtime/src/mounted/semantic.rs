@@ -128,9 +128,9 @@ impl SemanticStore {
     /// Reconciles one owner through the same non-mutating planning path used by
     /// publication-wide semantic transactions.
     ///
-    /// This compatibility-internal helper preserves M5A behavior while M5B moves
-    /// capability evaluation and commit ownership to the surface publication
-    /// transaction. Planning itself never revokes or allocates a live semantic ID.
+    /// This test helper preserves the original M5A single-owner proofs while M5B
+    /// production code uses publication-wide fail-closed finalization.
+    #[cfg(test)]
     pub(super) fn reconcile_owner(
         &mut self,
         runtime: &RuntimeNamespace,
@@ -224,19 +224,19 @@ impl SemanticStore {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct SemanticOwnerPlan(usize);
 
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct SemanticFinalizeFailure {
     owner: SemanticOwnerPlan,
     error: SemanticReconcileError,
 }
 
+#[cfg(test)]
 impl SemanticFinalizeFailure {
-    #[cfg(test)]
     pub(super) const fn owner(&self) -> SemanticOwnerPlan {
         self.owner
     }
 
-    #[cfg(test)]
     pub(super) const fn error(&self) -> &SemanticReconcileError {
         &self.error
     }
@@ -249,10 +249,10 @@ impl SemanticFinalizeFailure {
 /// Borrow-scoped semantic identity planning transaction for one publication.
 ///
 /// Owner staging validates live bindings and records every removal in the virtual
-/// arena, but performs no allocation. [`Self::finalize`] therefore sees all
-/// publication-wide vacancies before assigning any new semantic IDs. The live
-/// [`SemanticStore`] stays untouched until the resulting [`SemanticStorePlan`] is
-/// committed.
+/// arena, but performs no allocation. [`Self::finalize_fail_closed`] therefore
+/// sees all publication-wide vacancies before assigning any new semantic IDs.
+/// The live [`SemanticStore`] stays untouched until the resulting
+/// [`SemanticStorePlan`] is committed.
 pub(super) struct SemanticStoreTransaction<'a> {
     store: &'a mut SemanticStore,
     planner: ArenaPlanner,
@@ -336,6 +336,7 @@ impl<'a> SemanticStoreTransaction<'a> {
         Ok(SemanticOwnerPlan(index))
     }
 
+    #[cfg(test)]
     pub(super) fn finalize(
         self,
         runtime: &RuntimeNamespace,
@@ -344,6 +345,7 @@ impl<'a> SemanticStoreTransaction<'a> {
             .map_err(SemanticFinalizeFailure::into_error)
     }
 
+    #[cfg(test)]
     pub(super) fn finalize_attributed(
         mut self,
         runtime: &RuntimeNamespace,
