@@ -67,10 +67,7 @@ impl ArenaPlanner {
                 .unwrap_or_else(|| unreachable!("planned reusable slot remains present"));
             debug_assert!(!slot.occupied, "planned reusable slot is vacant");
             debug_assert!(!slot.retired, "planned retired slot is never reusable");
-            let generation = slot
-                .generation
-                .checked_add(1)
-                .ok_or(ArenaCapacityError)?;
+            let generation = slot.generation.checked_add(1).ok_or(ArenaCapacityError)?;
             slot.generation = generation;
             slot.occupied = true;
             return Ok((index, generation));
