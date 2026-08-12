@@ -463,8 +463,26 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
         report.record(SurfacePhase::Style);
         completed.insert(DirtyPhases::STYLE);
     }
+
+    let mut capability_phases = DirtyPhases::default();
     if layout_dirty {
-        let resolved = ResolvedSurfaceTree::for_layout(tree, &current.topology, &current.styles);
+        capability_phases.insert(DirtyPhases::LAYOUT);
+    }
+    if paint_dirty {
+        capability_phases.insert(DirtyPhases::PAINT);
+    }
+    if diagnostics_dirty {
+        capability_phases.insert(DirtyPhases::DIAGNOSTICS);
+    }
+    let capability_plan = tree.plan_surface_publication_capabilities(capability_phases);
+
+    if layout_dirty {
+        let resolved = ResolvedSurfaceTree::for_layout(
+            tree,
+            &current.topology,
+            &current.styles,
+            &capability_plan,
+        );
         let (size, bounds, layout_report) = layout_resolved_surface(
             &resolved,
             context.root_constraints(),
@@ -487,7 +505,7 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
         completed.insert(DirtyPhases::HIT_TEST);
     }
     if paint_dirty {
-        current.paint = resolve_paint(tree, &current.topology);
+        current.paint = resolve_paint(&current.topology, &capability_plan);
         report.record(SurfacePhase::Paint);
         completed.insert(DirtyPhases::PAINT);
     }
@@ -497,7 +515,7 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
         completed.insert(DirtyPhases::SEMANTICS);
     }
     if diagnostics_dirty {
-        current.diagnostics = resolve_diagnostics(tree, &current.topology);
+        current.diagnostics = resolve_diagnostics(&current.topology, &capability_plan);
         report.record(SurfacePhase::Diagnostics);
         completed.insert(DirtyPhases::DIAGNOSTICS);
     }
@@ -510,6 +528,7 @@ pub(crate) fn publish_mounted_surface_cached<Action>(
     }
     current.context_key = next_context;
     current.publication = compose_publication(&current);
+    tree.commit_surface_publication_capabilities(capability_plan);
     tree.finish_publication(completed);
     let publication = current.publication.clone();
     *cache = Some(current);
@@ -527,7 +546,8 @@ fn rebuild_structural_surface<Action>(
     report.record(SurfacePhase::Tree);
     let styles = resolve_styles(tree, &topology, context.style_tokens());
     report.record(SurfacePhase::Style);
-    let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles);
+    let capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::ALL);
+    let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles, &capability_plan);
     let (size, bounds, layout_report) = layout_resolved_surface(
         &resolved,
         context.root_constraints(),
@@ -541,11 +561,11 @@ fn rebuild_structural_surface<Action>(
     report.record(SurfacePhase::Layout);
     let hit_test = build_hit_test_facts(&layout);
     report.record(SurfacePhase::HitTesting);
-    let paint = resolve_paint(tree, &topology);
+    let paint = resolve_paint(&topology, &capability_plan);
     report.record(SurfacePhase::Paint);
     let semantics = resolve_semantics(tree, &topology);
     report.record(SurfacePhase::Semantics);
-    let diagnostics = resolve_diagnostics(tree, &topology);
+    let diagnostics = resolve_diagnostics(&topology, &capability_plan);
     report.record(SurfacePhase::Diagnostics);
 
     let placeholder = SurfacePublication::new(
@@ -568,6 +588,7 @@ fn rebuild_structural_surface<Action>(
         publication: placeholder,
     };
     rebuilt.publication = compose_publication(&rebuilt);
+    tree.commit_surface_publication_capabilities(capability_plan);
     tree.finish_publication(DirtyPhases::ALL);
     let publication = rebuilt.publication.clone();
     *cache = Some(rebuilt);
