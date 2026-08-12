@@ -120,7 +120,8 @@ impl SemanticStore {
         SemanticStoreTransaction {
             store: self,
             planner,
-            operations: Vec::new(),
+            removals: Vec::new(),
+            owners: Vec::new(),
         }
     }
 
@@ -139,9 +140,10 @@ impl SemanticStore {
         public_slot_limit: u64,
     ) -> Result<Vec<SemanticBinding>, SemanticReconcileError> {
         let mut transaction = self.transaction();
-        let bindings =
-            transaction.plan_owner(runtime, owner, current, ordered_keys, public_slot_limit)?;
-        transaction.commit();
+        let owner_plan = transaction.stage_owner(owner, current, ordered_keys, public_slot_limit)?;
+        let plan = transaction.finalize(runtime)?;
+        let bindings = plan.bindings(owner_plan).to_vec();
+        plan.commit();
         Ok(bindings)
     }
 
@@ -218,27 +220,31 @@ impl SemanticStore {
     }
 }
 
-/// Borrow-scoped, publication-wide semantic identity transaction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct SemanticOwnerPlan(usize);
+
+/// Borrow-scoped semantic identity planning transaction for one publication.
 ///
-/// Planning mutates only [`ArenaPlanner`]. The live [`SemanticStore`] stays
-/// untouched until [`Self::commit`], and the mutable borrow held for the whole
-/// transaction prevents any intervening semantic-store mutation between plan and
-/// commit.
+/// Owner staging validates live bindings and records every removal in the virtual
+/// arena, but performs no allocation. [`Self::finalize`] therefore sees all
+/// publication-wide vacancies before assigning any new semantic IDs. The live
+/// [`SemanticStore`] stays untouched until the resulting [`SemanticStorePlan`] is
+/// committed.
 pub(super) struct SemanticStoreTransaction<'a> {
     store: &'a mut SemanticStore,
     planner: ArenaPlanner,
-    operations: Vec<SemanticStoreOperation>,
+    removals: Vec<SemanticRemoval>,
+    owners: Vec<StagedSemanticOwner>,
 }
 
-impl SemanticStoreTransaction<'_> {
-    pub(super) fn plan_owner(
+impl<'a> SemanticStoreTransaction<'a> {
+    pub(super) fn stage_owner(
         &mut self,
-        runtime: &RuntimeNamespace,
         owner: &MountedNodeId,
         current: &[SemanticBinding],
         ordered_keys: &[SemanticKey],
         public_slot_limit: u64,
-    ) -> Result<Vec<SemanticBinding>, SemanticReconcileError> {
+    ) -> Result<SemanticOwnerPlan, SemanticReconcileError> {
         let mut requested = BTreeSet::new();
         for key in ordered_keys {
             if !requested.insert(key.clone()) {
@@ -248,97 +254,117 @@ impl SemanticStoreTransaction<'_> {
             }
         }
 
+        let runtime = self.store_runtime_namespace(current);
         let mut existing = self.store.validate_current(runtime, owner, current)?;
-        let mut desired = Vec::with_capacity(ordered_keys.len());
         let mut entries = Vec::with_capacity(ordered_keys.len());
         for key in ordered_keys {
             if let Some(binding) = existing.remove(key) {
-                desired.push(binding.binding.clone());
-                entries.push(OwnerPlanEntry::Existing);
+                entries.push(StagedSemanticEntry::Existing(binding.binding));
             } else {
-                entries.push(OwnerPlanEntry::New(key.clone()));
+                entries.push(StagedSemanticEntry::New(key.clone()));
             }
         }
 
         for binding in existing.into_values() {
             self.planner.remove(binding.slot, binding.generation)?;
-            self.operations.push(SemanticStoreOperation::Remove {
+            self.removals.push(SemanticRemoval {
                 slot: binding.slot,
                 generation: binding.generation,
             });
         }
 
-        let existing_count = desired.len();
-        let mut existing_index = 0usize;
-        let mut final_bindings = Vec::with_capacity(entries.len());
-        for entry in entries {
-            match entry {
-                OwnerPlanEntry::Existing => {
-                    let binding = desired.get(existing_index).cloned().ok_or(
-                        SemanticReconcileError::Integrity(
-                            SemanticStoreIntegrityError::PlanningStateMismatch,
-                        ),
-                    )?;
-                    existing_index =
-                        existing_index
-                            .checked_add(1)
-                            .ok_or(SemanticReconcileError::Integrity(
-                                SemanticStoreIntegrityError::PlanningStateMismatch,
-                            ))?;
-                    final_bindings.push(binding);
-                }
-                OwnerPlanEntry::New(key) => {
-                    let (slot, generation) = self.planner.allocate(public_slot_limit)?;
-                    let public_slot = u32::try_from(slot)
-                        .map_err(|_| SemanticReconcileError::IdentityExhausted)?;
-                    let binding = SemanticBinding {
-                        key: key.clone(),
-                        id: runtime.__runtime_semantic_id(public_slot, generation),
-                    };
-                    self.operations.push(SemanticStoreOperation::Insert {
-                        slot,
-                        generation,
-                        public_slot_limit,
-                        record: SemanticRecord {
-                            owner: owner.clone(),
-                            key,
-                        },
-                    });
-                    final_bindings.push(binding);
+        let index = self.owners.len();
+        self.owners.push(StagedSemanticOwner {
+            owner: owner.clone(),
+            entries,
+            public_slot_limit,
+        });
+        Ok(SemanticOwnerPlan(index))
+    }
+
+    fn store_runtime_namespace<'b>(&self, current: &'b [SemanticBinding]) -> &'b RuntimeNamespace {
+        let _ = current;
+        unreachable!("runtime namespace must be provided explicitly")
+    }
+
+    pub(super) fn finalize(
+        mut self,
+        runtime: &RuntimeNamespace,
+    ) -> Result<SemanticStorePlan<'a>, SemanticReconcileError> {
+        let mut inserts = Vec::new();
+        let mut owner_bindings = Vec::with_capacity(self.owners.len());
+        for staged in self.owners {
+            let mut bindings = Vec::with_capacity(staged.entries.len());
+            for entry in staged.entries {
+                match entry {
+                    StagedSemanticEntry::Existing(binding) => bindings.push(binding),
+                    StagedSemanticEntry::New(key) => {
+                        let (slot, generation) = self.planner.allocate(staged.public_slot_limit)?;
+                        let public_slot = u32::try_from(slot)
+                            .map_err(|_| SemanticReconcileError::IdentityExhausted)?;
+                        let binding = SemanticBinding {
+                            key: key.clone(),
+                            id: runtime.__runtime_semantic_id(public_slot, generation),
+                        };
+                        inserts.push(SemanticInsert {
+                            slot,
+                            generation,
+                            public_slot_limit: staged.public_slot_limit,
+                            record: SemanticRecord {
+                                owner: staged.owner.clone(),
+                                key,
+                            },
+                        });
+                        bindings.push(binding);
+                    }
                 }
             }
+            owner_bindings.push(bindings);
         }
-        debug_assert_eq!(existing_index, existing_count);
-        Ok(final_bindings)
+        Ok(SemanticStorePlan {
+            store: self.store,
+            removals: self.removals,
+            inserts,
+            owner_bindings,
+        })
+    }
+}
+
+/// Fully preflighted semantic identity transition. Dropping this value performs
+/// no live mutation; [`Self::commit`] is the sole mutation boundary.
+pub(super) struct SemanticStorePlan<'a> {
+    store: &'a mut SemanticStore,
+    removals: Vec<SemanticRemoval>,
+    inserts: Vec<SemanticInsert>,
+    owner_bindings: Vec<Vec<SemanticBinding>>,
+}
+
+impl SemanticStorePlan<'_> {
+    pub(super) fn bindings(&self, owner: SemanticOwnerPlan) -> &[SemanticBinding] {
+        self.owner_bindings
+            .get(owner.0)
+            .map(Vec::as_slice)
+            .unwrap_or_else(|| unreachable!("semantic owner plan belongs to this transaction"))
     }
 
     pub(super) fn commit(self) {
-        for operation in self.operations {
-            match operation {
-                SemanticStoreOperation::Remove { slot, generation } => {
-                    let removed = self.store.arena.remove(slot, generation);
-                    assert!(
-                        removed.is_some(),
-                        "planned semantic removal must match the borrow-protected live arena"
-                    );
-                }
-                SemanticStoreOperation::Insert {
-                    slot,
-                    generation,
-                    public_slot_limit,
-                    record,
-                } => {
-                    let actual = self
-                        .store
-                        .arena
-                        .insert_with_public_slot_limit(public_slot_limit, move |_, _| record);
-                    assert_eq!(
-                        actual,
-                        Ok((slot, generation)),
-                        "planned semantic allocation must match the borrow-protected live arena"
-                    );
-                }
-            }
+        for removal in self.removals {
+            let removed = self.store.arena.remove(removal.slot, removal.generation);
+            assert!(
+                removed.is_some(),
+                "planned semantic removal must match the borrow-protected live arena"
+            );
+        }
+        for insert in self.inserts {
+            let actual = self.store.arena.insert_with_public_slot_limit(
+                insert.public_slot_limit,
+                move |_, _| insert.record,
+            );
+            assert_eq!(
+                actual,
+                Ok((insert.slot, insert.generation)),
+                "planned semantic allocation must match the borrow-protected live arena"
+            );
         }
     }
 }
@@ -349,22 +375,27 @@ struct ValidatedBinding {
     generation: u64,
 }
 
-enum OwnerPlanEntry {
-    Existing,
+struct StagedSemanticOwner {
+    owner: MountedNodeId,
+    entries: Vec<StagedSemanticEntry>,
+    public_slot_limit: u64,
+}
+
+enum StagedSemanticEntry {
+    Existing(SemanticBinding),
     New(SemanticKey),
 }
 
-enum SemanticStoreOperation {
-    Remove {
-        slot: usize,
-        generation: u64,
-    },
-    Insert {
-        slot: usize,
-        generation: u64,
-        public_slot_limit: u64,
-        record: SemanticRecord,
-    },
+struct SemanticRemoval {
+    slot: usize,
+    generation: u64,
+}
+
+struct SemanticInsert {
+    slot: usize,
+    generation: u64,
+    public_slot_limit: u64,
+    record: SemanticRecord,
 }
 
 #[cfg(test)]
@@ -569,14 +600,19 @@ mod tests {
 
         let (first, second) = {
             let mut transaction = store.transaction();
-            let first = transaction
-                .plan_owner(&runtime, &first_owner, &[], &[SemanticKey::PRIMARY], 2)
-                .unwrap_or_else(|_| unreachable!("first owner fits"));
-            let second = transaction
-                .plan_owner(&runtime, &second_owner, &[], &[SemanticKey::PRIMARY], 2)
-                .unwrap_or_else(|_| unreachable!("second owner fits"));
+            let first_plan = transaction
+                .stage_owner(&first_owner, &[], &[SemanticKey::PRIMARY], 2)
+                .unwrap_or_else(|_| unreachable!("first owner stages"));
+            let second_plan = transaction
+                .stage_owner(&second_owner, &[], &[SemanticKey::PRIMARY], 2)
+                .unwrap_or_else(|_| unreachable!("second owner stages"));
+            let plan = transaction
+                .finalize(&runtime)
+                .unwrap_or_else(|_| unreachable!("both owners fit"));
+            let first = plan.bindings(first_plan).to_vec();
+            let second = plan.bindings(second_plan).to_vec();
             assert_ne!(first[0].id(), second[0].id());
-            transaction.commit();
+            plan.commit();
             (first, second)
         };
 
@@ -592,22 +628,64 @@ mod tests {
     }
 
     #[test]
-    fn failed_later_plan_drops_the_whole_transaction_without_mutation() {
+    fn later_owner_release_is_visible_before_any_new_id_allocation() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let first_owner = runtime.__runtime_mounted_id(1, 1);
+        let second_owner = runtime.__runtime_mounted_id(2, 1);
+        let mut store = SemanticStore::new();
+        let second_current = store
+            .reconcile_owner(&runtime, &second_owner, &[], &[SemanticKey::PRIMARY], 1)
+            .unwrap_or_else(|_| unreachable!("initial owner fits"));
+        let old_id = second_current[0].id().clone();
+
+        let first = {
+            let mut transaction = store.transaction();
+            let first_plan = transaction
+                .stage_owner(&first_owner, &[], &[SemanticKey::PRIMARY], 1)
+                .unwrap_or_else(|_| unreachable!("new owner stages before later removal"));
+            transaction
+                .stage_owner(&second_owner, &second_current, &[], 1)
+                .unwrap_or_else(|_| unreachable!("old owner removal stages"));
+            let plan = transaction
+                .finalize(&runtime)
+                .unwrap_or_else(|_| unreachable!("later vacancy satisfies earlier allocation"));
+            let first = plan.bindings(first_plan).to_vec();
+            plan.commit();
+            first
+        };
+
+        let old_parts = runtime
+            .__runtime_semantic_parts(&old_id)
+            .unwrap_or_else(|| unreachable!("old id is local"));
+        let new_parts = runtime
+            .__runtime_semantic_parts(first[0].id())
+            .unwrap_or_else(|| unreachable!("new id is local"));
+        assert_eq!(old_parts.0, new_parts.0);
+        assert!(new_parts.1 > old_parts.1);
+        assert_eq!(store.live_count(), 1);
+    }
+
+    #[test]
+    fn failed_finalize_drops_the_whole_transaction_without_mutation() {
         let runtime = RuntimeNamespace::__runtime_new();
         let first_owner = runtime.__runtime_mounted_id(1, 1);
         let second_owner = runtime.__runtime_mounted_id(2, 1);
         let mut store = SemanticStore::new();
 
-        {
+        let result = {
             let mut transaction = store.transaction();
-            let first =
-                transaction.plan_owner(&runtime, &first_owner, &[], &[SemanticKey::PRIMARY], 1);
-            assert!(first.is_ok());
-            let second =
-                transaction.plan_owner(&runtime, &second_owner, &[], &[SemanticKey::PRIMARY], 1);
-            assert_eq!(second, Err(SemanticReconcileError::IdentityExhausted));
-        }
-
+            transaction
+                .stage_owner(&first_owner, &[], &[SemanticKey::PRIMARY], 1)
+                .unwrap_or_else(|_| unreachable!("first owner stages"));
+            transaction
+                .stage_owner(&second_owner, &[], &[SemanticKey::PRIMARY], 1)
+                .unwrap_or_else(|_| unreachable!("second owner stages"));
+            transaction.finalize(&runtime)
+        };
+        assert!(matches!(
+            result,
+            Err(SemanticReconcileError::IdentityExhausted)
+        ));
         assert_eq!(store.live_count(), 0);
     }
 }
