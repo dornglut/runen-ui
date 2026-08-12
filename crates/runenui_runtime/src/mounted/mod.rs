@@ -29,9 +29,7 @@ pub(crate) use reconcile::{PlannedInvalidation, PlannedLifetimeReason};
 pub(crate) use routing::RouteBuildError;
 pub use runenui_core::{MountedNodeId, SemanticNodeId};
 pub(crate) use semantic::SemanticReconcileError;
-pub(crate) use semantic_publication_plan::{
-    FinalizedSemanticPublication, SemanticMountedCommit,
-};
+pub(crate) use semantic_publication_plan::{FinalizedSemanticPublication, SemanticMountedCommit};
 pub(crate) use surface_publication_plan::SurfaceCapabilityPlan;
 pub use tree::AutomationMatchDiagnostic;
 pub(crate) use tree::{
