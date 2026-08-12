@@ -140,7 +140,13 @@ impl SemanticStore {
         public_slot_limit: u64,
     ) -> Result<Vec<SemanticBinding>, SemanticReconcileError> {
         let mut transaction = self.transaction();
-        let owner_plan = transaction.stage_owner(owner, current, ordered_keys, public_slot_limit)?;
+        let owner_plan = transaction.stage_owner(
+            runtime,
+            owner,
+            current,
+            ordered_keys,
+            public_slot_limit,
+        )?;
         let plan = transaction.finalize(runtime)?;
         let bindings = plan.bindings(owner_plan).to_vec();
         plan.commit();
@@ -240,6 +246,7 @@ pub(super) struct SemanticStoreTransaction<'a> {
 impl<'a> SemanticStoreTransaction<'a> {
     pub(super) fn stage_owner(
         &mut self,
+        runtime: &RuntimeNamespace,
         owner: &MountedNodeId,
         current: &[SemanticBinding],
         ordered_keys: &[SemanticKey],
@@ -254,7 +261,6 @@ impl<'a> SemanticStoreTransaction<'a> {
             }
         }
 
-        let runtime = self.store_runtime_namespace(current);
         let mut existing = self.store.validate_current(runtime, owner, current)?;
         let mut entries = Vec::with_capacity(ordered_keys.len());
         for key in ordered_keys {
@@ -280,11 +286,6 @@ impl<'a> SemanticStoreTransaction<'a> {
             public_slot_limit,
         });
         Ok(SemanticOwnerPlan(index))
-    }
-
-    fn store_runtime_namespace<'b>(&self, current: &'b [SemanticBinding]) -> &'b RuntimeNamespace {
-        let _ = current;
-        unreachable!("runtime namespace must be provided explicitly")
     }
 
     pub(super) fn finalize(
@@ -601,10 +602,10 @@ mod tests {
         let (first, second) = {
             let mut transaction = store.transaction();
             let first_plan = transaction
-                .stage_owner(&first_owner, &[], &[SemanticKey::PRIMARY], 2)
+                .stage_owner(&runtime, &first_owner, &[], &[SemanticKey::PRIMARY], 2)
                 .unwrap_or_else(|_| unreachable!("first owner stages"));
             let second_plan = transaction
-                .stage_owner(&second_owner, &[], &[SemanticKey::PRIMARY], 2)
+                .stage_owner(&runtime, &second_owner, &[], &[SemanticKey::PRIMARY], 2)
                 .unwrap_or_else(|_| unreachable!("second owner stages"));
             let plan = transaction
                 .finalize(&runtime)
@@ -641,10 +642,10 @@ mod tests {
         let first = {
             let mut transaction = store.transaction();
             let first_plan = transaction
-                .stage_owner(&first_owner, &[], &[SemanticKey::PRIMARY], 1)
+                .stage_owner(&runtime, &first_owner, &[], &[SemanticKey::PRIMARY], 1)
                 .unwrap_or_else(|_| unreachable!("new owner stages before later removal"));
             transaction
-                .stage_owner(&second_owner, &second_current, &[], 1)
+                .stage_owner(&runtime, &second_owner, &second_current, &[], 1)
                 .unwrap_or_else(|_| unreachable!("old owner removal stages"));
             let plan = transaction
                 .finalize(&runtime)
@@ -672,20 +673,20 @@ mod tests {
         let second_owner = runtime.__runtime_mounted_id(2, 1);
         let mut store = SemanticStore::new();
 
-        let result = {
+        let failed = {
             let mut transaction = store.transaction();
             transaction
-                .stage_owner(&first_owner, &[], &[SemanticKey::PRIMARY], 1)
+                .stage_owner(&runtime, &first_owner, &[], &[SemanticKey::PRIMARY], 1)
                 .unwrap_or_else(|_| unreachable!("first owner stages"));
             transaction
-                .stage_owner(&second_owner, &[], &[SemanticKey::PRIMARY], 1)
+                .stage_owner(&runtime, &second_owner, &[], &[SemanticKey::PRIMARY], 1)
                 .unwrap_or_else(|_| unreachable!("second owner stages"));
-            transaction.finalize(&runtime)
+            matches!(
+                transaction.finalize(&runtime),
+                Err(SemanticReconcileError::IdentityExhausted)
+            )
         };
-        assert!(matches!(
-            result,
-            Err(SemanticReconcileError::IdentityExhausted)
-        ));
+        assert!(failed);
         assert_eq!(store.live_count(), 0);
     }
 }
