@@ -217,7 +217,7 @@ impl LayoutOverflow {
 
     /// Returns whether either axis overflowed.
     #[must_use]
-    pub const fn any(self) -> bool {
+    pub const fn any(&self) -> bool {
         self.width || self.height
     }
 }
