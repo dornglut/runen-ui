@@ -100,6 +100,19 @@ pub enum RuntimeStatus {
     Closed,
 }
 
+/// Refusal from one explicit surface publication attempt.
+///
+/// `Full` is recoverable publication backpressure: the previous publication
+/// remains authoritative and redraw/dirty state stays pending for a later retry.
+/// Terminal failures expose the exact runtime reason that prevented publication.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PublishSurfaceError {
+    Full,
+    Closed,
+    Terminal(RuntimeTerminalReason),
+}
+
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TimerStartOutcome {
