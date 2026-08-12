@@ -140,13 +140,8 @@ impl SemanticStore {
         public_slot_limit: u64,
     ) -> Result<Vec<SemanticBinding>, SemanticReconcileError> {
         let mut transaction = self.transaction();
-        let owner_plan = transaction.stage_owner(
-            runtime,
-            owner,
-            current,
-            ordered_keys,
-            public_slot_limit,
-        )?;
+        let owner_plan =
+            transaction.stage_owner(runtime, owner, current, ordered_keys, public_slot_limit)?;
         let plan = transaction.finalize(runtime)?;
         let bindings = plan.bindings(owner_plan).to_vec();
         plan.commit();
@@ -357,10 +352,10 @@ impl SemanticStorePlan<'_> {
             );
         }
         for insert in self.inserts {
-            let actual = self.store.arena.insert_with_public_slot_limit(
-                insert.public_slot_limit,
-                move |_, _| insert.record,
-            );
+            let actual = self
+                .store
+                .arena
+                .insert_with_public_slot_limit(insert.public_slot_limit, move |_, _| insert.record);
             assert_eq!(
                 actual,
                 Ok((insert.slot, insert.generation)),
