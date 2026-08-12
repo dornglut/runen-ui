@@ -44,6 +44,16 @@ impl MutationPhase {
     }
 }
 
+/// Exact non-wrapping counter authority that can terminally block surface publication.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SurfacePublicationCounter {
+    RedrawRevision,
+    HitTestGeneration,
+    CoordinateRevision,
+    SemanticRevision,
+}
+
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum RuntimeTerminalReason {
@@ -52,6 +62,7 @@ pub enum RuntimeTerminalReason {
     ReconciliationGenerationExhausted,
     MountedIdentityExhausted,
     TraceSequenceExhausted,
+    SurfacePublicationCounterExhausted(SurfacePublicationCounter),
     Poisoned,
 }
 
@@ -67,6 +78,15 @@ impl fmt::Display for RuntimeTerminalReason {
                 formatter.write_str("mounted identity capacity exhausted")
             }
             Self::TraceSequenceExhausted => formatter.write_str("trace sequence exhausted"),
+            Self::SurfacePublicationCounterExhausted(counter) => {
+                formatter.write_str("surface publication counter exhausted: ")?;
+                formatter.write_str(match counter {
+                    SurfacePublicationCounter::RedrawRevision => "redraw revision",
+                    SurfacePublicationCounter::HitTestGeneration => "hit-test generation",
+                    SurfacePublicationCounter::CoordinateRevision => "coordinate revision",
+                    SurfacePublicationCounter::SemanticRevision => "semantic revision",
+                })
+            }
             Self::Poisoned => formatter.write_str("runtime integrity poisoned after mutation"),
         }
     }
