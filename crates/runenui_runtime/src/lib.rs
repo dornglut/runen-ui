@@ -262,7 +262,8 @@ pub use runenui_core::{
 pub use runtime::{
     HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
     ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
-    SubscriptionDiagnostic, SubscriptionOwnerKind, TimerFiringOutcome, TimerStartOutcome,
+    SubscriptionDiagnostic, SubscriptionOwnerKind, SurfacePublicationCounter, TimerFiringOutcome,
+    TimerStartOutcome,
 };
 pub use semantic_publication::{
     SemanticFocusChange, SemanticNode, SemanticNodeState, SemanticPublication,
