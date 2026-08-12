@@ -15,7 +15,6 @@ mod node;
 mod reconcile;
 mod routing;
 mod semantic;
-#[cfg(test)]
 mod semantic_publication_plan;
 mod surface_publication_plan;
 mod tree;
@@ -29,6 +28,7 @@ pub use node::{MountedNodeRef, MountedTreeIndex};
 pub(crate) use reconcile::{PlannedInvalidation, PlannedLifetimeReason};
 pub(crate) use routing::RouteBuildError;
 pub use runenui_core::{MountedNodeId, SemanticNodeId};
+pub(crate) use semantic_publication_plan::FinalizedSemanticPublication;
 pub(crate) use surface_publication_plan::SurfaceCapabilityPlan;
 pub use tree::AutomationMatchDiagnostic;
 pub(crate) use tree::{
