@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use runenui_core::__runtime::RuntimeNamespace;
 use runenui_core::{MountedNodeId, SemanticKey, SemanticNodeId};
 
-use super::arena::{ArenaCapacityError, GenerationalArena};
+use super::arena::{
+    ArenaCapacityError, ArenaPlanStateError, ArenaPlanner, GenerationalArena,
+};
 
 #[derive(Clone, Debug)]
 pub(super) struct SemanticRecord {
@@ -44,6 +46,7 @@ pub(crate) enum SemanticStoreIntegrityError {
     ForeignBinding,
     MissingBindingRecord,
     BindingRecordMismatch,
+    PlanningStateMismatch,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -55,6 +58,12 @@ pub(crate) enum SemanticReconcileError {
 impl From<ArenaCapacityError> for SemanticReconcileError {
     fn from(_: ArenaCapacityError) -> Self {
         Self::IdentityExhausted
+    }
+}
+
+impl From<ArenaPlanStateError> for SemanticReconcileError {
+    fn from(_: ArenaPlanStateError) -> Self {
+        Self::Integrity(SemanticStoreIntegrityError::PlanningStateMismatch)
     }
 }
 
@@ -108,6 +117,21 @@ impl SemanticStore {
         }
     }
 
+    pub(super) fn transaction(&mut self) -> SemanticStoreTransaction<'_> {
+        let planner = self.arena.planner();
+        SemanticStoreTransaction {
+            store: self,
+            planner,
+            operations: Vec::new(),
+        }
+    }
+
+    /// Reconciles one owner through the same non-mutating planning path used by
+    /// publication-wide semantic transactions.
+    ///
+    /// This compatibility-internal helper preserves M5A behavior while M5B moves
+    /// capability evaluation and commit ownership to the surface publication
+    /// transaction. Planning itself never revokes or allocates a live semantic ID.
     pub(super) fn reconcile_owner(
         &mut self,
         runtime: &RuntimeNamespace,
@@ -116,77 +140,15 @@ impl SemanticStore {
         ordered_keys: &[SemanticKey],
         public_slot_limit: u64,
     ) -> Result<Vec<SemanticBinding>, SemanticReconcileError> {
-        let mut requested = BTreeSet::new();
-        for key in ordered_keys {
-            if !requested.insert(key.clone()) {
-                return Err(SemanticReconcileError::Integrity(
-                    SemanticStoreIntegrityError::DuplicateRequestedKey(key.clone()),
-                ));
-            }
-        }
-
-        let mut existing = self.validate_current(runtime, owner, current)?;
-        let mut plan = Vec::with_capacity(ordered_keys.len());
-        let mut additions = 0usize;
-        for key in ordered_keys {
-            if let Some(binding) = existing.remove(key) {
-                plan.push(PlannedBinding::Existing(binding));
-            } else {
-                additions = additions
-                    .checked_add(1)
-                    .ok_or(SemanticReconcileError::IdentityExhausted)?;
-                plan.push(PlannedBinding::New(key.clone()));
-            }
-        }
-        let removals = existing.into_values().collect::<Vec<_>>();
-
-        let desired_live_count = self
-            .arena
-            .live_count()
-            .checked_sub(removals.len())
-            .and_then(|count| count.checked_add(additions))
-            .ok_or(SemanticReconcileError::IdentityExhausted)?;
-        let additionally_retired = removals
-            .iter()
-            .filter(|binding| binding.generation == u64::MAX)
-            .count();
-        self.arena.preflight_live_count_after_retirement(
-            desired_live_count,
-            additionally_retired,
+        let mut transaction = self.transaction();
+        let bindings = transaction.plan_owner(
+            runtime,
+            owner,
+            current,
+            ordered_keys,
             public_slot_limit,
         )?;
-
-        for binding in &removals {
-            self.remove_validated(binding);
-        }
-
-        let mut bindings = Vec::with_capacity(plan.len());
-        for entry in plan {
-            match entry {
-                PlannedBinding::Existing(binding) => bindings.push(binding.binding),
-                PlannedBinding::New(key) => {
-                    let owner_for_record = owner.clone();
-                    let key_for_record = key.clone();
-                    let (slot, generation) = self
-                        .arena
-                        .insert_with_public_slot_limit(public_slot_limit, move |_, _| {
-                            SemanticRecord {
-                                owner: owner_for_record,
-                                key: key_for_record,
-                            }
-                        })
-                        .unwrap_or_else(|_| {
-                            unreachable!("semantic identity capacity was preflighted")
-                        });
-                    let slot = u32::try_from(slot)
-                        .unwrap_or_else(|_| unreachable!("semantic arena uses public slots"));
-                    bindings.push(SemanticBinding {
-                        key,
-                        id: runtime.__runtime_semantic_id(slot, generation),
-                    });
-                }
-            }
-        }
+        transaction.commit();
         Ok(bindings)
     }
 
@@ -263,15 +225,153 @@ impl SemanticStore {
     }
 }
 
+/// Borrow-scoped, publication-wide semantic identity transaction.
+///
+/// Planning mutates only [`ArenaPlanner`]. The live [`SemanticStore`] stays
+/// untouched until [`Self::commit`], and the mutable borrow held for the whole
+/// transaction prevents any intervening semantic-store mutation between plan and
+/// commit.
+pub(super) struct SemanticStoreTransaction<'a> {
+    store: &'a mut SemanticStore,
+    planner: ArenaPlanner,
+    operations: Vec<SemanticStoreOperation>,
+}
+
+impl SemanticStoreTransaction<'_> {
+    pub(super) fn plan_owner(
+        &mut self,
+        runtime: &RuntimeNamespace,
+        owner: &MountedNodeId,
+        current: &[SemanticBinding],
+        ordered_keys: &[SemanticKey],
+        public_slot_limit: u64,
+    ) -> Result<Vec<SemanticBinding>, SemanticReconcileError> {
+        let mut requested = BTreeSet::new();
+        for key in ordered_keys {
+            if !requested.insert(key.clone()) {
+                return Err(SemanticReconcileError::Integrity(
+                    SemanticStoreIntegrityError::DuplicateRequestedKey(key.clone()),
+                ));
+            }
+        }
+
+        let mut existing = self.store.validate_current(runtime, owner, current)?;
+        let mut desired = Vec::with_capacity(ordered_keys.len());
+        let mut entries = Vec::with_capacity(ordered_keys.len());
+        for key in ordered_keys {
+            if let Some(binding) = existing.remove(key) {
+                desired.push(binding.binding.clone());
+                entries.push(OwnerPlanEntry::Existing);
+            } else {
+                entries.push(OwnerPlanEntry::New(key.clone()));
+            }
+        }
+
+        for binding in existing.into_values() {
+            self.planner.remove(binding.slot, binding.generation)?;
+            self.operations.push(SemanticStoreOperation::Remove {
+                slot: binding.slot,
+                generation: binding.generation,
+            });
+        }
+
+        let existing_count = desired.len();
+        let mut existing_index = 0usize;
+        let mut final_bindings = Vec::with_capacity(entries.len());
+        for entry in entries {
+            match entry {
+                OwnerPlanEntry::Existing => {
+                    let binding = desired
+                        .get(existing_index)
+                        .cloned()
+                        .ok_or(SemanticReconcileError::Integrity(
+                            SemanticStoreIntegrityError::PlanningStateMismatch,
+                        ))?;
+                    existing_index = existing_index.checked_add(1).ok_or(
+                        SemanticReconcileError::Integrity(
+                            SemanticStoreIntegrityError::PlanningStateMismatch,
+                        ),
+                    )?;
+                    final_bindings.push(binding);
+                }
+                OwnerPlanEntry::New(key) => {
+                    let (slot, generation) = self.planner.allocate(public_slot_limit)?;
+                    let public_slot = u32::try_from(slot)
+                        .map_err(|_| SemanticReconcileError::IdentityExhausted)?;
+                    let binding = SemanticBinding {
+                        key: key.clone(),
+                        id: runtime.__runtime_semantic_id(public_slot, generation),
+                    };
+                    self.operations.push(SemanticStoreOperation::Insert {
+                        slot,
+                        generation,
+                        public_slot_limit,
+                        record: SemanticRecord {
+                            owner: owner.clone(),
+                            key,
+                        },
+                    });
+                    final_bindings.push(binding);
+                }
+            }
+        }
+        debug_assert_eq!(existing_index, existing_count);
+        Ok(final_bindings)
+    }
+
+    pub(super) fn commit(self) {
+        for operation in self.operations {
+            match operation {
+                SemanticStoreOperation::Remove { slot, generation } => {
+                    let removed = self.store.arena.remove(slot, generation);
+                    assert!(
+                        removed.is_some(),
+                        "planned semantic removal must match the borrow-protected live arena"
+                    );
+                }
+                SemanticStoreOperation::Insert {
+                    slot,
+                    generation,
+                    public_slot_limit,
+                    record,
+                } => {
+                    let actual = self.store.arena.insert_with_public_slot_limit(
+                        public_slot_limit,
+                        move |_, _| record,
+                    );
+                    assert_eq!(
+                        actual,
+                        Ok((slot, generation)),
+                        "planned semantic allocation must match the borrow-protected live arena"
+                    );
+                }
+            }
+        }
+    }
+}
+
 struct ValidatedBinding {
     binding: SemanticBinding,
     slot: usize,
     generation: u64,
 }
 
-enum PlannedBinding {
-    Existing(ValidatedBinding),
+enum OwnerPlanEntry {
+    Existing,
     New(SemanticKey),
+}
+
+enum SemanticStoreOperation {
+    Remove {
+        slot: usize,
+        generation: u64,
+    },
+    Insert {
+        slot: usize,
+        generation: u64,
+        public_slot_limit: u64,
+        record: SemanticRecord,
+    },
 }
 
 #[cfg(test)]
@@ -465,5 +565,78 @@ mod tests {
             ))
         );
         assert_eq!(store.live_count(), 1);
+    }
+
+    #[test]
+    fn publication_wide_transaction_reserves_distinct_ids_before_commit() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let first_owner = runtime.__runtime_mounted_id(1, 1);
+        let second_owner = runtime.__runtime_mounted_id(2, 1);
+        let mut store = SemanticStore::new();
+
+        let (first, second) = {
+            let mut transaction = store.transaction();
+            let first = transaction
+                .plan_owner(
+                    &runtime,
+                    &first_owner,
+                    &[],
+                    &[SemanticKey::PRIMARY],
+                    2,
+                )
+                .unwrap_or_else(|_| unreachable!("first owner fits"));
+            let second = transaction
+                .plan_owner(
+                    &runtime,
+                    &second_owner,
+                    &[],
+                    &[SemanticKey::PRIMARY],
+                    2,
+                )
+                .unwrap_or_else(|_| unreachable!("second owner fits"));
+            assert_ne!(first[0].id(), second[0].id());
+            transaction.commit();
+            (first, second)
+        };
+
+        assert_eq!(store.live_count(), 2);
+        assert_eq!(
+            store.target_status(&runtime, first[0].id()),
+            SemanticTargetStatus::Live
+        );
+        assert_eq!(
+            store.target_status(&runtime, second[0].id()),
+            SemanticTargetStatus::Live
+        );
+    }
+
+    #[test]
+    fn failed_later_plan_drops_the_whole_transaction_without_mutation() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let first_owner = runtime.__runtime_mounted_id(1, 1);
+        let second_owner = runtime.__runtime_mounted_id(2, 1);
+        let mut store = SemanticStore::new();
+
+        {
+            let mut transaction = store.transaction();
+            let first = transaction.plan_owner(
+                &runtime,
+                &first_owner,
+                &[],
+                &[SemanticKey::PRIMARY],
+                1,
+            );
+            assert!(first.is_ok());
+            let second = transaction.plan_owner(
+                &runtime,
+                &second_owner,
+                &[],
+                &[SemanticKey::PRIMARY],
+                1,
+            );
+            assert_eq!(second, Err(SemanticReconcileError::IdentityExhausted));
+        }
+
+        assert_eq!(store.live_count(), 0);
     }
 }
