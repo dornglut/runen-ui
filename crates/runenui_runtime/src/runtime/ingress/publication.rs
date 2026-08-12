@@ -4,10 +4,11 @@ use runenui_core::MonotonicInstant;
 
 use super::{
     HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeTerminalReason,
-    SurfacePublicationCounter, TraceRecordKind, TraceSequence,
+    TraceRecordKind, TraceSequence,
 };
 use crate::{
-    TracePublicationContext, TraceSurfaceContext, TraceSurfaceSnapshotKind,
+    SurfacePublicationCounter, TracePublicationContext, TraceSurfaceContext,
+    TraceSurfaceSnapshotKind,
     trace::{TraceRecordDraft, TraceReservation},
 };
 
