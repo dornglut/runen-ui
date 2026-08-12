@@ -84,7 +84,9 @@ fn hover_stream_accepts_first_button_down_and_rejects_repeated_button_down() {
     let tokens = StyleTokens::default();
     let size = LogicalSize::try_new(64.0, 64.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(&tokens, size));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+        .unwrap_or_else(|_| unreachable!("the test surface publication is admitted"));
     let node = publication
         .frame()
         .nodes()
