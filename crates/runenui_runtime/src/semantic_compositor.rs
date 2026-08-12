@@ -44,7 +44,9 @@ pub(crate) struct SemanticCandidateNode {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum SemanticCompositionDiagnostic {
-    MissingOwnerBinding { key: SemanticKey },
+    MissingOwnerBinding {
+        key: SemanticKey,
+    },
     MissingMountedOwner,
     MissingLocalRelationshipTarget {
         source: SemanticNodeId,
