@@ -8,22 +8,29 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
-- Refined the post-M5A successor contract before M5B/M5C implementation. The
-  readiness authority freezes PRIMARY semantic-focus projection, composed
-  disabled state and support-versus-availability semantics, private
-  semantic-to-mounted resolution, exact `SurfaceId`-scoped semantic products and
-  action requests, stale/post-callback revalidation, staged atomic surface
-  publication with recoverable backpressure versus exact terminal failure, and
-  the clean renderer/semantic publication cutover. As the one bounded pre-1.0
-  source correction in this readiness gate, `SemanticAction` no longer exposes
-  route-bound `LogicalScroll(LogicalScrollCommand)`; M5 semantic authoring is
-  limited to `Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`.
+- Owner-accepted and guarded-squash-merged the post-M5A semantic-readiness gate
+  in [PR #56](https://github.com/dornglut/runen-ui/pull/56). The exact reviewed
+  head `15c90424a0fbae4312b0cb0c5fb76932b3ce1ee1` passed exact-head CI #902;
+  the squash merge commit is `d2f8fabd33860ec1510f82d5792b5bd8f2db8f43`,
+  reviewed and squash trees are exactly
+  `3be7ed95d5879c5d4dc9639583c5ef8490522267`, and accepted-main CI #903
+  passed at that exact squash. The accepted readiness authority freezes PRIMARY
+  semantic-focus projection, composed disabled state and
+  support-versus-availability semantics, private semantic-to-mounted resolution,
+  exact `SurfaceId`-scoped semantic products/actions, stale/post-callback
+  revalidation, staged atomic surface publication with recoverable backpressure
+  versus exact terminal failure, and the clean renderer/semantic publication
+  cutover. Its bounded pre-1.0 source correction removes route-bound
+  `SemanticAction::LogicalScroll(LogicalScrollCommand)` while preserving
   `SemanticCommand::LogicalScroll`, `LogicalScrollCommand`, pointer/focus scroll
-  derivation, routed callbacks, and accepted M4 scrolling remain unchanged.
-  The candidate M5 matrix contains 53 rows: the twelve accepted M5A rows remain
-  `owner-accepted`, while the strengthened successor inventory has 41 blocked
-  rows including new `SEM-SUPPORT-01`, `SEM-PUB-04`, and `SEM-ACT-07`. This
-  readiness change implements no M5B semantic publication or M5C action ingress.
+  derivation, routed callbacks, and accepted M4 scrolling. Accepted M5 authority
+  is now `53 total / 12 owner-accepted / 41 blocked`; aggregate configured truth
+  is `290 total / 247 owner-accepted / 43 blocked`. The three #55-added rows
+  (`SEM-SUPPORT-01`, `SEM-PUB-04`, and `SEM-ACT-07`) remain blocked
+  implementation observations, so this acceptance claims no M5B semantic
+  publication or M5C action ingress. M5B #48 is the next implementation slice
+  after the #55 acceptance/current-contract reconciliation is present on accepted
+  `main`.
 - Owner-accepted and guarded-squash-merged M5A semantic contribution and
   independent identity in [PR #53](https://github.com/dornglut/runen-ui/pull/53).
   The reviewed feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`
@@ -49,8 +56,9 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   squash. The reconciliation records exactly the twelve M5A rows as
   `owner-accepted`, producing accepted-main M5 state `50 total / 12
   owner-accepted / 38 blocked` and aggregate configured-matrix state `287 total /
-  247 owner-accepted / 40 blocked`. The separate #55 readiness gate now blocks
-  M5B #48 until its own acceptance.
+  247 owner-accepted / 40 blocked`. The subsequent #55 readiness authority is
+  accepted through PR #56 as recorded above, making M5B #48 the next
+  implementation slice after the required post-#55 reconciliation.
 - Owner-accepted and guarded-squash-merged the complete M4D3 replay and M4
   closure slice in [PR #43](https://github.com/dornglut/runen-ui/pull/43). The
   accepted feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d`
