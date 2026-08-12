@@ -289,10 +289,13 @@ fn exercise_composition(runtime: &mut AppRuntime<App>) {
 
 fn exercise_capture(runtime: &mut AppRuntime<App>) {
     let tokens = StyleTokens::new();
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(
-        &tokens,
-        LogicalSize::try_new(64.0, 64.0).unwrap_or_else(|_| unreachable!("surface size is finite")),
-    ));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &tokens,
+            LogicalSize::try_new(64.0, 64.0)
+                .unwrap_or_else(|_| unreachable!("surface size is finite")),
+        ))
+        .unwrap_or_else(|_| unreachable!("M4 closure publication is admitted"));
     let context = publication.input_context().clone();
     let node = publication
         .frame()
