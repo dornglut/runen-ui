@@ -10,7 +10,8 @@ use runenui_external_widget_conformance::{
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MeasurementProvider, PumpBudget,
-    SurfaceBuildContext, TextMeasurement, TextMeasurementKind, TextMeasurementRequest,
+    SurfaceBuildContext, SurfacePublication, TextMeasurement, TextMeasurementKind,
+    TextMeasurementRequest,
 };
 
 fn size(width: f32, height: f32) -> LogicalSize {
@@ -24,6 +25,15 @@ fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>
         usize::MAX,
         usize::MAX,
     ));
+}
+
+fn publish<App: UiApp>(
+    runtime: &mut AppRuntime<App>,
+    context: &SurfaceBuildContext<'_>,
+) -> SurfacePublication {
+    runtime
+        .publish_surface(context)
+        .unwrap_or_else(|_| unreachable!("external-widget publication is admitted"))
 }
 
 fn submit_layout_activate(
@@ -111,7 +121,7 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(400.0, 200.0)))
         .with_measurement_provider(&provider);
 
-    let first = runtime.publish_surface(&context);
+    let first = publish(&mut runtime, &context);
     assert_eq!(
         (panel.get(), text.get(), fixed.get(), layout.get()),
         (1, 1, 1, 1)
@@ -123,7 +133,7 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     let first_context = first.input_context().clone();
     let first_products = first.into_parts();
 
-    let second = runtime.publish_surface(&context);
+    let second = publish(&mut runtime, &context);
     assert_eq!(
         second.input_context().surface_id(),
         first_context.surface_id()
@@ -140,7 +150,7 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
 
     provider.revision.set(2);
     provider.width.set(200.0);
-    let revised = runtime.publish_surface(&context);
+    let revised = publish(&mut runtime, &context);
     assert!((revised.frame().size().width() - 200.0).abs() <= f32::EPSILON);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
@@ -170,10 +180,11 @@ impl UiApp for UnsupportedApp {
 fn unsupported_measurement_is_explicit_and_deterministic() {
     let mut runtime = AppRuntime::<UnsupportedApp>::mount(());
     let tokens = StyleTokens::new();
-    let publication = runtime.publish_surface(&SurfaceBuildContext::new(
+    let context = SurfaceBuildContext::new(
         &tokens,
         LayoutConstraints::loose(size(100.0, 100.0)),
-    ));
+    );
+    let publication = publish(&mut runtime, &context);
     let diagnostic = &publication
         .layout_report()
         .root()
@@ -204,10 +215,11 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
         });
         settle_initial_mounted_declarations(&mut runtime);
         let tokens = StyleTokens::new();
-        let publication = runtime.publish_surface(&SurfaceBuildContext::new(
+        let context = SurfaceBuildContext::new(
             &tokens,
             LayoutConstraints::loose(size(600.0, 400.0)),
-        ));
+        );
+        let publication = publish(&mut runtime, &context);
         let indexed: Vec<_> = runtime
             .index()
             .nodes()
@@ -301,10 +313,11 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
             activations: 0,
         });
         let tokens = StyleTokens::new();
-        let publication = runtime.publish_surface(&SurfaceBuildContext::new(
+        let context = SurfaceBuildContext::new(
             &tokens,
             LayoutConstraints::loose(size(600.0, 400.0)),
-        ));
+        );
+        let publication = publish(&mut runtime, &context);
         let first = publication.frame().nodes()[1].bounds();
         let second = publication.frame().nodes()[2].bounds();
         if case == LayoutCase::ExternalColumn {
@@ -319,10 +332,11 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
         activations: 0,
     });
     let tokens = StyleTokens::new();
-    let publication = runtime.publish_surface(&SurfaceBuildContext::new(
+    let context = SurfaceBuildContext::new(
         &tokens,
         LayoutConstraints::loose(size(600.0, 400.0)),
-    ));
+    );
+    let publication = publish(&mut runtime, &context);
     let nodes = publication.frame().nodes();
     assert!((nodes[2].bounds().y() - nodes[1].bounds().max_y() - 13.0).abs() <= f32::EPSILON);
     assert!((nodes[4].bounds().x() - nodes[3].bounds().max_x() - 11.0).abs() <= f32::EPSILON);
