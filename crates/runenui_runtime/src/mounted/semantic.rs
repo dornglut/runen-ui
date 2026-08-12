@@ -231,10 +231,12 @@ pub(super) struct SemanticFinalizeFailure {
 }
 
 impl SemanticFinalizeFailure {
+    #[cfg(test)]
     pub(super) const fn owner(&self) -> SemanticOwnerPlan {
         self.owner
     }
 
+    #[cfg(test)]
     pub(super) const fn error(&self) -> &SemanticReconcileError {
         &self.error
     }
@@ -714,9 +716,8 @@ mod tests {
             let second_plan = transaction
                 .stage_owner(&runtime, &second_owner, &[], &[SemanticKey::PRIMARY], 1)
                 .unwrap_or_else(|_| unreachable!("second owner stages"));
-            let failure = match transaction.finalize_attributed(&runtime) {
-                Ok(_) => unreachable!("second owner must exceed the one-slot limit"),
-                Err(failure) => failure,
+            let Err(failure) = transaction.finalize_attributed(&runtime) else {
+                unreachable!("second owner must exceed the one-slot limit");
             };
             (first_plan, second_plan, failure)
         };
