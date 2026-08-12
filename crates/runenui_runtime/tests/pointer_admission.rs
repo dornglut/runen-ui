@@ -109,7 +109,9 @@ fn harness(config: RuntimeConfig) -> Harness {
     let tokens = StyleTokens::default();
     let size = LogicalSize::try_new(64.0, 64.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
-    let publication = runtime.publish_surface(&SurfaceBuildContext::tight(&tokens, size));
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+        .unwrap_or_else(|_| unreachable!("the test surface publication is admitted"));
     let bounds = publication
         .frame()
         .nodes()
