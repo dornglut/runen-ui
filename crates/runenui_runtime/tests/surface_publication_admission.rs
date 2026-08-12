@@ -4,8 +4,9 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    Element, LogicalLength, LogicalPoint, NoHostProtocol, PointerDeviceKind, PointerEvent,
-    PointerId, PointerPhase, StyleTokens, SurfaceInputContext, UiApp, Widget, WidgetMeasure,
+    Element, EventContext, LogicalLength, LogicalPoint, NoHostProtocol, PointerDeviceKind,
+    PointerEvent, PointerId, PointerPhase, StyleTokens, SurfaceInputContext, UiApp, UiEvent, Widget,
+    WidgetEventOutput, WidgetMeasure,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PublishSurfaceError, PumpBudget, RuntimeConfig, RuntimeStatus,
@@ -52,6 +53,15 @@ impl Widget<Replace> for MeasureProbe {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
+
+    fn event(
+        &mut self,
+        (): &mut Self::State,
+        _event: &UiEvent,
+        _context: &mut EventContext<'_, Replace>,
+    ) -> WidgetEventOutput {
+        WidgetEventOutput::none()
+    }
 
     fn measure(&self, (): &Self::State) -> WidgetMeasure {
         self.calls.set(self.calls.get() + 1);
