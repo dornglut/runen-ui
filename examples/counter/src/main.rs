@@ -31,7 +31,9 @@ const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(
 fn debug_surface(runtime: &mut AppRuntime<CounterApp>) -> String {
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::tight(&tokens, EXAMPLE_SURFACE_SIZE);
-    let publication = runtime.publish_surface(&context);
+    let publication = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("counter debug publication is admitted"));
     render_debug_surface_frame(publication.frame())
 }
 
@@ -146,8 +148,8 @@ mod tests {
         SemanticContribution, SemanticItem, StyleTokens,
     };
     use runenui_runtime::{
-        AppRuntime, LogicalSize, PumpBudget, RuntimeStatus, RuntimeTerminalReason,
-        SurfaceBuildContext,
+        AppRuntime, LogicalSize, PublishSurfaceError, PumpBudget, RuntimeStatus,
+        RuntimeTerminalReason, SurfaceBuildContext,
     };
 
     use crate::app::{Counter, CounterAction, CounterApp, WIN_COUNT};
@@ -189,6 +191,7 @@ mod tests {
         );
         runtime
             .publish_surface(&context)
+            .unwrap_or_else(|_| unreachable!("counter screen publication is admitted"))
             .frame()
             .nodes()
             .iter()
@@ -271,7 +274,9 @@ mod tests {
         let mut runtime = mounted_counter(Counter::new());
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
-        let publication = runtime.publish_surface(&context);
+        let publication = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|_| unreachable!("counter pointer publication is admitted"));
         let increment = publication
             .frame()
             .nodes()
@@ -376,9 +381,9 @@ mod tests {
             .unwrap_or_else(|| unreachable!("automation focus committed"));
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
-        let before = runtime.publish_surface(&context);
-        let before_context = before.input_context().clone();
-        let before_products = before.into_parts();
+        runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|_| unreachable!("pre-terminal publication is admitted"));
         let report = runtime.reconciliation_report().clone();
         runtime.__seed_reconciliation_generation_for_test(u64::MAX);
 
@@ -393,14 +398,12 @@ mod tests {
         assert_eq!(runtime.state(), &Counter::new());
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
         assert_eq!(runtime.reconciliation_report(), &report);
-        let after = runtime.publish_surface(&context);
         assert_eq!(
-            after.input_context().surface_id(),
-            before_context.surface_id()
+            runtime.publish_surface(&context),
+            Err(PublishSurfaceError::Terminal(
+                RuntimeTerminalReason::ReconciliationGenerationExhausted
+            ))
         );
-        assert!(after.input_context().coordinate_revision() > before_context.coordinate_revision());
-        assert!(after.input_context().hit_test_generation() > before_context.hit_test_generation());
-        assert_eq!(after.into_parts(), before_products);
         assert_eq!(
             runtime
                 .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
@@ -474,6 +477,7 @@ mod tests {
         assert!(
             runtime
                 .publish_surface(&context)
+                .unwrap_or_else(|_| unreachable!("counter identity publication is admitted"))
                 .frame()
                 .node(&increment)
                 .unwrap_or_else(|| unreachable!())
