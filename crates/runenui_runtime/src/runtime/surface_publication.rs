@@ -5,8 +5,8 @@ use runenui_core::{__runtime::RuntimeNamespace, SurfaceId, SurfaceInputContext};
 
 use crate::{
     LogicalPoint, LogicalRect, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
-    SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication, TraceSurfaceContext,
-    TraceSurfaceSnapshotKind,
+    SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication,
+    SurfacePublicationCounter, TraceSurfaceContext, TraceSurfaceSnapshotKind,
     mounted::MountedTree,
     surface::{SurfaceCache, publish_mounted_surface_cached},
 };
@@ -114,6 +114,17 @@ impl SurfacePointResolution {
     }
 }
 
+/// Exact non-mutating counter reservation for one surface publication attempt.
+///
+/// Construction succeeds only while both renderer/input publication counters can
+/// issue their next value. The token is runtime-private and consumed by
+/// [`SurfacePublicationState::publish`], so capability callbacks cannot run before
+/// counter admission has succeeded.
+pub(in crate::runtime) struct SurfacePublicationAdmission {
+    hit_test_generation: u64,
+    coordinate_revision: u64,
+}
+
 /// Sole runtime-owned state for current surface publication, redraw revision,
 /// and bounded displayed hit-test generations.
 pub(crate) struct SurfacePublicationState {
@@ -153,33 +164,57 @@ impl SurfacePublicationState {
         }
     }
 
+    pub(in crate::runtime) fn admit_publication(
+        &self,
+    ) -> Result<SurfacePublicationAdmission, SurfacePublicationCounter> {
+        let hit_test_generation = self
+            .next_hit_test_generation
+            .ok_or(SurfacePublicationCounter::HitTestGeneration)?;
+        let coordinate_revision = self
+            .next_coordinate_revision
+            .ok_or(SurfacePublicationCounter::CoordinateRevision)?;
+        Ok(SurfacePublicationAdmission {
+            hit_test_generation,
+            coordinate_revision,
+        })
+    }
+
     pub(crate) fn publish<Action>(
         &mut self,
         tree: &mut MountedTree<Action>,
         context: &SurfaceBuildContext<'_>,
+        admission: SurfacePublicationAdmission,
     ) -> SurfacePublication {
         let (products, report) = publish_mounted_surface_cached(tree, context, &mut self.cache);
         self.phase_report = report;
         let nodes = HitTestSnapshot::nodes_from(&products);
-        let input_context = self.retain_new_snapshot(nodes);
+        let input_context = self.retain_new_snapshot(nodes, admission);
         SurfacePublication::new(input_context, products)
     }
 
-    fn retain_new_snapshot(&mut self, nodes: Vec<HitTestNode>) -> SurfaceInputContext {
-        let hit_test_generation = self
-            .next_hit_test_generation
-            .unwrap_or_else(|| unreachable!("surface hit-test generation remains available"));
-        let coordinate_revision = self
-            .next_coordinate_revision
-            .unwrap_or_else(|| unreachable!("surface coordinate revision remains available"));
-        self.next_hit_test_generation = hit_test_generation.checked_add(1);
-        self.next_coordinate_revision = coordinate_revision.checked_add(1);
+    fn retain_new_snapshot(
+        &mut self,
+        nodes: Vec<HitTestNode>,
+        admission: SurfacePublicationAdmission,
+    ) -> SurfaceInputContext {
+        debug_assert_eq!(
+            self.next_hit_test_generation,
+            Some(admission.hit_test_generation),
+            "surface publication admission names the current hit-test generation"
+        );
+        debug_assert_eq!(
+            self.next_coordinate_revision,
+            Some(admission.coordinate_revision),
+            "surface publication admission names the current coordinate revision"
+        );
+        self.next_hit_test_generation = admission.hit_test_generation.checked_add(1);
+        self.next_coordinate_revision = admission.coordinate_revision.checked_add(1);
         let context = self
             .runtime_namespace
             .__runtime_surface_context(
                 self.surface_id.clone(),
-                coordinate_revision,
-                hit_test_generation,
+                admission.coordinate_revision,
+                admission.hit_test_generation,
             )
             .unwrap_or_else(|| unreachable!("surface identity shares the runtime namespace"));
         if self.snapshots.len() == self.retained_snapshot_limit.get()
@@ -377,6 +412,16 @@ impl SurfacePublicationState {
                     .unwrap_or_else(|_| unreachable!("test focus size is finite and non-negative")),
             );
         }
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn seed_next_publication_counters_for_test(
+        &mut self,
+        hit_test_generation: Option<u64>,
+        coordinate_revision: Option<u64>,
+    ) {
+        self.next_hit_test_generation = hit_test_generation;
+        self.next_coordinate_revision = coordinate_revision;
     }
 
     pub(crate) fn note_focus_validation(&mut self) {
