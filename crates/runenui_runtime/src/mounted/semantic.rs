@@ -3,9 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use runenui_core::__runtime::RuntimeNamespace;
 use runenui_core::{MountedNodeId, SemanticKey, SemanticNodeId};
 
-use super::arena::{
-    ArenaCapacityError, ArenaPlanStateError, ArenaPlanner, GenerationalArena,
-};
+use super::arena::{ArenaCapacityError, ArenaPlanStateError, ArenaPlanner, GenerationalArena};
 
 #[derive(Clone, Debug)]
 pub(super) struct SemanticRecord {
@@ -141,13 +139,8 @@ impl SemanticStore {
         public_slot_limit: u64,
     ) -> Result<Vec<SemanticBinding>, SemanticReconcileError> {
         let mut transaction = self.transaction();
-        let bindings = transaction.plan_owner(
-            runtime,
-            owner,
-            current,
-            ordered_keys,
-            public_slot_limit,
-        )?;
+        let bindings =
+            transaction.plan_owner(runtime, owner, current, ordered_keys, public_slot_limit)?;
         transaction.commit();
         Ok(bindings)
     }
@@ -281,12 +274,11 @@ impl SemanticStoreTransaction<'_> {
         for entry in entries {
             match entry {
                 OwnerPlanEntry::Existing => {
-                    let binding = desired
-                        .get(existing_index)
-                        .cloned()
-                        .ok_or(SemanticReconcileError::Integrity(
+                    let binding = desired.get(existing_index).cloned().ok_or(
+                        SemanticReconcileError::Integrity(
                             SemanticStoreIntegrityError::PlanningStateMismatch,
-                        ))?;
+                        ),
+                    )?;
                     existing_index = existing_index.checked_add(1).ok_or(
                         SemanticReconcileError::Integrity(
                             SemanticStoreIntegrityError::PlanningStateMismatch,
@@ -335,10 +327,10 @@ impl SemanticStoreTransaction<'_> {
                     public_slot_limit,
                     record,
                 } => {
-                    let actual = self.store.arena.insert_with_public_slot_limit(
-                        public_slot_limit,
-                        move |_, _| record,
-                    );
+                    let actual = self
+                        .store
+                        .arena
+                        .insert_with_public_slot_limit(public_slot_limit, move |_, _| record);
                     assert_eq!(
                         actual,
                         Ok((slot, generation)),
@@ -577,22 +569,10 @@ mod tests {
         let (first, second) = {
             let mut transaction = store.transaction();
             let first = transaction
-                .plan_owner(
-                    &runtime,
-                    &first_owner,
-                    &[],
-                    &[SemanticKey::PRIMARY],
-                    2,
-                )
+                .plan_owner(&runtime, &first_owner, &[], &[SemanticKey::PRIMARY], 2)
                 .unwrap_or_else(|_| unreachable!("first owner fits"));
             let second = transaction
-                .plan_owner(
-                    &runtime,
-                    &second_owner,
-                    &[],
-                    &[SemanticKey::PRIMARY],
-                    2,
-                )
+                .plan_owner(&runtime, &second_owner, &[], &[SemanticKey::PRIMARY], 2)
                 .unwrap_or_else(|_| unreachable!("second owner fits"));
             assert_ne!(first[0].id(), second[0].id());
             transaction.commit();
@@ -619,21 +599,11 @@ mod tests {
 
         {
             let mut transaction = store.transaction();
-            let first = transaction.plan_owner(
-                &runtime,
-                &first_owner,
-                &[],
-                &[SemanticKey::PRIMARY],
-                1,
-            );
+            let first =
+                transaction.plan_owner(&runtime, &first_owner, &[], &[SemanticKey::PRIMARY], 1);
             assert!(first.is_ok());
-            let second = transaction.plan_owner(
-                &runtime,
-                &second_owner,
-                &[],
-                &[SemanticKey::PRIMARY],
-                1,
-            );
+            let second =
+                transaction.plan_owner(&runtime, &second_owner, &[], &[SemanticKey::PRIMARY], 1);
             assert_eq!(second, Err(SemanticReconcileError::IdentityExhausted));
         }
 
