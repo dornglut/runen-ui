@@ -100,31 +100,44 @@ against exact accepted M4 closure base
 `a63a249de9d4d53eeef4104ae3384e7898aacad1`. M5A0 #46 is accepted and closed.
 M5A semantic contribution and independent identity #47 was owner-accepted at
 exact reviewed feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`
-after exact-head CI run `31497457992` / #889 passed, then guarded-squash-merged
-in PR #53 as `e3c304600ec1777cd17a1973946a43c765df1c31`. All 38 feature
-changed-file blob identities are byte-identical between reviewed head and
-accepted squash, and accepted `main` was verified at that squash.
+after exact-head CI #889, then guarded-squash-merged in PR #53 as
+`e3c304600ec1777cd17a1973946a43c765df1c31`. All 38 feature changed-file blob
+identities match between reviewed head and accepted feature squash.
 
-The current execution gate is the separate M5A post-merge authority/current-
-contract reconciliation from exact base `e3c304600ec1777cd17a1973946a43c765df1c31`.
-It promotes exactly the twelve M5A-owned matrix rows to `owner-accepted` and
-reconciles accepted public/status/pickup truth. #47 remains open until that
-reconciliation itself is exact-head validated, critically reviewed, explicitly
-owner-accepted, merged, and accepted-main verified.
+M5A's mandatory post-merge authority/current-contract reconciliation was then
+explicitly owner-accepted at exact reviewed head
+`66c2e2a5e2adf3709f93e8d45821a5844986dc0c` after exact-head CI #897 and
+was guarded-squash-merged in PR #54 as
+`d7189d9d145b20edc6ad931ead1589f6277373d2`. Reviewed reconciliation head and
+squash share exact tree `593592d88c17a86d50d9eda1d3f90d49d8674658`; accepted-main push CI
+#898 passed at that exact squash. Issue #47 is closed.
 
-The post-M5A critical readiness review found material under-specification at the
-M5B/M5C boundary for semantic focus projection, virtual semantic-node action
-target preservation, relationship default targeting, hidden/invalid-owner
-composition, and publication revision/cutover atomicity. Issue
-[#55](https://github.com/dornglut/runen-ui/issues/55) records the required
-readiness/authority amendment plus one bounded pre-1.0 semantic-vocabulary
-correction needed to keep its eventual accepted base truthful; it does not own
-M5B semantic publication or M5C action-ingress implementation. It must not begin
-on a stacked branch while the M5A reconciliation is unmerged. After that
-reconciliation is accepted/merged and #47 closes, #55 becomes the next execution
-gate. M5B #48 remains blocked until #55 is itself exact-head validated,
-critically reviewed, explicitly owner-accepted, merged, and accepted-main
-verified.
+The current execution gate is [issue #55](https://github.com/dornglut/runen-ui/issues/55),
+started only from exact accepted base
+`d7189d9d145b20edc6ad931ead1589f6277373d2`. The post-M5A critical readiness
+review found material under-specification at the M5B/M5C boundary: semantic
+PRIMARY focus projection, support versus current availability, virtual semantic
+node target preservation, private semantic-to-mounted resolution, relationship
+default targeting, hidden/invalid-owner composition, surface-scoped semantic
+requests and revisions, exact stale/post-callback revalidation, staged atomic
+publication and failure taxonomy, and clean renderer/semantic cutover.
+
+#55 is a blocking readiness/authority amendment plus one bounded pre-1.0 source
+correction required for eventual accepted-main truth: remove route-bound semantic
+LogicalScroll from `SemanticAction` while preserving `SemanticCommand::LogicalScroll`,
+`LogicalScrollCommand`, pointer/focus derivation, routed callbacks, and accepted
+M4 scrolling. It owns no M5B semantic publication or M5C action-ingress
+implementation.
+
+Accepted-main M5 conformance before #55 remains `50 total / 12 owner-accepted /
+38 blocked`. The #55 candidate authority becomes `53 total / 12 owner-accepted /
+41 blocked`, strengthening successor rows and adding only `SEM-SUPPORT-01`,
+`SEM-PUB-04`, and `SEM-ACT-07`. Those candidate rows remain blocked and do not
+constitute implemented support.
+
+M5B #48 remains blocked until #55 is exact-head validated, critically reviewed,
+explicitly owner-accepted, guarded-merged/reconciled as required, and
+accepted-main verified.
 
 The completed public M4 execution graph is:
 
@@ -139,12 +152,12 @@ The completed public M4 execution graph is:
 
 The accepted M5 implementation sequence remains sequential; #55 is a blocking
 readiness/authority amendment with one bounded semantic-vocabulary correction
-between the accepted M5A reconciliation and M5B implementation, rather than a
-new durable milestone slice or a hidden M5B implementation step:
+between accepted M5A reconciliation and M5B implementation, rather than a new
+durable milestone slice or hidden M5B implementation step:
 
 - [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), accepted and closed;
-- [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), feature accepted/merged; post-merge authority reconciliation is the current gate;
-- [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), after accepted #47 reconciliation and before any M5B branch;
+- [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), accepted, reconciled, and closed;
+- [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), current execution gate from accepted base `d7189d9d145b20edc6ad931ead1589f6277373d2`;
 - [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), after accepted #55 authority amendment;
 - [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), after accepted #48;
 - [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), after accepted #49;

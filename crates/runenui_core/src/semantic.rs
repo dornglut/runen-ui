@@ -8,7 +8,7 @@ use core::fmt;
 use std::collections::BTreeSet;
 
 use crate::identity::{IdentifierText, validate_identifier};
-use crate::{ElementId, IdentifierError, LogicalRect, LogicalScrollCommand};
+use crate::{ElementId, IdentifierError, LogicalRect};
 
 /// Stable owner-local identity for one contributed semantic node.
 ///
@@ -176,7 +176,6 @@ pub enum SemanticAction {
     RequestFocus,
     OpenMenu,
     OpenContextMenu,
-    LogicalScroll(LogicalScrollCommand),
 }
 
 /// Relationship category expressed without platform-adapter vocabulary.
