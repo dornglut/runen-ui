@@ -151,7 +151,9 @@ fn m4_close_01_counter_converges_all_canonical_activation_origins() {
     let mut runtime = mounted_counter();
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::tight(&tokens, surface_size());
-    let publication = runtime.publish_surface(&context);
+    let publication = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("M4 closure publication is admitted"));
     let increment = publication
         .frame()
         .nodes()
