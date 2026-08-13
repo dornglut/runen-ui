@@ -1,5 +1,5 @@
 use core::num::NonZeroU64;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::SurfaceId;
 
@@ -18,13 +18,13 @@ pub enum SemanticPublicationPlanError {
 }
 
 pub struct SemanticPublicationPlan {
-    publication: Option<SemanticPublication>,
+    publication: Option<Arc<SemanticPublication>>,
     diagnostics: Option<Vec<SemanticCompositionDiagnostic>>,
 }
 
 #[derive(Default)]
 pub struct SemanticPublicationState {
-    current: Option<SemanticPublication>,
+    current: Option<Arc<SemanticPublication>>,
     diagnostics: Vec<SemanticCompositionDiagnostic>,
 }
 
@@ -42,12 +42,12 @@ impl SemanticPublicationState {
         };
         let diagnostics = Some(candidate.diagnostics.clone());
         let publication = match self.current.as_ref() {
-            None => Some(publication_from_candidate(
+            None => Some(Arc::new(publication_from_candidate(
                 surface,
                 SemanticRevision::FIRST,
                 candidate,
                 None,
-            )),
+            ))),
             Some(current) if candidate_matches_snapshot(&candidate, current.snapshot()) => None,
             Some(current) => {
                 let revision = current
@@ -58,12 +58,12 @@ impl SemanticPublicationState {
                     .and_then(NonZeroU64::new)
                     .map(SemanticRevision)
                     .ok_or(SemanticPublicationPlanError::RevisionExhausted)?;
-                Some(publication_from_candidate(
+                Some(Arc::new(publication_from_candidate(
                     surface,
                     revision,
                     candidate,
                     Some(current.snapshot()),
-                ))
+                )))
             }
         };
         Ok(SemanticPublicationPlan {
@@ -203,6 +203,7 @@ fn semantic_update(previous: &SemanticSnapshot, current: &SemanticSnapshot) -> S
 #[cfg(test)]
 mod tests {
     use core::num::NonZeroU64;
+    use std::sync::Arc;
 
     use runenui_core::{
         __runtime::RuntimeNamespace, LogicalPoint, LogicalRect, LogicalSize, SemanticRole,
@@ -334,12 +335,12 @@ mod tests {
         let surface = namespace.__runtime_surface_id(0, 1);
         let max_revision = SemanticRevision(NonZeroU64::MAX);
         let state = SemanticPublicationState {
-            current: Some(publication_from_candidate(
+            current: Some(Arc::new(publication_from_candidate(
                 &surface,
                 max_revision,
                 candidate(&namespace, 10.0, Vec::new()),
                 None,
-            )),
+            ))),
             diagnostics: Vec::new(),
         };
 
