@@ -148,11 +148,7 @@ impl<Action> MountedTree<Action> {
             .node(owner)
             .unwrap_or_else(|| unreachable!("semantic publication owner remains live"));
         if state_is_corrupted(node) {
-            return integrity_withdrawal(
-                owner,
-                node.semantic_bindings.clone(),
-                node.focusability,
-            );
+            return integrity_withdrawal(owner, node.semantic_bindings.clone(), node.focusability);
         }
 
         let semantic = stage_semantic_capability(node);
