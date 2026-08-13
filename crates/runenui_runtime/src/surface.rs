@@ -498,9 +498,8 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         completed.insert(DirtyPhases::STYLE);
     }
 
-    let semantic_product_dirty = semantics_dirty
-        || layout_dirty
-        || pending.contains(DirtyPhases::FOCUS_VALIDATION);
+    let semantic_product_dirty =
+        semantics_dirty || layout_dirty || pending.contains(DirtyPhases::FOCUS_VALIDATION);
     let capability_plan = tree.plan_surface_publication_capabilities(surface_capability_phases(
         layout_dirty,
         paint_dirty,
@@ -902,7 +901,11 @@ mod tests {
         let semantic_id = first.nodes[0].id.clone();
         let commit = planned.commit_store();
         let (_, initial_report) = commit.commit(&mut tree, &mut cache);
-        assert!(initial_report.executed().contains(&super::SurfacePhase::Semantics));
+        assert!(
+            initial_report
+                .executed()
+                .contains(&super::SurfacePhase::Semantics)
+        );
 
         width.set(20);
         let root = tree.publication_preorder_ids()[0].clone();
