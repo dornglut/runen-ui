@@ -498,13 +498,16 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         completed.insert(DirtyPhases::STYLE);
     }
 
+    let semantic_product_dirty = semantics_dirty
+        || layout_dirty
+        || pending.contains(DirtyPhases::FOCUS_VALIDATION);
     let capability_plan = tree.plan_surface_publication_capabilities(surface_capability_phases(
         layout_dirty,
         paint_dirty,
         diagnostics_dirty,
     ));
     let semantic_capability_plan =
-        semantics_dirty.then(|| tree.plan_semantic_publication_capabilities());
+        semantic_product_dirty.then(|| tree.plan_semantic_publication_capabilities());
 
     if layout_dirty {
         let resolved = ResolvedSurfaceTree::for_layout(
@@ -702,14 +705,49 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{Color, StyleTokens, View, WidgetInvalidation, children, column, text};
+    use std::{cell::Cell, rc::Rc};
+
+    use runenui_core::{
+        Color, Element, LogicalLength, SemanticContribution, SemanticContributionContext,
+        SemanticNodeContribution, SemanticRole, StyleTokens, View, Widget, WidgetInvalidation,
+        WidgetMeasure, children, column, text,
+    };
 
     use super::{
         SurfaceBuildContext, SurfacePhaseReport, SurfacePublication, cache::SurfaceCache,
         cache::phase_function_counts, cache::reset_phase_function_counts,
-        publish_mounted_surface_cached,
+        plan_mounted_surface_cached, publish_mounted_surface_cached,
     };
     use crate::{LayoutConstraints, mounted::MountedTree, mounted::apply_invalidation};
+
+    #[derive(Debug)]
+    struct SemanticLayoutProbe {
+        width: Rc<Cell<u16>>,
+        semantic_callbacks: Rc<Cell<usize>>,
+    }
+
+    impl Widget<()> for SemanticLayoutProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn measure(&self, (): &Self::State) -> WidgetMeasure {
+            WidgetMeasure::Fixed {
+                width: LogicalLength::from(self.width.get()),
+                height: LogicalLength::from(10_u16),
+            }
+        }
+
+        fn semantics(
+            &self,
+            (): &Self::State,
+            _: SemanticContributionContext,
+        ) -> SemanticContribution {
+            self.semantic_callbacks
+                .set(self.semantic_callbacks.get() + 1);
+            SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::Button))
+        }
+    }
 
     fn publish<Action>(
         tree: &mut MountedTree<Action>,
@@ -791,8 +829,12 @@ mod tests {
             ),
             (
                 WidgetInvalidation::LAYOUT,
-                vec![super::SurfacePhase::Layout, super::SurfacePhase::HitTesting],
-                [0, 0, 1, 1, 0, 0, 0],
+                vec![
+                    super::SurfacePhase::Layout,
+                    super::SurfacePhase::HitTesting,
+                    super::SurfacePhase::Semantics,
+                ],
+                [0, 0, 1, 1, 0, 1, 0],
             ),
         ];
 
@@ -831,6 +873,65 @@ mod tests {
         let (_, clean) = publish(&mut tree, &context, &mut cache);
         assert!(clean.executed().is_empty());
         assert_eq!(phase_function_counts(), [0; 7]);
+    }
+
+    #[test]
+    fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
+        let width = Rc::new(Cell::new(10_u16));
+        let semantic_callbacks = Rc::new(Cell::new(0));
+        let (mut tree, _) = MountedTree::<()>::mount(
+            Element::new(SemanticLayoutProbe {
+                width: Rc::clone(&width),
+                semantic_callbacks: Rc::clone(&semantic_callbacks),
+            })
+            .key("root"),
+        );
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+
+        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
+            .unwrap_or_else(|_| unreachable!("initial semantic layout plan is valid"));
+        let first = planned
+            .semantic_candidate(None)
+            .unwrap_or_else(|_| unreachable!("initial semantic candidate is aligned"))
+            .unwrap_or_else(|| unreachable!("initial structural plan includes semantics"));
+        assert_eq!(semantic_callbacks.get(), 1);
+        assert_eq!(first.nodes.len(), 1);
+        assert_eq!(first.nodes[0].bounds.width(), 10.0);
+        let semantic_id = first.nodes[0].id.clone();
+        let commit = planned.commit_store();
+        let (_, initial_report) = commit.commit(&mut tree, &mut cache);
+        assert!(initial_report.executed().contains(&super::SurfacePhase::Semantics));
+
+        width.set(20);
+        let root = tree.publication_preorder_ids()[0].clone();
+        let node = tree
+            .node_mut(&root)
+            .unwrap_or_else(|| unreachable!("semantic layout probe remains mounted"));
+        apply_invalidation(node, WidgetInvalidation::LAYOUT);
+
+        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
+            .unwrap_or_else(|_| unreachable!("layout semantic plan is valid"));
+        let second = planned
+            .semantic_candidate(None)
+            .unwrap_or_else(|_| unreachable!("layout semantic candidate is aligned"))
+            .unwrap_or_else(|| unreachable!("layout dirtiness recomposes semantics"));
+        assert_eq!(semantic_callbacks.get(), 1);
+        assert_eq!(second.nodes.len(), 1);
+        assert_eq!(second.nodes[0].id, semantic_id);
+        assert_eq!(second.nodes[0].bounds.width(), 20.0);
+        let commit = planned.commit_store();
+        let (_, report) = commit.commit(&mut tree, &mut cache);
+        assert_eq!(
+            report.executed(),
+            &[
+                super::SurfacePhase::Layout,
+                super::SurfacePhase::HitTesting,
+                super::SurfacePhase::Semantics,
+            ]
+        );
+        assert_eq!(semantic_callbacks.get(), 1);
     }
 
     #[test]
