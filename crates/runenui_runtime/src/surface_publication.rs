@@ -1,25 +1,29 @@
 //! Context-bearing public surface publication product.
 
+use std::sync::Arc;
+
 use runenui_core::SurfaceInputContext;
 
-use crate::{SurfaceFrame, SurfaceLayoutReport, SurfaceStyleReport};
+use crate::{SemanticPublication, SurfaceFrame, SurfaceLayoutReport, SurfaceStyleReport};
 
 /// One runtime-issued displayed surface publication.
 ///
-/// Equality preserves the renderer-facing publication contract that existed
-/// before input contexts were attached: it compares the frame, style report,
-/// and layout report, but not the runtime-issued input context. Compare
-/// [`Self::input_context`] explicitly when exact displayed-snapshot identity is
-/// part of the assertion.
+/// The aggregate always carries both renderer-facing products and the exact
+/// current renderer-independent semantic publication. Aggregate equality
+/// compares both product families while intentionally excluding the
+/// runtime-issued input context; use [`Self::renderer_eq`] when only renderer
+/// products are relevant, and compare [`Self::input_context`] explicitly when
+/// exact displayed-snapshot identity is part of the assertion.
 #[derive(Clone, Debug)]
 pub struct SurfacePublication {
     input_context: SurfaceInputContext,
     products: crate::surface::SurfacePublication,
+    semantics: Arc<SemanticPublication>,
 }
 
 impl PartialEq for SurfacePublication {
     fn eq(&self, other: &Self) -> bool {
-        self.products == other.products
+        self.products == other.products && self.semantics == other.semantics
     }
 }
 
@@ -27,10 +31,12 @@ impl SurfacePublication {
     pub(crate) const fn new(
         input_context: SurfaceInputContext,
         products: crate::surface::SurfacePublication,
+        semantics: Arc<SemanticPublication>,
     ) -> Self {
         Self {
             input_context,
             products,
+            semantics,
         }
     }
 
@@ -58,27 +64,53 @@ impl SurfacePublication {
         self.products.layout_report()
     }
 
-    /// Consumes the publication into the existing renderer-facing products.
+    /// Returns the exact current renderer-independent semantic publication.
     #[must_use]
-    pub fn into_parts(self) -> (SurfaceFrame, SurfaceStyleReport, SurfaceLayoutReport) {
+    pub fn semantics(&self) -> &SemanticPublication {
+        self.semantics.as_ref()
+    }
+
+    /// Compares only renderer-facing frame/style/layout products.
+    ///
+    /// This is the explicit opt-in comparison for renderer-only tests and
+    /// adapters. Ordinary [`PartialEq`] also compares semantic publication.
+    #[must_use]
+    pub fn renderer_eq(&self, other: &Self) -> bool {
+        self.products == other.products
+    }
+
+    /// Consumes the publication into renderer-facing products only.
+    ///
+    /// This method intentionally omits input-context and semantic products; its
+    /// name makes that narrower extraction explicit.
+    #[must_use]
+    pub fn into_renderer_products(self) -> (SurfaceFrame, SurfaceStyleReport, SurfaceLayoutReport) {
         self.products.into_parts()
     }
 
-    /// Consumes the publication into its context and renderer-facing products.
+    /// Consumes the publication into every independently typed product.
     #[must_use]
-    pub fn into_context_and_parts(
+    pub fn into_complete_products(
         self,
     ) -> (
         SurfaceInputContext,
         SurfaceFrame,
         SurfaceStyleReport,
         SurfaceLayoutReport,
+        Arc<SemanticPublication>,
     ) {
         let Self {
             input_context,
             products,
+            semantics,
         } = self;
         let (frame, style_report, layout_report) = products.into_parts();
-        (input_context, frame, style_report, layout_report)
+        (
+            input_context,
+            frame,
+            style_report,
+            layout_report,
+            semantics,
+        )
     }
 }
