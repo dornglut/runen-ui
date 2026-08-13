@@ -498,13 +498,14 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         completed.insert(DirtyPhases::STYLE);
     }
 
+    let semantic_product_dirty = semantics_dirty || layout_dirty;
     let capability_plan = tree.plan_surface_publication_capabilities(surface_capability_phases(
         layout_dirty,
         paint_dirty,
         diagnostics_dirty,
     ));
     let semantic_capability_plan =
-        semantics_dirty.then(|| tree.plan_semantic_publication_capabilities());
+        semantic_product_dirty.then(|| tree.plan_semantic_publication_capabilities());
 
     if layout_dirty {
         let resolved = ResolvedSurfaceTree::for_layout(
@@ -791,8 +792,12 @@ mod tests {
             ),
             (
                 WidgetInvalidation::LAYOUT,
-                vec![super::SurfacePhase::Layout, super::SurfacePhase::HitTesting],
-                [0, 0, 1, 1, 0, 0, 0],
+                vec![
+                    super::SurfacePhase::Layout,
+                    super::SurfacePhase::HitTesting,
+                    super::SurfacePhase::Semantics,
+                ],
+                [0, 0, 1, 1, 0, 1, 0],
             ),
         ];
 
