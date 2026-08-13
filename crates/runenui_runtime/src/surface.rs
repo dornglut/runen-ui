@@ -897,7 +897,7 @@ mod tests {
             .unwrap_or_else(|| unreachable!("initial structural plan includes semantics"));
         assert_eq!(semantic_callbacks.get(), 1);
         assert_eq!(first.nodes.len(), 1);
-        assert_eq!(first.nodes[0].bounds.width(), 10.0);
+        assert!((first.nodes[0].bounds.width() - 10.0).abs() <= f32::EPSILON);
         let semantic_id = first.nodes[0].id.clone();
         let commit = planned.commit_store();
         let (_, initial_report) = commit.commit(&mut tree, &mut cache);
@@ -923,7 +923,7 @@ mod tests {
         assert_eq!(semantic_callbacks.get(), 1);
         assert_eq!(second.nodes.len(), 1);
         assert_eq!(second.nodes[0].id, semantic_id);
-        assert_eq!(second.nodes[0].bounds.width(), 20.0);
+        assert!((second.nodes[0].bounds.width() - 20.0).abs() <= f32::EPSILON);
         let commit = planned.commit_store();
         let (_, report) = commit.commit(&mut tree, &mut cache);
         assert_eq!(
