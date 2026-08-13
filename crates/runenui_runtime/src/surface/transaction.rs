@@ -1,9 +1,9 @@
+use crate::MountedNodeId;
 use crate::mounted::{
     DirtyPhases, FinalizedSemanticPublication, MountedTree, SemanticMountedCommit,
     SurfaceCapabilityPlan,
 };
 use crate::semantic_compositor::{SemanticCandidate, SemanticOwnerFacts, compose_semantics};
-use crate::MountedNodeId;
 
 use super::{SurfaceCache, SurfacePhaseReport, SurfacePlanningError, SurfacePublication};
 
@@ -71,13 +71,8 @@ impl<'a> PlannedSurfacePublication<'a> {
             return Err(SurfacePlanningError::SemanticIntegrity);
         }
         let mut owners = Vec::with_capacity(expected);
-        for (position, (topology, semantic)) in self
-            .cache
-            .topology
-            .nodes
-            .iter()
-            .zip(finalized)
-            .enumerate()
+        for (position, (topology, semantic)) in
+            self.cache.topology.nodes.iter().zip(finalized).enumerate()
         {
             if topology.id != semantic.owner {
                 return Err(SurfacePlanningError::SemanticIntegrity);

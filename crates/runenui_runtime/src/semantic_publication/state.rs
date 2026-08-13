@@ -220,8 +220,7 @@ mod tests {
     fn rect(width: f32) -> LogicalRect {
         LogicalRect::new(
             LogicalPoint::new(0.0, 0.0).unwrap_or_else(|_| unreachable!("finite test point")),
-            LogicalSize::try_new(width, 10.0)
-                .unwrap_or_else(|_| unreachable!("valid test size")),
+            LogicalSize::try_new(width, 10.0).unwrap_or_else(|_| unreachable!("valid test size")),
         )
     }
 
@@ -345,7 +344,10 @@ mod tests {
         };
 
         let result = state.plan(&surface, Some(candidate(&namespace, 20.0, Vec::new())));
-        assert_eq!(result.err(), Some(SemanticPublicationPlanError::RevisionExhausted));
+        assert_eq!(
+            result.err(),
+            Some(SemanticPublicationPlanError::RevisionExhausted)
+        );
         let current = state
             .current
             .as_ref()
