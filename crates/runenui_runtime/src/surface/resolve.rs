@@ -1,6 +1,7 @@
-use crate::MountedNodeId;
 use crate::mounted::{FinalizedSemanticPublication, SurfaceCapabilityPlan};
+use crate::semantic_compositor::{SemanticCandidate, SemanticOwnerFacts, compose_semantics};
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
+use crate::{LogicalRect, MountedNodeId};
 use runenui_core::{
     Axis, ChildLayout, ElementId, LayoutStyle, SemanticContribution, StyleResolution, StyleTokens,
     WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetTypeId, resolve_style,
@@ -230,15 +231,51 @@ pub(super) fn resolve_paint(
         .collect()
 }
 
+pub(super) struct ResolvedSemantics {
+    pub(super) contributions: Vec<SemanticContribution>,
+    pub(super) candidate: SemanticCandidate,
+}
+
 pub(super) fn resolve_semantics(
+    topology: &SurfaceTopologySnapshot,
+    bounds: &[LogicalRect],
     finalized: &FinalizedSemanticPublication<'_>,
-) -> Vec<SemanticContribution> {
+    focused_owner: Option<&MountedNodeId>,
+) -> Result<ResolvedSemantics, super::SurfacePlanningError> {
     #[cfg(test)]
     super::cache::note_semantics_phase_execution();
-    finalized
-        .owner_facts()
-        .map(|owner| owner.contribution)
-        .collect()
+
+    let finalized = finalized.owner_facts();
+    if finalized.len() != topology.nodes.len() || bounds.len() != topology.nodes.len() {
+        return Err(super::SurfacePlanningError::SemanticIntegrity);
+    }
+
+    let mut contributions = Vec::with_capacity(topology.nodes.len());
+    let mut owners = Vec::with_capacity(topology.nodes.len());
+    for ((topology_node, bounds), finalized_owner) in
+        topology.nodes.iter().zip(bounds).zip(finalized)
+    {
+        if finalized_owner.owner != topology_node.id {
+            return Err(super::SurfacePlanningError::SemanticIntegrity);
+        }
+        contributions.push(finalized_owner.contribution.clone());
+        owners.push(SemanticOwnerFacts {
+            id: finalized_owner.owner,
+            authored_id: topology_node.authored_id.clone(),
+            mounted_children: topology_node.children.clone(),
+            contribution: finalized_owner.contribution,
+            bindings: finalized_owner.bindings,
+            bounds: *bounds,
+            activation: finalized_owner.activation,
+            focusability: finalized_owner.focusability,
+        });
+    }
+
+    let root = topology.nodes.first().map(|node| &node.id);
+    Ok(ResolvedSemantics {
+        contributions,
+        candidate: compose_semantics(&owners, root, focused_owner),
+    })
 }
 
 pub(super) fn resolve_diagnostics(
