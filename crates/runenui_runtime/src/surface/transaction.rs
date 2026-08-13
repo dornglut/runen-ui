@@ -63,6 +63,7 @@ impl<'a> PlannedSurfacePublication<'a> {
             completed,
             capability_plan,
             finalized_semantics,
+            ..
         } = self;
         let semantic_commit = finalized_semantics.map(FinalizedSemanticPublication::commit_store);
         SurfacePublicationCommit {
