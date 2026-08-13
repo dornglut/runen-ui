@@ -139,12 +139,12 @@ impl SurfacePublicationCommit {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{StyleTokens, View, text};
+    use runenui_core::{StyleTokens, View, WidgetInvalidation, text};
 
     use super::super::{SurfaceBuildContext, plan_mounted_surface_cached};
     use crate::{
         LayoutConstraints,
-        mounted::{DirtyPhases, MountedTree},
+        mounted::{DirtyPhases, MountedTree, apply_invalidation},
     };
 
     #[test]
@@ -173,5 +173,43 @@ mod tests {
         assert!(!report.executed().is_empty());
         assert!(cache.is_some());
         assert_eq!(tree.pending_phases(), DirtyPhases::default());
+    }
+
+    #[test]
+    fn layout_only_plan_recomposes_semantic_candidate_from_staged_bounds() {
+        let (mut tree, _) = MountedTree::<()>::mount(text("semantic").key("root").into_element());
+        let root = tree.publication_preorder_ids()[0].clone();
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+
+        let initial = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
+            .unwrap_or_else(|_| unreachable!("initial surface plan is valid"));
+        let initial_commit = initial.commit_store();
+        let _ = initial_commit.commit(&mut tree, &mut cache);
+
+        let node = tree
+            .node_mut(&root)
+            .unwrap_or_else(|| unreachable!("test root remains live"));
+        apply_invalidation(node, WidgetInvalidation::LAYOUT);
+        let dirty_before = tree.pending_phases();
+
+        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
+            .unwrap_or_else(|_| unreachable!("layout-only surface plan is valid"));
+        let candidate = planned
+            .semantic_candidate(None)
+            .unwrap_or_else(|_| unreachable!("staged semantic candidate is valid"))
+            .unwrap_or_else(|| unreachable!("layout publication stages semantic facts"));
+        assert_eq!(
+            candidate.nodes.first().map(|node| node.bounds),
+            planned
+                .publication()
+                .frame()
+                .nodes()
+                .first()
+                .map(|node| node.bounds())
+        );
+        drop(planned);
+        assert_eq!(tree.pending_phases(), dirty_before);
     }
 }
