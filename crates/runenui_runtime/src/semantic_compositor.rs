@@ -8,42 +8,42 @@ use runenui_core::{
 use crate::SemanticNodeId;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SemanticOwnerFacts {
-    pub(crate) id: MountedNodeId,
-    pub(crate) authored_id: Option<ElementId>,
-    pub(crate) mounted_children: Vec<MountedNodeId>,
-    pub(crate) contribution: SemanticContribution,
-    pub(crate) bindings: Vec<(SemanticKey, SemanticNodeId)>,
-    pub(crate) bounds: LogicalRect,
-    pub(crate) activation: WidgetActivation,
-    pub(crate) focusability: Focusability,
+pub struct SemanticOwnerFacts {
+    pub id: MountedNodeId,
+    pub authored_id: Option<ElementId>,
+    pub mounted_children: Vec<MountedNodeId>,
+    pub contribution: SemanticContribution,
+    pub bindings: Vec<(SemanticKey, SemanticNodeId)>,
+    pub bounds: LogicalRect,
+    pub activation: WidgetActivation,
+    pub focusability: Focusability,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ResolvedSemanticRelationship {
-    pub(crate) kind: SemanticRelationshipKind,
-    pub(crate) target: SemanticNodeId,
+pub struct ResolvedSemanticRelationship {
+    pub kind: SemanticRelationshipKind,
+    pub target: SemanticNodeId,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SemanticCandidateNode {
-    pub(crate) id: SemanticNodeId,
-    pub(crate) parent: Option<SemanticNodeId>,
-    pub(crate) children: Vec<SemanticNodeId>,
-    pub(crate) role: SemanticRole,
-    pub(crate) name: Option<String>,
-    pub(crate) description: Option<String>,
-    pub(crate) value: Option<SemanticValue>,
-    pub(crate) disabled: bool,
-    pub(crate) inert: bool,
-    pub(crate) supported_actions: Vec<SemanticAction>,
-    pub(crate) relationships: Vec<ResolvedSemanticRelationship>,
-    pub(crate) bounds: LogicalRect,
-    pub(crate) text: Option<SemanticText>,
+pub struct SemanticCandidateNode {
+    pub id: SemanticNodeId,
+    pub parent: Option<SemanticNodeId>,
+    pub children: Vec<SemanticNodeId>,
+    pub role: SemanticRole,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub value: Option<SemanticValue>,
+    pub disabled: bool,
+    pub inert: bool,
+    pub supported_actions: Vec<SemanticAction>,
+    pub relationships: Vec<ResolvedSemanticRelationship>,
+    pub bounds: LogicalRect,
+    pub text: Option<SemanticText>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum SemanticCompositionDiagnostic {
+pub enum SemanticCompositionDiagnostic {
     MissingOwnerBinding {
         key: SemanticKey,
     },
@@ -69,20 +69,14 @@ pub(crate) enum SemanticCompositionDiagnostic {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SemanticCandidate {
-    pub(crate) roots: Vec<SemanticNodeId>,
-    pub(crate) nodes: Vec<SemanticCandidateNode>,
-    pub(crate) focused: Option<SemanticNodeId>,
-    pub(crate) diagnostics: Vec<SemanticCompositionDiagnostic>,
+pub struct SemanticCandidate {
+    pub roots: Vec<SemanticNodeId>,
+    pub nodes: Vec<SemanticCandidateNode>,
+    pub focused: Option<SemanticNodeId>,
+    pub diagnostics: Vec<SemanticCompositionDiagnostic>,
 }
 
-impl SemanticCandidate {
-    pub(crate) fn adapter_visible_eq(&self, other: &Self) -> bool {
-        self.roots == other.roots && self.nodes == other.nodes && self.focused == other.focused
-    }
-}
-
-pub(crate) fn compose_semantics(
+pub fn compose_semantics(
     owners: &[SemanticOwnerFacts],
     root: Option<&MountedNodeId>,
     focused_owner: Option<&MountedNodeId>,
@@ -256,9 +250,10 @@ impl SemanticCompositor<'_> {
             let mut relationships = Vec::with_capacity(authored.len());
             for relationship in authored {
                 let target = match relationship.target() {
-                    SemanticReference::Local(key) => match self.visible_id(&owner, key).cloned() {
-                        Some(target) => Some(target),
-                        None => {
+                    SemanticReference::Local(key) => {
+                        if let Some(target) = self.visible_id(&owner, key).cloned() {
+                            Some(target)
+                        } else {
                             self.diagnostics.push(
                                 SemanticCompositionDiagnostic::MissingLocalRelationshipTarget {
                                     source: source.clone(),
@@ -267,7 +262,7 @@ impl SemanticCompositor<'_> {
                             );
                             None
                         }
-                    },
+                    }
                     SemanticReference::Authored {
                         element_id,
                         semantic_key,
@@ -321,18 +316,17 @@ impl SemanticCompositor<'_> {
             }
         };
         let key = semantic_key.cloned().unwrap_or(SemanticKey::PRIMARY);
-        match self.visible_id(&target_owner, &key).cloned() {
-            Some(target) => Some(target),
-            None => {
-                self.diagnostics.push(
-                    SemanticCompositionDiagnostic::MissingAuthoredRelationshipTarget {
-                        source: source.clone(),
-                        element_id: element_id.clone(),
-                        key,
-                    },
-                );
-                None
-            }
+        if let Some(target) = self.visible_id(&target_owner, &key).cloned() {
+            Some(target)
+        } else {
+            self.diagnostics.push(
+                SemanticCompositionDiagnostic::MissingAuthoredRelationshipTarget {
+                    source: source.clone(),
+                    element_id: element_id.clone(),
+                    key,
+                },
+            );
+            None
         }
     }
 }
@@ -359,7 +353,6 @@ fn supported_actions(
                     && match owner.focusability {
                         Focusability::Automatic => owner.activation.is_actionable(),
                         Focusability::Focusable => true,
-                        Focusability::NotFocusable | Focusability::Hidden => false,
                         _ => false,
                     }
             }
@@ -460,7 +453,7 @@ mod tests {
                 focusability: Focusability::NotFocusable,
             },
             SemanticOwnerFacts {
-                id: control.clone(),
+                id: control,
                 authored_id: None,
                 mounted_children: vec![leaf.clone()],
                 contribution: control_contribution,

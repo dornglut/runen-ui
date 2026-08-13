@@ -13,17 +13,17 @@ use super::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SemanticPublicationPlanError {
+pub enum SemanticPublicationPlanError {
     RevisionExhausted,
 }
 
-pub(crate) struct SemanticPublicationPlan {
+pub struct SemanticPublicationPlan {
     publication: Option<SemanticPublication>,
     diagnostics: Option<Vec<SemanticCompositionDiagnostic>>,
 }
 
 #[derive(Default)]
-pub(crate) struct SemanticPublicationState {
+pub struct SemanticPublicationState {
     current: Option<SemanticPublication>,
     diagnostics: Vec<SemanticCompositionDiagnostic>,
 }
@@ -43,7 +43,7 @@ impl SemanticPublicationState {
         let diagnostics = Some(candidate.diagnostics.clone());
         let publication = match self.current.as_ref() {
             None => Some(publication_from_candidate(
-                surface.clone(),
+                surface,
                 SemanticRevision::FIRST,
                 candidate,
                 None,
@@ -59,7 +59,7 @@ impl SemanticPublicationState {
                     .map(SemanticRevision)
                     .ok_or(SemanticPublicationPlanError::RevisionExhausted)?;
                 Some(publication_from_candidate(
-                    surface.clone(),
+                    surface,
                     revision,
                     candidate,
                     Some(current.snapshot()),
@@ -117,7 +117,7 @@ fn candidate_node_matches(candidate: &SemanticCandidateNode, published: &Semanti
 }
 
 fn publication_from_candidate(
-    surface: SurfaceId,
+    surface: &SurfaceId,
     revision: SemanticRevision,
     candidate: SemanticCandidate,
     previous: Option<&SemanticSnapshot>,
@@ -333,9 +333,9 @@ mod tests {
         let namespace = RuntimeNamespace::__runtime_new();
         let surface = namespace.__runtime_surface_id(0, 1);
         let max_revision = SemanticRevision(NonZeroU64::MAX);
-        let mut state = SemanticPublicationState {
+        let state = SemanticPublicationState {
             current: Some(publication_from_candidate(
-                surface.clone(),
+                &surface,
                 max_revision,
                 candidate(&namespace, 10.0, Vec::new()),
                 None,

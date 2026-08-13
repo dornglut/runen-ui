@@ -8,7 +8,9 @@ use crate::{
     SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication,
     SurfacePublicationCounter, TraceSurfaceContext, TraceSurfaceSnapshotKind,
     mounted::MountedTree,
-    semantic_publication::{SemanticPublicationPlanError, SemanticPublicationState},
+    semantic_publication::{
+        SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
+    },
     surface::{SurfaceCache, SurfacePlanningError, plan_mounted_surface_cached},
 };
 
@@ -210,7 +212,7 @@ impl SurfacePublicationState {
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
         let planned = plan_mounted_surface_cached(tree, context, self.cache.as_ref())?;
         let semantic_candidate = planned.semantic_candidate(focused_owner)?;
-        let semantic_plan = self
+        let semantic_plan: SemanticPublicationPlan = self
             .semantic_publication
             .plan(&self.surface_id, semantic_candidate)
             .map_err(|error| match error {

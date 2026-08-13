@@ -17,7 +17,7 @@ use runenui_core::{
 
 use crate::SemanticNodeId;
 
-pub(crate) use state::{
+pub use state::{
     SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
 };
 
