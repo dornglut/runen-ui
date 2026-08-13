@@ -194,15 +194,6 @@ mod pump;
 mod queue;
 mod redraw;
 mod runtime;
-#[cfg(test)]
-#[expect(
-    dead_code,
-    clippy::match_same_arms,
-    clippy::redundant_clone,
-    clippy::redundant_pub_crate,
-    clippy::single_match_else,
-    reason = "the B2 compositor is deliberately isolated until production publication integration"
-)]
 mod semantic_compositor;
 mod semantic_publication;
 mod style_debug;

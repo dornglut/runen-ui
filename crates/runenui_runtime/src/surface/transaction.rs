@@ -2,8 +2,10 @@ use crate::mounted::{
     DirtyPhases, FinalizedSemanticPublication, MountedTree, SemanticMountedCommit,
     SurfaceCapabilityPlan,
 };
+use crate::semantic_compositor::{SemanticCandidate, SemanticOwnerFacts, compose_semantics};
+use crate::MountedNodeId;
 
-use super::{SurfaceCache, SurfacePhaseReport, SurfacePublication};
+use super::{SurfaceCache, SurfacePhaseReport, SurfacePlanningError, SurfacePublication};
 
 /// Move-only candidate for one mounted-surface publication.
 ///
@@ -51,6 +53,48 @@ impl<'a> PlannedSurfacePublication<'a> {
 
     pub(crate) const fn publication(&self) -> &SurfacePublication {
         &self.cache.publication
+    }
+
+    /// Composes the renderer-independent semantic candidate from staged
+    /// publication facts while the semantic-store plan still protects exact
+    /// owner/key identity. No live mounted capability or renderer output is read.
+    pub(crate) fn semantic_candidate(
+        &self,
+        focused_owner: Option<&MountedNodeId>,
+    ) -> Result<Option<SemanticCandidate>, SurfacePlanningError> {
+        let Some(finalized) = self.finalized_semantics.as_ref() else {
+            return Ok(None);
+        };
+        let finalized = finalized.owner_facts().collect::<Vec<_>>();
+        let expected = self.cache.topology.nodes.len();
+        if finalized.len() != expected || self.cache.layout.bounds.len() != expected {
+            return Err(SurfacePlanningError::SemanticIntegrity);
+        }
+        let mut owners = Vec::with_capacity(expected);
+        for (position, (topology, semantic)) in self
+            .cache
+            .topology
+            .nodes
+            .iter()
+            .zip(finalized)
+            .enumerate()
+        {
+            if topology.id != semantic.owner {
+                return Err(SurfacePlanningError::SemanticIntegrity);
+            }
+            owners.push(SemanticOwnerFacts {
+                id: semantic.owner,
+                authored_id: topology.authored_id.clone(),
+                mounted_children: topology.children.clone(),
+                contribution: semantic.contribution,
+                bindings: semantic.bindings,
+                bounds: self.cache.layout.bounds[position],
+                activation: semantic.activation,
+                focusability: semantic.focusability,
+            });
+        }
+        let root = self.cache.topology.nodes.first().map(|node| &node.id);
+        Ok(Some(compose_semantics(&owners, root, focused_owner)))
     }
 
     /// Begins the final commit by consuming the borrow-protected semantic-store

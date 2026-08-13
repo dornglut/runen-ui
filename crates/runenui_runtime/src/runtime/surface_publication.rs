@@ -8,6 +8,7 @@ use crate::{
     SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication,
     SurfacePublicationCounter, TraceSurfaceContext, TraceSurfaceSnapshotKind,
     mounted::MountedTree,
+    semantic_publication::{SemanticPublicationPlanError, SemanticPublicationState},
     surface::{SurfaceCache, SurfacePlanningError, plan_mounted_surface_cached},
 };
 
@@ -131,10 +132,23 @@ impl SurfacePublicationAdmission {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::runtime) enum SurfacePublicationPlanError {
+    SemanticIntegrity,
+    CounterExhausted(SurfacePublicationCounter),
+}
+
+impl From<SurfacePlanningError> for SurfacePublicationPlanError {
+    fn from(_: SurfacePlanningError) -> Self {
+        Self::SemanticIntegrity
+    }
+}
+
 /// Sole runtime-owned state for current surface publication, redraw revision,
 /// and bounded displayed hit-test generations.
 pub(crate) struct SurfacePublicationState {
     cache: Option<SurfaceCache>,
+    semantic_publication: SemanticPublicationState,
     phase_report: SurfacePhaseReport,
     redraw_namespace: Arc<()>,
     redraw_revision: u64,
@@ -156,6 +170,7 @@ impl SurfacePublicationState {
         let surface_id = runtime_namespace.__runtime_surface_id(0, 1);
         Self {
             cache: None,
+            semantic_publication: SemanticPublicationState::default(),
             phase_report: SurfacePhaseReport::default(),
             redraw_namespace: Arc::new(()),
             redraw_revision: 1,
@@ -189,13 +204,26 @@ impl SurfacePublicationState {
         &mut self,
         tree: &mut MountedTree<Action>,
         context: &SurfaceBuildContext<'_>,
+        focused_owner: Option<&MountedNodeId>,
         admission: SurfacePublicationAdmission,
-    ) -> Result<SurfacePublication, SurfacePlanningError> {
+    ) -> Result<SurfacePublication, SurfacePublicationPlanError> {
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
         let planned = plan_mounted_surface_cached(tree, context, self.cache.as_ref())?;
+        let semantic_candidate = planned.semantic_candidate(focused_owner)?;
+        let semantic_plan = self
+            .semantic_publication
+            .plan(&self.surface_id, semantic_candidate)
+            .map_err(|error| match error {
+                SemanticPublicationPlanError::RevisionExhausted => {
+                    SurfacePublicationPlanError::CounterExhausted(
+                        SurfacePublicationCounter::SemanticRevision,
+                    )
+                }
+            })?;
         let nodes = HitTestSnapshot::nodes_from(planned.publication());
         let commit = planned.commit_store();
         let (products, report) = commit.commit(tree, &mut self.cache);
+        self.semantic_publication.commit(semantic_plan);
         self.phase_report = report;
         let input_context =
             self.retain_new_snapshot(nodes, hit_test_generation, coordinate_revision);

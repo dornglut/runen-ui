@@ -5,6 +5,8 @@
 //! composed state/support, resolved relationships, tree shape, focus, and
 //! revision authority are never widget-authored.
 
+mod state;
+
 use core::num::NonZeroU64;
 use std::collections::HashMap;
 
@@ -14,6 +16,10 @@ use runenui_core::{
 };
 
 use crate::SemanticNodeId;
+
+pub(crate) use state::{
+    SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
+};
 
 /// Non-zero, non-wrapping revision of one exact surface semantic product.
 ///
