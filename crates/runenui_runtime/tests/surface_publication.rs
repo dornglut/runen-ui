@@ -526,6 +526,7 @@ fn warmed_literal_padding_change_updates_geometry_from_current_mounted_style() {
             SurfacePhase::Style,
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
+            SurfacePhase::Semantics,
         ],
     );
     assert_eq!(
@@ -594,6 +595,7 @@ fn warmed_spacing_token_reference_change_uses_unchanged_current_token_set() {
             SurfacePhase::Style,
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
+            SurfacePhase::Semantics,
         ],
     );
     assert_eq!(
@@ -634,7 +636,14 @@ fn warmed_container_gap_change_reads_current_mounted_layout() {
         &tokens,
         LayoutConstraints::unbounded(),
     );
-    assert_common_phases(&runtime, &[SurfacePhase::Layout, SurfacePhase::HitTesting]);
+    assert_common_phases(
+        &runtime,
+        &[
+            SurfacePhase::Layout,
+            SurfacePhase::HitTesting,
+            SurfacePhase::Semantics,
+        ],
+    );
     let before_second_x = before.frame().nodes()[2].bounds().x();
     let after_second_x = after.frame().nodes()[2].bounds().x();
     assert!((after_second_x - before_second_x - 16.0).abs() <= f32::EPSILON);
@@ -657,6 +666,7 @@ fn warmed_combined_padding_and_color_change_executes_canonical_phases() {
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
             SurfacePhase::Paint,
+            SurfacePhase::Semantics,
         ],
     );
     assert_eq!(root_style(&after).foreground(), Some(Color::WHITE));
@@ -764,6 +774,7 @@ fn different_token_sets_with_the_same_revision_never_alias() {
             runenui_runtime::SurfacePhase::Style,
             runenui_runtime::SurfacePhase::Layout,
             runenui_runtime::SurfacePhase::HitTesting,
+            runenui_runtime::SurfacePhase::Semantics,
         ]
     );
 }
