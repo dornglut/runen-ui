@@ -2,6 +2,7 @@ use crate::mounted::{
     DirtyPhases, FinalizedSemanticPublication, MountedTree, SemanticMountedCommit,
     SurfaceCapabilityPlan,
 };
+use crate::semantic_compositor::SemanticCandidate;
 
 use super::{SurfaceCache, SurfacePhaseReport, SurfacePublication};
 
