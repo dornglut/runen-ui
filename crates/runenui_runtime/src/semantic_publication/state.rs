@@ -15,10 +15,11 @@ use super::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SemanticPublicationPlanError {
     RevisionExhausted,
+    MissingCurrentPublication,
 }
 
 pub struct SemanticPublicationPlan {
-    publication: Option<Arc<SemanticPublication>>,
+    publication: Arc<SemanticPublication>,
     diagnostics: Option<Vec<SemanticCompositionDiagnostic>>,
 }
 
@@ -35,20 +36,27 @@ impl SemanticPublicationState {
         candidate: Option<SemanticCandidate>,
     ) -> Result<SemanticPublicationPlan, SemanticPublicationPlanError> {
         let Some(candidate) = candidate else {
+            let publication = self
+                .current
+                .as_ref()
+                .map(Arc::clone)
+                .ok_or(SemanticPublicationPlanError::MissingCurrentPublication)?;
             return Ok(SemanticPublicationPlan {
-                publication: None,
+                publication,
                 diagnostics: None,
             });
         };
         let diagnostics = Some(candidate.diagnostics.clone());
         let publication = match self.current.as_ref() {
-            None => Some(Arc::new(publication_from_candidate(
+            None => Arc::new(publication_from_candidate(
                 surface,
                 SemanticRevision::FIRST,
                 candidate,
                 None,
-            ))),
-            Some(current) if candidate_matches_snapshot(&candidate, current.snapshot()) => None,
+            )),
+            Some(current) if candidate_matches_snapshot(&candidate, current.snapshot()) => {
+                Arc::clone(current)
+            }
             Some(current) => {
                 let revision = current
                     .snapshot()
@@ -58,12 +66,12 @@ impl SemanticPublicationState {
                     .and_then(NonZeroU64::new)
                     .map(SemanticRevision)
                     .ok_or(SemanticPublicationPlanError::RevisionExhausted)?;
-                Some(Arc::new(publication_from_candidate(
+                Arc::new(publication_from_candidate(
                     surface,
                     revision,
                     candidate,
                     Some(current.snapshot()),
-                )))
+                ))
             }
         };
         Ok(SemanticPublicationPlan {
@@ -72,13 +80,16 @@ impl SemanticPublicationState {
         })
     }
 
-    pub(crate) fn commit(&mut self, plan: SemanticPublicationPlan) {
-        if let Some(publication) = plan.publication {
-            self.current = Some(publication);
-        }
-        if let Some(diagnostics) = plan.diagnostics {
+    pub(crate) fn commit(&mut self, plan: SemanticPublicationPlan) -> Arc<SemanticPublication> {
+        let SemanticPublicationPlan {
+            publication,
+            diagnostics,
+        } = plan;
+        self.current = Some(Arc::clone(&publication));
+        if let Some(diagnostics) = diagnostics {
             self.diagnostics = diagnostics;
         }
+        publication
     }
 }
 
@@ -261,25 +272,38 @@ mod tests {
         let plan = state
             .plan(&surface, Some(candidate(&namespace, 10.0, Vec::new())))
             .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
-        state.commit(plan);
+        let committed = state.commit(plan);
 
         let current = state
             .current
             .as_ref()
             .unwrap_or_else(|| unreachable!("first semantic publication committed"));
+        assert!(Arc::ptr_eq(current, &committed));
         assert_eq!(current.snapshot().revision(), SemanticRevision::FIRST);
         assert!(current.update().is_none());
     }
 
     #[test]
-    fn unchanged_and_diagnostics_only_candidates_do_not_advance_revision() {
+    fn no_candidate_requires_an_existing_current_publication() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let state = SemanticPublicationState::default();
+        let result = state.plan(&surface, None);
+        assert_eq!(
+            result.err(),
+            Some(SemanticPublicationPlanError::MissingCurrentPublication)
+        );
+    }
+
+    #[test]
+    fn unchanged_and_diagnostics_only_candidates_reuse_current_publication() {
         let namespace = RuntimeNamespace::__runtime_new();
         let surface = namespace.__runtime_surface_id(0, 1);
         let mut state = SemanticPublicationState::default();
         let initial = state
             .plan(&surface, Some(candidate(&namespace, 10.0, Vec::new())))
             .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
-        state.commit(initial);
+        let initial = state.commit(initial);
 
         let diagnostic = SemanticCompositionDiagnostic::FocusedOwnerMissingVisiblePrimary;
         let unchanged = state
@@ -288,14 +312,34 @@ mod tests {
                 Some(candidate(&namespace, 10.0, vec![diagnostic.clone()])),
             )
             .unwrap_or_else(|_| unreachable!("unchanged semantics need no revision"));
-        state.commit(unchanged);
+        let unchanged = state.commit(unchanged);
 
         let current = state
             .current
             .as_ref()
             .unwrap_or_else(|| unreachable!("semantic publication remains committed"));
+        assert!(Arc::ptr_eq(&initial, &unchanged));
+        assert!(Arc::ptr_eq(current, &unchanged));
         assert_eq!(current.snapshot().revision(), SemanticRevision::FIRST);
         assert_eq!(state.diagnostics, vec![diagnostic]);
+    }
+
+    #[test]
+    fn clean_plan_reuses_current_publication_without_candidate() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let mut state = SemanticPublicationState::default();
+        let initial = state
+            .plan(&surface, Some(candidate(&namespace, 10.0, Vec::new())))
+            .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
+        let initial = state.commit(initial);
+
+        let clean = state
+            .plan(&surface, None)
+            .unwrap_or_else(|_| unreachable!("current semantic publication is available"));
+        let clean = state.commit(clean);
+        assert!(Arc::ptr_eq(&initial, &clean));
+        assert_eq!(clean.snapshot().revision(), SemanticRevision::FIRST);
     }
 
     #[test]
