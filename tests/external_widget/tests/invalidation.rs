@@ -176,11 +176,20 @@ fn layout_and_semantics_invalidation_execute_exact_dependencies() {
     publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
-        &[SurfacePhase::Layout, SurfacePhase::HitTesting]
+        &[
+            SurfacePhase::Layout,
+            SurfacePhase::HitTesting,
+            SurfacePhase::Semantics,
+        ]
     );
     assert_eq!(
-        (calls.measure.get(), calls.layout.get(), calls.paint.get()),
-        (2, 2, 1)
+        (
+            calls.measure.get(),
+            calls.layout.get(),
+            calls.paint.get(),
+            calls.semantics.get(),
+        ),
+        (2, 2, 1, 1)
     );
 
     process_one(
