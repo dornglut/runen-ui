@@ -1,6 +1,7 @@
 use runenui_core::__runtime::RuntimeNamespace;
 use runenui_core::{
-    SemanticContribution, SemanticContributionContext, SemanticKey, WidgetActivation,
+    Focusability, SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeId,
+    WidgetActivation,
 };
 
 use super::{
@@ -19,6 +20,7 @@ pub(crate) struct StagedSemanticOwnerCapabilities {
     current_bindings: Vec<SemanticBinding>,
     semantic_cache: CachedSemanticContribution,
     activation_cache: CachedCapability<WidgetActivation>,
+    focusability: Focusability,
     mark_integrity_failed: bool,
 }
 
@@ -32,6 +34,15 @@ pub(crate) struct FinalizedSemanticPublication<'a> {
     owners: Vec<FinalizedSemanticOwner>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FinalizedSemanticOwnerFacts {
+    pub(crate) owner: MountedNodeId,
+    pub(crate) contribution: SemanticContribution,
+    pub(crate) bindings: Vec<(SemanticKey, SemanticNodeId)>,
+    pub(crate) activation: WidgetActivation,
+    pub(crate) focusability: Focusability,
+}
+
 pub(crate) struct SemanticMountedCommit {
     owners: Vec<FinalizedSemanticOwner>,
 }
@@ -42,6 +53,7 @@ struct FinalizedSemanticOwner {
     bindings: Vec<SemanticBinding>,
     semantic_cache: CachedSemanticContribution,
     activation_cache: CachedCapability<WidgetActivation>,
+    focusability: Focusability,
     mark_integrity_failed: bool,
 }
 
@@ -64,11 +76,20 @@ struct StagedActivationCapability {
 }
 
 impl FinalizedSemanticPublication<'_> {
-    pub(crate) fn contributions(&self) -> Vec<SemanticContribution> {
-        self.owners
-            .iter()
-            .map(|owner| owner.contribution.clone())
-            .collect()
+    pub(crate) fn owner_facts(
+        &self,
+    ) -> impl ExactSizeIterator<Item = FinalizedSemanticOwnerFacts> + '_ {
+        self.owners.iter().map(|owner| FinalizedSemanticOwnerFacts {
+            owner: owner.owner.clone(),
+            contribution: owner.contribution.clone(),
+            bindings: owner
+                .bindings
+                .iter()
+                .map(|binding| (binding.key().clone(), binding.id().clone()))
+                .collect(),
+            activation: owner.activation_cache.ready().unwrap_or_default(),
+            focusability: owner.focusability,
+        })
     }
 
     pub(crate) fn commit_store(self) -> SemanticMountedCommit {
@@ -127,7 +148,11 @@ impl<Action> MountedTree<Action> {
             .node(owner)
             .unwrap_or_else(|| unreachable!("semantic publication owner remains live"));
         if state_is_corrupted(node) {
-            return integrity_withdrawal(owner, node.semantic_bindings.clone());
+            return integrity_withdrawal(
+                owner,
+                node.semantic_bindings.clone(),
+                node.focusability,
+            );
         }
 
         let semantic = stage_semantic_capability(node);
@@ -141,6 +166,7 @@ impl<Action> MountedTree<Action> {
                 current_bindings: node.semantic_bindings.clone(),
                 semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
                 activation_cache: activation.cache,
+                focusability: node.focusability,
                 mark_integrity_failed,
             };
         }
@@ -152,6 +178,7 @@ impl<Action> MountedTree<Action> {
             current_bindings: node.semantic_bindings.clone(),
             semantic_cache: semantic.cache,
             activation_cache: activation.cache,
+            focusability: node.focusability,
             mark_integrity_failed,
         }
     }
@@ -279,6 +306,7 @@ fn finalize_owner(
             bindings,
             semantic_cache: CachedSemanticContribution::IdentityExhausted,
             activation_cache: staged.activation_cache,
+            focusability: staged.focusability,
             mark_integrity_failed: staged.mark_integrity_failed,
         };
     }
@@ -290,6 +318,7 @@ fn finalize_owner(
             bindings,
             semantic_cache: CachedSemanticContribution::IdentityExhausted,
             activation_cache: staged.activation_cache,
+            focusability: staged.focusability,
             mark_integrity_failed: staged.mark_integrity_failed,
         },
         Some(ForcedWithdrawal::IndexIntegrityFailure) => FinalizedSemanticOwner {
@@ -298,6 +327,7 @@ fn finalize_owner(
             bindings,
             semantic_cache: CachedSemanticContribution::IndexIntegrityFailure,
             activation_cache: staged.activation_cache,
+            focusability: staged.focusability,
             mark_integrity_failed: true,
         },
         None => FinalizedSemanticOwner {
@@ -306,6 +336,7 @@ fn finalize_owner(
             bindings,
             semantic_cache: staged.semantic_cache,
             activation_cache: staged.activation_cache,
+            focusability: staged.focusability,
             mark_integrity_failed: staged.mark_integrity_failed,
         },
     }
@@ -314,6 +345,7 @@ fn finalize_owner(
 fn integrity_withdrawal(
     owner: &MountedNodeId,
     current_bindings: Vec<SemanticBinding>,
+    focusability: Focusability,
 ) -> StagedSemanticOwnerCapabilities {
     StagedSemanticOwnerCapabilities {
         owner: owner.clone(),
@@ -322,6 +354,7 @@ fn integrity_withdrawal(
         current_bindings,
         semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
         activation_cache: CachedCapability::StatePayloadMismatch,
+        focusability,
         mark_integrity_failed: true,
     }
 }
@@ -516,11 +549,24 @@ mod tests {
         let (probe, _) = probe(false);
         let (mut tree, _) = MountedTree::mount(Element::new(probe));
         let root = root_id(&tree);
+        let expected_focusability = tree
+            .node(&root)
+            .unwrap_or_else(|| unreachable!("root remains mounted"))
+            .focusability;
         let plan = tree.plan_semantic_publication_capabilities();
         let finalized = tree
             .finalize_semantic_publication(plan)
             .unwrap_or_else(|_| unreachable!("valid semantic plan finalizes"));
-        assert_eq!(finalized.contributions().len(), 1);
+        let owner_facts = finalized.owner_facts().collect::<Vec<_>>();
+        assert_eq!(owner_facts.len(), 1);
+        assert_eq!(owner_facts[0].owner, root);
+        assert_eq!(owner_facts[0].bindings.len(), 1);
+        assert_eq!(owner_facts[0].bindings[0].0, SemanticKey::PRIMARY);
+        assert_eq!(
+            owner_facts[0].activation,
+            WidgetActivation::actionable(true)
+        );
+        assert_eq!(owner_facts[0].focusability, expected_focusability);
         let mounted_commit = finalized.commit_store();
 
         assert_eq!(tree.semantic_store.live_count(), 1);

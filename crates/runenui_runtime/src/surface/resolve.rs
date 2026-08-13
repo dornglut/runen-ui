@@ -235,7 +235,10 @@ pub(super) fn resolve_semantics(
 ) -> Vec<SemanticContribution> {
     #[cfg(test)]
     super::cache::note_semantics_phase_execution();
-    finalized.contributions()
+    finalized
+        .owner_facts()
+        .map(|owner| owner.contribution)
+        .collect()
 }
 
 pub(super) fn resolve_diagnostics(
