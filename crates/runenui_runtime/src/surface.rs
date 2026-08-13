@@ -349,7 +349,7 @@ impl SurfaceLayoutReport {
         Self { nodes }
     }
 
-    /// Returns measured nodes in the same order as the surface frame.
+    /// Returns the ordered layout nodes in the same order as the surface frame.
     #[must_use]
     pub const fn nodes(&self) -> &[SurfaceLayoutNode] {
         self.nodes.as_slice()
@@ -465,12 +465,13 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     cache: Option<&SurfaceCache>,
+    focused_owner: Option<&MountedNodeId>,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let next_context = context_key(context);
     let pending = tree.pending_phases();
     let tree_dirty = cache.is_none() || pending.contains(DirtyPhases::TREE);
     if tree_dirty {
-        return plan_structural_surface(tree, context, next_context);
+        return plan_structural_surface(tree, context, next_context, focused_owner);
     }
 
     let mut current = cache
@@ -498,13 +499,14 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         completed.insert(DirtyPhases::STYLE);
     }
 
+    let semantic_product_dirty = semantics_dirty || layout_dirty;
     let capability_plan = tree.plan_surface_publication_capabilities(surface_capability_phases(
         layout_dirty,
         paint_dirty,
         diagnostics_dirty,
     ));
     let semantic_capability_plan =
-        semantics_dirty.then(|| tree.plan_semantic_publication_capabilities());
+        semantic_product_dirty.then(|| tree.plan_semantic_publication_capabilities());
 
     if layout_dirty {
         let resolved = ResolvedSurfaceTree::for_layout(
@@ -543,8 +545,16 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     let finalized_semantics = semantic_capability_plan
         .map(|plan| tree.finalize_semantic_publication(plan))
         .transpose()?;
+    let mut semantic_candidate = None;
     if let Some(finalized) = finalized_semantics.as_ref() {
-        current.semantics = resolve_semantics(finalized);
+        let resolved = resolve_semantics(
+            &current.topology,
+            current.layout.bounds.as_slice(),
+            finalized,
+            focused_owner,
+        )?;
+        current.semantics = resolved.contributions;
+        semantic_candidate = Some(resolved.candidate);
         report.record(SurfacePhase::Semantics);
         completed.insert(DirtyPhases::SEMANTICS);
     }
@@ -563,6 +573,7 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         report,
         completed,
         capability_plan,
+        semantic_candidate,
         finalized_semantics,
     ))
 }
@@ -571,6 +582,7 @@ fn plan_structural_surface<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     context_key: cache::SurfaceContextKey,
+    focused_owner: Option<&MountedNodeId>,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let mut report = SurfacePhaseReport::default();
     let topology = collect_topology(tree);
@@ -596,7 +608,14 @@ fn plan_structural_surface<'tree, Action>(
     let paint = resolve_paint(&topology, &capability_plan);
     report.record(SurfacePhase::Paint);
     let finalized_semantics = tree.finalize_semantic_publication(semantic_capability_plan)?;
-    let semantics = resolve_semantics(&finalized_semantics);
+    let resolved_semantics = resolve_semantics(
+        &topology,
+        layout.bounds.as_slice(),
+        &finalized_semantics,
+        focused_owner,
+    )?;
+    let semantics = resolved_semantics.contributions;
+    let semantic_candidate = resolved_semantics.candidate;
     report.record(SurfacePhase::Semantics);
     let diagnostics = resolve_diagnostics(&topology, &capability_plan);
     report.record(SurfacePhase::Diagnostics);
@@ -626,6 +645,7 @@ fn plan_structural_surface<'tree, Action>(
         report,
         DirtyPhases::ALL,
         capability_plan,
+        Some(semantic_candidate),
         Some(finalized_semantics),
     ))
 }
@@ -636,7 +656,7 @@ fn publish_mounted_surface_cached<Action>(
     context: &SurfaceBuildContext<'_>,
     cache: &mut Option<SurfaceCache>,
 ) -> Result<(SurfacePublication, SurfacePhaseReport), SurfacePlanningError> {
-    let planned = plan_mounted_surface_cached(tree, context, cache.as_ref())?;
+    let planned = plan_mounted_surface_cached(tree, context, cache.as_ref(), None)?;
     let commit = planned.commit_store();
     Ok(commit.commit(tree, cache))
 }
@@ -707,7 +727,7 @@ mod tests {
     use super::{
         SurfaceBuildContext, SurfacePhaseReport, SurfacePublication, cache::SurfaceCache,
         cache::phase_function_counts, cache::reset_phase_function_counts,
-        publish_mounted_surface_cached,
+        plan_mounted_surface_cached, publish_mounted_surface_cached,
     };
     use crate::{LayoutConstraints, mounted::MountedTree, mounted::apply_invalidation};
 
@@ -791,8 +811,12 @@ mod tests {
             ),
             (
                 WidgetInvalidation::LAYOUT,
-                vec![super::SurfacePhase::Layout, super::SurfacePhase::HitTesting],
-                [0, 0, 1, 1, 0, 0, 0],
+                vec![
+                    super::SurfacePhase::Layout,
+                    super::SurfacePhase::HitTesting,
+                    super::SurfacePhase::Semantics,
+                ],
+                [0, 0, 1, 1, 0, 1, 0],
             ),
         ];
 
@@ -831,6 +855,42 @@ mod tests {
         let (_, clean) = publish(&mut tree, &context, &mut cache);
         assert!(clean.executed().is_empty());
         assert_eq!(phase_function_counts(), [0; 7]);
+    }
+
+    #[test]
+    fn layout_only_publication_recomposes_semantic_candidate_from_staged_bounds_and_focus() {
+        let (mut tree, _) = MountedTree::<()>::mount(text("semantic").key("root").into_element());
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let root = tree.publication_preorder_ids()[0].clone();
+        let node = tree
+            .node_mut(&root)
+            .unwrap_or_else(|| unreachable!("test root remains live"));
+        apply_invalidation(node, WidgetInvalidation::LAYOUT);
+
+        let planned = plan_mounted_surface_cached(
+            &mut tree,
+            &context,
+            cache.as_ref(),
+            Some(&root),
+        )
+        .unwrap_or_else(|_| unreachable!("layout-only semantic candidate remains valid"));
+        let candidate = planned
+            .semantic_candidate()
+            .unwrap_or_else(|| unreachable!("layout publication composes semantic candidate"));
+        assert!(!candidate.nodes.is_empty());
+        assert!(candidate.focused.is_some());
+        assert_eq!(
+            candidate.nodes.first().map(|node| node.bounds),
+            planned
+                .publication()
+                .frame()
+                .nodes()
+                .first()
+                .map(|node| node.bounds())
+        );
     }
 
     #[test]

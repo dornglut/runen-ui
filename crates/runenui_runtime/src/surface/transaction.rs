@@ -18,6 +18,7 @@ pub(crate) struct PlannedSurfacePublication<'a> {
     report: SurfacePhaseReport,
     completed: DirtyPhases,
     capability_plan: SurfaceCapabilityPlan,
+    semantic_candidate: Option<SemanticCandidate>,
     finalized_semantics: Option<FinalizedSemanticPublication<'a>>,
 }
 
@@ -39,6 +40,7 @@ impl<'a> PlannedSurfacePublication<'a> {
         report: SurfacePhaseReport,
         completed: DirtyPhases,
         capability_plan: SurfaceCapabilityPlan,
+        semantic_candidate: Option<SemanticCandidate>,
         finalized_semantics: Option<FinalizedSemanticPublication<'a>>,
     ) -> Self {
         Self {
@@ -46,12 +48,18 @@ impl<'a> PlannedSurfacePublication<'a> {
             report,
             completed,
             capability_plan,
+            semantic_candidate,
             finalized_semantics,
         }
     }
 
     pub(crate) const fn publication(&self) -> &SurfacePublication {
         &self.cache.publication
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn semantic_candidate(&self) -> Option<&SemanticCandidate> {
+        self.semantic_candidate.as_ref()
     }
 
     /// Begins the final commit by consuming the borrow-protected semantic-store
@@ -111,22 +119,47 @@ mod tests {
     };
 
     #[test]
-    fn planning_keeps_surface_cache_and_dirty_completion_uncommitted() {
+    fn planning_keeps_semantic_candidate_and_surface_commit_uncommitted() {
         let (mut tree, _) = MountedTree::<()>::mount(text("staged").key("root").into_element());
+        let root = tree.publication_preorder_ids()[0].clone();
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
         let mut cache = None;
         let dirty_before = tree.pending_phases();
 
-        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
-            .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
+        let planned = plan_mounted_surface_cached(
+            &mut tree,
+            &context,
+            cache.as_ref(),
+            Some(&root),
+        )
+        .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
         assert!(!planned.publication().frame().is_empty());
+        let candidate = planned
+            .semantic_candidate()
+            .unwrap_or_else(|| unreachable!("structural publication composes semantics"));
+        assert!(!candidate.nodes.is_empty());
+        assert!(candidate.focused.is_some());
+        assert_eq!(
+            candidate.nodes.first().map(|node| node.bounds),
+            planned
+                .publication()
+                .frame()
+                .nodes()
+                .first()
+                .map(|node| node.bounds())
+        );
         drop(planned);
         assert!(cache.is_none());
         assert_eq!(tree.pending_phases(), dirty_before);
 
-        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
-            .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
+        let planned = plan_mounted_surface_cached(
+            &mut tree,
+            &context,
+            cache.as_ref(),
+            Some(&root),
+        )
+        .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
         let commit = planned.commit_store();
         assert!(cache.is_none());
         assert_eq!(tree.pending_phases(), dirty_before);

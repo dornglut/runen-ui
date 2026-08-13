@@ -189,10 +189,12 @@ impl SurfacePublicationState {
         &mut self,
         tree: &mut MountedTree<Action>,
         context: &SurfaceBuildContext<'_>,
+        focused_owner: Option<&MountedNodeId>,
         admission: SurfacePublicationAdmission,
     ) -> Result<SurfacePublication, SurfacePlanningError> {
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
-        let planned = plan_mounted_surface_cached(tree, context, self.cache.as_ref())?;
+        let planned =
+            plan_mounted_surface_cached(tree, context, self.cache.as_ref(), focused_owner)?;
         let nodes = HitTestSnapshot::nodes_from(planned.publication());
         let commit = planned.commit_store();
         let (products, report) = commit.commit(tree, &mut self.cache);
