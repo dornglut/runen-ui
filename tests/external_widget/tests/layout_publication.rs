@@ -157,6 +157,7 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
         &[
             runenui_runtime::SurfacePhase::Layout,
             runenui_runtime::SurfacePhase::HitTesting,
+            runenui_runtime::SurfacePhase::Semantics,
         ]
     );
     assert_eq!(provider.calls.get(), 2);
