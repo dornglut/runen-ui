@@ -122,11 +122,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     ) -> Result<crate::SurfacePublication, PublishSurfaceError> {
         let admission = self.admit_surface_publication()?;
         let instant = self.now();
+        let focused_owner = self.focus.focused_node().cloned();
         let publication =
-            match self
-                .surface_publication
-                .publish(&mut self.tree, context, admission.surface)
-            {
+            match self.surface_publication.publish(
+                &mut self.tree,
+                context,
+                focused_owner.as_ref(),
+                admission.surface,
+            ) {
                 Ok(publication) => publication,
                 Err(SurfacePlanningError::SemanticIntegrity) => {
                     let reason = RuntimeTerminalReason::Poisoned;
