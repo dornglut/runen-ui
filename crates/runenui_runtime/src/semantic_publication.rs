@@ -17,9 +17,7 @@ use runenui_core::{
 
 use crate::SemanticNodeId;
 
-pub(crate) use state::{
-    SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
-};
+pub(super) use state::{SemanticPublicationPlanError, SemanticPublicationState};
 
 /// Non-zero, non-wrapping revision of one exact surface semantic product.
 ///
