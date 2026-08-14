@@ -1,8 +1,8 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, EdgeInsets, Element, LogicalLength, NoHostProtocol, StyleTokens, UiApp, View, button,
-    children, color_token, column, row, text,
+    Color, EdgeInsets, Element, LogicalLength, NoHostProtocol, SemanticRole, StyleTokens, UiApp,
+    View, button, children, color_token, column, row, text,
 };
 use runenui_runtime::{
     AppRuntime, DeterministicMeasurementProvider, LayoutConstraints, LogicalPoint, LogicalSize,
@@ -80,13 +80,18 @@ fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication
             .unwrap_or_else(|| unreachable!())
             .id()
     );
+
+    let semantic_button_a = publication
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
+        .find(|node| node.name() == Some("A"))
+        .unwrap_or_else(|| unreachable!("button A is present in semantic publication"));
+    assert_eq!(semantic_button_a.role(), SemanticRole::Button);
+
     let debug = render_debug_surface_frame(publication.frame());
-    let button_a = debug
-        .lines()
-        .find(|line| line.contains("name: Some(\"A\")"))
-        .unwrap_or_else(|| unreachable!("button A semantics are present in debug output"));
-    assert!(button_a.contains("semantics=SemanticContribution"));
-    assert!(button_a.contains("role: Button"));
+    assert!(!debug.contains("semantics="));
 }
 
 struct StyledApp;
