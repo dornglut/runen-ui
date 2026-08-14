@@ -6,8 +6,17 @@ use runenui_core::{
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
-    SurfaceBuildContext, SurfacePhase, render_debug_surface_frame,
+    SurfaceBuildContext, SurfacePhase, SurfacePublication, render_debug_surface_frame,
 };
+
+fn publish<App: UiApp>(
+    runtime: &mut AppRuntime<App>,
+    context: &SurfaceBuildContext<'_>,
+) -> SurfacePublication {
+    runtime
+        .publish_surface(context)
+        .unwrap_or_else(|_| unreachable!("surface publication test is admitted"))
+}
 
 #[derive(Debug)]
 enum Action {
@@ -156,10 +165,10 @@ fn warm_and_change(
 ) {
     let mut runtime = AppRuntime::<StructuralApp>::mount(initial);
     let tokens = StyleTokens::new();
-    let _ = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::unbounded(),
-    ));
+    let _ = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+    );
     runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,
@@ -175,10 +184,10 @@ fn warm_and_change(
             .processed_envelopes(),
         1
     );
-    let publication = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::unbounded(),
-    ));
+    let publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+    );
     (runtime, publication)
 }
 
@@ -260,7 +269,7 @@ fn mounted_surface_products_align_and_hit_testing_targets_mounted_ids() {
     let mut runtime = AppRuntime::<App>::mount(());
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
-    let publication = runtime.publish_surface(&context);
+    let publication = publish(&mut runtime, &context);
     assert_eq!(publication.frame().nodes().len(), 3);
     assert_eq!(publication.style_report().nodes().len(), 3);
     assert_eq!(publication.layout_report().nodes().len(), 3);
@@ -415,7 +424,7 @@ fn warm_common_fields(
 ) {
     let mut runtime = AppRuntime::<CommonFieldsApp>::mount(initial);
     let context = SurfaceBuildContext::new(tokens, constraints);
-    let before = runtime.publish_surface(&context);
+    let before = publish(&mut runtime, &context);
     let identities = mounted_identities(&mut runtime);
     runtime.pump(PumpBudget::new(
         usize::MAX,
@@ -432,7 +441,7 @@ fn warm_common_fields(
             .processed_envelopes(),
         1
     );
-    let after = runtime.publish_surface(&context);
+    let after = publish(&mut runtime, &context);
     (runtime, before, after, identities)
 }
 
@@ -517,6 +526,7 @@ fn warmed_literal_padding_change_updates_geometry_from_current_mounted_style() {
             SurfacePhase::Style,
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
+            SurfacePhase::Semantics,
         ],
     );
     assert_eq!(
@@ -585,6 +595,7 @@ fn warmed_spacing_token_reference_change_uses_unchanged_current_token_set() {
             SurfacePhase::Style,
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
+            SurfacePhase::Semantics,
         ],
     );
     assert_eq!(
@@ -625,7 +636,14 @@ fn warmed_container_gap_change_reads_current_mounted_layout() {
         &tokens,
         LayoutConstraints::unbounded(),
     );
-    assert_common_phases(&runtime, &[SurfacePhase::Layout, SurfacePhase::HitTesting]);
+    assert_common_phases(
+        &runtime,
+        &[
+            SurfacePhase::Layout,
+            SurfacePhase::HitTesting,
+            SurfacePhase::Semantics,
+        ],
+    );
     let before_second_x = before.frame().nodes()[2].bounds().x();
     let after_second_x = after.frame().nodes()[2].bounds().x();
     assert!((after_second_x - before_second_x - 16.0).abs() <= f32::EPSILON);
@@ -648,6 +666,7 @@ fn warmed_combined_padding_and_color_change_executes_canonical_phases() {
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
             SurfacePhase::Paint,
+            SurfacePhase::Semantics,
         ],
     );
     assert_eq!(root_style(&after).foreground(), Some(Color::WHITE));
@@ -737,14 +756,14 @@ fn different_token_sets_with_the_same_revision_never_alias() {
         )
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(first.revision(), second.revision());
-    let _ = runtime.publish_surface(&SurfaceBuildContext::new(
-        &first,
-        LayoutConstraints::unbounded(),
-    ));
-    let second_publication = runtime.publish_surface(&SurfaceBuildContext::new(
-        &second,
-        LayoutConstraints::unbounded(),
-    ));
+    let _ = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&first, LayoutConstraints::unbounded()),
+    );
+    let second_publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&second, LayoutConstraints::unbounded()),
+    );
     assert_eq!(
         token_padding(&second_publication),
         Some(EdgeInsets::all(LogicalLength::from(20_u16)))
@@ -755,6 +774,7 @@ fn different_token_sets_with_the_same_revision_never_alias() {
             runenui_runtime::SurfacePhase::Style,
             runenui_runtime::SurfacePhase::Layout,
             runenui_runtime::SurfacePhase::HitTesting,
+            runenui_runtime::SurfacePhase::Semantics,
         ]
     );
 }
@@ -778,14 +798,14 @@ fn divergent_clones_follow_exact_current_token_content() {
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(left.revision(), right.revision());
     let mut runtime = AppRuntime::<TokenApp>::mount(());
-    let _ = runtime.publish_surface(&SurfaceBuildContext::new(
-        &left,
-        LayoutConstraints::unbounded(),
-    ));
-    let current = runtime.publish_surface(&SurfaceBuildContext::new(
-        &right,
-        LayoutConstraints::unbounded(),
-    ));
+    let _ = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&left, LayoutConstraints::unbounded()),
+    );
+    let current = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&right, LayoutConstraints::unbounded()),
+    );
     assert_eq!(
         token_padding(&current),
         Some(EdgeInsets::all(LogicalLength::from(11_u16)))
@@ -805,14 +825,14 @@ fn equal_token_content_can_reuse_the_warmed_publication() {
             .unwrap_or_else(|_| unreachable!());
     }
     let mut runtime = AppRuntime::<TokenApp>::mount(());
-    let first_publication = runtime.publish_surface(&SurfaceBuildContext::new(
-        &first,
-        LayoutConstraints::unbounded(),
-    ));
-    let second_publication = runtime.publish_surface(&SurfaceBuildContext::new(
-        &second,
-        LayoutConstraints::unbounded(),
-    ));
+    let first_publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&first, LayoutConstraints::unbounded()),
+    );
+    let second_publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&second, LayoutConstraints::unbounded()),
+    );
     assert_eq!(first_publication, second_publication);
     assert!(runtime.last_surface_phase_report().executed().is_empty());
 }
@@ -828,19 +848,19 @@ fn color_only_token_change_executes_style_and_paint_without_layout() {
         .define_color(color_token!("surface.foreground"), Color::WHITE)
         .unwrap_or_else(|_| unreachable!());
     let mut runtime = AppRuntime::<TokenApp>::mount(());
-    let before = runtime.publish_surface(&SurfaceBuildContext::new(
-        &first,
-        LayoutConstraints::unbounded(),
-    ));
+    let before = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&first, LayoutConstraints::unbounded()),
+    );
     let before_bounds = before
         .frame()
         .root()
         .unwrap_or_else(|| unreachable!())
         .bounds();
-    let after = runtime.publish_surface(&SurfaceBuildContext::new(
-        &second,
-        LayoutConstraints::unbounded(),
-    ));
+    let after = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&second, LayoutConstraints::unbounded()),
+    );
     assert_eq!(
         before_bounds,
         after
@@ -888,14 +908,14 @@ fn saturated_token_revision_still_uses_content_for_cache_compatibility() {
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(first.revision(), second.revision());
     let mut runtime = AppRuntime::<TokenApp>::mount(());
-    let _ = runtime.publish_surface(&SurfaceBuildContext::new(
-        &first,
-        LayoutConstraints::unbounded(),
-    ));
-    let current = runtime.publish_surface(&SurfaceBuildContext::new(
-        &second,
-        LayoutConstraints::unbounded(),
-    ));
+    let _ = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&first, LayoutConstraints::unbounded()),
+    );
+    let current = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&second, LayoutConstraints::unbounded()),
+    );
     assert_eq!(
         token_padding(&current),
         Some(EdgeInsets::all(LogicalLength::from(14_u16)))
@@ -906,10 +926,10 @@ fn saturated_token_revision_still_uses_content_for_cache_compatibility() {
 fn style_token_revision_invalidates_resolved_padding_and_layout() {
     let mut runtime = AppRuntime::<TokenApp>::mount(());
     let mut tokens = StyleTokens::new();
-    let first = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::unbounded(),
-    ));
+    let first = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+    );
     let first_width = first
         .frame()
         .root()
@@ -922,10 +942,10 @@ fn style_token_revision_invalidates_resolved_padding_and_layout() {
             EdgeInsets::all(LogicalLength::from(5_u16)),
         )
         .unwrap_or_else(|_| unreachable!());
-    let second = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::unbounded(),
-    ));
+    let second = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+    );
     let second_width = second
         .frame()
         .root()

@@ -1,8 +1,9 @@
 use crate::MountedNodeId;
+use crate::mounted::SurfaceCapabilityPlan;
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
-    Axis, ChildLayout, ElementId, LayoutStyle, SemanticContribution, StyleResolution, StyleTokens,
-    WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetTypeId, resolve_style,
+    Axis, ChildLayout, ElementId, LayoutStyle, StyleResolution, StyleTokens, WidgetDiagnostic,
+    WidgetMeasure, WidgetPaintProof, WidgetTypeId, resolve_style,
 };
 
 /// Topology and publication-alignment facts for one mounted preorder.
@@ -120,13 +121,11 @@ pub(super) struct ResolvedSurfaceTree {
 
 impl ResolvedSurfaceTree {
     pub(super) fn for_layout<Action>(
-        tree: &mut crate::mounted::MountedTree<Action>,
+        tree: &crate::mounted::MountedTree<Action>,
         topology: &SurfaceTopologySnapshot,
         styles: &CachedStyleFacts,
+        capabilities: &SurfaceCapabilityPlan,
     ) -> Self {
-        for node in &topology.nodes {
-            tree.ensure_layout_capabilities(&node.id);
-        }
         let nodes = topology
             .nodes
             .iter()
@@ -140,12 +139,18 @@ impl ResolvedSurfaceTree {
                     position,
                     topology: topology.clone(),
                     layout: mounted.layout,
-                    measurement: mounted.caches.measurement.ready().unwrap_or_default(),
-                    child_layout: mounted.caches.child_layout.ready().unwrap_or_else(|| {
-                        (!mounted.children.is_empty()).then_some(ChildLayout::Linear {
-                            axis: Axis::Vertical,
-                        })
-                    }),
+                    measurement: capabilities
+                        .measurement_at(position, &topology.id)
+                        .unwrap_or_default(),
+                    child_layout: capabilities.child_layout_at_or_else(
+                        position,
+                        &topology.id,
+                        || {
+                            (!mounted.children.is_empty()).then_some(ChildLayout::Linear {
+                                axis: Axis::Vertical,
+                            })
+                        },
+                    ),
                     resolution: resolution.clone(),
                 }
             })
@@ -207,55 +212,37 @@ impl ResolvedSurfaceNode {
     }
 }
 
-pub(super) fn resolve_paint<Action>(
-    tree: &mut crate::mounted::MountedTree<Action>,
+pub(super) fn resolve_paint(
     topology: &SurfaceTopologySnapshot,
+    capabilities: &SurfaceCapabilityPlan,
 ) -> Vec<WidgetPaintProof> {
     #[cfg(test)]
     super::cache::note_paint_phase_execution();
     topology
         .nodes
         .iter()
-        .map(|node| {
-            tree.ensure_paint_capability(&node.id);
-            tree.node(&node.id)
-                .and_then(|mounted| mounted.caches.paint.ready())
+        .enumerate()
+        .map(|(position, node)| {
+            capabilities
+                .paint_at(position, &node.id)
                 .unwrap_or_default()
         })
         .collect()
 }
 
-pub(super) fn resolve_semantics<Action>(
-    tree: &mut crate::mounted::MountedTree<Action>,
+pub(super) fn resolve_diagnostics(
     topology: &SurfaceTopologySnapshot,
-) -> Vec<SemanticContribution> {
-    #[cfg(test)]
-    super::cache::note_semantics_phase_execution();
-    topology
-        .nodes
-        .iter()
-        .map(|node| {
-            tree.ensure_semantics_capability(&node.id);
-            tree.node(&node.id)
-                .and_then(|mounted| mounted.caches.semantics.ready())
-                .unwrap_or_default()
-        })
-        .collect()
-}
-
-pub(super) fn resolve_diagnostics<Action>(
-    tree: &mut crate::mounted::MountedTree<Action>,
-    topology: &SurfaceTopologySnapshot,
+    capabilities: &SurfaceCapabilityPlan,
 ) -> Vec<Vec<WidgetDiagnostic>> {
     #[cfg(test)]
     super::cache::note_diagnostics_phase_execution();
     topology
         .nodes
         .iter()
-        .map(|node| {
-            tree.ensure_diagnostics_capability(&node.id);
-            tree.node(&node.id)
-                .and_then(|mounted| mounted.caches.diagnostics.ready())
+        .enumerate()
+        .map(|(position, node)| {
+            capabilities
+                .diagnostics_at(position, &node.id)
                 .unwrap_or_else(|| {
                     vec![WidgetDiagnostic::new(
                         "runenui.runtime.state-payload-mismatch",

@@ -3,13 +3,22 @@ use core::mem;
 use runenui_core::MonotonicInstant;
 
 use super::{
-    HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeTerminalReason,
-    TraceRecordKind, TraceSequence,
+    HostProtocol, MandatoryTracePlan, QueueCommitError, Runtime, RuntimeStatus,
+    RuntimeTerminalReason, TraceRecordKind, TraceSequence,
+};
+use crate::runtime::surface_publication::{
+    SurfacePublicationAdmission, SurfacePublicationPlanError,
 };
 use crate::{
-    TracePublicationContext, TraceSurfaceContext, TraceSurfaceSnapshotKind,
+    PublishSurfaceError, SurfacePublicationCounter, TracePublicationContext, TraceSurfaceContext,
+    TraceSurfaceSnapshotKind,
     trace::{TraceRecordDraft, TraceReservation},
 };
+
+struct PublicationAdmission {
+    surface: SurfacePublicationAdmission,
+    stationary_rehit: bool,
+}
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn request_redraw(
@@ -22,7 +31,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return;
         }
         let Some(next) = self.surface_publication.request_redraw() else {
-            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            self.enter_terminal(
+                RuntimeTerminalReason::SurfacePublicationCounterExhausted(
+                    SurfacePublicationCounter::RedrawRevision,
+                ),
+                0,
+            );
             return;
         };
         let requested = if self.trace.is_enabled() {
@@ -106,15 +120,33 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn publish_surface(
         &mut self,
         context: &crate::SurfaceBuildContext<'_>,
-    ) -> crate::SurfacePublication {
+    ) -> Result<crate::SurfacePublication, PublishSurfaceError> {
+        let admission = self.admit_surface_publication()?;
         let instant = self.now();
-        let rehit_reservation = self.prepare_stationary_pointer_rehit();
+        let focused_owner = self.focus.focused_node().cloned();
+        let publication = match self.surface_publication.publish(
+            &mut self.tree,
+            context,
+            focused_owner.as_ref(),
+            admission.surface,
+        ) {
+            Ok(publication) => publication,
+            Err(SurfacePublicationPlanError::SemanticIntegrity) => {
+                let reason = RuntimeTerminalReason::Poisoned;
+                self.enter_terminal(reason, 0);
+                return Err(PublishSurfaceError::Terminal(reason));
+            }
+            Err(SurfacePublicationPlanError::CounterExhausted(counter)) => {
+                let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
+                self.enter_terminal(reason, 0);
+                return Err(PublishSurfaceError::Terminal(reason));
+            }
+        };
         let redraw = self.take_redraw_request_at(instant);
         let publication_reservation = mem::replace(
             &mut self.surface_trace.publication_reservation,
             TraceReservation::continuation(),
         );
-        let publication = self.surface_publication.publish(&mut self.tree, context);
         let published = self.record_surface_publication(
             publication_reservation,
             redraw
@@ -123,38 +155,104 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             instant,
             &publication,
         );
-        if let Some(trace_reservation) = rehit_reservation {
-            let input_context = publication.input_context();
-            let causal_parent = self.trace.record_reserved(
-                trace_reservation,
-                TraceRecordKind::PointerStationaryRehitQueued {
-                    hit_test_generation: input_context.hit_test_generation(),
-                    coordinate_revision: input_context.coordinate_revision(),
-                },
-                self.queue
-                    .next_sequence()
-                    .unwrap_or_else(|| unreachable!("stationary re-hit was preflighted")),
-                published,
-            );
-            let committed = self.queue.push_pointer_rehit_preflighted(
-                input_context.clone(),
-                instant,
-                causal_parent,
-                TraceReservation::continuation(),
-            );
-            match committed {
-                Ok(_) => self.external_queue_commit_accepted(),
-                Err(QueueCommitError::Full | QueueCommitError::SequenceExhausted) => {
-                    unreachable!("stationary pointer re-hit queue admission was preflighted")
-                }
-            }
+        if admission.stationary_rehit {
+            self.commit_stationary_pointer_rehit(&publication, instant, published);
         }
         if let Some(redraw) = redraw {
             self.acknowledge_redraw_at(&redraw, published, instant)
                 .unwrap_or_else(|_| unreachable!("runtime-issued redraw request remains local"));
         }
         self.replenish_surface_publication_reservation();
-        publication
+        Ok(publication)
+    }
+
+    fn admit_surface_publication(&mut self) -> Result<PublicationAdmission, PublishSurfaceError> {
+        match self.status {
+            RuntimeStatus::Running => {}
+            RuntimeStatus::Terminal(reason) => return Err(PublishSurfaceError::Terminal(reason)),
+            RuntimeStatus::Closed => return Err(PublishSurfaceError::Closed),
+        }
+
+        let surface = self
+            .surface_publication
+            .admit_publication()
+            .map_err(|counter| {
+                let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
+                self.enter_terminal(reason, 0);
+                PublishSurfaceError::Terminal(reason)
+            })?;
+
+        let stationary_rehit =
+            self.pointer_registry.has_streams() || self.queue.has_pointer_envelopes();
+        if stationary_rehit {
+            match self.queue.preflight_commit(1) {
+                Ok(()) => {}
+                Err(QueueCommitError::Full) => return Err(PublishSurfaceError::Full),
+                Err(QueueCommitError::SequenceExhausted) => {
+                    let reason = RuntimeTerminalReason::WorkSequenceExhausted;
+                    self.enter_terminal(reason, 0);
+                    return Err(PublishSurfaceError::Terminal(reason));
+                }
+            }
+        }
+
+        let trace_plan = MandatoryTracePlan::surface_publication(
+            self.surface_publication.is_dirty(),
+            stationary_rehit,
+        );
+        if !self
+            .trace
+            .can_replace_reservation(self.surface_trace.publication_reservation, trace_plan)
+        {
+            let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
+
+        Ok(PublicationAdmission {
+            surface,
+            stationary_rehit,
+        })
+    }
+
+    fn commit_stationary_pointer_rehit(
+        &mut self,
+        publication: &crate::SurfacePublication,
+        instant: MonotonicInstant,
+        published: Option<TraceSequence>,
+    ) {
+        let input_context = publication.input_context();
+        let work_sequence = self
+            .queue
+            .next_sequence()
+            .unwrap_or_else(|| unreachable!("stationary re-hit work sequence was preflighted"));
+        let causal_parent = if self.trace.is_enabled() {
+            self.trace.record(
+                TraceRecordKind::PointerStationaryRehitQueued {
+                    hit_test_generation: input_context.hit_test_generation(),
+                    coordinate_revision: input_context.coordinate_revision(),
+                },
+                Some(work_sequence),
+                published,
+                None,
+                None,
+                None,
+            )
+        } else {
+            None
+        };
+        let committed = self.queue.push_pointer_rehit_preflighted(
+            input_context.clone(),
+            instant,
+            causal_parent,
+            TraceReservation::continuation(),
+        );
+        match committed {
+            Ok(_) => self.external_queue_commit_accepted(),
+            Err(QueueCommitError::Full | QueueCommitError::SequenceExhausted) => {
+                unreachable!("stationary pointer re-hit queue admission was preflighted")
+            }
+        }
     }
 
     fn record_surface_publication(
@@ -196,26 +294,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return;
         };
         self.surface_trace.publication_reservation = reservation;
-    }
-
-    fn prepare_stationary_pointer_rehit(&mut self) -> Option<TraceReservation> {
-        let required = self.pointer_registry.has_streams() || self.queue.has_pointer_envelopes();
-        if !required {
-            return None;
-        }
-        if let Err(error) = self.queue.preflight_commit(1) {
-            let reason = match error {
-                QueueCommitError::Full => RuntimeTerminalReason::Poisoned,
-                QueueCommitError::SequenceExhausted => RuntimeTerminalReason::WorkSequenceExhausted,
-            };
-            self.enter_terminal(reason, 0);
-            return None;
-        }
-        let Some(reservation) = self.trace.reserve_pointer_outcome() else {
-            self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
-            return None;
-        };
-        Some(reservation)
     }
 
     pub(crate) fn note_surface_focus_validation(&mut self) {

@@ -144,6 +144,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         pointer_callback_targets: Vec<MountedNodeId>,
         admission: admission::RoutedTransactionAdmissionPlan,
     ) -> RoutedTransaction<Action> {
+        let focus_before = self.focus.focused_node().cloned();
         let target_trace = self.tree.trace_target(&facts.target);
         let parent = if self.trace.is_enabled() {
             let started = self.trace.record_draft(
@@ -201,6 +202,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             subscription_dirty: Vec::new(),
             pointer_capture_requests: Vec::new(),
             invalidation: WidgetInvalidation::NONE,
+            focus_before,
             failure_current_target: None,
             pending_modality: modality_for_source(facts.origin.source()),
         }

@@ -44,7 +44,9 @@ fn disabled_trace_preserves_checked_surface_command_behavior() {
     let tokens = StyleTokens::new();
     let size = LogicalSize::new(LogicalLength::from(160_u16), LogicalLength::from(48_u16));
     let build = SurfaceBuildContext::tight(&tokens, size);
-    let publication = runtime.publish_surface(&build);
+    let publication = runtime
+        .publish_surface(&build)
+        .unwrap_or_else(|_| unreachable!("trace-disabled publication is admitted"));
     let root = publication
         .frame()
         .root()

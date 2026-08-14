@@ -170,7 +170,9 @@ fn publish(runtime: &mut AppRuntime<App>) -> SurfacePublication {
     let tokens = StyleTokens::default();
     let size = LogicalSize::try_new(96.0, 48.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
-    runtime.publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+    runtime
+        .publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+        .unwrap_or_else(|_| unreachable!("the test surface publication is admitted"))
 }
 
 fn center(bounds: runenui_runtime::LogicalRect) -> LogicalPoint {

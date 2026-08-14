@@ -15,6 +15,8 @@ mod node;
 mod reconcile;
 mod routing;
 mod semantic;
+mod semantic_publication_plan;
+mod surface_publication_plan;
 mod tree;
 
 pub(crate) use capability_cache::{CachedCapability, CachedSemanticContribution, CapabilityCaches};
@@ -26,6 +28,9 @@ pub use node::{MountedNodeRef, MountedTreeIndex};
 pub(crate) use reconcile::{PlannedInvalidation, PlannedLifetimeReason};
 pub(crate) use routing::RouteBuildError;
 pub use runenui_core::{MountedNodeId, SemanticNodeId};
+pub(crate) use semantic::SemanticReconcileError;
+pub(crate) use semantic_publication_plan::{FinalizedSemanticPublication, SemanticMountedCommit};
+pub(crate) use surface_publication_plan::SurfaceCapabilityPlan;
 pub use tree::AutomationMatchDiagnostic;
 pub(crate) use tree::{
     AutomationResolution, MountedIdentityExhausted, MountedTree, ReconcileStats, TargetStatus,

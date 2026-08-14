@@ -22,6 +22,13 @@ impl MandatoryTracePlan {
         Self::exact(3)
     }
 
+    /// Exact sequence commitments for one surface publication attempt after the
+    /// retained publication reservation is released. The fixed two are the
+    /// `SurfacePublished` record and the next publication reservation.
+    pub(crate) const fn surface_publication(redraw: bool, stationary_rehit: bool) -> Self {
+        Self::exact(2 + if redraw { 2 } else { 0 } + if stationary_rehit { 1 } else { 0 })
+    }
+
     pub(crate) const fn action_acceptance() -> Self {
         Self::exact(1)
     }

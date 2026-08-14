@@ -16,8 +16,9 @@ implementation boundaries and slice order. The accepted
 
 M5A0 owns the documentation/conformance authority and repository-audit tooling
 gate. It owns no framework behavior row. M5A semantic contribution and
-independent identity is owner-accepted; later rows remain blocked until their
-implementation slice reaches the accepted status transition.
+independent identity is owner-accepted. M5B semantic publication is
+proof-complete on its unaccepted feature candidate; M5C and later rows remain
+blocked until their owning implementation slices reach their status transitions.
 
 Allowed statuses remain:
 
@@ -40,9 +41,16 @@ squash share exact tree `593592d88c17a86d50d9eda1d3f90d49d8674658`, and accepted
 push CI run `31546946245` / #898 passed at that exact squash.
 
 The post-M5A readiness amendment freezes successor semantics before M5B/M5C
-implementation. It does not promote any M5B+ row. It strengthens existing
-blocked observations and adds only `SEM-SUPPORT-01`, `SEM-PUB-04`, and
-`SEM-ACT-07` as independently necessary acceptance observations.
+implementation. It strengthened existing observations and added only
+`SEM-SUPPORT-01`, `SEM-PUB-04`, and `SEM-ACT-07` as independently necessary
+acceptance observations. That amendment itself promoted no M5B+ behavior.
+
+The M5B feature candidate on PR #58 has now completed its B1–B5 implementation,
+public-consumer proof, current-contract reconciliation, exact-head stable/MSRV
+validation, and frozen critical review. Exact candidate head
+`fef9cba54dcc70d39028fd8121c2ed9e6d9b692f` passed CI run `31839938606` / #1078.
+Exactly the 19 M5B-owned rows below are therefore `proof-complete`; this is not
+owner acceptance, merge evidence, accepted-main support, or activation of M5C.
 
 Current audited summary for this 53-row authority:
 
@@ -50,8 +58,8 @@ Current audited summary for this 53-row authority:
 53 total unique rows
 12 owner-accepted
 0 implementation-complete
-0 proof-complete
-41 blocked
+19 proof-complete
+22 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -78,25 +86,25 @@ Current audited summary for this 53-row authority:
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| SEM-TREE-01 | Runtime composes accepted owner contributions into one deterministic renderer-independent semantic tree/forest with exact semantic identities. | Counter + downstream tree snapshot proof | Renderer/mounted-topology copy rejection | Semantic tree diagnostics | M5B | blocked | Required |
-| SEM-TREE-02 | Transparent mounted owners splice child semantic roots into the nearest semantic ancestor without fabricated wrapper nodes. | Transparent-owner composition proof | Artificial-wrapper/order mismatch proof | Tree-composition diagnostics | M5B | blocked | Required |
-| SEM-TREE-03 | Explicit mounted-child splice order determines child semantic placement deterministically, including virtual siblings before/after mounted children. | Virtual-node ordering proof | Implicit first/last splice rejection | Tree-composition diagnostics | M5B | blocked | Required |
-| SEM-TREE-04 | Runtime derives live `SemanticNodeId`, exact private mounted-owner/key binding, absolute logical bounds, and semantic focus; widget contribution cannot forge them and the public semantic product exposes no `MountedNodeId` routing shortcut. | Runtime-derived-facts + public snapshot proof | Widget-forged fact / public mounted-owner bypass exclusion | Semantic integrity diagnostics | M5B | blocked | Required |
-| SEM-REL-01 | Owner-local relationships resolve by `SemanticKey` to the exact live semantic target. | Local relationship conformance | Missing/stale local-key rejection | Relationship diagnostics | M5B | blocked | Required |
-| SEM-REL-02 | Cross-owner relationships resolve through unique authored `ElementId` plus optional semantic key; missing or ambiguous authored targets never select first/last. | Downstream cross-owner relationship proof | Missing/ambiguous/replacement no-retarget proof | Relationship diagnostics | M5B | blocked | Required |
-| SEM-STATE-01 | Effective published disabled state is authored `SemanticState.disabled` OR owner-wide `!WidgetActivation.enabled`; supported-action identity may remain observable while disabled or inert execution is unavailable. | Owner-wide + per-node disabled snapshot proof | Disabled/inert execution and support-erasure proof | Semantic state diagnostics | M5B | blocked | Required |
-| SEM-STATE-02 | Hidden nodes/subtrees are absent from the published semantic tree/action surface, inert nodes expose no executable availability, and mounted runtime focus projects only to the focused owner's currently published visible `SemanticKey::PRIMARY`; no visible PRIMARY yields no semantic focus plus deterministic diagnostic. | Hidden/inert/PRIMARY-focus publication proof | Hidden/inert action, authored-focus, and first/only/named fallback rejection | Semantic state/focus diagnostics | M5B | blocked | Required |
-| SEM-SUPPORT-01 | Published supported-action vocabulary is semantic/device-neutral and separates support from current availability: M5 supports only `Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`; route-bound LogicalScroll has no semantic action or compatibility alias and semantic scrolling remains deferred to M7. | PRIMARY/named/focus/menu support matrix proof | Route/device scroll leakage, universal-actionable gate, and compatibility-alias exclusion | Semantic support diagnostics | M5B | blocked | Required |
-| SEM-PUB-01 | Public semantic snapshot is an independently typed sibling product; renderer-facing `SurfaceFrame` can be consumed without semantic vocabulary. | Independent semantic/frame consumer proofs | Mixed `SurfaceNode::semantics` authority audit | Publication authority audit | M5B | blocked | Required |
-| SEM-PUB-02 | Semantic snapshot exposes deterministic tree order and exact-ID lookup without mutable runtime authority. | Public snapshot inspection proof | Public constructor/mutation/first-match bypass proof | Snapshot diagnostics | M5B | blocked | Required |
-| SEM-PUB-03 | Layout-only movement refreshes absolute semantic bounds/publication without re-running an unchanged cached widget semantic contribution. | Phase-count + bounds-update proof | Missed-bounds and redundant-callback proof | Surface/semantic phase report | M5B | blocked | Required |
-| SEM-PUB-04 | Surface publication is one staged admit -> plan -> candidate-dependent final-preflight -> commit transaction: recoverable stationary-rehit queue backpressure performs zero publication/cache/semantic/snapshot/trace/redraw/rehit commit with redraw still pending; fail-closed M5A semantic withdrawal commits atomically when publication succeeds; exact counter/sequence/integrity terminal failure exposes no partial new product or semantic-lifetime mutation. | Recoverable-backpressure + staged semantic-change/withdrawal + counter-exhaustion corpus | Partial commit, generic-Poisoned queue-full, wrap/saturate, lost-reservation, dirty/redraw-clear proof | Typed publication refusal/terminal diagnostics + canonical trace | M5B | blocked | Required |
-| SEM-UPD-01 | Each exact `SurfaceId` semantic product owns one deterministic non-wrapping revision: first committed snapshot is revision 1, unchanged adapter-visible product retains its revision/no update, and only a changed product advances after checked preflight. | Surface-scoped revision progression proof | Synthetic 0->1 delta, context/hit/coordinate-only bump, unchanged bump, and exhaustion proof | Semantic update diagnostics | M5B | blocked | Required |
-| SEM-UPD-02 | Incremental updates deterministically report added, changed, and removed semantic identities plus tree/root changes. | Add/change/remove diff proof | Omitted/duplicate/stale-delta proof | Semantic update diagnostics | M5B | blocked | Required |
-| SEM-UPD-03 | Incremental updates report relationship, runtime-focus, state/action, and logical-bounds changes without replacing unchanged identities. | Focus/bounds/state/relationship diff proof | Identity-churn and missing-change proof | Semantic update diagnostics | M5B | blocked | Required |
-| SEM-UPD-04 | Applying or requesting an update is scoped to exact `SurfaceId` and declared previous semantic revision; wrong surface or wrong prior revision requires full resynchronization rather than accepting an ambiguous delta. | Public surface/revision update-chain consumer proof | Wrong-surface/wrong-base acceptance rejection | Update revision diagnostics | M5B | blocked | Required |
-| ADAPTER-01 | RunenUI semantic snapshot/update vocabulary contains the stable IDs, tree/root/focus, properties, bounds, actions, relationships, removals, and changes required by an external accessibility adapter without platform types. | Adapter-shaped read-only conformance consumer | Missing-adapter-fact audit | Adapter mapping diagnostics | M5B | blocked | Required |
-| ADAPTER-02 | No AccessKit/native accessibility dependency or vocabulary becomes authoritative in core/runtime M5A-M5D implementation. | Dependency/API audit | Platform-type leakage proof | Repository authority audit | M5B | blocked | Required |
+| SEM-TREE-01 | Runtime composes accepted owner contributions into one deterministic renderer-independent semantic tree/forest with exact semantic identities. | Counter + downstream tree snapshot proof | Renderer/mounted-topology copy rejection | Semantic tree diagnostics | M5B | proof-complete | Required |
+| SEM-TREE-02 | Transparent mounted owners splice child semantic roots into the nearest semantic ancestor without fabricated wrapper nodes. | Transparent-owner composition proof | Artificial-wrapper/order mismatch proof | Tree-composition diagnostics | M5B | proof-complete | Required |
+| SEM-TREE-03 | Explicit mounted-child splice order determines child semantic placement deterministically, including virtual siblings before/after mounted children. | Virtual-node ordering proof | Implicit first/last splice rejection | Tree-composition diagnostics | M5B | proof-complete | Required |
+| SEM-TREE-04 | Runtime derives live `SemanticNodeId`, exact private mounted-owner/key binding, absolute logical bounds, and semantic focus; widget contribution cannot forge them and the public semantic product exposes no `MountedNodeId` routing shortcut. | Runtime-derived-facts + public snapshot proof | Widget-forged fact / public mounted-owner bypass exclusion | Semantic integrity diagnostics | M5B | proof-complete | Required |
+| SEM-REL-01 | Owner-local relationships resolve by `SemanticKey` to the exact live semantic target. | Local relationship conformance | Missing/stale local-key rejection | Relationship diagnostics | M5B | proof-complete | Required |
+| SEM-REL-02 | Cross-owner relationships resolve through unique authored `ElementId` plus optional semantic key; missing or ambiguous authored targets never select first/last. | Downstream cross-owner relationship proof | Missing/ambiguous/replacement no-retarget proof | Relationship diagnostics | M5B | proof-complete | Required |
+| SEM-STATE-01 | Effective published disabled state is authored `SemanticState.disabled` OR owner-wide `!WidgetActivation.enabled`; supported-action identity may remain observable while disabled or inert execution is unavailable. | Owner-wide + per-node disabled snapshot proof | Disabled/inert execution and support-erasure proof | Semantic state diagnostics | M5B | proof-complete | Required |
+| SEM-STATE-02 | Hidden nodes/subtrees are absent from the published semantic tree/action surface, inert nodes expose no executable availability, and mounted runtime focus projects only to the focused owner's currently published visible `SemanticKey::PRIMARY`; no visible PRIMARY yields no semantic focus plus deterministic diagnostic. | Hidden/inert/PRIMARY-focus publication proof | Hidden/inert action, authored-focus, and first/only/named fallback rejection | Semantic state/focus diagnostics | M5B | proof-complete | Required |
+| SEM-SUPPORT-01 | Published supported-action vocabulary is semantic/device-neutral and separates support from current availability: M5 supports only `Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`; route-bound LogicalScroll has no semantic action or compatibility alias and semantic scrolling remains deferred to M7. | PRIMARY/named/focus/menu support matrix proof | Route/device scroll leakage, universal-actionable gate, and compatibility-alias exclusion | Semantic support diagnostics | M5B | proof-complete | Required |
+| SEM-PUB-01 | Public semantic snapshot is an independently typed sibling product; renderer-facing `SurfaceFrame` can be consumed without semantic vocabulary. | Independent semantic/frame consumer proofs | Mixed `SurfaceNode::semantics` authority audit | Publication authority audit | M5B | proof-complete | Required |
+| SEM-PUB-02 | Semantic snapshot exposes deterministic tree order and exact-ID lookup without mutable runtime authority. | Public snapshot inspection proof | Public constructor/mutation/first-match bypass proof | Snapshot diagnostics | M5B | proof-complete | Required |
+| SEM-PUB-03 | Layout-only movement refreshes absolute semantic bounds/publication without re-running an unchanged cached widget semantic contribution. | Phase-count + bounds-update proof | Missed-bounds and redundant-callback proof | Surface/semantic phase report | M5B | proof-complete | Required |
+| SEM-PUB-04 | Surface publication is one staged admit -> plan -> candidate-dependent final-preflight -> commit transaction: recoverable stationary-rehit queue backpressure performs zero publication/cache/semantic/snapshot/trace/redraw/rehit commit with redraw still pending; fail-closed M5A semantic withdrawal commits atomically when publication succeeds; exact counter/sequence/integrity terminal failure exposes no partial new product or semantic-lifetime mutation. | Recoverable-backpressure + staged semantic-change/withdrawal + counter-exhaustion corpus | Partial commit, generic-Poisoned queue-full, wrap/saturate, lost-reservation, dirty/redraw-clear proof | Typed publication refusal/terminal diagnostics + canonical trace | M5B | proof-complete | Required |
+| SEM-UPD-01 | Each exact `SurfaceId` semantic product owns one deterministic non-wrapping revision: first committed snapshot is revision 1, unchanged adapter-visible product retains its revision/no update, and only a changed product advances after checked preflight. | Surface-scoped revision progression proof | Synthetic 0->1 delta, context/hit/coordinate-only bump, unchanged bump, and exhaustion proof | Semantic update diagnostics | M5B | proof-complete | Required |
+| SEM-UPD-02 | Incremental updates deterministically report added, changed, and removed semantic identities plus tree/root changes. | Add/change/remove diff proof | Omitted/duplicate/stale-delta proof | Semantic update diagnostics | M5B | proof-complete | Required |
+| SEM-UPD-03 | Incremental updates report relationship, runtime-focus, state/action, and logical-bounds changes without replacing unchanged identities. | Focus/bounds/state/relationship diff proof | Identity-churn and missing-change proof | Semantic update diagnostics | M5B | proof-complete | Required |
+| SEM-UPD-04 | Applying or requesting an update is scoped to exact `SurfaceId` and declared previous semantic revision; wrong surface or wrong prior revision requires full resynchronization rather than accepting an ambiguous delta. | Public surface/revision update-chain consumer proof | Wrong-surface/wrong-base acceptance rejection | Update revision diagnostics | M5B | proof-complete | Required |
+| ADAPTER-01 | RunenUI semantic snapshot/update vocabulary contains the stable IDs, tree/root/focus, properties, bounds, actions, relationships, removals, and changes required by an external accessibility adapter without platform types. | Adapter-shaped read-only conformance consumer | Missing-adapter-fact audit | Adapter mapping diagnostics | M5B | proof-complete | Required |
+| ADAPTER-02 | No AccessKit/native accessibility dependency or vocabulary becomes authoritative in core/runtime M5A-M5D implementation. | Dependency/API audit | Platform-type leakage proof | Repository authority audit | M5B | proof-complete | Required |
 
 ## M5C — semantic action ingress and accessibility resolution
 

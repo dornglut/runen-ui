@@ -153,7 +153,9 @@ pub fn publication(
     tokens: &StyleTokens,
 ) -> SurfacePublication {
     let context = SurfaceBuildContext::tight(tokens, surface_size());
-    runtime.publish_surface(&context)
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("surface context publication is admitted"))
 }
 
 pub fn authored_target(publication: &SurfacePublication, authored: &str) -> MountedNodeId {

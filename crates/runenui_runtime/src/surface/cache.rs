@@ -1,4 +1,4 @@
-use runenui_core::{SemanticContribution, StyleTokens, WidgetDiagnostic, WidgetPaintProof};
+use runenui_core::{StyleTokens, WidgetDiagnostic, WidgetPaintProof};
 
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize};
 
@@ -160,6 +160,7 @@ pub(super) fn build_hit_test_facts(layout: &CachedLayoutFacts) -> CachedHitTestF
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct SurfaceCache {
     // Context key.
     pub(super) context_key: SurfaceContextKey,
@@ -173,9 +174,6 @@ pub(crate) struct SurfaceCache {
     pub(super) hit_test: CachedHitTestFacts,
     // Paint-phase facts.
     pub(super) paint: Vec<WidgetPaintProof>,
-    // Temporary M5A semantic contribution facts. M5B moves semantics into an
-    // independent renderer-neutral publication product.
-    pub(super) semantics: Vec<SemanticContribution>,
     // Diagnostic-phase facts.
     pub(super) diagnostics: Vec<Vec<WidgetDiagnostic>>,
     // Derived materialization of the aligned phase facts above, never separate

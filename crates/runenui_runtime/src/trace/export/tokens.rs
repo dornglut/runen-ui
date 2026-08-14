@@ -5,13 +5,14 @@ use runenui_core::{
 };
 
 use crate::{
-    RuntimeTerminalReason, SurfacePhase, TraceActionCategory, TraceAutomationRecordRole,
-    TraceDeliveryOutcome, TraceEventFamily, TraceFocusBoundaryOutcome, TraceFocusRecordRole,
-    TraceInputRecordRole, TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection,
-    TracePointerRecordRole, TracePointerRejection, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason,
-    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTargetRejection,
-    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkStartRefusal,
+    RuntimeTerminalReason, SurfacePhase, SurfacePublicationCounter, TraceActionCategory,
+    TraceAutomationRecordRole, TraceDeliveryOutcome, TraceEventFamily, TraceFocusBoundaryOutcome,
+    TraceFocusRecordRole, TraceInputRecordRole, TracePointerCaptureRequestKind,
+    TracePointerCaptureRequestRejection, TracePointerRecordRole, TracePointerRejection,
+    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSinkDeliveryOutcome,
+    TraceSpaceCleanupReason, TraceSurfaceIngressKind, TraceSurfaceRejection,
+    TraceSurfaceSnapshotKind, TraceTargetRejection, TraceTimerTerminalOutcome, TraceWorkFamily,
+    TraceWorkStartRefusal,
 };
 
 pub(super) const fn event_phase(value: EventPhase) -> &'static str {
@@ -157,6 +158,14 @@ pub(super) const fn runtime_terminal_reason(value: RuntimeTerminalReason) -> &'s
         }
         RuntimeTerminalReason::MountedIdentityExhausted => "mounted_identity_exhausted",
         RuntimeTerminalReason::TraceSequenceExhausted => "trace_sequence_exhausted",
+        RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter) => match counter {
+            SurfacePublicationCounter::RedrawRevision => "surface_redraw_revision_exhausted",
+            SurfacePublicationCounter::HitTestGeneration => "surface_hit_test_generation_exhausted",
+            SurfacePublicationCounter::CoordinateRevision => {
+                "surface_coordinate_revision_exhausted"
+            }
+            SurfacePublicationCounter::SemanticRevision => "surface_semantic_revision_exhausted",
+        },
         RuntimeTerminalReason::Poisoned => "poisoned",
     }
 }

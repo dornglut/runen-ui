@@ -42,6 +42,20 @@ impl<App: UiApp> AppRuntime<App> {
 
     #[cfg(feature = "internal-test-seams")]
     #[doc(hidden)]
+    pub const fn __seed_next_surface_publication_counters_for_test(
+        &mut self,
+        hit_test_generation: Option<u64>,
+        coordinate_revision: Option<u64>,
+    ) {
+        self.runtime
+            .seed_next_surface_publication_counters_for_test(
+                hit_test_generation,
+                coordinate_revision,
+            );
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
     pub fn __routed_sequence_state_for_test(&self) -> (Option<u64>, Option<u64>) {
         self.runtime.routed_sequence_state_for_test()
     }

@@ -120,6 +120,15 @@ exact tree `3be7ed95d5879c5d4dc9639583c5ef8490522267`; accepted-main push CI #90
 passed at that exact squash with canonical stable/MSRV validation and read-only
 workflow permissions.
 
+The mandatory #55 post-merge authority/current-contract reconciliation was then
+owner-accepted at exact reviewed head
+`48328df608a12425c3f03dd06cddecaabc50069f` after exact-head CI #904 and was
+guarded-squash-merged in PR #57 as
+`807bd7feb1e796eccd49c0ff024da0f79d1868b1`. Reviewed and squash trees are
+exactly `22efd2561be6fb25e9e5f411d0ac1fa53d3595ee`; accepted-main CI #905
+passed on that exact squash. Issue #55 is closed, and this exact accepted main is
+the M5B #48 feature base.
+
 Accepted #55 freezes the M5B/M5C successor authority for semantic PRIMARY focus,
 support versus current availability, virtual semantic-node target preservation,
 private semantic-to-mounted resolution, relationship default targeting,
@@ -130,16 +139,48 @@ LogicalScroll from `SemanticAction` while preserving `SemanticCommand::LogicalSc
 `LogicalScrollCommand`, pointer/focus derivation, routed callbacks, and accepted
 M4 scrolling.
 
-Accepted M5 conformance after #55 is `53 total / 12 owner-accepted / 41 blocked`,
-with aggregate configured truth `290 total / 247 owner-accepted / 43 blocked`.
-The added `SEM-SUPPORT-01`, `SEM-PUB-04`, and `SEM-ACT-07` rows are accepted
-authority but remain blocked implementation observations; #55 implements no M5B
-semantic publication or M5C action ingress.
+Accepted-main M5 conformance remains `53 total / 12 owner-accepted / 0
+implementation-complete / 0 proof-complete / 41 blocked`, with aggregate accepted
+truth `290 total / 247 owner-accepted / 0 implementation-complete / 0
+proof-complete / 43 blocked`. The status map and feature-support matrix continue
+to report that merged truth while M5B is unaccepted.
 
-M5B #48 is the next implementation slice. Its branch may be created only from an
-accepted `main` that already contains the #55 post-merge acceptance/current-
-contract reconciliation. M5B follows the #55-amended charter/matrix and may not
-reintroduce semantic LogicalScroll or pull M5C ingress forward.
+M5B #48 is active on branch `codex/m5b-semantic-publication` in draft PR #58
+from exact accepted base `807bd7feb1e796eccd49c0ff024da0f79d1868b1`.
+B1–B5 implementation, two public semantic consumers, support/publication
+conformance, and the first frozen whole-diff review completed at checkpoint
+`fef9cba54dcc70d39028fd8121c2ed9e6d9b692f`; exact-head CI #1078 /
+`31839938606` passed canonical stable/MSRV validation.
+
+The feature candidate then moved through the bounded matrix/work-tracking
+transition to `550e42f5a5e1a7b44dea340502549538e59032e9`; exact-head CI #1079 /
+`31841005184` passed. A fresh critical architecture review rejected that head as
+the final owner gate because `SemanticCompositor` still used repeated linear
+fallback searches instead of the accepted publication-local-index design.
+
+The correction is bounded to `crates/runenui_runtime/src/semantic_compositor.rs`
+plus a formatter-only follow-up. Corrected reviewed head
+`e9f4f9f331b802b8ed22f83924f18dde5013886f` passed exact-head CI #1081 /
+`31844444053`. The corrected compositor builds lookup-only indexes for mounted
+owner position, owner-local bindings, visible `(owner, SemanticKey)` IDs, and
+authored-owner uniqueness/ambiguity while ordered vectors/tree traversal remain
+the sole publication and diagnostic ordering authority. Focused regression
+proof covers same-key isolation across owners and duplicate authored-owner
+ambiguity. A second acceptance-level review found no remaining M5B correctness,
+atomicity, scope, or public-authority defect in that source head.
+
+Following the same pre-acceptance transition used by M5A, exactly the 19
+M5B-owned rows remain `proof-complete` on the unmerged feature candidate.
+Candidate matrix truth is therefore `53 total / 12 owner-accepted / 0
+implementation-complete / 19 proof-complete / 22 blocked`; aggregate candidate
+truth is `290 total / 247 owner-accepted / 0 implementation-complete / 19
+proof-complete / 24 blocked`. This does not change accepted-main support, does
+not mark M5B owner-accepted, and does not activate M5C.
+
+The final pre-acceptance repository change is this authority reconciliation
+itself. Because it moves PR #58 beyond `e9f4f9f...`, the resulting head requires
+fresh exact-head CI and focused reconciliation review before it may become the
+explicit owner-acceptance candidate.
 
 The completed public M4 execution graph is:
 
@@ -159,9 +200,9 @@ than a durable implementation slice or hidden M5B step:
 
 - [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), accepted and closed;
 - [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), accepted, reconciled, and closed;
-- [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), accepted in PR #56; close after its required post-merge acceptance/current-contract reconciliation is accepted on `main`;
-- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), next implementation slice from accepted post-#55 reconciliation `main`;
-- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), after accepted #48;
+- [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), accepted, reconciled through PR #57, and closed;
+- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), active proof-complete feature candidate in draft PR #58, awaiting explicit owner acceptance;
+- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), blocked until accepted/merged/reconciled #48;
 - [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), after accepted #49;
 - [#51 — M5E integrated conformance, migration, and M5 closure](https://github.com/dornglut/runen-ui/issues/51), after accepted #50.
 
@@ -172,7 +213,8 @@ pending. M6 is eligible only from the exact accepted M5 closure base.
 Architecture and tooling follow-up:
 
 - [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10) remains open and non-blocking; M5 uses the focused semantic ownership seam unless concrete coupling proves broader work necessary;
-- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12) is closed completed with the post-M4 decision that current capacity is sufficient for accepted M5 work; semantic actions are ingress to the canonical command authority, not a new widget-output family.
+- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12) is closed completed with the post-M4 decision that current capacity is sufficient for accepted M5 work; semantic actions are ingress to the canonical command authority, not a new widget-output family;
+- [#59 — M6 readiness: remove whole-SurfaceCache cloning from publication planning](https://github.com/dornglut/runen-ui/issues/59) is open and explicitly non-blocking for M5B; it owns persistent/staged retained-publication work before or during M6 without weakening the accepted M5B atomic publication contract.
 
 M4A through M4C2 are accepted imported history. They are recorded in the
 [public-repository migration history](history/public-repository-migration.md)

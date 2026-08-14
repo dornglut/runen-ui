@@ -240,7 +240,9 @@ fn assert_update_reconciliation_and_publication(
 
     let tokens = StyleTokens::new();
     let context = SurfaceBuildContext::tight(&tokens, SURFACE_SIZE);
-    let publication = runtime.publish_surface(&context);
+    let publication = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("counter trace publication is admitted"));
     assert!(!publication.frame().nodes().is_empty());
     let published = runtime
         .trace()

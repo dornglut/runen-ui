@@ -101,6 +101,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: RoutedTransaction<Action>,
         plan: PlannedApplicationTransaction<Action, Protocol>,
     ) -> Result<(), ()> {
+        let focus_before = transaction.focus_before.clone();
         let PlannedApplicationTransaction {
             invalidated,
             starts,
@@ -147,20 +148,30 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             transaction.origin,
         );
-        self.finish_routed_invalidation(transaction.invalidation, committed, transaction.instant);
+        let focus_changed = self.focus.focused_node() != focus_before.as_ref();
+        self.finish_routed_invalidation(
+            transaction.invalidation,
+            focus_changed,
+            committed,
+            transaction.instant,
+        );
         Ok(())
     }
 
     fn finish_routed_invalidation(
         &mut self,
         invalidation: WidgetInvalidation,
+        focus_changed: bool,
         causal_parent: Option<crate::TraceSequence>,
         instant: MonotonicInstant,
     ) {
         if invalidation.contains(WidgetInvalidation::INTERACTION) {
             self.tree.finish_focus_validation();
         }
-        if crate::mounted::publication_is_dirty(invalidation) {
+        if focus_changed {
+            self.tree.mark_semantic_focus_product_dirty();
+        }
+        if focus_changed || crate::mounted::publication_is_dirty(invalidation) {
             self.request_redraw(causal_parent, instant);
         }
     }

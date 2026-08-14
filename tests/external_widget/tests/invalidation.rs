@@ -147,7 +147,7 @@ fn clean_and_paint_only_publication_skip_unrelated_work() {
             calls.semantics.get(),
             calls.diagnostics.get(),
         ),
-        (0, 1, 1, 1, 1, 1)
+        (1, 1, 1, 1, 1, 1)
     );
     publish(&mut runtime, &tokens);
     assert!(runtime.last_surface_phase_report().executed().is_empty());
@@ -176,11 +176,20 @@ fn layout_and_semantics_invalidation_execute_exact_dependencies() {
     publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
-        &[SurfacePhase::Layout, SurfacePhase::HitTesting]
+        &[
+            SurfacePhase::Layout,
+            SurfacePhase::HitTesting,
+            SurfacePhase::Semantics,
+        ]
     );
     assert_eq!(
-        (calls.measure.get(), calls.layout.get(), calls.paint.get()),
-        (2, 2, 1)
+        (
+            calls.measure.get(),
+            calls.layout.get(),
+            calls.paint.get(),
+            calls.semantics.get(),
+        ),
+        (2, 2, 1, 1)
     );
 
     process_one(
@@ -229,8 +238,9 @@ fn diagnostics_and_interaction_invalidation_are_operationally_isolated() {
         (
             calls.activation.get(),
             calls.measure.get(),
-            calls.paint.get()
+            calls.paint.get(),
+            calls.semantics.get(),
         ),
-        (0, 1, 1)
+        (2, 1, 1, 1)
     );
 }

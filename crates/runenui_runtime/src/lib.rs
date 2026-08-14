@@ -1,8 +1,10 @@
 //! Headless runtime for `RunenUI`.
 //!
 //! This crate owns typed action delivery, update calls, root rebuilding, input
-//! policy, trace recording, and renderer-facing surface-frame publication.
-//! Accessibility extraction remains a future runtime slice.
+//! policy, trace recording, renderer-facing surface-frame publication, and
+//! renderer-independent semantic snapshot/update/diagnostic publication.
+//! Exact semantic-node action ingress/resolution and native accessibility
+//! adapters remain later runtime slices.
 //!
 //! Runtime-generated identities and products have no public forgery constructors:
 //!
@@ -194,6 +196,9 @@ mod pump;
 mod queue;
 mod redraw;
 mod runtime;
+mod semantic_compositor;
+mod semantic_diagnostic;
+mod semantic_publication;
 mod style_debug;
 mod surface;
 mod surface_command;
@@ -249,9 +254,17 @@ pub use runenui_core::{
     PointerEvent, PointerId, PointerPhase, SurfaceId, SurfaceInputContext,
 };
 pub use runtime::{
-    HostRequestCancelError, HostResponseError, ReconciliationDiagnostic, ReconciliationGeneration,
-    ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
-    SubscriptionDiagnostic, SubscriptionOwnerKind, TimerFiringOutcome, TimerStartOutcome,
+    HostRequestCancelError, HostResponseError, PublishSurfaceError, ReconciliationDiagnostic,
+    ReconciliationGeneration, ReconciliationReport, RuntimeError, RuntimeStatus,
+    RuntimeTerminalReason, ShutdownReport, SubscriptionDiagnostic, SubscriptionOwnerKind,
+    SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
+};
+pub use semantic_diagnostic::{
+    SemanticDiagnostic, SemanticDiagnosticReport, SemanticOwnerWithdrawalReason,
+};
+pub use semantic_publication::{
+    SemanticFocusChange, SemanticNode, SemanticNodeState, SemanticPublication,
+    SemanticRelationship, SemanticRevision, SemanticSnapshot, SemanticUpdate, SemanticUpdateResult,
 };
 pub use style_debug::{SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report};
 pub use surface::{

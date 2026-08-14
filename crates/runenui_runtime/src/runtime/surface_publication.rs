@@ -5,10 +5,13 @@ use runenui_core::{__runtime::RuntimeNamespace, SurfaceId, SurfaceInputContext};
 
 use crate::{
     LogicalPoint, LogicalRect, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
-    SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication, TraceSurfaceContext,
-    TraceSurfaceSnapshotKind,
+    SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication,
+    SurfacePublicationCounter, TraceSurfaceContext, TraceSurfaceSnapshotKind,
     mounted::MountedTree,
-    surface::{SurfaceCache, publish_mounted_surface_cached},
+    semantic_publication::{
+        SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
+    },
+    surface::{SurfaceCache, SurfacePlanningError, plan_mounted_surface_cached},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -114,10 +117,40 @@ impl SurfacePointResolution {
     }
 }
 
+/// Exact non-mutating counter reservation for one surface publication attempt.
+///
+/// Construction succeeds only while both renderer/input publication counters can
+/// issue their next value. The token is runtime-private and consumed by
+/// [`SurfacePublicationState::publish`], so capability callbacks cannot run before
+/// counter admission has succeeded.
+pub(in crate::runtime) struct SurfacePublicationAdmission {
+    hit_test_generation: u64,
+    coordinate_revision: u64,
+}
+
+impl SurfacePublicationAdmission {
+    const fn into_parts(self) -> (u64, u64) {
+        (self.hit_test_generation, self.coordinate_revision)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::runtime) enum SurfacePublicationPlanError {
+    SemanticIntegrity,
+    CounterExhausted(SurfacePublicationCounter),
+}
+
+impl From<SurfacePlanningError> for SurfacePublicationPlanError {
+    fn from(_: SurfacePlanningError) -> Self {
+        Self::SemanticIntegrity
+    }
+}
+
 /// Sole runtime-owned state for current surface publication, redraw revision,
 /// and bounded displayed hit-test generations.
 pub(crate) struct SurfacePublicationState {
     cache: Option<SurfaceCache>,
+    semantic_publication: SemanticPublicationState,
     phase_report: SurfacePhaseReport,
     redraw_namespace: Arc<()>,
     redraw_revision: u64,
@@ -139,6 +172,7 @@ impl SurfacePublicationState {
         let surface_id = runtime_namespace.__runtime_surface_id(0, 1);
         Self {
             cache: None,
+            semantic_publication: SemanticPublicationState::default(),
             phase_report: SurfacePhaseReport::default(),
             redraw_namespace: Arc::new(()),
             redraw_revision: 1,
@@ -153,25 +187,80 @@ impl SurfacePublicationState {
         }
     }
 
+    pub(in crate::runtime) fn admit_publication(
+        &self,
+    ) -> Result<SurfacePublicationAdmission, SurfacePublicationCounter> {
+        let hit_test_generation = self
+            .next_hit_test_generation
+            .ok_or(SurfacePublicationCounter::HitTestGeneration)?;
+        let coordinate_revision = self
+            .next_coordinate_revision
+            .ok_or(SurfacePublicationCounter::CoordinateRevision)?;
+        Ok(SurfacePublicationAdmission {
+            hit_test_generation,
+            coordinate_revision,
+        })
+    }
+
     pub(crate) fn publish<Action>(
         &mut self,
         tree: &mut MountedTree<Action>,
         context: &SurfaceBuildContext<'_>,
-    ) -> SurfacePublication {
-        let (products, report) = publish_mounted_surface_cached(tree, context, &mut self.cache);
+        focused_owner: Option<&MountedNodeId>,
+        admission: SurfacePublicationAdmission,
+    ) -> Result<SurfacePublication, SurfacePublicationPlanError> {
+        let (hit_test_generation, coordinate_revision) = admission.into_parts();
+        let planned = plan_mounted_surface_cached(tree, context, self.cache.as_ref())?;
+        let semantic_candidate = planned.semantic_candidate(focused_owner)?;
+        let semantic_plan: SemanticPublicationPlan = self
+            .semantic_publication
+            .plan(&self.surface_id, semantic_candidate)
+            .map_err(|error| match error {
+                SemanticPublicationPlanError::RevisionExhausted => {
+                    SurfacePublicationPlanError::CounterExhausted(
+                        SurfacePublicationCounter::SemanticRevision,
+                    )
+                }
+            })?;
+        let semantic_publication = semantic_plan
+            .publication()
+            .cloned()
+            .ok_or(SurfacePublicationPlanError::SemanticIntegrity)?;
+        let semantic_diagnostics = semantic_plan
+            .diagnostics()
+            .cloned()
+            .ok_or(SurfacePublicationPlanError::SemanticIntegrity)?;
+        let nodes = HitTestSnapshot::nodes_from(planned.publication());
+        let commit = planned.commit_store();
+        let (products, report) = commit.commit(tree, &mut self.cache);
+        self.semantic_publication.commit(semantic_plan);
         self.phase_report = report;
-        let nodes = HitTestSnapshot::nodes_from(&products);
-        let input_context = self.retain_new_snapshot(nodes);
-        SurfacePublication::new(input_context, products)
+        let input_context =
+            self.retain_new_snapshot(nodes, hit_test_generation, coordinate_revision);
+        Ok(SurfacePublication::new(
+            input_context,
+            products,
+            semantic_publication,
+            semantic_diagnostics,
+        ))
     }
 
-    fn retain_new_snapshot(&mut self, nodes: Vec<HitTestNode>) -> SurfaceInputContext {
-        let hit_test_generation = self
-            .next_hit_test_generation
-            .unwrap_or_else(|| unreachable!("surface hit-test generation remains available"));
-        let coordinate_revision = self
-            .next_coordinate_revision
-            .unwrap_or_else(|| unreachable!("surface coordinate revision remains available"));
+    fn retain_new_snapshot(
+        &mut self,
+        nodes: Vec<HitTestNode>,
+        hit_test_generation: u64,
+        coordinate_revision: u64,
+    ) -> SurfaceInputContext {
+        debug_assert_eq!(
+            self.next_hit_test_generation,
+            Some(hit_test_generation),
+            "surface publication admission names the current hit-test generation"
+        );
+        debug_assert_eq!(
+            self.next_coordinate_revision,
+            Some(coordinate_revision),
+            "surface publication admission names the current coordinate revision"
+        );
         self.next_hit_test_generation = hit_test_generation.checked_add(1);
         self.next_coordinate_revision = coordinate_revision.checked_add(1);
         let context = self
@@ -377,6 +466,16 @@ impl SurfacePublicationState {
                     .unwrap_or_else(|_| unreachable!("test focus size is finite and non-negative")),
             );
         }
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn seed_next_publication_counters_for_test(
+        &mut self,
+        hit_test_generation: Option<u64>,
+        coordinate_revision: Option<u64>,
+    ) {
+        self.next_hit_test_generation = hit_test_generation;
+        self.next_coordinate_revision = coordinate_revision;
     }
 
     pub(crate) fn note_focus_validation(&mut self) {
