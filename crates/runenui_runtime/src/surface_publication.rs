@@ -49,6 +49,13 @@ impl SurfacePublication {
         self.semantic_publication.as_ref()
     }
 
+    /// Compares only the renderer-facing products, deliberately excluding
+    /// semantic publication and input-context identity.
+    #[must_use]
+    pub fn renderer_products_eq(&self, other: &Self) -> bool {
+        self.products == other.products
+    }
+
     /// Returns the renderer-facing frame.
     #[must_use]
     pub const fn frame(&self) -> &SurfaceFrame {
@@ -67,28 +74,36 @@ impl SurfacePublication {
         self.products.layout_report()
     }
 
-    /// Consumes the publication into the existing renderer-facing products.
+    /// Consumes this complete publication while explicitly retaining only the
+    /// renderer-facing products.
     #[must_use]
-    pub fn into_parts(self) -> (SurfaceFrame, SurfaceStyleReport, SurfaceLayoutReport) {
+    pub fn into_renderer_products(self) -> (SurfaceFrame, SurfaceStyleReport, SurfaceLayoutReport) {
         self.products.into_parts()
     }
 
-    /// Consumes the publication into its context and renderer-facing products.
+    /// Consumes this publication into every public sibling product.
     #[must_use]
-    pub fn into_context_and_parts(
+    pub fn into_complete_products(
         self,
     ) -> (
         SurfaceInputContext,
         SurfaceFrame,
         SurfaceStyleReport,
         SurfaceLayoutReport,
+        Arc<SemanticPublication>,
     ) {
         let Self {
             input_context,
             products,
-            semantic_publication: _,
+            semantic_publication,
         } = self;
         let (frame, style_report, layout_report) = products.into_parts();
-        (input_context, frame, style_report, layout_report)
+        (
+            input_context,
+            frame,
+            style_report,
+            layout_report,
+            semantic_publication,
+        )
     }
 }
