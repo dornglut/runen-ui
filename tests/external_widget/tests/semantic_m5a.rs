@@ -93,9 +93,7 @@ impl Widget<()> for InvalidSemanticProbe {
             runenui_core::SemanticItem::node(SemanticNodeContribution::primary(
                 SemanticRole::Group,
             )),
-            runenui_core::SemanticItem::node(SemanticNodeContribution::primary(
-                SemanticRole::Text,
-            )),
+            runenui_core::SemanticItem::node(SemanticNodeContribution::primary(SemanticRole::Text)),
         ])
     }
 }
@@ -205,7 +203,9 @@ fn invalid_owner_semantics_publish_typed_fail_closed_diagnostic() {
             &tokens,
             LayoutConstraints::unbounded(),
         ))
-        .unwrap_or_else(|_| unreachable!("invalid semantic authoring fails closed, not publication"));
+        .unwrap_or_else(|_| {
+            unreachable!("invalid semantic authoring fails closed, not publication")
+        });
     let snapshot = publication.semantic_publication().snapshot();
     let report = publication.semantic_diagnostics();
 
