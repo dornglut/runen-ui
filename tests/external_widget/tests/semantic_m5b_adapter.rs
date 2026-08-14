@@ -1,3 +1,5 @@
+use std::{cell::Cell, rc::Rc};
+
 use runenui_core::{
     CommandOrigin, Element, IntoEffects, LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol,
     SemanticAction, SemanticBounds, SemanticCommand, SemanticContribution,
@@ -41,7 +43,10 @@ enum AdapterPhase {
 struct SetAdapterPhase(AdapterPhase);
 
 #[derive(Debug)]
-struct AdapterProbe(AdapterPhase);
+struct AdapterProbe {
+    phase: AdapterPhase,
+    semantic_callbacks: Rc<Cell<usize>>,
+}
 
 impl Widget<SetAdapterPhase> for AdapterProbe {
     type State = ();
@@ -53,11 +58,17 @@ impl Widget<SetAdapterPhase> for AdapterProbe {
     }
 
     fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+        let callbacks = self
+            .semantic_callbacks
+            .get()
+            .checked_add(1)
+            .unwrap_or_else(|| unreachable!("test callback count does not exhaust usize"));
+        self.semantic_callbacks.set(callbacks);
         let detail = SemanticKey::from_static("detail")
             .unwrap_or_else(|_| unreachable!("static semantic key is valid"));
         let extra = SemanticKey::from_static("extra")
             .unwrap_or_else(|_| unreachable!("static semantic key is valid"));
-        let primary = match self.0 {
+        let primary = match self.phase {
             AdapterPhase::Initial => all_m5_actions(
                 SemanticNodeContribution::primary(SemanticRole::Group)
                     .with_name("adapter root")
@@ -116,26 +127,43 @@ impl Widget<SetAdapterPhase> for AdapterProbe {
     }
 }
 
+struct AdapterState {
+    phase: AdapterPhase,
+    semantic_callbacks: Rc<Cell<usize>>,
+}
+
 struct AdapterApp;
 
 impl UiApp for AdapterApp {
-    type State = AdapterPhase;
+    type State = AdapterState;
     type Action = SetAdapterPhase;
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
-        Element::new(AdapterProbe(*state))
-            .id("adapter.owner")
-            .key("adapter.owner")
-            .focusable(true)
+        Element::new(AdapterProbe {
+            phase: state.phase,
+            semantic_callbacks: Rc::clone(&state.semantic_callbacks),
+        })
+        .id("adapter.owner")
+        .key("adapter.owner")
+        .focusable(true)
     }
 
     fn update(
         state: &mut Self::State,
         action: Self::Action,
     ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
-        *state = action.0;
+        state.phase = action.0;
     }
+}
+
+fn mount_adapter(phase: AdapterPhase) -> (AppRuntime<AdapterApp>, Rc<Cell<usize>>) {
+    let semantic_callbacks = Rc::new(Cell::new(0));
+    let runtime = AppRuntime::<AdapterApp>::mount(AdapterState {
+        phase,
+        semantic_callbacks: Rc::clone(&semantic_callbacks),
+    });
+    (runtime, semantic_callbacks)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -457,7 +485,7 @@ fn assert_resync_and_noop(
         }
     }
 
-    let mut foreign_runtime = AppRuntime::<AdapterApp>::mount(AdapterPhase::Initial);
+    let (mut foreign_runtime, _) = mount_adapter(AdapterPhase::Initial);
     let foreign = publish_adapter(&mut foreign_runtime);
     match final_semantics.update_from(
         foreign.semantic_publication().snapshot().surface_id(),
@@ -485,15 +513,22 @@ fn assert_resync_and_noop(
 
 #[test]
 fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_contract() {
-    let mut runtime = AppRuntime::<AdapterApp>::mount(AdapterPhase::Initial);
+    let (mut runtime, semantic_callbacks) = mount_adapter(AdapterPhase::Initial);
     let first = publish_adapter(&mut runtime);
+    assert_eq!(semantic_callbacks.get(), 1);
     let (surface, first_revision) = assert_initial_adapter_snapshot(&first);
+
     let focused_revision =
         commit_focus_and_assert_delta(&mut runtime, &first, &surface, first_revision);
+    assert_eq!(semantic_callbacks.get(), 1);
+
     let (changed_surface, changed_revision) =
         change_adapter_and_assert_delta(&mut runtime, focused_revision);
+    assert_eq!(semantic_callbacks.get(), 2);
+
     let final_semantics =
         finalize_adapter_and_assert_delta(&mut runtime, &changed_surface, changed_revision);
+    assert_eq!(semantic_callbacks.get(), 3);
     assert_resync_and_noop(
         &mut runtime,
         &final_semantics,
@@ -501,6 +536,7 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
         first_revision,
         changed_revision,
     );
+    assert_eq!(semantic_callbacks.get(), 3);
 }
 
 #[test]
@@ -513,7 +549,7 @@ fn public_semantic_product_and_complete_aggregate_are_explicitly_separate_from_r
         )
     }
 
-    let mut runtime = AppRuntime::<AdapterApp>::mount(AdapterPhase::Initial);
+    let (mut runtime, _) = mount_adapter(AdapterPhase::Initial);
     let publication = publish_adapter(&mut runtime);
     let (surface, revision, nodes) = consume(publication.semantic_publication().snapshot());
     assert_eq!(
