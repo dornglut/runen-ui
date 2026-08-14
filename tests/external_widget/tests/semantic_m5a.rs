@@ -1,8 +1,8 @@
 use runenui_core::{
     Element, IntoEffects, LogicalRect, NoHostProtocol, SemanticAction, SemanticBounds,
     SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
-    SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget,
-    WidgetActivation, column,
+    SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget, WidgetActivation,
+    column,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SemanticPublication, SurfaceBuildContext};
 
