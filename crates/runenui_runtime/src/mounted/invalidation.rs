@@ -1,8 +1,6 @@
 use runenui_core::WidgetInvalidation;
 
-use super::{
-    CachedCapability, CachedSemanticContribution, node::MountedNode, tree::MountedTree,
-};
+use super::{CachedCapability, CachedSemanticContribution, node::MountedNode, tree::MountedTree};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct DirtyPhases(u16);
