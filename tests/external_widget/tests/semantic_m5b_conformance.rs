@@ -84,6 +84,13 @@ impl UiApp for SupportApp {
             })
             .id("support.disabled-actionable")
             .key("disabled-actionable"),
+            Element::new(SupportProbe {
+                prefix: "disabled-passive",
+                activation: WidgetActivation::disabled(),
+                inert: false,
+            })
+            .id("support.disabled-passive")
+            .key("disabled-passive"),
         ])
         .key("support.root")
     }
@@ -169,6 +176,24 @@ fn public_support_matrix_separates_support_from_current_availability() {
     assert!(disabled_named.state().disabled());
     assert_eq!(
         disabled_named.supported_actions(),
+        &[
+            SemanticAction::Activate,
+            SemanticAction::OpenMenu,
+            SemanticAction::OpenContextMenu,
+        ]
+    );
+
+    let passive = named_node(snapshot, "disabled-passive-primary");
+    assert!(passive.state().disabled());
+    assert!(!passive.state().inert());
+    assert_eq!(
+        passive.supported_actions(),
+        &[SemanticAction::OpenMenu, SemanticAction::OpenContextMenu]
+    );
+    let passive_named = named_node(snapshot, "disabled-passive-named");
+    assert!(passive_named.state().disabled());
+    assert_eq!(
+        passive_named.supported_actions(),
         &[
             SemanticAction::Activate,
             SemanticAction::OpenMenu,
