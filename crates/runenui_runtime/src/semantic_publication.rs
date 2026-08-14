@@ -8,7 +8,7 @@
 mod state;
 
 use core::num::NonZeroU64;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
     LogicalRect, SemanticAction, SemanticRelationshipKind, SemanticRole, SemanticText,
@@ -352,20 +352,33 @@ pub enum SemanticUpdateResult<'a> {
 
 /// Independently typed semantic sibling published beside renderer/input products.
 ///
-/// Only the immediately preceding committed delta is retained here. A consumer
-/// that skips a revision receives [`SemanticUpdateResult::FullResync`] rather
-/// than an ambiguous or reconstructed multi-hop delta.
+/// The value is a cheap immutable handle: cloning it shares the committed
+/// snapshot/update payload while keeping storage ownership private from public
+/// consumers. Only the immediately preceding committed delta is retained. A
+/// consumer that skips a revision receives [`SemanticUpdateResult::FullResync`]
+/// rather than an ambiguous or reconstructed multi-hop delta.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SemanticPublication {
+    inner: Arc<SemanticPublicationData>,
+}
+
+#[derive(Debug, PartialEq)]
+struct SemanticPublicationData {
     snapshot: SemanticSnapshot,
     update: Option<SemanticUpdate>,
 }
 
 impl SemanticPublication {
+    pub(crate) fn new(snapshot: SemanticSnapshot, update: Option<SemanticUpdate>) -> Self {
+        Self {
+            inner: Arc::new(SemanticPublicationData { snapshot, update }),
+        }
+    }
+
     /// Returns the complete current semantic snapshot.
     #[must_use]
-    pub const fn snapshot(&self) -> &SemanticSnapshot {
-        &self.snapshot
+    pub fn snapshot(&self) -> &SemanticSnapshot {
+        &self.inner.snapshot
     }
 
     /// Returns the consecutive delta that produced this snapshot, if one exists.
@@ -373,8 +386,8 @@ impl SemanticPublication {
     /// The first committed snapshot has no synthetic `0 -> 1` update, and an
     /// unchanged semantic product produces no new publication/update revision.
     #[must_use]
-    pub const fn update(&self) -> Option<&SemanticUpdate> {
-        self.update.as_ref()
+    pub fn update(&self) -> Option<&SemanticUpdate> {
+        self.inner.update.as_ref()
     }
 
     /// Selects an exact consecutive delta or full resynchronization for a
@@ -385,18 +398,24 @@ impl SemanticPublication {
         surface: &SurfaceId,
         revision: SemanticRevision,
     ) -> SemanticUpdateResult<'_> {
-        if surface != self.snapshot.surface_id() {
-            return SemanticUpdateResult::FullResync(&self.snapshot);
+        let snapshot = self.snapshot();
+        if surface != snapshot.surface_id() {
+            return SemanticUpdateResult::FullResync(snapshot);
         }
-        if revision == self.snapshot.revision() {
+        if revision == snapshot.revision() {
             return SemanticUpdateResult::Unchanged;
         }
-        match &self.update {
+        match self.update() {
             Some(update) if update.previous_revision() == revision => {
                 SemanticUpdateResult::Delta(update)
             }
-            _ => SemanticUpdateResult::FullResync(&self.snapshot),
+            _ => SemanticUpdateResult::FullResync(snapshot),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
     }
 }
 
@@ -458,6 +477,15 @@ mod tests {
     }
 
     #[test]
+    fn publication_clone_shares_immutable_storage() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let publication = SemanticPublication::new(snapshot(&namespace, SemanticRevision::FIRST), None);
+        let clone = publication.clone();
+        assert!(publication.shares_storage_with(&clone));
+        assert_eq!(publication, clone);
+    }
+
+    #[test]
     fn update_selection_requires_exact_surface_and_previous_revision() {
         let namespace = RuntimeNamespace::__runtime_new();
         let current_revision = SemanticRevision(
@@ -475,10 +503,7 @@ mod tests {
             roots: None,
             focus: None,
         };
-        let publication = SemanticPublication {
-            snapshot,
-            update: Some(update),
-        };
+        let publication = SemanticPublication::new(snapshot, Some(update));
         assert!(matches!(
             publication.update_from(publication.snapshot().surface_id(), previous_revision),
             SemanticUpdateResult::Delta(_)
