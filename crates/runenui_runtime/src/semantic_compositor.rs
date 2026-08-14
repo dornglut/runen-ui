@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use runenui_core::{
     ElementId, Focusability, LogicalPoint, LogicalRect, MountedNodeId, SemanticAction,
     SemanticBounds, SemanticContribution, SemanticItem, SemanticKey, SemanticNodeContribution,
@@ -81,11 +83,7 @@ pub fn compose_semantics(
     root: Option<&MountedNodeId>,
     focused_owner: Option<&MountedNodeId>,
 ) -> SemanticCandidate {
-    let mut compositor = SemanticCompositor {
-        owners,
-        drafts: Vec::new(),
-        diagnostics: Vec::new(),
-    };
+    let mut compositor = SemanticCompositor::new(owners);
     let roots = match root.and_then(|id| compositor.owner_index(id)) {
         Some(root_index) => compositor.compose_owner(root_index, None),
         None if root.is_some() => {
@@ -120,20 +118,71 @@ pub fn compose_semantics(
 
 struct SemanticCompositor<'a> {
     owners: &'a [SemanticOwnerFacts],
+    owner_indices: HashMap<MountedNodeId, usize>,
+    binding_ids: HashMap<MountedNodeId, HashMap<SemanticKey, SemanticNodeId>>,
+    visible_ids: HashMap<MountedNodeId, HashMap<SemanticKey, SemanticNodeId>>,
+    authored_owner_indices: HashMap<ElementId, AuthoredOwnerLookup>,
     drafts: Vec<SemanticNodeDraft>,
     diagnostics: Vec<SemanticCompositionDiagnostic>,
 }
 
+#[derive(Clone, Copy)]
+enum AuthoredOwnerLookup {
+    Unique(usize),
+    Ambiguous,
+}
+
 struct SemanticNodeDraft {
     owner: MountedNodeId,
-    key: SemanticKey,
     authored_relationships: Vec<runenui_core::SemanticRelationship>,
     node: SemanticCandidateNode,
 }
 
-impl SemanticCompositor<'_> {
+impl<'a> SemanticCompositor<'a> {
+    fn new(owners: &'a [SemanticOwnerFacts]) -> Self {
+        let mut owner_indices = HashMap::with_capacity(owners.len());
+        let mut binding_ids = HashMap::with_capacity(owners.len());
+        let mut authored_owner_indices = HashMap::new();
+        for (index, owner) in owners.iter().enumerate() {
+            if owner_indices.insert(owner.id.clone(), index).is_some() {
+                unreachable!("mounted publication owners are unique");
+            }
+            if !owner.bindings.is_empty() {
+                let mut owner_bindings = HashMap::with_capacity(owner.bindings.len());
+                for (key, id) in &owner.bindings {
+                    if owner_bindings.insert(key.clone(), id.clone()).is_some() {
+                        unreachable!("semantic owner bindings are unique");
+                    }
+                }
+                binding_ids.insert(owner.id.clone(), owner_bindings);
+            }
+            if let Some(authored_id) = owner.authored_id.as_ref() {
+                match authored_owner_indices.get_mut(authored_id) {
+                    Some(lookup) => *lookup = AuthoredOwnerLookup::Ambiguous,
+                    None => {
+                        authored_owner_indices
+                            .insert(authored_id.clone(), AuthoredOwnerLookup::Unique(index));
+                    }
+                }
+            }
+        }
+        Self {
+            owners,
+            owner_indices,
+            binding_ids,
+            visible_ids: HashMap::new(),
+            authored_owner_indices,
+            drafts: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
     fn owner_index(&self, id: &MountedNodeId) -> Option<usize> {
-        self.owners.iter().position(|owner| &owner.id == id)
+        self.owner_indices.get(id).copied()
+    }
+
+    fn binding_id(&self, owner: &MountedNodeId, key: &SemanticKey) -> Option<&SemanticNodeId> {
+        self.binding_ids.get(owner).and_then(|bindings| bindings.get(key))
     }
 
     fn compose_owner(
@@ -178,39 +227,43 @@ impl SemanticCompositor<'_> {
             return Vec::new();
         }
         let owner = &self.owners[owner_index];
-        let Some(id) = owner
-            .bindings
-            .iter()
-            .find(|(key, _)| key == authored.key())
-            .map(|(_, id)| id.clone())
-        else {
+        let owner_id = owner.id.clone();
+        let Some(id) = self.binding_id(&owner_id, authored.key()).cloned() else {
             self.diagnostics
                 .push(SemanticCompositionDiagnostic::MissingOwnerBinding {
                     key: authored.key().clone(),
                 });
             return Vec::new();
         };
-
+        let node = SemanticCandidateNode {
+            id: id.clone(),
+            parent: parent.cloned(),
+            children: Vec::new(),
+            role: authored.role(),
+            name: authored.name().map(str::to_owned),
+            description: authored.description().map(str::to_owned),
+            value: authored.value().cloned(),
+            disabled: authored.state().disabled() || !owner.activation.enabled(),
+            inert: authored.state().inert(),
+            supported_actions: supported_actions(authored, owner),
+            relationships: Vec::new(),
+            bounds: resolve_bounds(owner.bounds, authored.bounds()),
+            text: authored.text().cloned(),
+        };
+        if self
+            .visible_ids
+            .entry(owner_id.clone())
+            .or_default()
+            .insert(authored.key().clone(), id.clone())
+            .is_some()
+        {
+            unreachable!("visible semantic owner keys are unique");
+        }
         let draft_index = self.drafts.len();
         self.drafts.push(SemanticNodeDraft {
-            owner: owner.id.clone(),
-            key: authored.key().clone(),
+            owner: owner_id,
             authored_relationships: authored.relationships().to_vec(),
-            node: SemanticCandidateNode {
-                id: id.clone(),
-                parent: parent.cloned(),
-                children: Vec::new(),
-                role: authored.role(),
-                name: authored.name().map(str::to_owned),
-                description: authored.description().map(str::to_owned),
-                value: authored.value().cloned(),
-                disabled: authored.state().disabled() || !owner.activation.enabled(),
-                inert: authored.state().inert(),
-                supported_actions: supported_actions(authored, owner),
-                relationships: Vec::new(),
-                bounds: resolve_bounds(owner.bounds, authored.bounds()),
-                text: authored.text().cloned(),
-            },
+            node,
         });
         let children = self.compose_items(owner_index, authored.children(), Some(&id));
         self.drafts[draft_index].node.children = children;
@@ -236,10 +289,7 @@ impl SemanticCompositor<'_> {
     }
 
     fn visible_id(&self, owner: &MountedNodeId, key: &SemanticKey) -> Option<&SemanticNodeId> {
-        self.drafts
-            .iter()
-            .find(|draft| &draft.owner == owner && &draft.key == key)
-            .map(|draft| &draft.node.id)
+        self.visible_ids.get(owner).and_then(|visible| visible.get(key))
     }
 
     fn resolve_relationships(&mut self) {
@@ -289,13 +339,8 @@ impl SemanticCompositor<'_> {
         element_id: &ElementId,
         semantic_key: Option<&SemanticKey>,
     ) -> Option<SemanticNodeId> {
-        let matches = self
-            .owners
-            .iter()
-            .filter(|owner| owner.authored_id.as_ref() == Some(element_id))
-            .collect::<Vec<_>>();
-        let target_owner = match matches.as_slice() {
-            [] => {
+        let owner_index = match self.authored_owner_indices.get(element_id) {
+            None => {
                 self.diagnostics.push(
                     SemanticCompositionDiagnostic::MissingAuthoredRelationshipOwner {
                         source: source.clone(),
@@ -304,8 +349,8 @@ impl SemanticCompositor<'_> {
                 );
                 return None;
             }
-            [owner] => owner.id.clone(),
-            _ => {
+            Some(AuthoredOwnerLookup::Unique(index)) => *index,
+            Some(AuthoredOwnerLookup::Ambiguous) => {
                 self.diagnostics.push(
                     SemanticCompositionDiagnostic::AmbiguousAuthoredRelationshipOwner {
                         source: source.clone(),
@@ -315,8 +360,9 @@ impl SemanticCompositor<'_> {
                 return None;
             }
         };
+        let target_owner = &self.owners[owner_index].id;
         let key = semantic_key.cloned().unwrap_or(SemanticKey::PRIMARY);
-        if let Some(target) = self.visible_id(&target_owner, &key).cloned() {
+        if let Some(target) = self.visible_id(target_owner, &key).cloned() {
             Some(target)
         } else {
             self.diagnostics.push(
@@ -671,5 +717,172 @@ mod tests {
         assert_eq!(candidate.nodes[0].relationships.len(), 2);
         assert_eq!(candidate.nodes[0].relationships[0].target, source_named);
         assert_eq!(candidate.nodes[0].relationships[1].target, target_primary);
+    }
+
+    #[test]
+    fn owner_local_visible_index_keeps_identical_keys_isolated_across_owners() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let source_owner = runtime.__runtime_mounted_id(1, 1);
+        let target_owner = runtime.__runtime_mounted_id(2, 1);
+        let source_primary = runtime.__runtime_semantic_id(0, 1);
+        let source_shared = runtime.__runtime_semantic_id(1, 1);
+        let target_primary = runtime.__runtime_semantic_id(2, 1);
+        let target_shared = runtime.__runtime_semantic_id(3, 1);
+        let shared = key("shared");
+        let target_element = element_id("target");
+        let source_contribution = SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Group)
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::LabelledBy,
+                    SemanticReference::Local(shared.clone()),
+                ))
+                .with_relationship(SemanticRelationship::new(
+                    SemanticRelationshipKind::Controls,
+                    SemanticReference::Authored {
+                        element_id: target_element.clone(),
+                        semantic_key: Some(shared.clone()),
+                    },
+                ))
+                .with_child(SemanticNodeContribution::new(
+                    shared.clone(),
+                    SemanticRole::Text,
+                )),
+        );
+        let target_contribution = SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Group).with_child(
+                SemanticNodeContribution::new(shared.clone(), SemanticRole::Text),
+            ),
+        );
+        let owners = vec![
+            SemanticOwnerFacts {
+                id: root.clone(),
+                authored_id: None,
+                mounted_children: vec![source_owner.clone(), target_owner.clone()],
+                contribution: SemanticContribution::empty(),
+                bindings: Vec::new(),
+                bounds: rect(0.0, 0.0, 100.0, 100.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+            },
+            SemanticOwnerFacts {
+                id: source_owner,
+                authored_id: Some(element_id("source")),
+                mounted_children: Vec::new(),
+                contribution: source_contribution,
+                bindings: vec![
+                    (SemanticKey::PRIMARY, source_primary),
+                    (shared.clone(), source_shared.clone()),
+                ],
+                bounds: rect(0.0, 0.0, 20.0, 20.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+            },
+            SemanticOwnerFacts {
+                id: target_owner,
+                authored_id: Some(target_element),
+                mounted_children: Vec::new(),
+                contribution: target_contribution,
+                bindings: vec![
+                    (SemanticKey::PRIMARY, target_primary),
+                    (shared, target_shared.clone()),
+                ],
+                bounds: rect(30.0, 0.0, 20.0, 20.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+            },
+        ];
+
+        let candidate = compose_semantics(&owners, Some(&root), None);
+        assert!(candidate.diagnostics.is_empty());
+        assert_eq!(candidate.nodes[0].relationships.len(), 2);
+        assert_eq!(candidate.nodes[0].relationships[0].target, source_shared);
+        assert_eq!(candidate.nodes[0].relationships[1].target, target_shared);
+    }
+
+    #[test]
+    fn authored_owner_index_rejects_ambiguity_without_first_or_last_fallback() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let root = runtime.__runtime_mounted_id(0, 1);
+        let source_owner = runtime.__runtime_mounted_id(1, 1);
+        let first_target = runtime.__runtime_mounted_id(2, 1);
+        let second_target = runtime.__runtime_mounted_id(3, 1);
+        let source_primary = runtime.__runtime_semantic_id(0, 1);
+        let first_primary = runtime.__runtime_semantic_id(1, 1);
+        let second_primary = runtime.__runtime_semantic_id(2, 1);
+        let ambiguous_element = element_id("duplicate-target");
+        let source_contribution = SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Group).with_relationship(
+                SemanticRelationship::new(
+                    SemanticRelationshipKind::Controls,
+                    SemanticReference::Authored {
+                        element_id: ambiguous_element.clone(),
+                        semantic_key: None,
+                    },
+                ),
+            ),
+        );
+        let owners = vec![
+            SemanticOwnerFacts {
+                id: root.clone(),
+                authored_id: None,
+                mounted_children: vec![
+                    source_owner.clone(),
+                    first_target.clone(),
+                    second_target.clone(),
+                ],
+                contribution: SemanticContribution::empty(),
+                bindings: Vec::new(),
+                bounds: rect(0.0, 0.0, 100.0, 100.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+            },
+            SemanticOwnerFacts {
+                id: source_owner,
+                authored_id: Some(element_id("source")),
+                mounted_children: Vec::new(),
+                contribution: source_contribution,
+                bindings: vec![(SemanticKey::PRIMARY, source_primary.clone())],
+                bounds: rect(0.0, 0.0, 20.0, 20.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+            },
+            SemanticOwnerFacts {
+                id: first_target,
+                authored_id: Some(ambiguous_element.clone()),
+                mounted_children: Vec::new(),
+                contribution: SemanticContribution::single(SemanticNodeContribution::primary(
+                    SemanticRole::Button,
+                )),
+                bindings: vec![(SemanticKey::PRIMARY, first_primary)],
+                bounds: rect(30.0, 0.0, 20.0, 20.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+            },
+            SemanticOwnerFacts {
+                id: second_target,
+                authored_id: Some(ambiguous_element.clone()),
+                mounted_children: Vec::new(),
+                contribution: SemanticContribution::single(SemanticNodeContribution::primary(
+                    SemanticRole::Button,
+                )),
+                bindings: vec![(SemanticKey::PRIMARY, second_primary)],
+                bounds: rect(60.0, 0.0, 20.0, 20.0),
+                activation: WidgetActivation::NONE,
+                focusability: Focusability::NotFocusable,
+            },
+        ];
+
+        let candidate = compose_semantics(&owners, Some(&root), None);
+        assert!(candidate.nodes[0].relationships.is_empty());
+        assert_eq!(
+            candidate.diagnostics,
+            vec![
+                SemanticCompositionDiagnostic::AmbiguousAuthoredRelationshipOwner {
+                    source: source_primary,
+                    element_id: ambiguous_element,
+                }
+            ]
+        );
     }
 }
