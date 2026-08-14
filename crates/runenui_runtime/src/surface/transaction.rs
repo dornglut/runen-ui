@@ -1,9 +1,9 @@
-use crate::{MountedNodeId, SemanticDiagnostic};
 use crate::mounted::{
     DirtyPhases, FinalizedSemanticPublication, MountedTree, SemanticMountedCommit,
     SurfaceCapabilityPlan,
 };
 use crate::semantic_compositor::{SemanticCandidate, SemanticOwnerFacts, compose_semantics};
+use crate::{MountedNodeId, SemanticDiagnostic};
 
 use super::{SurfaceCache, SurfacePhaseReport, SurfacePlanningError, SurfacePublication};
 
