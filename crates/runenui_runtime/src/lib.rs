@@ -195,6 +195,7 @@ mod queue;
 mod redraw;
 mod runtime;
 mod semantic_compositor;
+mod semantic_diagnostic;
 mod semantic_publication;
 mod style_debug;
 mod surface;
@@ -255,6 +256,9 @@ pub use runtime::{
     ReconciliationGeneration, ReconciliationReport, RuntimeError, RuntimeStatus,
     RuntimeTerminalReason, ShutdownReport, SubscriptionDiagnostic, SubscriptionOwnerKind,
     SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
+};
+pub use semantic_diagnostic::{
+    SemanticDiagnostic, SemanticDiagnosticReport, SemanticOwnerWithdrawalReason,
 };
 pub use semantic_publication::{
     SemanticFocusChange, SemanticNode, SemanticNodeState, SemanticPublication,
