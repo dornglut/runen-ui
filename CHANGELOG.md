@@ -112,12 +112,12 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   feature head `1bd7dcfdbb46dec52da62faabb739c835e971c80` passed canonical
   exact-head CI run `31321448821` / #712 and the frozen complete-diff review;
   the squash merge commit is `8c67655ffce438c2e35e6478e7299bd704033b8b`,
-  and all 23 changed-file blob identities match between reviewed feature head
-  and accepted squash. The accepted implementation adds deterministic JSONL v1
-  projection, default-redacted and explicit-full text/IME capture, optional
-  static non-`Debug` action labels, lazy bounded immutable-record sink delivery
-  with receiver-side serialization, same-record `Delivered`/`Full`/first
-  `Closed` diagnostics, one-way sink retirement, exact JSON escaping, and
+  and all 23 changed-file blob identities match between the reviewed feature
+  head and accepted squash. The accepted implementation adds deterministic
+  JSONL v1 projection, default-redacted and explicit-full text/IME capture,
+  optional static non-`Debug` action labels, lazy bounded immutable-record sink
+  delivery with receiver-side serialization, same-record `Delivered`/`Full`/
+  first-`Closed` diagnostics, one-way sink retirement, exact JSON escaping, and
   capacity-zero diagnostic dormancy without adding a second trace/history/order
   authority. All ten `TRACE-EXPORT-*` rows become `owner-accepted` through this
   post-merge authority reconciliation, producing 237 total / 227
