@@ -4,6 +4,8 @@ use runenui_core::{
     WidgetActivation,
 };
 
+use crate::SemanticOwnerWithdrawalReason;
+
 use super::{
     CachedCapability, CachedSemanticContribution, MountedNodeId, MountedTree,
     node::{MountedNode, state_is_corrupted},
@@ -41,6 +43,7 @@ pub(crate) struct FinalizedSemanticOwnerFacts {
     pub(crate) bindings: Vec<(SemanticKey, SemanticNodeId)>,
     pub(crate) activation: WidgetActivation,
     pub(crate) focusability: Focusability,
+    pub(crate) withdrawal_reason: Option<SemanticOwnerWithdrawalReason>,
 }
 
 pub(crate) struct SemanticMountedCommit {
@@ -89,6 +92,7 @@ impl FinalizedSemanticPublication<'_> {
                 .collect(),
             activation: owner.activation_cache.ready().unwrap_or_default(),
             focusability: owner.focusability,
+            withdrawal_reason: semantic_withdrawal_reason(&owner.semantic_cache),
         })
     }
 
@@ -96,6 +100,26 @@ impl FinalizedSemanticPublication<'_> {
         let Self { store_plan, owners } = self;
         store_plan.commit();
         SemanticMountedCommit { owners }
+    }
+}
+
+fn semantic_withdrawal_reason(
+    cache: &CachedSemanticContribution,
+) -> Option<SemanticOwnerWithdrawalReason> {
+    match cache {
+        CachedSemanticContribution::Unresolved | CachedSemanticContribution::Ready(_) => None,
+        CachedSemanticContribution::Invalid(error) => Some(
+            SemanticOwnerWithdrawalReason::InvalidContribution(error.clone()),
+        ),
+        CachedSemanticContribution::IdentityExhausted => {
+            Some(SemanticOwnerWithdrawalReason::IdentityExhausted)
+        }
+        CachedSemanticContribution::IndexIntegrityFailure => {
+            Some(SemanticOwnerWithdrawalReason::IndexIntegrityFailure)
+        }
+        CachedSemanticContribution::StatePayloadMismatch => {
+            Some(SemanticOwnerWithdrawalReason::StatePayloadMismatch)
+        }
     }
 }
 
@@ -563,6 +587,7 @@ mod tests {
             WidgetActivation::actionable(true)
         );
         assert_eq!(owner_facts[0].focusability, expected_focusability);
+        assert_eq!(owner_facts[0].withdrawal_reason, None);
         let mounted_commit = finalized.commit_store();
 
         assert_eq!(tree.semantic_store.live_count(), 1);
