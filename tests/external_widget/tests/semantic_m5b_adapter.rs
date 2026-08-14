@@ -306,7 +306,10 @@ fn assert_initial_adapter_snapshot(first: &SurfacePublication) -> (SurfaceId, Se
     assert!(!root.inert);
     assert_eq!(root.supported_actions.len(), 4);
     assert_eq!(root.relationships.len(), 1);
-    assert_eq!(root.relationships[0].kind, SemanticRelationshipKind::LabelledBy);
+    assert_eq!(
+        root.relationships[0].kind,
+        SemanticRelationshipKind::LabelledBy
+    );
     assert_eq!(
         &root.relationships[0].target,
         root.children
@@ -405,7 +408,10 @@ fn change_adapter_and_assert_delta(
     assert!(root.inert);
     assert_eq!(root.role, SemanticRole::Button);
     assert_eq!(root.relationships.len(), 1);
-    assert_eq!(root.relationships[0].kind, SemanticRelationshipKind::DescribedBy);
+    assert_eq!(
+        root.relationships[0].kind,
+        SemanticRelationshipKind::DescribedBy
+    );
     assert!((root.bounds.width() - 12.0).abs() <= f32::EPSILON);
     (surface, update.revision)
 }
@@ -482,12 +488,8 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
     let mut runtime = AppRuntime::<AdapterApp>::mount(AdapterPhase::Initial);
     let first = publish_adapter(&mut runtime);
     let (surface, first_revision) = assert_initial_adapter_snapshot(&first);
-    let focused_revision = commit_focus_and_assert_delta(
-        &mut runtime,
-        &first,
-        &surface,
-        first_revision,
-    );
+    let focused_revision =
+        commit_focus_and_assert_delta(&mut runtime, &first, &surface, first_revision);
     let (changed_surface, changed_revision) =
         change_adapter_and_assert_delta(&mut runtime, focused_revision);
     let final_semantics =
