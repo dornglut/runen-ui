@@ -1,10 +1,13 @@
 use runenui_core::{
     Element, IntoEffects, LogicalRect, NoHostProtocol, SemanticAction, SemanticBounds,
-    SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
-    SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget, WidgetActivation,
-    column,
+    SemanticContribution, SemanticContributionContext, SemanticContributionError, SemanticKey,
+    SemanticNodeContribution, SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View,
+    Widget, WidgetActivation, column,
 };
-use runenui_runtime::{AppRuntime, LayoutConstraints, SemanticPublication, SurfaceBuildContext};
+use runenui_runtime::{
+    AppRuntime, LayoutConstraints, SemanticDiagnostic, SemanticOwnerWithdrawalReason,
+    SemanticPublication, SurfaceBuildContext,
+};
 
 #[derive(Clone, Debug)]
 struct ChildAction;
@@ -73,6 +76,44 @@ impl UiApp for MappedSemanticApp {
     fn update(
         (): &mut Self::State,
         _: Self::Action,
+    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    }
+}
+
+#[derive(Debug)]
+struct InvalidSemanticProbe;
+
+impl Widget<()> for InvalidSemanticProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+        SemanticContribution::new(vec![
+            runenui_core::SemanticItem::node(SemanticNodeContribution::primary(
+                SemanticRole::Group,
+            )),
+            runenui_core::SemanticItem::node(SemanticNodeContribution::primary(
+                SemanticRole::Text,
+            )),
+        ])
+    }
+}
+
+struct InvalidSemanticApp;
+
+impl UiApp for InvalidSemanticApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> impl View<Self::Action> {
+        Element::new(InvalidSemanticProbe).id("semantic.invalid")
+    }
+
+    fn update(
+        (): &mut Self::State,
+        (): Self::Action,
     ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
     }
 }
@@ -153,4 +194,35 @@ fn downstream_widget_owner_local_bounds_publish_as_absolute_semantic_bounds() {
     assert_eq!(detail.bounds(), expected);
     assert!(LogicalRect::try_new(f32::NAN, 0.0, 1.0, 1.0).is_err());
     assert!(LogicalRect::try_new(0.0, 0.0, -1.0, 1.0).is_err());
+}
+
+#[test]
+fn invalid_owner_semantics_publish_typed_fail_closed_diagnostic() {
+    let mut runtime = AppRuntime::<InvalidSemanticApp>::mount(());
+    let tokens = StyleTokens::new();
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::new(
+            &tokens,
+            LayoutConstraints::unbounded(),
+        ))
+        .unwrap_or_else(|_| unreachable!("invalid semantic authoring fails closed, not publication"));
+    let snapshot = publication.semantic_publication().snapshot();
+    let report = publication.semantic_diagnostics();
+
+    assert!(snapshot.nodes().is_empty());
+    assert_eq!(report.surface_id(), snapshot.surface_id());
+    assert_eq!(report.diagnostics().len(), 1);
+    match &report.diagnostics()[0] {
+        SemanticDiagnostic::OwnerWithdrawn {
+            authored_id: Some(authored_id),
+            reason:
+                SemanticOwnerWithdrawalReason::InvalidContribution(
+                    SemanticContributionError::DuplicateKey { key },
+                ),
+        } => {
+            assert_eq!(authored_id.as_str(), "semantic.invalid");
+            assert_eq!(key, &SemanticKey::PRIMARY);
+        }
+        diagnostic => panic!("unexpected semantic diagnostic: {diagnostic:?}"),
+    }
 }
