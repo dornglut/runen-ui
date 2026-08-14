@@ -1,7 +1,5 @@
 //! Context-bearing public surface publication product.
 
-use std::sync::Arc;
-
 use runenui_core::SurfaceInputContext;
 
 use crate::{SemanticPublication, SurfaceFrame, SurfaceLayoutReport, SurfaceStyleReport};
@@ -15,7 +13,7 @@ use crate::{SemanticPublication, SurfaceFrame, SurfaceLayoutReport, SurfaceStyle
 pub struct SurfacePublication {
     input_context: SurfaceInputContext,
     products: crate::surface::SurfacePublication,
-    semantic_publication: Arc<SemanticPublication>,
+    semantic_publication: SemanticPublication,
 }
 
 impl PartialEq for SurfacePublication {
@@ -28,7 +26,7 @@ impl SurfacePublication {
     pub(crate) const fn new(
         input_context: SurfaceInputContext,
         products: crate::surface::SurfacePublication,
-        semantic_publication: Arc<SemanticPublication>,
+        semantic_publication: SemanticPublication,
     ) -> Self {
         Self {
             input_context,
@@ -45,8 +43,8 @@ impl SurfacePublication {
 
     /// Returns the renderer-independent semantic publication aligned with this surface publication.
     #[must_use]
-    pub fn semantic_publication(&self) -> &SemanticPublication {
-        self.semantic_publication.as_ref()
+    pub const fn semantic_publication(&self) -> &SemanticPublication {
+        &self.semantic_publication
     }
 
     /// Compares only the renderer-facing products, deliberately excluding
@@ -90,7 +88,7 @@ impl SurfacePublication {
         SurfaceFrame,
         SurfaceStyleReport,
         SurfaceLayoutReport,
-        Arc<SemanticPublication>,
+        SemanticPublication,
     ) {
         let Self {
             input_context,
