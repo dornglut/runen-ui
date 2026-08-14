@@ -148,21 +148,39 @@ to report that merged truth while M5B is unaccepted.
 M5B #48 is active on branch `codex/m5b-semantic-publication` in draft PR #58
 from exact accepted base `807bd7feb1e796eccd49c0ff024da0f79d1868b1`.
 B1–B5 implementation, two public semantic consumers, support/publication
-conformance, current-contract documentation reconciliation, and the frozen
-critical whole-diff review completed at reviewed checkpoint
+conformance, and the first frozen whole-diff review completed at checkpoint
 `fef9cba54dcc70d39028fd8121c2ed9e6d9b692f`; exact-head CI #1078 /
-`31839938606` passed canonical stable/MSRV validation. No inline review thread or
-blocking architecture defect remained at that checkpoint.
+`31839938606` passed canonical stable/MSRV validation.
+
+The feature candidate then moved through the bounded matrix/work-tracking
+transition to `550e42f5a5e1a7b44dea340502549538e59032e9`; exact-head CI #1079 /
+`31841005184` passed. A fresh critical architecture review rejected that head as
+the final owner gate because `SemanticCompositor` still used repeated linear
+fallback searches instead of the accepted publication-local-index design.
+
+The correction is bounded to `crates/runenui_runtime/src/semantic_compositor.rs`
+plus a formatter-only follow-up. Corrected reviewed head
+`e9f4f9f331b802b8ed22f83924f18dde5013886f` passed exact-head CI #1081 /
+`31844444053`. The corrected compositor builds lookup-only indexes for mounted
+owner position, owner-local bindings, visible `(owner, SemanticKey)` IDs, and
+authored-owner uniqueness/ambiguity while ordered vectors/tree traversal remain
+the sole publication and diagnostic ordering authority. Focused regression
+proof covers same-key isolation across owners and duplicate authored-owner
+ambiguity. A second acceptance-level review found no remaining M5B correctness,
+atomicity, scope, or public-authority defect in that source head.
 
 Following the same pre-acceptance transition used by M5A, exactly the 19
-M5B-owned rows are now `proof-complete` on the feature candidate. Candidate
-matrix truth is therefore `53 total / 12 owner-accepted / 0
+M5B-owned rows remain `proof-complete` on the unmerged feature candidate.
+Candidate matrix truth is therefore `53 total / 12 owner-accepted / 0
 implementation-complete / 19 proof-complete / 22 blocked`; aggregate candidate
 truth is `290 total / 247 owner-accepted / 0 implementation-complete / 19
 proof-complete / 24 blocked`. This does not change accepted-main support, does
-not mark M5B owner-accepted, and does not activate M5C. The live final candidate
-head and latest exact-head CI are read from PR #58 after the bounded matrix and
-tracking reconciliation.
+not mark M5B owner-accepted, and does not activate M5C.
+
+The final pre-acceptance repository change is this authority reconciliation
+itself. Because it moves PR #58 beyond `e9f4f9f...`, the resulting head requires
+fresh exact-head CI and focused reconciliation review before it may become the
+explicit owner-acceptance candidate.
 
 The completed public M4 execution graph is:
 
@@ -195,7 +213,8 @@ pending. M6 is eligible only from the exact accepted M5 closure base.
 Architecture and tooling follow-up:
 
 - [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10) remains open and non-blocking; M5 uses the focused semantic ownership seam unless concrete coupling proves broader work necessary;
-- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12) is closed completed with the post-M4 decision that current capacity is sufficient for accepted M5 work; semantic actions are ingress to the canonical command authority, not a new widget-output family.
+- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12) is closed completed with the post-M4 decision that current capacity is sufficient for accepted M5 work; semantic actions are ingress to the canonical command authority, not a new widget-output family;
+- [#59 — M6 readiness: remove whole-SurfaceCache cloning from publication planning](https://github.com/dornglut/runen-ui/issues/59) is open and explicitly non-blocking for M5B; it owns persistent/staged retained-publication work before or during M6 without weakening the accepted M5B atomic publication contract.
 
 M4A through M4C2 are accepted imported history. They are recorded in the
 [public-repository migration history](history/public-repository-migration.md)
