@@ -8,6 +8,35 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and guarded-squash-merged M5B semantic tree publication and
+  incremental updates in [PR #58](https://github.com/dornglut/runen-ui/pull/58).
+  Exact reviewed head `3b9db8b37098786cc0d53d38ae5d597c3460c38b` passed exact-head CI #1082 /
+  `31847771313`; the accepted squash is
+  `43d23aefb81757a516ae569b3e86b9e0f2c71e23`, and reviewed/squash trees are
+  exactly `1708d2536c6f1d202ac58dd7cb5f3cc97a438517`. The connector-origin merge
+  did not emit the repository's normal push workflow event, so that absence is
+  recorded as an infrastructure/event-delivery fact rather than relabeled as
+  successful push CI or waived. Exact squash `43d23aef...` was independently
+  revalidated without source mutation through the unchanged read-only
+  pull-request CI path in temporary PR #60; CI #1084 / `31850376490`, attempt 2,
+  passed and PR #60 was closed unmerged. The accepted implementation adds the
+  independent exact-`SurfaceId` semantic snapshot/update/diagnostic sibling,
+  deterministic transparent-owner composition and publication-local lookup
+  indexes, opaque live `SemanticNodeId`s, absolute logical bounds, exact local
+  and cross-owner relationship resolution, composed disabled/support state,
+  visible-PRIMARY runtime focus projection, checked revisions with deterministic
+  deltas/full resynchronization, renderer semantic cutover, and one fallible
+  staged `admit -> plan -> candidate-dependent final preflight -> commit`
+  surface-publication transaction with recoverable stationary-rehit backpressure
+  and exact redraw/hit-test/coordinate/semantic counter exhaustion. This
+  mandatory post-merge reconciliation promotes exactly the 19 M5B-owned rows to
+  `owner-accepted`, producing M5 truth `53 total / 31 owner-accepted / 22
+  blocked` and aggregate configured truth `290 total / 266 owner-accepted / 24
+  blocked`. M5C #49 remains blocked until this reconciliation is itself
+  exact-head validated, critically reviewed, explicitly owner-accepted,
+  guarded-merged, and accepted-main verified. #59 separately owns the
+  non-blocking M6-readiness work to remove whole-`SurfaceCache` deep cloning
+  without weakening M5B atomic publication.
 - Owner-accepted and guarded-squash-merged the post-M5A semantic-readiness gate
   in [PR #56](https://github.com/dornglut/runen-ui/pull/56). The exact reviewed
   head `15c90424a0fbae4312b0cb0c5fb76932b3ce1ee1` passed exact-head CI #902;
@@ -83,12 +112,12 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   feature head `1bd7dcfdbb46dec52da62faabb739c835e971c80` passed canonical
   exact-head CI run `31321448821` / #712 and the frozen complete-diff review;
   the squash merge commit is `8c67655ffce438c2e35e6478e7299bd704033b8b`,
-  and all 23 changed-file blob identities match between the reviewed feature
-  head and accepted squash. The accepted implementation adds deterministic
-  JSONL v1 projection, default-redacted and explicit-full text/IME capture,
-  optional static non-`Debug` action labels, lazy bounded immutable-record sink
-  delivery with receiver-side serialization, same-record `Delivered`/`Full`/
-  first-`Closed` diagnostics, one-way sink retirement, exact JSON escaping, and
+  and all 23 changed-file blob identities match between reviewed feature head
+  and accepted squash. The accepted implementation adds deterministic JSONL v1
+  projection, default-redacted and explicit-full text/IME capture, optional
+  static non-`Debug` action labels, lazy bounded immutable-record sink delivery
+  with receiver-side serialization, same-record `Delivered`/`Full`/first
+  `Closed` diagnostics, one-way sink retirement, exact JSON escaping, and
   capacity-zero diagnostic dormancy without adding a second trace/history/order
   authority. All ten `TRACE-EXPORT-*` rows become `owner-accepted` through this
   post-merge authority reconciliation, producing 237 total / 227
