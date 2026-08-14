@@ -38,11 +38,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if self.routed_commit_failure_for_test {
             return Err(());
         }
+        let focused_before = self.focus.focused_node().cloned();
         pre_output_commit(self, &mut transaction)?;
         if !transaction.pointer_capture_requests.is_empty() {
             return Err(());
         }
-        let focused_before = self.focus.focused_node().cloned();
         if transaction
             .invalidation
             .contains(WidgetInvalidation::INTERACTION)
