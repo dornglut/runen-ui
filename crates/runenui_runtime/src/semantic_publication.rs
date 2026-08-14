@@ -479,7 +479,8 @@ mod tests {
     #[test]
     fn publication_clone_shares_immutable_storage() {
         let namespace = RuntimeNamespace::__runtime_new();
-        let publication = SemanticPublication::new(snapshot(&namespace, SemanticRevision::FIRST), None);
+        let publication =
+            SemanticPublication::new(snapshot(&namespace, SemanticRevision::FIRST), None);
         let clone = publication.clone();
         assert!(publication.shares_storage_with(&clone));
         assert_eq!(publication, clone);
