@@ -1,9 +1,9 @@
 use crate::MountedNodeId;
-use crate::mounted::{FinalizedSemanticPublication, SurfaceCapabilityPlan};
+use crate::mounted::SurfaceCapabilityPlan;
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
-    Axis, ChildLayout, ElementId, LayoutStyle, SemanticContribution, StyleResolution, StyleTokens,
-    WidgetDiagnostic, WidgetMeasure, WidgetPaintProof, WidgetTypeId, resolve_style,
+    Axis, ChildLayout, ElementId, LayoutStyle, StyleResolution, StyleTokens, WidgetDiagnostic,
+    WidgetMeasure, WidgetPaintProof, WidgetTypeId, resolve_style,
 };
 
 /// Topology and publication-alignment facts for one mounted preorder.
@@ -227,17 +227,6 @@ pub(super) fn resolve_paint(
                 .paint_at(position, &node.id)
                 .unwrap_or_default()
         })
-        .collect()
-}
-
-pub(super) fn resolve_semantics(
-    finalized: &FinalizedSemanticPublication<'_>,
-) -> Vec<SemanticContribution> {
-    #[cfg(test)]
-    super::cache::note_semantics_phase_execution();
-    finalized
-        .owner_facts()
-        .map(|owner| owner.contribution)
         .collect()
 }
 
