@@ -226,6 +226,10 @@ impl SurfacePublicationState {
             .publication()
             .cloned()
             .ok_or(SurfacePublicationPlanError::SemanticIntegrity)?;
+        let semantic_diagnostics = semantic_plan
+            .diagnostics()
+            .cloned()
+            .ok_or(SurfacePublicationPlanError::SemanticIntegrity)?;
         let nodes = HitTestSnapshot::nodes_from(planned.publication());
         let commit = planned.commit_store();
         let (products, report) = commit.commit(tree, &mut self.cache);
@@ -237,6 +241,7 @@ impl SurfacePublicationState {
             input_context,
             products,
             semantic_publication,
+            semantic_diagnostics,
         ))
     }
 
