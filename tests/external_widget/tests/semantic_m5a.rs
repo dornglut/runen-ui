@@ -1,7 +1,8 @@
 use runenui_core::{
     Element, IntoEffects, LogicalRect, NoHostProtocol, SemanticAction, SemanticBounds,
     SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
-    SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget, column,
+    SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget,
+    WidgetActivation, column,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SemanticPublication, SurfaceBuildContext};
 
@@ -43,6 +44,10 @@ impl Widget<ChildAction> for SemanticProbe {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        WidgetActivation::actionable(true)
+    }
 
     fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         expected_contribution()
