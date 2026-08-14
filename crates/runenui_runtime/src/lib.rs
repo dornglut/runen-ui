@@ -1,8 +1,10 @@
 //! Headless runtime for `RunenUI`.
 //!
 //! This crate owns typed action delivery, update calls, root rebuilding, input
-//! policy, trace recording, and renderer-facing surface-frame publication.
-//! Accessibility extraction remains a future runtime slice.
+//! policy, trace recording, renderer-facing surface-frame publication, and
+//! renderer-independent semantic snapshot/update/diagnostic publication.
+//! Exact semantic-node action ingress/resolution and native accessibility
+//! adapters remain later runtime slices.
 //!
 //! Runtime-generated identities and products have no public forgery constructors:
 //!
