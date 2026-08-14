@@ -7,7 +7,7 @@ use super::{
     transaction::RoutedTransaction,
 };
 use crate::{
-    TraceActionCategory, TraceRecordKind,
+    MountedNodeId, TraceActionCategory, TraceRecordKind,
     transaction::{
         ApplicationTransactionInput, OwnedTransactionLedger, PlannedApplicationTransaction,
         TransactionLedger,
@@ -42,11 +42,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if !transaction.pointer_capture_requests.is_empty() {
             return Err(());
         }
-        let focused = self.focus.focused_node().cloned();
+        let focused_before = self.focus.focused_node().cloned();
         if transaction
             .invalidation
             .contains(WidgetInvalidation::INTERACTION)
-            && focused
+            && focused_before
                 .as_ref()
                 .is_some_and(|focused| !self.validate_focus(focused))
         {
@@ -54,7 +54,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .map_err(|_| ())?;
         }
         let plan = self.plan_routed_outputs(&mut transaction)?;
-        self.commit_routed_plan(transaction, plan)
+        self.commit_routed_plan(transaction, plan, focused_before)
     }
 
     fn plan_routed_outputs(
@@ -100,6 +100,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         transaction: RoutedTransaction<Action>,
         plan: PlannedApplicationTransaction<Action, Protocol>,
+        focused_before: Option<MountedNodeId>,
     ) -> Result<(), ()> {
         let PlannedApplicationTransaction {
             invalidated,
@@ -147,20 +148,30 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             transaction.origin,
         );
-        self.finish_routed_invalidation(transaction.invalidation, committed, transaction.instant);
+        let focus_changed = self.focus.focused_node() != focused_before.as_ref();
+        self.finish_routed_invalidation(
+            transaction.invalidation,
+            focus_changed,
+            committed,
+            transaction.instant,
+        );
         Ok(())
     }
 
     fn finish_routed_invalidation(
         &mut self,
         invalidation: WidgetInvalidation,
+        focus_changed: bool,
         causal_parent: Option<crate::TraceSequence>,
         instant: MonotonicInstant,
     ) {
         if invalidation.contains(WidgetInvalidation::INTERACTION) {
             self.tree.finish_focus_validation();
         }
-        if crate::mounted::publication_is_dirty(invalidation) {
+        if focus_changed {
+            self.tree.mark_semantic_focus_product_dirty();
+        }
+        if focus_changed || crate::mounted::publication_is_dirty(invalidation) {
             self.request_redraw(causal_parent, instant);
         }
     }
