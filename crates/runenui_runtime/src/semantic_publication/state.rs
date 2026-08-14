@@ -277,10 +277,8 @@ mod tests {
         }
     }
 
-    fn planned(
-        candidate: SemanticCandidate,
-    ) -> Option<(SemanticCandidate, Vec<SemanticDiagnostic>)> {
-        Some((candidate, Vec::new()))
+    fn planned(candidate: SemanticCandidate) -> (SemanticCandidate, Vec<SemanticDiagnostic>) {
+        (candidate, Vec::new())
     }
 
     #[test]
@@ -289,7 +287,10 @@ mod tests {
         let surface = namespace.__runtime_surface_id(0, 1);
         let mut state = SemanticPublicationState::default();
         let plan = state
-            .plan(&surface, planned(candidate(&namespace, 10.0, Vec::new())))
+            .plan(
+                &surface,
+                Some(planned(candidate(&namespace, 10.0, Vec::new()))),
+            )
             .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
         state.commit(plan);
 
@@ -311,7 +312,10 @@ mod tests {
         let surface = namespace.__runtime_surface_id(0, 1);
         let mut state = SemanticPublicationState::default();
         let initial = state
-            .plan(&surface, planned(candidate(&namespace, 10.0, Vec::new())))
+            .plan(
+                &surface,
+                Some(planned(candidate(&namespace, 10.0, Vec::new()))),
+            )
             .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
         state.commit(initial);
         let committed = state
@@ -321,7 +325,10 @@ mod tests {
             .clone();
 
         let unchanged = state
-            .plan(&surface, planned(candidate(&namespace, 10.0, Vec::new())))
+            .plan(
+                &surface,
+                Some(planned(candidate(&namespace, 10.0, Vec::new()))),
+            )
             .unwrap_or_else(|_| unreachable!("unchanged semantics need no revision"));
         let unchanged_publication = unchanged
             .publication()
@@ -352,7 +359,10 @@ mod tests {
         let surface = namespace.__runtime_surface_id(0, 1);
         let mut state = SemanticPublicationState::default();
         let initial = state
-            .plan(&surface, planned(candidate(&namespace, 10.0, Vec::new())))
+            .plan(
+                &surface,
+                Some(planned(candidate(&namespace, 10.0, Vec::new()))),
+            )
             .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
         state.commit(initial);
         let committed = state
@@ -366,7 +376,7 @@ mod tests {
         let unchanged = state
             .plan(
                 &surface,
-                planned(candidate(&namespace, 10.0, vec![diagnostic])),
+                Some(planned(candidate(&namespace, 10.0, vec![diagnostic]))),
             )
             .unwrap_or_else(|_| unreachable!("diagnostics do not need a semantic revision"));
         let planned_publication = unchanged
@@ -395,12 +405,18 @@ mod tests {
         let surface = namespace.__runtime_surface_id(0, 1);
         let mut state = SemanticPublicationState::default();
         let initial = state
-            .plan(&surface, planned(candidate(&namespace, 10.0, Vec::new())))
+            .plan(
+                &surface,
+                Some(planned(candidate(&namespace, 10.0, Vec::new()))),
+            )
             .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
         state.commit(initial);
 
         let changed = state
-            .plan(&surface, planned(candidate(&namespace, 20.0, Vec::new())))
+            .plan(
+                &surface,
+                Some(planned(candidate(&namespace, 20.0, Vec::new()))),
+            )
             .unwrap_or_else(|_| unreachable!("second semantic revision is available"));
         state.commit(changed);
 
@@ -438,7 +454,10 @@ mod tests {
             }),
         };
 
-        let result = state.plan(&surface, planned(candidate(&namespace, 20.0, Vec::new())));
+        let result = state.plan(
+            &surface,
+            Some(planned(candidate(&namespace, 20.0, Vec::new()))),
+        );
         assert_eq!(
             result.err(),
             Some(SemanticPublicationPlanError::RevisionExhausted)
