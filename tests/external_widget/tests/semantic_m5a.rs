@@ -3,7 +3,9 @@ use runenui_core::{
     SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
     SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget, column,
 };
-use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
+use runenui_runtime::{
+    AppRuntime, LayoutConstraints, SemanticPublication, SurfaceBuildContext,
+};
 
 #[derive(Clone, Debug)]
 struct ChildAction;
@@ -72,15 +74,17 @@ impl UiApp for MappedSemanticApp {
     }
 }
 
-fn published_semantic_child(runtime: &mut AppRuntime<MappedSemanticApp>) -> SemanticContribution {
+fn published_semantic_child(
+    runtime: &mut AppRuntime<MappedSemanticApp>,
+) -> (SemanticPublication, LogicalRect) {
     let tokens = StyleTokens::new();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
             &tokens,
             LayoutConstraints::unbounded(),
         ))
-        .unwrap_or_else(|_| unreachable!("M5A conformance publication is admitted"));
-    publication
+        .unwrap_or_else(|_| unreachable!("M5 semantic conformance publication is admitted"));
+    let owner_bounds = publication
         .frame()
         .nodes()
         .iter()
@@ -88,41 +92,58 @@ fn published_semantic_child(runtime: &mut AppRuntime<MappedSemanticApp>) -> Sema
             node.authored_id()
                 .is_some_and(|id| id.as_str() == "semantic.child")
         })
-        .unwrap_or_else(|| unreachable!("mapped semantic child is published"))
-        .semantics()
-        .clone()
+        .unwrap_or_else(|| unreachable!("mapped semantic child owner is published"))
+        .bounds();
+    (publication.semantic_publication().clone(), owner_bounds)
 }
 
 #[test]
-fn recursive_action_mapping_preserves_semantic_contribution_exactly() {
+fn recursive_action_mapping_preserves_composed_semantic_product() {
     let mut runtime = AppRuntime::<MappedSemanticApp>::mount(());
-    let semantics = published_semantic_child(&mut runtime);
+    let (semantics, _) = published_semantic_child(&mut runtime);
+    let snapshot = semantics.snapshot();
+    let primary = snapshot
+        .nodes()
+        .iter()
+        .find(|node| node.name() == Some("mapped semantic probe"))
+        .unwrap_or_else(|| unreachable!("mapped semantic primary is published"));
+    assert_eq!(primary.role(), SemanticRole::Group);
+    assert!(primary.supported_actions().contains(&SemanticAction::Activate));
 
-    assert_eq!(semantics, expected_contribution());
-    assert!(
-        semantics
-            .roots()
-            .first()
-            .is_some_and(|item| item.as_node().is_some())
-    );
-}
-
-#[test]
-fn downstream_widget_authors_validated_owner_local_semantic_bounds() {
-    let mut runtime = AppRuntime::<MappedSemanticApp>::mount(());
-    let semantics = published_semantic_child(&mut runtime);
-    let primary = semantics
-        .roots()
-        .first()
-        .and_then(|item| item.as_node())
-        .unwrap_or_else(|| unreachable!("semantic probe has a primary node"));
-    let detail = primary
+    let detail_id = primary
         .children()
         .first()
-        .and_then(|item| item.as_node())
-        .unwrap_or_else(|| unreachable!("semantic probe has a virtual detail node"));
+        .unwrap_or_else(|| unreachable!("mapped semantic primary retains virtual child"));
+    let detail = snapshot
+        .node(detail_id)
+        .unwrap_or_else(|| unreachable!("mapped semantic detail is published"));
+    assert_eq!(detail.role(), SemanticRole::Text);
+    assert_eq!(detail.name(), Some("detail"));
+    assert_eq!(detail.value(), Some(&SemanticValue::Integer(7)));
+    let expected_text = SemanticText::plain("mapped detail");
+    assert_eq!(detail.text(), Some(&expected_text));
+}
 
-    assert_eq!(detail.bounds(), SemanticBounds::OwnerLocal(detail_bounds()));
+#[test]
+fn downstream_widget_owner_local_bounds_publish_as_absolute_semantic_bounds() {
+    let mut runtime = AppRuntime::<MappedSemanticApp>::mount(());
+    let (semantics, owner_bounds) = published_semantic_child(&mut runtime);
+    let detail = semantics
+        .snapshot()
+        .nodes()
+        .iter()
+        .find(|node| node.name() == Some("detail"))
+        .unwrap_or_else(|| unreachable!("semantic detail is published"));
+    let local = detail_bounds();
+    let expected = LogicalRect::try_new(
+        owner_bounds.x() + local.x(),
+        owner_bounds.y() + local.y(),
+        local.width(),
+        local.height(),
+    )
+    .unwrap_or_else(|_| unreachable!("absolute semantic bounds remain valid"));
+
+    assert_eq!(detail.bounds(), expected);
     assert!(LogicalRect::try_new(f32::NAN, 0.0, 1.0, 1.0).is_err());
     assert!(LogicalRect::try_new(0.0, 0.0, -1.0, 1.0).is_err());
 }
