@@ -144,8 +144,8 @@ fn main() {
 mod tests {
     use runenui_core::{
         LogicalDelta, LogicalKey, LogicalLength, LogicalPoint, PhysicalKey, PointerButton,
-        PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand,
-        SemanticContribution, SemanticItem, StyleTokens,
+        PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
+        SemanticCommand, StyleTokens,
     };
     use runenui_runtime::{
         AppRuntime, LogicalSize, PublishSurfaceError, PumpBudget, RuntimeStatus,
@@ -161,27 +161,6 @@ mod tests {
         runtime
     }
 
-    fn primary_semantic_name(contribution: &SemanticContribution) -> String {
-        fn find(items: &[SemanticItem]) -> Option<&str> {
-            for item in items {
-                let SemanticItem::Node(node) = item else {
-                    continue;
-                };
-                if node.key().is_primary()
-                    && let Some(name) = node.name()
-                {
-                    return Some(name);
-                }
-                if let Some(name) = find(node.children()) {
-                    return Some(name);
-                }
-            }
-            None
-        }
-
-        find(contribution.roots()).unwrap_or_default().to_owned()
-    }
-
     fn published_names(counter: Counter) -> Vec<String> {
         let mut runtime = mounted_counter(counter);
         let tokens = StyleTokens::new();
@@ -189,13 +168,15 @@ mod tests {
             &tokens,
             LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(160_u16)),
         );
-        runtime
+        let publication = runtime
             .publish_surface(&context)
-            .unwrap_or_else(|_| unreachable!("counter screen publication is admitted"))
-            .frame()
+            .unwrap_or_else(|_| unreachable!("counter screen publication is admitted"));
+        publication
+            .semantic_publication()
+            .snapshot()
             .nodes()
             .iter()
-            .map(|node| primary_semantic_name(node.semantics()))
+            .filter_map(|node| node.name().map(str::to_owned))
             .collect()
     }
 
@@ -220,8 +201,8 @@ mod tests {
         let counter = Counter { count: 9 };
 
         let names = published_names(counter);
-        assert_eq!(names[1], "Counter");
-        assert_eq!(names[2], "9");
+        assert!(names.iter().any(|name| name == "Counter"));
+        assert!(names.iter().any(|name| name == "9"));
     }
 
     #[test]
@@ -229,8 +210,8 @@ mod tests {
         let counter = Counter { count: 10 };
 
         let names = published_names(counter);
-        assert_eq!(names[1], "You win");
-        assert_eq!(names[2], "Count: 10");
+        assert!(names.iter().any(|name| name == "You win"));
+        assert!(names.iter().any(|name| name == "Count: 10"));
     }
 
     #[test]
@@ -243,7 +224,11 @@ mod tests {
         assert_eq!(runtime.state(), &Counter { count: 10 });
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.state(), &Counter { count: 0 });
-        assert_eq!(published_names(runtime.into_state())[1], "Counter");
+        assert!(
+            published_names(runtime.into_state())
+                .iter()
+                .any(|name| name == "Counter")
+        );
     }
 
     #[test]
@@ -266,7 +251,11 @@ mod tests {
             usize::MAX,
         ));
         assert_eq!(runtime.state(), &Counter { count: 10 });
-        assert_eq!(published_names(runtime.into_state())[1], "You win");
+        assert!(
+            published_names(runtime.into_state())
+                .iter()
+                .any(|name| name == "You win")
+        );
     }
 
     #[test]
@@ -423,9 +412,27 @@ mod tests {
             .lines()
             .find(|line| line.contains("authored=counter.increment"))
             .unwrap_or_else(|| unreachable!("increment node is present in debug surface"));
-        assert!(increment.contains("semantics=SemanticContribution"));
-        assert!(increment.contains("name: Some(\"+\")"));
-        assert!(increment.contains("Activate"));
+        assert!(!increment.contains("semantics="));
+
+        let tokens = StyleTokens::new();
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(
+                &tokens,
+                crate::EXAMPLE_SURFACE_SIZE,
+            ))
+            .unwrap_or_else(|_| unreachable!("counter semantic publication is admitted"));
+        let increment_semantic = publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .find(|node| node.name() == Some("+"))
+            .unwrap_or_else(|| unreachable!("increment semantics are independently published"));
+        assert!(
+            increment_semantic
+                .supported_actions()
+                .contains(&SemanticAction::Activate)
+        );
     }
 
     #[test]
