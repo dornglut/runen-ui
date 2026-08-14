@@ -222,6 +222,10 @@ impl SurfacePublicationState {
                     )
                 }
             })?;
+        let semantic_publication = semantic_plan
+            .publication()
+            .cloned()
+            .ok_or(SurfacePublicationPlanError::SemanticIntegrity)?;
         let nodes = HitTestSnapshot::nodes_from(planned.publication());
         let commit = planned.commit_store();
         let (products, report) = commit.commit(tree, &mut self.cache);
@@ -229,7 +233,11 @@ impl SurfacePublicationState {
         self.phase_report = report;
         let input_context =
             self.retain_new_snapshot(nodes, hit_test_generation, coordinate_revision);
-        Ok(SurfacePublication::new(input_context, products))
+        Ok(SurfacePublication::new(
+            input_context,
+            products,
+            semantic_publication,
+        ))
     }
 
     fn retain_new_snapshot(
