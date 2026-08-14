@@ -3,9 +3,7 @@ use runenui_core::{
     SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
     SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget, column,
 };
-use runenui_runtime::{
-    AppRuntime, LayoutConstraints, SemanticPublication, SurfaceBuildContext,
-};
+use runenui_runtime::{AppRuntime, LayoutConstraints, SemanticPublication, SurfaceBuildContext};
 
 #[derive(Clone, Debug)]
 struct ChildAction;
@@ -108,7 +106,11 @@ fn recursive_action_mapping_preserves_composed_semantic_product() {
         .find(|node| node.name() == Some("mapped semantic probe"))
         .unwrap_or_else(|| unreachable!("mapped semantic primary is published"));
     assert_eq!(primary.role(), SemanticRole::Group);
-    assert!(primary.supported_actions().contains(&SemanticAction::Activate));
+    assert!(
+        primary
+            .supported_actions()
+            .contains(&SemanticAction::Activate)
+    );
 
     let detail_id = primary
         .children()
