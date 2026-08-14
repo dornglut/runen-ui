@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 use runenui_core::SurfaceId;
 
-use crate::{SemanticDiagnostic, SemanticDiagnosticReport};
 use crate::semantic_compositor::{SemanticCandidate, SemanticCandidateNode};
+use crate::{SemanticDiagnostic, SemanticDiagnosticReport};
 
 use super::{
     SemanticFocusChange, SemanticNode, SemanticNodeState, SemanticPublication,
@@ -68,7 +68,9 @@ impl SemanticPublicationState {
         let diagnostics = SemanticDiagnosticReport::new(surface.clone(), diagnostics);
         let publication = match self.current.as_ref() {
             None => publication_from_candidate(surface, SemanticRevision::FIRST, candidate, None),
-            Some(current) if candidate_matches_snapshot(&candidate, current.publication.snapshot()) => {
+            Some(current)
+                if candidate_matches_snapshot(&candidate, current.publication.snapshot()) =>
+            {
                 current.publication.clone()
             }
             Some(current) => {
@@ -275,7 +277,9 @@ mod tests {
         }
     }
 
-    fn planned(candidate: SemanticCandidate) -> Option<(SemanticCandidate, Vec<SemanticDiagnostic>)> {
+    fn planned(
+        candidate: SemanticCandidate,
+    ) -> Option<(SemanticCandidate, Vec<SemanticDiagnostic>)> {
         Some((candidate, Vec::new()))
     }
 
@@ -293,7 +297,10 @@ mod tests {
             .current
             .as_ref()
             .unwrap_or_else(|| unreachable!("first semantic products committed"));
-        assert_eq!(current.publication.snapshot().revision(), SemanticRevision::FIRST);
+        assert_eq!(
+            current.publication.snapshot().revision(),
+            SemanticRevision::FIRST
+        );
         assert!(current.publication.update().is_none());
         assert!(current.diagnostics.is_empty());
     }
@@ -372,7 +379,10 @@ mod tests {
             .current
             .as_ref()
             .unwrap_or_else(|| unreachable!("semantic products remain committed"));
-        assert_eq!(current.publication.snapshot().revision(), SemanticRevision::FIRST);
+        assert_eq!(
+            current.publication.snapshot().revision(),
+            SemanticRevision::FIRST
+        );
         assert_eq!(
             current.diagnostics.diagnostics(),
             &[SemanticDiagnostic::FocusedOwnerMissingVisiblePrimary]
@@ -438,7 +448,10 @@ mod tests {
             .as_ref()
             .unwrap_or_else(|| unreachable!("failed plan keeps current products"));
         assert_eq!(current.publication.snapshot().revision(), max_revision);
-        assert_eq!(current.publication.snapshot().nodes()[0].bounds(), rect(10.0));
+        assert_eq!(
+            current.publication.snapshot().nodes()[0].bounds(),
+            rect(10.0)
+        );
         assert!(current.diagnostics.is_empty());
     }
 }
