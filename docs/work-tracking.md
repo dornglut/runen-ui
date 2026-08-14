@@ -120,6 +120,15 @@ exact tree `3be7ed95d5879c5d4dc9639583c5ef8490522267`; accepted-main push CI #90
 passed at that exact squash with canonical stable/MSRV validation and read-only
 workflow permissions.
 
+The mandatory #55 post-merge authority/current-contract reconciliation was then
+owner-accepted at exact reviewed head
+`48328df608a12425c3f03dd06cddecaabc50069f` after exact-head CI #904 and was
+guarded-squash-merged in PR #57 as
+`807bd7feb1e796eccd49c0ff024da0f79d1868b1`. Reviewed and squash trees are
+exactly `22efd2561be6fb25e9e5f411d0ac1fa53d3595ee`; accepted-main CI #905
+passed on that exact squash. Issue #55 is closed, and this exact accepted main is
+the M5B #48 feature base.
+
 Accepted #55 freezes the M5B/M5C successor authority for semantic PRIMARY focus,
 support versus current availability, virtual semantic-node target preservation,
 private semantic-to-mounted resolution, relationship default targeting,
@@ -130,21 +139,35 @@ LogicalScroll from `SemanticAction` while preserving `SemanticCommand::LogicalSc
 `LogicalScrollCommand`, pointer/focus derivation, routed callbacks, and accepted
 M4 scrolling.
 
-Accepted M5 conformance after #55 is `53 total / 12 owner-accepted / 41 blocked`,
-with aggregate configured truth `290 total / 247 owner-accepted / 43 blocked`.
-The added `SEM-SUPPORT-01`, `SEM-PUB-04`, and `SEM-ACT-07` rows are accepted
-authority but remain blocked implementation observations; #55 implements no M5B
-semantic publication or M5C action ingress.
+Accepted-main M5 conformance remains `53 total / 12 owner-accepted / 0
+implementation-complete / 0 proof-complete / 41 blocked`, with aggregate accepted
+truth `290 total / 247 owner-accepted / 0 implementation-complete / 0
+proof-complete / 43 blocked`. The status map and feature-support matrix continue
+to report that merged truth while M5B is unaccepted.
 
-M5B #48 is the next implementation slice. Its branch may be created only from an
-accepted `main` that already contains the #55 post-merge acceptance/current-
-contract reconciliation. M5B follows the #55-amended charter/matrix and may not
-reintroduce semantic LogicalScroll or pull M5C ingress forward.
+M5B #48 is active on branch `codex/m5b-semantic-publication` in draft PR #58
+from exact accepted base `807bd7feb1e796eccd49c0ff024da0f79d1868b1`.
+B1–B5 implementation, two public semantic consumers, support/publication
+conformance, current-contract documentation reconciliation, and the frozen
+critical whole-diff review completed at reviewed checkpoint
+`fef9cba54dcc70d39028fd8121c2ed9e6d9b692f`; exact-head CI #1078 /
+`31839938606` passed canonical stable/MSRV validation. No inline review thread or
+blocking architecture defect remained at that checkpoint.
+
+Following the same pre-acceptance transition used by M5A, exactly the 19
+M5B-owned rows are now `proof-complete` on the feature candidate. Candidate
+matrix truth is therefore `53 total / 12 owner-accepted / 0
+implementation-complete / 19 proof-complete / 22 blocked`; aggregate candidate
+truth is `290 total / 247 owner-accepted / 0 implementation-complete / 19
+proof-complete / 24 blocked`. This does not change accepted-main support, does
+not mark M5B owner-accepted, and does not activate M5C. The live final candidate
+head and latest exact-head CI are read from PR #58 after the bounded matrix and
+tracking reconciliation.
 
 The completed public M4 execution graph is:
 
 - [#2 — public RunenUI authority cutover](https://github.com/dornglut/runen-ui/issues/2);
-- [#11 — deterministic repository structure and authority audit](https://github.com/dornglut/runen-ui/issues/11), after #2;
+- [#11 — deterministic repository structure and authority audit](https://github.com/dornglut/runen-ui/issues/11), after #2 and its readiness freeze;
 - [#4 — M4C3 pointer lifecycle](https://github.com/dornglut/runen-ui/issues/4), after #11 and its readiness freeze;
 - [#5 — M4C4 focus scopes and modality](https://github.com/dornglut/runen-ui/issues/5), after #4;
 - [#6 — M4C5 keyboard, text, IME, automation, and M4C closure](https://github.com/dornglut/runen-ui/issues/6), after #5;
@@ -153,15 +176,14 @@ The completed public M4 execution graph is:
 - [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8.
 
 The accepted M5 implementation sequence remains sequential; #55 is an accepted
-blocking readiness/authority amendment with one bounded semantic-vocabulary
-correction between accepted M5A reconciliation and M5B implementation, rather
+readiness/authority amendment between accepted M5A reconciliation and M5B rather
 than a durable implementation slice or hidden M5B step:
 
 - [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), accepted and closed;
 - [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), accepted, reconciled, and closed;
-- [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), accepted in PR #56; close after its required post-merge acceptance/current-contract reconciliation is accepted on `main`;
-- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), next implementation slice from accepted post-#55 reconciliation `main`;
-- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), after accepted #48;
+- [#55 — M5 readiness semantic publication/focus/virtual-action target authority amendment](https://github.com/dornglut/runen-ui/issues/55), accepted, reconciled through PR #57, and closed;
+- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), active proof-complete feature candidate in draft PR #58, awaiting explicit owner acceptance;
+- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), blocked until accepted/merged/reconciled #48;
 - [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), after accepted #49;
 - [#51 — M5E integrated conformance, migration, and M5 closure](https://github.com/dornglut/runen-ui/issues/51), after accepted #50.
 
