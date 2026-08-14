@@ -70,7 +70,6 @@ pub enum SemanticDiagnostic {
     FocusedOwnerMissingVisiblePrimary,
     OwnerWithdrawn {
         authored_id: Option<ElementId>,
-        revoked: Vec<SemanticNodeId>,
         reason: SemanticOwnerWithdrawalReason,
     },
 }
