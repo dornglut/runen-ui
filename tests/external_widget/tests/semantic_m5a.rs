@@ -212,17 +212,16 @@ fn invalid_owner_semantics_publish_typed_fail_closed_diagnostic() {
     assert!(snapshot.nodes().is_empty());
     assert_eq!(report.surface_id(), snapshot.surface_id());
     assert_eq!(report.diagnostics().len(), 1);
-    match &report.diagnostics()[0] {
-        SemanticDiagnostic::OwnerWithdrawn {
-            authored_id: Some(authored_id),
-            reason:
-                SemanticOwnerWithdrawalReason::InvalidContribution(
-                    SemanticContributionError::DuplicateKey { key },
-                ),
-        } => {
-            assert_eq!(authored_id.as_str(), "semantic.invalid");
-            assert_eq!(key, &SemanticKey::PRIMARY);
-        }
-        diagnostic => panic!("unexpected semantic diagnostic: {diagnostic:?}"),
-    }
+    let SemanticDiagnostic::OwnerWithdrawn {
+        authored_id: Some(authored_id),
+        reason:
+            SemanticOwnerWithdrawalReason::InvalidContribution(
+                SemanticContributionError::DuplicateKey { key },
+            ),
+    } = &report.diagnostics()[0]
+    else {
+        unreachable!("unexpected semantic diagnostic shape")
+    };
+    assert_eq!(authored_id.as_str(), "semantic.invalid");
+    assert_eq!(key, &SemanticKey::PRIMARY);
 }
