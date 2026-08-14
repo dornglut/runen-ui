@@ -182,7 +182,9 @@ impl<'a> SemanticCompositor<'a> {
     }
 
     fn binding_id(&self, owner: &MountedNodeId, key: &SemanticKey) -> Option<&SemanticNodeId> {
-        self.binding_ids.get(owner).and_then(|bindings| bindings.get(key))
+        self.binding_ids
+            .get(owner)
+            .and_then(|bindings| bindings.get(key))
     }
 
     fn compose_owner(
@@ -289,7 +291,9 @@ impl<'a> SemanticCompositor<'a> {
     }
 
     fn visible_id(&self, owner: &MountedNodeId, key: &SemanticKey) -> Option<&SemanticNodeId> {
-        self.visible_ids.get(owner).and_then(|visible| visible.get(key))
+        self.visible_ids
+            .get(owner)
+            .and_then(|visible| visible.get(key))
     }
 
     fn resolve_relationships(&mut self) {
