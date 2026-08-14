@@ -879,7 +879,7 @@ mod tests {
 
         let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
             .unwrap_or_else(|_| unreachable!("initial semantic layout plan is valid"));
-        let first = planned
+        let (first, _) = planned
             .semantic_candidate(None)
             .unwrap_or_else(|_| unreachable!("initial semantic candidate is aligned"))
             .unwrap_or_else(|| unreachable!("initial structural plan includes semantics"));
@@ -904,7 +904,7 @@ mod tests {
 
         let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
             .unwrap_or_else(|_| unreachable!("layout semantic plan is valid"));
-        let second = planned
+        let (second, _) = planned
             .semantic_candidate(None)
             .unwrap_or_else(|_| unreachable!("layout semantic candidate is aligned"))
             .unwrap_or_else(|| unreachable!("layout dirtiness recomposes semantics"));
