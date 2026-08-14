@@ -195,7 +195,7 @@ retained generation, coordinate revision, exact snapshot targeting or membership
 and current mounted target status before using the same command preflight,
 canonical FIFO, routed transaction, semantic default, update, reconciliation, and
 wake authority as direct exact-target submission. Rejection returns the exact owned
-context, logical point or resolved target, command, and origin through
+context, logical point or resolved target, command, origin through
 `UnacceptedSurfaceCommand`; structured kinds distinguish surface/context lifetime,
 target lifetime, queue/status, and sequence failures.
 
@@ -777,7 +777,7 @@ advance semantic revision by itself.
 
 `SurfacePublication` equality compares renderer products plus semantic
 publication and semantic diagnostics; displayed `input_context()` identity is
-compared explicitly when required. `renderer_eq` and `into_renderer_products`
+compared explicitly when required. `renderer_products_eq` and `into_renderer_products`
 are explicit renderer-only observations. `into_complete_products` retains the
 input context, renderer products, semantic publication, and semantic diagnostic
 report so complete-product consumption cannot silently omit semantics. A tree
