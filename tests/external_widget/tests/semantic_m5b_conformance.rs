@@ -221,48 +221,44 @@ impl Widget<SetAdapterPhase> for AdapterProbe {
         let extra = SemanticKey::from_static("extra")
             .unwrap_or_else(|_| unreachable!("static semantic key is valid"));
         let primary = match self.0 {
-            AdapterPhase::Initial => {
-                all_m5_actions(
-                    SemanticNodeContribution::primary(SemanticRole::Group)
-                        .with_name("adapter root")
-                        .with_description("initial")
-                        .with_value(SemanticValue::Integer(1))
-                        .with_bounds(SemanticBounds::OwnerLocal(rect(1.0, 2.0, 10.0, 5.0)))
-                        .with_relationship(SemanticRelationship::new(
-                            SemanticRelationshipKind::LabelledBy,
-                            SemanticReference::Local(detail.clone()),
-                        )),
-                )
-                .with_child(
-                    SemanticNodeContribution::new(detail, SemanticRole::Text)
-                        .with_name("detail")
-                        .with_text(SemanticText::plain("initial detail")),
-                )
-            }
-            AdapterPhase::Changed => {
-                all_m5_actions(
-                    SemanticNodeContribution::primary(SemanticRole::Button)
-                        .with_name("adapter root changed")
-                        .with_description("changed")
-                        .with_value(SemanticValue::Integer(2))
-                        .with_state(SemanticState::ENABLED.with_inert(true))
-                        .with_bounds(SemanticBounds::OwnerLocal(rect(2.0, 3.0, 12.0, 6.0)))
-                        .with_relationship(SemanticRelationship::new(
-                            SemanticRelationshipKind::DescribedBy,
-                            SemanticReference::Local(extra.clone()),
-                        )),
-                )
-                .with_child(
-                    SemanticNodeContribution::new(detail, SemanticRole::Text)
-                        .with_name("detail changed")
-                        .with_text(SemanticText::plain("changed detail")),
-                )
-                .with_child(
-                    SemanticNodeContribution::new(extra, SemanticRole::Text)
-                        .with_name("extra")
-                        .with_value(SemanticValue::Boolean(true)),
-                )
-            }
+            AdapterPhase::Initial => all_m5_actions(
+                SemanticNodeContribution::primary(SemanticRole::Group)
+                    .with_name("adapter root")
+                    .with_description("initial")
+                    .with_value(SemanticValue::Integer(1))
+                    .with_bounds(SemanticBounds::OwnerLocal(rect(1.0, 2.0, 10.0, 5.0)))
+                    .with_relationship(SemanticRelationship::new(
+                        SemanticRelationshipKind::LabelledBy,
+                        SemanticReference::Local(detail.clone()),
+                    )),
+            )
+            .with_child(
+                SemanticNodeContribution::new(detail, SemanticRole::Text)
+                    .with_name("detail")
+                    .with_text(SemanticText::plain("initial detail")),
+            ),
+            AdapterPhase::Changed => all_m5_actions(
+                SemanticNodeContribution::primary(SemanticRole::Button)
+                    .with_name("adapter root changed")
+                    .with_description("changed")
+                    .with_value(SemanticValue::Integer(2))
+                    .with_state(SemanticState::ENABLED.with_inert(true))
+                    .with_bounds(SemanticBounds::OwnerLocal(rect(2.0, 3.0, 12.0, 6.0)))
+                    .with_relationship(SemanticRelationship::new(
+                        SemanticRelationshipKind::DescribedBy,
+                        SemanticReference::Local(extra.clone()),
+                    )),
+            )
+            .with_child(
+                SemanticNodeContribution::new(detail, SemanticRole::Text)
+                    .with_name("detail changed")
+                    .with_text(SemanticText::plain("changed detail")),
+            )
+            .with_child(
+                SemanticNodeContribution::new(extra, SemanticRole::Text)
+                    .with_name("extra")
+                    .with_value(SemanticValue::Boolean(true)),
+            ),
             AdapterPhase::Final => SemanticNodeContribution::primary(SemanticRole::Button)
                 .with_name("adapter root final")
                 .with_description("final")
