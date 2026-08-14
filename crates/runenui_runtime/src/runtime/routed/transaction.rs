@@ -83,6 +83,7 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(in crate::runtime) subscription_dirty: Vec<MountedNodeId>,
     pub(in crate::runtime) pointer_capture_requests: Vec<PointerCaptureRequest>,
     pub(in crate::runtime) invalidation: WidgetInvalidation,
+    pub(in crate::runtime) focus_before: Option<MountedNodeId>,
     pub(crate) failure_current_target: Option<MountedNodeId>,
     pub(in crate::runtime) pending_modality: InputModality,
 }
