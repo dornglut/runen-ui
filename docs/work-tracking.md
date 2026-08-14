@@ -95,92 +95,82 @@ complete through M4D3 and the final M4 authority reconciliation. It is historica
 coordination.
 
 M5 uses [issue #45](https://github.com/dornglut/runen-ui/issues/45) as its active
-coordination and pickup authority. Its decision-complete readiness audit passed
-against exact accepted M4 closure base
-`a63a249de9d4d53eeef4104ae3384e7898aacad1`. M5A0 #46 is accepted and closed.
-M5A semantic contribution and independent identity #47 was owner-accepted at
-exact reviewed feature head `8377ced53c08d7b5be3020368ceddd3ee81294a5`
-after exact-head CI #889, then guarded-squash-merged in PR #53 as
-`e3c304600ec1777cd17a1973946a43c765df1c31`. All 38 feature changed-file blob
-identities match between reviewed head and accepted feature squash.
+coordination and pickup authority. M5A0 #46, M5A #47, and readiness amendment
+#55 are accepted and closed, including their required current-contract
+reconciliations.
 
-M5A's mandatory post-merge authority/current-contract reconciliation was then
-explicitly owner-accepted at exact reviewed head
-`66c2e2a5e2adf3709f93e8d45821a5844986dc0c` after exact-head CI #897 and
-was guarded-squash-merged in PR #54 as
-`d7189d9d145b20edc6ad931ead1589f6277373d2`. Reviewed reconciliation head and
-squash share exact tree `593592d88c17a86d50d9eda1d3f90d49d8674658`; accepted-main push CI
-#898 passed at that exact squash. Issue #47 is closed.
+Accepted M5A evidence remains:
 
-The post-M5A readiness gate #55 was explicitly owner-accepted at exact reviewed
-head `15c90424a0fbae4312b0cb0c5fb76932b3ce1ee1` after exact-head CI #902 and
-was guarded-squash-merged in PR #56 as
-`d2f8fabd33860ec1510f82d5792b5bd8f2db8f43`. Reviewed head and squash share
-exact tree `3be7ed95d5879c5d4dc9639583c5ef8490522267`; accepted-main push CI #903
-passed at that exact squash with canonical stable/MSRV validation and read-only
-workflow permissions.
+```text
+reviewed feature head:      8377ced53c08d7b5be3020368ceddd3ee81294a5
+feature exact-head CI:      #889
+feature squash:             e3c304600ec1777cd17a1973946a43c765df1c31
+reconciliation head:        66c2e2a5e2adf3709f93e8d45821a5844986dc0c
+reconciliation squash/main: d7189d9d145b20edc6ad931ead1589f6277373d2
+accepted-main CI:           #898
+```
 
-The mandatory #55 post-merge authority/current-contract reconciliation was then
-owner-accepted at exact reviewed head
-`48328df608a12425c3f03dd06cddecaabc50069f` after exact-head CI #904 and was
-guarded-squash-merged in PR #57 as
-`807bd7feb1e796eccd49c0ff024da0f79d1868b1`. Reviewed and squash trees are
-exactly `22efd2561be6fb25e9e5f411d0ac1fa53d3595ee`; accepted-main CI #905
-passed on that exact squash. Issue #55 is closed, and this exact accepted main is
-the M5B #48 feature base.
+Accepted #55 readiness evidence remains:
 
-Accepted #55 freezes the M5B/M5C successor authority for semantic PRIMARY focus,
+```text
+reviewed feature head:      15c90424a0fbae4312b0cb0c5fb76932b3ce1ee1
+feature exact-head CI:      #902
+feature squash:             d2f8fabd33860ec1510f82d5792b5bd8f2db8f43
+reconciliation head:        48328df608a12425c3f03dd06cddecaabc50069f
+reconciliation squash/main: 807bd7feb1e796eccd49c0ff024da0f79d1868b1
+reconciliation tree:        22efd2561be6fb25e9e5f411d0ac1fa53d3595ee
+accepted-main CI:           #905
+```
+
+Accepted #55 freezes the successor authority for semantic PRIMARY focus,
 support versus current availability, virtual semantic-node target preservation,
 private semantic-to-mounted resolution, relationship default targeting,
 hidden/invalid-owner composition, surface-scoped semantic requests and revisions,
 exact stale/post-callback revalidation, staged atomic publication and failure
-taxonomy, and clean renderer/semantic cutover. It also cleanly removes route-bound
-LogicalScroll from `SemanticAction` while preserving `SemanticCommand::LogicalScroll`,
-`LogicalScrollCommand`, pointer/focus derivation, routed callbacks, and accepted
-M4 scrolling.
+taxonomy, and clean renderer/semantic cutover. It removes route-bound
+LogicalScroll from `SemanticAction` while preserving accepted M4 routed scrolling.
 
-Accepted-main M5 conformance remains `53 total / 12 owner-accepted / 0
-implementation-complete / 0 proof-complete / 41 blocked`, with aggregate accepted
-truth `290 total / 247 owner-accepted / 0 implementation-complete / 0
-proof-complete / 43 blocked`. The status map and feature-support matrix continue
-to report that merged truth while M5B is unaccepted.
+### M5B accepted feature and current reconciliation gate
 
-M5B #48 is active on branch `codex/m5b-semantic-publication` in draft PR #58
-from exact accepted base `807bd7feb1e796eccd49c0ff024da0f79d1868b1`.
-B1–B5 implementation, two public semantic consumers, support/publication
-conformance, and the first frozen whole-diff review completed at checkpoint
-`fef9cba54dcc70d39028fd8121c2ed9e6d9b692f`; exact-head CI #1078 /
-`31839938606` passed canonical stable/MSRV validation.
+M5B #48 was implemented in PR #58 from exact accepted base
+`807bd7feb1e796eccd49c0ff024da0f79d1868b1`. Critical review found and corrected
+two material issues before acceptance: routed focus changes now dirty the
+semantic product without invalidating cached contribution, and the semantic
+compositor now uses deterministic publication-local lookup indexes instead of
+repeated fallback scans.
 
-The feature candidate then moved through the bounded matrix/work-tracking
-transition to `550e42f5a5e1a7b44dea340502549538e59032e9`; exact-head CI #1079 /
-`31841005184` passed. A fresh critical architecture review rejected that head as
-the final owner gate because `SemanticCompositor` still used repeated linear
-fallback searches instead of the accepted publication-local-index design.
+The repository owner explicitly accepted exact final reviewed head
+`3b9db8b37098786cc0d53d38ae5d597c3460c38b`. Exact-head CI #1082 /
+`31847771313` passed. PR #58 was guarded-squash-merged pinned to that head as
+`43d23aefb81757a516ae569b3e86b9e0f2c71e23`. Reviewed head and squash share
+exact tree `1708d2536c6f1d202ac58dd7cb5f3cc97a438517`, proving exact repository
+content identity.
 
-The correction is bounded to `crates/runenui_runtime/src/semantic_compositor.rs`
-plus a formatter-only follow-up. Corrected reviewed head
-`e9f4f9f331b802b8ed22f83924f18dde5013886f` passed exact-head CI #1081 /
-`31844444053`. The corrected compositor builds lookup-only indexes for mounted
-owner position, owner-local bindings, visible `(owner, SemanticKey)` IDs, and
-authored-owner uniqueness/ambiguity while ordered vectors/tree traversal remain
-the sole publication and diagnostic ordering authority. Focused regression
-proof covers same-key isolation across owners and duplicate authored-owner
-ambiguity. A second acceptance-level review found no remaining M5B correctness,
-atomicity, scope, or public-authority defect in that source head.
+The connector-origin merge did not emit the normal `push` workflow event. This
+is recorded as an infrastructure/event-delivery fact, not as successful push CI
+and not as a waiver. The exact accepted squash was independently revalidated
+without source mutation by an ordinary read-only `pull_request` CI run using
+temporary PR #60. CI #1084 / `31850376490`, attempt 2, checked out and proved
+exact SHA `43d23aefb81757a516ae569b3e86b9e0f2c71e23` and passed canonical stable/MSRV
+repository validation. PR #60 was closed unmerged after evidence capture.
 
-Following the same pre-acceptance transition used by M5A, exactly the 19
-M5B-owned rows remain `proof-complete` on the unmerged feature candidate.
-Candidate matrix truth is therefore `53 total / 12 owner-accepted / 0
-implementation-complete / 19 proof-complete / 22 blocked`; aggregate candidate
-truth is `290 total / 247 owner-accepted / 0 implementation-complete / 19
-proof-complete / 24 blocked`. This does not change accepted-main support, does
-not mark M5B owner-accepted, and does not activate M5C.
+The sole current M5 execution gate is the mandatory M5B post-merge
+authority/current-contract reconciliation on branch
+`codex/m5b-post-merge-reconciliation`, based exactly on accepted squash
+`43d23aefb81757a516ae569b3e86b9e0f2c71e23`.
 
-The final pre-acceptance repository change is this authority reconciliation
-itself. Because it moves PR #58 beyond `e9f4f9f...`, the resulting head requires
-fresh exact-head CI and focused reconciliation review before it may become the
-explicit owner-acceptance candidate.
+The reconciliation promotes exactly the 19 M5B-owned rows from
+`proof-complete` to `owner-accepted` and updates current status/support/API
+truth. Its candidate truth is:
+
+```text
+M5:       53 total / 31 owner-accepted / 0 implementation-complete / 0 proof-complete / 22 blocked
+aggregate: 290 total / 266 owner-accepted / 0 implementation-complete / 0 proof-complete / 24 blocked
+```
+
+M5C #49 remains blocked until this reconciliation is exact-head validated,
+critically reviewed, explicitly owner-accepted, guarded-merged, and accepted-main
+verified. Do not create an M5C implementation branch earlier.
 
 The completed public M4 execution graph is:
 
@@ -193,27 +183,24 @@ The completed public M4 execution graph is:
 - [#8 — M4D2 export, redaction, and bounded sink](https://github.com/dornglut/runen-ui/issues/8), after #7;
 - [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8.
 
-The accepted M5 implementation sequence remains sequential; #55 is an accepted
-blocking readiness/authority amendment with one bounded semantic-vocabulary
-correction between accepted M5A reconciliation and M5B implementation, rather
-than a durable implementation slice or hidden M5B step:
+The accepted M5 implementation sequence remains sequential:
 
 - [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), accepted and closed;
 - [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), accepted, reconciled, and closed;
 - [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), accepted, reconciled through PR #57, and closed;
-- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), active proof-complete feature candidate in draft PR #58, awaiting explicit owner acceptance;
-- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), blocked until accepted/merged/reconciled #48;
+- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), feature owner-accepted and merged in PR #58; post-merge reconciliation is the current gate;
+- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), blocked until accepted M5B reconciliation;
 - [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), after accepted #49;
 - [#51 — M5E integrated conformance, migration, and M5 closure](https://github.com/dornglut/runen-ui/issues/51), after accepted #50.
 
 No later M5 branch begins from an unmerged predecessor or from a feature merge
-whose required post-merge authority reconciliation/readiness amendment is still
-pending. M6 is eligible only from the exact accepted M5 closure base.
+whose required post-merge authority reconciliation is still pending. M6 is
+eligible only from the exact accepted M5 closure base.
 
 Architecture and tooling follow-up:
 
-- [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10) remains open and non-blocking; M5 uses the focused semantic ownership seam unless concrete coupling proves broader work necessary;
-- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12) is closed completed with the post-M4 decision that current capacity is sufficient for accepted M5 work; semantic actions are ingress to the canonical command authority, not a new widget-output family;
+- [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10) remains open and non-blocking;
+- [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12) is closed; current capacity is sufficient for accepted M5 work;
 - [#59 — M6 readiness: remove whole-SurfaceCache cloning from publication planning](https://github.com/dornglut/runen-ui/issues/59) is open and explicitly non-blocking for M5B; it owns persistent/staged retained-publication work before or during M6 without weakening the accepted M5B atomic publication contract.
 
 M4A through M4C2 are accepted imported history. They are recorded in the
@@ -299,12 +286,19 @@ terms.
 
 Exact-head CI means the workflow explicitly checks out and verifies the feature
 head SHA. GitHub's synthetic pull-request merge ref does not qualify. Any head
-movement invalidates the prior exact-head result.
+movement invalidates earlier exact-head evidence.
 
 After a squash merge, record the accepted feature head and squash merge commit
 separately. Do not require feature-head ancestry from the squash commit. Verify
 changed-file content identity between the reviewed feature head and squash
 before treating the merge as accepted implementation evidence.
+
+When a connector-origin merge suppresses the normal default-branch push event,
+do not relabel feature-head CI as accepted-main push evidence. Preserve the
+missing event as an explicit infrastructure fact. If independent exact-squash CI
+is required before continuing, use an existing read-only validation path without
+source mutation; record its event type honestly and close any temporary
+validation PR unmerged.
 
 ## Infrastructure-only exact-head CI waiver
 
@@ -344,7 +338,7 @@ Successful output is compact; failed output is bounded while complete
 failed-command output is retained through a short-retention failure-only artifact
 outside the checkout. Temporary diagnostics are removed and successful runs create
 no diagnostic artifact. Reviewed feature head, synthetic merge result when
-separately used, squash merge, and accepted-main push validation are distinct
-evidence objects.
+separately used, squash merge, exact-squash validation, and accepted-main push
+validation are distinct evidence objects and must be named accurately.
 
 Do not reuse validation or CI claims from an earlier head.
