@@ -195,7 +195,7 @@ retained generation, coordinate revision, exact snapshot targeting or membership
 and current mounted target status before using the same command preflight,
 canonical FIFO, routed transaction, semantic default, update, reconciliation, and
 wake authority as direct exact-target submission. Rejection returns the exact owned
-context, logical point or resolved target, command, origin through
+context, logical point or resolved target, command, and origin through
 `UnacceptedSurfaceCommand`; structured kinds distinguish surface/context lifetime,
 target lifetime, queue/status, and sequence failures.
 
