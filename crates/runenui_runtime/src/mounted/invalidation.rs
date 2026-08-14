@@ -1,6 +1,8 @@
 use runenui_core::WidgetInvalidation;
 
-use super::{CachedCapability, CachedSemanticContribution, node::MountedNode};
+use super::{
+    CachedCapability, CachedSemanticContribution, node::MountedNode, tree::MountedTree,
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct DirtyPhases(u16);
@@ -43,6 +45,20 @@ pub(crate) const fn publication_is_dirty(invalidation: WidgetInvalidation) -> bo
 pub(crate) fn invalidate_semantic_structure<Action>(node: &mut MountedNode<Action>) {
     node.caches.semantics = CachedSemanticContribution::Unresolved;
     node.dirty_phases.insert(DirtyPhases::SEMANTICS);
+}
+
+impl<Action> MountedTree<Action> {
+    /// Marks the surface semantic product dirty after runtime-owned focus changes
+    /// without invalidating any owner semantic contribution capability.
+    pub(crate) fn mark_semantic_focus_product_dirty(&mut self) {
+        let Some(root) = self.root.clone() else {
+            return;
+        };
+        let Some(root) = self.node_mut(&root) else {
+            return;
+        };
+        root.dirty_phases.insert(DirtyPhases::SEMANTICS);
+    }
 }
 
 pub(crate) fn apply_invalidation<Action>(
