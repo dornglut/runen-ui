@@ -18,14 +18,13 @@ pub use cache::{SurfacePhase, SurfacePhaseReport};
 pub use context::SurfaceBuildContext;
 use measure::layout_resolved_surface;
 use resolve::{
-    ResolvedSurfaceTree, collect_topology, resolve_diagnostics, resolve_paint, resolve_semantics,
-    resolve_styles,
+    ResolvedSurfaceTree, collect_topology, resolve_diagnostics, resolve_paint, resolve_styles,
 };
 pub(crate) use transaction::PlannedSurfacePublication;
 
 use runenui_core::{
-    ComputedStyle, ElementId, LogicalLength, LogicalRect, LogicalSize, SemanticContribution,
-    WidgetDiagnostic, WidgetPaintProof, WidgetTypeId,
+    ComputedStyle, ElementId, LogicalLength, LogicalRect, LogicalSize, WidgetDiagnostic,
+    WidgetPaintProof, WidgetTypeId,
 };
 
 use crate::mounted::{DirtyPhases, SemanticReconcileError};
@@ -47,7 +46,6 @@ pub struct SurfaceNode {
 struct SurfaceWidgetProof {
     widget_type_id: WidgetTypeId,
     paint: WidgetPaintProof,
-    semantics: SemanticContribution,
     diagnostics: Vec<WidgetDiagnostic>,
 }
 
@@ -106,15 +104,6 @@ impl SurfaceNode {
     #[must_use]
     pub const fn paint(&self) -> &WidgetPaintProof {
         &self.widget_proof.paint
-    }
-
-    /// Returns the temporary M5A canonical semantic contribution.
-    ///
-    /// M5B removes semantic authority from `SurfaceFrame` and publishes the
-    /// independent renderer-neutral semantic product instead.
-    #[must_use]
-    pub const fn semantics(&self) -> &SemanticContribution {
-        &self.widget_proof.semantics
     }
 
     /// Returns deterministic widget diagnostics.
@@ -207,19 +196,19 @@ impl LayoutOverflow {
 
     /// Returns whether horizontal layout pressure exceeded a finite maximum.
     #[must_use]
-    pub const fn width(&self) -> bool {
+    pub const fn width(self) -> bool {
         self.width
     }
 
     /// Returns whether vertical layout pressure exceeded a finite maximum.
     #[must_use]
-    pub const fn height(&self) -> bool {
+    pub const fn height(self) -> bool {
         self.height
     }
 
     /// Returns whether either axis overflowed.
     #[must_use]
-    pub const fn any(&self) -> bool {
+    pub const fn any(self) -> bool {
         self.width || self.height
     }
 }
@@ -545,8 +534,9 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     let finalized_semantics = semantic_capability_plan
         .map(|plan| tree.finalize_semantic_publication(plan))
         .transpose()?;
-    if let Some(finalized) = finalized_semantics.as_ref() {
-        current.semantics = resolve_semantics(finalized);
+    if finalized_semantics.is_some() {
+        #[cfg(test)]
+        cache::note_semantics_phase_execution();
         report.record(SurfacePhase::Semantics);
         completed.insert(DirtyPhases::SEMANTICS);
     }
@@ -598,7 +588,8 @@ fn plan_structural_surface<'tree, Action>(
     let paint = resolve_paint(&topology, &capability_plan);
     report.record(SurfacePhase::Paint);
     let finalized_semantics = tree.finalize_semantic_publication(semantic_capability_plan)?;
-    let semantics = resolve_semantics(&finalized_semantics);
+    #[cfg(test)]
+    cache::note_semantics_phase_execution();
     report.record(SurfacePhase::Semantics);
     let diagnostics = resolve_diagnostics(&topology, &capability_plan);
     report.record(SurfacePhase::Diagnostics);
@@ -618,7 +609,6 @@ fn plan_structural_surface<'tree, Action>(
         layout,
         hit_test,
         paint,
-        semantics,
         diagnostics,
         publication: placeholder,
     };
@@ -659,7 +649,6 @@ fn compose_publication(cache: &SurfaceCache) -> SurfacePublication {
                 SurfaceWidgetProof {
                     widget_type_id: node.widget_type_id,
                     paint: cache.paint[index].clone(),
-                    semantics: cache.semantics[index].clone(),
                     diagnostics: cache.diagnostics[index].clone(),
                 },
                 cache.styles.resolutions[index].computed_style(),
@@ -681,7 +670,6 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
         || cache.layout.report.nodes().len() != expected
         || cache.hit_test.bounds.len() != expected
         || cache.paint.len() != expected
-        || cache.semantics.len() != expected
         || cache.diagnostics.len() != expected
     {
         return Err("surface cache fact vectors are not topology-aligned");
