@@ -4,8 +4,12 @@
 
 This document records the reviewed public surface for application work, the
 deterministic scheduler, routed semantic commands, canonical trace, and the
-accepted M5A semantic contribution/identity foundation. Source-level Rust
-documentation is authoritative for signatures. [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md)
+accepted M5A semantic contribution/identity foundation. The active M5B delivery
+branch additionally records its prospective renderer-independent semantic
+publication/update/diagnostic surface while issue #48 remains unaccepted;
+accepted repository status continues to be owned by the M5 conformance matrix
+and status documents. Source-level Rust documentation is authoritative for
+signatures. [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md)
 defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
 defines mounted ownership and reconciliation; accepted
 [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines application
@@ -64,6 +68,12 @@ remaining sequential M5B–M5E boundaries; the
 and [work tracking](../work-tracking.md) owns volatile branch, head, blocker,
 and next-action state.
 
+The active M5B delivery branch now implements the prospective independent
+`SurfaceId`-scoped semantic snapshot/update/diagnostic publication contract
+described below. That branch-current API is not an owner-acceptance claim:
+accepted repository authority remains M5A until #48 completes final review,
+explicit owner acceptance, merge, and required reconciliation.
+
 ## Ownership and inventory
 
 `runenui_core` owns `UiApp`, host-neutral effects/subscriptions/work protocols,
@@ -87,8 +97,9 @@ persistent mounted storage, reconciliation, lifecycle execution, focus and
 interaction slots, mounted targeting, invalidation scheduling, capability
 caches, the separate runtime semantic generational arena and mounted-owner/
 semantic-key binding store, measurement/layout execution, bounded trace, live
-work registry, clocks, completion ingress, wake/redraw, and mounted publication.
-The public runtime, mounted inspection, and integrity vocabulary includes:
+work registry, clocks, completion ingress, wake/redraw, mounted publication, and
+the prospective M5B renderer-independent semantic publication state. The public
+runtime, mounted inspection, integrity, and M5B delivery vocabulary includes:
 
 - core-owned `MountedNodeId`, `SemanticNodeId`, `SurfaceId`,
   `SurfaceInputContext`, `MonotonicInstant`, `MonotonicTimeError`, and
@@ -110,7 +121,16 @@ The public runtime, mounted inspection, and integrity vocabulary includes:
 - accepted M4D3 offline replay types `TraceReplay`,
   `TraceReplayCompleteness`, `TraceReplayError`, `TraceReplayKind`,
   `TraceReplayRecord`, `TraceReplaySequence`, and `TraceReplayWorkSequence`;
-- read-only frame, style-report, layout-report, and publication products.
+- renderer-facing `SurfaceFrame`, `SurfaceStyleReport`, and
+  `SurfaceLayoutReport` products;
+- prospective M5B `SemanticRevision`, `SemanticNodeState`,
+  `SemanticRelationship`, `SemanticNode`, `SemanticSnapshot`,
+  `SemanticFocusChange`, `SemanticUpdate`, `SemanticUpdateResult`, and
+  `SemanticPublication`;
+- prospective M5B `SemanticDiagnostic`, `SemanticDiagnosticReport`, and
+  `SemanticOwnerWithdrawalReason`;
+- `SurfacePublication` as the complete aligned publication aggregate with
+  explicit renderer-only and complete-product observation/extraction.
 
 The ordinary preludes remain narrow. Specialist runtime/mounted/lifecycle
 inspection is imported explicitly from crate roots. Generated IDs and
@@ -118,8 +138,10 @@ sequences, queue/envelope storage, mounted state, mounted/semantic arena storage
 semantic owner bindings, reconciliation reports, trace records, and publication
 products have no public constructors. Replay identities are separately typed
 observational values and have no conversion into live runtime-issued
-`TraceSequence` or `WorkSequence` authority. M5A intentionally does not expose a
-public semantic snapshot/index yet; that product belongs to M5B.
+`TraceSequence` or `WorkSequence` authority. Accepted M5A publishes the opaque
+semantic identity foundation only; the active unaccepted M5B delivery branch
+adds the independent semantic snapshot/update/diagnostic product without
+exposing mounted-owner identity or semantic-node action ingress.
 
 ## Queue, pump, and runtime status
 
@@ -274,8 +296,9 @@ traverses logical mounted preorder; arena slot order is never observable as tree
 order. A mounted node owns parent/ordered children, authored metadata, current
 widget description, persistent erased state, interaction slots, replacement
 status, capability caches, private semantic owner bindings, and internal dirty
-phases. `MountedTreeIndex` does not publish semantic-node identities; M5B owns the
-independent public semantic snapshot/index.
+phases. `MountedTreeIndex` does not publish semantic-node identities; the active
+M5B delivery branch owns the independent public semantic snapshot/index without
+turning mounted inspection into semantic authority.
 
 ## State-aware widget contract
 
@@ -437,9 +460,11 @@ Both mounted and semantic IDs are process-local and runtime-instance-local.
 Runtime namespace validation occurs before slot interpretation. Foreign semantic
 IDs, stale generations, missing addresses, checked public-slot overflow, and
 generation exhaustion do not truncate or wrap. Ordinary downstream code cannot
-construct live IDs or extract/reconstruct their private parts. M5A intentionally
-publishes the opaque `SemanticNodeId` type without yet publishing the independent
-semantic snapshot that contains live IDs; M5B owns that product.
+construct live IDs or extract/reconstruct their private parts. Accepted M5A
+publishes the opaque `SemanticNodeId` type; the active unaccepted M5B delivery
+branch additionally publishes live IDs only inside its independent semantic
+snapshot/update product. No conversion exposes the private mounted owner behind
+a semantic ID.
 
 Authored `ElementId` remains a validated lookup/diagnostic handle. It does not
 affect mounted reconciliation compatibility and may change while mounted
@@ -688,8 +713,10 @@ and common authored changes add runtime-detected phase work; they do not
 automatically requery unrelated clean capabilities. Direct mounted-child
 structural change invalidates semantic structure conservatively; child-count
 changes also change `SemanticContributionContext`. Unrelated compatible updates
-do not. A later M5B layout-only bounds publication may dirty semantic
-**publication** without requerying unchanged widget contribution.
+do not. In the active M5B delivery, layout-only bounds changes dirty the semantic
+publication without requerying unchanged widget contribution. Runtime focus
+changes likewise dirty the semantic focus/product only; they do not invalidate
+or re-enter owner semantic contribution.
 
 Publication-context changes compare root constraints, exact style-token content,
 and measurement-provider identity/revision. Providers must change identity or
@@ -717,33 +744,47 @@ one.
 completion, new lifetimes mounted, preserved nodes updated once, lifetimes
 ended, same-parent preserved moves, retained-focus truth, and structured
 deterministic diagnostics containing complete duplicate-key old/new occurrences.
-Semantic identity is not counted as mounted lifetime and is owned by the private
-M5A semantic store until M5B publishes semantic product/update diagnostics.
+Semantic identity is not counted as mounted lifetime. Accepted M5A owns the
+independent semantic arena/bindings; the active M5B delivery projects those
+lifetimes into a separate surface-scoped semantic publication rather than adding
+them to mounted reconciliation counts.
 
 `AppRuntime::publish_surface(&mut self, context)` is the only public surface
-publication authority. Every call returns `SurfacePublication` with a fresh opaque
-`SurfaceInputContext` naming the one logical surface, a fresh coordinate revision,
-and the exact displayed hit-test generation. The runtime retains a configurable
-nonzero bounded `VecDeque` of immutable hit-test snapshots; oldest retirement is
-deterministic, and retained contexts never re-hit-test current geometry.
+publication authority and is fallible. A successful call returns one
+`SurfacePublication` with a fresh opaque `SurfaceInputContext` naming the one
+logical surface, a fresh coordinate revision, the exact displayed hit-test
+generation, renderer products, the semantic publication, and its semantic
+diagnostic report. Recoverable publication backpressure returns
+`PublishSurfaceError::Full` before publication commit; closed/terminal runtimes
+return their exact status, and exhausted publication counters preserve their
+exact terminal subreason. Candidate-dependent semantic revision/update and
+mandatory sibling products are resolved before the final mounted/publication
+commit boundary. The runtime retains a configurable nonzero bounded `VecDeque`
+of immutable hit-test snapshots; oldest retirement is deterministic, and
+retained contexts never re-hit-test current geometry.
 
 `MountedTreeIndex`, `SurfaceFrame`, `SurfaceStyleReport`, and
-`SurfaceLayoutReport` expose equal **mounted** ID, parent, authored-ID, and current
-preorder sequences for renderer/layout inspection. M5A removes the old singular
-semantic-ID projection from mounted/frame/style/layout nodes because one mounted
-owner may contribute zero or many semantic nodes. `SurfaceNode::semantics()`
-temporarily carries the canonical `SemanticContribution` only; it exposes no
-runtime semantic IDs, resolved tree topology, absolute semantic bounds, runtime
-focus, revisions, or incremental semantic update authority. M5B owns the
-independent semantic snapshot/update sibling product and the final removal of
-production semantic authority from renderer-facing `SurfaceFrame`.
+`SurfaceLayoutReport` expose aligned **mounted** ID, parent, authored-ID, and
+current preorder sequences for renderer/layout inspection. Renderer products no
+longer carry semantic contribution or runtime semantic authority:
+`SurfaceNode` has no semantic accessor, renderer debug output omits semantics,
+and renderer/cache topology is not an alternate semantic tree. The independent
+`SemanticSnapshot` has its own roots/order/index, stable opaque
+`SemanticNodeId`s, absolute semantic bounds, runtime focus, composed
+state/support/relationships, revision, and optional exact previous-revision
+delta. `SemanticDiagnosticReport` is a separate mandatory sibling and does not
+advance semantic revision by itself.
 
-A tree change rebuilds every aligned renderer product from one current topology
-snapshot. Compatible common-field changes retain that topology but refresh
-style/layout facts from current mounted nodes. Publication equality deliberately
-compares only the renderer-facing frame/style/layout products; callers compare
-`input_context()` explicitly when exact displayed-snapshot identity matters. The
-free transient publication function is removed.
+`SurfacePublication` equality compares renderer products plus semantic
+publication and semantic diagnostics; displayed `input_context()` identity is
+compared explicitly when required. `renderer_eq` and `into_renderer_products`
+are explicit renderer-only observations. `into_complete_products` retains the
+input context, renderer products, semantic publication, and semantic diagnostic
+report so complete-product consumption cannot silently omit semantics. A tree
+change rebuilds aligned renderer products from one current topology snapshot;
+semantic composition independently consumes the staged topology/layout/finalized
+semantic-owner facts and runtime focus, never `SurfaceFrame`. The free transient
+publication function is removed.
 
 ## Bounded canonical trace
 
@@ -916,6 +957,8 @@ Removed without aliases:
 - first-match `MountedTreeIndex::node_by_authored_id` lookup authority;
 - M2 `WidgetSemanticProof` and singular mounted/renderer-facing semantic-ID
   projection authority;
+- renderer semantic contribution carriage/`SurfaceNode::semantics()` and
+  ambiguous publication consuming aliases that could silently omit semantics;
 - duplicated, unbounded runtime-event/trace storage.
 
 Added:
@@ -964,11 +1007,15 @@ Added:
   platform-neutral semantic authoring vocabulary (`SemanticKey`, role/value/text/
   state/action/relationship/bounds types, `SemanticItem`,
   `SemanticNodeContribution`, `SemanticContribution`, validation/error/context),
-  plus runtime-owned independent semantic arena/binding reconciliation.
+  plus runtime-owned independent semantic arena/binding reconciliation;
+- active M5B delivery `SemanticRevision`, semantic node/state/relationship,
+  snapshot/focus/update/update-result/publication types, typed semantic diagnostic
+  report/reasons, and mandatory semantic siblings in `SurfacePublication`, with
+  explicit renderer-only versus complete-product APIs.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
-in force. The current contract includes effects, subscriptions, tasks, timers,
+in force. The accepted contract includes effects, subscriptions, tasks, timers,
 host requests, all four readiness budgets, wake/redraw, M4C1 exact-target routed
 semantic commands, M4C2 displayed-generation surface context, the M4C3
 host-neutral pointer lifecycle, the owner-accepted M4C4 focus-scope/modality
@@ -976,9 +1023,12 @@ protocol, the owner-accepted M4C5 keyboard/text/composition and authored-ID
 automation implementation, the owner-accepted M4D1 normalized in-memory trace
 schema, the owner-accepted M4D2 deterministic export/redaction/bounded-sink
 surface, the owner-accepted M4D3 offline replay/M4 closure proof surface, and the
-owner-accepted M5A semantic contribution/independent-identity foundation.
-M4 is complete and M5 is active. M5A does not imply the M5B independent semantic
-snapshot/update product, runtime-derived semantic focus/absolute bounds,
-relationship resolution, M5C semantic-node action ingress, M5D public testing
+owner-accepted M5A semantic contribution/independent-identity foundation. The
+active M5B delivery branch additionally contains the prospective independent
+semantic snapshot/update/diagnostic product, runtime-derived semantic
+focus/absolute bounds, relationship resolution, typed support composition, and
+renderer-independent publication cutover described above; it remains unaccepted
+until #48 completes review, owner acceptance, merge, and reconciliation. M4 is
+complete and M5 is active. M5C semantic-node action ingress, M5D public testing
 harness, AccessKit/native accessibility, native host translation, production
-scrolling, editable text, or platform IME objects.
+scrolling, editable text, and platform IME objects remain later work.
