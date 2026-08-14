@@ -1,5 +1,5 @@
 use core::num::NonZeroU64;
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use runenui_core::SurfaceId;
 
@@ -18,19 +18,19 @@ pub enum SemanticPublicationPlanError {
 }
 
 pub struct SemanticPublicationPlan {
-    publication: Option<Arc<SemanticPublication>>,
+    publication: Option<SemanticPublication>,
     diagnostics: Option<Vec<SemanticCompositionDiagnostic>>,
 }
 
 impl SemanticPublicationPlan {
-    pub(crate) const fn publication(&self) -> Option<&Arc<SemanticPublication>> {
+    pub(crate) const fn publication(&self) -> Option<&SemanticPublication> {
         self.publication.as_ref()
     }
 }
 
 #[derive(Default)]
 pub struct SemanticPublicationState {
-    current: Option<Arc<SemanticPublication>>,
+    current: Option<SemanticPublication>,
     diagnostics: Vec<SemanticCompositionDiagnostic>,
 }
 
@@ -48,14 +48,14 @@ impl SemanticPublicationState {
         };
         let diagnostics = Some(candidate.diagnostics.clone());
         let publication = match self.current.as_ref() {
-            None => Some(Arc::new(publication_from_candidate(
+            None => Some(publication_from_candidate(
                 surface,
                 SemanticRevision::FIRST,
                 candidate,
                 None,
-            ))),
+            )),
             Some(current) if candidate_matches_snapshot(&candidate, current.snapshot()) => {
-                Some(Arc::clone(current))
+                Some(current.clone())
             }
             Some(current) => {
                 let revision = current
@@ -66,12 +66,12 @@ impl SemanticPublicationState {
                     .and_then(NonZeroU64::new)
                     .map(SemanticRevision)
                     .ok_or(SemanticPublicationPlanError::RevisionExhausted)?;
-                Some(Arc::new(publication_from_candidate(
+                Some(publication_from_candidate(
                     surface,
                     revision,
                     candidate,
                     Some(current.snapshot()),
-                )))
+                ))
             }
         };
         Ok(SemanticPublicationPlan {
@@ -172,7 +172,7 @@ fn publication_from_candidate(
         index,
     };
     let update = previous.map(|previous| semantic_update(previous, &snapshot));
-    SemanticPublication { snapshot, update }
+    SemanticPublication::new(snapshot, update)
 }
 
 fn semantic_update(previous: &SemanticSnapshot, current: &SemanticSnapshot) -> SemanticUpdate {
@@ -211,7 +211,6 @@ fn semantic_update(previous: &SemanticSnapshot, current: &SemanticSnapshot) -> S
 #[cfg(test)]
 mod tests {
     use core::num::NonZeroU64;
-    use std::sync::Arc;
 
     use runenui_core::{
         __runtime::RuntimeNamespace, LogicalPoint, LogicalRect, LogicalSize, SemanticRole,
@@ -288,12 +287,11 @@ mod tests {
             .plan(&surface, Some(candidate(&namespace, 10.0, Vec::new())))
             .unwrap_or_else(|_| unreachable!("first semantic revision is available"));
         state.commit(initial);
-        let committed = Arc::clone(
-            state
-                .current
-                .as_ref()
-                .unwrap_or_else(|| unreachable!("semantic publication committed")),
-        );
+        let committed = state
+            .current
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("semantic publication committed"))
+            .clone();
 
         let unchanged = state
             .plan(&surface, Some(candidate(&namespace, 10.0, Vec::new())))
@@ -301,7 +299,7 @@ mod tests {
         let unchanged_publication = unchanged
             .publication()
             .unwrap_or_else(|| unreachable!("unchanged plan carries current publication"));
-        assert!(Arc::ptr_eq(&committed, unchanged_publication));
+        assert!(committed.shares_storage_with(unchanged_publication));
         state.commit(unchanged);
 
         let clean = state
@@ -310,7 +308,7 @@ mod tests {
         let clean_publication = clean
             .publication()
             .unwrap_or_else(|| unreachable!("clean plan carries current publication"));
-        assert!(Arc::ptr_eq(&committed, clean_publication));
+        assert!(committed.shares_storage_with(clean_publication));
     }
 
     #[test]
@@ -377,12 +375,12 @@ mod tests {
         let surface = namespace.__runtime_surface_id(0, 1);
         let max_revision = SemanticRevision(NonZeroU64::MAX);
         let state = SemanticPublicationState {
-            current: Some(Arc::new(publication_from_candidate(
+            current: Some(publication_from_candidate(
                 &surface,
                 max_revision,
                 candidate(&namespace, 10.0, Vec::new()),
                 None,
-            ))),
+            )),
             diagnostics: Vec::new(),
         };
 
