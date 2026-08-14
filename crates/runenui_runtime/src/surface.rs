@@ -196,19 +196,19 @@ impl LayoutOverflow {
 
     /// Returns whether horizontal layout pressure exceeded a finite maximum.
     #[must_use]
-    pub const fn width(self) -> bool {
+    pub const fn width(&self) -> bool {
         self.width
     }
 
     /// Returns whether vertical layout pressure exceeded a finite maximum.
     #[must_use]
-    pub const fn height(self) -> bool {
+    pub const fn height(&self) -> bool {
         self.height
     }
 
     /// Returns whether either axis overflowed.
     #[must_use]
-    pub const fn any(self) -> bool {
+    pub const fn any(&self) -> bool {
         self.width || self.height
     }
 }
