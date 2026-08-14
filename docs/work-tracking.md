@@ -167,7 +167,7 @@ tracking reconciliation.
 The completed public M4 execution graph is:
 
 - [#2 — public RunenUI authority cutover](https://github.com/dornglut/runen-ui/issues/2);
-- [#11 — deterministic repository structure and authority audit](https://github.com/dornglut/runen-ui/issues/11), after #2 and its readiness freeze;
+- [#11 — deterministic repository structure and authority audit](https://github.com/dornglut/runen-ui/issues/11), after #2;
 - [#4 — M4C3 pointer lifecycle](https://github.com/dornglut/runen-ui/issues/4), after #11 and its readiness freeze;
 - [#5 — M4C4 focus scopes and modality](https://github.com/dornglut/runen-ui/issues/5), after #4;
 - [#6 — M4C5 keyboard, text, IME, automation, and M4C closure](https://github.com/dornglut/runen-ui/issues/6), after #5;
@@ -176,12 +176,13 @@ The completed public M4 execution graph is:
 - [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8.
 
 The accepted M5 implementation sequence remains sequential; #55 is an accepted
-readiness/authority amendment between accepted M5A reconciliation and M5B rather
+blocking readiness/authority amendment with one bounded semantic-vocabulary
+correction between accepted M5A reconciliation and M5B implementation, rather
 than a durable implementation slice or hidden M5B step:
 
 - [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), accepted and closed;
 - [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), accepted, reconciled, and closed;
-- [#55 — M5 readiness semantic publication/focus/virtual-action target authority amendment](https://github.com/dornglut/runen-ui/issues/55), accepted, reconciled through PR #57, and closed;
+- [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), accepted, reconciled through PR #57, and closed;
 - [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), active proof-complete feature candidate in draft PR #58, awaiting explicit owner acceptance;
 - [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), blocked until accepted/merged/reconciled #48;
 - [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), after accepted #49;
