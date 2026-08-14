@@ -7,7 +7,7 @@ use super::{
     transaction::RoutedTransaction,
 };
 use crate::{
-    MountedNodeId, TraceActionCategory, TraceRecordKind,
+    TraceActionCategory, TraceRecordKind,
     transaction::{
         ApplicationTransactionInput, OwnedTransactionLedger, PlannedApplicationTransaction,
         TransactionLedger,
@@ -38,15 +38,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if self.routed_commit_failure_for_test {
             return Err(());
         }
-        let focused_before = self.focus.focused_node().cloned();
         pre_output_commit(self, &mut transaction)?;
         if !transaction.pointer_capture_requests.is_empty() {
             return Err(());
         }
+        let focused = self.focus.focused_node().cloned();
         if transaction
             .invalidation
             .contains(WidgetInvalidation::INTERACTION)
-            && focused_before
+            && focused
                 .as_ref()
                 .is_some_and(|focused| !self.validate_focus(focused))
         {
@@ -54,7 +54,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .map_err(|_| ())?;
         }
         let plan = self.plan_routed_outputs(&mut transaction)?;
-        self.commit_routed_plan(transaction, plan, focused_before)
+        self.commit_routed_plan(transaction, plan)
     }
 
     fn plan_routed_outputs(
@@ -100,8 +100,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         transaction: RoutedTransaction<Action>,
         plan: PlannedApplicationTransaction<Action, Protocol>,
-        focused_before: Option<MountedNodeId>,
     ) -> Result<(), ()> {
+        let focus_before = transaction.focus_before.clone();
         let PlannedApplicationTransaction {
             invalidated,
             starts,
@@ -148,7 +148,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             transaction.origin,
         );
-        let focus_changed = self.focus.focused_node() != focused_before.as_ref();
+        let focus_changed = self.focus.focused_node() != focus_before.as_ref();
         self.finish_routed_invalidation(
             transaction.invalidation,
             focus_changed,
