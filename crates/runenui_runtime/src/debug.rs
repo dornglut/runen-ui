@@ -55,14 +55,13 @@ impl fmt::Display for DebugSurfaceNode<'_> {
 
         write!(
             formatter,
-            "node id={} parent={} authored={} bounds={} paint={} {:?} semantics={:?} diagnostics={:?}",
+            "node id={} parent={} authored={} bounds={} paint={} {:?} diagnostics={:?}",
             format_node_id(node.id()),
             format_parent(node.parent()),
             format_authored_id(node),
             format_rect(node.bounds()),
             node.paint().category(),
             node.paint().description(),
-            node.semantics(),
             node.diagnostics(),
         )
     }
