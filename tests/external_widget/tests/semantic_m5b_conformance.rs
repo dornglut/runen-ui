@@ -429,12 +429,18 @@ fn expect_delta<'a>(
     publication: &'a SemanticPublication,
     surface: &SurfaceId,
     revision: SemanticRevision,
+    transition: &'static str,
 ) -> &'a SemanticUpdate {
     match publication.update_from(surface, revision) {
         SemanticUpdateResult::Delta(update) => update,
-        SemanticUpdateResult::Unchanged | SemanticUpdateResult::FullResync(_) => {
-            unreachable!("declared consecutive adapter base yields one delta")
+        SemanticUpdateResult::Unchanged => {
+            unreachable!("{transition} semantic publication unexpectedly remained unchanged")
         }
+        SemanticUpdateResult::FullResync(snapshot) => unreachable!(
+            "{transition} semantic publication required full resync from revision {} to {}",
+            revision.get(),
+            snapshot.revision().get()
+        ),
     }
 }
 
@@ -505,18 +511,20 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
     runtime
         .submit_resolved_surface_command(
             first.input_context().clone(),
-            owner,
+            owner.clone(),
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("ordinary RequestFocus command is admitted"));
     assert!(runtime.pump(full_budget()).is_quiescent());
+    assert_eq!(runtime.focus().focused_node(), Some(&owner));
     let focused = publish_adapter(&mut runtime);
     let focused_semantics = focused.semantic_publication();
     let focus_delta = AdapterUpdate::read(expect_delta(
         focused_semantics,
         first_snapshot.surface_id(),
         first_snapshot.revision(),
+        "focus",
     ));
     assert_eq!(&focus_delta.surface, first_snapshot.surface_id());
     assert_eq!(focus_delta.previous_revision.get(), 1);
@@ -543,6 +551,7 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
         changed_semantics,
         changed_semantics.snapshot().surface_id(),
         focused_revision,
+        "content change",
     ));
     assert_eq!(
         &changed_delta.surface,
@@ -577,6 +586,7 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
         final_semantics,
         &changed_surface,
         changed_revision,
+        "final removal",
     ));
     assert_eq!(&final_delta.surface, &changed_surface);
     assert_eq!(final_delta.previous_revision, changed_revision);
