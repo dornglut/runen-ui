@@ -23,7 +23,7 @@ pub struct SemanticPublicationPlan {
 }
 
 impl SemanticPublicationPlan {
-    pub(crate) fn publication(&self) -> Option<&Arc<SemanticPublication>> {
+    pub(crate) const fn publication(&self) -> Option<&Arc<SemanticPublication>> {
         self.publication.as_ref()
     }
 }
