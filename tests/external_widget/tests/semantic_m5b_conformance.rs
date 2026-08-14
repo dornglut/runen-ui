@@ -1,6 +1,6 @@
 use runenui_core::{
-    CommandOrigin, Element, Focusability, IntoEffects, LogicalPoint, LogicalRect, LogicalSize,
-    NoHostProtocol, SemanticAction, SemanticBounds, SemanticCommand, SemanticContribution,
+    CommandOrigin, Element, IntoEffects, LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol,
+    SemanticAction, SemanticBounds, SemanticCommand, SemanticContribution,
     SemanticContributionContext, SemanticKey, SemanticNodeContribution, SemanticReference,
     SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText,
     SemanticValue, StyleTokens, UiApp, View, Widget, WidgetActivation, column,
@@ -148,7 +148,6 @@ fn public_support_matrix_separates_support_from_current_availability() {
             SemanticAction::OpenContextMenu,
         ]
     );
-
     assert_eq!(
         named_node(snapshot, "auto-passive-primary").supported_actions(),
         &[SemanticAction::OpenMenu, SemanticAction::OpenContextMenu]
@@ -161,7 +160,6 @@ fn public_support_matrix_separates_support_from_current_availability() {
             SemanticAction::OpenContextMenu,
         ]
     );
-
     assert_eq!(
         named_node(snapshot, "explicit-focus-primary").supported_actions(),
         &[
@@ -452,11 +450,50 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
     let first_snapshot = first_semantics.snapshot();
     let adapter_first = AdapterSnapshot::read(first_snapshot);
     assert_eq!(adapter_first.revision.get(), 1);
-    assert_eq!(adapter_first.surface, *first_snapshot.surface_id());
-    assert_eq!(adapter_first.roots, first_snapshot.roots());
+    assert_eq!(&adapter_first.surface, first_snapshot.surface_id());
+    assert_eq!(adapter_first.roots.as_slice(), first_snapshot.roots());
     assert_eq!(adapter_first.nodes.len(), 2);
     assert!(adapter_first.focused.is_none());
     assert!(first_semantics.update().is_none());
+
+    let first_root = adapter_first
+        .nodes
+        .first()
+        .unwrap_or_else(|| unreachable!("adapter root is mapped"));
+    assert_eq!(first_root.parent, None);
+    assert_eq!(first_root.children.len(), 1);
+    assert_eq!(first_root.role, SemanticRole::Group);
+    assert_eq!(first_root.name.as_deref(), Some("adapter root"));
+    assert_eq!(first_root.description.as_deref(), Some("initial"));
+    assert_eq!(first_root.value, Some(SemanticValue::Integer(1)));
+    assert!(!first_root.disabled);
+    assert!(!first_root.inert);
+    assert_eq!(first_root.supported_actions.len(), 4);
+    assert_eq!(first_root.relationships.len(), 1);
+    assert_eq!(
+        first_root.relationships[0].kind,
+        SemanticRelationshipKind::LabelledBy
+    );
+    assert_eq!(
+        &first_root.relationships[0].target,
+        first_root
+            .children
+            .first()
+            .unwrap_or_else(|| unreachable!("label target is the mapped child"))
+    );
+    assert!((first_root.bounds.width() - 10.0).abs() <= f32::EPSILON);
+    assert!(first_root.text.is_none());
+    let first_detail = adapter_first
+        .nodes
+        .get(1)
+        .unwrap_or_else(|| unreachable!("adapter detail is mapped"));
+    assert_eq!(first_detail.id, first_root.children[0]);
+    assert_eq!(first_detail.parent.as_ref(), Some(&first_root.id));
+    assert_eq!(first_detail.name.as_deref(), Some("detail"));
+    assert_eq!(
+        first_detail.text.as_ref().and_then(SemanticText::as_plain),
+        Some("initial detail")
+    );
 
     let owner = first
         .frame()
@@ -485,11 +522,13 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
         first_snapshot.surface_id(),
         first_snapshot.revision(),
     ));
+    assert_eq!(&focus_delta.surface, first_snapshot.surface_id());
     assert_eq!(focus_delta.previous_revision.get(), 1);
     assert_eq!(focus_delta.revision.get(), 2);
     assert!(focus_delta.added.is_empty());
     assert!(focus_delta.changed.is_empty());
     assert!(focus_delta.removed.is_empty());
+    assert!(focus_delta.roots.is_none());
     let focus_change = focus_delta
         .focus
         .as_ref()
@@ -509,10 +548,16 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
         changed_semantics.snapshot().surface_id(),
         focused_revision,
     ));
+    assert_eq!(
+        &changed_delta.surface,
+        changed_semantics.snapshot().surface_id()
+    );
     assert_eq!(changed_delta.previous_revision, focused_revision);
     assert_eq!(changed_delta.added.len(), 1);
     assert_eq!(changed_delta.changed.len(), 2);
     assert!(changed_delta.removed.is_empty());
+    assert!(changed_delta.roots.is_none());
+    assert!(changed_delta.focus.is_none());
     let changed_root = changed_delta
         .changed
         .iter()
@@ -525,7 +570,7 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
         changed_root.relationships[0].kind,
         SemanticRelationshipKind::DescribedBy
     );
-    assert_eq!(changed_root.bounds.width(), 12.0);
+    assert!((changed_root.bounds.width() - 12.0).abs() <= f32::EPSILON);
 
     let changed_revision = changed_semantics.snapshot().revision();
     let changed_surface = changed_semantics.snapshot().surface_id().clone();
@@ -537,9 +582,14 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
         &changed_surface,
         changed_revision,
     ));
+    assert_eq!(&final_delta.surface, &changed_surface);
+    assert_eq!(final_delta.previous_revision, changed_revision);
+    assert_eq!(final_delta.revision, final_semantics.snapshot().revision());
     assert_eq!(final_delta.removed.len(), 1);
-    assert_eq!(final_delta.added.len(), 0);
+    assert!(final_delta.added.is_empty());
     assert_eq!(final_delta.changed.len(), 2);
+    assert!(final_delta.roots.is_none());
+    assert!(final_delta.focus.is_none());
 
     match final_semantics.update_from(&changed_surface, first_snapshot.revision()) {
         SemanticUpdateResult::FullResync(snapshot) => {
@@ -579,7 +629,7 @@ fn independent_adapter_shaped_consumer_reads_snapshot_delta_focus_and_resync_con
 }
 
 #[test]
-fn public_semantic_product_exposes_no_mounted_owner_identity() {
+fn public_semantic_product_and_complete_aggregate_are_explicitly_separate_from_renderer_products() {
     fn consume(snapshot: &SemanticSnapshot) -> (SurfaceId, SemanticRevision, usize) {
         (
             snapshot.surface_id().clone(),
@@ -591,7 +641,10 @@ fn public_semantic_product_exposes_no_mounted_owner_identity() {
     let mut runtime = AppRuntime::<AdapterApp>::mount(AdapterPhase::Initial);
     let publication = publish_adapter(&mut runtime);
     let (surface, revision, nodes) = consume(publication.semantic_publication().snapshot());
-    assert_eq!(surface, *publication.semantic_publication().snapshot().surface_id());
+    assert_eq!(
+        &surface,
+        publication.semantic_publication().snapshot().surface_id()
+    );
     assert_eq!(revision.get(), 1);
     assert_eq!(nodes, 2);
 
@@ -600,9 +653,4 @@ fn public_semantic_product_exposes_no_mounted_owner_identity() {
     let complete = publication.into_complete_products();
     assert_eq!(complete.4.snapshot().surface_id(), &surface);
     assert_eq!(complete.5.surface_id(), &surface);
-}
-
-#[test]
-fn explicit_focusability_is_independent_from_widget_actionability() {
-    assert_eq!(Focusability::Automatic, Focusability::Automatic);
 }
