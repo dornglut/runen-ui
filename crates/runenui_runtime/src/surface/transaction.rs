@@ -1,4 +1,4 @@
-use crate::MountedNodeId;
+use crate::{MountedNodeId, SemanticDiagnostic};
 use crate::mounted::{
     DirtyPhases, FinalizedSemanticPublication, MountedTree, SemanticMountedCommit,
     SurfaceCapabilityPlan,
@@ -55,13 +55,14 @@ impl<'a> PlannedSurfacePublication<'a> {
         &self.cache.publication
     }
 
-    /// Composes the renderer-independent semantic candidate from staged
-    /// publication facts while the semantic-store plan still protects exact
-    /// owner/key identity. No live mounted capability or renderer output is read.
+    /// Composes the renderer-independent semantic candidate and semantic-owner
+    /// withdrawal diagnostics from staged publication facts while the semantic-
+    /// store plan still protects exact owner/key identity. No live mounted
+    /// capability or renderer output is read.
     pub(crate) fn semantic_candidate(
         &self,
         focused_owner: Option<&MountedNodeId>,
-    ) -> Result<Option<SemanticCandidate>, SurfacePlanningError> {
+    ) -> Result<Option<(SemanticCandidate, Vec<SemanticDiagnostic>)>, SurfacePlanningError> {
         let Some(finalized) = self.finalized_semantics.as_ref() else {
             return Ok(None);
         };
@@ -71,11 +72,18 @@ impl<'a> PlannedSurfacePublication<'a> {
             return Err(SurfacePlanningError::SemanticIntegrity);
         }
         let mut owners = Vec::with_capacity(expected);
+        let mut diagnostics = Vec::new();
         for (position, (topology, semantic)) in
             self.cache.topology.nodes.iter().zip(finalized).enumerate()
         {
             if topology.id != semantic.owner {
                 return Err(SurfacePlanningError::SemanticIntegrity);
+            }
+            if let Some(reason) = semantic.withdrawal_reason {
+                diagnostics.push(SemanticDiagnostic::OwnerWithdrawn {
+                    authored_id: topology.authored_id.clone(),
+                    reason,
+                });
             }
             owners.push(SemanticOwnerFacts {
                 id: semantic.owner,
@@ -89,7 +97,10 @@ impl<'a> PlannedSurfacePublication<'a> {
             });
         }
         let root = self.cache.topology.nodes.first().map(|node| &node.id);
-        Ok(Some(compose_semantics(&owners, root, focused_owner)))
+        Ok(Some((
+            compose_semantics(&owners, root, focused_owner),
+            diagnostics,
+        )))
     }
 
     /// Begins the final commit by consuming the borrow-protected semantic-store
