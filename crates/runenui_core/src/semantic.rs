@@ -170,7 +170,7 @@ impl SemanticState {
 
 /// Semantic actions with real `RunenUI` behavior in the accepted M5 design.
 #[non_exhaustive]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum SemanticAction {
     Activate,
     RequestFocus,
