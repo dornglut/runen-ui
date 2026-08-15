@@ -2,9 +2,7 @@ use runenui_core::{MonotonicInstant, SemanticActionTarget};
 
 use crate::{
     TraceActionCategory, TraceActionIdentity, TraceContext, TraceSurfaceContext,
-    TraceSurfaceIngressKind,
-    queue::SemanticCommandQueueTarget,
-    trace::TraceRecordDraft,
+    TraceSurfaceIngressKind, queue::SemanticCommandQueueTarget, trace::TraceRecordDraft,
 };
 
 use super::{
