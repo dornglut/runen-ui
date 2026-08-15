@@ -1,10 +1,10 @@
 //! Headless runtime for `RunenUI`.
 //!
 //! This crate owns typed action delivery, update calls, root rebuilding, input
-//! policy, trace recording, renderer-facing surface-frame publication,
-//! renderer-independent semantic snapshot/update/diagnostic publication, and
-//! exact semantic-node action ingress into the canonical routed command path.
-//! Native accessibility adapters remain later runtime slices.
+//! policy, trace recording, renderer-facing surface-frame publication, and
+//! renderer-independent semantic snapshot/update/diagnostic publication plus
+//! exact semantic-node action ingress/resolution. Native accessibility adapters
+//! remain a later host slice.
 //!
 //! Runtime-generated identities and products have no public forgery constructors:
 //!
@@ -253,7 +253,7 @@ pub use runenui_core::{
     LogicalScrollCommand, LogicalSize, PhysicalKey, PointerBoundaryEvent, PointerBoundaryKind,
     PointerButton, PointerButtons, PointerCaptureEvent, PointerCaptureKind, PointerDeviceKind,
     PointerEvent, PointerId, PointerPhase, SemanticAction, SemanticActionRequest,
-    SemanticActionTarget, SemanticKey, SurfaceId, SurfaceInputContext,
+    SemanticActionTarget, SurfaceId, SurfaceInputContext,
 };
 pub use runtime::{
     HostRequestCancelError, HostResponseError, PublishSurfaceError, ReconciliationDiagnostic,
@@ -261,7 +261,9 @@ pub use runtime::{
     RuntimeTerminalReason, ShutdownReport, SubscriptionDiagnostic, SubscriptionOwnerKind,
     SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
 };
-pub use semantic_action::{SubmitSemanticActionError, SubmitSemanticActionErrorKind};
+pub use semantic_action::{
+    SubmitSemanticActionError, SubmitSemanticActionErrorKind, UnacceptedSemanticAction,
+};
 pub use semantic_diagnostic::{
     SemanticDiagnostic, SemanticDiagnosticReport, SemanticOwnerWithdrawalReason,
 };
@@ -288,12 +290,12 @@ pub use trace::{
     TracePointerPath, TracePointerRecordRole, TracePointerRejection, TracePublicationContext,
     TraceRecord, TraceRecordKind, TraceReplay, TraceReplayCompleteness, TraceReplayError,
     TraceReplayKind, TraceReplayRecord, TraceReplaySequence, TraceReplayWorkSequence,
-    TraceRouteSnapshot, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
-    TraceSinkDeliveryOutcome, TraceSinkReceiveError, TraceSinkReceiver, TraceSpaceCleanupReason,
-    TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind,
-    TraceTarget, TraceTargetRejection, TraceTargetTransition, TraceTextMetrics,
-    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
-    TraceWorkStartRefusal,
+    TraceRouteSnapshot, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure,
+    TraceSemanticActionRejection, TraceSequence, TraceSinkDeliveryOutcome, TraceSinkReceiveError,
+    TraceSinkReceiver, TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind,
+    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
+    TraceTargetTransition, TraceTextMetrics, TraceTimerTerminalOutcome, TraceWorkFamily,
+    TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::host_request::{HostRequestRef, HostRequestToken};
