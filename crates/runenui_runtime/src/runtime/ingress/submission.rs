@@ -368,12 +368,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.trace.release_reservation(trace_reservation);
             return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
         }
-        let queued_target = match semantic_target {
-            Some(semantic_target) => {
+        let queued_target = semantic_target.map_or_else(
+            || SemanticCommandQueueTarget::mounted(target.clone()),
+            |semantic_target| {
                 SemanticCommandQueueTarget::semantic(target.clone(), semantic_target)
-            }
-            None => SemanticCommandQueueTarget::mounted(target.clone()),
-        };
+            },
+        );
         self.queue
             .push_command_preflighted(
                 queued_target,
