@@ -1,4 +1,7 @@
-use runenui_core::{Focusability, SemanticAction, SemanticActionRequest, SemanticActionTarget, SemanticCommand, SemanticKey};
+use runenui_core::{
+    Focusability, SemanticAction, SemanticActionRequest, SemanticActionTarget, SemanticCommand,
+    SemanticKey,
+};
 
 use crate::{
     CommandSubmission, SubmitCommandErrorKind, SubmitSemanticActionError,
@@ -18,6 +21,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(authority) => (authority.owner().clone(), authority.key().clone()),
             Err(kind) => return Err(SubmitSemanticActionError::new(kind, request)),
         };
+        let rejected_request = request.clone();
         let (surface, target, action) = request.into_parts();
         let command = semantic_command(&action);
         let semantic_target = SemanticActionTarget::__runtime_new(surface, target, key, action);
@@ -26,27 +30,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Err(kind) => {
                 let semantic_kind = map_command_rejection(kind);
                 self.terminalize_command_failure(kind);
-                let semantic_target = self
-                    .queue
-                    .next_sequence()
-                    .map(|_| ())
-                    .is_some();
-                debug_assert!(
-                    semantic_target || matches!(kind, SubmitCommandErrorKind::WorkSequenceExhausted),
-                    "semantic command rejection remains pre-commit"
-                );
                 Err(SubmitSemanticActionError::new(
                     semantic_kind,
-                    SemanticActionRequest::new(
-                        self.surface_publication
-                            .current_semantic_publication()
-                            .map(|publication| publication.snapshot().surface_id().clone())
-                            .unwrap_or_else(|| {
-                                unreachable!("semantic request preflight required a publication")
-                            }),
-                        semantic_target_id_unreachable(),
-                        semantic_action_unreachable(),
-                    ),
+                    rejected_request,
                 ))
             }
         }
@@ -160,12 +146,4 @@ const fn map_command_rejection(kind: SubmitCommandErrorKind) -> SubmitSemanticAc
         | SubmitCommandErrorKind::StaleTarget
         | SubmitCommandErrorKind::MissingTarget => SubmitSemanticActionErrorKind::Integrity,
     }
-}
-
-fn semantic_target_id_unreachable() -> runenui_core::SemanticNodeId {
-    unreachable!("semantic request reconstruction is replaced before this helper can run")
-}
-
-fn semantic_action_unreachable() -> SemanticAction {
-    unreachable!("semantic request reconstruction is replaced before this helper can run")
 }
