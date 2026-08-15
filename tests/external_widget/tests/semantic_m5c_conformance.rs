@@ -558,6 +558,17 @@ fn request_focus_and_menu_actions_follow_existing_command_semantics() {
 
     let mut automatic = runtime(ProbeConfig::actionable());
     let automatic_targets = publish(&mut automatic);
+    let mismatch = automatic
+        .submit_semantic_action(request(
+            &automatic_targets,
+            &automatic_targets.named,
+            SemanticAction::RequestFocus,
+        ))
+        .unwrap_err();
+    assert_eq!(
+        mismatch.kind(),
+        SubmitSemanticActionErrorKind::UnsupportedAction
+    );
     automatic
         .submit_semantic_action(request(
             &automatic_targets,
@@ -571,22 +582,20 @@ fn request_focus_and_menu_actions_follow_existing_command_semantics() {
         Some(&automatic_targets.owner)
     );
 
-    automatic.state().event_observations.borrow_mut().clear();
+    let mut menu = runtime(ProbeConfig::passive());
+    let menu_targets = publish(&mut menu);
     for action in [SemanticAction::OpenMenu, SemanticAction::OpenContextMenu] {
-        automatic
-            .submit_semantic_action(request(
-                &automatic_targets,
-                &automatic_targets.named,
-                action,
-            ))
-            .unwrap_or_else(|_| unreachable!("supported menu semantic action is admitted"));
-        pump_one(&mut automatic);
+        menu.submit_semantic_action(request(&menu_targets, &menu_targets.named, action))
+            .unwrap_or_else(|_| {
+                unreachable!("menu actions do not require owner actionable readiness")
+            });
+        pump_one(&mut menu);
     }
-    let observations = automatic.state().event_observations.borrow();
+    let observations = menu.state().event_observations.borrow();
     assert_eq!(observations.len(), 2);
     assert_eq!(observations[0].command, SemanticCommand::OpenMenu);
     assert_eq!(observations[1].command, SemanticCommand::OpenContextMenu);
-    assert_eq!(automatic.state().activation_calls.get(), 0);
+    assert_eq!(menu.state().activation_calls.get(), 0);
 }
 
 #[test]
