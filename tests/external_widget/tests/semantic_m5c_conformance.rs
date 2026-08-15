@@ -13,53 +13,121 @@ use runenui_core::{
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, RuntimeConfig, SemanticNodeId,
-    SubmitSemanticActionErrorKind, SurfaceBuildContext, SurfaceId, TraceRecordKind, TraceReplay,
+    AppRuntime, CommandSubmission, LayoutConstraints, MountedNodeId, PumpBudget, RuntimeConfig,
+    SemanticNodeId, SubmitSemanticActionError, SubmitSemanticActionErrorKind, SurfaceBuildContext,
+    SurfaceId, TraceRecordKind, TraceReplay, WorkSequence,
 };
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OwnerMode {
+    EnabledActionable,
+    EnabledPassive,
+    DisabledActionable,
+    DisabledPassive,
+}
+
+impl OwnerMode {
+    const fn activation(self) -> WidgetActivation {
+        match self {
+            Self::EnabledActionable => WidgetActivation::actionable(true),
+            Self::EnabledPassive => WidgetActivation::NONE,
+            Self::DisabledActionable => WidgetActivation::actionable(false),
+            Self::DisabledPassive => WidgetActivation::disabled(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NodeAvailability {
+    Available,
+    Disabled,
+    Inert,
+    Hidden,
+}
+
+impl NodeAvailability {
+    const fn semantic_state(self) -> SemanticState {
+        match self {
+            Self::Available => SemanticState::ENABLED,
+            Self::Disabled => SemanticState::ENABLED.with_disabled(true),
+            Self::Inert => SemanticState::ENABLED.with_inert(true),
+            Self::Hidden => SemanticState::ENABLED.with_hidden(true),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FocusMode {
+    Automatic,
+    Explicit,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CallbackMode {
+    None,
+    InvalidateSemanticDefault,
+    PreventActivateDefault,
+    DelegateContextMenu,
+    InvalidateLayout,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ProbeConfig {
-    enabled: bool,
-    actionable: bool,
-    primary_disabled: bool,
-    primary_inert: bool,
-    named_disabled: bool,
-    named_inert: bool,
-    explicit_focus: bool,
-    invalidate_default: bool,
-    prevent_default: bool,
-    emit_delegated_menu: bool,
+    owner: OwnerMode,
+    primary: NodeAvailability,
+    named: NodeAvailability,
+    focus: FocusMode,
+    callback: CallbackMode,
 }
 
 impl ProbeConfig {
     const fn actionable() -> Self {
         Self {
-            enabled: true,
-            actionable: true,
-            primary_disabled: false,
-            primary_inert: false,
-            named_disabled: false,
-            named_inert: false,
-            explicit_focus: false,
-            invalidate_default: false,
-            prevent_default: false,
-            emit_delegated_menu: false,
+            owner: OwnerMode::EnabledActionable,
+            primary: NodeAvailability::Available,
+            named: NodeAvailability::Available,
+            focus: FocusMode::Automatic,
+            callback: CallbackMode::None,
         }
     }
 
     const fn passive() -> Self {
         Self {
-            actionable: false,
+            owner: OwnerMode::EnabledPassive,
             ..Self::actionable()
         }
     }
 
     const fn disabled_actionable() -> Self {
         Self {
-            enabled: false,
-            actionable: true,
+            owner: OwnerMode::DisabledActionable,
             ..Self::actionable()
         }
+    }
+
+    const fn with_owner(mut self, owner: OwnerMode) -> Self {
+        self.owner = owner;
+        self
+    }
+
+    const fn with_primary(mut self, primary: NodeAvailability) -> Self {
+        self.primary = primary;
+        self
+    }
+
+    const fn with_named(mut self, named: NodeAvailability) -> Self {
+        self.named = named;
+        self
+    }
+
+    const fn with_focus(mut self, focus: FocusMode) -> Self {
+        self.focus = focus;
+        self
+    }
+
+    const fn with_callback(mut self, callback: CallbackMode) -> Self {
+        self.callback = callback;
+        self
     }
 }
 
@@ -100,35 +168,12 @@ impl Widget<ProbeAction> for ProbeWidget {
             derivation: command.origin().derivation(),
             semantic_target: command.semantic_action_target().cloned(),
         });
-        if context.phase() == EventPhase::Target {
-            if self.config.invalidate_default
-                && matches!(
-                    command.command(),
-                    SemanticCommand::Activate | SemanticCommand::RequestFocus
-                )
-            {
-                context.invalidate(WidgetInvalidation::INTERACTION);
-            }
-            if self.config.prevent_default && command.command() == SemanticCommand::Activate {
-                context.prevent_default();
-            }
-            if self.config.emit_delegated_menu
-                && command.command() == SemanticCommand::OpenContextMenu
-                && command.semantic_action_target().is_some()
-            {
-                context.emit_command(SemanticCommand::OpenMenu);
-            }
-        }
+        apply_callback_mode(self.config.callback, command, context);
         WidgetEventOutput::none()
     }
 
     fn activation(&self, (): &Self::State) -> WidgetActivation {
-        match (self.config.enabled, self.config.actionable) {
-            (true, true) => WidgetActivation::actionable(true),
-            (false, true) => WidgetActivation::actionable(false),
-            (true, false) => WidgetActivation::NONE,
-            (false, false) => WidgetActivation::disabled(),
-        }
+        self.config.owner.activation()
     }
 
     fn activate(
@@ -159,11 +204,7 @@ impl Widget<ProbeAction> for ProbeWidget {
             .unwrap_or_else(|_| unreachable!("static semantic key is valid"));
         let primary = SemanticNodeContribution::primary(SemanticRole::Button)
             .with_name("primary")
-            .with_state(
-                SemanticState::ENABLED
-                    .with_disabled(self.config.primary_disabled)
-                    .with_inert(self.config.primary_inert),
-            )
+            .with_state(self.config.primary.semantic_state())
             .with_action(SemanticAction::Activate)
             .with_action(SemanticAction::RequestFocus)
             .with_action(SemanticAction::OpenMenu)
@@ -171,16 +212,49 @@ impl Widget<ProbeAction> for ProbeWidget {
             .with_child(
                 SemanticNodeContribution::new(named, SemanticRole::Button)
                     .with_name("named")
-                    .with_state(
-                        SemanticState::ENABLED
-                            .with_disabled(self.config.named_disabled)
-                            .with_inert(self.config.named_inert),
-                    )
+                    .with_state(self.config.named.semantic_state())
                     .with_action(SemanticAction::Activate)
                     .with_action(SemanticAction::OpenMenu)
                     .with_action(SemanticAction::OpenContextMenu),
             );
         SemanticContribution::single(primary)
+    }
+}
+
+fn apply_callback_mode(
+    mode: CallbackMode,
+    command: &runenui_core::SemanticCommandEvent,
+    context: &mut EventContext<'_, ProbeAction>,
+) {
+    if context.phase() != EventPhase::Target {
+        return;
+    }
+    match mode {
+        CallbackMode::None => {}
+        CallbackMode::InvalidateSemanticDefault
+            if matches!(
+                command.command(),
+                SemanticCommand::Activate | SemanticCommand::RequestFocus
+            ) =>
+        {
+            context.invalidate(WidgetInvalidation::INTERACTION);
+        }
+        CallbackMode::PreventActivateDefault if command.command() == SemanticCommand::Activate => {
+            context.prevent_default();
+        }
+        CallbackMode::DelegateContextMenu
+            if command.command() == SemanticCommand::OpenContextMenu
+                && command.semantic_action_target().is_some() =>
+        {
+            context.emit_command(SemanticCommand::OpenMenu);
+        }
+        CallbackMode::InvalidateLayout if command.command() == SemanticCommand::OpenMenu => {
+            context.invalidate(WidgetInvalidation::LAYOUT);
+        }
+        CallbackMode::InvalidateSemanticDefault
+        | CallbackMode::PreventActivateDefault
+        | CallbackMode::DelegateContextMenu
+        | CallbackMode::InvalidateLayout => {}
     }
 }
 
@@ -233,10 +307,9 @@ impl UiApp for ProbeApp {
         })
         .id("probe")
         .key("probe");
-        if state.config.explicit_focus {
-            element.focusable(true)
-        } else {
-            element
+        match state.config.focus {
+            FocusMode::Automatic => element,
+            FocusMode::Explicit => element.focusable(true),
         }
     }
 
@@ -262,10 +335,19 @@ struct PublishedTargets {
     named_actions: Vec<SemanticAction>,
     primary_disabled: bool,
     named_disabled: bool,
+    named_inert: bool,
 }
 
 fn runtime(config: ProbeConfig) -> AppRuntime<ProbeApp> {
-    AppRuntime::<ProbeApp>::mount(ProbeState {
+    AppRuntime::<ProbeApp>::mount(initial_state(config))
+}
+
+fn runtime_with_config(config: ProbeConfig, runtime_config: RuntimeConfig) -> AppRuntime<ProbeApp> {
+    AppRuntime::<ProbeApp>::mount_with_config(initial_state(config), runtime_config)
+}
+
+fn initial_state(config: ProbeConfig) -> ProbeState {
+    ProbeState {
         config,
         present: true,
         semantic_callbacks: Rc::new(Cell::new(0)),
@@ -273,26 +355,11 @@ fn runtime(config: ProbeConfig) -> AppRuntime<ProbeApp> {
         activation_targets: Rc::new(RefCell::new(Vec::new())),
         activation_calls: Rc::new(Cell::new(0)),
         application_updates: 0,
-    })
-}
-
-fn runtime_with_config(config: ProbeConfig, runtime_config: RuntimeConfig) -> AppRuntime<ProbeApp> {
-    AppRuntime::<ProbeApp>::mount_with_config(
-        ProbeState {
-            config,
-            present: true,
-            semantic_callbacks: Rc::new(Cell::new(0)),
-            event_observations: Rc::new(RefCell::new(Vec::new())),
-            activation_targets: Rc::new(RefCell::new(Vec::new())),
-            activation_calls: Rc::new(Cell::new(0)),
-            application_updates: 0,
-        },
-        runtime_config,
-    )
+    }
 }
 
 fn publish(runtime: &mut AppRuntime<ProbeApp>) -> PublishedTargets {
-    settle_initial_work(runtime);
+    drain_queued_work(runtime);
     let tokens = StyleTokens::new();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
@@ -320,7 +387,19 @@ fn publish(runtime: &mut AppRuntime<ProbeApp>) -> PublishedTargets {
         named_actions: named.supported_actions().to_vec(),
         primary_disabled: primary.state().disabled(),
         named_disabled: named.state().disabled(),
+        named_inert: named.state().inert(),
     }
+}
+
+fn republish(runtime: &mut AppRuntime<ProbeApp>) {
+    drain_queued_work(runtime);
+    let tokens = StyleTokens::new();
+    runtime
+        .publish_surface(&SurfaceBuildContext::new(
+            &tokens,
+            LayoutConstraints::unbounded(),
+        ))
+        .unwrap_or_else(|_| unreachable!("semantic republication is admitted"));
 }
 
 fn request(
@@ -331,7 +410,7 @@ fn request(
     SemanticActionRequest::new(targets.surface.clone(), target.clone(), action)
 }
 
-fn settle_initial_work(runtime: &mut AppRuntime<ProbeApp>) {
+fn drain_queued_work(runtime: &mut AppRuntime<ProbeApp>) {
     let report = runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
     assert_eq!(report.remaining_queued_envelopes(), 0);
 }
@@ -343,6 +422,26 @@ fn pump_one(runtime: &mut AppRuntime<ProbeApp>) {
             .processed_envelopes(),
         1
     );
+}
+
+fn expect_rejection(
+    result: Result<CommandSubmission, SubmitSemanticActionError>,
+) -> SubmitSemanticActionError {
+    let Err(error) = result else {
+        unreachable!("semantic request was expected to reject")
+    };
+    error
+}
+
+fn assert_exact_rejection(
+    runtime: &mut AppRuntime<ProbeApp>,
+    request: SemanticActionRequest,
+    expected: SubmitSemanticActionErrorKind,
+) {
+    let expected_request = request.clone();
+    let error = expect_rejection(runtime.submit_semantic_action(request));
+    assert_eq!(error.kind(), expected);
+    assert_eq!(error.into_request(), expected_request);
 }
 
 fn assert_target(
@@ -358,65 +457,7 @@ fn assert_target(
     assert_eq!(target.action(), action);
 }
 
-#[test]
-fn semantic_activate_enters_the_existing_fifo_route_default_and_update_path() {
-    let mut runtime = runtime(ProbeConfig::actionable());
-    let published = publish(&mut runtime);
-    let semantic_baseline = runtime.state().semantic_callbacks.get();
-    let submitted = runtime
-        .submit_semantic_action(request(
-            &published,
-            &published.named,
-            SemanticAction::Activate,
-        ))
-        .unwrap_or_else(|_| unreachable!("current named activation is admitted"));
-
-    assert!(runtime.state().event_observations.borrow().is_empty());
-    assert_eq!(runtime.state().activation_calls.get(), 0);
-    assert_eq!(runtime.state().application_updates, 0);
-    assert_eq!(runtime.state().semantic_callbacks.get(), semantic_baseline);
-
-    pump_one(&mut runtime);
-    let observations = runtime.state().event_observations.borrow();
-    assert_eq!(observations.len(), 1);
-    assert_eq!(observations[0].command, SemanticCommand::Activate);
-    assert_eq!(observations[0].source, EventSource::Accessibility);
-    assert_eq!(observations[0].derivation, CommandDerivation::Direct);
-    let named = SemanticKey::from_static("named").unwrap_or_else(|_| unreachable!());
-    assert_target(
-        observations[0]
-            .semantic_target
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("semantic route carries exact metadata")),
-        &published,
-        &published.named,
-        &named,
-        &SemanticAction::Activate,
-    );
-    drop(observations);
-    let activation_targets = runtime.state().activation_targets.borrow();
-    assert_eq!(activation_targets.len(), 1);
-    assert_target(
-        activation_targets[0]
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("semantic activation retains exact metadata")),
-        &published,
-        &published.named,
-        &named,
-        &SemanticAction::Activate,
-    );
-    drop(activation_targets);
-    assert_eq!(runtime.state().application_updates, 0);
-    assert_semantic_trace_lineage(&runtime, submitted.sequence());
-
-    pump_one(&mut runtime);
-    assert_eq!(runtime.state().application_updates, 1);
-}
-
-fn assert_semantic_trace_lineage(
-    runtime: &AppRuntime<ProbeApp>,
-    work: runenui_runtime::WorkSequence,
-) {
+fn assert_semantic_trace_lineage(runtime: &AppRuntime<ProbeApp>, work: WorkSequence) {
     let bound = runtime
         .trace()
         .records()
@@ -455,88 +496,129 @@ fn assert_semantic_trace_lineage(
 }
 
 #[test]
-fn named_activation_is_not_gated_by_owner_actionable_but_availability_is_exact() {
-    let mut passive = runtime(ProbeConfig::passive());
-    let passive_targets = publish(&mut passive);
-    assert!(
-        !passive_targets
-            .primary_actions
-            .contains(&SemanticAction::Activate)
-    );
-    assert!(
-        passive_targets
-            .named_actions
-            .contains(&SemanticAction::Activate)
-    );
-    let primary_error = passive
+fn semantic_activate_enters_the_existing_fifo_route_default_and_update_path() {
+    let mut runtime = runtime(ProbeConfig::actionable());
+    let published = publish(&mut runtime);
+    let semantic_baseline = runtime.state().semantic_callbacks.get();
+    let submitted = runtime
         .submit_semantic_action(request(
-            &passive_targets,
-            &passive_targets.primary,
+            &published,
+            &published.named,
             SemanticAction::Activate,
         ))
-        .unwrap_err();
-    assert_eq!(
-        primary_error.kind(),
-        SubmitSemanticActionErrorKind::UnsupportedAction
+        .unwrap_or_else(|_| unreachable!("current named activation is admitted"));
+
+    assert!(runtime.state().event_observations.borrow().is_empty());
+    assert_eq!(runtime.state().activation_calls.get(), 0);
+    assert_eq!(runtime.state().application_updates, 0);
+    assert_eq!(runtime.state().semantic_callbacks.get(), semantic_baseline);
+
+    pump_one(&mut runtime);
+    let observations = runtime.state().event_observations.borrow();
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].command, SemanticCommand::Activate);
+    assert_eq!(observations[0].source, EventSource::Accessibility);
+    assert_eq!(observations[0].derivation, CommandDerivation::Direct);
+    let named = SemanticKey::from_static("named").unwrap_or_else(|_| unreachable!());
+    assert_target(
+        observations[0]
+            .semantic_target
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("semantic route carries exact metadata")),
+        &published,
+        &published.named,
+        &named,
+        &SemanticAction::Activate,
+    );
+    drop(observations);
+
+    let activation_targets = runtime.state().activation_targets.borrow();
+    assert_eq!(activation_targets.len(), 1);
+    assert_target(
+        activation_targets[0]
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("semantic activation retains exact metadata")),
+        &published,
+        &published.named,
+        &named,
+        &SemanticAction::Activate,
+    );
+    drop(activation_targets);
+    assert_eq!(runtime.state().application_updates, 0);
+    assert_semantic_trace_lineage(&runtime, submitted.sequence());
+
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().application_updates, 1);
+}
+
+#[test]
+fn activation_support_distinguishes_primary_and_named_owner_actionability() {
+    let mut passive = runtime(ProbeConfig::passive());
+    let targets = publish(&mut passive);
+    assert!(!targets.primary_actions.contains(&SemanticAction::Activate));
+    assert!(targets.named_actions.contains(&SemanticAction::Activate));
+    assert_exact_rejection(
+        &mut passive,
+        request(&targets, &targets.primary, SemanticAction::Activate),
+        SubmitSemanticActionErrorKind::UnsupportedAction,
     );
     passive
-        .submit_semantic_action(request(
-            &passive_targets,
-            &passive_targets.named,
-            SemanticAction::Activate,
-        ))
+        .submit_semantic_action(request(&targets, &targets.named, SemanticAction::Activate))
         .unwrap_or_else(|_| unreachable!("named activation ignores owner actionable"));
     pump_one(&mut passive);
     assert_eq!(passive.state().activation_calls.get(), 1);
+}
 
-    let mut disabled = runtime(ProbeConfig::disabled_actionable());
-    let disabled_targets = publish(&mut disabled);
-    assert!(disabled_targets.primary_disabled);
+#[test]
+fn activation_availability_preserves_support_but_rejects_disabled_or_inert_state() {
+    let mut primary_disabled = runtime(ProbeConfig::disabled_actionable());
+    let primary_targets = publish(&mut primary_disabled);
+    assert!(primary_targets.primary_disabled);
     assert!(
-        disabled_targets
+        primary_targets
             .primary_actions
             .contains(&SemanticAction::Activate)
     );
-    let error = disabled
-        .submit_semantic_action(request(
-            &disabled_targets,
-            &disabled_targets.primary,
+    assert_exact_rejection(
+        &mut primary_disabled,
+        request(
+            &primary_targets,
+            &primary_targets.primary,
             SemanticAction::Activate,
-        ))
-        .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        SubmitSemanticActionErrorKind::UnavailableAction
+        ),
+        SubmitSemanticActionErrorKind::UnavailableAction,
     );
 
-    let mut named_config = ProbeConfig::passive();
-    named_config.named_disabled = true;
-    let mut named_disabled = runtime(named_config);
-    let named_targets = publish(&mut named_disabled);
-    assert!(named_targets.named_disabled);
-    assert!(
-        named_targets
-            .named_actions
-            .contains(&SemanticAction::Activate)
+    assert_named_unavailable(
+        ProbeConfig::passive().with_owner(OwnerMode::DisabledPassive),
+        false,
     );
-    let error = named_disabled
-        .submit_semantic_action(request(
-            &named_targets,
-            &named_targets.named,
-            SemanticAction::Activate,
-        ))
-        .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        SubmitSemanticActionErrorKind::UnavailableAction
+    assert_named_unavailable(
+        ProbeConfig::passive().with_named(NodeAvailability::Disabled),
+        false,
+    );
+    assert_named_unavailable(
+        ProbeConfig::passive().with_named(NodeAvailability::Inert),
+        true,
+    );
+}
+
+fn assert_named_unavailable(config: ProbeConfig, expect_inert: bool) {
+    let mut runtime = runtime(config);
+    let targets = publish(&mut runtime);
+    assert!(targets.named_actions.contains(&SemanticAction::Activate));
+    assert!(targets.named_disabled || targets.named_inert);
+    assert_eq!(targets.named_inert, expect_inert);
+    assert_exact_rejection(
+        &mut runtime,
+        request(&targets, &targets.named, SemanticAction::Activate),
+        SubmitSemanticActionErrorKind::UnavailableAction,
     );
 }
 
 #[test]
-fn request_focus_and_menu_actions_follow_existing_command_semantics() {
-    let mut explicit_config = ProbeConfig::passive();
-    explicit_config.explicit_focus = true;
-    let mut explicit = runtime(explicit_config);
+fn request_focus_uses_primary_only_and_current_m4_focus_eligibility() {
+    let mut explicit = runtime(ProbeConfig::passive().with_focus(FocusMode::Explicit));
     let explicit_targets = publish(&mut explicit);
     assert!(
         explicit_targets
@@ -558,16 +640,14 @@ fn request_focus_and_menu_actions_follow_existing_command_semantics() {
 
     let mut automatic = runtime(ProbeConfig::actionable());
     let automatic_targets = publish(&mut automatic);
-    let mismatch = automatic
-        .submit_semantic_action(request(
+    assert_exact_rejection(
+        &mut automatic,
+        request(
             &automatic_targets,
             &automatic_targets.named,
             SemanticAction::RequestFocus,
-        ))
-        .unwrap_err();
-    assert_eq!(
-        mismatch.kind(),
-        SubmitSemanticActionErrorKind::UnsupportedAction
+        ),
+        SubmitSemanticActionErrorKind::UnsupportedAction,
     );
     automatic
         .submit_semantic_action(request(
@@ -582,66 +662,83 @@ fn request_focus_and_menu_actions_follow_existing_command_semantics() {
         Some(&automatic_targets.owner)
     );
 
-    let mut menu = runtime(ProbeConfig::passive());
-    let menu_targets = publish(&mut menu);
-    for action in [SemanticAction::OpenMenu, SemanticAction::OpenContextMenu] {
-        menu.submit_semantic_action(request(&menu_targets, &menu_targets.named, action))
-            .unwrap_or_else(|_| {
-                unreachable!("menu actions do not require owner actionable readiness")
-            });
-        pump_one(&mut menu);
-    }
-    let observations = menu.state().event_observations.borrow();
-    assert_eq!(observations.len(), 2);
-    assert_eq!(observations[0].command, SemanticCommand::OpenMenu);
-    assert_eq!(observations[1].command, SemanticCommand::OpenContextMenu);
-    assert_eq!(menu.state().activation_calls.get(), 0);
+    let mut passive = runtime(ProbeConfig::passive());
+    let passive_targets = publish(&mut passive);
+    assert!(
+        !passive_targets
+            .primary_actions
+            .contains(&SemanticAction::RequestFocus)
+    );
+    assert_exact_rejection(
+        &mut passive,
+        request(
+            &passive_targets,
+            &passive_targets.primary,
+            SemanticAction::RequestFocus,
+        ),
+        SubmitSemanticActionErrorKind::UnsupportedAction,
+    );
 }
 
 #[test]
-fn foreign_dirty_and_capacity_rejections_are_atomic_and_recover_the_exact_request() {
+fn menu_actions_route_without_owner_actionable_or_activation_default() {
+    let mut runtime = runtime(ProbeConfig::passive());
+    let targets = publish(&mut runtime);
+    for action in [SemanticAction::OpenMenu, SemanticAction::OpenContextMenu] {
+        runtime
+            .submit_semantic_action(request(&targets, &targets.named, action))
+            .unwrap_or_else(|_| {
+                unreachable!("menu actions do not require owner actionable readiness")
+            });
+        pump_one(&mut runtime);
+    }
+    let observations = runtime.state().event_observations.borrow();
+    assert_eq!(observations.len(), 2);
+    assert_eq!(observations[0].command, SemanticCommand::OpenMenu);
+    assert_eq!(observations[1].command, SemanticCommand::OpenContextMenu);
+    assert_eq!(runtime.state().activation_calls.get(), 0);
+}
+
+#[test]
+fn foreign_dirty_and_capacity_rejections_are_atomic_and_recover_exact_requests() {
     let mut local = runtime(ProbeConfig::actionable());
     let local_targets = publish(&mut local);
     let mut foreign = runtime(ProbeConfig::actionable());
     let foreign_targets = publish(&mut foreign);
 
-    let foreign_surface_request = SemanticActionRequest::new(
-        foreign_targets.surface.clone(),
-        local_targets.named.clone(),
-        SemanticAction::Activate,
+    assert_exact_rejection(
+        &mut local,
+        SemanticActionRequest::new(
+            foreign_targets.surface.clone(),
+            local_targets.named.clone(),
+            SemanticAction::Activate,
+        ),
+        SubmitSemanticActionErrorKind::ForeignSurface,
     );
-    let error = local
-        .submit_semantic_action(foreign_surface_request.clone())
-        .unwrap_err();
-    assert_eq!(error.kind(), SubmitSemanticActionErrorKind::ForeignSurface);
-    assert_eq!(error.into_request(), foreign_surface_request);
-
-    let foreign_target_request = SemanticActionRequest::new(
-        local_targets.surface.clone(),
-        foreign_targets.named.clone(),
-        SemanticAction::Activate,
+    assert_exact_rejection(
+        &mut local,
+        SemanticActionRequest::new(
+            local_targets.surface.clone(),
+            foreign_targets.named,
+            SemanticAction::Activate,
+        ),
+        SubmitSemanticActionErrorKind::ForeignTarget,
     );
-    let error = local
-        .submit_semantic_action(foreign_target_request.clone())
-        .unwrap_err();
-    assert_eq!(error.kind(), SubmitSemanticActionErrorKind::ForeignTarget);
-    assert_eq!(error.into_request(), foreign_target_request);
 
     let semantic_baseline = local.state().semantic_callbacks.get();
     local
         .submit_action(ProbeAction::Reconfigure(ProbeConfig::passive()))
         .unwrap_or_else(|_| unreachable!("reconfiguration action is admitted"));
     pump_one(&mut local);
-    let dirty_request = request(
-        &local_targets,
-        &local_targets.named,
-        SemanticAction::Activate,
+    assert_exact_rejection(
+        &mut local,
+        request(
+            &local_targets,
+            &local_targets.named,
+            SemanticAction::Activate,
+        ),
+        SubmitSemanticActionErrorKind::StaleAuthority,
     );
-    let error = local
-        .submit_semantic_action(dirty_request.clone())
-        .unwrap_err();
-    assert_eq!(error.kind(), SubmitSemanticActionErrorKind::StaleAuthority);
-    assert_eq!(error.into_request(), dirty_request);
     assert_eq!(local.state().semantic_callbacks.get(), semantic_baseline);
     assert!(local.state().event_observations.borrow().is_empty());
 
@@ -656,29 +753,77 @@ fn assert_full_and_closed_rejections_are_inert() {
     let full_targets = publish(&mut full);
     full.submit_action(ProbeAction::Activated)
         .unwrap_or_else(|_| unreachable!("single queue slot is available"));
-    let full_request = request(&full_targets, &full_targets.named, SemanticAction::Activate);
-    let error = full
-        .submit_semantic_action(full_request.clone())
-        .unwrap_err();
-    assert_eq!(error.kind(), SubmitSemanticActionErrorKind::Full);
-    assert_eq!(error.into_request(), full_request);
+    assert_exact_rejection(
+        &mut full,
+        request(&full_targets, &full_targets.named, SemanticAction::Activate),
+        SubmitSemanticActionErrorKind::Full,
+    );
     assert_eq!(full.state().activation_calls.get(), 0);
     assert!(full.state().event_observations.borrow().is_empty());
 
     let mut closed = runtime(ProbeConfig::actionable());
     let closed_targets = publish(&mut closed);
     closed.shutdown();
-    let closed_request = request(
-        &closed_targets,
-        &closed_targets.named,
-        SemanticAction::Activate,
+    assert_exact_rejection(
+        &mut closed,
+        request(
+            &closed_targets,
+            &closed_targets.named,
+            SemanticAction::Activate,
+        ),
+        SubmitSemanticActionErrorKind::Closed,
     );
-    let error = closed
-        .submit_semantic_action(closed_request.clone())
-        .unwrap_err();
-    assert_eq!(error.kind(), SubmitSemanticActionErrorKind::Closed);
-    assert_eq!(error.into_request(), closed_request);
     assert_eq!(closed.state().activation_calls.get(), 0);
+}
+
+#[test]
+fn layout_only_dirtiness_does_not_block_semantic_action_admission() {
+    let config = ProbeConfig::passive().with_callback(CallbackMode::InvalidateLayout);
+    let mut runtime = runtime(config);
+    let targets = publish(&mut runtime);
+    runtime
+        .submit_command(
+            targets.owner.clone(),
+            SemanticCommand::OpenMenu,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|_| unreachable!("ordinary layout-invalidating command is admitted"));
+    pump_one(&mut runtime);
+
+    runtime
+        .submit_semantic_action(request(&targets, &targets.named, SemanticAction::OpenMenu))
+        .unwrap_or_else(|_| unreachable!("layout-only dirtiness does not stale action authority"));
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().event_observations.borrow().len(), 2);
+}
+
+#[test]
+fn hidden_target_is_not_in_current_surface_and_replaced_generation_becomes_stale() {
+    let mut runtime = runtime(ProbeConfig::actionable());
+    let targets = publish(&mut runtime);
+    runtime
+        .submit_action(ProbeAction::Reconfigure(
+            ProbeConfig::actionable().with_named(NodeAvailability::Hidden),
+        ))
+        .unwrap_or_else(|_| unreachable!("hidden-state reconfiguration is admitted"));
+    pump_one(&mut runtime);
+    republish(&mut runtime);
+    assert_exact_rejection(
+        &mut runtime,
+        request(&targets, &targets.named, SemanticAction::Activate),
+        SubmitSemanticActionErrorKind::TargetNotInSurface,
+    );
+
+    runtime
+        .submit_action(ProbeAction::ReplaceOwner)
+        .unwrap_or_else(|_| unreachable!("owner replacement is admitted"));
+    pump_one(&mut runtime);
+    republish(&mut runtime);
+    assert_exact_rejection(
+        &mut runtime,
+        request(&targets, &targets.named, SemanticAction::Activate),
+        SubmitSemanticActionErrorKind::StaleTarget,
+    );
 }
 
 #[test]
@@ -716,22 +861,23 @@ fn accepted_then_replaced_semantic_work_rejects_without_retargeting() {
 }
 
 #[test]
-fn callback_invalidated_default_and_explicit_prevention_have_distinct_trace_outcomes() {
-    let mut invalidating_config = ProbeConfig::actionable();
-    invalidating_config.invalidate_default = true;
-    let mut invalidating = runtime(invalidating_config);
-    let invalidating_targets = publish(&mut invalidating);
-    let accepted = invalidating
-        .submit_semantic_action(request(
-            &invalidating_targets,
-            &invalidating_targets.named,
-            SemanticAction::Activate,
-        ))
+fn callback_invalidated_activate_and_prevent_default_have_distinct_trace_outcomes() {
+    let invalidating = ProbeConfig::actionable().with_callback(CallbackMode::InvalidateSemanticDefault);
+    assert_activate_default_suppression(invalidating, true);
+    let prevented = ProbeConfig::actionable().with_callback(CallbackMode::PreventActivateDefault);
+    assert_activate_default_suppression(prevented, false);
+}
+
+fn assert_activate_default_suppression(config: ProbeConfig, expect_invalidated: bool) {
+    let mut runtime = runtime(config);
+    let targets = publish(&mut runtime);
+    let accepted = runtime
+        .submit_semantic_action(request(&targets, &targets.named, SemanticAction::Activate))
         .unwrap_or_else(|_| unreachable!("semantic activation is admitted before callback"));
-    pump_one(&mut invalidating);
-    assert_eq!(invalidating.state().event_observations.borrow().len(), 1);
-    assert_eq!(invalidating.state().activation_calls.get(), 0);
-    assert!(invalidating.trace().records().any(|record| {
+    pump_one(&mut runtime);
+    assert_eq!(runtime.state().event_observations.borrow().len(), 1);
+    assert_eq!(runtime.state().activation_calls.get(), 0);
+    let invalidated = runtime.trace().records().any(|record| {
         record.work_sequence() == Some(accepted.sequence())
             && matches!(
                 record.kind(),
@@ -740,30 +886,8 @@ fn callback_invalidated_default_and_explicit_prevention_have_distinct_trace_outc
                     ..
                 }
             )
-    }));
-    assert!(!invalidating.trace().records().any(|record| {
-        record.work_sequence() == Some(accepted.sequence())
-            && matches!(
-                record.kind(),
-                TraceRecordKind::SemanticDefaultSuppressed { .. }
-            )
-    }));
-
-    let mut prevented_config = ProbeConfig::actionable();
-    prevented_config.prevent_default = true;
-    let mut prevented = runtime(prevented_config);
-    let prevented_targets = publish(&mut prevented);
-    let accepted = prevented
-        .submit_semantic_action(request(
-            &prevented_targets,
-            &prevented_targets.named,
-            SemanticAction::Activate,
-        ))
-        .unwrap_or_else(|_| unreachable!("semantic activation is admitted"));
-    pump_one(&mut prevented);
-    assert_eq!(prevented.state().event_observations.borrow().len(), 1);
-    assert_eq!(prevented.state().activation_calls.get(), 0);
-    assert!(prevented.trace().records().any(|record| {
+    });
+    let prevented = runtime.trace().records().any(|record| {
         record.work_sequence() == Some(accepted.sequence())
             && matches!(
                 record.kind(),
@@ -771,20 +895,42 @@ fn callback_invalidated_default_and_explicit_prevention_have_distinct_trace_outc
                     command: SemanticCommand::Activate
                 }
             )
-    }));
-    assert!(!prevented.trace().records().any(|record| {
+    });
+    assert_eq!(invalidated, expect_invalidated);
+    assert_eq!(prevented, !expect_invalidated);
+}
+
+#[test]
+fn callback_invalidated_request_focus_suppresses_focus_default_without_refresh() {
+    let config = ProbeConfig::passive()
+        .with_focus(FocusMode::Explicit)
+        .with_callback(CallbackMode::InvalidateSemanticDefault);
+    let mut runtime = runtime(config);
+    let targets = publish(&mut runtime);
+    let accepted = runtime
+        .submit_semantic_action(request(
+            &targets,
+            &targets.primary,
+            SemanticAction::RequestFocus,
+        ))
+        .unwrap_or_else(|_| unreachable!("focus request is admitted before callback"));
+    pump_one(&mut runtime);
+    assert_eq!(runtime.focus().focused_node(), None);
+    assert!(runtime.trace().records().any(|record| {
         record.work_sequence() == Some(accepted.sequence())
             && matches!(
                 record.kind(),
-                TraceRecordKind::SemanticDefaultTargetInvalidated { .. }
+                TraceRecordKind::SemanticDefaultTargetInvalidated {
+                    command: SemanticCommand::RequestFocus,
+                    ..
+                }
             )
     }));
 }
 
 #[test]
 fn non_semantic_and_delegated_commands_never_inherit_semantic_target_metadata() {
-    let mut config = ProbeConfig::actionable();
-    config.emit_delegated_menu = true;
+    let config = ProbeConfig::actionable().with_callback(CallbackMode::DelegateContextMenu);
     let mut runtime = runtime(config);
     let published = publish(&mut runtime);
 
