@@ -10,9 +10,9 @@ use crate::{
     TraceFocusRecordRole, TraceInputRecordRole, TracePointerCaptureRequestKind,
     TracePointerCaptureRequestRejection, TracePointerRecordRole, TracePointerRejection,
     TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
-    TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind, TraceSurfaceRejection,
-    TraceSurfaceSnapshotKind, TraceTargetRejection, TraceTimerTerminalOutcome, TraceWorkFamily,
-    TraceWorkStartRefusal,
+    TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
+    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTargetRejection,
+    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkStartRefusal,
 };
 
 pub(super) const fn event_phase(value: EventPhase) -> &'static str {
@@ -265,9 +265,7 @@ pub(super) const fn target_rejection(value: TraceTargetRejection) -> &'static st
     }
 }
 
-pub(super) const fn semantic_action_rejection(
-    value: TraceSemanticActionRejection,
-) -> &'static str {
+pub(super) const fn semantic_action_rejection(value: TraceSemanticActionRejection) -> &'static str {
     match value {
         TraceSemanticActionRejection::Closed => "closed",
         TraceSemanticActionRejection::Terminal => "terminal",

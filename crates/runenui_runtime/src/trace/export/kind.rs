@@ -19,7 +19,9 @@ pub(super) const fn name(kind: &TraceRecordKind) -> &'static str {
         TraceRecordKind::KeyboardProcessingValidated => "keyboard_processing_validated",
         TraceRecordKind::KeyboardDefaultPrevented => "keyboard_default_prevented",
         TraceRecordKind::KeyboardEnterActivationDerived => "keyboard_enter_activation_derived",
-        TraceRecordKind::KeyboardSpaceOwnershipEstablished => "keyboard_space_ownership_established",
+        TraceRecordKind::KeyboardSpaceOwnershipEstablished => {
+            "keyboard_space_ownership_established"
+        }
         TraceRecordKind::KeyboardSpaceReleaseMatched { .. } => "keyboard_space_release_matched",
         TraceRecordKind::KeyboardSpaceActivationDerived => "keyboard_space_activation_derived",
         TraceRecordKind::KeyboardSpaceOwnershipCleared { .. } => "keyboard_space_ownership_cleared",

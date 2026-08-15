@@ -85,11 +85,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if expected_key.is_some_and(|key| key != authority.key()) {
             return Err(SubmitSemanticActionErrorKind::Integrity);
         }
-        if self
-            .tree
-            .pending_phases()
-            .contains(DirtyPhases::SEMANTICS)
-        {
+        if self.tree.pending_phases().contains(DirtyPhases::SEMANTICS) {
             return Err(SubmitSemanticActionErrorKind::StaleAuthority);
         }
         let publication = self

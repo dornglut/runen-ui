@@ -1,9 +1,7 @@
 use runenui_core::{__runtime::MountedEffect, HostProtocol, SemanticCommand};
 
 use super::{
-    super::{
-        CollectedRoutedOutput, Runtime, ingress::trace_semantic_action_rejection,
-    },
+    super::{CollectedRoutedOutput, Runtime, ingress::trace_semantic_action_rejection},
     transaction::RoutedTransaction,
 };
 use crate::{TraceRecordKind, TraceRoutedIntegrityFailure, TraceSemanticActionRejection};
