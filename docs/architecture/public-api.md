@@ -123,8 +123,9 @@ and M5C vocabulary includes:
 - `RuntimeConfig`, `SubmitActionResult`, `CommandSubmission`,
   `UnacceptedCommand`, `SubmitCommandError`, `UnacceptedSurfaceCommand`,
   `SubmitSurfaceCommandError`, `PumpBudget`, and `PumpReport`;
-- M5C `SemanticActionRequest`, `SemanticActionSubmission`,
-  `SubmitSemanticActionErrorKind`, and `SubmitSemanticActionError`;
+- M5C `SemanticActionRequest`, `SubmitSemanticActionErrorKind`, and
+  `SubmitSemanticActionError`; successful semantic submission reuses the existing
+  `CommandSubmission` receipt above;
 - host-neutral `KeyboardEvent`, `CommittedTextEvent`, `CompositionEvent`,
   opaque `CompositionGeneration`, checked `CompositionRange`, and explicit
   `WidgetTextInput` capability values, plus input/automation submission
@@ -205,19 +206,21 @@ or trace sequence, allocates no trace record, and emits no wake. Accepted-then-
 stale processing rejection is instead a canonical trace outcome causally owned
 by the already accepted command.
 
-`AppRuntime::submit_semantic_action(SemanticActionRequest { surface, target,
-action })` is the accepted public exact-semantic ingress. M5 supports exactly
-`Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`; there is no
-semantic `LogicalScroll` variant or compatibility alias. Submission validates
-runtime status, exact current surface/namespace, semantic target authority/key,
-semantic freshness, exact current publication membership, support, composed
-hidden/inert/disabled state, action-specific readiness, and canonical queue/work/
-trace capacity before acceptance. A dirty semantic authority rejects rather than
-refreshing synchronously; layout-only dirtiness remains admissible. Submission
-invokes no widget callback. Acceptance returns `SemanticActionSubmission` with
-the canonical `WorkSequence` and appends to the existing command FIFO; rejection
-returns `SubmitSemanticActionError`, whose accessors recover the exact owned
-request.
+`AppRuntime::submit_semantic_action(request: SemanticActionRequest) ->
+Result<CommandSubmission, SubmitSemanticActionError>` is the accepted public
+exact-semantic ingress. Callers construct the request with
+`SemanticActionRequest::new(surface, target, action)`; the request fields remain
+private. M5 supports exactly `Activate`, `RequestFocus`, `OpenMenu`, and
+`OpenContextMenu`; there is no semantic `LogicalScroll` variant or compatibility
+alias. Submission validates runtime status, exact current surface/namespace,
+semantic target authority/key, semantic freshness, exact current publication
+membership, support, composed hidden/inert/disabled state, action-specific
+readiness, and canonical queue/work/trace capacity before acceptance. A dirty
+semantic authority rejects rather than refreshing synchronously; layout-only
+dirtiness remains admissible. Submission invokes no widget callback. Acceptance
+returns the existing `CommandSubmission` with the canonical `WorkSequence` and
+appends to the existing command FIFO; rejection returns
+`SubmitSemanticActionError`, whose accessors recover the exact owned request.
 
 The queued semantic work privately retains exact surface, semantic ID, semantic
 key, mounted-owner lifetime, and action metadata. Queue-front processing
@@ -416,25 +419,27 @@ composition events use checked Capture/Target/Bubble routing where their family
 contract requires it; boundary and capture notifications are target-only and
 non-cancelable, while focus notifications are routed and non-cancelable.
 Programmatic/automation/accessibility/controller, keyboard, and pointer sources
-retain internally consistent derivation. The context exposes the
+retain internally consistent derivation. `EventContext` exposes the
 original/current/optional-related target, origin, accepted `WorkSequence`,
 `MonotonicInstant`, optional pointer identity, independent physical hit
-target/path, optional read-only semantic-origin `SemanticActionTarget`, and
-propagation/default facts. Semantic metadata exists only for semantic-origin work
-and is not inherited by ordinary or delegated commands. The context
-provisionally collects owned actions, delegated commands, exact-owner subscription
-invalidation, ordinary invalidation, mounted tasks/timers/cancellation, stop
-propagation, and prevent default plus ordered capture/release requests for the
-current pointer. Recursive mapping preserves every staged capture request.
-`WidgetEventOutput` reports only independent persistent-state mutation. Mapping
-moves non-`Clone` actions and recursively maps mounted work while preserving
-commands, controls, invalidation, semantic contribution, and the state-change
-fact. Only the checked erased widget bridge constructs and extracts
-`EventContext`; runtime supplies its validated facts and output bound. Public
-origin constructors are direct-only, while `emit_command` is the sole authority
-that turns callback output into a delegated origin targeting the current node.
-`UiEvent::as_semantic_command` returns `Option<&SemanticCommandEvent>` so later
-event variants do not require a command-shaped accessor.
+target/path, and propagation/default facts. For semantic-origin command
+callbacks, `SemanticCommandEvent::semantic_action_target()` exposes the optional
+read-only `SemanticActionTarget`; ordinary and delegated commands carry none.
+Semantic activation default receives the same exact metadata separately through
+`WidgetActivationContext::semantic_action_target()`. The context provisionally
+collects owned actions, delegated commands, exact-owner subscription invalidation,
+ordinary invalidation, mounted tasks/timers/cancellation, stop propagation, and
+prevent default plus ordered capture/release requests for the current pointer.
+Recursive mapping preserves every staged capture request. `WidgetEventOutput`
+reports only independent persistent-state mutation. Mapping moves non-`Clone`
+actions and recursively maps mounted work while preserving commands, controls,
+invalidation, semantic contribution, and the state-change fact. Only the checked
+erased widget bridge constructs and extracts `EventContext`; runtime supplies its
+validated facts and output bound. Public origin constructors are direct-only,
+while `emit_command` is the sole authority that turns callback output into a
+delegated origin targeting the current node. `UiEvent::as_semantic_command`
+returns `Option<&SemanticCommandEvent>` so later event variants do not require a
+command-shaped accessor.
 
 The default update invalidates `ALL` for correctness. Built-in text, button, and
 linear-container widgets implement narrower comparison-based invalidation.
@@ -1091,11 +1096,11 @@ Added:
   publication types, typed semantic diagnostic report/reasons, staged atomic
   fallible publication, and mandatory semantic siblings in `SurfacePublication`,
   with explicit renderer-only versus complete-product APIs;
-- M5C `SemanticActionTarget`, `SemanticActionRequest`, `SemanticActionSubmission`,
-  typed semantic submission errors with exact request recovery,
-  `AppRuntime::submit_semantic_action`, private exact semantic-to-mounted binding
-  resolution, queue-front/post-callback revalidation, and canonical semantic
-  binding/processing/default trace outcomes.
+- M5C `SemanticActionTarget`, `SemanticActionRequest`, reuse of the existing
+  `CommandSubmission` receipt, typed semantic submission errors with exact request
+  recovery, `AppRuntime::submit_semantic_action`, private exact semantic-to-mounted
+  binding resolution, queue-front/post-callback revalidation, and canonical
+  semantic binding/processing/default trace outcomes.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
