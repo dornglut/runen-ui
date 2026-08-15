@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 
 use runenui_core::{
     CommandOrigin, CommittedTextEvent, CompositionEvent, KeyboardEvent, PointerEvent,
-    SemanticCommand, SurfaceInputContext,
+    SemanticActionTarget, SemanticCommand, SurfaceInputContext,
 };
 
 use crate::trace::TraceReservation;
@@ -85,6 +85,7 @@ pub(crate) struct SemanticCommandEnvelope {
     pub(crate) target: MountedNodeId,
     pub(crate) command: SemanticCommand,
     pub(crate) origin: CommandOrigin,
+    pub(crate) semantic_target: Option<SemanticActionTarget>,
     pub(crate) instant: MonotonicInstant,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
@@ -258,12 +259,55 @@ impl<Action> WorkQueue<Action> {
         causal_parent: Option<TraceSequence>,
         trace_reservation: TraceReservation,
     ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_command_with_semantic_target_preflighted(
+            target,
+            command,
+            origin,
+            None,
+            instant,
+            causal_parent,
+            trace_reservation,
+        )
+    }
+
+    pub(crate) fn push_semantic_action_preflighted(
+        &mut self,
+        target: MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+        semantic_target: SemanticActionTarget,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_command_with_semantic_target_preflighted(
+            target,
+            command,
+            origin,
+            Some(semantic_target),
+            instant,
+            causal_parent,
+            trace_reservation,
+        )
+    }
+
+    fn push_command_with_semantic_target_preflighted(
+        &mut self,
+        target: MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+        semantic_target: Option<SemanticActionTarget>,
+        instant: MonotonicInstant,
+        causal_parent: Option<TraceSequence>,
+        trace_reservation: TraceReservation,
+    ) -> Result<WorkSequence, QueueCommitError> {
         self.push_control(|sequence| {
             WorkEnvelope::SemanticCommand(SemanticCommandEnvelope {
                 sequence,
                 target,
                 command,
                 origin,
+                semantic_target,
                 instant,
                 causal_parent,
                 trace_reservation,
