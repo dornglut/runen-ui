@@ -102,7 +102,7 @@ impl<Action> MountedTree<Action> {
     }
 }
 
-const fn map_target_status(status: SemanticTargetStatus) -> SemanticActionAuthorityError {
+fn map_target_status(status: SemanticTargetStatus) -> SemanticActionAuthorityError {
     match status {
         SemanticTargetStatus::Foreign => SemanticActionAuthorityError::ForeignTarget,
         SemanticTargetStatus::Stale => SemanticActionAuthorityError::StaleTarget,
