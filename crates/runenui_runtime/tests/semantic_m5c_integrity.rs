@@ -145,7 +145,7 @@ fn semantic_work_sequence_exhaustion_is_atomic_and_terminal() {
         error.kind(),
         SubmitSemanticActionErrorKind::WorkSequenceExhausted
     );
-    assert_eq!(error.into_request(), expected.clone());
+    assert_eq!(error.into_request(), expected);
     let sequence_state = runtime.__routed_sequence_state_for_test();
     assert_eq!(sequence_state.0, None);
     assert_eq!(
