@@ -74,7 +74,9 @@ impl fmt::Debug for SubmitSemanticActionError {
 impl fmt::Display for SubmitSemanticActionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
-            SubmitSemanticActionErrorKind::Full => formatter.write_str("runtime work queue is full"),
+            SubmitSemanticActionErrorKind::Full => {
+                formatter.write_str("runtime work queue is full")
+            }
             SubmitSemanticActionErrorKind::Closed => formatter.write_str("runtime is closed"),
             SubmitSemanticActionErrorKind::Terminal(reason) => {
                 write!(formatter, "runtime is terminal: {reason}")
@@ -103,9 +105,8 @@ impl fmt::Display for SubmitSemanticActionError {
             SubmitSemanticActionErrorKind::UnavailableAction => {
                 formatter.write_str("semantic action is currently unavailable")
             }
-            SubmitSemanticActionErrorKind::StaleAuthority => {
-                formatter.write_str("semantic action authority requires publication before admission")
-            }
+            SubmitSemanticActionErrorKind::StaleAuthority => formatter
+                .write_str("semantic action authority requires publication before admission"),
             SubmitSemanticActionErrorKind::Integrity => {
                 formatter.write_str("semantic target or mounted-owner authority is inconsistent")
             }
