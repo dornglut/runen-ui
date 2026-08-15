@@ -80,6 +80,34 @@ impl<Action> fmt::Display for SubmitActionError<Action> {
 /// Result of submitting one owned application action.
 pub type SubmitActionResult<Action> = Result<WorkSequence, SubmitActionError<Action>>;
 
+/// Exact private target carried by one canonical semantic-command queue append.
+///
+/// Semantic-origin metadata augments the existing mounted command target; it
+/// does not create a second queue or alternate routing address.
+pub(crate) struct SemanticCommandQueueTarget {
+    target: MountedNodeId,
+    semantic_target: Option<SemanticActionTarget>,
+}
+
+impl SemanticCommandQueueTarget {
+    pub(crate) const fn mounted(target: MountedNodeId) -> Self {
+        Self {
+            target,
+            semantic_target: None,
+        }
+    }
+
+    pub(crate) const fn semantic(
+        target: MountedNodeId,
+        semantic_target: SemanticActionTarget,
+    ) -> Self {
+        Self {
+            target,
+            semantic_target: Some(semantic_target),
+        }
+    }
+}
+
 pub(crate) struct SemanticCommandEnvelope {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,
@@ -252,55 +280,17 @@ impl<Action> WorkQueue<Action> {
 
     pub(crate) fn push_command_preflighted(
         &mut self,
-        target: MountedNodeId,
+        queued_target: SemanticCommandQueueTarget,
         command: SemanticCommand,
         origin: CommandOrigin,
         instant: MonotonicInstant,
         causal_parent: Option<TraceSequence>,
         trace_reservation: TraceReservation,
     ) -> Result<WorkSequence, QueueCommitError> {
-        self.push_command_with_semantic_target_preflighted(
+        let SemanticCommandQueueTarget {
             target,
-            command,
-            origin,
-            None,
-            instant,
-            causal_parent,
-            trace_reservation,
-        )
-    }
-
-    pub(crate) fn push_semantic_action_preflighted(
-        &mut self,
-        target: MountedNodeId,
-        command: SemanticCommand,
-        origin: CommandOrigin,
-        semantic_target: SemanticActionTarget,
-        instant: MonotonicInstant,
-        causal_parent: Option<TraceSequence>,
-        trace_reservation: TraceReservation,
-    ) -> Result<WorkSequence, QueueCommitError> {
-        self.push_command_with_semantic_target_preflighted(
-            target,
-            command,
-            origin,
-            Some(semantic_target),
-            instant,
-            causal_parent,
-            trace_reservation,
-        )
-    }
-
-    fn push_command_with_semantic_target_preflighted(
-        &mut self,
-        target: MountedNodeId,
-        command: SemanticCommand,
-        origin: CommandOrigin,
-        semantic_target: Option<SemanticActionTarget>,
-        instant: MonotonicInstant,
-        causal_parent: Option<TraceSequence>,
-        trace_reservation: TraceReservation,
-    ) -> Result<WorkSequence, QueueCommitError> {
+            semantic_target,
+        } = queued_target;
         self.push_control(|sequence| {
             WorkEnvelope::SemanticCommand(SemanticCommandEnvelope {
                 sequence,

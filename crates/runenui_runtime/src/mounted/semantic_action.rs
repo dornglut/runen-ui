@@ -53,12 +53,12 @@ impl<Action> MountedTree<Action> {
             .semantic_store
             .resolve_target(&self.runtime, target)
             .map_err(map_target_status)?;
-        self.semantic_action_authority_for_resolution(resolution)
+        self.semantic_action_authority_for_resolution(&resolution)
     }
 
     fn semantic_action_authority_for_resolution(
         &self,
-        resolution: SemanticTargetResolution,
+        resolution: &SemanticTargetResolution,
     ) -> Result<SemanticActionAuthority, SemanticActionAuthorityError> {
         match self.target_status(resolution.owner()) {
             TargetStatus::Live => {}
@@ -107,6 +107,7 @@ fn map_target_status(status: SemanticTargetStatus) -> SemanticActionAuthorityErr
         SemanticTargetStatus::Foreign => SemanticActionAuthorityError::ForeignTarget,
         SemanticTargetStatus::Stale => SemanticActionAuthorityError::StaleTarget,
         SemanticTargetStatus::Missing => SemanticActionAuthorityError::MissingTarget,
+        #[cfg(test)]
         SemanticTargetStatus::Live => unreachable!("live semantic targets resolve to a record"),
     }
 }

@@ -2,7 +2,9 @@ use runenui_core::{MonotonicInstant, SemanticActionTarget};
 
 use crate::{
     TraceActionCategory, TraceActionIdentity, TraceContext, TraceSurfaceContext,
-    TraceSurfaceIngressKind, trace::TraceRecordDraft,
+    TraceSurfaceIngressKind,
+    queue::SemanticCommandQueueTarget,
+    trace::TraceRecordDraft,
 };
 
 use super::{
@@ -368,26 +370,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.trace.release_reservation(trace_reservation);
             return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
         }
-        match semantic_target {
-            Some(semantic_target) => self.queue.push_semantic_action_preflighted(
-                target.clone(),
-                command,
-                origin,
-                semantic_target,
-                instant,
-                causal_parent,
-                trace_reservation,
-            ),
-            None => self.queue.push_command_preflighted(
-                target.clone(),
+        let queued_target = match semantic_target {
+            Some(semantic_target) => {
+                SemanticCommandQueueTarget::semantic(target.clone(), semantic_target)
+            }
+            None => SemanticCommandQueueTarget::mounted(target.clone()),
+        };
+        self.queue
+            .push_command_preflighted(
+                queued_target,
                 command,
                 origin,
                 instant,
                 causal_parent,
                 trace_reservation,
-            ),
-        }
-        .unwrap_or_else(|_| unreachable!("command queue was preflighted"));
+            )
+            .unwrap_or_else(|_| unreachable!("command queue was preflighted"));
         self.external_queue_commit_accepted();
         Ok(CommandSubmission::new(sequence))
     }

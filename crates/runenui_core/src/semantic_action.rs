@@ -7,7 +7,7 @@ use crate::{SemanticAction, SemanticKey, SemanticNodeId, SurfaceId};
 /// The request deliberately carries no semantic revision. Runtime admission
 /// evaluates the current committed semantic product and current action readiness.
 #[must_use]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct SemanticActionRequest {
     surface: SurfaceId,
     target: SemanticNodeId,
@@ -55,7 +55,7 @@ impl SemanticActionRequest {
 /// exposes semantic identity and the owner-local semantic key needed by a custom
 /// widget to distinguish virtual semantic targets, but it exposes no mounted
 /// owner or semantic-to-mounted routing conversion.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct SemanticActionTarget {
     surface: SurfaceId,
     target: SemanticNodeId,

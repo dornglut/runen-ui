@@ -50,7 +50,22 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }) else {
             return;
         };
-        let event = UiEvent::SemanticCommand(SemanticCommandEvent::__runtime_new(command, origin));
+        if let Some(semantic_target) = transaction.semantic_target.as_ref() {
+            let Ok(owner) = self.revalidate_semantic_action_target(semantic_target) else {
+                return;
+            };
+            if owner != transaction.target {
+                return;
+            }
+        }
+        let event = UiEvent::SemanticCommand(match transaction.semantic_target.as_ref() {
+            Some(semantic_target) => SemanticCommandEvent::__runtime_new_with_semantic_target(
+                command,
+                origin,
+                semantic_target.clone(),
+            ),
+            None => SemanticCommandEvent::__runtime_new(command, origin),
+        });
         let routed = self.invoke_routed_callbacks(&mut transaction, &event, None);
         let defaulted =
             routed.and_then(|()| self.apply_semantic_default(&mut transaction, command));

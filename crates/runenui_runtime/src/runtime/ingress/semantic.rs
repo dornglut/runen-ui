@@ -121,7 +121,6 @@ fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &Semant
                 && match authority.focusability() {
                     Focusability::Focusable => true,
                     Focusability::Automatic => activation.is_actionable(),
-                    Focusability::NotFocusable | Focusability::Hidden => false,
                     _ => false,
                 }
         }

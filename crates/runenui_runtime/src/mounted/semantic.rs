@@ -73,6 +73,7 @@ impl From<SemanticStoreIntegrityError> for SemanticReconcileError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SemanticTargetStatus {
+    #[cfg(test)]
     Live,
     Stale,
     Missing,
