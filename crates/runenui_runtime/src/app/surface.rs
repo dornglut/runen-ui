@@ -1,7 +1,10 @@
-use runenui_core::{CommandOrigin, SemanticCommand, SurfaceInputContext};
+use runenui_core::{
+    CommandOrigin, SemanticActionRequest, SemanticCommand, SurfaceInputContext,
+};
 
 use crate::{
-    CommandSubmission, LogicalPoint, MountedNodeId, PublishSurfaceError, SubmitSurfaceCommandError,
+    CommandSubmission, LogicalPoint, MountedNodeId, PublishSurfaceError, SubmitSemanticActionError,
+    SubmitSurfaceCommandError,
 };
 
 use super::{
@@ -25,6 +28,24 @@ impl<App: UiApp> AppRuntime<App> {
     #[must_use]
     pub const fn reconciliation_report(&self) -> &ReconciliationReport {
         self.runtime.report()
+    }
+
+    /// Appends one exact current-surface semantic-node action to the canonical FIFO.
+    ///
+    /// Submission invokes no widget callback and exposes no mounted-owner routing
+    /// shortcut. Accepted work later enters the existing routed semantic-command
+    /// and default path when the runtime is pumped.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact unaccepted request when current surface/semantic
+    /// authority, support/readiness, runtime status, canonical queue, work
+    /// sequence, or enabled trace cannot admit the action.
+    pub fn submit_semantic_action(
+        &mut self,
+        request: SemanticActionRequest,
+    ) -> Result<CommandSubmission, SubmitSemanticActionError> {
+        self.runtime.submit_semantic_action(request)
     }
 
     /// Resolves one logical point against an exact displayed snapshot and queues
