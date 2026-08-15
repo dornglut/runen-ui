@@ -105,7 +105,10 @@ impl SemanticActionTarget {
 
 #[cfg(test)]
 mod tests {
-    use crate::{__runtime::RuntimeNamespace, SemanticAction, SemanticActionRequest, SemanticActionTarget, SemanticKey};
+    use crate::{
+        __runtime::RuntimeNamespace, SemanticAction, SemanticActionRequest, SemanticActionTarget,
+        SemanticKey,
+    };
 
     #[test]
     fn request_and_runtime_target_preserve_exact_semantic_facts() {
@@ -114,11 +117,8 @@ mod tests {
         let node = namespace.__runtime_semantic_id(3, 7);
         let key = SemanticKey::from_static("virtual")
             .unwrap_or_else(|_| unreachable!("test semantic key is valid"));
-        let request = SemanticActionRequest::new(
-            surface.clone(),
-            node.clone(),
-            SemanticAction::Activate,
-        );
+        let request =
+            SemanticActionRequest::new(surface.clone(), node.clone(), SemanticAction::Activate);
         assert_eq!(request.surface_id(), &surface);
         assert_eq!(request.target(), &node);
         assert_eq!(request.action(), SemanticAction::Activate);
