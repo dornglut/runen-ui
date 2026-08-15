@@ -1,6 +1,4 @@
-use runenui_core::{
-    CommandOrigin, SemanticActionRequest, SemanticCommand, SurfaceInputContext,
-};
+use runenui_core::{CommandOrigin, SemanticActionRequest, SemanticCommand, SurfaceInputContext};
 
 use crate::{
     CommandSubmission, LogicalPoint, MountedNodeId, PublishSurfaceError, SubmitSemanticActionError,
