@@ -108,6 +108,6 @@ const fn map_target_status(status: SemanticTargetStatus) -> SemanticActionAuthor
         SemanticTargetStatus::Stale => SemanticActionAuthorityError::StaleTarget,
         SemanticTargetStatus::Missing => SemanticActionAuthorityError::MissingTarget,
         #[cfg(test)]
-        SemanticTargetStatus::Live => unreachable!("live semantic targets resolve to a record"),
+        SemanticTargetStatus::Live => SemanticActionAuthorityError::Integrity,
     }
 }
