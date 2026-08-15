@@ -1,12 +1,12 @@
 use runenui_core::{
     Focusability, SemanticAction, SemanticActionRequest, SemanticActionTarget, SemanticCommand,
-    SemanticKey,
+    SemanticKey, SemanticNodeId, SurfaceId,
 };
 
 use crate::{
-    CommandSubmission, SubmitCommandErrorKind, SubmitSemanticActionError,
+    CommandSubmission, MountedNodeId, SubmitCommandErrorKind, SubmitSemanticActionError,
     SubmitSemanticActionErrorKind,
-    mounted::SemanticActionAuthorityError,
+    mounted::{SemanticActionAuthority, SemanticActionAuthorityError},
 };
 
 use super::{HostProtocol, Runtime, RuntimeStatus};
@@ -17,10 +17,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         request: SemanticActionRequest,
     ) -> Result<CommandSubmission, SubmitSemanticActionError> {
-        let (owner, key) = match self.semantic_action_preflight(&request) {
-            Ok(authority) => (authority.owner().clone(), authority.key().clone()),
+        let authority = match self.semantic_action_preflight(
+            request.surface_id(),
+            request.target(),
+            request.action(),
+            None,
+        ) {
+            Ok(authority) => authority,
             Err(kind) => return Err(SubmitSemanticActionError::new(kind, request)),
         };
+        let owner = authority.owner().clone();
+        let key = authority.key().clone();
         let rejected_request = request.clone();
         let (surface, target, action) = request.into_parts();
         let command = semantic_command(&action);
@@ -38,10 +45,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    pub(in crate::runtime) fn revalidate_semantic_action_target(
+        &self,
+        target: &SemanticActionTarget,
+    ) -> Result<MountedNodeId, SubmitSemanticActionErrorKind> {
+        self.semantic_action_preflight(
+            target.surface_id(),
+            target.target(),
+            target.action(),
+            Some(target.semantic_key()),
+        )
+        .map(|authority| authority.owner().clone())
+    }
+
     fn semantic_action_preflight(
         &self,
-        request: &SemanticActionRequest,
-    ) -> Result<crate::mounted::SemanticActionAuthority, SubmitSemanticActionErrorKind> {
+        surface: &SurfaceId,
+        target: &SemanticNodeId,
+        action: &SemanticAction,
+        expected_key: Option<&SemanticKey>,
+    ) -> Result<SemanticActionAuthority, SubmitSemanticActionErrorKind> {
         match self.status {
             RuntimeStatus::Running => {}
             RuntimeStatus::Closed => return Err(SubmitSemanticActionErrorKind::Closed),
@@ -50,41 +73,41 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
         }
         self.surface_publication
-            .validate_surface_id(request.surface_id())
+            .validate_surface_id(surface)
             .map_err(|error| match error {
                 SurfaceIdentityError::Foreign => SubmitSemanticActionErrorKind::ForeignSurface,
                 SurfaceIdentityError::Wrong => SubmitSemanticActionErrorKind::WrongSurface,
             })?;
         let authority = self
             .tree
-            .semantic_action_authority(request.target())
+            .semantic_action_authority(target)
             .map_err(map_authority_error)?;
+        if expected_key.is_some_and(|key| key != authority.key()) {
+            return Err(SubmitSemanticActionErrorKind::Integrity);
+        }
         let publication = self
             .surface_publication
             .current_semantic_publication()
             .ok_or(SubmitSemanticActionErrorKind::StaleAuthority)?;
         let node = publication
             .snapshot()
-            .node(request.target())
+            .node(target)
             .ok_or(SubmitSemanticActionErrorKind::TargetNotInSurface)?;
-        if !node.supported_actions().contains(request.action()) {
+        if !node.supported_actions().contains(action) {
             return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
         }
         let state = node.state();
         if state.disabled() || state.inert() {
             return Err(SubmitSemanticActionErrorKind::UnavailableAction);
         }
-        if !semantic_action_is_ready(&authority, request.action()) {
+        if !semantic_action_is_ready(&authority, action) {
             return Err(SubmitSemanticActionErrorKind::UnavailableAction);
         }
         Ok(authority)
     }
 }
 
-fn semantic_action_is_ready(
-    authority: &crate::mounted::SemanticActionAuthority,
-    action: &SemanticAction,
-) -> bool {
+fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &SemanticAction) -> bool {
     let activation = authority.activation();
     if !activation.enabled() {
         return false;
