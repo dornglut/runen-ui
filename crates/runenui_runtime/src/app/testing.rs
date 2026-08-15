@@ -1,4 +1,4 @@
-use runenui_core::SurfaceInputContext;
+use runenui_core::{SemanticNodeId, SurfaceId, SurfaceInputContext};
 
 use super::{AppRuntime, MountedNodeId, UiApp};
 
@@ -80,6 +80,26 @@ impl<App: UiApp> AppRuntime<App> {
             .tree
             .runtime_namespace()
             .__runtime_mounted_parts(id)
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __semantic_id_for_test(&self, slot: u32, generation: u64) -> SemanticNodeId {
+        self.runtime
+            .tree
+            .runtime_namespace()
+            .__runtime_semantic_id(slot, generation)
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __surface_id_for_test(&self, slot: u32, generation: u64) -> SurfaceId {
+        self.runtime
+            .tree
+            .runtime_namespace()
+            .__runtime_surface_id(slot, generation)
     }
 
     #[cfg(feature = "internal-test-seams")]
