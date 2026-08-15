@@ -6,7 +6,7 @@ use core::{
 };
 
 use crate::{
-    SendTaskStartFailure, TimerEffect, WorkFamily, WorkKey,
+    SemanticActionTarget, SendTaskStartFailure, TimerEffect, WorkFamily, WorkKey,
     effects::MountedEffect,
     work::{LocalTaskEffect, SendTaskEffect},
 };
@@ -164,13 +164,14 @@ impl<Action> WidgetWorkCollector<Action> {
 }
 
 macro_rules! work_context {
-    ($name:ident) => {
+    ($name:ident $(, $field:ident : $field_ty:ty = $field_default:expr)* $(,)?) => {
         pub struct $name<Action = ()> {
             invalidation: WidgetInvalidation,
             subscription_invalidation: bool,
             work: WidgetWorkCollector<Action>,
             remaining_outputs: Option<usize>,
             overflowed: bool,
+            $($field: $field_ty,)*
         }
 
         impl<Action> core::fmt::Debug for $name<Action> {
@@ -278,6 +279,7 @@ macro_rules! work_context {
                     work: WidgetWorkCollector::new(),
                     remaining_outputs: None,
                     overflowed: false,
+                    $($field: $field_default,)*
                 }
             }
 
@@ -290,6 +292,7 @@ macro_rules! work_context {
                     work: WidgetWorkCollector::new(),
                     remaining_outputs: Some(output_allowance),
                     overflowed: false,
+                    $($field: $field_default,)*
                 }
             }
 
@@ -350,7 +353,42 @@ macro_rules! work_context {
 
 work_context!(WidgetMountContext);
 work_context!(WidgetUpdateContext);
-work_context!(WidgetActivationContext);
+work_context!(
+    WidgetActivationContext,
+    semantic_target: Option<SemanticActionTarget> = None,
+);
+
+impl<Action> WidgetActivationContext<Action> {
+    /// Borrows the exact semantic target when this activation originated from
+    /// an admitted semantic-node action request.
+    ///
+    /// Ordinary activation has no semantic target metadata.
+    #[must_use]
+    pub const fn semantic_action_target(&self) -> Option<&SemanticActionTarget> {
+        self.semantic_target.as_ref()
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_new_with_semantic_target(
+        semantic_target: Option<SemanticActionTarget>,
+    ) -> Self {
+        let mut context = Self::__runtime_new();
+        context.semantic_target = semantic_target;
+        context
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_new_bounded_with_semantic_target(
+        output_allowance: usize,
+        semantic_target: Option<SemanticActionTarget>,
+    ) -> Self {
+        let mut context = Self::__runtime_new_bounded(output_allowance);
+        context.semantic_target = semantic_target;
+        context
+    }
+}
 
 /// Why a mounted widget lifetime is ending.
 #[non_exhaustive]
@@ -381,7 +419,9 @@ impl WidgetUnmountContext {
 
 #[cfg(test)]
 mod tests {
-    use super::WidgetInvalidation;
+    use crate::{SemanticAction, SemanticActionTarget, SemanticKey, __runtime::RuntimeNamespace};
+
+    use super::{WidgetActivationContext, WidgetInvalidation};
 
     #[test]
     fn invalidation_union_and_containment_are_exact() {
@@ -391,5 +431,31 @@ mod tests {
         assert!(!value.contains(WidgetInvalidation::SEMANTICS));
         assert!(WidgetInvalidation::NONE.is_empty());
         assert!(WidgetInvalidation::ALL.contains(value));
+    }
+
+    #[test]
+    fn activation_context_exposes_only_runtime_supplied_semantic_target() {
+        let ordinary = WidgetActivationContext::<()>::__runtime_new();
+        assert!(ordinary.semantic_action_target().is_none());
+
+        let namespace = RuntimeNamespace::__runtime_new();
+        let surface = namespace.__runtime_surface_id(0, 1);
+        let node = namespace.__runtime_semantic_id(4, 2);
+        let key = SemanticKey::from_static("virtual")
+            .unwrap_or_else(|_| unreachable!("test key is valid"));
+        let target = SemanticActionTarget::__runtime_new(
+            surface.clone(),
+            node.clone(),
+            key.clone(),
+            SemanticAction::Activate,
+        );
+        let context = WidgetActivationContext::<()>::__runtime_new_with_semantic_target(Some(target));
+        let observed = context
+            .semantic_action_target()
+            .unwrap_or_else(|| unreachable!("semantic target was supplied"));
+        assert_eq!(observed.surface_id(), &surface);
+        assert_eq!(observed.target(), &node);
+        assert_eq!(observed.semantic_key(), &key);
+        assert_eq!(observed.action(), &SemanticAction::Activate);
     }
 }
