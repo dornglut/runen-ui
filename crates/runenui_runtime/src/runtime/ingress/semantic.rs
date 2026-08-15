@@ -5,7 +5,7 @@ use runenui_core::{
 
 use crate::{
     CommandSubmission, MountedNodeId, SubmitCommandErrorKind, SubmitSemanticActionError,
-    SubmitSemanticActionErrorKind,
+    SubmitSemanticActionErrorKind, TraceSemanticActionRejection,
     mounted::{DirtyPhases, SemanticActionAuthority, SemanticActionAuthorityError},
 };
 
@@ -156,6 +156,40 @@ const fn map_authority_error(error: SemanticActionAuthorityError) -> SubmitSeman
         }
         SemanticActionAuthorityError::StaleAuthority => {
             SubmitSemanticActionErrorKind::StaleAuthority
+        }
+    }
+}
+
+pub(in crate::runtime) const fn trace_semantic_action_rejection(
+    kind: SubmitSemanticActionErrorKind,
+) -> TraceSemanticActionRejection {
+    match kind {
+        SubmitSemanticActionErrorKind::Closed => TraceSemanticActionRejection::Closed,
+        SubmitSemanticActionErrorKind::Terminal(_) => TraceSemanticActionRejection::Terminal,
+        SubmitSemanticActionErrorKind::ForeignSurface => {
+            TraceSemanticActionRejection::ForeignSurface
+        }
+        SubmitSemanticActionErrorKind::WrongSurface => TraceSemanticActionRejection::WrongSurface,
+        SubmitSemanticActionErrorKind::ForeignTarget => TraceSemanticActionRejection::ForeignTarget,
+        SubmitSemanticActionErrorKind::StaleTarget => TraceSemanticActionRejection::StaleTarget,
+        SubmitSemanticActionErrorKind::MissingTarget => TraceSemanticActionRejection::MissingTarget,
+        SubmitSemanticActionErrorKind::TargetNotInSurface => {
+            TraceSemanticActionRejection::TargetNotInSurface
+        }
+        SubmitSemanticActionErrorKind::UnsupportedAction => {
+            TraceSemanticActionRejection::UnsupportedAction
+        }
+        SubmitSemanticActionErrorKind::UnavailableAction => {
+            TraceSemanticActionRejection::UnavailableAction
+        }
+        SubmitSemanticActionErrorKind::StaleAuthority => {
+            TraceSemanticActionRejection::StaleAuthority
+        }
+        SubmitSemanticActionErrorKind::Integrity
+        | SubmitSemanticActionErrorKind::Full
+        | SubmitSemanticActionErrorKind::WorkSequenceExhausted
+        | SubmitSemanticActionErrorKind::TraceSequenceExhausted => {
+            TraceSemanticActionRejection::Integrity
         }
     }
 }
