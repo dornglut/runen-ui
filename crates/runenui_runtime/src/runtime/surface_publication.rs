@@ -52,6 +52,12 @@ pub(in crate::runtime) enum SurfaceSnapshotError {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::runtime) enum SurfaceIdentityError {
+    Foreign,
+    Wrong,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::runtime) enum SurfaceSnapshotKind {
     Current,
     Retained,
@@ -287,6 +293,29 @@ impl SurfacePublicationState {
         self.snapshots.back().map(|snapshot| {
             TraceSurfaceContext::accepted(&snapshot.context, TraceSurfaceSnapshotKind::Current)
         })
+    }
+
+    pub(in crate::runtime) fn validate_surface_id(
+        &self,
+        surface: &SurfaceId,
+    ) -> Result<(), SurfaceIdentityError> {
+        if self
+            .runtime_namespace
+            .__runtime_surface_parts(surface)
+            .is_none()
+        {
+            return Err(SurfaceIdentityError::Foreign);
+        }
+        if surface != &self.surface_id {
+            return Err(SurfaceIdentityError::Wrong);
+        }
+        Ok(())
+    }
+
+    pub(in crate::runtime) const fn current_semantic_publication(
+        &self,
+    ) -> Option<&crate::SemanticPublication> {
+        self.semantic_publication.current_publication()
     }
 
     /// Validates only runtime namespace and logical-surface identity.
