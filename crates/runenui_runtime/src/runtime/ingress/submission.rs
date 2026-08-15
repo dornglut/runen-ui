@@ -370,9 +370,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let queued_target = semantic_target.map_or_else(
             || SemanticCommandQueueTarget::mounted(target.clone()),
-            |semantic_target| {
-                SemanticCommandQueueTarget::semantic(target.clone(), semantic_target)
-            },
+            |semantic_target| SemanticCommandQueueTarget::semantic(target.clone(), semantic_target),
         );
         self.queue
             .push_command_preflighted(
