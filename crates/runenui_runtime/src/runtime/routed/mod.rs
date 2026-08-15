@@ -26,11 +26,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target,
             command,
             origin,
+            semantic_target,
             instant,
             causal_parent,
             trace_reservation,
         } = envelope;
-        let facts = RoutedIngressFacts::new(
+        let mut facts = RoutedIngressFacts::new(
             sequence,
             target,
             origin,
@@ -39,6 +40,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
+        if let Some(semantic_target) = semantic_target {
+            facts = facts.with_semantic_target(semantic_target);
+        }
         let Some(mut transaction) = (if is_focus_command(command) {
             self.begin_focus_routed_transaction(facts)
         } else {
@@ -185,6 +189,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             sequence: facts.sequence,
             target: facts.target,
             origin: facts.origin,
+            semantic_target: facts.semantic_target,
             instant: facts.instant,
             route,
             pointer_callback_targets,
