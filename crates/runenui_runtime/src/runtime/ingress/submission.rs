@@ -1,4 +1,4 @@
-use runenui_core::MonotonicInstant;
+use runenui_core::{MonotonicInstant, SemanticActionTarget};
 
 use crate::{
     TraceActionCategory, TraceActionIdentity, TraceContext, TraceSurfaceContext,
@@ -222,6 +222,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.submit_command_inner(target, command, origin, CommandTrace::Surface(trace))
     }
 
+    pub(in crate::runtime) fn submit_semantic_action_command(
+        &mut self,
+        target: &MountedNodeId,
+        command: SemanticCommand,
+        semantic_target: SemanticActionTarget,
+    ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
+        self.command_preflight(target)?;
+        self.commit_preflighted_command(
+            target,
+            command,
+            CommandOrigin::accessibility(),
+            Some(semantic_target),
+            self.now(),
+            CommandTrace::Direct { parent: None },
+        )
+    }
+
     fn submit_command_inner(
         &mut self,
         target: &MountedNodeId,
@@ -230,7 +247,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         trace: CommandTrace,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
         self.command_preflight(target)?;
-        self.commit_preflighted_command(target, command, origin, self.now(), trace)
+        self.commit_preflighted_command(target, command, origin, None, self.now(), trace)
     }
 
     fn command_preflight(&self, target: &MountedNodeId) -> Result<(), SubmitCommandErrorKind> {
@@ -263,6 +280,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target,
             command,
             origin,
+            None,
             instant,
             CommandTrace::Direct {
                 parent: causal_parent,
@@ -275,6 +293,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         target: &MountedNodeId,
         command: SemanticCommand,
         origin: CommandOrigin,
+        semantic_target: Option<SemanticActionTarget>,
         instant: MonotonicInstant,
         trace: CommandTrace,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
@@ -349,16 +368,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.trace.release_reservation(trace_reservation);
             return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
         }
-        self.queue
-            .push_command_preflighted(
+        match semantic_target {
+            Some(semantic_target) => self
+                .queue
+                .push_semantic_action_preflighted(
+                    target.clone(),
+                    command,
+                    origin,
+                    semantic_target,
+                    instant,
+                    causal_parent,
+                    trace_reservation,
+                ),
+            None => self.queue.push_command_preflighted(
                 target.clone(),
                 command,
                 origin,
                 instant,
                 causal_parent,
                 trace_reservation,
-            )
-            .unwrap_or_else(|_| unreachable!("command queue was preflighted"));
+            ),
+        }
+        .unwrap_or_else(|_| unreachable!("command queue was preflighted"));
         self.external_queue_commit_accepted();
         Ok(CommandSubmission::new(sequence))
     }
