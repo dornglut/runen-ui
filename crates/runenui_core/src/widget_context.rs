@@ -235,13 +235,10 @@ macro_rules! work_context {
             pub fn keyed_send_task<Output>(
                 &mut self,
                 key: WorkKey,
-                future: impl Future<Output = Output> + Send + 'static,
-                map: impl FnOnce(Output) -> Action + 'static,
-            ) where
-                Output: Send + 'static,
-            {
+                future: impl Future<Output = Option<Action>> + 'static,
+            ) {
                 if self.__runtime_reserve_output() {
-                    self.work.keyed_send_task(key, future, map);
+                    self.work.keyed_local_task(key, future);
                 }
             }
 
@@ -419,7 +416,7 @@ impl WidgetUnmountContext {
 
 #[cfg(test)]
 mod tests {
-    use crate::{SemanticAction, SemanticActionTarget, SemanticKey, __runtime::RuntimeNamespace};
+    use crate::{__runtime::RuntimeNamespace, SemanticAction, SemanticActionTarget, SemanticKey};
 
     use super::{WidgetActivationContext, WidgetInvalidation};
 
@@ -449,7 +446,8 @@ mod tests {
             key.clone(),
             SemanticAction::Activate,
         );
-        let context = WidgetActivationContext::<()>::__runtime_new_with_semantic_target(Some(target));
+        let context =
+            WidgetActivationContext::<()>::__runtime_new_with_semantic_target(Some(target));
         let observed = context
             .semantic_action_target()
             .unwrap_or_else(|| unreachable!("semantic target was supplied"));
