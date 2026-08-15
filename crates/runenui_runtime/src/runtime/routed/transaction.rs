@@ -1,6 +1,7 @@
 use runenui_core::{
     __runtime::{MountedEffect, PointerCaptureRequest},
-    CommandOrigin, InputModality, MonotonicInstant, WidgetInvalidation, WorkSequence,
+    CommandOrigin, InputModality, MonotonicInstant, SemanticActionTarget, WidgetInvalidation,
+    WorkSequence,
 };
 
 use super::super::CollectedRoutedOutput;
@@ -30,6 +31,7 @@ pub(crate) struct RoutedIngressFacts {
     pub(crate) event: TraceEventContext,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) trace_reservation: TraceReservation,
+    pub(crate) semantic_target: Option<SemanticActionTarget>,
 }
 
 impl RoutedIngressFacts {
@@ -50,7 +52,13 @@ impl RoutedIngressFacts {
             event,
             causal_parent,
             trace_reservation,
+            semantic_target: None,
         }
+    }
+
+    pub(crate) fn with_semantic_target(mut self, target: SemanticActionTarget) -> Self {
+        self.semantic_target = Some(target);
+        self
     }
 }
 
@@ -66,6 +74,7 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,
     pub(crate) origin: CommandOrigin,
+    pub(crate) semantic_target: Option<SemanticActionTarget>,
     pub(crate) instant: MonotonicInstant,
     pub(in crate::runtime) route: Vec<MountedNodeId>,
     pub(in crate::runtime) pointer_callback_targets: Vec<MountedNodeId>,
