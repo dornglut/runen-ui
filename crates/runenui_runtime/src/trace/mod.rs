@@ -32,8 +32,8 @@ pub use input_context::{
 pub use model::{
     TraceConfig, TraceFocusBoundaryOutcome, TracePayloadCapture, TracePointerCaptureRequestKind,
     TracePointerCaptureRequestRejection, TracePointerRejection, TraceRecord, TraceRecordKind,
-    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSequence,
-    TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
+    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    TraceSequence, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
     TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
     TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
     TraceWorkStartRefusal,
