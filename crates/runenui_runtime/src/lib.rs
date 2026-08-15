@@ -261,9 +261,7 @@ pub use runtime::{
     RuntimeTerminalReason, ShutdownReport, SubscriptionDiagnostic, SubscriptionOwnerKind,
     SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
 };
-pub use semantic_action::{
-    SubmitSemanticActionError, SubmitSemanticActionErrorKind, UnacceptedSemanticAction,
-};
+pub use semantic_action::{SubmitSemanticActionError, SubmitSemanticActionErrorKind};
 pub use semantic_diagnostic::{
     SemanticDiagnostic, SemanticDiagnosticReport, SemanticOwnerWithdrawalReason,
 };

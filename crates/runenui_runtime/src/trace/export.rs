@@ -36,8 +36,11 @@ pub(crate) fn encode_record_json(runtime: &RuntimeNamespace, record: &TraceRecor
     let mut output = String::new();
     output.push_str("{\"schema\":\"runenui.trace.record\",\"version\":1,\"sequence\":");
     json::u64_value(&mut output, record.sequence().get());
-    output.push_str(",\"kind\":");
-    kind::encode(&mut output, record.kind());
+    output.push_str(",\"kind\":{\"name\":");
+    json::string(&mut output, kind::name(record.kind()));
+    output.push_str(",\"data\":");
+    kind::data(&mut output, runtime, record.kind());
+    output.push('}');
     output.push_str(",\"work_sequence\":");
     json::optional_u64(
         &mut output,
