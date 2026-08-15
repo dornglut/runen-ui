@@ -9,10 +9,10 @@ use runenui_core::{
     EventSource, HostProtocol, InputModality, SemanticCommandEvent, UiEvent, WidgetInvalidation,
 };
 
-use super::Runtime;
+use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
     MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily, TraceRecordKind,
-    TraceRouteSnapshot, TraceRoutedIntegrityFailure,
+    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
     queue::SemanticCommandEnvelope,
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
@@ -31,6 +31,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         } = envelope;
+        if let Some(semantic_target) = semantic_target.as_ref() {
+            let rejection = match self.revalidate_semantic_action_target(semantic_target) {
+                Ok(owner) if owner == target => None,
+                Ok(_) => Some(TraceSemanticActionRejection::OwnerChanged),
+                Err(kind) => Some(trace_semantic_action_rejection(kind)),
+            };
+            if let Some(outcome) = rejection {
+                self.trace.record_reserved_event(
+                    trace_reservation,
+                    TraceRecordKind::SemanticActionProcessingRejected { outcome },
+                    sequence,
+                    causal_parent,
+                    Some(self.tree.trace_target(&target)),
+                    instant,
+                    &target,
+                    None,
+                    origin,
+                );
+                return;
+            }
+        }
         let mut facts = RoutedIngressFacts::new(
             sequence,
             target,
@@ -50,14 +71,6 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }) else {
             return;
         };
-        if let Some(semantic_target) = transaction.semantic_target.as_ref() {
-            let Ok(owner) = self.revalidate_semantic_action_target(semantic_target) else {
-                return;
-            };
-            if owner != transaction.target {
-                return;
-            }
-        }
         let event = UiEvent::SemanticCommand(transaction.semantic_target.as_ref().map_or_else(
             || SemanticCommandEvent::__runtime_new(command, origin),
             |semantic_target| {
