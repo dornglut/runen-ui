@@ -6,7 +6,7 @@ use runenui_core::{
 use crate::{
     CommandSubmission, MountedNodeId, SubmitCommandErrorKind, SubmitSemanticActionError,
     SubmitSemanticActionErrorKind,
-    mounted::{SemanticActionAuthority, SemanticActionAuthorityError},
+    mounted::{DirtyPhases, SemanticActionAuthority, SemanticActionAuthorityError},
 };
 
 use super::{HostProtocol, Runtime, RuntimeStatus};
@@ -84,6 +84,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .map_err(map_authority_error)?;
         if expected_key.is_some_and(|key| key != authority.key()) {
             return Err(SubmitSemanticActionErrorKind::Integrity);
+        }
+        if self
+            .tree
+            .pending_phases()
+            .contains(DirtyPhases::SEMANTICS)
+        {
+            return Err(SubmitSemanticActionErrorKind::StaleAuthority);
         }
         let publication = self
             .surface_publication
