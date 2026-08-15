@@ -297,9 +297,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         instant: MonotonicInstant,
         trace: CommandTrace,
     ) -> Result<CommandSubmission, SubmitCommandErrorKind> {
-        let trace_reservation = match &trace {
-            CommandTrace::Direct { .. } => self.trace.reserve_command_outcome(),
-            CommandTrace::Surface(_) => self.trace.reserve_surface_command_outcome(),
+        let trace_reservation = match (&trace, semantic_target.as_ref()) {
+            (CommandTrace::Direct { .. }, Some(_)) => self.trace.reserve_semantic_action_outcome(),
+            (CommandTrace::Direct { .. }, None) => self.trace.reserve_command_outcome(),
+            (CommandTrace::Surface(_), _) => self.trace.reserve_surface_command_outcome(),
         }
         .ok_or(SubmitCommandErrorKind::TraceSequenceExhausted)?;
         let sequence = self
@@ -309,16 +310,40 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let trace_enabled = self.trace.is_enabled();
         let trace_target = self.tree.trace_target(target);
         let causal_parent = match trace {
-            CommandTrace::Direct { parent } => self.trace.record_event(
-                TraceRecordKind::CommandSubmissionAccepted,
-                sequence,
-                parent,
-                Some(trace_target),
-                instant,
-                target,
-                None,
-                origin,
-            ),
+            CommandTrace::Direct { parent } => {
+                let bound_parent = if let Some(semantic_target) = semantic_target.as_ref() {
+                    let bound = self.trace.record_event(
+                        TraceRecordKind::SemanticActionBound {
+                            target: semantic_target.clone(),
+                            command,
+                        },
+                        sequence,
+                        parent,
+                        Some(trace_target.clone()),
+                        instant,
+                        target,
+                        None,
+                        origin,
+                    );
+                    if trace_enabled && bound.is_none() {
+                        self.trace.release_reservation(trace_reservation);
+                        return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
+                    }
+                    bound
+                } else {
+                    parent
+                };
+                self.trace.record_event(
+                    TraceRecordKind::CommandSubmissionAccepted,
+                    sequence,
+                    bound_parent,
+                    Some(trace_target),
+                    instant,
+                    target,
+                    None,
+                    origin,
+                )
+            }
             CommandTrace::Surface(surface) => {
                 let context_parent = if trace_enabled {
                     self.trace.record_draft(
