@@ -34,11 +34,7 @@ impl Widget<()> for ProbeWidget {
         }
     }
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         match self.case {
             Case::FocusOwnerDisabled => SemanticContribution::single(
                 SemanticNodeContribution::primary(SemanticRole::Button)
@@ -54,14 +50,13 @@ impl Widget<()> for ProbeWidget {
                     Case::FocusOwnerDisabled => unreachable!("focus case handled above"),
                 };
                 SemanticContribution::single(
-                    SemanticNodeContribution::primary(SemanticRole::Group)
-                        .with_child(
-                            SemanticNodeContribution::new(named, SemanticRole::Button)
-                                .with_name("named")
-                                .with_state(state)
-                                .with_action(SemanticAction::OpenMenu)
-                                .with_action(SemanticAction::OpenContextMenu),
-                        ),
+                    SemanticNodeContribution::primary(SemanticRole::Group).with_child(
+                        SemanticNodeContribution::new(named, SemanticRole::Button)
+                            .with_name("named")
+                            .with_state(state)
+                            .with_action(SemanticAction::OpenMenu)
+                            .with_action(SemanticAction::OpenContextMenu),
+                    ),
                 )
             }
         }
@@ -123,7 +118,11 @@ fn explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable(
         .iter()
         .find(|node| node.name() == Some("primary"))
         .unwrap_or_else(|| unreachable!("primary semantic node is published"));
-    assert!(target.supported_actions().contains(&SemanticAction::RequestFocus));
+    assert!(
+        target
+            .supported_actions()
+            .contains(&SemanticAction::RequestFocus)
+    );
     assert!(target.state().disabled());
 
     let request = SemanticActionRequest::new(
@@ -133,7 +132,10 @@ fn explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable(
     );
     let expected = request.clone();
     let error = expect_rejection(runtime.submit_semantic_action(request));
-    assert_eq!(error.kind(), SubmitSemanticActionErrorKind::UnavailableAction);
+    assert_eq!(
+        error.kind(),
+        SubmitSemanticActionErrorKind::UnavailableAction
+    );
     assert_eq!(error.into_request(), expected);
     assert_eq!(runtime.focus().focused_node(), None);
 }
@@ -170,7 +172,10 @@ fn menu_actions_retain_support_but_reject_disabled_and_inert_named_nodes() {
             );
             let expected = request.clone();
             let error = expect_rejection(runtime.submit_semantic_action(request));
-            assert_eq!(error.kind(), SubmitSemanticActionErrorKind::UnavailableAction);
+            assert_eq!(
+                error.kind(),
+                SubmitSemanticActionErrorKind::UnavailableAction
+            );
             assert_eq!(error.into_request(), expected);
         }
     }
