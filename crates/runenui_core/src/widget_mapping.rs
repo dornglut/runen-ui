@@ -139,7 +139,9 @@ where
         state: &mut dyn Any,
         context: &mut WidgetActivationContext<ParentAction>,
     ) -> Result<WidgetActivationOutput<ParentAction>, WidgetBridgeError> {
-        let mut child_context = WidgetActivationContext::__runtime_new();
+        let mut child_context = WidgetActivationContext::__runtime_new_with_semantic_target(
+            context.semantic_action_target().cloned(),
+        );
         let action = self.child.activate(state, &mut child_context)?;
         transfer_context(child_context, context, &self.mapper);
         Ok(action.map_action(self.mapper.as_ref()))
