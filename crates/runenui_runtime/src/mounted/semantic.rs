@@ -71,13 +71,28 @@ impl From<SemanticStoreIntegrityError> for SemanticReconcileError {
     }
 }
 
-#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SemanticTargetStatus {
     Live,
     Stale,
     Missing,
     Foreign,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SemanticTargetResolution {
+    owner: MountedNodeId,
+    key: SemanticKey,
+}
+
+impl SemanticTargetResolution {
+    pub(crate) const fn owner(&self) -> &MountedNodeId {
+        &self.owner
+    }
+
+    pub(crate) const fn key(&self) -> &SemanticKey {
+        &self.key
+    }
 }
 
 pub(super) struct SemanticStore {
@@ -96,23 +111,36 @@ impl SemanticStore {
         self.arena.live_count()
     }
 
+    pub(super) fn resolve_target(
+        &self,
+        runtime: &RuntimeNamespace,
+        id: &SemanticNodeId,
+    ) -> Result<SemanticTargetResolution, SemanticTargetStatus> {
+        let Some((slot, generation)) = runtime.__runtime_semantic_parts(id) else {
+            return Err(SemanticTargetStatus::Foreign);
+        };
+        let slot = slot as usize;
+        if let Some(record) = self.arena.get(slot, generation) {
+            return Ok(SemanticTargetResolution {
+                owner: record.owner().clone(),
+                key: record.key().clone(),
+            });
+        }
+        if self.arena.contains_slot(slot) {
+            Err(SemanticTargetStatus::Stale)
+        } else {
+            Err(SemanticTargetStatus::Missing)
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn target_status(
         &self,
         runtime: &RuntimeNamespace,
         id: &SemanticNodeId,
     ) -> SemanticTargetStatus {
-        let Some((slot, generation)) = runtime.__runtime_semantic_parts(id) else {
-            return SemanticTargetStatus::Foreign;
-        };
-        let slot = slot as usize;
-        if self.arena.get(slot, generation).is_some() {
-            SemanticTargetStatus::Live
-        } else if self.arena.contains_slot(slot) {
-            SemanticTargetStatus::Stale
-        } else {
-            SemanticTargetStatus::Missing
-        }
+        self.resolve_target(runtime, id)
+            .map_or_else(|status| status, |_| SemanticTargetStatus::Live)
     }
 
     pub(super) fn transaction(&mut self) -> SemanticStoreTransaction<'_> {
