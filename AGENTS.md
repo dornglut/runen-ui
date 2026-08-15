@@ -54,10 +54,22 @@ atomicity/failure semantics, and the renderer/semantic cutover, and removes
 route-bound semantic LogicalScroll authoring while preserving accepted M4 routed
 scrolling.
 
-M5B #48 is the next implementation slice. Its branch may be created only from an
-accepted `main` that already contains the #55 post-merge acceptance/current-
-contract reconciliation. M5B must follow the accepted #55-amended M5 charter and
-matrix and must not recreate semantic LogicalScroll or begin M5C work.
+M5B #48 semantic tree publication and incremental updates is owner-accepted and
+squash-merged. Exact reviewed head
+`3b9db8b37098786cc0d53d38ae5d597c3460c38b` passed exact-head CI #1082 and was
+guarded-squash-merged in PR #58 as
+`43d23aefb81757a516ae569b3e86b9e0f2c71e23`; reviewed head and squash share
+exact tree `1708d2536c6f1d202ac58dd7cb5f3cc97a438517`. The connector-origin merge did
+not emit the normal push workflow event, so the exact squash was independently
+revalidated through the unchanged read-only PR CI path in temporary PR #60; CI
+#1084 attempt 2 passed and PR #60 was closed unmerged.
+
+The mandatory post-M5B authority/current-contract reconciliation is the sole
+current M5 gate. M5C #49 remains blocked until that reconciliation is exact-head
+validated, critically reviewed, explicitly owner-accepted, guarded-merged, and
+accepted-main verified. Do not begin semantic action ingress early, expose a
+public semantic-to-`MountedNodeId` shortcut, recreate semantic LogicalScroll, or
+add a parallel semantic queue/default/trace authority.
 
 A future thread should need only the repository, umbrella issue, and active slice/audit issue to locate current work.
 
