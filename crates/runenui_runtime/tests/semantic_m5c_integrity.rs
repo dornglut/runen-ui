@@ -178,7 +178,10 @@ fn semantic_work_sequence_exhaustion_is_atomic_and_terminal() {
         SubmitSemanticActionErrorKind::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
     );
     assert_eq!(error.into_request(), expected);
-    assert_eq!(runtime.__routed_sequence_state_for_test().1, terminal_trace_state);
+    assert_eq!(
+        runtime.__routed_sequence_state_for_test().1,
+        terminal_trace_state
+    );
     assert_eq!(semantic_binding_count(&runtime), bindings);
 }
 
