@@ -2,7 +2,8 @@ use runenui_core::{MonotonicInstant, SemanticActionTarget};
 
 use crate::{
     TraceActionCategory, TraceActionIdentity, TraceContext, TraceSurfaceContext,
-    TraceSurfaceIngressKind, queue::SemanticCommandQueueTarget,
+    TraceSurfaceIngressKind,
+    queue::SemanticCommandQueueTarget,
     trace::{TraceRecordDraft, TraceReservation},
 };
 
@@ -320,7 +321,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .queue
             .next_sequence()
             .unwrap_or_else(|| unreachable!("command sequence was preflighted"));
-        let causal_parent = self.record_command_acceptance(&command, sequence, trace_reservation)?;
+        let causal_parent =
+            self.record_command_acceptance(&command, sequence, trace_reservation)?;
         let PreflightedCommand {
             target,
             command,
