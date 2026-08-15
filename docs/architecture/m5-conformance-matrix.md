@@ -17,8 +17,9 @@ implementation boundaries and slice order. The accepted
 M5A0 owns the documentation/conformance authority and repository-audit tooling
 gate. It owns no framework behavior row. M5A semantic contribution and
 independent identity is owner-accepted. M5B semantic publication and incremental
-updates are owner-accepted. M5C and later rows remain blocked until their owning
-implementation slices reach their status transitions.
+updates are owner-accepted. M5C has a complete exact-head implementation/proof
+package pending repository-owner acceptance and merge. Later rows remain blocked
+until their owning implementation slices reach their status transitions.
 
 Allowed statuses remain:
 
@@ -56,18 +57,34 @@ normal `push` workflow event, the exact accepted squash was independently
 revalidated through the unchanged read-only pull-request CI path in temporary
 PR #60; CI run `31850376490` / #1084 attempt 2 passed against exact SHA
 `43d23aefb81757a516ae569b3e86b9e0f2c71e23`. PR #60 was closed unmerged.
-Exactly the 19 M5B-owned rows below are therefore `owner-accepted`. This does not
-activate M5C until this post-merge current-contract reconciliation is itself
-owner-accepted, merged, and accepted-main verified.
+Exactly the 19 M5B-owned rows below are therefore `owner-accepted`.
 
-Current reconciled summary for this 53-row authority:
+M5B's mandatory authority/current-contract reconciliation was then explicitly
+owner-accepted at exact reviewed head
+`c154e91b5ba693a27eb61a4745d4184193088d5b`, passed exact-head CI #1089 /
+`31851743216`, and was guarded-squash-merged in PR #61 as
+`afb7f8f363a8df3eb51be1a9bc5f0f180f84190b`. Reviewed head and squash share
+exact tree `e6797fb439d8b181d1532c57090915f2589e57de`, and accepted-main push CI
+#1090 / `31872934604` passed at that exact squash. M5C #49 therefore activated
+from that exact accepted base.
+
+M5C's complete implementation/proof package passed exact-head CI #1166 /
+`31882567707` at proof-evidence head
+`7565a7a3744c50a93cb542549b8c82e6ae548084`. The seven M5C-owned rows below
+are therefore `proof-complete`: implementation, positive/negative proof,
+canonical trace/replay proof, downstream public proof, compile-fail exclusions,
+internal sequence/integrity boundaries, wake atomicity, stable/MSRV validation,
+and repository authority all pass. They remain unaccepted until explicit owner
+acceptance and guarded merge of the final reviewed feature head.
+
+Current candidate summary for this 53-row authority:
 
 ```text
 53 total unique rows
 31 owner-accepted
 0 implementation-complete
-0 proof-complete
-22 blocked
+7 proof-complete
+15 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -118,35 +135,63 @@ Current reconciled summary for this 53-row authority:
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| SEM-ACT-01 | Public semantic action submission accepts exact `SemanticActionRequest { surface: SurfaceId, target: SemanticNodeId, action: SemanticAction }`, admits only current supported/available truth, returns canonical `WorkSequence` on acceptance, and invokes no widget callback at submission time. | Counter surface-scoped semantic-action proof | Node-only/wrong-surface/callback-or-mutation-before-pump proof | Semantic ingress trace | M5C | blocked | Required |
-| SEM-ACT-02 | Accepted semantic-origin work privately preserves exact surface, semantic node/key, mounted-owner lifetime, original action, and mapped existing `SemanticCommand` through the existing command envelope/routed transaction/default path with accessibility origin; no public `MountedNodeId` shortcut or second queue/default engine exists. | Counter + virtual-node convergence/lineage proof | Direct activation, mounted-shortcut, second-queue/default bypass proof | Semantic-to-command causal trace | M5C | blocked | Required |
-| SEM-ACT-03 | Wrong-surface, missing, stale, foreign, index-ambiguous, unresolved, or relevant-dirty targets reject structurally at submission; accepted work revalidates exact surface/lifetime/binding/owner/membership/support/state/readiness at queue front and never retargets a replacement. | Submission + accepted-then-stale rejection corpus | Generation-reuse, cross-surface, owner-only, first/last fallback proof | Semantic rejection trace | M5C | blocked | Required |
-| SEM-ACT-04 | Unsupported actions are distinguished from supported-but-currently-unavailable actions; hidden, inert, composed-disabled, owner-disabled, or action-readiness failures reject without callback/default/mutation while named virtual Activate is not gated by unrelated owner `actionable`. | Support/availability + PRIMARY/named action rejection corpus | Silent no-op, universal-actionable gate, direct-execution proof | Semantic rejection trace | M5C | blocked | Required |
-| SEM-ACT-05 | Mounted-owner integrity/status and canonical queue/closed/terminal/sequence failures return the exact owned semantic request with no partial sequence, wake, callback, focus, widget, or app mutation. | Admission atomicity proof | Capacity/status/sequence partial-commit proof | Canonical semantic rejection trace | M5C | blocked | Required |
-| SEM-ACT-06 | Semantic action trace remains part of the one bounded/redacted canonical trace and serialized replay remains inert observational authority. | Trace/export/replay integration proof | Separate accessibility trace/live replay authority audit | M5 semantic causal trace + replay | M5C | blocked | Required |
-| SEM-ACT-07 | If callbacks invalidate or dirty exact semantic/action authority after queue-front validation, a pending semantic-origin `Activate` or `RequestFocus` default is suppressed fail-closed without synchronous semantic refresh or retarget; delivered callbacks and accepted work sequence remain, and suppression is deterministically traced separately from `prevent_default`. | Callback-invalidated default suppression proof | Refresh/retarget/default-after-invalidation proof | Semantic default-suppression trace | M5C | blocked | Required |
+| SEM-ACT-01 | Public `SemanticActionRequest { surface, target, action }` resolves only against the exact current `SurfaceId` semantic product and support/state authority, then joins the ordinary command FIFO under the existing canonical non-wrapping `WorkSequence` without invoking widget callbacks at submission. | `semantic_m5c_conformance::semantic_activate_enters_the_existing_fifo_route_default_and_update_path` | `semantic_m5c_conformance::foreign_dirty_and_capacity_rejections_are_atomic_and_recover_exact_requests` + `semantic_m5c_integrity` rejection corpus | `semantic_m5c_conformance` exact acceptance/route lineage | M5C | proof-complete | Required |
+| SEM-ACT-02 | Accepted semantic requests retain exact private `SurfaceId` + `SemanticNodeId` + owner-local `SemanticKey` + mounted-owner lifetime + semantic action metadata through the existing M4 command/routed/default path with `EventSource::Accessibility`; public API exposes no mounted routing shortcut, no second dispatcher, and non-semantic/delegated commands do not inherit semantic target metadata. | `semantic_m5c_conformance` exact event/activation metadata proof | Core compile-fail mounted-shortcut exclusion + `non_semantic_and_delegated_commands_never_inherit_semantic_target_metadata` | `SemanticActionBound -> CommandSubmissionAccepted -> RoutedEventStarted` causal proof | M5C | proof-complete | Required |
+| SEM-ACT-03 | Wrong/foreign surface, missing/stale/foreign/absent-current-product semantic target, dirty semantic authority, unsupported exact binding, and accepted-then-invalid queue-front state reject without callback, retarget, synchronous semantic refresh, or first/last fallback. | Current published-target ingress proof in `semantic_m5c_conformance` | Hidden/replaced/foreign/dirty downstream corpus + same-runtime wrong/missing `semantic_m5c_integrity` + accepted M5A no-first/last arena proofs | `accepted_then_replaced_semantic_work_rejects_without_retargeting` processing-rejection trace | M5C | proof-complete | Required |
+| SEM-ACT-04 | Action support/readiness is exact: PRIMARY Activate depends on owner actionable+enabled; named Activate requires authored support plus owner enabled and node non-disabled/non-inert without an unrelated owner actionable gate; RequestFocus is PRIMARY-only and uses current M4 Focusable/Automatic eligibility; menu/context actions require exact support/state but no actionable gate. | `semantic_m5c_conformance` PRIMARY/named/focus/menu corpus | `semantic_m5c_action_readiness` + disabled/inert/named mismatch corpus | Typed `UnsupportedAction` / `UnavailableAction` evidence and canonical routed outcomes | M5C | proof-complete | Required |
+| SEM-ACT-05 | Mounted-owner integrity/status plus queue/runtime/work/trace capacity remain fail-closed and transactional; rejection returns the exact owned request and introduces no partial callback, mutation, accepted semantic trace lineage, or extra wake. | Successful canonical FIFO submission proof | `semantic_m5c_integrity` same-runtime identity, full-queue, work/trace exhaustion, terminal, sequence/reservation, callback/mutation, and wake-atomicity corpus + downstream Full/Closed proof | Canonical `RuntimeTerminal` lifecycle proof where applicable and zero `SemanticActionBound` on rejected admission | M5C | proof-complete | Required |
+| SEM-ACT-06 | Semantic action acceptance/rejection/default outcomes extend the same bounded/redacted canonical trace and exported schema, preserve exact work/causal lineage, and remain replay observation only rather than a second behavior engine. | `semantic_trace_exports_and_replays_as_inert_canonical_observation` | Trace exhaustion/reservation integrity proof + existing M4 redaction/unknown-kind replay policy | Semantic binding/rejection/default export tokens + inert `TraceReplay` correlation | M5C | proof-complete | Required |
+| SEM-ACT-07 | After routed callbacks but before semantic Activate or RequestFocus default mutation, runtime revalidates exact accepted semantic owner/key/action/current-authority facts without synchronous refresh; callback-caused invalidation suppresses the default deterministically under the accepted `WorkSequence` and is distinguishable from explicit `prevent_default`. | `callback_invalidated_activate_and_prevent_default_have_distinct_trace_outcomes` + `callback_invalidated_request_focus_suppresses_focus_default_without_refresh` | No-refresh/default-mutation assertions in downstream corpus | Distinct `SemanticDefaultTargetInvalidated` versus `SemanticDefaultSuppressed` trace proof | M5C | proof-complete | Required |
 
-## M5D — public deterministic headless testing
-
-| ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
-|---|---|---|---|---|---|---|---|
-| TEST-01 | `runenui_testing` is a genuine downstream crate depending only on public core/runtime APIs and no `internal-test-seams` or doc-hidden mutation bridge. | Workspace dependency/public API audit | Private seam/feature enablement compile audit | Repository authority audit | M5D | blocked | Required |
-| TEST-02 | Public harness mounts with deterministic defaults or explicit config and delegates bounded pumping and deterministic time to `AppRuntime`. | Harness lifecycle/time proof | Hidden runtime authority/unbounded loop proof | Public pump/time reports | M5D | blocked | Required |
-| TEST-03 | Any settle convenience takes an explicit finite budget and returns structured quiescent/exhausted/closed/terminal outcome. | Settle budget proof | Infinite/implicit pumping proof | Pump outcome diagnostics | M5D | blocked | Required |
-| TEST-04 | Semantic queries return deterministic match sets or structured unique-match results distinguishing missing from ambiguous. | Query corpus | First/last arbitrary selection proof | Query diagnostics | M5D | blocked | Required |
-| TEST-05 | Harness semantic action helpers act only on an exact semantic ID or a query proven unique and delegate to M5C public semantic ingress. | Counter semantic query/action proof | Ambiguous-query action/direct activation proof | Canonical semantic trace | M5D | blocked | Required |
-| TEST-06 | Pointer, keyboard, committed text/composition, automation, controller commands, and direct app actions use ordinary public runtime ingress rather than callback injection. | Multi-source harness integration proof | Private injection/bypass compile audit | Existing canonical trace families | M5D | blocked | Required |
-| TEST-07 | Harness exposes typed read-only semantic, layout, hit/current-paint, focus, app-state, reconciliation, trace, and replay observations without parallel expected runtime state. | Public assertion/inspection proof | Parallel expectation registry/mutation proof | Public diagnostic products | M5D | blocked | Required |
-| TEST-08 | Counter and a genuine external widget pass keyboard-only, semantic/accessibility-action-only, normalized-controller-only, and applicable pointer deterministic interaction tests through the public harness. | Counter + external-widget scenario suite | Source-specific bypass/no-device-translation proof | Canonical multi-source trace | M5D | blocked | Required |
-| TEST-09 | Serialized M4D3 JSONL replay integrates into public testing as offline causal observation and cannot convert replay identities into live runtime authority. | Harness replay proof | Replay-to-live conversion/submit proof | Replay diagnostics | M5D | blocked | Required |
-
-## M5E — integration, migration, and milestone closure
+## M5D — public deterministic headless testing harness
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| M5-MIG-01 | `WidgetSemanticProof` and every parallel M2 semantic callback/payload compatibility authority are removed after the production semantic cutover. | Repository migration audit | Removed-symbol/alias compile proof | Repository authority audit | M5E | blocked | Required |
-| M5-MIG-02 | Renderer-facing `SurfaceFrame`/debug renderer no longer own production semantics and `SemanticNodeId` allocation is no longer coupled to mounted arena allocation. | Source/public API audit | Mixed-product/mounted-coupling proof | Repository authority audit | M5E | blocked | Required |
-| M5-MIG-03 | No direct semantic activation, parallel semantic queue/trace/runtime, private-testing bypass, or compatibility alias survives M5. | Repository source/authority audit | Compile/API bypass and private-seam proof | Repository authority audit | M5E | blocked | Required |
-| M5-CLOSE-01 | Counter and genuine downstream custom widgets prove the complete semantic identity/tree/update/action and deterministic public-harness pipeline across all accepted source families. | Integrated public-only M5 conformance suite | Bypass/source-specific divergence proof | Complete M5 canonical trace/replay evidence | M5E | blocked | Required |
-| M5-CLOSE-02 | A source-grounded adapter review proves the accepted RunenUI semantic snapshot/update/action model maps coherently to the then-current AccessKit model without making AccessKit authoritative or adding a native bridge. | M5E adapter mapping review | Unsupported-action/no-op/platform-leak audit | Adapter compatibility record | M5E | blocked | Required |
-| M5-CLOSE-03 | Every then-current M5-specific required row plus inherited `ACCESS-01`/`ACCESS-02` is owner-accepted at one exact stable/MSRV head; current docs are truthful, exact-head CI and critical review pass, guarded merge/content identity is verified, and only then M6 becomes active. | Final M5 matrix + accepted-head verification | Premature M6/status/authority proof | Final repository/CI/acceptance evidence | M5E | blocked | Required |
+| TEST-HARNESS-01 | Public headless harness can mount arbitrary downstream `UiApp`, inject pointer/keyboard/text/composition/semantic action through public types, pump explicit budgets, and inspect state/semantic/frame/trace products. | Downstream harness conformance | Private-test-seam dependency audit | Harness diagnostics | M5D | blocked | Required |
+| TEST-HARNESS-02 | Harness owns a manually advanced `MonotonicInstant` test clock and exposes no wall-clock dependency. | Manual-clock conformance | Wall-clock/sleep exclusion audit | Logical-time trace proof | M5D | blocked | Required |
+| TEST-HARNESS-03 | `run_until_idle` stops when one complete pump iteration processes zero envelopes and starts zero work; redraw debt, pending invalidation alone, dormant future timers, externally pending work, and unbounded self-requeue are deterministic stopped/limited outcomes rather than reasons to block forever. | Idle-state corpus | Busy-wait/runaway cap proof | Idle/limit diagnostics | M5D | blocked | Required |
+| TEST-HARNESS-04 | Harness uses a deterministic configurable fixed-size rectangular layout/measurement model by default, including child order/placement for route/focus/pointer tests, while custom intrinsic measurement remains explicitly injectable through public host-facing APIs. | Fixed-layout corpus | Zero-size-only/default-magic rejection | Measurement/layout diagnostics | M5D | blocked | Required |
+| TEST-HARNESS-05 | Harness supplies public helpers for semantic current/delta/full-resync inspection, trace export/replay/redaction, invalid-ingress construction where public types permit it, pointer/context construction, and sequence/order inspection without exposing mounted internals. | Public helper conformance | Mounted-arena/private-seam leakage audit | Harness/replay diagnostics | M5D | blocked | Required |
+| TEST-SEM-01 | Harness can inject semantic actions by exact public `SemanticNodeId` + `SurfaceId` and observe canonical command/default/update results. | Public semantic-action harness proof | Direct-mounted-command bypass audit | Harness trace proof | M5D | blocked | Required |
+| TEST-POINTER-01 | Harness can construct valid current surface input context and inject pointer ingress without private constructors. | Public pointer harness proof | Private-constructor dependency audit | Pointer ingress trace proof | M5D | blocked | Required |
+| TEST-FOCUS-01 | Harness can deterministically prove focus traversal/restoration through public commands and fixed layout geometry. | Public focus harness proof | Synthetic private focus geometry audit | Focus trace proof | M5D | blocked | Required |
+| TEST-TIME-01 | Harness can advance logical time and deterministically prove timers/long-press/time-dependent behavior without sleeping. | Logical-time timer proof | Wall-clock/sleep audit | Scheduler trace proof | M5D | blocked | Required |
+| TEST-SCHED-01 | Harness reports deterministic ready-vs-pending external work and remains compatible with bounded pump/start budgets. | Scheduler harness proof | Unbounded execution audit | Scheduler trace proof | M5D | blocked | Required |
+
+## M5E — integrated conformance, migration, and closure
+
+| ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
+|---|---|---|---|---|---|---|---|
+| M5-INTEG-01 | At least one downstream custom widget contributes semantics, composes through a mapped component, publishes a tree, receives a semantic action, and is driven end-to-end through the public harness. | Downstream end-to-end semantic test | Built-in/private-path-only audit | End-to-end trace proof | M5E | blocked | Required |
+| M5-INTEG-02 | Accessibility-like action, pointer activation, keyboard activation, automation activation, and programmatic activation converge on the same command/event/default/action architecture without duplicate action-engine paths. | Cross-origin convergence matrix | Origin-specific bypass audit | Cross-origin trace comparison | M5E | blocked | Required |
+| M5-INTEG-03 | Current-counter example exercises semantic snapshot inspection, semantic activation, public harness pumping, and trace/replay evidence after migration. | Counter M5 closure test | Hidden private-test API audit | Counter trace/replay proof | M5E | blocked | Required |
+| M5-INTEG-04 | M5 removes or documents any superseded public testing helpers, old semantic stubs, compatibility aliases, and dead architecture text before acceptance. | Repository/public-API audit | Stale-symbol/stale-doc scan | Repository authority audit | M5E | blocked | Required |
+| M5-INTEG-05 | All M5-specific matrix rows plus inherited M4 `ACCESS-01` and `ACCESS-02` are owner-accepted and stable/MSRV CI is green. | Final matrix/status audit | Blocked/incomplete-row audit | Final acceptance evidence | M5E | blocked | Required |
+
+## Repository-wide aggregate after M5A/M5B acceptance and M5C proof completion
+
+The repository-wide permanent inventory is now:
+
+```text
+290 total unique rows
+266 owner-accepted
+0 implementation-complete
+9 proof-complete
+15 blocked
+0 duplicate IDs
+0 invalid statuses
+0 invalid schemas
+```
+
+The aggregate consists of the accepted M4 matrix plus this accepted M5 matrix.
+M5C proof completion also promotes inherited M4 `ACCESS-01` and `ACCESS-02` to
+`proof-complete`; no permanent acceptance ID is duplicated.
+
+## Reconciliation rule
+
+After each M5 implementation slice reaches `owner-accepted`, perform a separate
+reviewed current-contract reconciliation before the next slice starts. The
+reconciliation updates this matrix, roadmap/status map, feature support,
+architecture/public API where needed, execution tracking, umbrella issue, and
+slice issue to one accepted story. A completed feature without that
+reconciliation does not activate the successor slice.
