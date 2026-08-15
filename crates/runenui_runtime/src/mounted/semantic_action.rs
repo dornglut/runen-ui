@@ -1,6 +1,4 @@
-use runenui_core::{
-    Focusability, MountedNodeId, SemanticKey, SemanticNodeId, WidgetActivation,
-};
+use runenui_core::{Focusability, MountedNodeId, SemanticKey, SemanticNodeId, WidgetActivation};
 
 use super::{
     CachedCapability, CachedSemanticContribution, MountedTree, TargetStatus,
