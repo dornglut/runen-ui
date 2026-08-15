@@ -132,7 +132,10 @@ fn same_runtime_wrong_surface_and_missing_target_reject_without_admission_side_e
 fn semantic_work_sequence_exhaustion_is_atomic_and_terminal() {
     let mut runtime = runtime();
     let request = current_request(&mut runtime);
-    let trace_before = runtime.__routed_sequence_state_for_test().1;
+    let trace_before = runtime
+        .__routed_sequence_state_for_test()
+        .1
+        .unwrap_or_else(|| unreachable!("trace sequence authority is live before exhaustion"));
     let bindings = semantic_binding_count(&runtime);
     runtime.__seed_next_work_sequence_for_test(0);
 
@@ -145,20 +148,37 @@ fn semantic_work_sequence_exhaustion_is_atomic_and_terminal() {
     assert_eq!(error.into_request(), expected.clone());
     let sequence_state = runtime.__routed_sequence_state_for_test();
     assert_eq!(sequence_state.0, None);
-    assert_eq!(sequence_state.1, trace_before);
+    assert_eq!(
+        sequence_state.1,
+        Some(
+            trace_before
+                .checked_add(1)
+                .unwrap_or_else(|| unreachable!("test trace sequence does not overflow"))
+        )
+    );
     assert_eq!(semantic_binding_count(&runtime), bindings);
     assert_eq!(runtime.state().activation_calls.get(), 0);
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
     );
+    assert!(runtime.trace().records().any(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::RuntimeTerminal {
+                reason: RuntimeTerminalReason::WorkSequenceExhausted
+            }
+        )
+    }));
 
+    let terminal_trace_state = runtime.__routed_sequence_state_for_test().1;
     let error = expect_rejection(runtime.submit_semantic_action(expected.clone()));
     assert_eq!(
         error.kind(),
         SubmitSemanticActionErrorKind::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
     );
     assert_eq!(error.into_request(), expected);
+    assert_eq!(runtime.__routed_sequence_state_for_test().1, terminal_trace_state);
     assert_eq!(semantic_binding_count(&runtime), bindings);
 }
 
