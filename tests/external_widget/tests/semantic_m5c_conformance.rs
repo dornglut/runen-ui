@@ -110,11 +110,6 @@ impl ProbeConfig {
         self
     }
 
-    const fn with_primary(mut self, primary: NodeAvailability) -> Self {
-        self.primary = primary;
-        self
-    }
-
     const fn with_named(mut self, named: NodeAvailability) -> Self {
         self.named = named;
         self
@@ -230,7 +225,6 @@ fn apply_callback_mode(
         return;
     }
     match mode {
-        CallbackMode::None => {}
         CallbackMode::InvalidateSemanticDefault
             if matches!(
                 command.command(),
@@ -251,7 +245,8 @@ fn apply_callback_mode(
         CallbackMode::InvalidateLayout if command.command() == SemanticCommand::OpenMenu => {
             context.invalidate(WidgetInvalidation::LAYOUT);
         }
-        CallbackMode::InvalidateSemanticDefault
+        CallbackMode::None
+        | CallbackMode::InvalidateSemanticDefault
         | CallbackMode::PreventActivateDefault
         | CallbackMode::DelegateContextMenu
         | CallbackMode::InvalidateLayout => {}
