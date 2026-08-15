@@ -12,5 +12,6 @@ use super::{
 mod configuration;
 mod pointer;
 mod publication;
+mod semantic;
 mod submission;
 mod surface;
