@@ -9,13 +9,12 @@ use runenui_core::{
     CommandDerivation, CommandOrigin, Element, EventContext, EventPhase, EventSource, IntoEffects,
     NoHostProtocol, SemanticAction, SemanticActionRequest, SemanticActionTarget, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
-    SemanticRole, SemanticState, UiApp, UiEvent, View, Widget, WidgetActivation,
+    SemanticRole, SemanticState, StyleTokens, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, RuntimeConfig, SemanticNodeId,
-    StyleTokens, SubmitSemanticActionErrorKind, SurfaceBuildContext, SurfaceId, TraceRecordKind,
-    TraceReplay,
+    SubmitSemanticActionErrorKind, SurfaceBuildContext, SurfaceId, TraceRecordKind, TraceReplay,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -95,14 +94,12 @@ impl Widget<ProbeAction> for ProbeWidget {
         let Some(command) = event.as_semantic_command() else {
             return WidgetEventOutput::none();
         };
-        self.event_observations
-            .borrow_mut()
-            .push(EventObservation {
-                command: command.command(),
-                source: command.origin().source(),
-                derivation: command.origin().derivation(),
-                semantic_target: command.semantic_action_target().cloned(),
-            });
+        self.event_observations.borrow_mut().push(EventObservation {
+            command: command.command(),
+            source: command.origin().source(),
+            derivation: command.origin().derivation(),
+            semantic_target: command.semantic_action_target().cloned(),
+        });
         if context.phase() == EventPhase::Target {
             if self.config.invalidate_default
                 && matches!(
@@ -151,11 +148,7 @@ impl Widget<ProbeAction> for ProbeWidget {
         WidgetActivationOutput::action(ProbeAction::Activated)
     }
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         self.semantic_callbacks.set(
             self.semantic_callbacks
                 .get()
@@ -414,7 +407,10 @@ fn semantic_activate_enters_the_existing_fifo_route_default_and_update_path() {
     assert_eq!(runtime.state().application_updates, 1);
 }
 
-fn assert_semantic_trace_lineage(runtime: &AppRuntime<ProbeApp>, work: runenui_runtime::WorkSequence) {
+fn assert_semantic_trace_lineage(
+    runtime: &AppRuntime<ProbeApp>,
+    work: runenui_runtime::WorkSequence,
+) {
     let bound = runtime
         .trace()
         .records()
@@ -456,12 +452,16 @@ fn assert_semantic_trace_lineage(runtime: &AppRuntime<ProbeApp>, work: runenui_r
 fn named_activation_is_not_gated_by_owner_actionable_but_availability_is_exact() {
     let mut passive = runtime(ProbeConfig::passive());
     let passive_targets = publish(&mut passive);
-    assert!(!passive_targets
-        .primary_actions
-        .contains(&SemanticAction::Activate));
-    assert!(passive_targets
-        .named_actions
-        .contains(&SemanticAction::Activate));
+    assert!(
+        !passive_targets
+            .primary_actions
+            .contains(&SemanticAction::Activate)
+    );
+    assert!(
+        passive_targets
+            .named_actions
+            .contains(&SemanticAction::Activate)
+    );
     let primary_error = passive
         .submit_semantic_action(request(
             &passive_targets,
@@ -486,9 +486,11 @@ fn named_activation_is_not_gated_by_owner_actionable_but_availability_is_exact()
     let mut disabled = runtime(ProbeConfig::disabled_actionable());
     let disabled_targets = publish(&mut disabled);
     assert!(disabled_targets.primary_disabled);
-    assert!(disabled_targets
-        .primary_actions
-        .contains(&SemanticAction::Activate));
+    assert!(
+        disabled_targets
+            .primary_actions
+            .contains(&SemanticAction::Activate)
+    );
     let error = disabled
         .submit_semantic_action(request(
             &disabled_targets,
@@ -496,14 +498,21 @@ fn named_activation_is_not_gated_by_owner_actionable_but_availability_is_exact()
             SemanticAction::Activate,
         ))
         .unwrap_err();
-    assert_eq!(error.kind(), SubmitSemanticActionErrorKind::UnavailableAction);
+    assert_eq!(
+        error.kind(),
+        SubmitSemanticActionErrorKind::UnavailableAction
+    );
 
     let mut named_config = ProbeConfig::passive();
     named_config.named_disabled = true;
     let mut named_disabled = runtime(named_config);
     let named_targets = publish(&mut named_disabled);
     assert!(named_targets.named_disabled);
-    assert!(named_targets.named_actions.contains(&SemanticAction::Activate));
+    assert!(
+        named_targets
+            .named_actions
+            .contains(&SemanticAction::Activate)
+    );
     let error = named_disabled
         .submit_semantic_action(request(
             &named_targets,
@@ -511,7 +520,10 @@ fn named_activation_is_not_gated_by_owner_actionable_but_availability_is_exact()
             SemanticAction::Activate,
         ))
         .unwrap_err();
-    assert_eq!(error.kind(), SubmitSemanticActionErrorKind::UnavailableAction);
+    assert_eq!(
+        error.kind(),
+        SubmitSemanticActionErrorKind::UnavailableAction
+    );
 }
 
 #[test]
@@ -520,9 +532,11 @@ fn request_focus_and_menu_actions_follow_existing_command_semantics() {
     explicit_config.explicit_focus = true;
     let mut explicit = runtime(explicit_config);
     let explicit_targets = publish(&mut explicit);
-    assert!(explicit_targets
-        .primary_actions
-        .contains(&SemanticAction::RequestFocus));
+    assert!(
+        explicit_targets
+            .primary_actions
+            .contains(&SemanticAction::RequestFocus)
+    );
     explicit
         .submit_semantic_action(request(
             &explicit_targets,
@@ -531,7 +545,10 @@ fn request_focus_and_menu_actions_follow_existing_command_semantics() {
         ))
         .unwrap_or_else(|_| unreachable!("explicit focus target is admitted"));
     pump_one(&mut explicit);
-    assert_eq!(explicit.focus().focused_node(), Some(&explicit_targets.owner));
+    assert_eq!(
+        explicit.focus().focused_node(),
+        Some(&explicit_targets.owner)
+    );
 
     let mut automatic = runtime(ProbeConfig::actionable());
     let automatic_targets = publish(&mut automatic);
@@ -543,7 +560,10 @@ fn request_focus_and_menu_actions_follow_existing_command_semantics() {
         ))
         .unwrap_or_else(|_| unreachable!("automatic actionable focus target is admitted"));
     pump_one(&mut automatic);
-    assert_eq!(automatic.focus().focused_node(), Some(&automatic_targets.owner));
+    assert_eq!(
+        automatic.focus().focused_node(),
+        Some(&automatic_targets.owner)
+    );
 
     automatic.state().event_observations.borrow_mut().clear();
     for action in [SemanticAction::OpenMenu, SemanticAction::OpenContextMenu] {
@@ -708,7 +728,10 @@ fn callback_invalidated_default_and_explicit_prevention_have_distinct_trace_outc
     }));
     assert!(!invalidating.trace().records().any(|record| {
         record.work_sequence() == Some(accepted.sequence())
-            && matches!(record.kind(), TraceRecordKind::SemanticDefaultSuppressed { .. })
+            && matches!(
+                record.kind(),
+                TraceRecordKind::SemanticDefaultSuppressed { .. }
+            )
     }));
 
     let mut prevented_config = ProbeConfig::actionable();
@@ -758,9 +781,11 @@ fn non_semantic_and_delegated_commands_never_inherit_semantic_target_metadata() 
         )
         .unwrap_or_else(|_| unreachable!("ordinary accessibility command is admitted"));
     pump_one(&mut runtime);
-    assert!(runtime.state().event_observations.borrow()[0]
-        .semantic_target
-        .is_none());
+    assert!(
+        runtime.state().event_observations.borrow()[0]
+            .semantic_target
+            .is_none()
+    );
 
     runtime.state().event_observations.borrow_mut().clear();
     runtime
@@ -802,10 +827,14 @@ fn semantic_trace_exports_and_replays_as_inert_canonical_observation() {
         .unwrap_or_else(|_| unreachable!("canonical semantic trace remains replay-compatible"));
     assert!(replay.records().any(|record| {
         record.kind().as_str() == "semantic_action_bound"
-            && record.work_sequence().is_some_and(|work| work.get() == accepted.sequence().get())
+            && record
+                .work_sequence()
+                .is_some_and(|work| work.get() == accepted.sequence().get())
     }));
     assert!(replay.records().any(|record| {
         record.kind().as_str() == "routed_event_committed"
-            && record.work_sequence().is_some_and(|work| work.get() == accepted.sequence().get())
+            && record
+                .work_sequence()
+                .is_some_and(|work| work.get() == accepted.sequence().get())
     }));
 }
