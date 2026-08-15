@@ -3,6 +3,7 @@
 use crate::{
     CommittedTextEvent, CompositionEvent, FocusDirection, FocusEvent, KeyboardEvent,
     LogicalScrollCommand, PointerBoundaryEvent, PointerCaptureEvent, PointerEvent,
+    SemanticActionTarget,
 };
 
 /// Phase of one mounted route invocation.
@@ -274,13 +275,33 @@ impl UiEvent {
 pub struct SemanticCommandEvent {
     command: SemanticCommand,
     origin: CommandOrigin,
+    semantic_target: Option<SemanticActionTarget>,
 }
 
 impl SemanticCommandEvent {
     #[doc(hidden)]
     #[must_use]
     pub const fn __runtime_new(command: SemanticCommand, origin: CommandOrigin) -> Self {
-        Self { command, origin }
+        Self {
+            command,
+            origin,
+            semantic_target: None,
+        }
+    }
+
+    /// Creates the semantic-command payload for one admitted semantic-node request.
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_new_with_semantic_target(
+        command: SemanticCommand,
+        origin: CommandOrigin,
+        semantic_target: SemanticActionTarget,
+    ) -> Self {
+        Self {
+            command,
+            origin,
+            semantic_target: Some(semantic_target),
+        }
     }
 
     #[must_use]
@@ -291,6 +312,15 @@ impl SemanticCommandEvent {
     #[must_use]
     pub const fn origin(&self) -> CommandOrigin {
         self.origin
+    }
+
+    /// Borrows exact semantic-origin metadata when this command came from
+    /// [`crate::SemanticActionRequest`] admission.
+    ///
+    /// Ordinary and delegated semantic commands carry `None`.
+    #[must_use]
+    pub const fn semantic_action_target(&self) -> Option<&SemanticActionTarget> {
+        self.semantic_target.as_ref()
     }
 }
 
@@ -351,6 +381,7 @@ mod tests {
             .unwrap_or_else(|| unreachable!("the test event is a semantic command"));
         assert_eq!(command.command(), SemanticCommand::Activate);
         assert_eq!(command.origin(), direct);
+        assert!(command.semantic_action_target().is_none());
         assert!(event.as_pointer().is_none());
     }
 

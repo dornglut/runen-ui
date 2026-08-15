@@ -181,6 +181,22 @@
 //! let _ = button("Save").on_press(());
 //! ```
 //!
+//! Semantic actions have no semantic scrolling alias:
+//!
+//! ```compile_fail
+//! use runenui_core::SemanticAction;
+//! let _ = SemanticAction::LogicalScroll;
+//! ```
+//!
+//! Semantic-origin callback metadata exposes no mounted routing identity:
+//!
+//! ```compile_fail
+//! use runenui_core::SemanticActionTarget;
+//! fn mounted_target(target: &SemanticActionTarget) {
+//!     let _ = target.mounted_node_id();
+//! }
+//! ```
+//!
 //! Semantic activation creates fresh owned actions without a clone bound:
 //!
 //! ```
@@ -207,6 +223,7 @@ mod pointer;
 pub mod prelude;
 mod runtime_protocol;
 mod semantic;
+mod semantic_action;
 mod style;
 mod style_resolution;
 mod style_tokens;
@@ -284,6 +301,7 @@ pub use semantic::{
     SemanticNodeContribution, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
     SemanticRole, SemanticState, SemanticText, SemanticValue,
 };
+pub use semantic_action::{SemanticActionRequest, SemanticActionTarget};
 pub use style::{
     Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,
     SpacingValue, StyleIntent, TokenId,

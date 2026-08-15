@@ -1,6 +1,6 @@
 use runenui_core::{
-    __runtime::WidgetBridgeError, WidgetActivation, WidgetActivationContext, WidgetInvalidation,
-    WidgetTextInput,
+    __runtime::WidgetBridgeError, SemanticActionTarget, WidgetActivation, WidgetActivationContext,
+    WidgetInvalidation, WidgetTextInput,
 };
 #[cfg(test)]
 use runenui_core::{
@@ -101,6 +101,7 @@ impl<Action> MountedTree<Action> {
         &mut self,
         id: &MountedNodeId,
         output_allowance: usize,
+        semantic_target: Option<SemanticActionTarget>,
     ) -> Result<MountedActivationOutput<Action>, WidgetBridgeError> {
         let node = self
             .node_mut(id)
@@ -108,7 +109,10 @@ impl<Action> MountedTree<Action> {
         if state_is_corrupted(node) {
             return Err(WidgetBridgeError::StatePayloadMismatch);
         }
-        let mut context = WidgetActivationContext::__runtime_new_bounded(output_allowance);
+        let mut context = WidgetActivationContext::__runtime_new_bounded_with_semantic_target(
+            output_allowance,
+            semantic_target,
+        );
         let activation = node.widget.activate(&mut node.state, &mut context)?;
         let invalidation = context.__runtime_take_invalidation();
         let subscription_invalidation = context.__runtime_take_subscription_invalidation();

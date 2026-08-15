@@ -9,10 +9,10 @@ use crate::{
     TraceAutomationRecordRole, TraceDeliveryOutcome, TraceEventFamily, TraceFocusBoundaryOutcome,
     TraceFocusRecordRole, TraceInputRecordRole, TracePointerCaptureRequestKind,
     TracePointerCaptureRequestRejection, TracePointerRecordRole, TracePointerRejection,
-    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSinkDeliveryOutcome,
-    TraceSpaceCleanupReason, TraceSurfaceIngressKind, TraceSurfaceRejection,
-    TraceSurfaceSnapshotKind, TraceTargetRejection, TraceTimerTerminalOutcome, TraceWorkFamily,
-    TraceWorkStartRefusal,
+    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
+    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTargetRejection,
+    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkStartRefusal,
 };
 
 pub(super) const fn event_phase(value: EventPhase) -> &'static str {
@@ -262,6 +262,24 @@ pub(super) const fn target_rejection(value: TraceTargetRejection) -> &'static st
         TraceTargetRejection::Foreign => "foreign",
         TraceTargetRejection::Stale => "stale",
         TraceTargetRejection::Missing => "missing",
+    }
+}
+
+pub(super) const fn semantic_action_rejection(value: TraceSemanticActionRejection) -> &'static str {
+    match value {
+        TraceSemanticActionRejection::Closed => "closed",
+        TraceSemanticActionRejection::Terminal => "terminal",
+        TraceSemanticActionRejection::ForeignSurface => "foreign_surface",
+        TraceSemanticActionRejection::WrongSurface => "wrong_surface",
+        TraceSemanticActionRejection::ForeignTarget => "foreign_target",
+        TraceSemanticActionRejection::StaleTarget => "stale_target",
+        TraceSemanticActionRejection::MissingTarget => "missing_target",
+        TraceSemanticActionRejection::TargetNotInSurface => "target_not_in_surface",
+        TraceSemanticActionRejection::UnsupportedAction => "unsupported_action",
+        TraceSemanticActionRejection::UnavailableAction => "unavailable_action",
+        TraceSemanticActionRejection::StaleAuthority => "stale_authority",
+        TraceSemanticActionRejection::OwnerChanged => "owner_changed",
+        TraceSemanticActionRejection::Integrity => "integrity",
     }
 }
 

@@ -12,5 +12,8 @@ use super::{
 mod configuration;
 mod pointer;
 mod publication;
+mod semantic;
 mod submission;
 mod surface;
+
+pub(in crate::runtime) use semantic::trace_semantic_action_rejection;

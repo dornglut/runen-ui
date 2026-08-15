@@ -1,8 +1,9 @@
 use core::fmt::Write as _;
 
 use runenui_core::{
-    __runtime::RuntimeNamespace, CommandOrigin, LogicalDelta, MountedNodeId, SemanticCommand,
-    SurfaceId, WidgetInvalidation,
+    __runtime::RuntimeNamespace, CommandOrigin, LogicalDelta, MountedNodeId, SemanticAction,
+    SemanticActionTarget, SemanticCommand, SemanticKey, SemanticNodeId, SurfaceId,
+    WidgetInvalidation,
 };
 
 use crate::TraceTarget;
@@ -34,6 +35,19 @@ pub(super) fn optional_mounted_id(
     }
 }
 
+pub(super) fn semantic_id(output: &mut String, runtime: &RuntimeNamespace, id: &SemanticNodeId) {
+    if let Some((slot, generation)) = runtime.__runtime_semantic_parts(id) {
+        output.push_str("{\"scope\":\"local\",\"token\":");
+        let mut token = String::new();
+        write!(&mut token, "n-{slot:08x}-{generation:016x}")
+            .unwrap_or_else(|_| unreachable!("writing to String cannot fail"));
+        json::string(output, &token);
+        output.push('}');
+    } else {
+        output.push_str("{\"scope\":\"foreign\"}");
+    }
+}
+
 pub(super) fn surface_id(output: &mut String, runtime: &RuntimeNamespace, id: &SurfaceId) {
     if let Some((slot, generation)) = runtime.__runtime_surface_parts(id) {
         output.push_str("{\"scope\":\"local\",\"token\":");
@@ -45,6 +59,57 @@ pub(super) fn surface_id(output: &mut String, runtime: &RuntimeNamespace, id: &S
     } else {
         output.push_str("{\"scope\":\"foreign\"}");
     }
+}
+
+pub(super) fn semantic_action_target(
+    output: &mut String,
+    runtime: &RuntimeNamespace,
+    target: &SemanticActionTarget,
+) {
+    output.push('{');
+    json::name(output, "surface");
+    surface_id(output, runtime, target.surface_id());
+    output.push(',');
+    json::name(output, "node");
+    semantic_id(output, runtime, target.target());
+    output.push(',');
+    json::name(output, "key");
+    semantic_key(output, target.semantic_key());
+    output.push(',');
+    json::name(output, "action");
+    semantic_action(output, target.action());
+    output.push('}');
+}
+
+fn semantic_key(output: &mut String, key: &SemanticKey) {
+    output.push('{');
+    json::name(output, "kind");
+    if key.is_primary() {
+        json::string(output, "primary");
+    } else {
+        json::string(output, "named");
+        output.push(',');
+        json::name(output, "value");
+        json::string(
+            output,
+            key.as_str()
+                .unwrap_or_else(|| unreachable!("named semantic key carries text")),
+        );
+    }
+    output.push('}');
+}
+
+fn semantic_action(output: &mut String, action: &SemanticAction) {
+    json::string(
+        output,
+        match action {
+            SemanticAction::Activate => "activate",
+            SemanticAction::RequestFocus => "request_focus",
+            SemanticAction::OpenMenu => "open_menu",
+            SemanticAction::OpenContextMenu => "open_context_menu",
+            _ => "unknown",
+        },
+    );
 }
 
 pub(super) fn target(output: &mut String, runtime: &RuntimeNamespace, target: &TraceTarget) {

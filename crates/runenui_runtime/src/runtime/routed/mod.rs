@@ -9,10 +9,10 @@ use runenui_core::{
     EventSource, HostProtocol, InputModality, SemanticCommandEvent, UiEvent, WidgetInvalidation,
 };
 
-use super::Runtime;
+use super::{Runtime, ingress::trace_semantic_action_rejection};
 use crate::{
     MountedNodeId, TraceContext, TraceEventContext, TraceEventFamily, TraceRecordKind,
-    TraceRouteSnapshot, TraceRoutedIntegrityFailure,
+    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
     queue::SemanticCommandEnvelope,
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
@@ -26,11 +26,33 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target,
             command,
             origin,
+            semantic_target,
             instant,
             causal_parent,
             trace_reservation,
         } = envelope;
-        let facts = RoutedIngressFacts::new(
+        if let Some(semantic_target) = semantic_target.as_ref() {
+            let rejection = match self.revalidate_semantic_action_target(semantic_target) {
+                Ok(owner) if owner == target => None,
+                Ok(_) => Some(TraceSemanticActionRejection::OwnerChanged),
+                Err(kind) => Some(trace_semantic_action_rejection(kind)),
+            };
+            if let Some(outcome) = rejection {
+                self.trace.record_reserved_event(
+                    trace_reservation,
+                    TraceRecordKind::SemanticActionProcessingRejected { outcome },
+                    sequence,
+                    causal_parent,
+                    Some(self.tree.trace_target(&target)),
+                    instant,
+                    &target,
+                    None,
+                    origin,
+                );
+                return;
+            }
+        }
+        let mut facts = RoutedIngressFacts::new(
             sequence,
             target,
             origin,
@@ -39,6 +61,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             causal_parent,
             trace_reservation,
         );
+        if let Some(semantic_target) = semantic_target {
+            facts = facts.with_semantic_target(semantic_target);
+        }
         let Some(mut transaction) = (if is_focus_command(command) {
             self.begin_focus_routed_transaction(facts)
         } else {
@@ -46,7 +71,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }) else {
             return;
         };
-        let event = UiEvent::SemanticCommand(SemanticCommandEvent::__runtime_new(command, origin));
+        let event = UiEvent::SemanticCommand(transaction.semantic_target.as_ref().map_or_else(
+            || SemanticCommandEvent::__runtime_new(command, origin),
+            |semantic_target| {
+                SemanticCommandEvent::__runtime_new_with_semantic_target(
+                    command,
+                    origin,
+                    semantic_target.clone(),
+                )
+            },
+        ));
         let routed = self.invoke_routed_callbacks(&mut transaction, &event, None);
         let defaulted =
             routed.and_then(|()| self.apply_semantic_default(&mut transaction, command));
@@ -185,6 +219,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             sequence: facts.sequence,
             target: facts.target,
             origin: facts.origin,
+            semantic_target: facts.semantic_target,
             instant: facts.instant,
             route,
             pointer_callback_targets,

@@ -130,7 +130,7 @@ exact stale/post-callback revalidation, staged atomic publication and failure
 taxonomy, and clean renderer/semantic cutover. It removes route-bound
 LogicalScroll from `SemanticAction` while preserving accepted M4 routed scrolling.
 
-### M5B accepted feature and current reconciliation gate
+### M5B fully accepted and reconciled; M5C active gate
 
 M5B #48 was implemented in PR #58 from exact accepted base
 `807bd7feb1e796eccd49c0ff024da0f79d1868b1`. Critical review found and corrected
@@ -146,36 +146,43 @@ The repository owner explicitly accepted exact final reviewed head
 exact tree `1708d2536c6f1d202ac58dd7cb5f3cc97a438517`, proving exact repository
 content identity.
 
-The connector-origin merge did not emit the normal `push` workflow event. This
-is recorded as an infrastructure/event-delivery fact, not as successful push CI
-and not as a waiver. The exact accepted squash was independently revalidated
-without source mutation by an ordinary read-only `pull_request` CI run using
-temporary PR #60. CI #1084 / `31850376490`, attempt 2, checked out and proved
-exact SHA `43d23aefb81757a516ae569b3e86b9e0f2c71e23` and passed canonical stable/MSRV
+The connector-origin feature merge did not emit the normal `push` workflow
+event. That event-delivery fact was preserved honestly. The exact accepted
+feature squash was independently revalidated without source mutation through
+temporary PR #60; CI #1084 / `31850376490`, attempt 2, checked out exact SHA
+`43d23aefb81757a516ae569b3e86b9e0f2c71e23` and passed canonical stable/MSRV
 repository validation. PR #60 was closed unmerged after evidence capture.
 
-The sole current M5 execution gate is the mandatory M5B post-merge
-authority/current-contract reconciliation on branch
-`codex/m5b-post-merge-reconciliation`, based exactly on accepted squash
-`43d23aefb81757a516ae569b3e86b9e0f2c71e23`.
+The mandatory M5B authority/current-contract reconciliation was then explicitly
+owner-accepted at exact reviewed head
+`c154e91b5ba693a27eb61a4745d4184193088d5b`. Exact-head CI #1089 /
+`31851743216` passed. PR #61 was guarded-squash-merged as
+`afb7f8f363a8df3eb51be1a9bc5f0f180f84190b`; reviewed head and squash share
+exact tree `e6797fb439d8b181d1532c57090915f2589e57de`. This merge emitted the
+normal default-branch `push` event, and accepted-main CI #1090 /
+`31872934604` passed at exact squash/main. M5B is therefore fully accepted,
+reconciled, accepted-main verified, and #48 is closed.
 
-The reconciliation promotes exactly the 19 M5B-owned rows from
-`proof-complete` to `owner-accepted` and updates current status/support/API
-truth. Its candidate truth is:
+Accepted-main truth after that reconciliation remains:
 
 ```text
 M5:       53 total / 31 owner-accepted / 0 implementation-complete / 0 proof-complete / 22 blocked
 aggregate: 290 total / 266 owner-accepted / 0 implementation-complete / 0 proof-complete / 24 blocked
 ```
 
-M5C #49 remains blocked until this reconciliation is exact-head validated,
-critically reviewed, explicitly owner-accepted, guarded-merged, and accepted-main
-verified. Do not create an M5C implementation branch earlier.
+The sole current M5 execution gate is M5C #49, active from exact accepted base
+`afb7f8f363a8df3eb51be1a9bc5f0f180f84190b` on draft PR #62 / branch
+`codex/m5c-semantic-action-ingress`. Its live head is read from pull-request
+metadata. M5C remains unaccepted until its complete positive, negative,
+trace/replay, downstream, stable/MSRV, and repository-authority proof package is
+exact-head green, critically reviewed, explicitly owner-accepted, guarded-
+merged, and followed by the mandatory accepted-main current-contract
+reconciliation. M5D #50 remains blocked until that sequence completes.
 
 The completed public M4 execution graph is:
 
 - [#2 — public RunenUI authority cutover](https://github.com/dornglut/runen-ui/issues/2);
-- [#11 — deterministic repository structure and authority audit](https://github.com/dornglut/runen-ui/issues/11), after #2;
+- [#11 — deterministic repository structure and authority audit](https://github.com/dornglut/runen-ui/issues/11), after #2 and its readiness freeze;
 - [#4 — M4C3 pointer lifecycle](https://github.com/dornglut/runen-ui/issues/4), after #11 and its readiness freeze;
 - [#5 — M4C4 focus scopes and modality](https://github.com/dornglut/runen-ui/issues/5), after #4;
 - [#6 — M4C5 keyboard, text, IME, automation, and M4C closure](https://github.com/dornglut/runen-ui/issues/6), after #5;
@@ -188,9 +195,9 @@ The accepted M5 implementation sequence remains sequential:
 - [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), accepted and closed;
 - [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), accepted, reconciled, and closed;
 - [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), accepted, reconciled through PR #57, and closed;
-- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), feature owner-accepted and merged in PR #58; post-merge reconciliation is the current gate;
-- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), blocked until accepted M5B reconciliation;
-- [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), after accepted #49;
+- [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), accepted, reconciled through PR #61, accepted-main verified, and closed;
+- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), active from exact accepted base `afb7f8f363a8df3eb51be1a9bc5f0f180f84190b` in draft PR #62;
+- [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), blocked until accepted and reconciled #49;
 - [#51 — M5E integrated conformance, migration, and M5 closure](https://github.com/dornglut/runen-ui/issues/51), after accepted #50.
 
 No later M5 branch begins from an unmerged predecessor or from a feature merge
@@ -201,7 +208,7 @@ Architecture and tooling follow-up:
 
 - [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10) remains open and non-blocking;
 - [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12) is closed; current capacity is sufficient for accepted M5 work;
-- [#59 — M6 readiness: remove whole-SurfaceCache cloning from publication planning](https://github.com/dornglut/runen-ui/issues/59) is open and explicitly non-blocking for M5B; it owns persistent/staged retained-publication work before or during M6 without weakening the accepted M5B atomic publication contract.
+- [#59 — M6 readiness: remove whole-SurfaceCache cloning from publication planning](https://github.com/dornglut/runen-ui/issues/59) is open and explicitly non-blocking for M5B/M5C; it owns persistent/staged retained-publication work before or during M6 without weakening accepted M5 atomic publication contracts.
 
 M4A through M4C2 are accepted imported history. They are recorded in the
 [public-repository migration history](history/public-repository-migration.md)

@@ -1,3 +1,5 @@
+use runenui_core::__runtime::RuntimeNamespace;
+
 use crate::TraceRecordKind;
 
 use super::{json, tokens, value};
@@ -8,6 +10,10 @@ macro_rules! trace_kind_name {
             TraceRecordKind::RuntimeMounted => "runtime_mounted",
             TraceRecordKind::ActionSubmissionAccepted => "action_submission_accepted",
             TraceRecordKind::CommandSubmissionAccepted => "command_submission_accepted",
+            TraceRecordKind::SemanticActionBound { .. } => "semantic_action_bound",
+            TraceRecordKind::SemanticActionProcessingRejected { .. } => {
+                "semantic_action_processing_rejected"
+            }
             TraceRecordKind::PointerSubmissionAccepted { .. } => "pointer_submission_accepted",
             TraceRecordKind::KeyboardSubmissionAccepted => "keyboard_submission_accepted",
             TraceRecordKind::KeyboardSubmissionRejected => "keyboard_submission_rejected",
@@ -101,6 +107,9 @@ macro_rules! trace_kind_name {
             TraceRecordKind::MountedSubscriptionInvalidated => "mounted_subscription_invalidated",
             TraceRecordKind::SemanticDefaultApplied { .. } => "semantic_default_applied",
             TraceRecordKind::SemanticDefaultSuppressed { .. } => "semantic_default_suppressed",
+            TraceRecordKind::SemanticDefaultTargetInvalidated { .. } => {
+                "semantic_default_target_invalidated"
+            }
             TraceRecordKind::RoutedEventCommitted => "routed_event_committed",
             TraceRecordKind::RoutedIntegrityFailed { .. } => "routed_integrity_failed",
             TraceRecordKind::RoutedEventAdmissionRejected { .. } => {
@@ -168,29 +177,62 @@ macro_rules! trace_kind_name {
     };
 }
 
-pub(super) fn encode(output: &mut String, kind: &TraceRecordKind) {
-    output.push('{');
-    json::name(output, "name");
-    json::string(output, name(kind));
-    output.push(',');
-    json::name(output, "data");
-    output.push('{');
-    data(output, kind);
-    output.push_str("}}");
-}
-
-const fn name(kind: &TraceRecordKind) -> &'static str {
+pub(super) const fn name(kind: &TraceRecordKind) -> &'static str {
     trace_kind_name!(kind)
 }
 
-fn data(output: &mut String, kind: &TraceRecordKind) {
-    if encode_input_data(output, kind) || encode_pointer_data(output, kind) {
+pub(super) fn data(output: &mut String, runtime: &RuntimeNamespace, kind: &TraceRecordKind) {
+    output.push('{');
+    encode_data_fields(output, runtime, kind);
+    output.push('}');
+}
+
+fn encode_data_fields(output: &mut String, runtime: &RuntimeNamespace, kind: &TraceRecordKind) {
+    if encode_semantic_data(output, runtime, kind)
+        || encode_input_data(output, kind)
+        || encode_pointer_data(output, kind)
+    {
         return;
     }
     if encode_routed_focus_data(output, kind) {
         return;
     }
     let _ = encode_runtime_data(output, kind);
+}
+
+fn encode_semantic_data(
+    output: &mut String,
+    runtime: &RuntimeNamespace,
+    kind: &TraceRecordKind,
+) -> bool {
+    match kind {
+        TraceRecordKind::SemanticActionBound { target, command } => {
+            json::name(output, "target");
+            value::semantic_action_target(output, runtime, target);
+            output.push(',');
+            json::name(output, "command");
+            value::semantic_command(output, *command);
+        }
+        TraceRecordKind::SemanticActionProcessingRejected { outcome } => {
+            field_str(
+                output,
+                "outcome",
+                tokens::semantic_action_rejection(*outcome),
+            );
+        }
+        TraceRecordKind::SemanticDefaultTargetInvalidated { command, outcome } => {
+            json::name(output, "command");
+            value::semantic_command(output, *command);
+            output.push(',');
+            field_str(
+                output,
+                "outcome",
+                tokens::semantic_action_rejection(*outcome),
+            );
+        }
+        _ => return false,
+    }
+    true
 }
 
 fn encode_input_data(output: &mut String, kind: &TraceRecordKind) -> bool {

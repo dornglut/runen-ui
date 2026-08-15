@@ -122,6 +122,10 @@ impl Trace {
         self.reserve_outcome_with_prefix(MandatoryTracePlan::command_acceptance())
     }
 
+    pub(crate) fn reserve_semantic_action_outcome(&mut self) -> Option<TraceReservation> {
+        self.reserve_outcome_with_prefix(MandatoryTracePlan::semantic_action_acceptance())
+    }
+
     pub(crate) fn reserve_pointer_outcome(&mut self) -> Option<TraceReservation> {
         self.reserve_outcome_with_prefix(MandatoryTracePlan::pointer_acceptance())
     }
