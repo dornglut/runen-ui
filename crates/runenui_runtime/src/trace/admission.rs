@@ -37,6 +37,13 @@ impl MandatoryTracePlan {
         Self::exact(1)
     }
 
+    /// Exact prefix for a semantic action that has passed public admission:
+    /// semantic target binding plus the canonical command acceptance record.
+    /// One future processing outcome is reserved independently by trace storage.
+    pub(crate) const fn semantic_action_acceptance() -> Self {
+        Self::exact(2)
+    }
+
     pub(crate) const fn pointer_acceptance() -> Self {
         Self::exact(1)
     }
