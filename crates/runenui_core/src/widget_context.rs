@@ -235,10 +235,13 @@ macro_rules! work_context {
             pub fn keyed_send_task<Output>(
                 &mut self,
                 key: WorkKey,
-                future: impl Future<Output = Option<Action>> + 'static,
-            ) {
+                future: impl Future<Output = Output> + Send + 'static,
+                map: impl FnOnce(Output) -> Action + 'static,
+            ) where
+                Output: Send + 'static,
+            {
                 if self.__runtime_reserve_output() {
-                    self.work.keyed_local_task(key, future);
+                    self.work.keyed_send_task(key, future, map);
                 }
             }
 
