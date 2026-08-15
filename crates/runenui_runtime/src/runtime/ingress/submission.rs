@@ -369,17 +369,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(SubmitCommandErrorKind::TraceSequenceExhausted);
         }
         match semantic_target {
-            Some(semantic_target) => self
-                .queue
-                .push_semantic_action_preflighted(
-                    target.clone(),
-                    command,
-                    origin,
-                    semantic_target,
-                    instant,
-                    causal_parent,
-                    trace_reservation,
-                ),
+            Some(semantic_target) => self.queue.push_semantic_action_preflighted(
+                target.clone(),
+                command,
+                origin,
+                semantic_target,
+                instant,
+                causal_parent,
+                trace_reservation,
+            ),
             None => self.queue.push_command_preflighted(
                 target.clone(),
                 command,
