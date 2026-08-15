@@ -19,8 +19,8 @@ It must not become a branch or pull-request log.
 [`architecture/m4-conformance-matrix.md`](architecture/m4-conformance-matrix.md)
 owns permanent M4 behavioral acceptance IDs, observable requirements, positive
 proof ownership, negative proof ownership, trace proof ownership, delivery slice,
-status, and gate classification. After M4 closure its two remaining blocked rows
-are M5-owned semantic/accessibility inputs rather than unfinished M4 work.
+status, and gate classification. After M5C acceptance all 237 M4 rows, including
+the inherited `ACCESS-01` and `ACCESS-02` M5 gates, are owner-accepted.
 
 [`architecture/m5-conformance-matrix.md`](architecture/m5-conformance-matrix.md)
 owns the separate M5-specific behavioral acceptance inventory. It deliberately
@@ -95,9 +95,11 @@ complete through M4D3 and the final M4 authority reconciliation. It is historica
 coordination.
 
 M5 uses [issue #45](https://github.com/dornglut/runen-ui/issues/45) as its active
-coordination and pickup authority. M5A0 #46, M5A #47, and readiness amendment
-#55 are accepted and closed, including their required current-contract
-reconciliations.
+coordination and pickup authority. M5A0 #46, M5A #47, readiness amendment #55,
+and M5B #48 are accepted and closed, including their required current-contract
+reconciliations. M5C #49 has an owner-accepted, merged, accepted-main-verified
+feature implementation; its mandatory post-merge reconciliation is the current
+gate.
 
 Accepted M5A evidence remains:
 
@@ -130,7 +132,7 @@ exact stale/post-callback revalidation, staged atomic publication and failure
 taxonomy, and clean renderer/semantic cutover. It removes route-bound
 LogicalScroll from `SemanticAction` while preserving accepted M4 routed scrolling.
 
-### M5B fully accepted and reconciled; M5C active gate
+### M5B fully accepted and reconciled; M5C feature accepted, reconciliation active
 
 M5B #48 was implemented in PR #58 from exact accepted base
 `807bd7feb1e796eccd49c0ff024da0f79d1868b1`. Critical review found and corrected
@@ -163,21 +165,38 @@ normal default-branch `push` event, and accepted-main CI #1090 /
 `31872934604` passed at exact squash/main. M5B is therefore fully accepted,
 reconciled, accepted-main verified, and #48 is closed.
 
-Accepted-main truth after that reconciliation remains:
+M5C #49 was activated from exact accepted M5B reconciliation base
+`afb7f8f363a8df3eb51be1a9bc5f0f180f84190b` and implemented in PR #62. Its
+complete implementation/proof package passed exact-head CI #1166 /
+`31882567707` at proof-evidence head
+`7565a7a3744c50a93cb542549b8c82e6ae548084`. Final reviewed head
+`504899b79059eb94ad4474d67bba1e27eb30b374` then passed exact-head CI #1170 /
+`31889342640` and final critical review. The repository owner explicitly accepted
+that exact head.
+
+PR #62 was guarded-squash-merged pinned to the accepted head as
+`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. Reviewed head and squash share
+exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, proving exact repository
+content identity. `main` points to that exact squash, and accepted-main push CI
+#1171 / `31903354382` passed on the exact squash.
+
+Accepted feature truth after M5C is therefore:
 
 ```text
-M5:       53 total / 31 owner-accepted / 0 implementation-complete / 0 proof-complete / 22 blocked
-aggregate: 290 total / 266 owner-accepted / 0 implementation-complete / 0 proof-complete / 24 blocked
+M5:       53 total / 38 owner-accepted / 0 implementation-complete / 0 proof-complete / 15 blocked
+aggregate: 290 total / 275 owner-accepted / 0 implementation-complete / 0 proof-complete / 15 blocked
+M4:       237 total / 237 owner-accepted / 0 proof-complete / 0 blocked
 ```
 
-The sole current M5 execution gate is M5C #49, active from exact accepted base
-`afb7f8f363a8df3eb51be1a9bc5f0f180f84190b` on draft PR #62 / branch
-`codex/m5c-semantic-action-ingress`. Its live head is read from pull-request
-metadata. M5C remains unaccepted until its complete positive, negative,
-trace/replay, downstream, stable/MSRV, and repository-authority proof package is
-exact-head green, critically reviewed, explicitly owner-accepted, guarded-
-merged, and followed by the mandatory accepted-main current-contract
-reconciliation. M5D #50 remains blocked until that sequence completes.
+The sole current M5 execution gate is M5C's mandatory post-merge authority/
+current-contract reconciliation. Its branch is
+`codex/m5c-authority-reconciliation`, created from exact accepted feature squash
+`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. The reconciliation must record the
+accepted M5C/M4 ACCESS truth across current-contract authority, pass exact-head
+CI and final critical review, receive explicit repository-owner acceptance of its
+exact reviewed head, and only then be guarded-squash-merged and accepted-main
+verified. #49 remains open for that reconciliation only. M5D #50 remains blocked
+until this sequence completes.
 
 The completed public M4 execution graph is:
 
@@ -196,7 +215,7 @@ The accepted M5 implementation sequence remains sequential:
 - [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), accepted, reconciled, and closed;
 - [#55 — M5 readiness semantic publication/focus/virtual-action authority amendment](https://github.com/dornglut/runen-ui/issues/55), accepted, reconciled through PR #57, and closed;
 - [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), accepted, reconciled through PR #61, accepted-main verified, and closed;
-- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), active from exact accepted base `afb7f8f363a8df3eb51be1a9bc5f0f180f84190b` in draft PR #62;
+- [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), feature owner-accepted/merged/main-verified; mandatory post-merge reconciliation active on `codex/m5c-authority-reconciliation`;
 - [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), blocked until accepted and reconciled #49;
 - [#51 — M5E integrated conformance, migration, and M5 closure](https://github.com/dornglut/runen-ui/issues/51), after accepted #50.
 
@@ -231,7 +250,7 @@ A new M5 thread should need only:
 Repository: dornglut/runen-ui
 Current milestone: M5
 Umbrella issue: #45
-Current execution issue: read from #45
+Current execution issue: #49 post-merge reconciliation
 ```
 
 ## Execution and branch discipline

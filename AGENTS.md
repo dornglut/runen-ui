@@ -54,22 +54,37 @@ atomicity/failure semantics, and the renderer/semantic cutover, and removes
 route-bound semantic LogicalScroll authoring while preserving accepted M4 routed
 scrolling.
 
-M5B #48 semantic tree publication and incremental updates is owner-accepted and
-squash-merged. Exact reviewed head
+M5B #48 semantic tree publication and incremental updates is fully accepted and
+reconciled. Exact reviewed feature head
 `3b9db8b37098786cc0d53d38ae5d597c3460c38b` passed exact-head CI #1082 and was
 guarded-squash-merged in PR #58 as
 `43d23aefb81757a516ae569b3e86b9e0f2c71e23`; reviewed head and squash share
 exact tree `1708d2536c6f1d202ac58dd7cb5f3cc97a438517`. The connector-origin merge did
 not emit the normal push workflow event, so the exact squash was independently
 revalidated through the unchanged read-only PR CI path in temporary PR #60; CI
-#1084 attempt 2 passed and PR #60 was closed unmerged.
+#1084 attempt 2 passed and PR #60 was closed unmerged. The mandatory M5B
+reconciliation was explicitly owner-accepted at exact reviewed head
+`c154e91b5ba693a27eb61a4745d4184193088d5b`, passed exact-head CI #1089, and
+was guarded-squash-merged in PR #61 as
+`afb7f8f363a8df3eb51be1a9bc5f0f180f84190b`; accepted-main CI #1090 passed.
 
-The mandatory post-M5B authority/current-contract reconciliation is the sole
-current M5 gate. M5C #49 remains blocked until that reconciliation is exact-head
-validated, critically reviewed, explicitly owner-accepted, guarded-merged, and
-accepted-main verified. Do not begin semantic action ingress early, expose a
-public semantic-to-`MountedNodeId` shortcut, recreate semantic LogicalScroll, or
-add a parallel semantic queue/default/trace authority.
+M5C #49 semantic action ingress and accessibility resolution is now
+owner-accepted and feature-merged. Exact reviewed head
+`504899b79059eb94ad4474d67bba1e27eb30b374` passed exact-head CI #1170 /
+`31889342640` and was guarded-squash-merged in PR #62 as
+`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. Reviewed head and squash share
+exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
+#1171 / `31903354382` passed at that exact squash.
+
+The mandatory post-M5C authority/current-contract reconciliation is the sole
+current M5 gate. Its branch is `codex/m5c-authority-reconciliation`, created from
+exact accepted feature squash `846c4e6adfdcd9236586f1b9978f63e71ff4fb86`.
+M5C #49 remains open for this reconciliation only, and M5D #50 remains blocked
+until the reconciliation is exact-head validated, critically reviewed,
+explicitly owner-accepted, guarded-merged, and accepted-main verified. Do not
+begin M5D early. Do not expose a public semantic-to-`MountedNodeId` shortcut,
+recreate semantic LogicalScroll, add a parallel semantic queue/default/trace
+authority, or weaken exact semantic queue-front/post-callback revalidation.
 
 A future thread should need only the repository, umbrella issue, and active slice/audit issue to locate current work.
 
