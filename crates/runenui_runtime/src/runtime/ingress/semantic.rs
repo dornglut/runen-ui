@@ -121,7 +121,7 @@ fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &Semant
                 && match authority.focusability() {
                     Focusability::Focusable => true,
                     Focusability::Automatic => activation.is_actionable(),
-                    Focusability::Never | Focusability::Hidden => false,
+                    Focusability::NotFocusable | Focusability::Hidden => false,
                     _ => false,
                 }
         }
@@ -130,7 +130,7 @@ fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &Semant
     }
 }
 
-const fn semantic_command(action: &SemanticAction) -> SemanticCommand {
+fn semantic_command(action: &SemanticAction) -> SemanticCommand {
     match action {
         SemanticAction::Activate => SemanticCommand::Activate,
         SemanticAction::RequestFocus => SemanticCommand::RequestFocus,
