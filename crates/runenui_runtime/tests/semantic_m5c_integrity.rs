@@ -1,14 +1,21 @@
 #![cfg(feature = "internal-test-seams")]
 #![allow(refining_impl_trait)]
 
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::Cell,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use runenui_core::{
     Element, NoHostProtocol, SemanticAction, SemanticActionRequest, StyleTokens, UiApp, View,
     button,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, PumpBudget, RuntimeStatus, RuntimeTerminalReason,
+    AppRuntime, LayoutConstraints, PumpBudget, RuntimeConfig, RuntimeStatus, RuntimeTerminalReason,
     SubmitSemanticActionError, SubmitSemanticActionErrorKind, SurfaceBuildContext, TraceRecordKind,
 };
 
@@ -48,9 +55,17 @@ impl UiApp for App {
 }
 
 fn runtime() -> AppRuntime<App> {
-    AppRuntime::<App>::mount(State {
+    AppRuntime::<App>::mount(state())
+}
+
+fn runtime_with_config(config: RuntimeConfig) -> AppRuntime<App> {
+    AppRuntime::<App>::mount_with_config(state(), config)
+}
+
+fn state() -> State {
+    State {
         activation_calls: Rc::new(Cell::new(0)),
-    })
+    }
 }
 
 fn current_request(runtime: &mut AppRuntime<App>) -> SemanticActionRequest {
@@ -75,6 +90,16 @@ fn current_request(runtime: &mut AppRuntime<App>) -> SemanticActionRequest {
     )
 }
 
+fn install_wake_counter(runtime: &AppRuntime<App>) -> Arc<AtomicUsize> {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let transport_calls = Arc::clone(&calls);
+    runtime.set_wake_transport(move || {
+        transport_calls.fetch_add(1, Ordering::SeqCst);
+    });
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    calls
+}
+
 fn expect_rejection(
     result: Result<runenui_runtime::CommandSubmission, SubmitSemanticActionError>,
 ) -> SubmitSemanticActionError {
@@ -96,6 +121,7 @@ fn semantic_binding_count(runtime: &AppRuntime<App>) -> usize {
 fn same_runtime_wrong_surface_and_missing_target_reject_without_admission_side_effects() {
     let mut runtime = runtime();
     let request = current_request(&mut runtime);
+    let wakes = install_wake_counter(&runtime);
     let sequence_state = runtime.__routed_sequence_state_for_test();
     let bindings = semantic_binding_count(&runtime);
 
@@ -111,6 +137,7 @@ fn same_runtime_wrong_surface_and_missing_target_reject_without_admission_side_e
     assert_eq!(runtime.__routed_sequence_state_for_test(), sequence_state);
     assert_eq!(semantic_binding_count(&runtime), bindings);
     assert_eq!(runtime.state().activation_calls.get(), 0);
+    assert_eq!(wakes.load(Ordering::SeqCst), 0);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 
     let missing_target = SemanticActionRequest::new(
@@ -125,6 +152,30 @@ fn same_runtime_wrong_surface_and_missing_target_reject_without_admission_side_e
     assert_eq!(runtime.__routed_sequence_state_for_test(), sequence_state);
     assert_eq!(semantic_binding_count(&runtime), bindings);
     assert_eq!(runtime.state().activation_calls.get(), 0);
+    assert_eq!(wakes.load(Ordering::SeqCst), 0);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn full_semantic_rejection_adds_no_wake_or_partial_admission() {
+    let mut runtime = runtime_with_config(RuntimeConfig::default().with_queue_capacity(1));
+    let request = current_request(&mut runtime);
+    let wakes = install_wake_counter(&runtime);
+    let bindings = semantic_binding_count(&runtime);
+    runtime
+        .submit_action(Action)
+        .unwrap_or_else(|_| unreachable!("the single queue slot is available"));
+    assert_eq!(wakes.load(Ordering::SeqCst), 1);
+    let sequence_state = runtime.__routed_sequence_state_for_test();
+
+    let expected = request.clone();
+    let error = expect_rejection(runtime.submit_semantic_action(request));
+    assert_eq!(error.kind(), SubmitSemanticActionErrorKind::Full);
+    assert_eq!(error.into_request(), expected);
+    assert_eq!(runtime.__routed_sequence_state_for_test(), sequence_state);
+    assert_eq!(semantic_binding_count(&runtime), bindings);
+    assert_eq!(runtime.state().activation_calls.get(), 0);
+    assert_eq!(wakes.load(Ordering::SeqCst), 1);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
 
@@ -132,6 +183,7 @@ fn same_runtime_wrong_surface_and_missing_target_reject_without_admission_side_e
 fn semantic_work_sequence_exhaustion_is_atomic_and_terminal() {
     let mut runtime = runtime();
     let request = current_request(&mut runtime);
+    let wakes = install_wake_counter(&runtime);
     let trace_before = runtime
         .__routed_sequence_state_for_test()
         .1
@@ -158,6 +210,7 @@ fn semantic_work_sequence_exhaustion_is_atomic_and_terminal() {
     );
     assert_eq!(semantic_binding_count(&runtime), bindings);
     assert_eq!(runtime.state().activation_calls.get(), 0);
+    assert_eq!(wakes.load(Ordering::SeqCst), 0);
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::WorkSequenceExhausted)
@@ -183,12 +236,14 @@ fn semantic_work_sequence_exhaustion_is_atomic_and_terminal() {
         terminal_trace_state
     );
     assert_eq!(semantic_binding_count(&runtime), bindings);
+    assert_eq!(wakes.load(Ordering::SeqCst), 0);
 }
 
 #[test]
 fn semantic_trace_sequence_exhaustion_is_atomic_and_terminal() {
     let mut runtime = runtime();
     let request = current_request(&mut runtime);
+    let wakes = install_wake_counter(&runtime);
     let work_before = runtime.__routed_sequence_state_for_test().0;
     let bindings = semantic_binding_count(&runtime);
     runtime.__seed_next_trace_sequence_for_test(0);
@@ -206,6 +261,7 @@ fn semantic_trace_sequence_exhaustion_is_atomic_and_terminal() {
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
     assert_eq!(semantic_binding_count(&runtime), bindings);
     assert_eq!(runtime.state().activation_calls.get(), 0);
+    assert_eq!(wakes.load(Ordering::SeqCst), 0);
     assert_eq!(
         runtime.status(),
         RuntimeStatus::Terminal(RuntimeTerminalReason::TraceSequenceExhausted)
