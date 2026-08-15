@@ -7,7 +7,7 @@ use crate::{SemanticAction, SemanticKey, SemanticNodeId, SurfaceId};
 /// The request deliberately carries no semantic revision. Runtime admission
 /// evaluates the current committed semantic product and current action readiness.
 #[must_use]
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticActionRequest {
     surface: SurfaceId,
     target: SemanticNodeId,
@@ -38,8 +38,14 @@ impl SemanticActionRequest {
 
     /// Returns the requested semantic action.
     #[must_use]
-    pub const fn action(&self) -> SemanticAction {
-        self.action
+    pub const fn action(&self) -> &SemanticAction {
+        &self.action
+    }
+
+    /// Recovers the exact owned request fields.
+    #[must_use]
+    pub fn into_parts(self) -> (SurfaceId, SemanticNodeId, SemanticAction) {
+        (self.surface, self.target, self.action)
     }
 }
 
@@ -49,7 +55,7 @@ impl SemanticActionRequest {
 /// exposes semantic identity and the owner-local semantic key needed by a custom
 /// widget to distinguish virtual semantic targets, but it exposes no mounted
 /// owner or semantic-to-mounted routing conversion.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticActionTarget {
     surface: SurfaceId,
     target: SemanticNodeId,
@@ -98,8 +104,8 @@ impl SemanticActionTarget {
 
     /// Returns the original semantic action admitted for this target.
     #[must_use]
-    pub const fn action(&self) -> SemanticAction {
-        self.action
+    pub const fn action(&self) -> &SemanticAction {
+        &self.action
     }
 }
 
@@ -121,7 +127,7 @@ mod tests {
             SemanticActionRequest::new(surface.clone(), node.clone(), SemanticAction::Activate);
         assert_eq!(request.surface_id(), &surface);
         assert_eq!(request.target(), &node);
-        assert_eq!(request.action(), SemanticAction::Activate);
+        assert_eq!(request.action(), &SemanticAction::Activate);
 
         let target = SemanticActionTarget::__runtime_new(
             surface.clone(),
@@ -132,6 +138,6 @@ mod tests {
         assert_eq!(target.surface_id(), &surface);
         assert_eq!(target.target(), &node);
         assert_eq!(target.semantic_key(), &key);
-        assert_eq!(target.action(), SemanticAction::Activate);
+        assert_eq!(target.action(), &SemanticAction::Activate);
     }
 }
