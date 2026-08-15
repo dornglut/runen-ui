@@ -133,7 +133,8 @@ visible-PRIMARY semantic focus. Missing, hidden, stale, or ambiguous targets
 fail closed with typed deterministic diagnostics rather than first/last fallback.
 
 M5C adds exact public surface-scoped semantic action ingress through
-`SemanticActionRequest { surface, target, action }` and
+`SemanticActionRequest` values constructed with
+`SemanticActionRequest::new(surface, target, action)` and submitted by
 `AppRuntime::submit_semantic_action`. Submission validates exact current surface,
 semantic identity/binding, current publication membership, semantic freshness,
 support, composed state, action-specific readiness, and canonical queue/work/
