@@ -1,10 +1,12 @@
 use runenui_core::{__runtime::MountedEffect, HostProtocol, SemanticCommand};
 
 use super::{
-    super::{CollectedRoutedOutput, Runtime},
+    super::{
+        CollectedRoutedOutput, Runtime, ingress::trace_semantic_action_rejection,
+    },
     transaction::RoutedTransaction,
 };
-use crate::{TraceRecordKind, TraceRoutedIntegrityFailure};
+use crate::{TraceRecordKind, TraceRoutedIntegrityFailure, TraceSemanticActionRejection};
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn apply_semantic_default(
@@ -26,7 +28,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             return Ok(());
         }
-        if !self.semantic_default_target_is_current(transaction, command) {
+        if let Some(outcome) = self.semantic_default_target_rejection(transaction, command) {
+            transaction.parent = self.trace.record_event(
+                TraceRecordKind::SemanticDefaultTargetInvalidated { command, outcome },
+                transaction.sequence,
+                transaction.parent,
+                Some(transaction.target_trace.clone()),
+                transaction.instant,
+                &transaction.target,
+                Some(&transaction.target),
+                transaction.origin,
+            );
             return Ok(());
         }
         transaction.parent = self.trace.record_event(
@@ -50,22 +62,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.invoke_activation_default(transaction)
     }
 
-    fn semantic_default_target_is_current(
+    fn semantic_default_target_rejection(
         &self,
         transaction: &RoutedTransaction<Action>,
         command: SemanticCommand,
-    ) -> bool {
+    ) -> Option<TraceSemanticActionRejection> {
         if !matches!(
             command,
             SemanticCommand::Activate | SemanticCommand::RequestFocus
         ) {
-            return true;
+            return None;
         }
-        let Some(semantic_target) = transaction.semantic_target.as_ref() else {
-            return true;
-        };
-        self.revalidate_semantic_action_target(semantic_target)
-            .is_ok_and(|owner| owner == transaction.target)
+        let semantic_target = transaction.semantic_target.as_ref()?;
+        match self.revalidate_semantic_action_target(semantic_target) {
+            Ok(owner) if owner == transaction.target => None,
+            Ok(_) => Some(TraceSemanticActionRejection::OwnerChanged),
+            Err(kind) => Some(trace_semantic_action_rejection(kind)),
+        }
     }
 
     fn invoke_activation_default(
