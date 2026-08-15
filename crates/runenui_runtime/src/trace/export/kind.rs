@@ -214,13 +214,21 @@ fn encode_semantic_data(
             value::semantic_command(output, *command);
         }
         TraceRecordKind::SemanticActionProcessingRejected { outcome } => {
-            field_str(output, "outcome", tokens::semantic_action_rejection(*outcome));
+            field_str(
+                output,
+                "outcome",
+                tokens::semantic_action_rejection(*outcome),
+            );
         }
         TraceRecordKind::SemanticDefaultTargetInvalidated { command, outcome } => {
             json::name(output, "command");
             value::semantic_command(output, *command);
             output.push(',');
-            field_str(output, "outcome", tokens::semantic_action_rejection(*outcome));
+            field_str(
+                output,
+                "outcome",
+                tokens::semantic_action_rejection(*outcome),
+            );
         }
         _ => return false,
     }
