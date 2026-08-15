@@ -49,13 +49,11 @@ impl SubmitSemanticActionError {
     }
 
     /// Borrows the exact semantic request that did not enter the canonical FIFO.
-    #[must_use]
     pub const fn request(&self) -> &SemanticActionRequest {
         &self.request
     }
 
     /// Recovers the exact semantic request that did not enter the canonical FIFO.
-    #[must_use]
     pub fn into_request(self) -> SemanticActionRequest {
         self.request
     }
