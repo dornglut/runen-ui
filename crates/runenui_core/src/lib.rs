@@ -207,6 +207,7 @@ mod pointer;
 pub mod prelude;
 mod runtime_protocol;
 mod semantic;
+mod semantic_action;
 mod style;
 mod style_resolution;
 mod style_tokens;
@@ -284,6 +285,7 @@ pub use semantic::{
     SemanticNodeContribution, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
     SemanticRole, SemanticState, SemanticText, SemanticValue,
 };
+pub use semantic_action::{SemanticActionRequest, SemanticActionTarget};
 pub use style::{
     Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,
     SpacingValue, StyleIntent, TokenId,
