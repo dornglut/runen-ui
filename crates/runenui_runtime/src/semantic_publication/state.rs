@@ -48,6 +48,13 @@ pub struct SemanticPublicationState {
 }
 
 impl SemanticPublicationState {
+    pub(crate) const fn current_publication(&self) -> Option<&SemanticPublication> {
+        match self.current.as_ref() {
+            Some(products) => Some(&products.publication),
+            None => None,
+        }
+    }
+
     pub(crate) fn plan(
         &self,
         surface: &SurfaceId,
