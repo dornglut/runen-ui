@@ -4,7 +4,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    Element, NoHostProtocol, SemanticAction, SemanticActionRequest, StyleTokens, UiApp, View, button,
+    Element, NoHostProtocol, SemanticAction, SemanticActionRequest, StyleTokens, UiApp, View,
+    button,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, RuntimeStatus, RuntimeTerminalReason,
