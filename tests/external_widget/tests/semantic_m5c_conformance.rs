@@ -9,7 +9,7 @@ use runenui_core::{
     CommandDerivation, CommandOrigin, Element, EventContext, EventPhase, EventSource, IntoEffects,
     NoHostProtocol, SemanticAction, SemanticActionRequest, SemanticActionTarget, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
-    SemanticRole, SemanticState, StyleTokens, UiApp, UiEvent, View, Widget, WidgetActivation,
+    SemanticRole, SemanticState, StyleTokens, UiApp, UiEvent, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation,
 };
 use runenui_runtime::{
@@ -292,6 +292,7 @@ fn runtime_with_config(config: ProbeConfig, runtime_config: RuntimeConfig) -> Ap
 }
 
 fn publish(runtime: &mut AppRuntime<ProbeApp>) -> PublishedTargets {
+    settle_initial_work(runtime);
     let tokens = StyleTokens::new();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
@@ -330,10 +331,15 @@ fn request(
     SemanticActionRequest::new(targets.surface.clone(), target.clone(), action)
 }
 
+fn settle_initial_work(runtime: &mut AppRuntime<ProbeApp>) {
+    let report = runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
+    assert_eq!(report.remaining_queued_envelopes(), 0);
+}
+
 fn pump_one(runtime: &mut AppRuntime<ProbeApp>) {
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, 0, 0, 0))
             .processed_envelopes(),
         1
     );
