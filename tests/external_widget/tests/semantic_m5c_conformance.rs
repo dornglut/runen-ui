@@ -862,7 +862,8 @@ fn accepted_then_replaced_semantic_work_rejects_without_retargeting() {
 
 #[test]
 fn callback_invalidated_activate_and_prevent_default_have_distinct_trace_outcomes() {
-    let invalidating = ProbeConfig::actionable().with_callback(CallbackMode::InvalidateSemanticDefault);
+    let invalidating =
+        ProbeConfig::actionable().with_callback(CallbackMode::InvalidateSemanticDefault);
     assert_activate_default_suppression(invalidating, true);
     let prevented = ProbeConfig::actionable().with_callback(CallbackMode::PreventActivateDefault);
     assert_activate_default_suppression(prevented, false);
