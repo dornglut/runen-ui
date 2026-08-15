@@ -15,7 +15,8 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   `846c4e6adfdcd9236586f1b9978f63e71ff4fb86`, and reviewed/squash trees are
   exactly `dfa7cb71166a3f333b560508a7e82fbeb45df000`. Accepted-main push CI #1171 /
   `31903354382` passed at that exact squash. The accepted implementation adds
-  public `SemanticActionRequest { surface, target, action }` and
+  public `SemanticActionRequest` construction through
+  `SemanticActionRequest::new(surface, target, action)` plus
   `AppRuntime::submit_semantic_action`, exact current semantic
   surface/identity/publication/support/state/readiness/freshness/capacity
   admission, exact owned-request recovery, queue-front and post-callback
