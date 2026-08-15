@@ -3,7 +3,7 @@ use core::num::{NonZeroU64, NonZeroUsize};
 use runenui_core::{
     CommandOrigin, ElementId, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason,
     MonotonicInstant, PointerBoundaryKind, PointerCaptureKind, PointerId, PointerPhase,
-    SemanticCommand, WidgetInvalidation, WorkKey,
+    SemanticActionTarget, SemanticCommand, WidgetInvalidation, WorkKey,
 };
 
 use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
@@ -146,6 +146,13 @@ pub enum TraceRecordKind {
     RuntimeMounted,
     ActionSubmissionAccepted,
     CommandSubmissionAccepted,
+    SemanticActionBound {
+        target: SemanticActionTarget,
+        command: SemanticCommand,
+    },
+    SemanticActionProcessingRejected {
+        outcome: TraceSemanticActionRejection,
+    },
     PointerSubmissionAccepted {
         pointer_id: PointerId,
         phase: PointerPhase,
@@ -283,6 +290,10 @@ pub enum TraceRecordKind {
     SemanticDefaultSuppressed {
         command: SemanticCommand,
     },
+    SemanticDefaultTargetInvalidated {
+        command: SemanticCommand,
+        outcome: TraceSemanticActionRejection,
+    },
     RoutedEventCommitted,
     RoutedIntegrityFailed {
         failure: TraceRoutedIntegrityFailure,
@@ -416,6 +427,25 @@ pub enum TraceTargetRejection {
     Foreign,
     Stale,
     Missing,
+}
+
+/// Exact semantic action authority that became invalid after acceptance.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceSemanticActionRejection {
+    Closed,
+    Terminal,
+    ForeignSurface,
+    WrongSurface,
+    ForeignTarget,
+    StaleTarget,
+    MissingTarget,
+    TargetNotInSurface,
+    UnsupportedAction,
+    UnavailableAction,
+    StaleAuthority,
+    OwnerChanged,
+    Integrity,
 }
 
 /// Why runtime-owned pressed-Space authority was revoked without activation.
