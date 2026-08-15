@@ -8,6 +8,31 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and guarded-squash-merged M5C semantic action ingress and
+  accessibility resolution in [PR #62](https://github.com/dornglut/runen-ui/pull/62).
+  Exact reviewed head `504899b79059eb94ad4474d67bba1e27eb30b374`
+  passed exact-head CI #1170 / `31889342640`; accepted squash/main is
+  `846c4e6adfdcd9236586f1b9978f63e71ff4fb86`, and reviewed/squash trees are
+  exactly `dfa7cb71166a3f333b560508a7e82fbeb45df000`. Accepted-main push CI #1171 /
+  `31903354382` passed at that exact squash. The accepted implementation adds
+  public `SemanticActionRequest { surface, target, action }` and
+  `AppRuntime::submit_semantic_action`, exact current semantic
+  surface/identity/publication/support/state/readiness/freshness/capacity
+  admission, exact owned-request recovery, queue-front and post-callback
+  revalidation, semantic-origin callback metadata without a public mounted-owner
+  shortcut, and semantic binding/rejection/default outcomes in the existing
+  canonical trace/replay schema. Accepted semantic work converges through the
+  existing FIFO, `WorkSequence`, routed command, default, action/update, and
+  reconciliation authorities; there is no second semantic queue or behavior
+  engine, no semantic LogicalScroll, and no native accessibility adapter. This
+  mandatory post-merge reconciliation promotes exactly the seven M5C-owned M5
+  rows plus inherited M4 `ACCESS-01`/`ACCESS-02` to `owner-accepted`, producing
+  M5 truth `53 total / 38 owner-accepted / 15 blocked`, M4 truth `237 total /
+  237 owner-accepted`, and aggregate configured truth `290 total / 275
+  owner-accepted / 15 blocked`. M5C #49 remains open for this reconciliation
+  only; M5D #50 remains blocked until the reconciliation itself is exact-head
+  validated, critically reviewed, explicitly owner-accepted, guarded-merged, and
+  accepted-main verified.
 - Owner-accepted and guarded-squash-merged M5B semantic tree publication and
   incremental updates in [PR #58](https://github.com/dornglut/runen-ui/pull/58).
   Exact reviewed head `3b9db8b37098786cc0d53d38ae5d597c3460c38b` passed exact-head CI #1082 /

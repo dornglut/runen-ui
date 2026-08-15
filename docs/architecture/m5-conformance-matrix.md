@@ -17,8 +17,9 @@ implementation boundaries and slice order. The accepted
 M5A0 owns the documentation/conformance authority and repository-audit tooling
 gate. It owns no framework behavior row. M5A semantic contribution and
 independent identity is owner-accepted. M5B semantic publication and incremental
-updates are owner-accepted. M5C has a complete exact-head implementation/proof
-package pending repository-owner acceptance and merge. Later rows remain blocked
+updates are owner-accepted. M5C semantic action ingress and accessibility
+resolution is owner-accepted and feature-merged; its mandatory post-merge
+current-contract reconciliation is the current gate. Later rows remain blocked
 until their owning implementation slices reach their status transitions.
 
 Allowed statuses remain:
@@ -70,20 +71,22 @@ from that exact accepted base.
 
 M5C's complete implementation/proof package passed exact-head CI #1166 /
 `31882567707` at proof-evidence head
-`7565a7a3744c50a93cb542549b8c82e6ae548084`. The seven M5C-owned rows below
-are therefore `proof-complete`: implementation, positive/negative proof,
-canonical trace/replay proof, downstream public proof, compile-fail exclusions,
-internal sequence/integrity boundaries, wake atomicity, stable/MSRV validation,
-and repository authority all pass. They remain unaccepted until explicit owner
-acceptance and guarded merge of the final reviewed feature head.
+`7565a7a3744c50a93cb542549b8c82e6ae548084`. Final reviewed feature head
+`504899b79059eb94ad4474d67bba1e27eb30b374` then passed exact-head CI #1170 /
+`31889342640` and final critical review. The repository owner explicitly accepted
+that exact head. PR #62 was guarded-squash-merged as
+`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`; reviewed head and squash share
+exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`. Accepted-main push CI #1171 /
+`31903354382` passed at that exact squash. Exactly the seven M5C-owned rows below
+are therefore `owner-accepted`.
 
 Current candidate summary for this 53-row authority:
 
 ```text
 53 total unique rows
-31 owner-accepted
+38 owner-accepted
 0 implementation-complete
-7 proof-complete
+0 proof-complete
 15 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -135,13 +138,13 @@ Current candidate summary for this 53-row authority:
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| SEM-ACT-01 | Public `SemanticActionRequest { surface, target, action }` resolves only against the exact current `SurfaceId` semantic product and support/state authority, then joins the ordinary command FIFO under the existing canonical non-wrapping `WorkSequence` without invoking widget callbacks at submission. | `semantic_m5c_conformance::semantic_activate_enters_the_existing_fifo_route_default_and_update_path` | `semantic_m5c_conformance::foreign_dirty_and_capacity_rejections_are_atomic_and_recover_exact_requests` + `semantic_m5c_integrity` rejection corpus | `semantic_m5c_conformance` exact acceptance/route lineage | M5C | proof-complete | Required |
-| SEM-ACT-02 | Accepted semantic requests retain exact private `SurfaceId` + `SemanticNodeId` + owner-local `SemanticKey` + mounted-owner lifetime + semantic action metadata through the existing M4 command/routed/default path with `EventSource::Accessibility`; public API exposes no mounted routing shortcut, no second dispatcher, and non-semantic/delegated commands do not inherit semantic target metadata. | `semantic_m5c_conformance` exact event/activation metadata proof | Core compile-fail mounted-shortcut exclusion + `non_semantic_and_delegated_commands_never_inherit_semantic_target_metadata` | `SemanticActionBound -> CommandSubmissionAccepted -> RoutedEventStarted` causal proof | M5C | proof-complete | Required |
-| SEM-ACT-03 | Wrong/foreign surface, missing/stale/foreign/absent-current-product semantic target, dirty semantic authority, unsupported exact binding, and accepted-then-invalid queue-front state reject without callback, retarget, synchronous semantic refresh, or first/last fallback. | Current published-target ingress proof in `semantic_m5c_conformance` | Hidden/replaced/foreign/dirty downstream corpus + same-runtime wrong/missing `semantic_m5c_integrity` + accepted M5A no-first/last arena proofs | `accepted_then_replaced_semantic_work_rejects_without_retargeting` processing-rejection trace | M5C | proof-complete | Required |
-| SEM-ACT-04 | Action support/readiness is exact: PRIMARY Activate depends on owner actionable+enabled; named Activate requires authored support plus owner enabled and node non-disabled/non-inert without an unrelated owner actionable gate; RequestFocus is PRIMARY-only and uses current M4 Focusable/Automatic eligibility; menu/context actions require exact support/state but no actionable gate. | `semantic_m5c_conformance` PRIMARY/named/focus/menu corpus | `semantic_m5c_action_readiness` + disabled/inert/named mismatch corpus | Typed `UnsupportedAction` / `UnavailableAction` evidence and canonical routed outcomes | M5C | proof-complete | Required |
-| SEM-ACT-05 | Mounted-owner integrity/status plus queue/runtime/work/trace capacity remain fail-closed and transactional; rejection returns the exact owned request and introduces no partial callback, mutation, accepted semantic trace lineage, or extra wake. | Successful canonical FIFO submission proof | `semantic_m5c_integrity` same-runtime identity, full-queue, work/trace exhaustion, terminal, sequence/reservation, callback/mutation, and wake-atomicity corpus + downstream Full/Closed proof | Canonical `RuntimeTerminal` lifecycle proof where applicable and zero `SemanticActionBound` on rejected admission | M5C | proof-complete | Required |
-| SEM-ACT-06 | Semantic action acceptance/rejection/default outcomes extend the same bounded/redacted canonical trace and exported schema, preserve exact work/causal lineage, and remain replay observation only rather than a second behavior engine. | `semantic_trace_exports_and_replays_as_inert_canonical_observation` | Trace exhaustion/reservation integrity proof + existing M4 redaction/unknown-kind replay policy | Semantic binding/rejection/default export tokens + inert `TraceReplay` correlation | M5C | proof-complete | Required |
-| SEM-ACT-07 | After routed callbacks but before semantic Activate or RequestFocus default mutation, runtime revalidates exact accepted semantic owner/key/action/current-authority facts without synchronous refresh; callback-caused invalidation suppresses the default deterministically under the accepted `WorkSequence` and is distinguishable from explicit `prevent_default`. | `callback_invalidated_activate_and_prevent_default_have_distinct_trace_outcomes` + `callback_invalidated_request_focus_suppresses_focus_default_without_refresh` | No-refresh/default-mutation assertions in downstream corpus | Distinct `SemanticDefaultTargetInvalidated` versus `SemanticDefaultSuppressed` trace proof | M5C | proof-complete | Required |
+| SEM-ACT-01 | Public `SemanticActionRequest { surface, target, action }` resolves only against the exact current `SurfaceId` semantic product and support/state authority, then joins the ordinary command FIFO under the existing canonical non-wrapping `WorkSequence` without invoking widget callbacks at submission. | `semantic_m5c_conformance::semantic_activate_enters_the_existing_fifo_route_default_and_update_path` | `semantic_m5c_conformance::foreign_dirty_and_capacity_rejections_are_atomic_and_recover_exact_requests` + `semantic_m5c_integrity` rejection corpus | `semantic_m5c_conformance` exact acceptance/route lineage | M5C | owner-accepted | Required |
+| SEM-ACT-02 | Accepted semantic requests retain exact private `SurfaceId` + `SemanticNodeId` + owner-local `SemanticKey` + mounted-owner lifetime + semantic action metadata through the existing M4 command/routed/default path with `EventSource::Accessibility`; public API exposes no mounted routing shortcut, no second dispatcher, and non-semantic/delegated commands do not inherit semantic target metadata. | `semantic_m5c_conformance` exact event/activation metadata proof | Core compile-fail mounted-shortcut exclusion + `non_semantic_and_delegated_commands_never_inherit_semantic_target_metadata` | `SemanticActionBound -> CommandSubmissionAccepted -> RoutedEventStarted` causal proof | M5C | owner-accepted | Required |
+| SEM-ACT-03 | Wrong/foreign surface, missing/stale/foreign/absent-current-product semantic target, dirty semantic authority, unsupported exact binding, and accepted-then-invalid queue-front state reject without callback, retarget, synchronous semantic refresh, or first/last fallback. | Current published-target ingress proof in `semantic_m5c_conformance` | Hidden/replaced/foreign/dirty downstream corpus + same-runtime wrong/missing `semantic_m5c_integrity` + accepted M5A no-first/last arena proofs | `accepted_then_replaced_semantic_work_rejects_without_retargeting` processing-rejection trace | M5C | owner-accepted | Required |
+| SEM-ACT-04 | Action support/readiness is exact: PRIMARY Activate depends on owner actionable+enabled; named Activate requires authored support plus owner enabled and node non-disabled/non-inert without an unrelated owner actionable gate; RequestFocus is PRIMARY-only and uses current M4 Focusable/Automatic eligibility; menu/context actions require exact support/state but no actionable gate. | `semantic_m5c_conformance` PRIMARY/named/focus/menu corpus | `semantic_m5c_action_readiness` + disabled/inert/named mismatch corpus | Typed `UnsupportedAction` / `UnavailableAction` evidence and canonical routed outcomes | M5C | owner-accepted | Required |
+| SEM-ACT-05 | Mounted-owner integrity/status plus queue/runtime/work/trace capacity remain fail-closed and transactional; rejection returns the exact owned request and introduces no partial callback, mutation, accepted semantic trace lineage, or extra wake. | Successful canonical FIFO submission proof | `semantic_m5c_integrity` same-runtime identity, full-queue, work/trace exhaustion, terminal, sequence/reservation, callback/mutation, and wake-atomicity corpus + downstream Full/Closed proof | Canonical `RuntimeTerminal` lifecycle proof where applicable and zero `SemanticActionBound` on rejected admission | M5C | owner-accepted | Required |
+| SEM-ACT-06 | Semantic action acceptance/rejection/default outcomes extend the same bounded/redacted canonical trace and exported schema, preserve exact work/causal lineage, and remain replay observation only rather than a second behavior engine. | `semantic_trace_exports_and_replays_as_inert_canonical_observation` | Trace exhaustion/reservation integrity proof + existing M4 redaction/unknown-kind replay policy | Semantic binding/rejection/default export tokens + inert `TraceReplay` correlation | M5C | owner-accepted | Required |
+| SEM-ACT-07 | After routed callbacks but before semantic Activate or RequestFocus default mutation, runtime revalidates exact accepted semantic owner/key/action/current-authority facts without synchronous refresh; callback-caused invalidation suppresses the default deterministically under the accepted `WorkSequence` and is distinguishable from explicit `prevent_default`. | `callback_invalidated_activate_and_prevent_default_have_distinct_trace_outcomes` + `callback_invalidated_request_focus_suppresses_focus_default_without_refresh` | No-refresh/default-mutation assertions in downstream corpus | Distinct `SemanticDefaultTargetInvalidated` versus `SemanticDefaultSuppressed` trace proof | M5C | owner-accepted | Required |
 
 ## M5D — public deterministic headless testing harness
 
@@ -168,15 +171,15 @@ Current candidate summary for this 53-row authority:
 | M5-INTEG-04 | M5 removes or documents any superseded public testing helpers, old semantic stubs, compatibility aliases, and dead architecture text before acceptance. | Repository/public-API audit | Stale-symbol/stale-doc scan | Repository authority audit | M5E | blocked | Required |
 | M5-INTEG-05 | All M5-specific matrix rows plus inherited M4 `ACCESS-01` and `ACCESS-02` are owner-accepted and stable/MSRV CI is green. | Final matrix/status audit | Blocked/incomplete-row audit | Final acceptance evidence | M5E | blocked | Required |
 
-## Repository-wide aggregate after M5A/M5B acceptance and M5C proof completion
+## Repository-wide aggregate after M5A/M5B/M5C acceptance
 
 The repository-wide permanent inventory is now:
 
 ```text
 290 total unique rows
-266 owner-accepted
+275 owner-accepted
 0 implementation-complete
-9 proof-complete
+0 proof-complete
 15 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -184,8 +187,8 @@ The repository-wide permanent inventory is now:
 ```
 
 The aggregate consists of the accepted M4 matrix plus this accepted M5 matrix.
-M5C proof completion also promotes inherited M4 `ACCESS-01` and `ACCESS-02` to
-`proof-complete`; no permanent acceptance ID is duplicated.
+M5C acceptance also promotes inherited M4 `ACCESS-01` and `ACCESS-02` to
+`owner-accepted`; no permanent acceptance ID is duplicated.
 
 ## Reconciliation rule
 
