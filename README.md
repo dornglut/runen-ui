@@ -61,9 +61,9 @@ The active workspace proves:
   revision, changed products advance without wrapping, added/changed/removed/
   root/focus deltas are deterministic, and wrong-surface or wrong/skipped prior
   revision requires a full resynchronization;
-- public exact semantic action ingress through
-  `SemanticActionRequest { surface, target, action }` and
-  `AppRuntime::submit_semantic_action`, with M5 actions limited to
+- public exact semantic action ingress through `SemanticActionRequest` values
+  constructed with `SemanticActionRequest::new(surface, target, action)` and
+  submitted by `AppRuntime::submit_semantic_action`, with M5 actions limited to
   `Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`; admission checks
   the exact current semantic product, support/state/readiness/freshness and
   canonical queue/work/trace capacity without invoking widget callbacks, then
