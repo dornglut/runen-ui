@@ -22,7 +22,9 @@ impl UiApp for TimerApp {
     }
 
     fn initial_effects(_: &Self::State) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
-        Effects::timer(TimerEffect::once(Duration::from_secs(5), || TimerAction::Tick))
+        Effects::timer(TimerEffect::once(Duration::from_secs(5), || {
+            TimerAction::Tick
+        }))
     }
 
     fn update(
@@ -36,10 +38,7 @@ impl UiApp for TimerApp {
 }
 
 const fn settle_budget() -> SettleBudget {
-    SettleBudget::new(
-        NonZeroUsize::MIN,
-        PumpBudget::new(64, 64, 64, 64),
-    )
+    SettleBudget::new(NonZeroUsize::MIN, PumpBudget::new(64, 64, 64, 64))
 }
 
 #[test]
