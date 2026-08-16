@@ -16,11 +16,11 @@ implementation boundaries and slice order. The accepted
 
 M5A0 owns the documentation/conformance authority and repository-audit tooling
 gate. It owns no framework behavior row. M5A semantic contribution and
-independent identity is owner-accepted. M5B semantic publication and incremental
-updates are owner-accepted. M5C semantic action ingress and accessibility
-resolution is owner-accepted and feature-merged; its mandatory post-merge
-current-contract reconciliation is the current gate. Later rows remain blocked
-until their owning implementation slices reach their status transitions.
+independent identity, M5B semantic publication/incremental updates, and M5C
+semantic action ingress/accessibility resolution are owner-accepted and fully
+reconciled. M5D public deterministic headless testing is owner-accepted and
+feature-merged; its mandatory post-merge current-contract reconciliation is the
+current gate. M5E rows remain blocked until that reconciliation completes.
 
 Allowed statuses remain:
 
@@ -80,14 +80,33 @@ exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`. Accepted-main push CI #11
 `31903354382` passed at that exact squash. Exactly the seven M5C-owned rows below
 are therefore `owner-accepted`.
 
+M5C's mandatory authority/current-contract reconciliation was subsequently
+explicitly owner-accepted at exact reviewed head
+`fbd0bdf44bddd660e06b4642a56f7a1d64bccab2`, passed exact-head CI #1179 /
+`31914448654`, and was guarded-squash-merged in PR #63 as
+`b2064f24e778bd69e2876ec09a7431d612682304`. Reviewed reconciliation head and
+squash share exact tree `82625aedbdc03a5754949cffee51025e99cd6949`, and
+accepted-main push CI #1180 / `31938332306` passed at that exact squash. M5D
+#50 therefore activated from that exact accepted base.
+
+M5D's final reviewed feature head
+`471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed canonical exact-head CI
+#1230 / `31962536977` and final critical review. The repository owner explicitly
+accepted that exact head. PR #64 was guarded-squash-merged as
+`72d2405211a3fd6d11e0d17680b7769df90b5ffe`; reviewed head and squash share
+exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`. Accepted-main push CI #1231 /
+`31967898198` passed at that exact squash. Exactly the ten M5D-owned rows below
+are therefore `owner-accepted`; the mandatory post-M5D reconciliation remains
+the gate before M5E.
+
 Current candidate summary for this 53-row authority:
 
 ```text
 53 total unique rows
-38 owner-accepted
+48 owner-accepted
 0 implementation-complete
 0 proof-complete
-15 blocked
+5 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -150,16 +169,16 @@ Current candidate summary for this 53-row authority:
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| TEST-HARNESS-01 | Public headless harness can mount arbitrary downstream `UiApp`, inject pointer/keyboard/text/composition/semantic action through public types, pump explicit budgets, and inspect state/semantic/frame/trace products. | Downstream harness conformance | Private-test-seam dependency audit | Harness diagnostics | M5D | blocked | Required |
-| TEST-HARNESS-02 | Harness owns a manually advanced `MonotonicInstant` test clock and exposes no wall-clock dependency. | Manual-clock conformance | Wall-clock/sleep exclusion audit | Logical-time trace proof | M5D | blocked | Required |
-| TEST-HARNESS-03 | `run_until_idle` stops when one complete pump iteration processes zero envelopes and starts zero work; redraw debt, pending invalidation alone, dormant future timers, externally pending work, and unbounded self-requeue are deterministic stopped/limited outcomes rather than reasons to block forever. | Idle-state corpus | Busy-wait/runaway cap proof | Idle/limit diagnostics | M5D | blocked | Required |
-| TEST-HARNESS-04 | Harness uses a deterministic configurable fixed-size rectangular layout/measurement model by default, including child order/placement for route/focus/pointer tests, while custom intrinsic measurement remains explicitly injectable through public host-facing APIs. | Fixed-layout corpus | Zero-size-only/default-magic rejection | Measurement/layout diagnostics | M5D | blocked | Required |
-| TEST-HARNESS-05 | Harness supplies public helpers for semantic current/delta/full-resync inspection, trace export/replay/redaction, invalid-ingress construction where public types permit it, pointer/context construction, and sequence/order inspection without exposing mounted internals. | Public helper conformance | Mounted-arena/private-seam leakage audit | Harness/replay diagnostics | M5D | blocked | Required |
-| TEST-SEM-01 | Harness can inject semantic actions by exact public `SemanticNodeId` + `SurfaceId` and observe canonical command/default/update results. | Public semantic-action harness proof | Direct-mounted-command bypass audit | Harness trace proof | M5D | blocked | Required |
-| TEST-POINTER-01 | Harness can construct valid current surface input context and inject pointer ingress without private constructors. | Public pointer harness proof | Private-constructor dependency audit | Pointer ingress trace proof | M5D | blocked | Required |
-| TEST-FOCUS-01 | Harness can deterministically prove focus traversal/restoration through public commands and fixed layout geometry. | Public focus harness proof | Synthetic private focus geometry audit | Focus trace proof | M5D | blocked | Required |
-| TEST-TIME-01 | Harness can advance logical time and deterministically prove timers/long-press/time-dependent behavior without sleeping. | Logical-time timer proof | Wall-clock/sleep audit | Scheduler trace proof | M5D | blocked | Required |
-| TEST-SCHED-01 | Harness reports deterministic ready-vs-pending external work and remains compatible with bounded pump/start budgets. | Scheduler harness proof | Unbounded execution audit | Scheduler trace proof | M5D | blocked | Required |
+| TEST-HARNESS-01 | Public headless harness can mount arbitrary downstream `UiApp`, inject pointer/keyboard/text/composition/semantic action through public types, pump explicit budgets, and inspect state/semantic/frame/trace products. | Downstream harness conformance | Private-test-seam dependency audit | Harness diagnostics | M5D | owner-accepted | Required |
+| TEST-HARNESS-02 | Harness owns a manually advanced `MonotonicInstant` test clock and exposes no wall-clock dependency. | Manual-clock conformance | Wall-clock/sleep exclusion audit | Logical-time trace proof | M5D | owner-accepted | Required |
+| TEST-HARNESS-03 | `run_until_idle` stops when one complete pump iteration processes zero envelopes and starts zero work; redraw debt, pending invalidation alone, dormant future timers, externally pending work, and unbounded self-requeue are deterministic stopped/limited outcomes rather than reasons to block forever. | Idle-state corpus | Busy-wait/runaway cap proof | Idle/limit diagnostics | M5D | owner-accepted | Required |
+| TEST-HARNESS-04 | Harness uses a deterministic configurable fixed-size rectangular layout/measurement model by default, including child order/placement for route/focus/pointer tests, while custom intrinsic measurement remains explicitly injectable through public host-facing APIs. | Fixed-layout corpus | Zero-size-only/default-magic rejection | Measurement/layout diagnostics | M5D | owner-accepted | Required |
+| TEST-HARNESS-05 | Harness supplies public helpers for semantic current/delta/full-resync inspection, trace export/replay/redaction, invalid-ingress construction where public types permit it, pointer/context construction, and sequence/order inspection without exposing mounted internals. | Public helper conformance | Mounted-arena/private-seam leakage audit | Harness/replay diagnostics | M5D | owner-accepted | Required |
+| TEST-SEM-01 | Harness can inject semantic actions by exact public `SemanticNodeId` + `SurfaceId` and observe canonical command/default/update results. | Public semantic-action harness proof | Direct-mounted-command bypass audit | Harness trace proof | M5D | owner-accepted | Required |
+| TEST-POINTER-01 | Harness can construct valid current surface input context and inject pointer ingress without private constructors. | Public pointer harness proof | Private-constructor dependency audit | Pointer ingress trace proof | M5D | owner-accepted | Required |
+| TEST-FOCUS-01 | Harness can deterministically prove focus traversal/restoration through public commands and fixed layout geometry. | Public focus harness proof | Synthetic private focus geometry audit | Focus trace proof | M5D | owner-accepted | Required |
+| TEST-TIME-01 | Harness can advance logical time and deterministically prove timers/long-press/time-dependent behavior without sleeping. | Logical-time timer proof | Wall-clock/sleep audit | Scheduler trace proof | M5D | owner-accepted | Required |
+| TEST-SCHED-01 | Harness reports deterministic ready-vs-pending external work and remains compatible with bounded pump/start budgets. | Scheduler harness proof | Unbounded execution audit | Scheduler trace proof | M5D | owner-accepted | Required |
 
 ## M5E — integrated conformance, migration, and closure
 
@@ -171,24 +190,24 @@ Current candidate summary for this 53-row authority:
 | M5-INTEG-04 | M5 removes or documents any superseded public testing helpers, old semantic stubs, compatibility aliases, and dead architecture text before acceptance. | Repository/public-API audit | Stale-symbol/stale-doc scan | Repository authority audit | M5E | blocked | Required |
 | M5-INTEG-05 | All M5-specific matrix rows plus inherited M4 `ACCESS-01` and `ACCESS-02` are owner-accepted and stable/MSRV CI is green. | Final matrix/status audit | Blocked/incomplete-row audit | Final acceptance evidence | M5E | blocked | Required |
 
-## Repository-wide aggregate after M5A/M5B/M5C acceptance
+## Repository-wide aggregate after M5D acceptance
 
 The repository-wide permanent inventory is now:
 
 ```text
 290 total unique rows
-275 owner-accepted
+285 owner-accepted
 0 implementation-complete
 0 proof-complete
-15 blocked
+5 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
 ```
 
 The aggregate consists of the accepted M4 matrix plus this accepted M5 matrix.
-M5C acceptance also promotes inherited M4 `ACCESS-01` and `ACCESS-02` to
-`owner-accepted`; no permanent acceptance ID is duplicated.
+Inherited M4 `ACCESS-01` and `ACCESS-02` remain owner-accepted through M5C; no
+permanent acceptance ID is duplicated.
 
 ## Reconciliation rule
 
