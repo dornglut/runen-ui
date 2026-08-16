@@ -25,10 +25,10 @@ RunenUI/
 | `runenui_runtime` | Generational mounted and semantic arenas; reconciliation/lifecycle; generalized FIFO and deterministic scheduler; clocks/tasks/timers/subscriptions/host requests; wake/redraw; routed input/defaults; bounded trace/replay; renderer and semantic surface publication; exact semantic-action resolution | Application domain policy, testing convenience state, native windows/accessibility adapters, concrete renderers, ECS, or legacy dependencies |
 | `runenui_testing` | Public-only deterministic headless testing ergonomics over `runenui_core` + `runenui_runtime`: fixed test publication, bounded pumping/settling, exact snapshot-scoped semantic queries/targets, ordinary public ingress helpers, and read-only observation | Runtime behavior, private/internal test seams, mounted-state mutation, identity/sequence fabrication, parallel expected state, native host behavior, or semantic-to-mounted routing authority |
 | `counter` | Application-owned state/action/update and headless public-API proof | Framework internals, native host, renderer backend, or legacy imports |
-| `runenui_external_widget_conformance` | Non-publishable test-owned downstream controls and public conformance proofs | Production framework ownership or privileged internal access |
+| `runenui_external_widget_conformance` | Non-publishable test-owned downstream controls and public conformance proofs; may consume `runenui_testing` only as a dev dependency for public-harness conformance | Production framework ownership, a production dependency on testing convenience, or privileged internal access |
 | `xtask` | Repository validation orchestration | Framework runtime behavior |
 
-Current dependency direction is acyclic:
+Current production dependency direction is acyclic:
 
 ```text
 runenui_core <- runenui_runtime
@@ -38,6 +38,8 @@ runenui_core <- runenui_runtime
               ├── counter
               └── external widget conformance
 ```
+
+The external-widget conformance package additionally has a test-only edge to `runenui_testing`. Repository validation distinguishes production and dev dependency sections so that edge cannot silently become a normal framework dependency.
 
 `xtask` is repository tooling and has no framework dependency. `runenui_testing` is deliberately downstream of runtime: runtime must never depend on testing convenience APIs.
 
