@@ -1,7 +1,5 @@
 use runenui_core::{ElementId, IntoEffects, NoHostProtocol, UiApp, View, children, column, text};
-use runenui_runtime::{
-    LogicalSize, MeasurementProvider, TextMeasurement, TextMeasurementRequest,
-};
+use runenui_runtime::{LogicalSize, MeasurementProvider, TextMeasurement, TextMeasurementRequest};
 use runenui_testing::{DEFAULT_TEST_SURFACE_SIZE, TestHarness};
 
 struct SurfaceApp;
@@ -56,12 +54,13 @@ fn fixed_surface_layout_hit_paint_and_custom_measurement_are_public_and_determin
             .find(|node| node.authored_id() == Some(&authored))?;
         assert_ne!(node.paint().category(), "none");
         assert!(publication.layout_report().node(node.id()).is_some());
-        let point = runenui_runtime::LogicalPoint::new(
-            node.bounds().x() + 1.0,
-            node.bounds().y() + 1.0,
-        )
-        .ok()?;
-        assert_eq!(publication.frame().hit_test_id(point), Some(node.id().clone()));
+        let point =
+            runenui_runtime::LogicalPoint::new(node.bounds().x() + 1.0, node.bounds().y() + 1.0)
+                .ok()?;
+        assert_eq!(
+            publication.frame().hit_test_id(point),
+            Some(node.id().clone())
+        );
         Some((node.bounds(), node.id().clone()))
     })() else {
         return;
