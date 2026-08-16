@@ -73,7 +73,10 @@ impl UiApp for StateApp {
 }
 
 fn settle_budget() -> SettleBudget {
-    SettleBudget::new(NonZeroUsize::MIN, PumpBudget::new(64, 64, 64, 64))
+    SettleBudget::new(
+        NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN),
+        PumpBudget::new(64, 64, 64, 64),
+    )
 }
 
 fn probe_query() -> SemanticQuery {
