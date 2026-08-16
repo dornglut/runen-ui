@@ -11,8 +11,11 @@ mod ui;
 
 use app::{Counter, CounterApp};
 
-const fn settle_budget() -> SettleBudget {
-    SettleBudget::new(NonZeroUsize::MIN, PumpBudget::new(64, 64, 64, 64))
+fn settle_budget() -> SettleBudget {
+    SettleBudget::new(
+        NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN),
+        PumpBudget::new(64, 64, 64, 64),
+    )
 }
 
 #[test]
