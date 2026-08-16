@@ -11,12 +11,12 @@ impl UiApp for SurfaceApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         column(children![text("Measure me").id("surface.measure")])
     }
 
     fn update(
-        _: &mut Self::State,
+        (): &mut Self::State,
         (): Self::Action,
     ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
     }
@@ -27,7 +27,7 @@ struct WideMeasurement;
 
 impl MeasurementProvider for WideMeasurement {
     fn cache_identity(&self) -> u64 {
-        0x4d3544
+        0x004d_3544
     }
 
     fn cache_revision(&self) -> u64 {
