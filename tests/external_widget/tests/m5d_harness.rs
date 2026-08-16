@@ -2,8 +2,8 @@ use core::num::NonZeroUsize;
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, Element, ElementId, FocusReason, IntoEffects, KeyLocation,
-    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    CommandOrigin, CommittedTextEvent, Element, ElementId, FocusReason, FocusScope, IntoEffects,
+    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
     NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, View, column, container,
 };
 use runenui_external_widget_conformance::{
@@ -41,7 +41,7 @@ impl UiApp for FocusApp {
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
         column(vec![
-            external_focus_panel(Rc::clone(&state.log)),
+            external_focus_panel(Rc::clone(&state.log)).focus_scope(FocusScope::new()),
             Element::new(ExternalFocusWidget::new(
                 "outside",
                 Rc::clone(&state.log),
@@ -131,7 +131,10 @@ fn public_harness_drives_downstream_controller_traversal_and_remembered_restorat
         SettleOutcome::Idle
     );
     assert_eq!(harness.focus().focused_node(), Some(&b));
-    assert_eq!(harness.focus().reason(), Some(FocusReason::RememberedRestoration));
+    assert_eq!(
+        harness.focus().reason(),
+        Some(FocusReason::RememberedRestoration)
+    );
     assert!(!log.borrow().is_empty());
     assert!(harness.trace_replay().is_ok());
 }
