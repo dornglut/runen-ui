@@ -3,7 +3,7 @@ use core::num::NonZeroUsize;
 use runenui_core::{
     Element, IntoEffects, NoHostProtocol, SemanticAction, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState, UiApp,
-    Widget, WidgetActivation,
+    View, Widget, WidgetActivation,
 };
 use runenui_runtime::PumpBudget;
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -58,7 +58,7 @@ impl UiApp for StateApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(state: &Self::State) -> Element<Self::Action> {
+    fn root(state: &Self::State) -> impl View<Self::Action> {
         Element::new(SemanticProbe {
             availability: *state,
         })
@@ -86,10 +86,7 @@ fn probe_query() -> SemanticQuery {
 #[test]
 fn disabled_and_inert_nodes_remain_queryable_but_fail_action_admission() {
     for (availability, query) in [
-        (
-            Availability::Disabled,
-            probe_query().with_disabled(true),
-        ),
+        (Availability::Disabled, probe_query().with_disabled(true)),
         (Availability::Inert, probe_query().with_inert(true)),
     ] {
         let mut harness = TestHarness::<StateApp>::mount(availability);
