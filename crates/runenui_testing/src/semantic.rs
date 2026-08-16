@@ -197,7 +197,7 @@ impl SemanticQueryMatches {
                 .targets
                 .into_iter()
                 .next()
-                .map_or(Err(UniqueSemanticQueryError::Missing), Ok),
+                .ok_or(UniqueSemanticQueryError::Missing),
             _ => Err(UniqueSemanticQueryError::Ambiguous {
                 matches: self.targets,
             }),

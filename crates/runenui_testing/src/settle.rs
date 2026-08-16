@@ -99,7 +99,7 @@ const fn zero_progress(report: PumpReport) -> bool {
         && report.promoted_timers() == 0
 }
 
-pub(super) const fn outcome_for(report: PumpReport, at_limit: bool) -> Option<SettleOutcome> {
+pub const fn outcome_for(report: PumpReport, at_limit: bool) -> Option<SettleOutcome> {
     match report.outcome() {
         PumpOutcome::Closed => Some(SettleOutcome::Closed),
         PumpOutcome::Terminal(reason) => Some(SettleOutcome::Terminal(reason)),
@@ -108,9 +108,7 @@ pub(super) const fn outcome_for(report: PumpReport, at_limit: bool) -> Option<Se
             Some(SettleOutcome::IterationLimit)
         }
         PumpOutcome::Quiescent | PumpOutcome::BudgetExhausted => None,
-        #[allow(unreachable_patterns)]
         _ if at_limit => Some(SettleOutcome::IterationLimit),
-        #[allow(unreachable_patterns)]
         _ => None,
     }
 }
