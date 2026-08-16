@@ -40,8 +40,8 @@ impl UiApp for HarnessApp {
     }
 }
 
-const fn settle_budget() -> SettleBudget {
-    let iterations = NonZeroUsize::new(8).map_or(NonZeroUsize::MIN, |iterations| iterations);
+fn settle_budget() -> SettleBudget {
+    let iterations = NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN);
     SettleBudget::new(iterations, PumpBudget::new(64, 64, 64, 64))
 }
 
@@ -99,8 +99,10 @@ fn settle_is_bounded_and_publication_dirtiness_does_not_force_hidden_work() {
 #[test]
 fn pointer_helper_uses_the_exact_current_public_surface_context() {
     let mut harness = TestHarness::<HarnessApp>::mount(0);
-    let publication = harness.publish();
-    assert!(publication.is_ok());
+    assert!(harness.publish().is_ok());
+    let Ok(expected_context) = harness.input_context().cloned() else {
+        return;
+    };
 
     let Some(pointer_id) = PointerId::new(1) else {
         return;
@@ -115,10 +117,10 @@ fn pointer_helper_uses_the_exact_current_public_surface_context() {
         point,
     );
     assert!(event.is_ok());
-    if let (Ok(publication), Ok(event)) = (publication, event) {
+    if let Ok(event) = event {
         assert_eq!(
             event.surface_context(),
-            publication.input_context(),
+            &expected_context,
             "pointer helper must preserve the exact public displayed context"
         );
     }
