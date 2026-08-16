@@ -68,23 +68,29 @@ reconciliation was explicitly owner-accepted at exact reviewed head
 was guarded-squash-merged in PR #61 as
 `afb7f8f363a8df3eb51be1a9bc5f0f180f84190b`; accepted-main CI #1090 passed.
 
-M5C #49 semantic action ingress and accessibility resolution is now
-owner-accepted and feature-merged. Exact reviewed head
-`504899b79059eb94ad4474d67bba1e27eb30b374` passed exact-head CI #1170 /
-`31889342640` and was guarded-squash-merged in PR #62 as
-`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. Reviewed head and squash share
-exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
-#1171 / `31903354382` passed at that exact squash.
+M5C #49 semantic action ingress and accessibility resolution is fully accepted,
+reconciled, accepted-main verified, and closed. Its accepted reconciliation/main
+base for M5D is `b2064f24e778bd69e2876ec09a7431d612682304`.
 
-The mandatory post-M5C authority/current-contract reconciliation is the sole
-current M5 gate. Its branch is `codex/m5c-authority-reconciliation`, created from
-exact accepted feature squash `846c4e6adfdcd9236586f1b9978f63e71ff4fb86`.
-M5C #49 remains open for this reconciliation only, and M5D #50 remains blocked
+M5D #50 public deterministic headless testing has an owner-accepted, merged, and
+accepted-main-verified feature implementation. Exact reviewed feature head
+`471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed exact-head CI #1230 /
+`31962536977` and was guarded-squash-merged in PR #64 as
+`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
+exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
+#1231 / `31967898198` passed at that exact squash.
+
+The mandatory post-M5D authority/current-contract reconciliation is the sole
+current M5 gate. Its branch is `codex/m5d-authority-reconciliation`, created from
+exact accepted feature squash `72d2405211a3fd6d11e0d17680b7769df90b5ffe`.
+M5D #50 remains open for this reconciliation only, and M5E #51 remains blocked
 until the reconciliation is exact-head validated, critically reviewed,
 explicitly owner-accepted, guarded-merged, and accepted-main verified. Do not
-begin M5D early. Do not expose a public semantic-to-`MountedNodeId` shortcut,
-recreate semantic LogicalScroll, add a parallel semantic queue/default/trace
-authority, or weaken exact semantic queue-front/post-callback revalidation.
+begin M5E early. Preserve the public-only `runenui_testing` ownership boundary:
+no `internal-test-seams`, hidden mutation bridge, semantic-to-`MountedNodeId`
+shortcut, bare semantic-ID surface guessing, unbounded settle, wall-clock wait,
+parallel runtime model, semantic LogicalScroll compatibility helper, or native
+accessibility work.
 
 A future thread should need only the repository, umbrella issue, and active slice/audit issue to locate current work.
 
