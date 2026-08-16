@@ -132,7 +132,7 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
     })
 }
 
-fn workspace_dependencies<'a>(
+fn workspace_dependency_set<'a>(
     dependencies: &'a BTreeSet<String>,
     members: &BTreeMap<&str, &WorkspaceMember>,
 ) -> BTreeSet<&'a str> {
@@ -148,8 +148,8 @@ fn validate_dependency_direction(
     members: &BTreeMap<&str, &WorkspaceMember>,
     findings: &mut Vec<Finding>,
 ) {
-    let workspace_dependencies = workspace_dependencies(&member.dependencies, members);
-    let workspace_dev_dependencies = workspace_dependencies(&member.dev_dependencies, members);
+    let workspace_dependencies = workspace_dependency_set(&member.dependencies, members);
+    let workspace_dev_dependencies = workspace_dependency_set(&member.dev_dependencies, members);
 
     let allowed = match member.package.as_str() {
         CORE_PACKAGE | XTASK_PACKAGE => BTreeSet::new(),
@@ -450,7 +450,12 @@ mod tests {
         let (dependencies, dev_dependencies) = parse_dependency_names(
             "[dependencies]\nruntime_alias = { package = \"runenui_runtime\", path = \"../runenui_runtime\" }\n",
         );
-        let core = member("crates/runenui_core", CORE_PACKAGE, dependencies, dev_dependencies);
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            dependencies,
+            dev_dependencies,
+        );
         let runtime = member(
             "crates/runenui_runtime",
             RUNTIME_PACKAGE,
@@ -563,9 +568,11 @@ mod tests {
             &production_members,
             &mut production_findings,
         );
-        assert!(production_findings.iter().any(|finding| {
-            finding.code == "workspace.forbidden_dependency_direction"
-        }));
+        assert!(
+            production_findings
+                .iter()
+                .any(|finding| finding.code == "workspace.forbidden_dependency_direction")
+        );
     }
 
     #[test]
