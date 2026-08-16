@@ -126,7 +126,11 @@ fn public_harness_drives_downstream_controller_traversal_and_remembered_restorat
     log.borrow_mut().clear();
     assert!(
         harness
-            .submit_command(root, SemanticCommand::RestoreFocus, CommandOrigin::controller())
+            .submit_command(
+                root,
+                SemanticCommand::RestoreFocus,
+                CommandOrigin::controller(),
+            )
             .is_ok()
     );
     assert_eq!(
