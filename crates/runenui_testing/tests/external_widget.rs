@@ -1,9 +1,7 @@
 use core::num::NonZeroUsize;
 use std::{cell::RefCell, rc::Rc};
 
-use runenui_core::{
-    CommandOrigin, Element, ElementId, NoHostProtocol, SemanticCommand, UiApp,
-};
+use runenui_core::{CommandOrigin, Element, ElementId, NoHostProtocol, SemanticCommand, UiApp};
 use runenui_runtime::{InputModality, MountedNodeId, PumpBudget, SurfaceFrame};
 use runenui_testing::{SettleBudget, SettleOutcome, TestHarness};
 
@@ -52,7 +50,7 @@ fn genuine_downstream_focus_widget_uses_public_harness_and_controller_commands()
         log: Rc::clone(&log),
     });
 
-    let (Some(a), Some(b)) = (|| {
+    let Some((a, b)) = (|| {
         let publication = harness.publish().ok()?;
         Some((
             authored_node(publication.frame(), "focus.a")?,
