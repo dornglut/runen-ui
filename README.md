@@ -8,15 +8,16 @@ Today RunenUI is a coherent **headless architecture proof**. It is not a product
 
 Milestone status: M0 through M4 are complete and owner-accepted. M5 is active.
 M5A semantic contribution and independent identity, the #55 semantic readiness
-authority, M5B semantic publication/incremental updates, and the M5C semantic
-action ingress/accessibility-resolution feature are owner-accepted. M5C exact
-reviewed head `504899b79059eb94ad4474d67bba1e27eb30b374` passed exact-head CI
-#1170 / `31889342640` and was guarded-squash-merged in
-[PR #62](https://github.com/dornglut/runen-ui/pull/62) as
-`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. Reviewed head and squash share
-exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
-#1171 / `31903354382` passed at that exact squash. The mandatory post-M5C
-current-contract reconciliation is the current gate. M5D #50 remains blocked
+authority, M5B semantic publication/incremental updates, M5C semantic action
+ingress/accessibility resolution, and the M5D public deterministic headless
+testing feature are owner-accepted and feature-merged. M5D exact reviewed head
+`471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed exact-head CI #1230 /
+`31962536977` and was guarded-squash-merged in
+[PR #64](https://github.com/dornglut/runen-ui/pull/64) as
+`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
+exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
+#1231 / `31967898198` passed at that exact squash. The mandatory post-M5D
+current-contract reconciliation is the current gate. M5E #51 remains blocked
 until that reconciliation is owner-accepted, merged, and accepted-main verified.
 Current maturity, durable sequence, work ownership, and historical acceptance
 evidence live in the [status map](docs/status-map.md),
@@ -72,6 +73,18 @@ The active workspace proves:
   refresh or retargeting; accepted-then-stale work becomes a canonical processing
   rejection under its accepted `WorkSequence`, while explicit `prevent_default`
   and callback-caused semantic invalidation remain trace-distinct;
+- a public downstream `runenui_testing` crate whose `TestHarness<App>` composes
+  one ordinary `AppRuntime<App>` with deterministic `ManualClock` authority,
+  non-zero configurable fixed-surface publication, explicit bounded pumping and
+  finite settle outcomes, snapshot-scoped semantic queries/targets, ordinary
+  public interaction ingress, and read-only state/focus/reconciliation/frame/
+  layout/hit/paint/semantic/trace/replay inspection without private runtime
+  seams or a parallel expected-state model;
+- exact testing semantic targets retain `SurfaceId + SemanticNodeId` scope and
+  semantic actions delegate to accepted M5C ingress; ambiguous queries do not
+  choose first/last, the testing layer exposes no semantic-to-`MountedNodeId`
+  shortcut or bare-ID surface reconstruction, and settling never hides a wall-
+  clock wait or unbounded execution loop;
 - core-owned canonical `LogicalSize` and `LogicalRect` geometry shared by
   authoring and runtime; semantic contribution has no absolute surface-coordinate
   authority, while M5B runtime composition derives absolute semantic bounds;
@@ -143,9 +156,10 @@ The active workspace proves:
 - a proof-level retained surface cache with topology/style/layout/hit/paint
   phase facts and independently tested execution reports; #59 owns removal of
   whole-cache deep cloning before or during M6 without weakening M5B atomicity;
-- a Counter application exercising the current public crates, plus genuine
-  downstream direct and adapter-shaped semantic publication consumers and public
-  M5C semantic-action/readiness conformance.
+- a Counter application plus genuine downstream widgets exercising the current
+  public crates through semantic publication/action and the M5D testing harness,
+  including pointer, keyboard/text/composition, controller focus/restoration,
+  deterministic scheduler/time, redaction, export, and replay conformance.
 
 Important limitations remain: pointer input is a deterministic logical-surface
 proof without native host translation or production scrolling; text measurement
@@ -154,15 +168,16 @@ authored-ID automation remain host-neutral proof behavior without editable text
 or native translation; tracing/replay remains headless observational
 infrastructure. M5B supplies independent semantic publication, absolute semantic
 bounds, resolved relationships, runtime focus projection, composed state/support,
-typed diagnostics, and deterministic revisions/updates. M5C now supplies public
+typed diagnostics, and deterministic revisions/updates. M5C supplies public
 exact semantic-node action ingress/resolution for `Activate`, `RequestFocus`,
 `OpenMenu`, and `OpenContextMenu` through the canonical queue/routed/default/trace
-architecture. It does **not** provide semantic LogicalScroll, the M5D
-`runenui_testing` harness, AccessKit/native accessibility, or multi-surface
-lifecycle. Those remain M5D/M7/M10 work. Paint/hit scenes, production
-layout/style/text, native hosts, renderer backends, and production controls also
-remain absent. The current runtime has one mounted root, one focus domain, and
-one logical surface with bounded proof-level displayed hit-test history.
+architecture. M5D supplies the public deterministic `runenui_testing` harness on
+top of those existing public contracts. M5 still does **not** provide semantic
+LogicalScroll, AccessKit/native accessibility, or multi-surface lifecycle; those
+remain M7/M10 work. Paint/hit scenes, production layout/style/text, native hosts,
+renderer backends, and production controls also remain absent. The current
+runtime has one mounted root, one focus domain, and one logical surface with
+bounded proof-level displayed hit-test history.
 
 ## Production profiles
 
@@ -199,13 +214,15 @@ composes those contributions into the separately typed surface-scoped semantic
 snapshot/update/diagnostic product. M5C resolves exact current semantic action
 requests through private owner/key bindings and converges accepted work on the
 existing command FIFO/routed/default/action/update/trace path without exposing
-mounted identity or creating a second semantic dispatcher. Tree changes rebuild
-topology-dependent renderer facts from one current mounted preorder snapshot.
-Compatible style and layout changes retain topology and read current mounted
-style/layout state; layout movement refreshes semantic bounds without rerunning
-unchanged semantic contribution. M5D next owns the unified public deterministic
-headless testing harness. M6 owns renderer-neutral paint/hit scene products only
-after M5 semantic/testing closure.
+mounted identity or creating a second semantic dispatcher. M5D adds a separate
+downstream testing crate that composes the same public runtime, publication,
+input, clock, semantic, trace, and replay APIs without acquiring live runtime
+authority. Tree changes rebuild topology-dependent renderer facts from one
+current mounted preorder snapshot. Compatible style and layout changes retain
+topology and read current mounted style/layout state; layout movement refreshes
+semantic bounds without rerunning unchanged semantic contribution. M5E next owns
+integrated M5 conformance/migration closure. M6 owns renderer-neutral paint/hit
+scene products only after accepted M5 closure.
 
 ## Canonical project documents
 
@@ -273,9 +290,10 @@ it, and compatible reconciliation retains it. Widgets may author canonical
 semantic contribution through the same state-aware contract. The runtime owns
 semantic identity and M5B publication. M5C exposes exact semantic action ingress
 through `AppRuntime::submit_semantic_action` while keeping the semantic-to-mounted
-binding private. Widget authoring still does not imply a native accessibility
-adapter, the M5D public harness, production controls, paint scenes, or native
-rendering.
+binding private. M5D exposes public deterministic testing convenience through
+`runenui_testing` without moving runtime authority into that crate. Widget
+authoring still does not imply a native accessibility adapter, production
+controls, paint scenes, or native rendering.
 
 ## Validation
 
