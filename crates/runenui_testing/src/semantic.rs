@@ -156,9 +156,7 @@ impl SemanticQuery {
             && self
                 .disabled
                 .is_none_or(|disabled| node.state().disabled() == disabled)
-            && self
-                .inert
-                .is_none_or(|inert| node.state().inert() == inert)
+            && self.inert.is_none_or(|inert| node.state().inert() == inert)
     }
 }
 

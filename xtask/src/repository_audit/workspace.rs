@@ -176,7 +176,9 @@ fn validate_dependency_direction(
                 findings.push(Finding::fatal(
                     "workspace.testing_public_dependency_missing",
                     Some(path_text(&member.relative.join("Cargo.toml"))),
-                    format!("runenui_testing must depend on public workspace package `{dependency}`"),
+                    format!(
+                        "runenui_testing must depend on public workspace package `{dependency}`"
+                    ),
                 ));
             }
         }
@@ -355,9 +357,9 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        CORE_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, WorkspaceMember,
-        documented_package_names, parse_dependency_names, parse_package_name,
-        parse_workspace_members, validate_dependency_direction,
+        CORE_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, WorkspaceMember, documented_package_names,
+        parse_dependency_names, parse_package_name, parse_workspace_members,
+        validate_dependency_direction,
     };
 
     #[test]

@@ -19,7 +19,9 @@ pub enum TestSurfaceConfigError {
 impl fmt::Display for TestSurfaceConfigError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ZeroExtent => formatter.write_str("test surface width and height must be non-zero"),
+            Self::ZeroExtent => {
+                formatter.write_str("test surface width and height must be non-zero")
+            }
         }
     }
 }

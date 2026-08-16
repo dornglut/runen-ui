@@ -55,7 +55,11 @@ pub struct SettleReport {
 }
 
 impl SettleReport {
-    pub(crate) const fn new(iterations: usize, last_pump: PumpReport, outcome: SettleOutcome) -> Self {
+    pub(crate) const fn new(
+        iterations: usize,
+        last_pump: PumpReport,
+        outcome: SettleOutcome,
+    ) -> Self {
         Self {
             iterations,
             last_pump,

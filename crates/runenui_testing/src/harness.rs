@@ -3,16 +3,16 @@ use std::time::Duration;
 
 use runenui_core::{CommandOrigin, ElementId, SemanticAction, SemanticCommand, SurfaceId, UiApp};
 use runenui_runtime::{
-    AppRuntime, AutomationSubmission, CommandSubmission, CommittedTextEvent,
-    CompositionGeneration, CompositionRange, CompositionStartSubmission, CompositionSubmission,
-    FocusState, InputDeviceId, KeyboardEvent, KeyboardSubmission, LogicalPoint, ManualClock,
-    MeasurementProvider, MonotonicInstant, MonotonicTimeError, PointerDeviceKind, PointerEvent,
-    PointerId, PointerPhase, PointerSubmission, PublishSurfaceError, PumpBudget, PumpReport,
-    ReconciliationReport, RuntimeConfig, SemanticPublication, SemanticRevision, SemanticSnapshot,
-    SemanticUpdateResult, SubmitAutomationError, SubmitCompositionError,
-    SubmitCompositionStartError, SubmitKeyboardError, SubmitPointerError, SubmitSemanticActionError,
-    SubmitSurfaceCommandError, SubmitTextError, SurfaceBuildContext, SurfaceInputContext,
-    SurfacePublication, TextSubmission, Trace, TraceReplay, TraceReplayError,
+    AppRuntime, AutomationSubmission, CommandSubmission, CommittedTextEvent, CompositionGeneration,
+    CompositionRange, CompositionStartSubmission, CompositionSubmission, FocusState, InputDeviceId,
+    KeyboardEvent, KeyboardSubmission, LogicalPoint, ManualClock, MeasurementProvider,
+    MonotonicInstant, MonotonicTimeError, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
+    PointerSubmission, PublishSurfaceError, PumpBudget, PumpReport, ReconciliationReport,
+    RuntimeConfig, SemanticPublication, SemanticRevision, SemanticSnapshot, SemanticUpdateResult,
+    SubmitAutomationError, SubmitCompositionError, SubmitCompositionStartError,
+    SubmitKeyboardError, SubmitPointerError, SubmitSemanticActionError, SubmitSurfaceCommandError,
+    SubmitTextError, SurfaceBuildContext, SurfaceInputContext, SurfacePublication, TextSubmission,
+    Trace, TraceReplay, TraceReplayError,
 };
 
 use crate::{
@@ -99,7 +99,11 @@ impl<App: UiApp> TestHarness<App> {
     /// Mounts an application using deterministic runtime and surface defaults.
     #[must_use]
     pub fn mount(state: App::State) -> Self {
-        Self::mount_with_config(state, RuntimeConfig::default(), TestSurfaceConfig::default())
+        Self::mount_with_config(
+            state,
+            RuntimeConfig::default(),
+            TestSurfaceConfig::default(),
+        )
     }
 
     /// Mounts with explicit runtime limits and deterministic fixed-surface configuration.
@@ -268,7 +272,8 @@ impl<App: UiApp> TestHarness<App> {
     ///
     /// Returns [`MissingPublication`] until an explicit publication succeeds.
     pub fn semantic_snapshot(&self) -> Result<&SemanticSnapshot, MissingPublication> {
-        self.semantic_publication().map(SemanticPublication::snapshot)
+        self.semantic_publication()
+            .map(SemanticPublication::snapshot)
     }
 
     /// Evaluates a deterministic semantic query against the latest exact snapshot.
@@ -477,8 +482,7 @@ impl<App: UiApp> TestHarness<App> {
         authored_id: ElementId,
         command: SemanticCommand,
     ) -> Result<AutomationSubmission, SubmitAutomationError> {
-        self.runtime
-            .submit_automation_command(authored_id, command)
+        self.runtime.submit_automation_command(authored_id, command)
     }
 
     /// Exports the canonical trace through its accepted deterministic JSONL projection.
