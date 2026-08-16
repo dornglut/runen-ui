@@ -10,7 +10,8 @@ RunenUI remains one workspace repository. Crates are extracted only to enforce r
 RunenUI/
 ├── crates/
 │   ├── runenui_core/
-│   └── runenui_runtime/
+│   ├── runenui_runtime/
+│   └── runenui_testing/
 ├── examples/
 │   └── counter/
 ├── tests/
@@ -20,65 +21,43 @@ RunenUI/
 
 | Package | Current ownership | Must not own |
 |---|---|---|
-| `runenui_core` | `UiApp`, host-neutral effects/work/subscription protocols; validated authored values/identity/style; transient views/elements; state-aware widgets; lifecycle contexts; invalidation; doc-hidden safe runtime bridge | Persistent mounted storage, live scheduling, hosts, renderer backends, app state, ECS, or legacy dependencies |
-| `runenui_runtime` | Generational mounted arena/tree and live work registry; reconciliation/lifecycle; generalized FIFO and four-budget scheduler; clocks/tasks/timers/subscriptions/host requests; wake/redraw; terminal/shutdown; bounded trace; aligned publication and hit testing | Application domain policy, native windows, concrete renderers, ECS, or legacy dependencies |
+| `runenui_core` | `UiApp`, host-neutral effects/work/subscription protocols; validated authored values/identity/style/geometry; transient views/elements; state-aware widgets; lifecycle/event contexts; semantic authoring/action vocabulary; doc-hidden safe runtime bridge | Persistent mounted/semantic storage, live scheduling, hosts, renderer backends, app state, ECS, or legacy dependencies |
+| `runenui_runtime` | Generational mounted and semantic arenas; reconciliation/lifecycle; generalized FIFO and deterministic scheduler; clocks/tasks/timers/subscriptions/host requests; wake/redraw; routed input/defaults; bounded trace/replay; renderer and semantic surface publication; exact semantic-action resolution | Application domain policy, testing convenience state, native windows/accessibility adapters, concrete renderers, ECS, or legacy dependencies |
+| `runenui_testing` | Public-only deterministic headless testing ergonomics over `runenui_core` + `runenui_runtime`: fixed test publication, bounded pumping/settling, exact snapshot-scoped semantic queries/targets, ordinary public ingress helpers, and read-only observation | Runtime behavior, private/internal test seams, mounted-state mutation, identity/sequence fabrication, parallel expected state, native host behavior, or semantic-to-mounted routing authority |
 | `counter` | Application-owned state/action/update and headless public-API proof | Framework internals, native host, renderer backend, or legacy imports |
-| `runenui_external_widget_conformance` | Non-publishable test-owned downstream controls, vertical/horizontal/intrinsic/unsupported child-layout widgets, mapping, state/lifecycle, alignment, hit, and snapshot proof | Production framework ownership or privileged internal access |
+| `runenui_external_widget_conformance` | Non-publishable test-owned downstream controls and public conformance proofs | Production framework ownership or privileged internal access |
 | `xtask` | Repository validation orchestration | Framework runtime behavior |
 
 Current dependency direction is acyclic:
 
 ```text
-runenui_core <- runenui_runtime <- counter
-       ^              ^
-       └──────────────┴── external widget conformance
+runenui_core <- runenui_runtime
+       ^             ^
+       └──────┬──────┘
+              ├── runenui_testing
+              ├── counter
+              └── external widget conformance
 ```
 
-`xtask` is repository tooling and has no framework dependency.
+`xtask` is repository tooling and has no framework dependency. `runenui_testing` is deliberately downstream of runtime: runtime must never depend on testing convenience APIs.
 
-The implemented M4 ownership direction preserves this graph. `runenui_core` owns
-only public host-neutral protocol/value definitions: opaque mounted and later
-surface identities, events/commands, action mapping, transaction-scoped event/work
-contexts, `UiApp`, `HostProtocol`, `WorkKey`, and effect/subscription
-descriptions. `runenui_runtime` remains the sole live authority for namespace
-creation, arenas/topology, validation, snapshots/routes, interaction mutation,
-reconciliation, queue sequences/checkpoints, work execution, timers/clocks,
-subscriptions, host requests, wake/redraw, trace, and shutdown. Completion
-ingress owns only live `Starting`/`Running` generations; centralized revocation
-removes registry and retained producer state before lifecycle callbacks. The
-current implementation includes the application-work/deterministic-scheduler
-slice, the accepted exact-target routed semantic-command kernel, and accepted
-displayed-generation surface context.
-Hidden safe core construction seams do not own live state or bypass runtime validation.
-M4 adds no third crate.
+## Ownership rules
 
-M4B, M4C0, M4C1, and M4C2 are complete and owner-accepted. M4C3 is the next
-implementation slice; M4C4–M4D3 remain blocked in sequence, and no additional
-crate boundary is implied by those slices. Exact execution state is owned by the
-[work-tracking system](../work-tracking.md).
+`runenui_core` owns public host-neutral protocol and value definitions. `runenui_runtime` remains the sole live authority for namespace creation, mounted/semantic arenas, topology, validation, routes, interaction mutation, reconciliation, queue/work/trace sequences, scheduling, clocks, publication, semantic resolution, and shutdown.
 
-Within the crates, built-in authoring is separate from the public element/widget
-protocol. Mounted storage is divided into arena, identity, node, capability
-cache, invalidation, interaction, matching, lifecycle, and diagnostic modules.
-Surface context/key/cache ownership is separate from phase resolution,
-measurement, arrangement, and publication code. These are module boundaries,
-not new crate boundaries.
+`runenui_testing` may compose those public contracts, but it must not recreate them. In particular:
 
-Current source boundaries follow present responsibilities: configuration,
-queue/pump, completion, clock, wake, redraw, application transaction, trace,
-and family-specific live work are separate capability modules. Routed runtime
-ownership is a focused module family: `routed/mod.rs` coordinates the slice,
-`admission.rs` computes conservative maximum-safe reservations,
-`transaction.rs` owns provisional routed state, `dispatch.rs` validates and
-invokes the immutable route, `defaults.rs` resolves semantic default,
-`commit.rs` applies the admitted transaction, and `failure.rs` records exact
-processing/integrity outcomes. Speculative milestone-named modules
-are not part of the workspace structure.
+- it may retain an immutable `SurfacePublication`, but not replace runtime publication state;
+- it may create a scoped semantic test target only from membership in an exact public `SemanticSnapshot`;
+- it may delegate semantic actions only through `AppRuntime::submit_semantic_action`;
+- it may build pointer input only from public `SurfaceInputContext` values emitted by publication;
+- it may advance a public `ManualClock` and call the explicit bounded pump;
+- it may inspect public state/focus/reconciliation/frame/layout/semantic/trace/replay products;
+- it must not enable or depend on `internal-test-seams`, call private modules, fabricate IDs/sequences, mutate mounted state, or maintain a second expected runtime model.
 
-The accepted pre-M4C2 decomposition split broad runtime, trace, and surface
-responsibilities into internal modules while preserving the same two production
-crates, public authority, queue, trace store, scheduler ordering, and matrix state. File
-size alone is not a crate boundary or a valid architecture decision.
+This direction makes M5D an independently valuable public consumer and a Cargo-enforced proof that the accepted runtime APIs are sufficient for deterministic testing.
+
+Within production crates, built-in authoring remains separate from the open element/widget protocol. Mounted storage, semantic storage/publication, routing, scheduling, tracing, and surface publication remain focused module families. File size alone is not a crate boundary or architecture decision.
 
 ## Extraction rule
 
@@ -93,14 +72,17 @@ A new crate requires at least one demonstrated property:
 
 A named concept, a large file, or a target diagram is not enough. Do not create empty target crates, genericize identity, or relocate geometry solely to satisfy an imagined graph.
 
+M5D satisfies this rule because deterministic test ergonomics are independently consumable and must prove that ordinary public runtime contracts are sufficient without privileged access.
+
 ## Expected evolution
 
-The roadmap may eventually justify crates for a facade, runtime, layout, style, render scenes, text, controls, semantics/accessibility adapters, host contracts, a desktop platform adapter, a conventional backend, an optional SDF backend, testing, and devtools. Exact extraction points require ADRs and current dependency analysis.
+Later milestones may justify crates for render scenes, layout/style, text, controls, semantics/accessibility adapters, host contracts, desktop platform adapters, renderer backends, facade APIs, and devtools. Exact extraction points still require current ownership and dependency analysis.
 
 Important direction rules remain:
 
-- core never depends on runtime, platform, renderer, controls, or legacy code;
-- runtime never depends on concrete platform or renderer implementations;
+- core never depends on runtime, testing, platform, renderer, controls, or legacy code;
+- runtime never depends on testing, concrete platform, or concrete renderer implementations;
+- testing depends only on public core/runtime contracts and never becomes live runtime authority;
 - render protocols never depend on semantic controls or concrete backends;
 - host contracts never depend on a specific windowing implementation;
 - controls never depend on platform implementations;
@@ -111,16 +93,12 @@ Important direction rules remain:
 
 ## Milestone gates
 
-- M2–M3 establish extensible widget and mounted-runtime ownership before a final crate graph can be trusted.
-- M6 may justify a render-protocol crate after two independent consumers.
+- M5D justifies `runenui_testing` as the first public downstream testing crate after semantic publication/action prerequisites are accepted.
+- M6 may justify a render-protocol crate after real independent-consumer pressure.
 - M7 layout/style extraction still requires the gates in [ADR 0002](../adr/0002-keep-layout-in-runtime.md) and the styling architecture.
 - M8 text may justify a text crate once shaping/editing/resources form an independently testable subsystem.
 - M9 controls require all earlier public contracts.
 - M10 introduces host/platform/backend crates only with real implementations.
 - M11 may add the facade crate after the lower-level public surface is ready to stabilize.
 
-See the [production roadmap](../roadmap.md) for the authoritative sequence and
-[work tracking](../work-tracking.md) for volatile execution state.
-
-The current public-surface ownership and M1/M2 construction restrictions are
-recorded in the [public API contract](public-api.md).
+See the [production roadmap](../roadmap.md) for the authoritative sequence and [work tracking](../work-tracking.md) for volatile execution state. The current public-surface ownership restrictions are recorded in the [public API contract](public-api.md).

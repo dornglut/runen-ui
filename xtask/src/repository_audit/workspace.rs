@@ -10,6 +10,7 @@ const ROOT_MANIFEST: &str = "Cargo.toml";
 const WORKSPACE_STRUCTURE_PATH: &str = "docs/architecture/workspace-structure.md";
 const CORE_PACKAGE: &str = "runenui_core";
 const RUNTIME_PACKAGE: &str = "runenui_runtime";
+const TESTING_PACKAGE: &str = "runenui_testing";
 const XTASK_PACKAGE: &str = "xtask";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -64,6 +65,13 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
                 "workspace.duplicate_package_name",
                 Some(path_text(&manifest_relative)),
                 format!("workspace package name `{package}` is duplicated"),
+            ));
+        }
+        if package == TESTING_PACKAGE && manifest.contains("internal-test-seams") {
+            findings.push(Finding::fatal(
+                "workspace.testing_internal_seam_dependency",
+                Some(path_text(&manifest_relative)),
+                "runenui_testing must consume ordinary public runtime APIs and must not enable or mention `internal-test-seams` in its manifest",
             ));
         }
 
@@ -129,7 +137,7 @@ fn validate_dependency_direction(
     let allowed = match member.package.as_str() {
         CORE_PACKAGE | XTASK_PACKAGE => BTreeSet::new(),
         RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
-        "counter" | "runenui_external_widget_conformance" => {
+        TESTING_PACKAGE | "counter" | "runenui_external_widget_conformance" => {
             BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
         }
         package if member.relative.starts_with("crates") => {
@@ -160,6 +168,18 @@ fn validate_dependency_direction(
             Some(path_text(&member.relative.join("Cargo.toml"))),
             "runenui_runtime must depend on runenui_core",
         ));
+    }
+
+    if member.package == TESTING_PACKAGE {
+        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
+            if !workspace_dependencies.contains(dependency) {
+                findings.push(Finding::fatal(
+                    "workspace.testing_public_dependency_missing",
+                    Some(path_text(&member.relative.join("Cargo.toml"))),
+                    format!("runenui_testing must depend on public workspace package `{dependency}`"),
+                ));
+            }
+        }
     }
 }
 
@@ -335,9 +355,9 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        CORE_PACKAGE, RUNTIME_PACKAGE, WorkspaceMember, documented_package_names,
-        parse_dependency_names, parse_package_name, parse_workspace_members,
-        validate_dependency_direction,
+        CORE_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, WorkspaceMember,
+        documented_package_names, parse_dependency_names, parse_package_name,
+        parse_workspace_members, validate_dependency_direction,
     };
 
     #[test]
@@ -385,6 +405,35 @@ mod tests {
                 .iter()
                 .any(|finding| { finding.code == "workspace.forbidden_dependency_direction" })
         );
+    }
+
+    #[test]
+    fn testing_package_requires_only_the_public_core_runtime_direction() {
+        let core = WorkspaceMember {
+            relative: "crates/runenui_core".into(),
+            package: CORE_PACKAGE.to_owned(),
+            dependencies: BTreeSet::new(),
+        };
+        let runtime = WorkspaceMember {
+            relative: "crates/runenui_runtime".into(),
+            package: RUNTIME_PACKAGE.to_owned(),
+            dependencies: BTreeSet::from([CORE_PACKAGE.to_owned()]),
+        };
+        let testing = WorkspaceMember {
+            relative: "crates/runenui_testing".into(),
+            package: TESTING_PACKAGE.to_owned(),
+            dependencies: BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+        };
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (testing.package.as_str(), &testing),
+        ]);
+        let mut findings = Vec::new();
+
+        validate_dependency_direction(&testing, &members, &mut findings);
+
+        assert!(findings.is_empty());
     }
 
     #[test]

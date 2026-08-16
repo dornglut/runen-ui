@@ -4,6 +4,7 @@ resolver = "3"
 members = [
     "crates/runenui_core",
     "crates/runenui_runtime",
+    "crates/runenui_testing",
 
     "examples/counter",
 
