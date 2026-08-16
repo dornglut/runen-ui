@@ -4,15 +4,15 @@ use std::time::Duration;
 use runenui_core::{CommandOrigin, ElementId, SemanticAction, SemanticCommand, SurfaceId, UiApp};
 use runenui_runtime::{
     AppRuntime, AutomationSubmission, CommandSubmission, CommittedTextEvent, CompositionGeneration,
-    CompositionRange, CompositionStartSubmission, CompositionSubmission, FocusState, InputDeviceId,
-    KeyboardEvent, KeyboardSubmission, LogicalPoint, ManualClock, MeasurementProvider,
-    MonotonicInstant, MonotonicTimeError, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
-    PointerSubmission, PublishSurfaceError, PumpBudget, PumpReport, ReconciliationReport,
+    CompositionRange, CompositionStartSubmission, CompositionSubmission, FocusState, HostRequestRef,
+    InputDeviceId, KeyboardEvent, KeyboardSubmission, LogicalPoint, ManualClock, MeasurementProvider,
+    MonotonicInstant, MonotonicTimeError, MountedNodeId, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, PointerSubmission, PublishSurfaceError, PumpBudget, PumpReport, ReconciliationReport,
     RuntimeConfig, SemanticPublication, SemanticRevision, SemanticSnapshot, SemanticUpdateResult,
-    SubmitAutomationError, SubmitCompositionError, SubmitCompositionStartError,
+    SubmitAutomationError, SubmitCommandError, SubmitCompositionError, SubmitCompositionStartError,
     SubmitKeyboardError, SubmitPointerError, SubmitSemanticActionError, SubmitSurfaceCommandError,
     SubmitTextError, SurfaceBuildContext, SurfaceInputContext, SurfacePublication, TextSubmission,
-    Trace, TraceReplay, TraceReplayError,
+    TimerFiringOutcome, TimerStartOutcome, Trace, TraceReplay, TraceReplayError,
 };
 
 use crate::{
@@ -191,18 +191,35 @@ impl<App: UiApp> TestHarness<App> {
         self.clock.advance(duration)
     }
 
+    /// Returns the last accepted timer start outcome from ordinary scheduler authority.
+    #[must_use]
+    pub const fn last_timer_start_outcome(&self) -> Option<TimerStartOutcome> {
+        self.runtime.last_timer_start_outcome()
+    }
+
+    /// Returns the last accepted timer firing outcome from ordinary scheduler authority.
+    #[must_use]
+    pub const fn last_timer_firing_outcome(&self) -> Option<TimerFiringOutcome> {
+        self.runtime.last_timer_firing_outcome()
+    }
+
+    /// Returns currently exposed application host requests without changing runtime state.
+    #[must_use]
+    pub fn pending_host_requests(&self) -> Vec<HostRequestRef<'_, App::HostProtocol>> {
+        self.runtime.pending_host_requests()
+    }
+
     /// Publishes the configured fixed surface with deterministic text metrics.
     ///
     /// # Errors
     ///
     /// Returns the ordinary runtime's publication refusal or terminal error.
-    pub fn publish(&mut self) -> Result<SurfacePublication, PublishSurfaceError> {
+    pub fn publish(&mut self) -> Result<&SurfacePublication, PublishSurfaceError> {
         let measurement = self.surface.measurement_provider();
         let context = SurfaceBuildContext::tight(self.surface.style_tokens(), self.surface.size())
             .with_measurement_provider(&measurement);
         let publication = self.runtime.publish_surface(&context)?;
-        self.publication = Some(publication.clone());
-        Ok(publication)
+        Ok(self.publication.insert(publication))
     }
 
     /// Publishes the configured fixed surface through a caller-provided public
@@ -214,12 +231,11 @@ impl<App: UiApp> TestHarness<App> {
     pub fn publish_with_measurement(
         &mut self,
         measurement_provider: &dyn MeasurementProvider,
-    ) -> Result<SurfacePublication, PublishSurfaceError> {
+    ) -> Result<&SurfacePublication, PublishSurfaceError> {
         let context = SurfaceBuildContext::tight(self.surface.style_tokens(), self.surface.size())
             .with_measurement_provider(measurement_provider);
         let publication = self.runtime.publish_surface(&context)?;
-        self.publication = Some(publication.clone());
-        Ok(publication)
+        Ok(self.publication.insert(publication))
     }
 
     /// Publishes with a completely explicit ordinary public build context.
@@ -230,10 +246,9 @@ impl<App: UiApp> TestHarness<App> {
     pub fn publish_with_context(
         &mut self,
         context: &SurfaceBuildContext<'_>,
-    ) -> Result<SurfacePublication, PublishSurfaceError> {
+    ) -> Result<&SurfacePublication, PublishSurfaceError> {
         let publication = self.runtime.publish_surface(context)?;
-        self.publication = Some(publication.clone());
-        Ok(publication)
+        Ok(self.publication.insert(publication))
     }
 
     /// Returns the latest complete immutable publication retained by the harness.
@@ -349,6 +364,24 @@ impl<App: UiApp> TestHarness<App> {
         event: PointerEvent,
     ) -> Result<PointerSubmission, SubmitPointerError> {
         self.runtime.submit_pointer(event)
+    }
+
+    /// Delegates one exact mounted command to ordinary public command ingress.
+    ///
+    /// This is intentionally separate from semantic-query helpers: callers must
+    /// already possess a legitimate public mounted identity from a renderer/frame
+    /// product when testing mounted command behavior.
+    ///
+    /// # Errors
+    ///
+    /// Returns the ordinary command-ingress error with exact owned recovery.
+    pub fn submit_command(
+        &mut self,
+        target: MountedNodeId,
+        command: SemanticCommand,
+        origin: CommandOrigin,
+    ) -> Result<CommandSubmission, SubmitCommandError> {
+        self.runtime.submit_command(target, command, origin)
     }
 
     /// Delegates a point-resolved semantic command through the latest exact
