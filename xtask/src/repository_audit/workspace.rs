@@ -10,6 +10,8 @@ const ROOT_MANIFEST: &str = "Cargo.toml";
 const WORKSPACE_STRUCTURE_PATH: &str = "docs/architecture/workspace-structure.md";
 const CORE_PACKAGE: &str = "runenui_core";
 const RUNTIME_PACKAGE: &str = "runenui_runtime";
+const TESTING_PACKAGE: &str = "runenui_testing";
+const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -23,6 +25,13 @@ struct WorkspaceMember {
     relative: PathBuf,
     package: String,
     dependencies: BTreeSet<String>,
+    dev_dependencies: BTreeSet<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DependencySection {
+    Production,
+    Dev,
 }
 
 pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<WorkspaceMetrics, String> {
@@ -66,11 +75,20 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
                 format!("workspace package name `{package}` is duplicated"),
             ));
         }
+        if package == TESTING_PACKAGE && manifest.contains("internal-test-seams") {
+            findings.push(Finding::fatal(
+                "workspace.testing_internal_seam_dependency",
+                Some(path_text(&manifest_relative)),
+                "runenui_testing must consume ordinary public runtime APIs and must not enable or mention `internal-test-seams` in its manifest",
+            ));
+        }
 
+        let (dependencies, dev_dependencies) = parse_dependency_names(&manifest);
         members.push(WorkspaceMember {
             relative,
             package,
-            dependencies: parse_dependency_names(&manifest),
+            dependencies,
+            dev_dependencies,
         });
     }
 
@@ -114,22 +132,29 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
     })
 }
 
+fn workspace_dependency_set<'a>(
+    dependencies: &'a BTreeSet<String>,
+    members: &BTreeMap<&str, &WorkspaceMember>,
+) -> BTreeSet<&'a str> {
+    dependencies
+        .iter()
+        .filter(|dependency| members.contains_key(dependency.as_str()))
+        .map(String::as_str)
+        .collect()
+}
+
 fn validate_dependency_direction(
     member: &WorkspaceMember,
     members: &BTreeMap<&str, &WorkspaceMember>,
     findings: &mut Vec<Finding>,
 ) {
-    let workspace_dependencies = member
-        .dependencies
-        .iter()
-        .filter(|dependency| members.contains_key(dependency.as_str()))
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
+    let workspace_dependencies = workspace_dependency_set(&member.dependencies, members);
+    let workspace_dev_dependencies = workspace_dependency_set(&member.dev_dependencies, members);
 
     let allowed = match member.package.as_str() {
         CORE_PACKAGE | XTASK_PACKAGE => BTreeSet::new(),
         RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
-        "counter" | "runenui_external_widget_conformance" => {
+        TESTING_PACKAGE | "counter" | EXTERNAL_WIDGET_PACKAGE => {
             BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
         }
         package if member.relative.starts_with("crates") => {
@@ -154,12 +179,41 @@ fn validate_dependency_direction(
         ));
     }
 
+    let mut allowed_dev = allowed.clone();
+    if member.package == EXTERNAL_WIDGET_PACKAGE {
+        allowed_dev.insert(TESTING_PACKAGE);
+    }
+    for dependency in workspace_dev_dependencies.difference(&allowed_dev) {
+        findings.push(Finding::fatal(
+            "workspace.forbidden_dev_dependency_direction",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            format!(
+                "workspace package `{}` must not dev-depend on workspace package `{dependency}`",
+                member.package
+            ),
+        ));
+    }
+
     if member.package == RUNTIME_PACKAGE && !workspace_dependencies.contains(CORE_PACKAGE) {
         findings.push(Finding::fatal(
             "workspace.runtime_core_dependency_missing",
             Some(path_text(&member.relative.join("Cargo.toml"))),
             "runenui_runtime must depend on runenui_core",
         ));
+    }
+
+    if member.package == TESTING_PACKAGE {
+        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
+            if !workspace_dependencies.contains(dependency) {
+                findings.push(Finding::fatal(
+                    "workspace.testing_public_dependency_missing",
+                    Some(path_text(&member.relative.join("Cargo.toml"))),
+                    format!(
+                        "runenui_testing must depend on public workspace package `{dependency}`"
+                    ),
+                ));
+            }
+        }
     }
 }
 
@@ -214,28 +268,40 @@ fn parse_package_name(contents: &str) -> Option<String> {
     None
 }
 
-fn parse_dependency_names(contents: &str) -> BTreeSet<String> {
-    let mut dependencies = BTreeSet::new();
-    let mut in_dependencies = false;
+fn parse_dependency_names(contents: &str) -> (BTreeSet<String>, BTreeSet<String>) {
+    let mut production = BTreeSet::new();
+    let mut dev = BTreeSet::new();
+    let mut section = None;
 
     for line in contents.lines() {
         let trimmed = strip_comment(line).trim();
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            in_dependencies = dependency_section(trimmed);
+            section = dependency_section(trimmed);
             continue;
         }
-        if !in_dependencies || trimmed.is_empty() {
+        let Some(section) = section else {
+            continue;
+        };
+        if trimmed.is_empty() {
             continue;
         }
         if let Some((name, value)) = trimmed.split_once('=') {
             let name = name.trim().trim_matches('"');
             if !name.is_empty() {
-                dependencies.insert(dependency_package_name(name, value));
+                let package = dependency_package_name(name, value);
+                match section {
+                    DependencySection::Production => {
+                        production.insert(package);
+                    }
+                    DependencySection::Dev => {
+                        dev.insert(package);
+                    }
+                }
             }
         }
     }
 
-    dependencies
+    (production, dev)
 }
 
 fn dependency_package_name(name: &str, value: &str) -> String {
@@ -257,13 +323,17 @@ fn dependency_package_name(name: &str, value: &str) -> String {
     package.unwrap_or_else(|| name.to_owned())
 }
 
-fn dependency_section(header: &str) -> bool {
-    matches!(
-        header,
-        "[dependencies]" | "[dev-dependencies]" | "[build-dependencies]"
-    ) || header.ends_with(".dependencies]")
-        || header.ends_with(".dev-dependencies]")
+fn dependency_section(header: &str) -> Option<DependencySection> {
+    if header == "[dev-dependencies]" || header.ends_with(".dev-dependencies]") {
+        Some(DependencySection::Dev)
+    } else if matches!(header, "[dependencies]" | "[build-dependencies]")
+        || header.ends_with(".dependencies]")
         || header.ends_with(".build-dependencies]")
+    {
+        Some(DependencySection::Production)
+    } else {
+        None
+    }
 }
 
 fn documented_package_names(contents: &str) -> BTreeSet<String> {
@@ -335,10 +405,24 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        CORE_PACKAGE, RUNTIME_PACKAGE, WorkspaceMember, documented_package_names,
-        parse_dependency_names, parse_package_name, parse_workspace_members,
-        validate_dependency_direction,
+        CORE_PACKAGE, EXTERNAL_WIDGET_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, WorkspaceMember,
+        documented_package_names, parse_dependency_names, parse_package_name,
+        parse_workspace_members, validate_dependency_direction,
     };
+
+    fn member(
+        relative: &str,
+        package: &str,
+        dependencies: BTreeSet<String>,
+        dev_dependencies: BTreeSet<String>,
+    ) -> WorkspaceMember {
+        WorkspaceMember {
+            relative: relative.into(),
+            package: package.to_owned(),
+            dependencies,
+            dev_dependencies,
+        }
+    }
 
     #[test]
     fn workspace_member_parser_preserves_declared_order() {
@@ -349,29 +433,35 @@ mod tests {
     }
 
     #[test]
-    fn manifest_parser_reads_package_and_dependency_sections() {
+    fn manifest_parser_distinguishes_production_and_dev_dependencies() {
         let manifest = "[package]\nname = \"runtime\"\n[dependencies]\ncore_alias = { package = \"core\", path = \"../core\" }\n[dev-dependencies]\nfixture = \"1\"\n";
         assert_eq!(parse_package_name(manifest).as_deref(), Some("runtime"));
         assert_eq!(
             parse_dependency_names(manifest),
-            BTreeSet::from(["core".to_owned(), "fixture".to_owned()])
+            (
+                BTreeSet::from(["core".to_owned()]),
+                BTreeSet::from(["fixture".to_owned()])
+            )
         );
     }
 
     #[test]
     fn renamed_dependency_uses_canonical_identity_for_direction_checks() {
-        let core = WorkspaceMember {
-            relative: "crates/runenui_core".into(),
-            package: CORE_PACKAGE.to_owned(),
-            dependencies: parse_dependency_names(
-                "[dependencies]\nruntime_alias = { package = \"runenui_runtime\", path = \"../runenui_runtime\" }\n",
-            ),
-        };
-        let runtime = WorkspaceMember {
-            relative: "crates/runenui_runtime".into(),
-            package: RUNTIME_PACKAGE.to_owned(),
-            dependencies: BTreeSet::from([CORE_PACKAGE.to_owned()]),
-        };
+        let (dependencies, dev_dependencies) = parse_dependency_names(
+            "[dependencies]\nruntime_alias = { package = \"runenui_runtime\", path = \"../runenui_runtime\" }\n",
+        );
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            dependencies,
+            dev_dependencies,
+        );
+        let runtime = member(
+            "crates/runenui_runtime",
+            RUNTIME_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
         let members = BTreeMap::from([
             (core.package.as_str(), &core),
             (runtime.package.as_str(), &runtime),
@@ -383,7 +473,105 @@ mod tests {
         assert!(
             findings
                 .iter()
-                .any(|finding| { finding.code == "workspace.forbidden_dependency_direction" })
+                .any(|finding| finding.code == "workspace.forbidden_dependency_direction")
+        );
+    }
+
+    #[test]
+    fn testing_package_requires_public_core_runtime_production_dependencies() {
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
+        let runtime = member(
+            "crates/runenui_runtime",
+            RUNTIME_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let testing = member(
+            "crates/runenui_testing",
+            TESTING_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (testing.package.as_str(), &testing),
+        ]);
+        let mut findings = Vec::new();
+
+        validate_dependency_direction(&testing, &members, &mut findings);
+
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn external_fixture_may_consume_testing_only_as_a_dev_dependency() {
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
+        let runtime = member(
+            "crates/runenui_runtime",
+            RUNTIME_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let testing = member(
+            "crates/runenui_testing",
+            TESTING_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let external = member(
+            "tests/external_widget",
+            EXTERNAL_WIDGET_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::from([TESTING_PACKAGE.to_owned()]),
+        );
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (testing.package.as_str(), &testing),
+            (external.package.as_str(), &external),
+        ]);
+        let mut findings = Vec::new();
+
+        validate_dependency_direction(&external, &members, &mut findings);
+        assert!(findings.is_empty());
+
+        let production_external = member(
+            "tests/external_widget",
+            EXTERNAL_WIDGET_PACKAGE,
+            BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                TESTING_PACKAGE.to_owned(),
+            ]),
+            BTreeSet::new(),
+        );
+        let production_members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (testing.package.as_str(), &testing),
+            (production_external.package.as_str(), &production_external),
+        ]);
+        let mut production_findings = Vec::new();
+        validate_dependency_direction(
+            &production_external,
+            &production_members,
+            &mut production_findings,
+        );
+        assert!(
+            production_findings
+                .iter()
+                .any(|finding| finding.code == "workspace.forbidden_dependency_direction")
         );
     }
 

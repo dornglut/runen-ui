@@ -50,6 +50,7 @@ version = "0.1.0"
 dependencies = [
  "runenui_core",
  "runenui_runtime",
+ "runenui_testing",
 ]
 
 [[package]]
@@ -58,6 +59,14 @@ version = "0.1.0"
 dependencies = [
  "runenui_core",
  "serde_json",
+]
+
+[[package]]
+name = "runenui_testing"
+version = "0.1.0"
+dependencies = [
+ "runenui_core",
+ "runenui_runtime",
 ]
 
 [[package]]
