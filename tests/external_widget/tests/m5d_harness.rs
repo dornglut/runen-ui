@@ -299,5 +299,9 @@ fn public_harness_delivers_downstream_keyboard_text_and_composition_ingress() {
             scalars: 1
         })
     )));
+
+    let trace = harness.trace_jsonl();
+    assert!(!trace.contains("é"));
+    assert!(!trace.contains("pré"));
     assert!(harness.trace_replay().is_ok());
 }
