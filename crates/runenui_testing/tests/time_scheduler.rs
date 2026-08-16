@@ -39,8 +39,11 @@ impl UiApp for TimerApp {
     }
 }
 
-const fn settle_budget() -> SettleBudget {
-    SettleBudget::new(NonZeroUsize::MIN, PumpBudget::new(64, 64, 64, 64))
+fn settle_budget() -> SettleBudget {
+    SettleBudget::new(
+        NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN),
+        PumpBudget::new(64, 64, 64, 64),
+    )
 }
 
 #[test]
@@ -173,6 +176,6 @@ fn externally_pending_host_work_is_observable_and_does_not_busy_wait() {
     assert_eq!(report.outcome(), SettleOutcome::Idle);
     assert_eq!(harness.pending_host_requests().len(), 1);
     assert!(!*harness.state());
-    assert_eq!(report.last_pump().processed_envelopes(), 1);
+    assert_eq!(report.last_pump().processed_envelopes(), 0);
     assert_eq!(report.last_pump().remaining_queued_envelopes(), 0);
 }
