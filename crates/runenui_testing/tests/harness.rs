@@ -159,7 +159,7 @@ fn pointer_helper_preserves_context_and_drives_public_pointer_activation() {
     let Ok(up_submission) = harness.submit_pointer(up) else {
         return;
     };
-    assert_ne!(down_submission.sequence(), up_submission.sequence());
+    assert!(down_submission.sequence() < up_submission.sequence());
     assert_eq!(
         harness.run_until_idle(settle_budget()).outcome(),
         SettleOutcome::Idle
