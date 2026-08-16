@@ -40,11 +40,8 @@ impl UiApp for HarnessApp {
     }
 }
 
-fn settle_budget() -> SettleBudget {
-    let iterations = match NonZeroUsize::new(8) {
-        Some(iterations) => iterations,
-        None => NonZeroUsize::MIN,
-    };
+const fn settle_budget() -> SettleBudget {
+    let iterations = NonZeroUsize::new(8).map_or(NonZeroUsize::MIN, |iterations| iterations);
     SettleBudget::new(iterations, PumpBudget::new(64, 64, 64, 64))
 }
 
@@ -105,13 +102,11 @@ fn pointer_helper_uses_the_exact_current_public_surface_context() {
     let publication = harness.publish();
     assert!(publication.is_ok());
 
-    let pointer_id = match PointerId::new(1) {
-        Some(pointer_id) => pointer_id,
-        None => return,
+    let Some(pointer_id) = PointerId::new(1) else {
+        return;
     };
-    let point = match LogicalPoint::new(4.0, 4.0) {
-        Ok(point) => point,
-        Err(_) => return,
+    let Ok(point) = LogicalPoint::new(4.0, 4.0) else {
+        return;
     };
     let event = harness.pointer_event(
         pointer_id,
