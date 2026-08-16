@@ -117,12 +117,7 @@ fn self_requeue_stops_at_the_explicit_iteration_limit() {
     assert_eq!(report.outcome(), SettleOutcome::IterationLimit);
     assert_eq!(report.iterations(), 3);
     assert!(report.last_pump().remaining_queued_envelopes() > 0);
-    assert!(
-        report
-            .last_pump()
-            .exhausted_budgets()
-            .processed_envelopes()
-    );
+    assert!(report.last_pump().exhausted_budgets().processed_envelopes());
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
