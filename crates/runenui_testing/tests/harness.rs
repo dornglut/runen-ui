@@ -113,7 +113,10 @@ fn pointer_helper_preserves_context_and_drives_public_pointer_activation() {
             .find(|node| node.authored_id() == Some(&authored))?;
         let bounds = node.bounds();
         let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0).ok()?;
-        assert_eq!(publication.frame().hit_test_id(point), Some(node.id().clone()));
+        assert_eq!(
+            publication.frame().hit_test_id(point),
+            Some(node.id().clone())
+        );
         Some((
             publication.input_context().clone(),
             point,
