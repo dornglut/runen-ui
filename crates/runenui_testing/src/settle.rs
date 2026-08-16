@@ -92,14 +92,14 @@ impl SettleReport {
     }
 }
 
-pub(crate) const fn zero_progress(report: PumpReport) -> bool {
+const fn zero_progress(report: PumpReport) -> bool {
     report.processed_envelopes() == 0
         && report.imported_completions() == 0
         && report.polled_local_work() == 0
         && report.promoted_timers() == 0
 }
 
-pub(crate) const fn outcome_for(report: PumpReport, at_limit: bool) -> Option<SettleOutcome> {
+pub(super) const fn outcome_for(report: PumpReport, at_limit: bool) -> Option<SettleOutcome> {
     match report.outcome() {
         PumpOutcome::Closed => Some(SettleOutcome::Closed),
         PumpOutcome::Terminal(reason) => Some(SettleOutcome::Terminal(reason)),

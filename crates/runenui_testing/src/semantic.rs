@@ -49,7 +49,6 @@ impl SemanticTarget {
     }
 
     /// Creates the ordinary public M5C request for this exact scoped target.
-    #[must_use]
     pub fn request(&self, action: SemanticAction) -> SemanticActionRequest {
         SemanticActionRequest::new(self.surface.clone(), self.node.clone(), action)
     }
@@ -72,7 +71,7 @@ impl fmt::Display for SemanticTargetError {
 impl Error for SemanticTargetError {}
 
 /// Deterministic exact-match query over one committed semantic snapshot.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SemanticQuery {
     role: Option<SemanticRole>,
     name: Option<String>,
@@ -119,7 +118,7 @@ impl SemanticQuery {
 
     /// Requires one supported semantic action.
     #[must_use]
-    pub fn with_supported_action(mut self, action: SemanticAction) -> Self {
+    pub const fn with_supported_action(mut self, action: SemanticAction) -> Self {
         self.supported_action = Some(action);
         self
     }
@@ -194,10 +193,11 @@ impl SemanticQueryMatches {
     pub fn unique(self) -> Result<SemanticTarget, UniqueSemanticQueryError> {
         match self.targets.len() {
             0 => Err(UniqueSemanticQueryError::Missing),
-            1 => match self.targets.into_iter().next() {
-                Some(target) => Ok(target),
-                None => Err(UniqueSemanticQueryError::Missing),
-            },
+            1 => self
+                .targets
+                .into_iter()
+                .next()
+                .map_or(Err(UniqueSemanticQueryError::Missing), Ok),
             _ => Err(UniqueSemanticQueryError::Ambiguous {
                 matches: self.targets,
             }),
@@ -215,7 +215,7 @@ pub enum UniqueSemanticQueryError {
 impl UniqueSemanticQueryError {
     /// Returns ambiguous exact targets, or an empty slice for a missing query.
     #[must_use]
-    pub fn matches(&self) -> &[SemanticTarget] {
+    pub const fn matches(&self) -> &[SemanticTarget] {
         match self {
             Self::Missing => &[],
             Self::Ambiguous { matches } => matches.as_slice(),
