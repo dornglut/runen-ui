@@ -50,7 +50,7 @@ fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
         return;
     };
     assert!(!publication.frame().nodes().is_empty());
-    assert!(!publication.layout_report().node_reports().is_empty());
+    assert!(!publication.layout_report().nodes().is_empty());
     assert!(!publication.semantic_publication().snapshot().nodes().is_empty());
 
     assert!(matches!(
