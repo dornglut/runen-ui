@@ -8,6 +8,30 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and guarded-squash-merged M5D public deterministic headless
+  testing in [PR #64](https://github.com/dornglut/runen-ui/pull/64). Exact
+  reviewed head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed canonical exact-head
+  CI #1230 / `31962536977`; accepted squash/main is
+  `72d2405211a3fd6d11e0d17680b7769df90b5ffe`, and reviewed head and squash
+  share exact complete repository tree `bdbf19f5c2197490d6b922fb792791b205f40370`.
+  Accepted-main push CI #1231 / `31967898198` passed at that exact squash. The
+  accepted implementation adds public downstream `runenui_testing` with
+  `TestHarness<App>`, deterministic public `ManualClock` use, configurable
+  nonzero fixed-surface publication, explicit bounded pumping and finite
+  `SettleBudget`, exact snapshot-scoped `SemanticQuery`/`SemanticTarget`, ordinary
+  public pointer/keyboard/text/composition/automation/action/command/semantic-
+  action ingress, and read-only state/focus/reconciliation/frame/layout/hit/
+  paint/semantic/trace/replay inspection. It enables no `internal-test-seams`,
+  hidden mutation bridge, semantic-to-`MountedNodeId` shortcut, bare-ID surface
+  guessing, wall-clock wait, unbounded settle, parallel runtime model, semantic
+  LogicalScroll compatibility path, or native accessibility adapter. This
+  mandatory post-merge reconciliation promotes exactly the ten M5D-owned
+  `TEST-*` rows to `owner-accepted`, producing M5 truth `53 total / 48
+  owner-accepted / 5 blocked`, M4 truth `237 total / 237 owner-accepted`, and
+  aggregate configured truth `290 total / 285 owner-accepted / 5 blocked`. M5D
+  #50 remains open for this reconciliation only; M5E #51 remains blocked until
+  the reconciliation itself is exact-head validated, critically reviewed,
+  explicitly owner-accepted, guarded-merged, and accepted-main verified.
 - Owner-accepted and guarded-squash-merged M5C semantic action ingress and
   accessibility resolution in [PR #62](https://github.com/dornglut/runen-ui/pull/62).
   Exact reviewed head `504899b79059eb94ad4474d67bba1e27eb30b374`
