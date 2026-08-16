@@ -39,18 +39,17 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 
 The current implementation is a deterministic mounted headless proof with this
 narrower shape. M4 is complete and owner-accepted through M4D3. M5 is active.
-M5A semantic contribution/independent identity, the #55 readiness amendment, and
-M5B semantic publication/incremental updates are owner-accepted. M5B exact
-reviewed head `3b9db8b37098786cc0d53d38ae5d597c3460c38b` passed exact-head CI #1082
-and was guarded-squash-merged in [PR #58](https://github.com/dornglut/runen-ui/pull/58)
-as `43d23aefb81757a516ae569b3e86b9e0f2c71e23`; reviewed and squash trees are
-identical at `1708d2536c6f1d202ac58dd7cb5f3cc97a438517`. Because the
-connector-origin merge suppressed the normal push workflow event, exact squash
-`43d23aef...` was independently revalidated through unchanged read-only PR CI
-#1084 attempt 2 in temporary PR #60, which was closed unmerged. The mandatory
-post-M5B current-contract reconciliation is the current gate; M5C #49 remains
-blocked until that reconciliation is accepted, merged, and accepted-main
-verified.
+M5A semantic contribution/independent identity, the #55 readiness amendment,
+M5B semantic publication/incremental updates, and M5C semantic action ingress/
+accessibility resolution are owner-accepted. M5C exact reviewed head
+`504899b79059eb94ad4474d67bba1e27eb30b374` passed exact-head CI #1170 /
+`31889342640` and was guarded-squash-merged in
+[PR #62](https://github.com/dornglut/runen-ui/pull/62) as
+`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. Reviewed head and squash share
+exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
+#1171 / `31903354382` passed at that exact squash. The mandatory post-M5C
+current-contract reconciliation is the current gate; M5D #50 remains blocked
+until that reconciliation is accepted, merged, and accepted-main verified.
 
 The accepted M4 history remains unchanged: M4C3 was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`, M4C4 in
@@ -74,7 +73,7 @@ Application-owned State + Action
   -> state-aware cached widget capabilities
   -> canonical owner-local SemanticContribution validation/reconciliation
   -> separate runtime semantic arena + owner/key bindings
-  -> exact-target semantic-command, pointer, focus, keyboard, text, and composition capture/target/bubble routing
+  -> exact-target semantic-command, semantic-action, pointer, focus, keyboard, text, and composition capture/target/bubble routing
   -> one generalized sequenced work FIFO
   -> explicit four-budget readiness pump
   -> UiApp::update(State, Action) + complete reconciliation
@@ -93,8 +92,10 @@ mounted arena slot/generation. Compatible owner/key retention and semantic
 contribution reorder preserve the semantic ID. Key removal or mounted owner
 removal/replacement revokes the semantic lifetime; later semantic-slot reuse
 advances generation and never retargets a stale ID. M5B publishes those IDs only
-through the independent read-only semantic snapshot/update product; it does not
-expose a public semantic-to-mounted routing shortcut.
+through the independent read-only semantic snapshot/update product. M5C accepts
+exact current IDs only through `SemanticActionRequest` and resolves them against
+the private mounted owner/key binding; neither product exposes a public semantic-
+to-mounted routing shortcut.
 
 Unique sibling element keys reorder without changing mounted lifetime; unkeyed
 children match by unkeyed ordinal; duplicate keys preserve no ambiguous mounted
@@ -130,6 +131,26 @@ observable ordering authority. Runtime derives absolute logical bounds, resolved
 relationships, composed disabled state and supported-action identity, and
 visible-PRIMARY semantic focus. Missing, hidden, stale, or ambiguous targets
 fail closed with typed deterministic diagnostics rather than first/last fallback.
+
+M5C adds exact public surface-scoped semantic action ingress through
+`SemanticActionRequest` values constructed with
+`SemanticActionRequest::new(surface, target, action)` and submitted by
+`AppRuntime::submit_semantic_action`. Submission validates exact current surface,
+semantic identity/binding, current publication membership, semantic freshness,
+support, composed state, action-specific readiness, and canonical queue/work/
+trace capacity without invoking widget callbacks. Accepted work joins the
+existing command FIFO and retains the exact private surface/semantic/key/mounted-
+owner/action binding. Queue-front processing revalidates before callbacks; stale
+accepted work records one canonical processing rejection under the accepted
+`WorkSequence` and never retargets. `RequestFocus` uses the accepted M4
+Focusable/Automatic eligibility; PRIMARY and named activation keep their distinct
+readiness rules; menu/context support does not acquire an unrelated actionable
+gate. After callbacks, semantic `Activate` and `RequestFocus` defaults revalidate
+again without synchronous semantic refresh. Explicit prevention and callback-
+caused semantic invalidation remain distinct canonical trace outcomes. Semantic-
+origin callback metadata is read-only and is not inherited by ordinary or
+delegated commands. No semantic LogicalScroll, second queue/default engine, or
+native accessibility adapter is introduced.
 
 Compatible widget update is transactional; mismatch replaces in the current
 mounted generation. Mount/update run in preorder, removal/replacement/shutdown
@@ -221,14 +242,15 @@ offline JSONL replay plus final migration and closure proofs through M4D3.
 M5A replaces the M2 semantic-proof callback authority with production semantic
 contribution vocabulary and independent semantic lifetime storage. M5B completes
 the renderer-independent semantic publication/update/diagnostic layer and clean
-renderer semantic cutover described above. Recursive component action mapping
+renderer semantic cutover described above. M5C completes exact surface-scoped
+semantic-node action ingress/accessibility resolution through the existing M4
+command/routed/default/trace authority. Recursive component action mapping
 preserves semantic contribution content exactly. Core/runtime still has no
 AccessKit/native dependency and no second semantic action queue. The accepted
 [M5 semantics and testing charter](architecture/m5-semantics-and-testing-charter.md)
 and [M5 conformance matrix](architecture/m5-conformance-matrix.md) define the
-remaining M5C–M5E work. M5C adds exact surface-scoped semantic-node action
-ingress/resolution through the existing M4 command/routed/default authority; it
-must not begin until the mandatory M5B post-merge reconciliation is accepted.
+remaining M5D–M5E work. The mandatory M5C post-merge reconciliation is the gate
+before M5D begins.
 
 The accepted M4C5 behavior does not add editable text, native IME objects, or a
 platform host. Public automation work/trace-sequence exhaustion is a deliberate
@@ -249,7 +271,9 @@ facts and consume no second trace sequence. M4D3 consumes only that serialized
 projection in an inert offline causal model with replay-only identities,
 contiguous retained-sequence and parent validation, explicit dropped-prefix
 incompleteness, and Counter reconstruction after the live runtime is gone. It is
-not the M5D public test harness or semantic expectation engine. See the
+not the M5D public test harness or semantic expectation engine. M5C semantic
+binding/rejection/default records extend the same canonical schema and remain
+inert replay observations. See the
 [public API contract](architecture/public-api.md), [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
 [work-tracking contract](work-tracking.md).
 
@@ -260,7 +284,8 @@ not the M5D public test harness or semantic expectation engine. See the
 - Widget semantic authoring owns platform-neutral owner-local contribution only;
   runtime owns live semantic identity, private mounted-owner/key resolution,
   absolute bounds, semantic focus projection, publication revisions,
-  relationship resolution, support composition, and later action routing.
+  relationship resolution, support composition, and exact semantic action
+  admission/routing authority.
 - Native resources and platform state belong to the host.
 - Renderer resources belong to the renderer/resource layer.
 - Components compose views and map local actions; widgets declare runtime
@@ -268,15 +293,16 @@ not the M5D public test harness or semantic expectation engine. See the
 - Mounted runtime mutation occurs on one logical UI thread.
 - Public host-neutral protocol/value definitions live in `runenui_core`; the
   live namespace, mounted/semantic storage authority, routing, scheduler, host
-  integration, trace, shutdown, and semantic publication live in
-  `runenui_runtime`, which depends on core. M5 introduces no third authority
-  crate before the independently justified public M5D testing crate.
+  integration, trace, shutdown, semantic publication, and semantic action
+  resolution live in `runenui_runtime`, which depends on core. M5 introduces no
+  third authority crate before the independently justified public M5D testing
+  crate.
 
 External crates can define widgets and participate in mounted state, lifecycle,
 activation, layout, paint, canonical semantic contribution, diagnostic,
-invalidation, semantic-publication consumption, and inspection paths without
-modifying RunenUI. M5C–M8 own the remaining production subsystem contracts before
-host/backend production work.
+invalidation, semantic-publication consumption, semantic action submission, and
+inspection paths without modifying RunenUI. M5D–M8 own the remaining production
+subsystem contracts before host/backend production work.
 
 ## Application and effect model
 
@@ -411,7 +437,9 @@ Focus and activation commands retain framework defaults. Unconsumed cancel/back,
 menu, context-menu, and logical-scroll commands deterministically produce no
 action or runtime mutation after their single capture/target/bubble route.
 Delegation is explicit queued output, and wheel emits exactly one scroll command
-only when its default is not prevented.
+only when its default is not prevented. Exact semantic action admission is a
+separate checked ingress into this same command/routed/default path; it does not
+create another dispatch engine.
 
 The authored semantic callback becomes `on_activate`; the physical-phase term
 `on_press` is removed without a pre-1.0 compatibility alias.
@@ -444,11 +472,13 @@ authored state/action intent, relationships, bounds policy, text facts, and
 independent runtime semantic identity. M5B implements the renderer-independent,
 exact-surface semantic snapshot/update/diagnostic product with absolute bounds,
 resolved relationships, composed state/support and visible-PRIMARY focus. M5C
-adds exact `SurfaceId + SemanticNodeId + SemanticAction` ingress through private
-mounted-owner/key resolution into the existing command/routed/default authority;
-M5D adds public deterministic semantic queries/testing. Platform adapters such as
-AccessKit map from the accepted semantic product; renderer output is not the
-accessibility model and AccessKit is not authoritative in core/runtime.
+implements exact `SurfaceId + SemanticNodeId + SemanticAction` ingress through
+private mounted-owner/key resolution into the existing command/routed/default/
+trace authority, with exact queue-front and post-callback revalidation. M5D adds
+public deterministic semantic queries/testing. Platform adapters such as
+AccessKit map from the accepted semantic product and M5C action ingress; renderer
+output is not the accessibility model and AccessKit is not authoritative in
+core/runtime.
 
 ## Hosts, surfaces, and renderers
 
@@ -479,7 +509,7 @@ the `counter` example, the non-publishable test-owned
 real ownership, dependency, optionality, independent-consumer, or conformance
 pressure. A target crate diagram is not permission to create empty crates, and
 the facade crate is deferred until lower-level APIs warrant a stable public
-surface. M5A/M5B introduce no new crate; the public `runenui_testing` crate
+surface. M5A/M5B/M5C introduce no new crate; the public `runenui_testing` crate
 remains M5D work.
 
 ## Required ADRs before implementation choices
@@ -496,10 +526,10 @@ closure proof surface. Public M4 proof requirements are fixed in the M4
 conformance matrix and directional-focus corpus.
 
 The accepted M5 semantics/testing charter and M5 conformance matrix own the
-active semantics/testing program. M5A, #55, and M5B feature implementation are
-owner-accepted. The current gate is M5B's mandatory post-merge
-current-contract reconciliation; M5C #49, M5D, and M5E remain blocked in order
-until their predecessor acceptance/reconciliation gates complete.
+active semantics/testing program. M5A, #55, M5B, and the M5C feature
+implementation are owner-accepted. The current gate is M5C's mandatory
+post-merge current-contract reconciliation; M5D #50 and M5E remain blocked in
+order until their predecessor acceptance/reconciliation gates complete.
 
 The following later choices still require dedicated analysis and review:
 standard layout algorithm, production text stack, conventional renderer, crate

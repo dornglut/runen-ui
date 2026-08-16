@@ -8,18 +8,18 @@ Today RunenUI is a coherent **headless architecture proof**. It is not a product
 
 Milestone status: M0 through M4 are complete and owner-accepted. M5 is active.
 M5A semantic contribution and independent identity, the #55 semantic readiness
-authority, and M5B semantic publication/incremental updates are owner-accepted.
-M5B exact reviewed head `3b9db8b37098786cc0d53d38ae5d597c3460c38b`
-passed exact-head CI #1082 and was guarded-squash-merged in
-[PR #58](https://github.com/dornglut/runen-ui/pull/58) as
-`43d23aefb81757a516ae569b3e86b9e0f2c71e23`; reviewed and squash trees are
-identical at `1708d2536c6f1d202ac58dd7cb5f3cc97a438517`. The exact squash was
-independently revalidated by unchanged read-only PR CI #1084 attempt 2 after the
-connector-origin merge suppressed the normal push workflow event. The mandatory
-post-M5B current-contract reconciliation is the current gate. M5C #49 remains
-blocked until that reconciliation is owner-accepted, merged, and accepted-main
-verified. Current maturity, durable sequence, work ownership, and historical
-acceptance evidence live in the [status map](docs/status-map.md),
+authority, M5B semantic publication/incremental updates, and the M5C semantic
+action ingress/accessibility-resolution feature are owner-accepted. M5C exact
+reviewed head `504899b79059eb94ad4474d67bba1e27eb30b374` passed exact-head CI
+#1170 / `31889342640` and was guarded-squash-merged in
+[PR #62](https://github.com/dornglut/runen-ui/pull/62) as
+`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. Reviewed head and squash share
+exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
+#1171 / `31903354382` passed at that exact squash. The mandatory post-M5C
+current-contract reconciliation is the current gate. M5D #50 remains blocked
+until that reconciliation is owner-accepted, merged, and accepted-main verified.
+Current maturity, durable sequence, work ownership, and historical acceptance
+evidence live in the [status map](docs/status-map.md),
 [roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and
 [public repository migration history](docs/history/public-repository-migration.md).
 
@@ -61,13 +61,24 @@ The active workspace proves:
   revision, changed products advance without wrapping, added/changed/removed/
   root/focus deltas are deterministic, and wrong-surface or wrong/skipped prior
   revision requires a full resynchronization;
+- public exact semantic action ingress through `SemanticActionRequest` values
+  constructed with `SemanticActionRequest::new(surface, target, action)` and
+  submitted by `AppRuntime::submit_semantic_action`, with M5 actions limited to
+  `Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`; admission checks
+  the exact current semantic product, support/state/readiness/freshness and
+  canonical queue/work/trace capacity without invoking widget callbacks, then
+  joins the existing command FIFO/routed/default/action/update path;
+- exact semantic queue-front and post-callback revalidation without synchronous
+  refresh or retargeting; accepted-then-stale work becomes a canonical processing
+  rejection under its accepted `WorkSequence`, while explicit `prevent_default`
+  and callback-caused semantic invalidation remain trace-distinct;
 - core-owned canonical `LogicalSize` and `LogicalRect` geometry shared by
   authoring and runtime; semantic contribution has no absolute surface-coordinate
   authority, while M5B runtime composition derives absolute semantic bounds;
 - M5 semantic action vocabulary limited to platform-neutral `Activate`,
   `RequestFocus`, `OpenMenu`, and `OpenContextMenu`; routed
   `SemanticCommand::LogicalScroll` remains accepted M4 command behavior rather
-  than semantic-node authoring;
+  than semantic-node authoring or action ingress;
 - core-owned opaque mounted/time/work-sequence protocol values plus a narrow
   semantic-command event vocabulary, checked downstream event capability,
   immutable capture/target/bubble routing, independent propagation/default
@@ -84,15 +95,17 @@ The active workspace proves:
   declaration evaluation, direct completion-to-action delivery, explicit send-
   subscription `Starting -> Running` start/sink outcomes, exact ownership
   recovery, and causal scheduler trace lineage;
-- deterministic queued application actions and exact-target semantic commands,
-  routed `Activate` default and route-only cancel/menu/context commands, an
-  explicit bounded pump, focus traversal, scheduler-aware bounded canonical
-  tracing with routed causal parentage, and mounted surface publication;
+- deterministic queued application actions, exact-target mounted semantic
+  commands, and exact-target semantic actions after admission; routed `Activate`
+  default and route-only cancel/menu/context commands; an explicit bounded pump;
+  focus traversal; scheduler-aware bounded canonical tracing with routed and M5C
+  semantic causal parentage; and mounted surface publication;
 - one runtime-owned exact-generation focus authority with nested scope policies,
   retained modality, current-publication directional geometry, remembered
-  restoration, atomic focus-within transitions, routed `FocusOut`/`FocusIn`, and
-  M5B projection of final runtime focus into the semantic publication without
-  re-running unchanged semantic contribution;
+  restoration, atomic focus-within transitions, routed `FocusOut`/`FocusIn`, M5B
+  projection of final runtime focus into semantic publication without rerunning
+  unchanged semantic contribution, and M5C semantic `RequestFocus` convergence
+  through the same accepted focus-default authority;
 - runtime-issued opaque `SurfaceId`/`SurfaceInputContext`, fresh displayed
   coordinate revision and hit-test generation on every publication, configurable
   bounded immutable historical hit-test snapshots, exact checked logical/resolved
@@ -115,8 +128,9 @@ The active workspace proves:
   scrolling; and slice-local causal trace;
 - deterministic JSONL v1 trace projection plus the accepted M4D3 offline replay
   foundation with replay-only trace/work identities, contiguous-sequence and
-  causal-parent validation, explicit dropped-prefix incompleteness, and serialized
-  Counter reconstruction without live runtime authority;
+  causal-parent validation, explicit dropped-prefix incompleteness, serialized
+  Counter reconstruction without live runtime authority, and M5C semantic trace
+  records remaining inert observations on replay;
 - typed style values, tokens, computed style, provenance, and diagnostics;
 - explicit layout constraints, a renderer-neutral measurement-provider seam,
   and separate one-query intrinsic/child-layout snapshots per publication;
@@ -130,23 +144,25 @@ The active workspace proves:
   phase facts and independently tested execution reports; #59 owns removal of
   whole-cache deep cloning before or during M6 without weakening M5B atomicity;
 - a Counter application exercising the current public crates, plus genuine
-  downstream direct and adapter-shaped semantic publication consumers.
+  downstream direct and adapter-shaped semantic publication consumers and public
+  M5C semantic-action/readiness conformance.
 
 Important limitations remain: pointer input is a deterministic logical-surface
 proof without native host translation or production scrolling; text measurement
 is deterministic character counting; keyboard, committed-text, composition, and
 authored-ID automation remain host-neutral proof behavior without editable text
 or native translation; tracing/replay remains headless observational
-infrastructure. M5B now supplies independent semantic publication, absolute
-semantic bounds, resolved relationships, runtime focus projection, composed
-state/support, typed diagnostics, and deterministic revisions/updates, but it
-does **not** provide public semantic-node action ingress/resolution, the M5D
-`runenui_testing` harness, semantic scrolling, AccessKit/native accessibility, or
-multi-surface lifecycle. Those remain M5C–M5D/M7/M10 work. Paint/hit scenes,
-production layout/style/text, native hosts, renderer backends, and production
-controls also remain absent. The current runtime has one mounted root, one focus
-domain, and one logical surface with bounded proof-level displayed hit-test
-history.
+infrastructure. M5B supplies independent semantic publication, absolute semantic
+bounds, resolved relationships, runtime focus projection, composed state/support,
+typed diagnostics, and deterministic revisions/updates. M5C now supplies public
+exact semantic-node action ingress/resolution for `Activate`, `RequestFocus`,
+`OpenMenu`, and `OpenContextMenu` through the canonical queue/routed/default/trace
+architecture. It does **not** provide semantic LogicalScroll, the M5D
+`runenui_testing` harness, AccessKit/native accessibility, or multi-surface
+lifecycle. Those remain M5D/M7/M10 work. Paint/hit scenes, production
+layout/style/text, native hosts, renderer backends, and production controls also
+remain absent. The current runtime has one mounted root, one focus domain, and
+one logical surface with bounded proof-level displayed hit-test history.
 
 ## Production profiles
 
@@ -180,12 +196,16 @@ a proof-level retained renderer-facing publication cache. Widgets contribute
 canonical semantic forests independently of action type; the runtime validates
 and reconciles their owner-local keys into independent semantic lifetimes. M5B
 composes those contributions into the separately typed surface-scoped semantic
-snapshot/update/diagnostic product. Tree changes rebuild topology-dependent
-renderer facts from one current mounted preorder snapshot. Compatible style and
-layout changes retain topology and read current mounted style/layout state; layout
-movement refreshes semantic bounds without rerunning unchanged semantic
-contribution. M6 next owns renderer-neutral paint/hit scene products after M5
-semantic/testing closure permits it.
+snapshot/update/diagnostic product. M5C resolves exact current semantic action
+requests through private owner/key bindings and converges accepted work on the
+existing command FIFO/routed/default/action/update/trace path without exposing
+mounted identity or creating a second semantic dispatcher. Tree changes rebuild
+topology-dependent renderer facts from one current mounted preorder snapshot.
+Compatible style and layout changes retain topology and read current mounted
+style/layout state; layout movement refreshes semantic bounds without rerunning
+unchanged semantic contribution. M5D next owns the unified public deterministic
+headless testing harness. M6 owns renderer-neutral paint/hit scene products only
+after M5 semantic/testing closure.
 
 ## Canonical project documents
 
@@ -251,9 +271,11 @@ Every widget explicitly declares and creates state (`type State = ();` for a
 stateless widget). Mounted activation may mutate it, every capability can observe
 it, and compatible reconciliation retains it. Widgets may author canonical
 semantic contribution through the same state-aware contract. The runtime owns
-semantic identity and M5B publication; widget authoring does not imply public
-semantic action ingress, a native accessibility adapter, production controls,
-paint scenes, or native rendering.
+semantic identity and M5B publication. M5C exposes exact semantic action ingress
+through `AppRuntime::submit_semantic_action` while keeping the semantic-to-mounted
+binding private. Widget authoring still does not imply a native accessibility
+adapter, the M5D public harness, production controls, paint scenes, or native
+rendering.
 
 ## Validation
 

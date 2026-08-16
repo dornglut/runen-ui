@@ -19,15 +19,18 @@ merged in [PR #43](https://github.com/dornglut/runen-ui/pull/43) as
 `596f0d823b9833d71a038cc4aebe834c7b94e4a6`. All 16 feature changed-file blob
 identities are byte-identical between the reviewed head and accepted squash. The
 final M4 authority reconciliation records every M4 Required row as
-`owner-accepted`. The two inherited M5 semantic/accessibility gates reached
-`proof-complete` through M5C at exact proof-evidence head
-`7565a7a3744c50a93cb542549b8c82e6ae548084`, which passed CI #1166 /
-`31882567707`; owner acceptance and merge remain pending:
+`owner-accepted`. The two inherited M5 semantic/accessibility gates are also
+`owner-accepted` through M5C: final reviewed M5C head
+`504899b79059eb94ad4474d67bba1e27eb30b374` passed exact-head CI #1170 /
+`31889342640` and was guarded-squash-merged in PR #62 as
+`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`; reviewed head and squash share
+exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
+#1171 / `31903354382` passed at that exact squash:
 
 ```text
 237 total unique rows
-235 owner-accepted
-2 proof-complete
+237 owner-accepted
+0 proof-complete
 0 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -203,8 +206,8 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 | AUTOMATION-02 | Missing authored identity returns a structured outcome and submits no command. | Public automation integration | No sequence/callback/mutation proof | M4C5 missing-identity trace | M4C5 | owner-accepted | Required |
 | AUTOMATION-03 | Ambiguous authored identity is diagnosed deterministically and preserves no arbitrary target. | Public automation integration | First/last-match rejection proof | M4C5 ambiguity trace | M4C5 | owner-accepted | Required |
 | AUTOMATION-04 | A resolved target that becomes stale is rejected without retargeting to a replacement. | Public/runtime automation proof | Generation-reuse proof | M4C5 stale-target trace | M4C5 | owner-accepted | Required |
-| ACCESS-01 | A unique live semantic identity resolves to its exact mounted target and submits the canonical semantic command without direct activation. | M5 semantic/accessibility conformance | Direct-activation bypass, foreign identity, and wrong-target proof | M5 resolution-to-command trace | M5 | proof-complete | M5 gate |
-| ACCESS-02 | Missing, stale, foreign, or ambiguous semantic identity returns a structured outcome, submits no command, and never retargets a replacement. | M5 semantic/accessibility rejection conformance | Replacement-generation and first/last-match rejection proof | M5 semantic-rejection trace | M5 | proof-complete | M5 gate |
+| ACCESS-01 | A unique live semantic identity resolves to its exact mounted target and submits the canonical semantic command without direct activation. | M5 semantic/accessibility conformance | Direct-activation bypass, foreign identity, and wrong-target proof | M5 resolution-to-command trace | M5 | owner-accepted | M5 gate |
+| ACCESS-02 | Missing, stale, foreign, or ambiguous semantic identity returns a structured outcome, submits no command, and never retargets a replacement. | M5 semantic/accessibility rejection conformance | Replacement-generation and first/last-match rejection proof | M5 semantic-rejection trace | M5 | owner-accepted | M5 gate |
 
 ## M4B — accepted application work and deterministic scheduler
 

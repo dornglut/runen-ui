@@ -4,10 +4,11 @@
 
 This document records the reviewed public surface for application work, the
 deterministic scheduler, routed semantic commands, canonical trace, semantic
-contribution/identity, and the accepted renderer-independent M5B semantic
-publication/update/diagnostic surface. Source-level Rust documentation is
-authoritative for signatures. [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md)
-defines the open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
+contribution/identity, renderer-independent semantic publication/update/
+diagnostics, and accepted M5C semantic action ingress/accessibility resolution.
+Source-level Rust documentation is authoritative for signatures.
+[ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md) defines the
+open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
 defines mounted ownership and reconciliation; accepted
 [ADR 0006](../adr/0006-effects-scheduling-and-trace-v2.md) defines application
 work and scheduling; M4B is implemented, owner-accepted, and squash-merged.
@@ -58,18 +59,30 @@ passed exact-head CI run `31497457992` / #889 and was guarded-squash-merged in
 `e3c304600ec1777cd17a1973946a43c765df1c31`; its required reconciliation is
 accepted through PR #54 as recorded by work tracking.
 
-M5B semantic publication and incremental updates is also owner-accepted. Exact
-reviewed head `3b9db8b37098786cc0d53d38ae5d597c3460c38b` passed exact-head CI #1082
-and was guarded-squash-merged in [PR #58](https://github.com/dornglut/runen-ui/pull/58)
-as `43d23aefb81757a516ae569b3e86b9e0f2c71e23`; reviewed and squash trees are
+M5B semantic publication and incremental updates is owner-accepted and fully
+reconciled. Exact reviewed head `3b9db8b37098786cc0d53d38ae5d597c3460c38b`
+passed exact-head CI #1082 and was guarded-squash-merged in
+[PR #58](https://github.com/dornglut/runen-ui/pull/58) as
+`43d23aefb81757a516ae569b3e86b9e0f2c71e23`; reviewed and squash trees are
 identical at `1708d2536c6f1d202ac58dd7cb5f3cc97a438517`. Because the connector-origin
 merge did not emit the normal push workflow event, the exact squash was
 independently revalidated through unchanged read-only pull-request CI #1084
 attempt 2 in temporary PR #60, which was closed unmerged. The mandatory M5B
-post-merge current-contract reconciliation is the current gate. M5C #49 remains
-blocked until that reconciliation is accepted, merged, and accepted-main
-verified. The accepted [M5 semantics and testing charter](m5-semantics-and-testing-charter.md)
-owns the remaining sequential M5C–M5E boundaries; the
+reconciliation was then owner-accepted and guarded-squash-merged in PR #61 as
+`afb7f8f363a8df3eb51be1a9bc5f0f180f84190b`; accepted-main CI #1090 passed.
+
+M5C semantic action ingress and accessibility resolution is now owner-accepted.
+Exact reviewed feature head `504899b79059eb94ad4474d67bba1e27eb30b374`
+passed exact-head CI #1170 / `31889342640`, was explicitly accepted by the
+repository owner, and was guarded-squash-merged in
+[PR #62](https://github.com/dornglut/runen-ui/pull/62) as
+`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. Reviewed head and squash share
+exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
+#1171 / `31903354382` passed at that exact squash. The mandatory M5C post-merge
+current-contract reconciliation is the current gate; M5D #50 remains blocked
+until that reconciliation is accepted, merged, and accepted-main verified. The
+accepted [M5 semantics and testing charter](m5-semantics-and-testing-charter.md)
+owns the remaining sequential M5D–M5E boundaries; the
 [M5 conformance matrix](m5-conformance-matrix.md) owns observable acceptance;
 and [work tracking](../work-tracking.md) owns volatile branch, head, blocker,
 and next-action state.
@@ -84,22 +97,23 @@ validated authored values and identity, style intent and resolution, transient
 `MountedNodeId`/`SemanticNodeId`/`SurfaceId`/`SurfaceInputContext`/
 `MonotonicInstant`/`WorkSequence` protocol values, routed event/command
 vocabulary, `EventContext`, typed recursive action mapping, canonical
-`LogicalSize`/`LogicalRect`, and the platform-neutral semantic authoring
+`LogicalSize`/`LogicalRect`, and the platform-neutral semantic authoring/action
 vocabulary: `SemanticKey`, `SemanticRole`, `SemanticValue`, `SemanticText`,
-`SemanticState`, `SemanticAction`, `SemanticRelationshipKind`,
-`SemanticReference`, `SemanticRelationship`, `SemanticBounds`, `SemanticItem`,
-`SemanticNodeContribution`, `SemanticContribution`,
-`SemanticContributionValidation`, `SemanticContributionError`, and
-`SemanticContributionContext`.
+`SemanticState`, `SemanticAction`, `SemanticActionTarget`,
+`SemanticRelationshipKind`, `SemanticReference`, `SemanticRelationship`,
+`SemanticBounds`, `SemanticItem`, `SemanticNodeContribution`,
+`SemanticContribution`, `SemanticContributionValidation`,
+`SemanticContributionError`, and `SemanticContributionContext`.
 
 `runenui_runtime` owns `AppRuntime`, the canonical generalized FIFO and pump,
 persistent mounted storage, reconciliation, lifecycle execution, focus and
 interaction slots, mounted targeting, invalidation scheduling, capability
 caches, the separate runtime semantic generational arena and mounted-owner/
 semantic-key binding store, measurement/layout execution, bounded trace, live
-work registry, clocks, completion ingress, wake/redraw, mounted publication, and
-the accepted renderer-independent semantic publication state. The public runtime,
-mounted inspection, integrity, and M5B vocabulary includes:
+work registry, clocks, completion ingress, wake/redraw, mounted publication, the
+accepted renderer-independent semantic publication state, and exact semantic
+action admission/resolution. The public runtime, mounted inspection, integrity,
+and M5C vocabulary includes:
 
 - core-owned `MountedNodeId`, `SemanticNodeId`, `SurfaceId`,
   `SurfaceInputContext`, `MonotonicInstant`, `MonotonicTimeError`, and
@@ -109,6 +123,9 @@ mounted inspection, integrity, and M5B vocabulary includes:
 - `RuntimeConfig`, `SubmitActionResult`, `CommandSubmission`,
   `UnacceptedCommand`, `SubmitCommandError`, `UnacceptedSurfaceCommand`,
   `SubmitSurfaceCommandError`, `PumpBudget`, and `PumpReport`;
+- M5C `SemanticActionRequest`, `SubmitSemanticActionErrorKind`, and
+  `SubmitSemanticActionError`; successful semantic submission reuses the existing
+  `CommandSubmission` receipt above;
 - host-neutral `KeyboardEvent`, `CommittedTextEvent`, `CompositionEvent`,
   opaque `CompositionGeneration`, checked `CompositionRange`, and explicit
   `WidgetTextInput` capability values, plus input/automation submission
@@ -140,9 +157,11 @@ semantic owner bindings, reconciliation reports, trace records, and publication
 products have no public constructors. Replay identities are separately typed
 observational values and have no conversion into live runtime-issued
 `TraceSequence` or `WorkSequence` authority. M5B exposes semantic IDs only in
-read-only semantic snapshots/updates and does not expose the private mounted
-owner or a semantic-node action-routing shortcut. Public semantic-node action
-ingress remains M5C.
+read-only semantic snapshots/updates. M5C accepts those exact public IDs only
+through `SemanticActionRequest`, resolves them against private mounted owner/key
+bindings, and exposes read-only semantic-origin callback metadata through
+`SemanticActionTarget`; neither surface exposes a public semantic-to-
+`MountedNodeId` routing shortcut.
 
 ## Queue, pump, and runtime status
 
@@ -175,7 +194,7 @@ returns a runtime-issued `WorkSequence`, beginning at 1, or a
 returns the exact owned action through `into_action` and does not consume a work
 sequence. `Action` requires no `Clone`, `Send`, or `Debug` bound.
 
-`AppRuntime::submit_command(target, command, origin)` is the sole current public
+`AppRuntime::submit_command(target, command, origin)` is the public exact-mounted
 semantic-command ingress. It validates the exact core-owned `MountedNodeId`,
 appends a `SemanticCommand` envelope to the same FIFO, requests wake only after
 acceptance, and returns `CommandSubmission` with the assigned `WorkSequence`.
@@ -185,9 +204,43 @@ exhaustion. Every rejection returns the exact owned target, command, and origin
 through `UnacceptedCommand`; it invokes no widget callback and consumes no work
 or trace sequence, allocates no trace record, and emits no wake. Accepted-then-
 stale processing rejection is instead a canonical trace outcome causally owned
-by the already accepted command. `SemanticAction` is published semantic support
-vocabulary; public exact-`SurfaceId + SemanticNodeId` action ingress and mapping
-to this canonical command path remains M5C.
+by the already accepted command.
+
+`AppRuntime::submit_semantic_action(request: SemanticActionRequest) ->
+Result<CommandSubmission, SubmitSemanticActionError>` is the accepted public
+exact-semantic ingress. Callers construct the request with
+`SemanticActionRequest::new(surface, target, action)`; the request fields remain
+private. M5 supports exactly `Activate`, `RequestFocus`, `OpenMenu`, and
+`OpenContextMenu`; there is no semantic `LogicalScroll` variant or compatibility
+alias. Submission validates runtime status, exact current surface/namespace,
+semantic target authority/key, semantic freshness, exact current publication
+membership, support, composed hidden/inert/disabled state, action-specific
+readiness, and canonical queue/work/trace capacity before acceptance. A dirty
+semantic authority rejects rather than refreshing synchronously; layout-only
+dirtiness remains admissible. Submission invokes no widget callback. Acceptance
+returns the existing `CommandSubmission` with the canonical `WorkSequence` and
+appends to the existing command FIFO; rejection returns
+`SubmitSemanticActionError`, whose accessors recover the exact owned request.
+
+The queued semantic work privately retains exact surface, semantic ID, semantic
+key, mounted-owner lifetime, and action metadata. Queue-front processing
+revalidates that exact binding before any callback. An accepted request that has
+become stale records canonical `SemanticActionProcessingRejected` under its
+accepted `WorkSequence`, invokes no callback, and never retargets. Semantic-origin
+routed callbacks receive read-only `SemanticActionTarget` metadata; ordinary and
+delegated commands do not inherit it. `RequestFocus` uses the accepted M4
+Focusable/Automatic eligibility. PRIMARY `Activate` requires owner actionable and
+enabled; named `Activate` requires authored support, owner enabled, and an exact
+non-disabled/non-inert node without imposing an unrelated owner-actionable gate.
+Menu/context actions require exact support/state and likewise do not impose an
+actionable gate.
+
+After routed callbacks and before semantic `Activate` or `RequestFocus` default
+mutation, runtime revalidates the exact accepted semantic authority without
+synchronous refresh. Explicit `prevent_default()` yields canonical
+`SemanticDefaultSuppressed`; callback-caused semantic invalidation yields the
+distinct `SemanticDefaultTargetInvalidated` outcome. Both fail closed and retain
+the accepted work/causal lineage.
 
 `AppRuntime::submit_surface_command(context, logical_point, command, origin)` and
 `submit_resolved_surface_command(context, target, command, origin)` are the checked
@@ -341,8 +394,9 @@ plain text, and recursive local semantic children. `SemanticBounds::Owner` uses
 the mounted owner's runtime-derived bounds; `OwnerLocal(LogicalRect)` is
 validated owner-local geometry only. Widgets cannot author absolute surface
 coordinates or runtime focus through the contribution contract. `SemanticAction`
-currently describes published support; executable semantic-node action ingress
-remains M5C. AccessKit/native types are absent.
+describes the accepted M5 action vocabulary; executable exact semantic-node
+action ingress is provided separately by `AppRuntime::submit_semantic_action`.
+AccessKit/native types are absent.
 
 `WidgetMountContext<Action>`, `WidgetUpdateContext<Action>`, and
 `WidgetActivationContext<Action>` can request `WidgetInvalidation`, invalidate
@@ -365,22 +419,26 @@ composition events use checked Capture/Target/Bubble routing where their family
 contract requires it; boundary and capture notifications are target-only and
 non-cancelable, while focus notifications are routed and non-cancelable.
 Programmatic/automation/accessibility/controller, keyboard, and pointer sources
-retain internally consistent derivation. The context exposes the
+retain internally consistent derivation. `EventContext` exposes the
 original/current/optional-related target, origin, accepted `WorkSequence`,
 `MonotonicInstant`, optional pointer identity, independent physical hit
-target/path, and propagation/default facts. It provisionally collects owned
-actions, delegated commands, exact-owner subscription invalidation, ordinary
-invalidation, mounted tasks/timers/cancellation, stop propagation, and prevent
-default plus ordered capture/release requests for the current pointer. Recursive
-mapping preserves every staged capture request. `WidgetEventOutput` reports only
-independent persistent-state mutation. Mapping moves non-`Clone` actions and
-recursively maps mounted work while preserving commands, controls, invalidation,
-semantic contribution, and the state-change fact. Only the checked erased widget
-bridge constructs and extracts `EventContext`; runtime supplies its validated
-facts and output bound. Public origin constructors are direct-only, while
-`emit_command` is the sole authority that turns callback output into a delegated
-origin targeting the current node. `UiEvent::as_semantic_command` returns
-`Option<&SemanticCommandEvent>` so later event variants do not require a
+target/path, and propagation/default facts. For semantic-origin command
+callbacks, `SemanticCommandEvent::semantic_action_target()` exposes the optional
+read-only `SemanticActionTarget`; ordinary and delegated commands carry none.
+Semantic activation default receives the same exact metadata separately through
+`WidgetActivationContext::semantic_action_target()`. The context provisionally
+collects owned actions, delegated commands, exact-owner subscription invalidation,
+ordinary invalidation, mounted tasks/timers/cancellation, stop propagation, and
+prevent default plus ordered capture/release requests for the current pointer.
+Recursive mapping preserves every staged capture request. `WidgetEventOutput`
+reports only independent persistent-state mutation. Mapping moves non-`Clone`
+actions and recursively maps mounted work while preserving commands, controls,
+invalidation, semantic contribution, and the state-change fact. Only the checked
+erased widget bridge constructs and extracts `EventContext`; runtime supplies its
+validated facts and output bound. Public origin constructors are direct-only,
+while `emit_command` is the sole authority that turns callback output into a
+delegated origin targeting the current node. `UiEvent::as_semantic_command`
+returns `Option<&SemanticCommandEvent>` so later event variants do not require a
 command-shaped accessor.
 
 The default update invalidates `ALL` for correctness. Built-in text, button, and
@@ -472,8 +530,9 @@ identity survives. M5B relationship composition resolves exact owner-local
 plus optional semantic key; missing, hidden, stale, or ambiguous targets
 produce deterministic diagnostics without first/last fallback. M4C1 command
 submission accepts only an exact mounted target. M4C5 automation resolves exactly
-one authored ID before that command ingress. M5C later resolves exact public
-semantic action requests through the private semantic owner/key mapping.
+one authored ID before that command ingress. M5C resolves exact public semantic
+action requests through the private semantic owner/key mapping and never exposes
+that mapping as public mounted routing authority.
 
 ## Reconciliation
 
@@ -530,13 +589,15 @@ unmount.
 
 ## Routed commands, focus, and interaction slots
 
-`AppRuntime::submit_command` appends one non-reentrant semantic-command
-envelope. At the queue front runtime revalidates the exact mounted target,
-snapshots one owned root-to-target route, validates every route node and erased
-event bridge, and admits the complete configured transaction boundary before the
-first callback. Capture visits root-to-parent, target runs once, and bubble
-visits parent-to-root. Stopping propagation affects only later callbacks;
-preventing default affects only the cancelable semantic default.
+`AppRuntime::submit_command` appends one non-reentrant exact-mounted semantic-
+command envelope. Accepted `submit_semantic_action` work joins this same command
+FIFO after exact semantic admission. At the queue front runtime revalidates the
+appropriate exact target authority, snapshots one owned root-to-target route,
+validates every route node and erased event bridge, and admits the complete
+configured transaction boundary before the first callback. Capture visits root-
+to-parent, target runs once, and bubble visits parent-to-root. Stopping
+propagation affects only later callbacks; preventing default affects only the
+cancelable semantic default.
 
 One bounded transaction ledger counts routed actions, delegated commands,
 semantic-default output, mounted effects/cancellation, and unique exact-owner
@@ -555,21 +616,29 @@ semantic-default output, then mounted work. Delegated commands target the
 current routed node, preserve source, change derivation to `Delegated`, receive a
 later sequence, and never run recursively.
 
-For unprevented `Activate`, the runtime re-queries the original target after
-callback invalidation. Only a still-live enabled/actionable target invokes the
-existing widget activation capability, exactly once, as semantic default.
+For ordinary exact-mounted unprevented `Activate`, runtime re-queries the
+original mounted target after callback invalidation. Only a still-live enabled/
+actionable target invokes the existing widget activation capability exactly once
+as semantic default. M5C semantic-origin `Activate` retains the accepted semantic
+target metadata and performs its separate exact semantic post-callback
+revalidation before default; PRIMARY and named readiness rules remain distinct as
+described above. Semantic `RequestFocus` likewise revalidates before committing
+focus. Callback-invalidated semantic defaults are trace-distinct from explicit
+prevention and never retarget.
+
 Prevented activation never invokes its factory. `CancelOrBack`, `OpenMenu`, and
 `OpenContextMenu` route once and have no default action, runtime mutation, or
 second ancestor pass. Programmatic, automation, accessibility-stub, and
-normalized-controller origins use this same exact-mounted-target path. M4C5
-automation resolves exactly one authored ID before this command ingress. M5B
-publishes semantic action support but does not execute semantic-node actions;
-M5C adds exact semantic action submission/resolution without a second queue.
+normalized-controller origins use the exact-mounted path. M4C5 automation
+resolves exactly one authored ID before command ingress. M5C accessibility-origin
+semantic requests resolve an exact current semantic ID privately and then use the
+same command/routed/default/update/reconciliation authority without a second
+queue or dispatcher.
 
 Direct programmatic activation, direct focus mutation/traversal helpers, the
 transitional `FocusTargetResult`, and the old pointer/keyboard
-activation/resolution helpers are removed. Focus changes enter through
-`submit_command`; keyboard modality follows accepted raw keyboard ingress, not a
+activation/resolution helpers are removed. Focus changes enter through canonical
+command defaults; keyboard modality follows accepted raw keyboard ingress, not a
 public `CommandOrigin::keyboard()` constructor. M4C2 owns surface context, M4C3
 implements pointer lifecycle/release-inside activation, M4C4 implements focus
 scopes/modality, M4C5 implements keyboard/text/composition and automation
@@ -577,7 +646,7 @@ resolution, M4D1 implements normalized in-memory trace reconstruction, M4D2
 implements deterministic export and bounded subordinate sink delivery, M4D3
 implements accepted offline replay plus final migration/closure proofs, M5A
 implements semantic contribution/identity, M5B implements semantic publication,
-and M5C owns semantic accessibility action resolution.
+and M5C implements semantic accessibility action resolution.
 
 One runtime-owned `FocusState` retains the exact focused mounted lifetime, its
 committed focus-within route, exact-generation scope memories, last
@@ -594,6 +663,9 @@ selection follows current mounted logical order. Directional selection reads
 the current retained publication rectangles and uses mounted order only as its
 final tie-break; its private score is not API. Remembered restoration accepts
 only the exact live, eligible generation and otherwise uses normal fallback.
+M5C semantic `RequestFocus` first resolves and admits the exact current semantic
+PRIMARY, then converges on this same focus default under the accepted
+`WorkSequence`.
 
 Committed transitions update focus and focus-within atomically, then route
 non-cancelable `FocusOut` before `FocusIn`, each Capture/Target/Bubble, before
@@ -675,7 +747,7 @@ compatibility aliases are gone.
 |---|---|---|---|---|---|
 | Send-subscription startup could accept provisionally | `Starting` submissions return `SendSubscriptionSinkError::NotStarted(exact_item)`; only `Running` accepts | Success must mean durable ownership | ADR 0006 producer admission | Match `NotStarted` and recover with `into_item` | `subscription_scheduler::send_subscription_start_outcomes_are_once_only_reclaimed_and_explicitly_retryable` |
 | Cancelled send-task completion could enter ingress | `SendTaskCompletionError::Stale(exact_completion)` | Producer validity is exact-generation, not global | ADR 0006 cancellation | Match `Stale` separately from `Closed` | `scheduler_work::cancelled_send_completion_never_invokes_ui_mapper` |
-| Direct mounted activation was public runtime authority | `submit_command(exact_target, Activate, origin)` is the only current mounted semantic ingress | Every source must use routing, admission, default, FIFO, and trace | ADR 0005 canonical commands | Submit and pump; recover exact `UnacceptedCommand` on rejection | `routed_commands`, Counter, and downstream routed-event conformance |
+| Direct mounted activation was public runtime authority | `submit_command(exact_target, Activate, origin)` is the canonical exact-mounted semantic ingress; M5C exact-semantic requests converge into the same command path after private semantic admission | Every source must use routing, admission, default, FIFO, and trace | ADR 0005 canonical commands | Submit and pump; semantic clients use `submit_semantic_action` and recover exact requests on rejection | `routed_commands` plus M5C semantic conformance |
 | `Widget::activate` returned `Option<Action>` | It returns `WidgetActivationOutput<Action>` and is invoked only by routed `Activate` default | State mutation is independent from action output | ADR 0003 widget protocol; ADR 0004 mounted state; ADR 0005 default | Return `none`, `action`, `changed`, or `changed_with_action` | `mounted_work_output::routed_activation_separates_scheduler_wake_from_redraw` |
 | Rejected composition start could imply a generation | `SubmitCompositionStartError` recovers a generation-free `CompositionStartRequest`; only accepted `CompositionStartSubmission` carries a runtime-issued generation | Rejected ingress must not fabricate accepted lifetime authority | ADR 0005 exact ingress ownership | Match the start error and recover its request; retain generations only from successful receipts | `input_m4c5` composition-start rejection proofs |
 | Public authored-ID automation reused ordinary terminal sequence-exhaustion policy | Automation work/trace-sequence exhaustion returns the exact authored request without terminalizing; direct commands and accepted work retain ordinary terminal policy | Resolution is provisional until the canonical command is admitted | ADR 0005 canonical command convergence and rejection non-mutation | Recover `AutomationRequest` and retry only under new capacity | `automation_rejection` sequence-exhaustion proofs |
@@ -718,7 +790,9 @@ changes also change `SemanticContributionContext`. Unrelated compatible updates
 do not. M5B layout-only bounds changes dirty the semantic publication without
 requerying unchanged widget contribution. Runtime focus changes likewise dirty
 the semantic focus/product only; they do not invalidate or re-enter owner
-semantic contribution.
+semantic contribution. M5C semantic admission rejects while semantic authority
+is dirty rather than synchronously refreshing it; layout-only dirtiness remains
+admissible because current semantic binding/support/state authority is unchanged.
 
 Publication-context changes compare root constraints, exact style-token content,
 and measurement-provider identity/revision. Providers must change identity or
@@ -830,6 +904,15 @@ canonical in-memory graph across scheduler, routed, surface, pointer, focus/
 modality, keyboard/text/composition/automation, application-action, terminal/
 cancellation/shutdown, logical-time, and publication facts.
 
+M5C extends this same canonical graph rather than adding a semantic side channel.
+Accepted semantic work records `SemanticActionBound` with exact semantic target
+metadata before ordinary command acceptance/routing. Accepted work that fails
+queue-front exact semantic revalidation records `SemanticActionProcessingRejected`
+under the accepted `WorkSequence`. Explicit default prevention records
+`SemanticDefaultSuppressed`; post-callback semantic authority invalidation records
+`SemanticDefaultTargetInvalidated`. The export schema remains version 1 and
+replay remains observational/inert.
+
 M4D2 adds deterministic versioned JSONL projection and the subordinate bounded
 sink without introducing a second trace/history/order authority. `Trace::export_jsonl()`
 projects the retained snapshot with stable schema/version fields, fixed field
@@ -885,9 +968,10 @@ application action/update/reconciliation, redraw, and publication ancestry. A
 structurally valid divergent projection fails that reconstruction instead of
 silently claiming equivalent behavior.
 
-This replay surface is accepted M4 headless causal-proof infrastructure. It does
-not provide the M5D public test harness, semantic query/action model, or an
-application-specific semantic expectation engine.
+This replay surface is accepted M4 headless causal-proof infrastructure. M5C
+proves its semantic records survive deterministic export and replay as inert
+observation. Replay still does not provide the M5D public test harness, semantic
+query/action convenience model, or an application-specific expectation engine.
 
 M4C3 adds pointer submission, ordered validation and stream resolution,
 physical-path and boundary-bundle planning, default applied/suppressed,
@@ -933,8 +1017,7 @@ already-accepted mutable work, the runtime becomes terminal before the pending
 mutable callback and cancels queued work. The accepted M4D2 export/sink surface
 remains the sole live projection/transport over the canonical in-memory
 authority; accepted M4D3 replay consumes only its serialized output offline.
-M5A/M5B introduce no second trace; semantic action causality remains M5C work
-over the same canonical trace.
+M5A–M5C introduce no second trace or behavior engine.
 
 ## Breaking migrations
 
@@ -1012,7 +1095,12 @@ Added:
   semantic node/state/relationship, snapshot/focus/update/update-result/
   publication types, typed semantic diagnostic report/reasons, staged atomic
   fallible publication, and mandatory semantic siblings in `SurfacePublication`,
-  with explicit renderer-only versus complete-product APIs.
+  with explicit renderer-only versus complete-product APIs;
+- M5C `SemanticActionTarget`, `SemanticActionRequest`, reuse of the existing
+  `CommandSubmission` receipt, typed semantic submission errors with exact request
+  recovery, `AppRuntime::submit_semantic_action`, private exact semantic-to-mounted
+  binding resolution, queue-front/post-callback revalidation, and canonical
+  semantic binding/processing/default trace outcomes.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
@@ -1024,10 +1112,11 @@ protocol, the owner-accepted M4C5 keyboard/text/composition and authored-ID
 automation implementation, the owner-accepted M4D1 normalized in-memory trace
 schema, the owner-accepted M4D2 deterministic export/redaction/bounded-sink
 surface, the owner-accepted M4D3 offline replay/M4 closure proof surface, M5A
-semantic contribution/independent identity, and M5B independent semantic
+semantic contribution/independent identity, M5B independent semantic
 snapshot/update/diagnostic publication, runtime-derived semantic focus/absolute
-bounds, relationship resolution, support composition, and renderer-independent
-publication cutover. M4 is complete and M5 is active. M5C semantic-node action
-ingress, M5D public testing harness, AccessKit/native accessibility, native host
-translation, production scrolling, editable text, and platform IME objects
-remain later work.
+bounds, relationship resolution, support composition, renderer-independent
+publication cutover, and M5C exact semantic action ingress/accessibility
+resolution through the canonical command/routed/default/trace architecture. M4
+is complete and M5 is active. M5D public testing harness, AccessKit/native
+accessibility, native host translation, production scrolling, editable text, and
+platform IME objects remain later work.
