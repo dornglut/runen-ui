@@ -56,8 +56,7 @@ fn genuine_downstream_focus_widget_uses_public_harness_and_controller_commands()
             authored_node(publication.frame(), "focus.a")?,
             authored_node(publication.frame(), "focus.b")?,
         ))
-    })()
-    else {
+    })() else {
         return;
     };
 
