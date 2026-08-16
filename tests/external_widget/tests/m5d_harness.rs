@@ -14,7 +14,10 @@ use runenui_runtime::{MountedNodeId, PumpBudget, SurfaceFrame};
 use runenui_testing::{SettleBudget, SettleOutcome, TestHarness};
 
 fn settle_budget() -> SettleBudget {
-    SettleBudget::new(NonZeroUsize::MIN, PumpBudget::new(64, 64, 64, 64))
+    SettleBudget::new(
+        NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN),
+        PumpBudget::new(64, 64, 64, 64),
+    )
 }
 
 fn authored_node(frame: &SurfaceFrame, authored: &str) -> Option<MountedNodeId> {
