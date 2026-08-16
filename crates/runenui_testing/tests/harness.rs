@@ -1,8 +1,8 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    IntoEffects, NoHostProtocol, SemanticAction, SemanticRole, UiApp, View, button, children,
-    column,
+    ElementId, IntoEffects, NoHostProtocol, PointerButton, PointerButtons, SemanticAction,
+    SemanticRole, UiApp, View, button, children, column,
 };
 use runenui_runtime::{LogicalPoint, PointerDeviceKind, PointerId, PointerPhase, PumpBudget};
 use runenui_testing::{
@@ -24,8 +24,12 @@ impl UiApp for HarnessApp {
 
     fn root(_: &Self::State) -> impl View<Self::Action> {
         column(children![
-            button("Increment").on_activate(|| Action::Increment),
-            button("Reset").on_activate(|| Action::Reset),
+            button("Increment")
+                .id("harness.increment")
+                .on_activate(|| Action::Increment),
+            button("Reset")
+                .id("harness.reset")
+                .on_activate(|| Action::Reset),
         ])
     }
 
@@ -97,31 +101,73 @@ fn settle_is_bounded_and_publication_dirtiness_does_not_force_hidden_work() {
 }
 
 #[test]
-fn pointer_helper_uses_the_exact_current_public_surface_context() {
+fn pointer_helper_preserves_context_and_drives_public_pointer_activation() {
     let mut harness = TestHarness::<HarnessApp>::mount(0);
-    assert!(harness.publish().is_ok());
-    let Ok(expected_context) = harness.input_context().cloned() else {
+    let Some((expected_context, point, expected_target)) = (|| {
+        let publication = harness.publish().ok()?;
+        let authored = ElementId::new("harness.increment").ok()?;
+        let node = publication
+            .frame()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id() == Some(&authored))?;
+        let bounds = node.bounds();
+        let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0).ok()?;
+        assert_eq!(publication.frame().hit_test_id(point), Some(node.id().clone()));
+        Some((
+            publication.input_context().clone(),
+            point,
+            node.id().clone(),
+        ))
+    })() else {
         return;
     };
 
     let Some(pointer_id) = PointerId::new(1) else {
         return;
     };
-    let Ok(point) = LogicalPoint::new(4.0, 4.0) else {
-        return;
-    };
-    let event = harness.pointer_event(
+    let Ok(down) = harness.pointer_event(
         pointer_id,
         PointerDeviceKind::Mouse,
-        PointerPhase::Move,
+        PointerPhase::Down,
         point,
+    ) else {
+        return;
+    };
+    assert_eq!(down.surface_context(), &expected_context);
+    let down = down
+        .with_changed_button(PointerButton::Primary)
+        .with_buttons(PointerButtons::new([PointerButton::Primary]));
+    let Ok(down_submission) = harness.submit_pointer(down) else {
+        return;
+    };
+    assert_eq!(
+        harness.run_until_idle(settle_budget()).outcome(),
+        SettleOutcome::Idle
     );
-    assert!(event.is_ok());
-    if let Ok(event) = event {
-        assert_eq!(
-            event.surface_context(),
-            &expected_context,
-            "pointer helper must preserve the exact public displayed context"
-        );
-    }
+    assert_eq!(*harness.state(), 0);
+
+    let Ok(up) = harness.pointer_event(
+        pointer_id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Up,
+        point,
+    ) else {
+        return;
+    };
+    let up = up.with_changed_button(PointerButton::Primary);
+    let Ok(up_submission) = harness.submit_pointer(up) else {
+        return;
+    };
+    assert_ne!(down_submission.sequence(), up_submission.sequence());
+    assert_eq!(
+        harness.run_until_idle(settle_budget()).outcome(),
+        SettleOutcome::Idle
+    );
+    assert_eq!(*harness.state(), 1);
+
+    let Some(publication) = harness.publication() else {
+        return;
+    };
+    assert!(publication.frame().node(&expected_target).is_some());
 }
