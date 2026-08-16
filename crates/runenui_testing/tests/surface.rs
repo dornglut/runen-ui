@@ -1,6 +1,8 @@
 use runenui_core::{ElementId, IntoEffects, NoHostProtocol, UiApp, View, children, column, text};
 use runenui_runtime::{LogicalSize, MeasurementProvider, TextMeasurement, TextMeasurementRequest};
-use runenui_testing::{DEFAULT_TEST_SURFACE_SIZE, TestHarness};
+use runenui_testing::{
+    DEFAULT_TEST_SURFACE_SIZE, TestHarness, TestSurfaceConfig, TestSurfaceConfigError,
+};
 
 struct SurfaceApp;
 
@@ -76,4 +78,24 @@ fn fixed_surface_layout_hit_paint_and_custom_measurement_are_public_and_determin
 
     assert!(custom_bounds.width() > default_bounds.width());
     assert!(custom_bounds.height() > default_bounds.height());
+}
+
+#[test]
+fn surface_size_is_explicitly_configurable_and_zero_extent_is_rejected() {
+    let zero_width = LogicalSize::try_new(0.0, 240.0).unwrap_or(LogicalSize::ZERO);
+    assert_eq!(
+        TestSurfaceConfig::new(zero_width),
+        Err(TestSurfaceConfigError::ZeroExtent)
+    );
+
+    let custom_size = LogicalSize::try_new(320.0, 240.0).unwrap_or(DEFAULT_TEST_SURFACE_SIZE);
+    let Ok(config) = TestSurfaceConfig::new(custom_size) else {
+        return;
+    };
+    let mut harness = TestHarness::<SurfaceApp>::mount(());
+    harness.set_surface_config(config);
+    let Ok(publication) = harness.publish() else {
+        return;
+    };
+    assert_eq!(publication.frame().size(), custom_size);
 }
