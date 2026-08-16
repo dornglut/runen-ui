@@ -128,9 +128,9 @@ impl HostProtocol for PendingProtocol {
     type Response = ();
     type ResponseKind = ();
 
-    fn expected_response(_: &Self::Command) -> Self::ResponseKind {}
+    fn expected_response((): &Self::Command) -> Self::ResponseKind {}
 
-    fn response_kind(_: &Self::Response) -> Self::ResponseKind {}
+    fn response_kind((): &Self::Response) -> Self::ResponseKind {}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
