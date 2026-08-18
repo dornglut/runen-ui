@@ -87,8 +87,10 @@ retained modality, raw keyboard, committed-text and composition streams bound to
 exact focused lifetimes, deterministic authored-ID automation resolution, the
 M4D1-normalized in-memory trace schema, M4D2 deterministic JSONL projection plus
 subordinate bounded sink delivery, and M4D3 inert offline replay/final closure
-proofs are implemented and owner-accepted. Semantic accessibility mapping and the
-M5 public semantic testing harness remain unimplemented.
+proofs are implemented and owner-accepted. M5A–M5D now extend this same M4
+runtime with independent semantic identity/publication, exact semantic action
+ingress, and public deterministic testing. Native accessibility translation and
+platform integration remain later M10 work.
 
 ## Canonical target path
 
@@ -207,8 +209,9 @@ schema and complete causal reconstruction across these families. M4D2 adds the
 accepted deterministic JSONL v1 projection, explicit text/IME capture policy,
 optional static action labels, and subordinate bounded sink delivery. M4D3 adds
 the accepted inert offline JSONL replay model, final retired-authority enforcement,
-and Counter/downstream M4 closure proofs. M5 owns semantic accessibility mapping
-and the public semantic testing integration. See
+and Counter/downstream M4 closure proofs. M5A–M5D add the accepted semantic
+identity/publication/action/testing layers on top of these M4 authorities; M5E
+owns integrated closure only. See
 [ADR 0005](../adr/0005-canonical-event-routing-and-commands.md) for the
 accepted behavioral rules.
 
@@ -568,11 +571,12 @@ merged in [PR #43](https://github.com/dornglut/runen-ui/pull/43) as
 `596f0d823b9833d71a038cc4aebe834c7b94e4a6`; all 16 changed-file blob
 identities match between reviewed feature head and accepted squash. The final M4
 authority reconciliation records `REPLAY-01`, `REPLAY-02`, `MIGRATION-08`, and
-`M4-CLOSE-01`–`M4-CLOSE-05` as owner-accepted. The matrix is `237 total / 235
-owner-accepted / 0 proof-complete / 2 blocked`; only M5-owned `ACCESS-01` and
-`ACCESS-02` remain blocked. M5 semantics and deterministic public testing is the
-active successor milestone.
+`M4-CLOSE-01`–`M4-CLOSE-05` as owner-accepted. The inherited M4 `ACCESS-01` and
+`ACCESS-02` rows were subsequently accepted through M5C, so the current M4
+matrix is `237 total / 237 owner-accepted / 0 proof-complete / 0 blocked`.
+M5 remains the active successor milestone; M5A–M5D are accepted and reconciled,
+and M5E #51 is its sole active closure slice.
 
-M4 does not implement a platform host, accessibility tree/adapter, editable text
-control, production renderer scene, production layout/style, broad control
+M4 does not implement a platform host, native accessibility adapter, editable
+text control, production renderer scene, production layout/style, broad control
 library, or multi-surface windowing.
