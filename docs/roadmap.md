@@ -527,12 +527,12 @@ behavior.
 squash-merged as `8c67655ffce438c2e35e6478e7299bd704033b8b`; all 23 changed-file
 blob identities match between the reviewed feature head and accepted squash.
 The accepted implementation adds deterministic JSONL v1 projection, default-
-redacted and explicit-full text/IME capture, optional static non-`Debug` action
-labels, lazy bounded subordinate sink delivery, receiver-side serialization,
-same-record `Delivered`/`Full`/first-`Closed` diagnostics, one-way sink
-retirement, and capacity-zero diagnostic dormancy without a second trace/history
-authority. All ten `TRACE-EXPORT-*` rows become owner-accepted through this
-post-merge authority reconciliation.
+redacted and explicit-full text/IME capture, optional static action labels,
+lazy bounded subordinate sink delivery, receiver-side serialization, same-record
+`Delivered`/`Full`/first-`Closed` diagnostics, one-way sink retirement, and
+capacity-zero diagnostic dormancy without a second trace/history authority. All
+ten `TRACE-EXPORT-*` rows become owner-accepted through this post-merge authority
+reconciliation.
 
 **Unblocks:** M4D3.
 
