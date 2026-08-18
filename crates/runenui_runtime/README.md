@@ -47,6 +47,6 @@ The runtime has one queue and one canonical work/trace lineage. Accepted semanti
 
 `runenui_runtime` must not own application-domain policy/state, testing convenience authority, native window/event-loop or AccessKit adapters, concrete renderer backends, production controls/text, ECS assumptions, or compatibility aliases preserving retired prototype APIs.
 
-M0–M4 are complete. M5A–M5D are accepted and reconciled; M5E #51 is the active integration/migration/closure slice. M6 implementation remains blocked until accepted M5 closure.
+M0–M5 are complete. Accepted M5 leaves one canonical runtime queue/routing/trace authority and an independent semantic publication/action boundary. M6 is the next renderer-neutral paint/hit scene milestone; issue #59 may refine retained publication storage only within an accepted M6 design that preserves the M5 staged transaction and semantic-publication separation.
 
 See the [public API contract](../../docs/architecture/public-api.md), [workspace structure](../../docs/architecture/workspace-structure.md), [M5 charter](../../docs/architecture/m5-semantics-and-testing-charter.md), [status map](../../docs/status-map.md), [testing guide](../../TESTING.md), and [roadmap](../../docs/roadmap.md).
