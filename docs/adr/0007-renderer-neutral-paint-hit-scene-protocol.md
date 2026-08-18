@@ -34,6 +34,10 @@ The accepted baseline deliberately does not already contain that protocol:
 - runtime pointer ingress does not use that public hit method. It copies
   `(MountedNodeId, LogicalRect)` into a second private retained
   `HitTestSnapshot` ring and resolves displayed input there;
+- that same private snapshot also supplies `current_focus_geometry()` for M4
+  directional focus, so the current proof accidentally conflates an all-mounted
+  published-layout geometry view with pointer hit authority even though those
+  consumers have different future participation rules;
 - ADR 0005 and accepted M4 `SURFACE-*` rows already make
   `SurfaceInputContext` authoritative for logical surface identity, coordinate
   revision, exact displayed hit-test generation, bounded historical retention,
@@ -66,6 +70,8 @@ This ADR refines renderer/hit publication only. It does not redefine:
 - ADR 0005 canonical event routing, `SurfaceId`, `SurfaceInputContext`, exact
   displayed-generation targeting, retained historical targeting, target
   validation, or no-retargeting behavior;
+- accepted M4 focus eligibility, scope/navigation selection, directional-focus
+  geometry semantics, or the `DF-*` conformance corpus;
 - ADR 0006 queue, effects, wake/redraw, trace, and transaction causality;
 - accepted M4 `SURFACE-*` observations;
 - accepted M5 semantic contribution, identity, publication, action, or testing
@@ -92,7 +98,8 @@ successful publication atomically aligns distinct immutable products:
 - `HitTestScene` — input-facing shapes, transforms/clips, pointer policy,
   deterministic order, runtime-injected mounted targets, and its exact
   `SurfaceInputContext`;
-- layout result/report;
+- layout result/report plus the retained layout-phase facts required by current
+  runtime focus selection;
 - semantic publication;
 - semantic diagnostics and ordinary diagnostics.
 
@@ -361,7 +368,7 @@ traversal of it. Storage iteration, backend order, and current-tree traversal
 cannot change the result after publication. Layer remains snapshot-local ordering
 policy, not identity.
 
-### The hit scene is the canonical displayed input snapshot
+### The hit scene is the canonical displayed pointer snapshot
 
 The public immutable `HitTestScene` associated with a successful
 `SurfacePublication` is the exact scene retained by `SurfacePublicationState`
@@ -390,6 +397,38 @@ region storage may still be shared across wrappers.
 Paint has no independently targetable **scene generation**. Renderer update
 identity is the surface-scoped `PaintRevision` owned by `PaintPublication`, not a
 second input-like generation or target namespace.
+
+### Directional focus geometry remains layout-owned
+
+M6 removes the proof-era accidental coupling between pointer hit data and
+current directional-focus geometry. Explicit pointer participation and focus
+participation are independent facts.
+
+The runtime's existing focus selection continues to use the latest **successfully
+published** logical geometry for mounted focus candidates under the accepted M4
+focus eligibility/scope/navigation rules. That geometry is a runtime-private
+read-only projection of the retained layout phase (for example
+`MountedNodeId + LogicalRect` in mounted logical order), not `HitTestScene`
+regions and not paint geometry. A focusable widget with zero hit regions remains
+fully eligible for keyboard/controller/programmatic focus according to M4.
+Conversely, a pointer-targetable region does not become focusable merely because
+it appears in `HitTestScene`.
+
+No new public `FocusScene`, focus generation, or second layout authority is
+introduced. #59's retained layout phase remains the storage owner; focus
+selection may derive or cheaply expose the private current projection from that
+same retained immutable product. Directional focus uses the current accepted
+published layout, not a historical `SurfaceInputContext` generation.
+
+The private proof `HitTestSnapshot` may be removed only after both of its old
+consumer roles are migrated in the same accepted cutover sequence:
+
+- pointer/current-and-retained surface resolution -> canonical `HitTestScene`;
+- current focus-navigation geometry -> retained layout-phase projection.
+
+The full inherited M4 directional-focus corpus and focus trace behavior must pass
+unchanged after this split. M6 does not redefine scoring, scope, restoration,
+eligibility, or logical-focus-scroll policy.
 
 ### Hit testing uses one exact algorithm
 
@@ -469,7 +508,9 @@ It must guarantee:
 - semantic publication remains an independent sibling coordinated by the same
   final commit.
 
-The internal smart-pointer/container type is not public protocol.
+The internal smart-pointer/container type is not public protocol. Retained layout
+storage used by focus navigation is part of this one phase-product authority; it
+must not be recreated as a second focus cache merely to remove `HitTestSnapshot`.
 
 ### Resource references are logical, self-disambiguating values
 
@@ -576,7 +617,9 @@ or truthfully narrow:
 - `WidgetPaintProof` and its mounted capability cache;
 - renderer-facing paint claims on `SurfaceFrame`/`SurfaceNode`;
 - `SurfaceFrame::hit_test` / `hit_test_id` as hit authority;
-- the private copied `HitTestSnapshot` once `HitTestScene` is canonical;
+- the private copied `HitTestSnapshot`/rectangle resolver once pointer targeting
+  has moved to `HitTestScene` **and** current focus geometry has moved to the
+  retained layout-phase projection;
 - debug/test helpers independently reproducing renderer/hit semantics;
 - stale docs/support claims naming proof products as production scene inputs.
 
@@ -603,8 +646,10 @@ Then the minimum implementation order is:
 
 Replace whole-`SurfaceCache` cloning with immutable shared phase products while
 preserving M5 transaction/failure behavior. Prove narrow publications reuse
-unchanged products. Do not add parallel cache or scene behavior unless strictly
-required to prove the storage boundary.
+unchanged products. Preserve a single retained layout phase that can serve both
+public layout reporting and the runtime-private current focus-geometry projection;
+do not add a second focus cache. Do not add parallel cache or scene behavior
+unless strictly required to prove the storage boundary.
 
 ### M6B — canonical paint/hit scene kernel and displayed-hit cutover
 
@@ -612,11 +657,13 @@ Introduce focused core contribution vocabulary, explicit hit invalidation,
 public immutable `PaintPublication`/`PaintScene`/`HitTestScene`, runtime
 placement/target injection, surface-scoped non-wrapping paint revisions, basic
 rectangle primitive/region composition, exact deterministic order, and the
-canonical retained hit-scene ring. Migrate the built-in/downstream vertical
-proof and remove `WidgetPaintProof`, duplicate private hit snapshots, and old hit
-authority where replacements become live. Identity transforms, no clips, opacity
-`1`, layer `0`, `Target`, `RasterScale::ONE`, and conservative full damage suffice
-for this first kernel; M6C extends the same products rather than creating another
+canonical retained hit-scene ring. Migrate pointer resolution to `HitTestScene`
+and directional-focus geometry to the retained layout phase before removing the
+old mixed private snapshot. Migrate the built-in/downstream vertical proof and
+remove `WidgetPaintProof`, duplicate private hit snapshots, and old hit authority
+where replacements become live. Identity transforms, no clips, opacity `1`,
+layer `0`, `Target`, `RasterScale::ONE`, and conservative full damage suffice for
+this first kernel; M6C extends the same products rather than creating another
 path.
 
 ### M6C — transforms, clips, resources, metadata, damage, and capabilities
@@ -632,7 +679,8 @@ checking on the same M6B products.
 Prove two independent deterministic consumers including one genuine downstream
 renderer without widget-kind knowledge; complete public testing assertions;
 remove remaining obsolete proof claims; run integrated M4/M5 inheritance plus M6
-conformance; reconcile current authority and close M6.
+conformance, including the unchanged directional-focus corpus; reconcile current
+authority and close M6.
 
 A later critical audit may split a slice only when it reduces a real acceptance
 boundary without duplicate authority. M6B cannot precede accepted M6A because
@@ -644,8 +692,16 @@ that would knowingly build real scenes around the cache #59 must replace.
 Rejected: it contains mounted/widget/debug/style facts and proof paint.
 
 ### Keep a private hit snapshot beside a public hit scene
-Rejected: two representations can diverge; the public retained scene is the hit
-authority.
+Rejected: two pointer representations can diverge; the public retained scene is
+the pointer-hit authority. The independent focus-geometry consumer moves to the
+retained layout phase rather than justifying a second hit representation.
+
+### Use `HitTestScene` as directional-focus geometry
+Rejected: explicit pointer participation is not focus participation. A keyboard-
+focusable widget may deliberately contribute no hit region, while a hit region
+may belong to a non-focusable owner. M4 focus geometry therefore remains a
+current retained-layout projection and does not acquire hit-scene identity or
+retention semantics.
 
 ### Add an independent scene target/generation namespace
 Rejected: `MountedNodeId` and `SurfaceInputContext` already own the necessary
@@ -735,6 +791,8 @@ Positive consequences:
 - scene coordinates/order are self-contained and deterministic;
 - literal color/compositing, basic stroke placement, and rounded hit/clip geometry
   have one cross-consumer interpretation;
+- pointer hit participation and directional-focus geometry no longer share an
+  accidental representation or influence each other's eligibility;
 - paint content identity remains reusable and history-independent;
 - renderer consumers receive an explicit surface-scoped revision/base chain and
   can safely use damage after contiguous updates or recover from missed updates
@@ -742,8 +800,9 @@ Positive consequences:
 - semantic/hit-only surface publications do not fabricate renderer updates;
 - renderer consumers receive explicit logical canvas extent and validated scale
   without reading layout authority or owning scale mutation;
-- accepted M4 displayed-input identity remains intact and independent;
-- runtime no longer needs two hit representations;
+- accepted M4 displayed-input and focus-navigation authority remain intact and
+  independent;
+- runtime no longer needs two pointer hit representations;
 - custom widgets gain explicit paint/hit contribution without registration;
 - semantic, paint, hit, layout, diagnostics, and paint-publication metadata have
   distinct ownership;
@@ -757,6 +816,8 @@ Costs and constraints:
 - runtime gains one checked paint revision counter, consumed only by actual
   renderer-relevant snapshot changes;
 - runtime gains one validated neutral raster-scale value in surface build input;
+- runtime focus selection must read retained layout geometry after the old mixed
+  snapshot is removed;
 - hit invalidation gains one public bit and proof burden;
 - color conversion/compositing, rounded-radius normalization, coordinate/order,
   and transformed hit semantics require deterministic tests;
