@@ -137,11 +137,25 @@ These terms are fixed by the accepted [M5 semantics and testing charter](archite
 
 ## Accepted target terms
 
+M6A0 accepted [ADR 0007](adr/0007-renderer-neutral-paint-hit-scene-protocol.md)
+and the [M6 conformance matrix](architecture/m6-conformance-matrix.md). The M6
+terms below are therefore accepted **target** vocabulary, not current Rust APIs;
+all 36 M6 behavior rows remain `blocked` until implementation slices satisfy
+them.
+
 | Term | Meaning |
 |---|---|
 | Multi-surface runtime | Later support for multiple mounted roots, independent focus domains, surface lifecycle, and per-surface publication generations; the current runtime has one mounted root/focus domain/logical surface. |
 | Layout result | Computed production geometry/baselines/extents independent of paint and semantics; current M2–M5 layout remains a constrained deterministic proof. |
-| Hit-test scene | Ordered hit shapes, clips, transforms, visibility, inertness, and pointer policy. |
-| Paint scene | Renderer-neutral primitives and resource references with order, clips, transforms, and metadata. |
+| `PaintPublication` | Target immutable renderer-facing surface product containing one exact `SurfaceId`, non-wrapping `PaintRevision`, optional exact base revision, reusable history-independent `PaintScene`, logical surface extent, validated `RasterScale`, and sound damage. |
+| `PaintScene` | Target history-independent renderer-neutral logical visual content: deterministic ordered primitives/resource references with self-contained transforms, clips, opacity, and layers. It is nested in `PaintPublication`, not a second live publication authority. |
+| `PaintRevision` | Target surface-scoped renderer update identity. It advances only when `(PaintScene content, logical surface size, RasterScale)` changes and is distinct from displayed input generation. |
+| `HitTestScene` | Target immutable retained displayed-input product containing ordered point-hit regions, exact mounted-target membership, and the exact existing `SurfaceInputContext` for that generation. Point-hit regions do not imply focusability, semantics, or membership. |
+| Hit-test region | Target owner-local rectangle/rounded shape plus transform, clips, layer, and `PointerPolicy`; runtime injects mounted route targets and surface placement. |
+| `PointerPolicy` | Target physical point-selection policy with exactly `Target` or `Block`; omission is pass-through. Semantic disabled/hidden/inert state does not implicitly define physical hit participation. |
+| `ResourceRef` | Target stable self-disambiguating opaque logical resource identity plus kind. Logical content replacement requires a new ref; M6 defines no public resolver/provider registry, payload/lease API, or runtime resource cache. |
+| `RasterScale` | Target finite strictly positive renderer-realization scale supplied through the neutral surface build context; scene geometry remains logical and widgets do not own scale mutation. |
+| Paint damage | Target conservative renderer-update region relative to the exact named base paint revision; consumers without that exact realized base reprocess the complete current paint snapshot instead. |
+| Scene requirements | Target deterministic view derived from canonical `PaintScene` content/resource kinds; it is not separately mutable/versioned authority. |
 | Host | Owner of platform/window lifecycle, normalized events, services, timing, resources, and wakeups. |
 | Renderer backend | Consumer of paint primitives/resources; never owner of widget semantics or behavior. |
