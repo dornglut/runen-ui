@@ -7,21 +7,20 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
 Milestone status: M0 through M4 are complete and owner-accepted. M5 is active.
-M5A semantic contribution and independent identity, the #55 semantic readiness
+M5A semantic contribution/independent identity, the #55 semantic readiness
 authority, M5B semantic publication/incremental updates, M5C semantic action
-ingress/accessibility resolution, and the M5D public deterministic headless
-testing feature are owner-accepted and feature-merged. M5D exact reviewed head
-`471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed exact-head CI #1230 /
-`31962536977` and was guarded-squash-merged in
-[PR #64](https://github.com/dornglut/runen-ui/pull/64) as
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
-exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
-#1231 / `31967898198` passed at that exact squash. The mandatory post-M5D
-current-contract reconciliation is the current gate. M5E #51 remains blocked
-until that reconciliation is owner-accepted, merged, and accepted-main verified.
-Current maturity, durable sequence, work ownership, and historical acceptance
-evidence live in the [status map](docs/status-map.md),
-[roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and
+ingress/accessibility resolution, and M5D public deterministic headless testing
+are fully owner-accepted, reconciled, accepted-main verified where required, and
+closed. M5E [#51](https://github.com/dornglut/runen-ui/issues/51) is the sole
+active M5 slice from exact accepted main
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. It owns integrated public-only
+conformance, migration/current-document closure, adapter-neutral mapping evidence,
+and the final M5 acceptance gate; it does not implement M6. M6 remains blocked
+until M5E is accepted, guarded-merged, accepted-main verified, and any required
+bounded final M5 reconciliation is complete. Current maturity, durable sequence,
+work ownership, and historical acceptance evidence live in the
+[status map](docs/status-map.md), [roadmap](docs/roadmap.md),
+[work-tracking contract](docs/work-tracking.md), and
 [public repository migration history](docs/history/public-repository-migration.md).
 
 ## What exists today
@@ -220,9 +219,9 @@ input, clock, semantic, trace, and replay APIs without acquiring live runtime
 authority. Tree changes rebuild topology-dependent renderer facts from one
 current mounted preorder snapshot. Compatible style and layout changes retain
 topology and read current mounted style/layout state; layout movement refreshes
-semantic bounds without rerunning unchanged semantic contribution. M5E next owns
-integrated M5 conformance/migration closure. M6 owns renderer-neutral paint/hit
-scene products only after accepted M5 closure.
+semantic bounds without rerunning unchanged semantic contribution. M5E currently
+owns integrated M5 conformance/migration/current-document closure. M6 owns
+renderer-neutral paint/hit scene products only after accepted M5 closure.
 
 ## Canonical project documents
 
@@ -233,6 +232,8 @@ scene products only after accepted M5 closure.
 - [Production roadmap](docs/roadmap.md)
 - [Work tracking](docs/work-tracking.md)
 - [Detailed architecture](docs/architecture.md)
+- [M5 semantics and testing charter](docs/architecture/m5-semantics-and-testing-charter.md)
+- [M5 conformance matrix](docs/architecture/m5-conformance-matrix.md)
 - [Public repository migration history](docs/history/public-repository-migration.md)
 - [Documentation retention and disposition](docs/documentation-retention-plan.md)
 - [Validation details](docs/tooling/validation.md)
