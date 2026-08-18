@@ -72,25 +72,30 @@ M5C #49 semantic action ingress and accessibility resolution is fully accepted,
 reconciled, accepted-main verified, and closed. Its accepted reconciliation/main
 base for M5D is `b2064f24e778bd69e2876ec09a7431d612682304`.
 
-M5D #50 public deterministic headless testing has an owner-accepted, merged, and
-accepted-main-verified feature implementation. Exact reviewed feature head
+M5D #50 public deterministic headless testing is fully accepted, reconciled,
+accepted-main verified, and closed. Its reviewed feature head
 `471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed exact-head CI #1230 /
 `31962536977` and was guarded-squash-merged in PR #64 as
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
-exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
-#1231 / `31967898198` passed at that exact squash.
+`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. The mandatory reconciliation was
+explicitly owner-accepted at exact reviewed head
+`522b2770a2e6763e54e9eb6237fefc83e88d8cf9`, passed exact-head CI #1242 /
+`31969642341`, and was guarded-squash-merged in PR #65 as
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. Reviewed reconciliation head and
+squash share exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`, and accepted-main CI #1244 /
+`32108782685` passed at that squash.
 
-The mandatory post-M5D authority/current-contract reconciliation is the sole
-current M5 gate. Its branch is `codex/m5d-authority-reconciliation`, created from
-exact accepted feature squash `72d2405211a3fd6d11e0d17680b7769df90b5ffe`.
-M5D #50 remains open for this reconciliation only, and M5E #51 remains blocked
-until the reconciliation is exact-head validated, critically reviewed,
-explicitly owner-accepted, guarded-merged, and accepted-main verified. Do not
-begin M5E early. Preserve the public-only `runenui_testing` ownership boundary:
-no `internal-test-seams`, hidden mutation bridge, semantic-to-`MountedNodeId`
-shortcut, bare semantic-ID surface guessing, unbounded settle, wall-clock wait,
-parallel runtime model, semantic LogicalScroll compatibility helper, or native
-accessibility work.
+M5E #51 is the sole active M5 slice and starts only from exact accepted main
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. It owns integration, migration,
+and milestone-closure proof only: reuse accepted M5A-M5D public machinery,
+preserve the public-only `runenui_testing` ownership boundary, remove retired
+semantic/testing compatibility authority rather than retaining aliases, and
+keep M6/#59 implementation blocked until M5E is explicitly owner-accepted,
+guarded-merged, accepted-main verified, and any required bounded reconciliation
+is complete. No `internal-test-seams`, hidden mutation bridge,
+semantic-to-`MountedNodeId` shortcut, bare semantic-ID surface guessing,
+unbounded settle, wall-clock wait, parallel runtime model, semantic
+LogicalScroll compatibility helper, native accessibility work, or M6 paint/hit
+implementation belongs in M5E.
 
 A future thread should need only the repository, umbrella issue, and active slice/audit issue to locate current work.
 
