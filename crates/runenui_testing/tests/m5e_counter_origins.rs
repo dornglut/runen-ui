@@ -77,7 +77,9 @@ fn run_origin(origin: ActivationOrigin) {
         .with_supported_action(SemanticAction::Activate);
     let semantic_target = harness
         .unique_semantic_target(&increment_query)
-        .unwrap_or_else(|error| unreachable!("Counter increment semantic target is unique: {error:?}"));
+        .unwrap_or_else(|error| {
+            unreachable!("Counter increment semantic target is unique: {error:?}")
+        });
 
     let Some((mounted_target, point)) = (|| {
         let publication = harness.publication()?;
@@ -89,7 +91,10 @@ fn run_origin(origin: ActivationOrigin) {
             .find(|node| node.authored_id() == Some(&authored))?;
         let bounds = node.bounds();
         let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0).ok()?;
-        assert_eq!(publication.frame().hit_test_id(point), Some(node.id().clone()));
+        assert_eq!(
+            publication.frame().hit_test_id(point),
+            Some(node.id().clone())
+        );
         Some((node.id().clone(), point))
     })() else {
         unreachable!("published Counter increment has exact public frame identity and bounds")
@@ -116,9 +121,9 @@ fn run_origin(origin: ActivationOrigin) {
                 .unwrap_or_else(|_| unreachable!("published Counter accepts pointer context"))
                 .with_changed_button(PointerButton::Primary)
                 .with_buttons(PointerButtons::new([PointerButton::Primary]));
-            harness
-                .submit_pointer(down)
-                .unwrap_or_else(|error| unreachable!("Counter pointer down is accepted: {error:?}"));
+            harness.submit_pointer(down).unwrap_or_else(|error| {
+                unreachable!("Counter pointer down is accepted: {error:?}")
+            });
             settle(&mut harness);
             assert_eq!(harness.state().count, 0);
 
@@ -174,7 +179,11 @@ fn run_origin(origin: ActivationOrigin) {
     }
 
     settle(&mut harness);
-    assert_eq!(harness.state().count, 1, "origin {origin:?} must update Counter once");
+    assert_eq!(
+        harness.state().count,
+        1,
+        "origin {origin:?} must update Counter once"
+    );
 
     assert!(harness.publish().is_ok());
     assert!(matches!(
