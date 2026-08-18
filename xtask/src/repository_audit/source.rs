@@ -237,6 +237,32 @@ const RETIRED_AUTHORITIES: &[RetiredAuthoritySpec] = &[
     },
 ];
 
+const RETIRED_M5_AUTHORITIES: &[RetiredAuthoritySpec] = &[
+    RetiredAuthoritySpec {
+        symbol: "WidgetSemanticProof",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "activate_semantic",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "mounted_node_id",
+        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
+    },
+];
+
+const RETIRED_M5_CODE_PATTERNS: &[&str] = &["SemanticAction::LogicalScroll"];
+const SEMANTIC_ALIAS_TARGETS: &[&str] = &[
+    "SemanticAction",
+    "SemanticActionRequest",
+    "SemanticPublication",
+    "SemanticSnapshot",
+    "SemanticTarget",
+    "SemanticUpdate",
+    "SemanticUpdateResult",
+];
+
 pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMetrics, String> {
     let production_files = collect_rust_files(root, &root.join("crates"), FileKind::Production)?;
     let test_files = collect_test_files(root)?;
@@ -258,6 +284,7 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMe
     audit_authority_definitions(&production_metrics, findings);
     audit_surface_publication_entrypoint(&production_metrics, findings);
     audit_retired_authorities(&production_metrics, findings);
+    audit_retired_m5_authorities(&production_metrics, findings);
     audit_volatile_architecture_state(root, findings)?;
 
     Ok(SourceMetrics {
@@ -461,6 +488,129 @@ fn audit_retired_authorities(production: &[(ModuleMetrics, String)], findings: &
             }
         }
     }
+}
+
+fn audit_retired_m5_authorities(
+    production: &[(ModuleMetrics, String)],
+    findings: &mut Vec<Finding>,
+) {
+    for (metrics, contents) in production {
+        let path = path_text(&metrics.relative);
+        for (line_index, line) in contents.lines().enumerate() {
+            let line_number = line_index + 1;
+            if let Some((symbol, externally_public)) = declaration_symbol(line)
+                && let Some(retired) = RETIRED_M5_AUTHORITIES
+                    .iter()
+                    .find(|retired| retired.symbol == symbol)
+            {
+                let forbidden = match retired.scope {
+                    RetiredAuthorityScope::AnyDeclaration => true,
+                    RetiredAuthorityScope::ExternallyPublicDeclaration => externally_public,
+                    RetiredAuthorityScope::PublicReexportOnly => false,
+                };
+                if forbidden {
+                    findings.push(Finding::fatal(
+                        "source.retired_m5_authority",
+                        Some(format!("{path}:{line_number}")),
+                        format!(
+                            "retired M5 semantic/testing authority `{symbol}` must be removed rather than retained as compatibility API"
+                        ),
+                    ));
+                }
+            }
+
+            let code = rust_code_without_comments_or_literals(line);
+            for pattern in RETIRED_M5_CODE_PATTERNS {
+                if code.contains(pattern) {
+                    findings.push(Finding::fatal(
+                        "source.retired_m5_authority",
+                        Some(format!("{path}:{line_number}")),
+                        format!(
+                            "retired M5 semantic authority `{pattern}` must remain absent; routed M4 LogicalScroll does not authorize a semantic compatibility path"
+                        ),
+                    ));
+                }
+            }
+
+            let trimmed = code.trim_start();
+            if trimmed.starts_with("pub type ")
+                && let Some((_, target)) = trimmed.split_once('=')
+                && SEMANTIC_ALIAS_TARGETS.iter().any(|semantic| {
+                    statement_identifiers(target).any(|identifier| identifier == *semantic)
+                })
+            {
+                findings.push(Finding::fatal(
+                    "source.retired_m5_authority",
+                    Some(format!("{path}:{line_number}")),
+                    "public type aliases around accepted semantic/testing authority are forbidden by the M5 clean-cutover contract",
+                ));
+            }
+        }
+
+        for (line, statement) in public_reexport_statements(contents) {
+            for retired in RETIRED_M5_AUTHORITIES {
+                if statement_identifiers(&statement).any(|token| token == retired.symbol) {
+                    findings.push(Finding::fatal(
+                        "source.retired_m5_authority",
+                        Some(format!("{path}:{line}")),
+                        format!(
+                            "retired M5 semantic/testing authority `{}` must not be externally re-exported",
+                            retired.symbol
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn rust_code_without_comments_or_literals(line: &str) -> String {
+    let mut output = String::with_capacity(line.len());
+    let mut characters = line.chars().peekable();
+    let mut in_string = false;
+    let mut in_char = false;
+    let mut escaped = false;
+
+    while let Some(character) = characters.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_string = false;
+            }
+            output.push(' ');
+            continue;
+        }
+        if in_char {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '\'' {
+                in_char = false;
+            }
+            output.push(' ');
+            continue;
+        }
+        if character == '/' && characters.peek() == Some(&'/') {
+            break;
+        }
+        match character {
+            '"' => {
+                in_string = true;
+                output.push(' ');
+            }
+            '\'' => {
+                in_char = true;
+                output.push(' ');
+            }
+            _ => output.push(character),
+        }
+    }
+
+    output
 }
 
 fn declaration_symbol(line: &str) -> Option<(&str, bool)> {
@@ -781,8 +931,8 @@ mod tests {
 
     use super::{
         SURFACE_PUBLICATION_ENTRYPOINT_PATH, audit_retired_authorities,
-        audit_surface_publication_entrypoint, declaration_symbol, defines_struct, module_metrics,
-        normalized_identifier,
+        audit_retired_m5_authorities, audit_surface_publication_entrypoint, declaration_symbol,
+        defines_struct, module_metrics, normalized_identifier, rust_code_without_comments_or_literals,
     };
 
     fn production_source(path: &str, contents: &str) -> (super::ModuleMetrics, String) {
@@ -847,6 +997,37 @@ mod tests {
             finding.code == "source.retired_m4_authority"
                 && finding.severity == super::super::Severity::Fatal
         }));
+    }
+
+    #[test]
+    fn retired_m5_authority_audit_rejects_stubs_scroll_and_aliases() {
+        let production = vec![production_source(
+            "crates/example/src/lib.rs",
+            "pub struct WidgetSemanticProof;\npub fn activate_semantic() {}\npub type AccessibilityAction = SemanticAction;\nfn old_scroll() { let _ = SemanticAction::LogicalScroll; }\n",
+        )];
+        let mut findings = Vec::new();
+        audit_retired_m5_authorities(&production, &mut findings);
+        assert_eq!(findings.len(), 4);
+        assert!(findings.iter().all(|finding| {
+            finding.code == "source.retired_m5_authority"
+                && finding.severity == super::super::Severity::Fatal
+        }));
+    }
+
+    #[test]
+    fn retired_m5_pattern_scanner_ignores_comments_and_literals() {
+        assert!(!rust_code_without_comments_or_literals(
+            "// SemanticAction::LogicalScroll"
+        )
+        .contains("SemanticAction::LogicalScroll"));
+        assert!(!rust_code_without_comments_or_literals(
+            "let note = \"SemanticAction::LogicalScroll\";"
+        )
+        .contains("SemanticAction::LogicalScroll"));
+        assert!(rust_code_without_comments_or_literals(
+            "let action = SemanticAction::LogicalScroll;"
+        )
+        .contains("SemanticAction::LogicalScroll"));
     }
 
     #[test]
