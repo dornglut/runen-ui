@@ -1,6 +1,6 @@
 use crate::SemanticAction;
 
-fn assert_exact_m5_action(action: SemanticAction) {
+fn assert_exact_m5_action(action: &SemanticAction) {
     match action {
         SemanticAction::Activate
         | SemanticAction::RequestFocus
@@ -17,6 +17,6 @@ fn semantic_action_vocabulary_remains_exact_m5() {
         SemanticAction::OpenMenu,
         SemanticAction::OpenContextMenu,
     ] {
-        assert_exact_m5_action(action);
+        assert_exact_m5_action(&action);
     }
 }
