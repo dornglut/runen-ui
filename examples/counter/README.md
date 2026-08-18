@@ -2,34 +2,24 @@
 
 > **Category: Guide**
 
-Counter owns only typed product state, actions, update logic, and transient view
-authoring. Stable keys identify the Counter and Win roots, the control row, and
-each interactive control; no reconciliation or lifecycle plumbing enters the
-example.
+Counter is the repository's ordinary application-level proof consumer. It owns only typed product state/actions/update logic and transient view authoring; mounted identity, semantic identity, routing, scheduling, publication, tracing, and testing authority remain framework-owned.
 
-The mounted-runtime tests prove that Increment, Decrement, and Reset receive
-independent mounted and semantic IDs; Increment focus, IDs, and widget-local
-activation state survive compatible rebuilds; the transition to Win unmounts
-the Counter controls and makes their IDs stale; removed focus clears; and
-returning to Counter creates new mounted and semantic lifetimes. Mounted index,
-frame, style, and layout publication remain aligned after transitions; root
-replacement rebuilds every node-aligned cached product from the new lifetime. A
-test-only generation seam proves that terminal exhaustion before action update
-preserves Counter state, mounted/semantic identity, focus, report, and cached
-publication while cancelling the failed and remaining queued actions. Multiple
-activations before one pump also prove repeatable `on_activate` factories and
-FIFO action processing. A public pointer-ingress proof publishes the surface,
-presses the physical Increment bounds, releases inside the same exact mounted
-lifetime, and observes exactly one increment through the normal `Activate`
-convergence path.
+## What it proves
 
-M4C5 additionally proves the public raw-input path without a Counter target
-helper: deterministic authored-ID automation requests focus and activation,
-non-repeated raw Enter queues one `Activate`, and matched raw Space down/up
-queues one more through the same FIFO, route, default, update, reconciliation,
-and trace path. These are proof-complete branch behaviors pending independent
-review and owner acceptance; they are not native keyboard translation or a
-production control contract.
+The current Counter exercises accepted public behavior across the mounted, routed, semantic, testing, and replay stack:
+
+- stable authored keys and compatible mounted lifetime retention;
+- independent mounted and semantic lifetimes, with stale identities after removal/replacement;
+- routed pointer release-inside activation, raw Enter and matched Space activation, authored-ID automation, programmatic command activation, and exact semantic activation converging on the canonical command/default/application-action path;
+- public `runenui_testing::TestHarness` mounting, bounded pumping/settling, deterministic fixed-surface publication, semantic snapshot/query/target use, logical-time control, and read-only state/publication/trace inspection;
+- semantic publication revision/update observation after Counter state changes without recovering a mounted owner from a semantic target;
+- deterministic canonical trace export and inert M4D3 replay correlation for accepted interaction/update/publication behavior.
+
+The M5E cross-origin closure proof specifically compares five activation origins—semantic action, pointer, keyboard, authored-ID automation, and programmatic command—and requires exactly one Counter increment through the same accepted action/update architecture for each origin. Semantic targets remain exact `SurfaceId + SemanticNodeId` values from committed public snapshots.
+
+## Boundaries
+
+Counter is a deterministic headless proof, not a desktop application or native host example. It does not provide native keyboard/pointer translation, editable text, native accessibility, production paint/hit scenes, a renderer backend, production controls, or multi-surface lifecycle. It contains no private runtime test seam, fabricated IDs/sequences, direct semantic-to-mounted routing shortcut, compatibility activation path, or parallel expected runtime model.
 
 Run it with:
 
@@ -37,14 +27,4 @@ Run it with:
 cargo run --package counter
 ```
 
-This is a deterministic headless proof, not a desktop application, production
-control/accessibility/text example, paint scene, native host, or renderer.
-Pointer input is a deterministic logical-surface proof routed only through the
-canonical queue; it is not native host-event translation.
-Counter intentionally proves the ergonomic `()` no-effects update with
-`NoHostProtocol`; separate runtime fixtures cover tasks, timers, subscriptions,
-host requests, and the four-budget scheduler. M4C owns routed events, capture,
-and release-inside behavior.
-
-See the [feature/support matrix](../../docs/feature-support-matrix.md) and
-[roadmap](../../docs/roadmap.md) for exact limits.
+Repository-level conformance runs through `cargo validate` and the active slice-specific tests. See the [feature/support matrix](../../docs/feature-support-matrix.md), [M5 conformance matrix](../../docs/architecture/m5-conformance-matrix.md), [testing guide](../../TESTING.md), and [roadmap](../../docs/roadmap.md) for exact limits and acceptance state.
