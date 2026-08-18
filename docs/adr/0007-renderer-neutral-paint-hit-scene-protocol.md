@@ -172,17 +172,18 @@ successfully realized:
   the publication's damage incrementally and then adopt the new revision;
 - if it has no matching base — including first observation, skipped revisions,
   stale state, another surface, or recovery after renderer loss — it ignores the
-  incremental-damage optimization and realizes the complete immutable
+  incremental-damage optimization and reprocesses the complete immutable
   `PaintScene` using the publication's complete extent/scale metadata, then
   adopts the current revision.
 
 RunenUI does not retain renderer acknowledgements or invent a second handshake to
-make this work. The publication is always a complete snapshot; revision/base
-facts only say when its damage delta is safe as an optimization. While the
-matching live resource-resolver domain exists, every logical resource referenced
-by that complete snapshot remains resolvable independently of any disposable
-backend realization cache, so full realization does not depend on hidden prior
-renderer state.
+make this work. The publication is always a complete snapshot of **RunenUI-owned
+renderer state**; revision/base facts only say when its damage delta is safe as an
+optimization. External resource payloads are not embedded in that snapshot. The
+scene completely names those dependencies through immutable `ResourceRef` values,
+and the owning resource provider must preserve the logical identity/content
+contract for the live provider/runtime domain so later resource realization does
+not depend on a stale backend cache.
 
 This renderer revision is deliberately distinct from
 `SurfaceInputContext::hit_test_generation()`. Hit generations identify retained
@@ -190,17 +191,16 @@ input snapshots and may advance on successful surface publications even when
 paint is unchanged. `PaintRevision` identifies renderer-relevant snapshot change
 only. Neither substitutes for the other.
 
-### Core owns neutral contribution/resource protocol; runtime owns composed scenes
+### Core owns neutral contribution/resource values; runtime owns composed scenes
 
 The dependency direction remains `runenui_runtime -> runenui_core`.
 
 `runenui_core` owns public host- and renderer-neutral contribution/resource
-consumer vocabulary: focused paint contribution types, focused hit contribution
-types, `ResourceRef`/resource-kind values, the small read-only neutral
-resource-resolver consumer protocol, and the existing widget-owned contribution
-seam. Core owning the protocol does **not** make core a resource store, provider
-registry, decoder, shaping service, or renderer cache. M6 does not justify a
-broad `Element`/`Widget` source reorganization or a registry of concrete controls.
+values: focused paint contribution types, focused hit contribution types,
+`ResourceRef`/resource-kind values, and the existing widget-owned contribution
+seam. Core does **not** own a resource store, provider registry, lookup/resolver
+API, decoder, shaping service, or renderer cache. M6 does not justify a broad
+`Element`/`Widget` source reorganization or a registry of concrete controls.
 
 `runenui_runtime` owns scene composition, mounted-region target injection, exact
 displayed-generation mounted-target membership, layout-to-surface placement,
@@ -208,11 +208,11 @@ deterministic global order, retained displayed scenes, dirty phase planning,
 publication transaction state, `PaintRevision` allocation, validated
 `RasterScale`, publication-relative renderer metadata, and immutable public
 snapshots. Runtime carries `ResourceRef` values without registering providers,
-resolving logical payload bytes, decoding/shaping them, or owning backend
-realization caches. Widgets cannot author/forge `MountedNodeId`, `SurfaceId`,
-`SurfaceInputContext`, displayed-snapshot membership, `PaintRevision`, paint base
-revisions, scene-order identity, live input publication generations,
-surface-publication extent, raster-scale authority, or damage history.
+looking up payloads, decoding/shaping them, or owning resource/backend caches.
+Widgets cannot author/forge `MountedNodeId`, `SurfaceId`, `SurfaceInputContext`,
+displayed-snapshot membership, `PaintRevision`, paint base revisions, scene-order
+identity, live input publication generations, surface-publication extent,
+raster-scale authority, or damage history.
 
 This follows the accepted M5 precedent: add focused production vocabulary at
 its ownership seam rather than split unrelated responsibilities.
@@ -289,8 +289,8 @@ The production paint hook replaces `WidgetPaintProof` with immutable
 `PaintContribution` evaluated from mounted widget state during paint work. Its
 read-only context contains the owner's final local logical size and resolved
 computed style. It receives no runtime arena, surface origin, semantic tree,
-backend/GPU/host object, resource cache, prior publication, paint revision, or
-raster-scale authority.
+backend/GPU/host object, resource provider/cache, prior publication, paint
+revision, or raster-scale authority.
 
 A contribution is an ordered list of self-contained items. Each contributed
 item owns a primitive, owner-local transform, zero or more clips, opacity, and a
@@ -325,11 +325,12 @@ resolved foreground color changes paint scene content without requiring a new
 shaped-run `ResourceRef`. The primitive performs no hidden baseline inference,
 fit, scaling, reshaping, line breaking, or reflow. Item transforms may still
 transform the result under the ordinary scene transform contract. Production
-shaping and the contents of shaped-run resources remain M8/provider work; M6
-already fixes the logical `ResourceRef` identity and live-domain lifetime
-contract consumed by those later providers. Intrinsic multi-color glyph payloads
-are not part of the minimum M6 shaped-run contract and require a later explicit
-resource/primitive extension rather than silently changing foreground semantics.
+shaping, resource lookup/storage, and the contents of shaped-run resources remain
+M8/provider work; M6 fixes only the logical `ResourceRef` identity/lifetime and
+placement contract consumed by those later owners. Intrinsic multi-color glyph
+payloads are not part of the minimum M6 shaped-run contract and require a later
+explicit resource/primitive extension rather than silently changing foreground
+semantics.
 
 All transforms must be finite. Opacity must be finite and in closed `[0, 1]`;
 checked construction rejects values outside the contract rather than clamping or
@@ -348,10 +349,10 @@ multiplies source alpha (and therefore premultiplied source color) before
 source-over. M6 defines no alternate blend modes.
 
 This color rule applies to literal scene colors. Resource payload color metadata
-remains owned by the resource/provider contract for resource kinds that define
-such metadata; it cannot override the literal foreground of the minimum M6
-monochrome shaped-run primitive. A consumer cannot reinterpret a literal `Color`
-according to backend defaults. Physical display color management, raster
+remains owned by the later resource/provider contract for resource kinds that
+define such metadata; it cannot override the literal foreground of the minimum
+M6 monochrome shaped-run primitive. A consumer cannot reinterpret a literal
+`Color` according to backend defaults. Physical display color management, raster
 sampling, and anti-aliasing implementation are backend concerns and are not
 pixel-exact M6 scene semantics, but they must not change the scene's literal sRGB
 color meaning or source-over ordering.
@@ -622,59 +623,48 @@ must not be recreated as a second focus cache merely to remove `HitTestSnapshot`
 The retained displayed-input phase similarly owns both its region storage and
 exact generation membership; no second membership cache is introduced.
 
-### Resource references and resolver ownership are explicit
+### Resource references are stable logical dependencies; lookup is deferred
 
 M6 resource references carry an explicit neutral kind, such as image or shaped
-text run, plus one opaque identity value whose equality includes the issuing
-resolver-domain/provider namespace. Resolver-domain/provider implementations are
-responsible for namespace issuance such that concurrently live namespaces do not
-collide; consumers never reconstruct or guess that namespace from a local key.
+text run, plus one opaque self-disambiguating identity value. Its equality must
+include whatever provider/domain namespace is necessary so concurrently live
+providers issuing the same local key do not collide. The provider side owns that
+namespace/identity issuance contract; consumers never reconstruct or guess it
+from a local key.
 
 A reference is not resource bytes, a provider object, GPU handle, font object,
 native image, mounted/semantic identity, or scene-item identity. It is not a
-scene-local index. Once a live resolver/provider domain issues a `ResourceRef`
-that may enter an accepted M6 scene, reference equality is stable by value for
-that resolver-domain/runtime lifetime and the reference continues to denote the
-same immutable logical renderer content for that lifetime. Logical content
-replacement therefore requires a new `ResourceRef` value. A live-domain ref does
-not expire merely because a renderer drops a GPU/image/glyph realization or the
-provider evicts a disposable realization cache; the resolver/provider must retain
-or reconstruct the same logical content so a current complete paint snapshot can
-be realized again without hidden prior renderer state.
+scene-local index. Once an external provider issues a `ResourceRef` that may
+enter an accepted M6 scene, reference equality is stable by value for that live
+provider/runtime domain and the reference continues to denote the same immutable
+logical renderer content for that lifetime. Logical content replacement therefore
+requires a new `ResourceRef` value. Dropping a renderer's disposable
+GPU/image/glyph realization cache does not change or rebind the logical ref.
 
-For the minimum M6 shaped-text-run resource kind, that immutable logical content
-is the shaped glyph/coverage geometry and its non-paint metadata. The primitive's
+For the minimum M6 shaped-text-run kind, that immutable logical content is the
+shaped glyph/coverage geometry and its non-paint metadata. The primitive's
 literal foreground `Color` is deliberately **not** part of the shaped resource
 identity. A resolved foreground-only style change therefore reuses the same
 shaped `ResourceRef` and changes ordinary `PaintScene` content instead of
 requiring reshaping or provider mutation.
 
-The resolver **instance/domain is external to `runenui_runtime` publication
-state**. Application/provider/testing/backend glue supplies a matching
-implementation of the core-owned read-only neutral resolver protocol alongside a
-`PaintPublication` when a consumer needs resource payloads. `PaintPublication`
-and `PaintScene` contain refs only; they do not retain provider objects, resolver
-instances, byte stores, callbacks, or mutable cache authority. Runtime does not
-invoke the resolver while composing/committing scenes and therefore cannot make
-resource I/O or provider failure part of the surface-publication transaction.
+M6 deliberately stops at this reference boundary. It defines **no** public
+resource lookup/resolver trait, provider-registration API, payload byte/view
+format, lease/retirement API, decode/shaping API, upload path, or renderer cache.
+`runenui_runtime` never performs resource I/O as part of surface publication.
+The external resource owner is responsible for preserving the logical content
+named by a live ref; M8/M10 later define the production lookup/production/
+realization mechanisms needed for text, images, fonts, and native renderer use
+without changing the M6 identity contract.
 
-Consumers pass the **whole `ResourceRef`** to that one resolver boundary. A
-resolver may internally route multiple provider namespaces, but the consumer does
-not split a local key and choose a provider itself. The resolver/provider owns
-logical payload storage or reconstruction and any backend realization lifetime.
-M6 does not standardize storage layout, decoding, shaping, upload, or backend
-realization caches; it standardizes only the neutral lookup result contract and
-the logical identity lifetime needed by complete snapshots. A later explicit
-lease/retirement protocol may extend that rule; silent live-domain expiry is not
-M6 behavior.
-
-Deterministic M6 proofs use fixture resolver/provider implementations of this same
-public boundary. M8/M10 later provide production text/image resource producers
-and backend realization behind the same contract rather than adding a second
-resolver path. Unknown/foreign-domain or kind-mismatched refs are deterministic
-resolver/consumer errors, never reinterpretation as another primitive or concrete
-widget kind. `Expired` is not a valid state for a ref issued by the matching
-still-live M6 resolver domain.
+M6 deterministic consumers prove the protocol by comparing/forwarding resource
+refs, exact placement, derived resource-kind requirements, capability outcomes,
+and scene/revision behavior. A consumer that does not realize a resource kind may
+reject that requirement deterministically; it may not reinterpret the ref as a
+widget kind, split it to choose a provider, or depend on a hidden RunenUI cache.
+Fixture-only payload maps may be used to exercise a consumer implementation, but
+they are test data outside RunenUI protocol authority and cannot become a second
+public resolver path.
 
 ### Raster scale has one neutral input authority
 
@@ -739,15 +729,15 @@ alternate scenes, silently lower primitives, or select a concrete renderer.
 ordinary `SurfacePublication` and exposes/asserts public paint/hit products. It
 does not fabricate paint revisions/base revisions, raster scale, scene IDs,
 mounted targets, input generations, regions, snapshot membership, publication
-state, damage history, resource providers/resolvers, or a second
+state, damage history, resource provider/lookup state, or a second
 point/resolved-target algorithm.
 
 The genuine downstream custom-widget package must migrate from
 `WidgetPaintProof` through public contribution APIs. M6 requires two independent
 deterministic scene consumers; at least one is a genuine external/custom
-renderer consumer with no concrete widget-kind knowledge. Resource-bearing
-consumer proofs receive the same ordinary neutral resolver boundary supplied by
-the test/application layer, not a private runtime bridge.
+renderer consumer with no concrete widget-kind knowledge. Resource-bearing M6
+proofs observe/forward the ordinary refs and capability requirements; they do not
+introduce a private RunenUI resource-resolution bridge.
 
 ### Clean pre-1.0 migration
 
@@ -813,15 +803,16 @@ clips, opacity `1`, layer `0`, `Target`, `RasterScale::ONE`, and conservative fu
 damage suffice for this first kernel; M6C extends the same products rather than
 creating another path.
 
-### M6C — transforms, clips, resources, metadata, damage, and capabilities
+### M6C — transforms, clips, resource references, metadata, damage, and capabilities
 
 Complete transformed/rounded/intersection-clipped composition and hit semantics,
 exact image/shaped-run logical placement and shaped-run scene-owned literal
 foreground color, immutable self-disambiguating live-domain-stable resource
-references plus the core-owned read-only neutral resolver protocol, exact paint
-revision/base consumer semantics, neutral `SurfaceBuildContext` raster-scale
-input, logical extent/scale metadata, sound incremental damage, `Block` policy,
-and consumer capability checking on the same M6B products.
+references, exact paint revision/base consumer semantics, neutral
+`SurfaceBuildContext` raster-scale input, logical extent/scale metadata, sound
+incremental damage, `Block` policy, and consumer capability checking on the same
+M6B products. Production resource lookup/decoding/shaping/realization remains
+later M8/M10 work and does not become an M6 runtime/core subsystem.
 
 ### M6D — independent consumers, migration, and milestone closure
 
@@ -956,27 +947,25 @@ replacement receives a new `ResourceRef`; only backend realization caches may
 change behind a stable ref.
 
 ### Allow a live-domain resource reference to expire while current scenes still name it
-Rejected: `PaintPublication` is a complete snapshot and must support full
-realization after skipped revisions or renderer cache/device loss. Silent logical
-expiry would make current scene content depend on hidden prior renderer state.
-M6 therefore keeps issued logical refs immutable and resolvable for the live
-resolver/runtime-domain lifetime; only disposable backend realizations may be
-evicted. Any future bounded retirement/lease protocol requires an explicit
-extension with its own lifetime/consumer rules.
+Rejected: a complete RunenUI paint snapshot names every external resource
+dependency by stable ref. Silent logical expiry would make later resource
+realization depend on hidden prior renderer state. M6 therefore requires issued
+logical refs to remain immutable/stable for the live provider/runtime-domain
+lifetime. Any future bounded retirement/lease protocol requires an explicit
+later extension with its own lifetime/consumer rules.
 
-### Put provider registration, payload storage, or resolver instances in runtime publication authority
-Rejected: runtime needs only stable logical refs to publish deterministic scene
-content. Making it own provider registration/bytes/resolver instances would add a
-resource subsystem/cache authority unrelated to surface publication and couple
-provider failure/I/O to the M5 transaction. Core owns only the neutral read-only
-resolver protocol; external provider/application layers own instances and logical
-payload lifetime.
+### Add a public M6 resource resolver/provider registry
+Rejected as premature abstraction. M6 needs stable renderer-neutral resource
+references and capability requirements, not a production lookup/storage API.
+M8/M10 own the first production text/image resource and renderer realization
+needs and can add the smallest lookup/production mechanism then, preserving M6
+reference identity. Runtime/core do not gain a speculative provider registry,
+resolver trait, byte view, or cache now.
 
-### Put a mutable resolver/provider object inside `PaintPublication`
+### Put a mutable provider object inside `PaintPublication`
 Rejected: the publication is an immutable logical snapshot and should stay
-cloneable/inspectable without transferring provider mutation authority. Consumers
-receive a matching resolver as a separate read-only dependency when realizing
-resource-bearing primitives.
+cloneable/inspectable without transferring provider mutation authority. Resource
+payload ownership remains external and is named only by stable refs in M6.
 
 ### Add a giant renderer/widget trait or split the whole widget module first
 Rejected: #10 remains a broad non-blocking concentration audit; M6 has focused
@@ -1012,12 +1001,9 @@ Positive consequences:
 - paint content identity remains reusable and history-independent;
 - renderer consumers receive an explicit surface-scoped revision/base chain and
   can safely use damage after contiguous updates or recover from missed updates
-  by realizing the complete snapshot;
-- complete paint snapshots remain realizable after backend-cache/device loss
-  because logical resource refs cannot silently expire inside the live resolver
-  domain;
-- resource-bearing consumers use one public neutral resolver contract without
-  turning runtime/core into resource stores or provider registries;
+  by reprocessing the complete RunenUI scene snapshot;
+- external resource dependencies are stable and self-disambiguating without
+  inventing a premature core/runtime resource service;
 - semantic/hit-only surface publications do not fabricate renderer updates;
 - renderer consumers receive explicit logical canvas extent and validated scale
   without reading layout authority or owning scale mutation;
@@ -1028,7 +1014,8 @@ Positive consequences:
 - semantic, paint, hit, layout, diagnostics, and paint-publication metadata have
   distinct ownership;
 - #59 is resolved before real scenes multiply retained-cache copying;
-- resource/scale/damage/capability boundaries exist without a concrete backend.
+- resource-reference/scale/damage/capability boundaries exist without a concrete
+  backend or resource subsystem.
 
 Costs and constraints:
 
@@ -1046,9 +1033,9 @@ Costs and constraints:
   rectangle-stroke geometry, clip intersection, resource placement,
   rounded-radius normalization, coordinate/order, and transformed hit semantics
   require deterministic tests;
-- fixture resource resolvers are required until M8/M10 production producers and
-  must preserve issued logical refs for their live resolver-domain lifetime even
-  if backend realization caches are dropped;
+- M6 resource-bearing consumers can prove reference/capability semantics without
+  production payload realization; M8/M10 must later add the production resource
+  mechanisms without weakening reference identity;
 - retained immutable products must preserve simple staged atomicity.
 
 ## Acceptance
