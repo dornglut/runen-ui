@@ -27,6 +27,7 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `docs/architecture/m4c-delivery-and-routed-transaction-charter.md` | Target architecture | Retained active | Accepted M4C–M4D implementation ownership, transaction, and delivery sequencing contract |
 | `docs/architecture/m5-semantics-and-testing-charter.md` | Target architecture | Retained active | Accepted durable M5 semantic/testing ownership, transaction, slice, migration, and exit-gate contract |
 | `docs/architecture/m5-conformance-matrix.md` | Target architecture | Retained active | Normative M5 observable acceptance inventory and proof ownership |
+| `docs/architecture/m6-conformance-matrix.md` | Target architecture | Retained active | Normative M6 renderer-neutral paint/hit observable acceptance inventory and proof ownership |
 | `docs/architecture/m5-accesskit-mapping-review.md` | Guide | Retained active | M5E source-grounded adapter compatibility evidence; not semantic authority |
 | `docs/architecture/workspace-structure.md` | Target architecture | Retained active | Current workspace and evidence-based extraction rules |
 | `docs/adr/0001-typed-token-authoring.md` | ADR | Retained active | Accepted typed-expression token authoring decision |
@@ -35,6 +36,7 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `docs/adr/0004-mounted-runtime-reconciliation.md` | ADR | Retained active | Accepted mounted authority, generational identity, lifecycle, reconciliation, and invalidation decision |
 | `docs/adr/0005-canonical-event-routing-and-commands.md` | ADR | Retained active | Accepted M4 protocol ownership, routed-event and exact command-default policy, displayed-generation input plus terminal pointer cleanup, focus/composition, capture, and semantic activation contract |
 | `docs/adr/0006-effects-scheduling-and-trace-v2.md` | ADR | Retained active | Accepted M4 lifecycle work, application and dedicated mounted subscription authority, commit-bound cancellation, readiness/budgets, executor/host failure, wake/redraw, and bounded trace/sink contract |
+| `docs/adr/0007-renderer-neutral-paint-hit-scene-protocol.md` | ADR | Retained active | M6 renderer-neutral paint/hit scene, displayed-input, paint revision, resource, scale, damage, and migration decision |
 | `docs/history/legacy-archive.md` | Historical record | Retained active | Legacy tag, removal, recovery, and bounded salvage guidance |
 | `docs/history/public-repository-migration.md` | Historical record | Retained active | Private-to-public repository, branch, issue, pull-request, and accepted-commit mapping |
 | `docs/work-tracking.md` | Current contract | Retained active | Public issue, pull-request, status, acceptance, and pickup authority |
