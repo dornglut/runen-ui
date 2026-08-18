@@ -146,11 +146,13 @@ fn submit_activation(
     targets: CounterTargets,
 ) {
     match origin {
-        ActivationOrigin::SemanticAction => harness
-            .submit_semantic_action(&targets.semantic, SemanticAction::Activate)
-            .unwrap_or_else(|error| {
-                unreachable!("Counter semantic activation is accepted: {error:?}")
-            }),
+        ActivationOrigin::SemanticAction => {
+            harness
+                .submit_semantic_action(&targets.semantic, SemanticAction::Activate)
+                .unwrap_or_else(|error| {
+                    unreachable!("Counter semantic activation is accepted: {error:?}")
+                });
+        }
         ActivationOrigin::Pointer => submit_pointer_activation(harness, targets.point),
         ActivationOrigin::Keyboard => {
             harness
@@ -167,24 +169,28 @@ fn submit_activation(
                 .submit_keyboard(enter_down())
                 .unwrap_or_else(|error| unreachable!("Counter Enter is accepted: {error:?}"));
         }
-        ActivationOrigin::Automation => harness
-            .submit_automation_command(
-                authored_id("counter.increment"),
-                SemanticCommand::Activate,
-            )
-            .unwrap_or_else(|error| {
-                unreachable!("Counter automation activation is accepted: {error:?}")
-            }),
-        ActivationOrigin::Programmatic => harness
-            .submit_command(
-                targets.mounted,
-                SemanticCommand::Activate,
-                CommandOrigin::programmatic(),
-            )
-            .unwrap_or_else(|error| {
-                unreachable!("Counter programmatic activation is accepted: {error:?}")
-            }),
-    };
+        ActivationOrigin::Automation => {
+            harness
+                .submit_automation_command(
+                    authored_id("counter.increment"),
+                    SemanticCommand::Activate,
+                )
+                .unwrap_or_else(|error| {
+                    unreachable!("Counter automation activation is accepted: {error:?}")
+                });
+        }
+        ActivationOrigin::Programmatic => {
+            harness
+                .submit_command(
+                    targets.mounted,
+                    SemanticCommand::Activate,
+                    CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|error| {
+                    unreachable!("Counter programmatic activation is accepted: {error:?}")
+                });
+        }
+    }
 }
 
 fn assert_trace(harness: &TestHarness<CounterApp>, origin: ActivationOrigin) {
