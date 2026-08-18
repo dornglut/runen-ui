@@ -73,7 +73,7 @@ The paths below are historical M0 baseline paths and no longer exist at `HEAD`.
 | `docs/dependency-map.md` | Obsolete | Consolidated and removed in M0B | `docs/architecture/workspace-structure.md`, `AGENTS.md`; Git history |
 | `docs/cutover-plan.md` | Obsolete | Removed in M0B | `docs/history/legacy-archive.md`; Git history |
 | `docs/legacy-audit.md` | Historical record | Replaced and removed in M0B | `docs/history/legacy-archive.md`; Git history and archival tag |
-| `docs/target-api.md` | Obsolete | Accepted direction migrated; fake API removed in M0B | `docs/history/legacy-archive.md`; Git history |
+| `docs/target-api.md` | Obsolete | Accepted direction migrated; fake API removed in M0B | `docs/architecture/events-effects-and-scheduling.md`; Git history |
 | `docs/audits/RunenUI-deep-audit-and-remediation-backlog.md` | Historical record | Open work migrated and backlog removed in M0B | Status/support/roadmap authorities; Git history |
 | `docs/architecture/computed-style-model.md` | Current contract | Consolidated and removed in M0B | `docs/architecture/styling.md`; Git history |
 | `docs/architecture/computed-style-runtime-integration.md` | Obsolete | Consolidated and removed in M0B | `docs/architecture/styling.md`; Git history |
