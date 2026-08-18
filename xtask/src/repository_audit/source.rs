@@ -246,10 +246,6 @@ const RETIRED_M5_AUTHORITIES: &[RetiredAuthoritySpec] = &[
         symbol: "activate_semantic",
         scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
     },
-    RetiredAuthoritySpec {
-        symbol: "mounted_node_id",
-        scope: RetiredAuthorityScope::ExternallyPublicDeclaration,
-    },
 ];
 
 const RETIRED_M5_CODE_PATTERNS: &[&str] = &["SemanticAction::LogicalScroll"];
