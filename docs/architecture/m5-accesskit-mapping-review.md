@@ -1,6 +1,8 @@
 # M5 AccessKit mapping review
 
-Status: M5E conformance evidence, not RunenUI semantic authority.
+> **Category: Guide**
+>
+> **Status:** M5E conformance evidence, not RunenUI semantic authority.
 
 ## Review baseline
 
