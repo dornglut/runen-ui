@@ -99,14 +99,25 @@ explicitly owner-accepted at exact reviewed head
 `522b2770a2e6763e54e9eb6237fefc83e88d8cf9`, passed exact-head CI #1242 /
 `31969642341`, and was guarded-squash-merged in PR #65 as exact accepted main
 `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; accepted-main CI #1244 /
-`32108782685` passed at that squash. M5E #51 is the sole active M5
-integration/migration/current-document closure slice from that accepted base.
+`32108782685` passed at that squash.
+
+M5E integrated conformance, migration, and current-authority closure is accepted.
+Exact reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790`
+passed canonical exact-head CI #1294 / `32130312467`, received explicit
+repository-owner merge authorization, and was guarded-squash-merged in
+[PR #67](https://github.com/dornglut/runen-ui/pull/67) as
+`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`. Reviewed head and squash share
+exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`.
+Accepted-main CI #1296 / `32135074552` then validated that exact squash through
+unchanged read-only PR #68, which was closed unmerged. Final authority
+reconciliation PR #69 records the five M5E rows as owner-accepted and closes M5
+at `53/53` owner-accepted with configured M4+M5 aggregate `290/290`.
 The accepted [M5 semantics and testing charter](m5-semantics-and-testing-charter.md)
-owns the sequential M5 boundaries; the
-[M5 conformance matrix](m5-conformance-matrix.md) owns observable acceptance;
-and [work tracking](../work-tracking.md) owns volatile branch, head, blocker,
-and next-action state. M6 implementation remains blocked until accepted M5
-closure.
+and [M5 conformance matrix](m5-conformance-matrix.md) remain the semantics/testing
+contract. M6 renderer-neutral paint/hit scene work is next, but scene
+implementation requires the roadmap's accepted render-protocol ADR/readiness gate;
+issue #59 is an input to that design rather than standalone implementation
+authority.
 
 ## Ownership and inventory
 
@@ -1210,10 +1221,10 @@ snapshot/update/diagnostic publication, runtime-derived semantic focus/absolute
 bounds, relationship resolution, support composition, renderer-independent
 publication cutover, M5C exact semantic action ingress/accessibility resolution
 through the canonical command/routed/default/trace architecture, and M5D public
-deterministic headless testing over those same public authorities. M4 is complete
-and M5 is active. M5D and its mandatory reconciliation are fully accepted and
-closed; M5E #51 is the sole active M5 integration/migration/current-document
-closure slice from exact accepted main
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. AccessKit/native accessibility,
-native host translation, production scrolling, editable text, and platform IME
-objects remain later work.
+deterministic headless testing over those same public authorities. M4 and M5 are
+complete. M5E's accepted integrated public-only conformance and migration closure
+adds no new behavior engine and preserves the same public API ownership.
+AccessKit/native accessibility, native host translation, production scrolling,
+editable text, platform IME objects, and renderer-neutral M6 paint/hit scenes
+remain later work; M6 scene implementation requires the accepted render-protocol
+ADR/readiness gate first.

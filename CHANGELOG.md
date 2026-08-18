@@ -8,6 +8,27 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Owner-accepted and guarded-squash-merged M5E integrated conformance, migration,
+  and M5 feature closure in [PR #67](https://github.com/dornglut/runen-ui/pull/67).
+  Exact reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790`
+  passed canonical exact-head CI #1294 / `32130312467`; accepted squash/main is
+  `b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`, and reviewed head and squash
+  share exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`.
+  Accepted-main CI #1296 / `32135074552` independently validated that exact
+  squash through unchanged read-only PR #68, which was closed unmerged. The
+  accepted M5E package proves genuine downstream semantic contribution/action/
+  state/trace/replay integration, Counter activation convergence across semantic,
+  pointer, keyboard, automation, and programmatic origins, source-grounded
+  adapter-neutral accessibility mapping, and clean removal of retired M5
+  compatibility authority without adding a second runtime/queue/default path.
+  This bounded final authority reconciliation promotes exactly
+  `M5-INTEG-01..05` to `owner-accepted`, producing final M5 truth `53 total / 53
+  owner-accepted / 0 blocked` and aggregate configured truth `290 total / 290
+  owner-accepted / 0 blocked`. It adds no native accessibility bridge, renderer
+  scene/backend, #59 implementation, or other M6 behavior. M6 may begin only
+  after this reconciliation is explicitly owner-authorized, guarded-squash-
+  merged, content-identity checked, accepted-main validated, and its required
+  render-protocol ADR/readiness gate is satisfied.
 - Owner-accepted and guarded-squash-merged M5D public deterministic headless
   testing in [PR #64](https://github.com/dornglut/runen-ui/pull/64). Exact
   reviewed head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed canonical exact-head

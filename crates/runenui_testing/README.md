@@ -22,6 +22,6 @@ Semantic actions are deliberately surface-scoped: test targets are produced from
 
 Settling is always explicitly bounded. A settle attempt reports `Idle` only after a complete zero-progress pump iteration; dormant future timers, redraw debt, and externally pending work do not cause hidden waits, while self-requeue remains capped by the caller's finite iteration budget.
 
-M5D is accepted and reconciled. M5E #51 is the active integration/migration/closure slice; this crate acquires no new runtime authority in M5E.
+M5 is complete through M5E. The accepted closure preserves this crate as downstream testing convenience only; M6 scene work must continue to use public runtime/publication contracts rather than granting `runenui_testing` new live authority.
 
 See the repository [workspace structure](../../docs/architecture/workspace-structure.md) and [M5 semantics/testing charter](../../docs/architecture/m5-semantics-and-testing-charter.md) for the ownership and milestone contract.

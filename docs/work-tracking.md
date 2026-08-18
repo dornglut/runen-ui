@@ -26,7 +26,8 @@ the inherited `ACCESS-01` and `ACCESS-02` M5 gates, are owner-accepted.
 owns the separate M5-specific behavioral acceptance inventory. It deliberately
 does not duplicate inherited M4 `ACCESS-01` and `ACCESS-02`; M5C completes those
 rows in the M4 matrix while M5-specific semantic identity, product, action,
-testing, migration, and closure observations remain in the M5 matrix.
+testing, migration, and closure observations remain in the M5 matrix. Final M5
+truth is 53/53 owner-accepted; configured M4+M5 truth is 290/290 owner-accepted.
 
 The canonical repository audit validates every configured matrix, each matrix's
 own declared status/schema/count truth, delivery/gate policy, and permanent ID
@@ -38,9 +39,15 @@ Matrix rows are not GitHub issues. One slice issue may own many matrix rows.
 
 The closed [M4 umbrella issue](https://github.com/dornglut/runen-ui/issues/3)
 and its linked execution issues preserve M4's volatile delivery history. The
-successor [M5 umbrella issue #45](https://github.com/dornglut/runen-ui/issues/45)
-is the active M5 coordination and pickup surface. Each active milestone issue
-owns volatile state such as:
+[M5 umbrella issue #45](https://github.com/dornglut/runen-ui/issues/45) and
+M5E [#51](https://github.com/dornglut/runen-ui/issues/51) preserve M5's completed
+coordination history after final reconciliation. M6 is the next roadmap milestone,
+but an M6 implementation branch is not authorized merely because M5 is complete:
+its pickup/readiness authority must be created or activated from the exact
+accepted final-M5 reconciliation squash and must first satisfy the roadmap's
+render-protocol ADR gate.
+
+Each active milestone issue owns volatile state such as:
 
 - exact accepted base SHA;
 - active branch and draft pull request;
@@ -94,13 +101,12 @@ M4's public operational milestone was
 complete through M4D3 and the final M4 authority reconciliation. It is historical
 coordination.
 
-M5 uses [issue #45](https://github.com/dornglut/runen-ui/issues/45) as its active
+M5 used [issue #45](https://github.com/dornglut/runen-ui/issues/45) as its
 coordination and pickup authority. M5A0 #46, M5A #47, readiness amendment #55,
-M5B #48, M5C #49, and M5D #50 are accepted, reconciled, accepted-main verified
-where required, and closed. M5E #51 is the sole active M5 execution slice from
-exact accepted main `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; its draft review
-surface is PR #67. M6 readiness #59 remains non-blocking future work and does not
-authorize M6 implementation while M5E is open.
+M5B #48, M5C #49, M5D #50, and M5E #51 are complete through the final M5
+authority reconciliation. M6 is next, but its first execution issue/readiness
+freeze must be established from the exact accepted final-M5 reconciliation
+squash; do not infer that #59 is the implementation pickup issue.
 
 Accepted M5A evidence remains:
 
@@ -133,7 +139,7 @@ exact stale/post-callback revalidation, staged atomic publication and failure
 taxonomy, and clean renderer/semantic cutover. It removes route-bound
 LogicalScroll from `SemanticAction` while preserving accepted M4 routed scrolling.
 
-### M5B through M5D closed; M5E active
+### M5B through M5E closed
 
 M5B #48 was implemented in PR #58 from exact accepted base
 `807bd7feb1e796eccd49c0ff024da0f79d1868b1`. Critical review found and corrected
@@ -223,23 +229,36 @@ exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`. Accepted-main CI #1244 /
 `32108782685` passed at that exact squash. M5D is therefore fully accepted,
 reconciled, accepted-main verified, and #50 is closed.
 
-Accepted M5E-base truth is:
+M5E #51 was implemented/proved in PR #67 from exact accepted M5D
+reconciliation base `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. Its final corrected
+reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790` passed canonical
+exact-head CI #1294 / `32130312467`, received explicit repository-owner merge
+authorization, and was guarded-squash-merged as
+`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`. Reviewed feature head and squash
+share exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`.
+Accepted-main CI #1296 / `32135074552` independently validated that exact squash
+through unchanged read-only PR #68, which was closed unmerged.
+
+M5E proves the accepted M5A–M5D machinery as one public architecture: genuine
+downstream semantic contribution/action/state/trace/replay integration, Counter
+activation convergence across semantic/pointer/keyboard/automation/programmatic
+origins, source-grounded adapter-neutral accessibility mapping, and a clean
+cutover from retired semantic/testing authority. It adds no native accessibility
+bridge, renderer scene, M6 implementation, or compatibility API.
+
+Final M5 truth after the bounded authority reconciliation is:
 
 ```text
-M5:       53 total / 48 owner-accepted / 0 implementation-complete / 0 proof-complete / 5 blocked
-aggregate: 290 total / 285 owner-accepted / 0 implementation-complete / 0 proof-complete / 5 blocked
+M5:       53 total / 53 owner-accepted / 0 implementation-complete / 0 proof-complete / 0 blocked
+aggregate: 290 total / 290 owner-accepted / 0 implementation-complete / 0 proof-complete / 0 blocked
 M4:       237 total / 237 owner-accepted / 0 proof-complete / 0 blocked
 ```
 
-The sole current M5 execution gate is M5E #51. Its draft review surface is PR
-#67 from exact accepted main `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`.
-M5E is integration/migration/closure, not redesign: it reuses accepted M5A-M5D
-public machinery, adds only integrated downstream/Counter conformance evidence,
-performs the source-grounded adapter mapping review without a native dependency,
-enforces removal of retired compatibility authority, reconciles stale
-current-contract records, and validates stable/MSRV at one frozen exact head.
-It stops at explicit repository-owner acceptance before merge. M6/#59
-implementation remains outside the slice.
+Final authority reconciliation PR #69 is the closure record that promotes only
+`M5-INTEG-01..05`, aligns retained current-contract authority, and establishes
+the final accepted-M5 base for successor pickup. Its own reviewed head, exact-head
+CI, owner authorization, squash, tree identity, and accepted-main validation are
+recorded in GitHub and must be re-resolved before creating any M6 branch.
 
 The completed public M4 execution graph is:
 
@@ -252,7 +271,7 @@ The completed public M4 execution graph is:
 - [#8 — M4D2 export, redaction, and bounded sink](https://github.com/dornglut/runen-ui/issues/8), after #7;
 - [#9 — M4D3 replay and M4 closure](https://github.com/dornglut/runen-ui/issues/9), after #8.
 
-The accepted M5 implementation sequence remains sequential:
+The accepted M5 implementation sequence is complete:
 
 - [#46 — M5A0 semantic/testing architecture and conformance authority](https://github.com/dornglut/runen-ui/issues/46), accepted and closed;
 - [#47 — M5A semantic contribution and independent identity](https://github.com/dornglut/runen-ui/issues/47), accepted, reconciled, and closed;
@@ -260,18 +279,17 @@ The accepted M5 implementation sequence remains sequential:
 - [#48 — M5B semantic tree publication and incremental updates](https://github.com/dornglut/runen-ui/issues/48), accepted, reconciled through PR #61, accepted-main verified, and closed;
 - [#49 — M5C semantic action ingress and accessibility resolution](https://github.com/dornglut/runen-ui/issues/49), accepted, reconciled through PR #63, accepted-main verified, and closed;
 - [#50 — M5D public deterministic headless testing harness](https://github.com/dornglut/runen-ui/issues/50), accepted, reconciled through PR #65, accepted-main verified, and closed;
-- [#51 — M5E integrated conformance, migration, and M5 closure](https://github.com/dornglut/runen-ui/issues/51), sole active M5 slice from exact accepted main `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`.
+- [#51 — M5E integrated conformance, migration, and M5 closure](https://github.com/dornglut/runen-ui/issues/51), accepted feature/proof through PR #67 and completed by final authority reconciliation PR #69.
 
-No later M5 branch begins from an unmerged predecessor or from a feature merge
-whose required post-merge authority reconciliation is still pending. M6 is
-eligible only from the exact accepted M5 closure base after M5E merge and the
-bounded final M5 reconciliation.
+No M6 branch may begin from the accepted M5E feature squash alone or from an
+unmerged final reconciliation branch. It begins only from the exact accepted PR
+#69 squash after accepted-main validation.
 
 Architecture and tooling follow-up:
 
 - [#10 — review core Element and Widget protocol concentration](https://github.com/dornglut/runen-ui/issues/10) remains open and non-blocking;
 - [#12 — evaluate widget-declared event output capacity after M4](https://github.com/dornglut/runen-ui/issues/12) is closed; current capacity is sufficient for accepted M5 work;
-- [#59 — M6 readiness: remove whole-SurfaceCache cloning from publication planning](https://github.com/dornglut/runen-ui/issues/59) is open and explicitly non-blocking for M5; it owns persistent/staged retained-publication work before or during M6 without weakening accepted M5 atomic publication contracts.
+- [#59 — M6 readiness: remove whole-SurfaceCache cloning from publication planning](https://github.com/dornglut/runen-ui/issues/59) is open. It owns persistent/staged retained-publication work before or during M6 without weakening accepted M5 atomic publication contracts; it is not by itself the M6 architecture/readiness gate.
 
 M4A through M4C2 are accepted imported history. They are recorded in the
 [public-repository migration history](history/public-repository-migration.md)
@@ -279,8 +297,8 @@ rather than recreated as false closed public issues.
 
 ## Required pickup sequence
 
-1. Read the roadmap and status map to identify the active milestone.
-2. Open that milestone's GitHub umbrella/pickup issue; for M5 this is #45.
+1. Read the roadmap and status map to identify the next milestone.
+2. Open or create that milestone's GitHub umbrella/pickup/readiness issue. For M6, establish this from the exact accepted final-M5 reconciliation squash before implementation.
 3. Verify exact accepted `main`, branch, pull request, and live head.
 4. Read linked ADRs, accepted charters/matrices where applicable, and stable architecture contracts.
 5. Inspect current source, tests, unresolved review findings, and exact-head CI.
@@ -288,15 +306,16 @@ rather than recreated as false closed public issues.
 7. Update execution records after each reviewed green checkpoint, material review correction, readiness transition, and merge.
 8. Never begin the next slice from an unmerged feature or authority branch.
 
-A new M5 thread should need only:
+A new post-M5 thread should need only:
 
 ```text
 Repository: dornglut/runen-ui
-Current milestone: M5
-Umbrella issue: #45
-Current execution issue: #51
-Current draft PR: #67
-Accepted main: 3c50f2fe0732871a3e2fdf7dba45983a23b813a1
+Completed milestone: M5
+Final reconciliation: PR #69
+Next milestone: M6 renderer-neutral paint/hit scene protocol
+First requirement: establish M6 pickup/readiness and accept the render-protocol ADR before scene implementation
+Open readiness input: #59 (not standalone implementation authorization)
+Accepted base: resolve exact main after PR #69 squash and accepted-main validation
 ```
 
 ## Execution and branch discipline

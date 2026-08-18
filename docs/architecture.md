@@ -38,15 +38,16 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 ## Current implementation
 
 The current implementation is a deterministic mounted headless proof with this
-narrower shape. M4 is complete and owner-accepted through M4D3. M5 is active.
-M5A semantic contribution/independent identity, the #55 readiness amendment,
-M5B semantic publication/incremental updates, M5C semantic action ingress/
-accessibility resolution, and M5D public deterministic headless testing are
-fully owner-accepted, reconciled, accepted-main verified where required, and
-closed. Exact accepted main for M5E is
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; M5E #51 is the sole active M5
-integration/migration/current-document closure slice. M6 implementation remains
-blocked until accepted M5 closure.
+narrower shape. M4 and M5 are complete and owner-accepted. M5E's reviewed
+feature head `7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI
+#1294 / `32130312467`, was guarded-squash-merged in PR #67 as
+`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`, and shares exact complete tree
+`c5dc7fa000496d76c35e98f3a481fc1de5762f4c` with that squash. Accepted-main
+CI #1296 / `32135074552` validated the exact squash through read-only PR #68,
+which was closed unmerged. Final authority reconciliation PR #69 records all
+five M5E rows as owner-accepted and closes M5 current-contract authority. M6 is
+the next milestone and begins with the missing renderer-protocol architecture
+gate, not with a backend or unreviewed #59 implementation.
 
 The accepted M4 history remains unchanged: M4C3 was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`, M4C4 in
@@ -262,9 +263,9 @@ preserves semantic contribution content exactly. Core/runtime still has no
 AccessKit/native dependency and no second semantic action queue. The accepted
 [M5 semantics and testing charter](architecture/m5-semantics-and-testing-charter.md)
 and [M5 conformance matrix](architecture/m5-conformance-matrix.md) define M5
-acceptance. M5D's mandatory post-merge reconciliation is complete; M5E #51 is
-the sole active M5 integration/migration/current-document closure slice from
-exact accepted main `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`.
+acceptance. M5E's accepted integrated conformance/migration package completes M5
+without changing the accepted runtime architecture or adding native adapter/M6
+behavior.
 
 The accepted M4C5 behavior does not add editable text, native IME objects, or a
 platform host. Public automation work/trace-sequence exhaustion is a deliberate
@@ -318,7 +319,7 @@ External crates can define widgets and participate in mounted state, lifecycle,
 activation, layout, paint, canonical semantic contribution, diagnostic,
 invalidation, semantic-publication consumption, semantic action submission,
 public deterministic harness testing, and inspection paths without modifying
-RunenUI. M5E–M8 own the remaining production subsystem contracts before
+RunenUI. M6–M8 own the remaining production subsystem contracts before
 host/backend production work.
 
 ## Application and effect model
@@ -543,11 +544,12 @@ closure proof surface. Public M4 proof requirements are fixed in the M4
 conformance matrix and directional-focus corpus.
 
 The accepted M5 semantics/testing charter and M5 conformance matrix own the
-active semantics/testing program. M5A, #55, M5B, M5C, and M5D are fully accepted,
-reconciled, and closed. M5E #51 is the sole active M5 integration/migration/
-current-document closure slice from exact accepted main
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. M6 implementation remains blocked
-until accepted M5 closure.
+completed semantics/testing program. M5A, #55, M5B, M5C, M5D, and M5E are
+accepted; the final M5 reconciliation closes current-contract authority without
+adding M6 behavior. M6 is next, but its roadmap explicitly requires an accepted
+render-protocol ADR before renderer-neutral scene implementation. Issue #59 is a
+bounded retained-publication readiness concern to resolve before or during M6
+within that accepted scene/publication design.
 
 The following later choices still require dedicated analysis and review:
 standard layout algorithm, production text stack, conventional renderer, crate

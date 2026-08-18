@@ -586,7 +586,7 @@ accepted and merged, and no transitional authority remains.
 
 ## M5 — Semantics and deterministic public testing
 
-**Status:** `active`.
+**Status:** `complete`.
 
 **Goal:** Make renderer-independent accessibility semantics and framework-level testing first-class.
 
@@ -602,11 +602,13 @@ accepted and merged, and no transitional authority remains.
 
 **Exit criteria:** Semantic output is independent of rendering; public deterministic tests can drive and inspect the framework; AccessKit mapping seams are coherent; accessibility requirements are mandatory in later control gates.
 
+**Completion record:** M5 closes at `53 total / 53 owner-accepted / 0 blocked`; configured M4+M5 authority closes at `290/290 owner-accepted`. M5E's final reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI #1294 / `32130312467`, received explicit repository-owner merge authorization, and was guarded-squash-merged in PR #67 as `b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`. Reviewed head and squash share exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`; accepted-main CI #1296 / `32135074552` validated that exact squash through unchanged read-only PR #68, which was closed unmerged. Final authority reconciliation PR #69 promotes only the five M5E rows and aligns current-contract authority; no M6 implementation is part of M5 closure.
+
 **Unblocks:** M6, M9, M10, and accessible text integration.
 
 ## M6 — Renderer-neutral paint and hit-test scene protocol
 
-**Status:** `blocked` by M5.
+**Status:** `queued`.
 
 **Goal:** Publish backend-neutral paint and hit-test products without widget semantics.
 
@@ -616,7 +618,7 @@ accepted and merged, and no transitional authority remains.
 
 **Explicit non-goals:** Concrete desktop/SDF backend, production text shaping, full layout/styling expansion, or semantic widget kinds in renderer input.
 
-**Dependencies:** Mounted generation identity; accepted render-protocol ADR; semantic separation coordinated with M5.
+**Dependencies:** Mounted generation identity; completed M5 semantic separation; **accepted render-protocol ADR before scene implementation**.
 
 **Required proofs/tests:** Two independent deterministic consumers; custom backend proof renders without knowing `Button`; hit tests respect clips/transforms/visibility/order; scene snapshots are stable and generational targets reject stale input.
 
@@ -625,11 +627,13 @@ the renderer protocol; paint, hit, semantics, layout, and diagnostics are
 distinct authoritative products; no backend-specific vocabulary leaks into
 public scenes.
 
+**Pickup gate:** The first M6 work is a repository-first readiness/design slice from the exact accepted final-M5 reconciliation squash. It must freeze the renderer-neutral scene/publication ownership and accept the render-protocol ADR before scene implementation. Issue #59 is an input to that design for retained-publication persistence/cost; it is not standalone authorization to implement M6.
+
 **Unblocks:** M7 rendering integration and M10 backends.
 
 ## M7 — Production layout and styling
 
-**Status:** `blocked` by M5–M6.
+**Status:** `blocked` by M6.
 
 **Goal:** Support normal responsive applications, tools, scrolling, overlays, and stateful visual policy.
 
@@ -649,7 +653,7 @@ public scenes.
 
 ## M8 — Production text subsystem
 
-**Status:** `blocked` by M5–M7.
+**Status:** `blocked` by M6–M7.
 
 **Goal:** Support internationalized display and editable text through a mature text stack.
 
@@ -669,7 +673,7 @@ public scenes.
 
 ## M9 — Standard control library
 
-**Status:** `blocked` by M5–M8.
+**Status:** `blocked` by M6–M8.
 
 **Goal:** Provide coherent production controls built on public framework contracts.
 
@@ -689,7 +693,7 @@ public scenes.
 
 ## M10 — Host and backend production profiles
 
-**Status:** `blocked` by M5–M9.
+**Status:** `blocked` by M6–M9.
 
 **Goal:** Run real standalone desktop applications and embedded-host UI through common contracts.
 
@@ -709,7 +713,7 @@ public scenes.
 
 ## M11 — Production hardening and first stable release
 
-**Status:** `blocked` by M5–M10.
+**Status:** `blocked` by M6–M10.
 
 **Goal:** Make support, compatibility, security, performance, and release claims enforceable, then deliberately release `1.0.0`.
 

@@ -5,40 +5,34 @@
 This map reports accepted framework maturity rather than treating unmerged proof
 branches, target documents, or historical code as supported behavior.
 
-M4 is complete through M4D3. M5 is active. M5A semantic contribution and
-independent identity plus its mandatory post-merge reconciliation are complete.
-The M5 readiness gate #55 and its mandatory reconciliation are also complete.
-M5B semantic publication/incremental updates and M5C semantic action ingress/
-accessibility resolution are fully accepted and reconciled.
+M4 is complete through M4D3. M5 is complete through M5E. M5A semantic
+contribution and independent identity, the #55 readiness authority, M5B semantic
+publication/incremental updates, M5C semantic action ingress/accessibility
+resolution, M5D public deterministic headless testing, and M5E integrated
+conformance/migration closure are owner-accepted.
 
-M5D public deterministic headless testing is fully accepted, reconciled,
-accepted-main verified, and closed. Exact reviewed feature head
-`471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed exact-head CI #1230 /
-`31962536977` and was guarded-squash-merged in
-[PR #64](https://github.com/dornglut/runen-ui/pull/64) as
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Its mandatory reconciliation was
-explicitly owner-accepted at exact reviewed head
-`522b2770a2e6763e54e9eb6237fefc83e88d8cf9`, passed exact-head CI #1242 /
-`31969642341`, and was guarded-squash-merged in
-[PR #65](https://github.com/dornglut/runen-ui/pull/65) as
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. Reviewed reconciliation head and
-squash share exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`, and
-accepted-main CI #1244 / `32108782685` passed at that squash.
+M5E's exact reviewed feature head
+`7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI #1294 /
+`32130312467`, received explicit repository-owner merge authorization, and was
+guarded-squash-merged in [PR #67](https://github.com/dornglut/runen-ui/pull/67)
+as `b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`. Reviewed head and squash share
+exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`.
+Accepted-main CI #1296 / `32135074552` validated that exact squash through
+read-only PR #68, which was closed unmerged. Final authority reconciliation PR
+#69 records all five M5E rows as owner-accepted and completes accepted-state
+closure.
 
-Accepted-base M5 truth is `53 total / 48 owner-accepted / 0
-implementation-complete / 0 proof-complete / 5 blocked`. Aggregate configured
-truth is `290 total / 285 owner-accepted / 0 implementation-complete / 0
-proof-complete / 5 blocked`. M4 remains `237 total / 237 owner-accepted / 0
+Final M5 conformance truth is `53 total / 53 owner-accepted / 0
+implementation-complete / 0 proof-complete / 0 blocked`. Aggregate configured
+truth is `290 total / 290 owner-accepted / 0 implementation-complete / 0
+proof-complete / 0 blocked`. M4 remains `237 total / 237 owner-accepted / 0
 proof-complete / 0 blocked`.
 
-M5E [#51](https://github.com/dornglut/runen-ui/issues/51) is the sole active M5
-slice from exact accepted main
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. It owns integrated public-only
-conformance, clean-cutover migration/audit closure, adapter-neutral mapping
-review, and the explicit M5 owner-acceptance gate. M6 readiness
-[#59](https://github.com/dornglut/runen-ui/issues/59) is non-blocking future work
-and does not authorize M6 implementation before M5E is accepted, merged,
-accepted-main verified, and the bounded final M5 reconciliation is complete.
+M6 renderer-neutral paint/hit scene protocol is the next roadmap milestone but
+has no accepted implementation yet. Its roadmap dependency includes an accepted
+render-protocol ADR. M6 readiness [#59](https://github.com/dornglut/runen-ui/issues/59)
+remains open for retained-publication cost/ownership work and does not by itself
+authorize scene implementation or a backend.
 
 ## Maturity states
 
@@ -71,56 +65,52 @@ No framework subsystem is currently `stable`.
 | Styling | `partial` | Colors, padding, radius, typed tokens, computed style, provenance, missing-token diagnostics | No themes, recipes, variants, interaction states, typography, borders, fallback, or preferences | M7–M8 |
 | Layout and measurement | `proof` | Separate one-query intrinsic/child-layout snapshots; component-wise minimum combination; padding/gaps; unsupported/unknown fallbacks; aligned index/frame/style/layout products; M5D fixed/configurable test surface and custom public measurement-provider proof | Linear M2 proof only; no production sizing/alignment/flex/grid/scroll/incremental layout | M5D proof; M7–M8 production |
 | Focusability facts | `proof` | Widgets declare automatic/explicit/hidden focusability and nested scope policy; runtime revalidates live enabled eligibility; semantic publication projects current runtime focus only to the focused owner's visible PRIMARY; M5C semantic `RequestFocus` uses current M4 Focusable/Automatic eligibility | Native accessibility translation and cross-surface focus remain later | M4/M5B–M5C complete; M10 later |
-| Semantic contribution and identity | `partial` | Owner-accepted platform-neutral `SemanticContribution`; 0..N owner-local nodes keyed by stable `SemanticKey`; roles, names/descriptions, values/states/action intent, relationships, plain text, owner/owner-local bounds; strict marker/reference validation; separate opaque semantic lifetimes reconciled by exact mounted owner + key; deterministic publication resolves those contributions into exact public semantic identities; M5C resolves exact semantic actions without exposing mounted identity; M5D exposes snapshot-scoped public testing queries/targets without recovering mounted owners | Native accessibility adapter remains absent | M5A–M5D complete; M10 later |
-| Semantic publication and updates | `proof` | Independent `SurfaceId`-scoped `SemanticPublication` sibling with deterministic forest/preorder/exact-ID lookup, absolute logical bounds, resolved local/cross-owner relationships, composed state/support, runtime PRIMARY focus, typed diagnostics, non-wrapping revision, deterministic add/change/remove/focus deltas, and full-resync on wrong surface/base; M5D exposes public current/delta/full-resync testing observation | M5 has one logical surface; native adapter remains later | M5B/M5D complete; M10 later |
-| Semantic action ingress and accessibility resolution | `proof` | Public `SemanticActionRequest` values constructed with `SemanticActionRequest::new(surface, target, action)` and submitted via `AppRuntime::submit_semantic_action` for exactly `Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`; exact current surface/identity/publication/support/state/readiness/freshness/capacity admission; existing FIFO/`WorkSequence`/route/default/trace convergence; queue-front and post-callback exact revalidation; exact owned-request recovery; semantic-origin callback metadata without a public semantic-to-mounted shortcut; M5D testing helpers preserve exact surface/node scope and delegate to this ingress | No semantic LogicalScroll or native accessibility adapter | M5C–M5D complete; M7/M10 later |
+| Semantic contribution and identity | `partial` | Owner-accepted platform-neutral `SemanticContribution`; 0..N owner-local nodes keyed by stable `SemanticKey`; roles, names/descriptions, values/states/action intent, relationships, plain text, owner/owner-local bounds; strict marker/reference validation; separate opaque semantic lifetimes reconciled by exact mounted owner + key; deterministic publication resolves those contributions into exact public semantic identities; M5C resolves exact semantic actions without exposing mounted identity; M5D exposes snapshot-scoped public testing queries/targets without recovering mounted owners | Native accessibility adapter remains absent | M5 complete; M10 later |
+| Semantic publication and updates | `proof` | Independent `SurfaceId`-scoped `SemanticPublication` sibling with deterministic forest/preorder/exact-ID lookup, absolute logical bounds, resolved local/cross-owner relationships, composed state/support, runtime PRIMARY focus, typed diagnostics, non-wrapping revision, deterministic add/change/remove/focus deltas, and full-resync on wrong surface/base; M5D exposes public current/delta/full-resync testing observation | M5 has one logical surface; native adapter remains later | M5 complete; M10 later |
+| Semantic action ingress and accessibility resolution | `proof` | Public `SemanticActionRequest` values constructed with `SemanticActionRequest::new(surface, target, action)` and submitted via `AppRuntime::submit_semantic_action` for exactly `Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`; exact current surface/identity/publication/support/state/readiness/freshness/capacity admission; existing FIFO/`WorkSequence`/route/default/trace convergence; queue-front and post-callback exact revalidation; exact owned-request recovery; semantic-origin callback metadata without a public semantic-to-mounted shortcut; M5D testing helpers preserve exact surface/node scope and delegate to this ingress | No semantic LogicalScroll or native accessibility adapter | M5 complete; M7/M10 later |
 | Surface publication | `proof` | Fallible staged `admit -> plan -> candidate-dependent final-preflight -> commit`; fresh coordinate/hit-test counters; recoverable stationary-rehit backpressure with zero partial commit; exact terminal publication-counter taxonomy; renderer products plus independent semantic publication/diagnostic siblings; explicit renderer-only versus complete extraction/equality | One mounted root and one logical surface; retained `SurfaceCache` still deep-clones narrow non-structural plans (#59); M6 owns the persistent renderer-neutral scene boundary | M5B complete; M6/M10 later |
 | Hit testing | `proof` | Reverse-order rectangle hit testing over exact current or retained immutable publication snapshots feeds generation-safe physical pointer paths and stationary re-hit; M5D public pointer harness derives exact context and coordinates from committed publication | No explicit hit scene, stacking contract, clips, transforms, visibility/inertness, or M6 pointer policy | M4/M5D proof; M6 later |
-| Debug and semantic consumption | `proof` | Renderer/debug products no longer carry production semantics; direct public semantic consumers, adapter-shaped consumers, and M5D snapshot-scoped test queries inspect the sibling semantic snapshot/update/diagnostic product; M5C exact action ingress remains private-mapping/canonical-routing authority | No native accessibility bridge or production paint scene/backend | M5B–M5D complete; M6/M10 later |
+| Debug and semantic consumption | `proof` | Renderer/debug products no longer carry production semantics; direct public semantic consumers, adapter-shaped consumers, and M5D snapshot-scoped test queries inspect the sibling semantic snapshot/update/diagnostic product; M5C exact action ingress remains private-mapping/canonical-routing authority | No native accessibility bridge or production paint scene/backend | M5 complete; M6/M10 later |
 | Renderer-neutral paint scene | `absent` | M2 publishes deterministic open widget paint/debug facts | Proof facts are not primitives/resources and have no clips, transforms, layers, or damage | M6 |
 | Production renderer backend | `absent` | None | No conventional or SDF backend; the neutral scene must be accepted first | M10, M12 |
 | Deterministic text measurement | `proof` | Provider seam and Unicode-scalar-count measurements support headless tests; M5D can inject a public custom measurement provider | Fixed metrics are not font, shaping, grapheme, bidi, wrapping, or baseline layout | M5D proof; M8 production |
 | Production text subsystem | `absent` | None | No font discovery, shaping, fallback, bidi, wrapping, editing, selection, clipboard, or native IME integration | M8 |
-| Button behavior | `proof` | Label/enabled state and repeatable typed `on_activate` factory invoked only by routed `Activate` default; programmatic, physical release-inside, raw Enter, matched raw Space, authored automation, and semantic PRIMARY activation converge; built-in Button authors canonical semantic contribution and appears in the independent semantic product; M5D Counter/downstream tests consume these paths through public harness APIs | Native accessibility adapter, recipes, and production control breadth remain later | M4/M5A–M5D complete; M9/M10 later |
+| Button behavior | `proof` | Label/enabled state and repeatable typed `on_activate` factory invoked only by routed `Activate` default; programmatic, physical release-inside, raw Enter, matched raw Space, authored automation, and semantic PRIMARY activation converge; built-in Button authors canonical semantic contribution and appears in the independent semantic product; M5D Counter/downstream tests consume these paths through public harness APIs | Native accessibility adapter, recipes, and production control breadth remain later | M4/M5 complete; M9/M10 later |
 | Standard control library | `absent` | None beyond text/button proofs | No complete lifecycle/event/semantic/style/layout/keyboard/accessibility contracts | M9 |
 | Host neutrality | `usable` | Active core/runtime/testing have no native window, GPU, ECS, platform-controller, AccessKit, or legacy dependencies | Neutrality alone is not a host integration contract | M10 |
 | Host/platform integration | `absent` | Core application host protocol and runtime wake acknowledgment are host-neutral seams only | No native event loop/window, DPI, clipboard, cursor, IME, drag/drop, accessibility bridge, or multi-window adapter | M10 |
 | Raw controller/gamepad platform input | `absent` | None | No device connection/identity, raw button/axis translation, normalization/dead zones, or embedded-host mapping | M10 |
-| Testing and diagnostics | `partial` | Public downstream `runenui_testing` with `TestHarness<App>`, deterministic `ManualClock`, configurable fixed-surface publication, finite `SettleBudget`, snapshot-scoped semantic queries/targets, public pointer/keyboard/text/composition/automation/action/command/semantic-action delegates, state/focus/reconciliation/frame/layout/hit/paint/semantic/scheduler/trace/replay observation; genuine Counter and external-widget conformance; strict lints; deterministic trace export/sink and offline replay | No UI/scene snapshot-golden framework, fuzzing, property tests, benchmarks, platform tests, or stable pre-1.0 compatibility guarantee | M5D complete; M11 hardening |
-| Trace and observability | `partial` | One bounded canonical M4D1-normalized sequence; deterministic JSONL v1 projection; default-redacted/explicit-full text and IME capture; optional static action labels; subordinate lazily bounded nonblocking sink; inert serialized offline replay; M5C semantic binding/rejection/default outcomes extend the same schema; M5D harness exposes read-only trace/export/replay/redaction observation | Replay and testing remain headless proof/diagnostic infrastructure, not a production observability service | M4/M5C–M5D complete |
+| Testing and diagnostics | `partial` | Public downstream `runenui_testing` with `TestHarness<App>`, deterministic `ManualClock`, configurable fixed-surface publication, finite `SettleBudget`, snapshot-scoped semantic queries/targets, public pointer/keyboard/text/composition/automation/action/command/semantic-action delegates, state/focus/reconciliation/frame/layout/hit/paint/semantic/scheduler/trace/replay observation; genuine Counter and external-widget conformance; strict lints; deterministic trace export/sink and offline replay | No UI/scene snapshot-golden framework, fuzzing, property tests, benchmarks, platform tests, or stable pre-1.0 compatibility guarantee | M5 complete; M11 hardening |
+| Trace and observability | `partial` | One bounded canonical M4D1-normalized sequence; deterministic JSONL v1 projection; default-redacted/explicit-full text and IME capture; optional static action labels; subordinate lazily bounded nonblocking sink; inert serialized offline replay; M5C semantic binding/rejection/default outcomes extend the same schema; M5D harness exposes read-only trace/export/replay/redaction observation | Replay and testing remain headless proof/diagnostic infrastructure, not a production observability service | M4/M5 complete |
 | Source formats and devtools | `deferred` | Context-export tooling only; no UI source system | No parser, source mapping, inspector, hot reload, live preview, or visual authoring | M12 |
 | Advanced editor/game systems | `deferred` | Product direction only | No virtualization, advanced data controls, animation, overlays, docking, workspaces, or advanced multi-surface systems | M12 |
 | Legacy archive | `archived` | Git history and annotated tag `legacy-runenwerk-ui-archive-2026-07-11` preserve the audited tree | Removed from active content; salvage remains opt-in and must follow current architecture | M0B complete |
 
 ## Current milestone
 
-M0–M4 are complete and owner-accepted. ADR 0005 remains routed-behavior
+M0–M5 are complete and owner-accepted. ADR 0005 remains routed-behavior
 authority, ADR 0006 remains scheduler-behavior authority, the accepted
 [M4C delivery charter](architecture/m4c-delivery-and-routed-transaction-charter.md)
-continues to own M4 implementation/delivery constraints, and the accepted
+continues to own M4 implementation/delivery constraints, the accepted
 [M4 conformance matrix](architecture/m4-conformance-matrix.md) remains M4
-observable-acceptance authority.
+observable-acceptance authority, and the accepted
+[M5 conformance matrix](architecture/m5-conformance-matrix.md) records all 53 M5
+rows as owner-accepted.
 
-M5 is active. M5A, the #55 readiness authority, M5B, M5C, and M5D are fully
-accepted and reconciled. Exact accepted main for M5E is
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; its post-M5D reconciliation tree
-is `7e72b2738d539042ed28a032b305fc27cb45042a`, and accepted-main CI #1244 /
-`32108782685` passed at that exact squash.
+M5E feature acceptance is anchored at reviewed head
+`7f3e0c9e881ff384516459db66436e662c5fb790`, squash/main
+`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`, shared tree
+`c5dc7fa000496d76c35e98f3a481fc1de5762f4c`, feature CI #1294 /
+`32130312467`, and accepted-main CI #1296 / `32135074552`. Final M5 totals are
+`53/53` owner-accepted and aggregate totals are `290/290` owner-accepted.
 
-Accepted-base conformance truth is `53 total / 48 owner-accepted / 0
-implementation-complete / 0 proof-complete / 5 blocked`; aggregate configured
-truth is `290 total / 285 owner-accepted / 0 implementation-complete / 0
-proof-complete / 5 blocked`. M4 remains fully owner-accepted.
-
-The current execution gate is M5E
-[#51](https://github.com/dornglut/runen-ui/issues/51). It must remain an
-integration/migration/closure slice: prove accepted semantics/action/runtime/
-trace authority through public downstream/Counter use, remove retired
-compatibility authority, complete source-grounded adapter mapping evidence, run
-stable/MSRV exact-head validation, and stop at explicit repository-owner
-acceptance before merge. M6 [#59](https://github.com/dornglut/runen-ui/issues/59)
-remains out of implementation scope until M5 closes. The roadmap remains the
-durable milestone authority.
+M6 is the next roadmap milestone. Its first execution authority must resolve the
+renderer-neutral paint/hit scene contract and satisfy the roadmap's accepted
+render-protocol ADR dependency before implementation. Issue
+[#59](https://github.com/dornglut/runen-ui/issues/59) remains relevant readiness
+work around retained publication cloning, but it must be integrated into that
+accepted M6 publication/scene design rather than treated as an independent
+permission to code M6.
 
 Merged acceptance evidence belongs in pull requests and the
 [public repository migration history](history/public-repository-migration.md).

@@ -20,7 +20,7 @@ Historical tags and removed legacy material are never active implementation auth
 
 ## Work tracking and pickup
 
-The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrices, GitHub issues, pull requests, and current-status documents. Determine the active milestone from the accepted roadmap/status records, then use that milestone's GitHub umbrella/pickup issue. M4's public issue #3 is completed historical coordination after final M4 closure; the M5 successor pickup surface is [public issue #45](https://github.com/dornglut/runen-ui/issues/45).
+The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrices, GitHub issues, pull requests, and current-status documents. Determine the active milestone from the accepted roadmap/status records, then use that milestone's GitHub umbrella/pickup issue. M4's public issue #3 is completed historical coordination; M5 used [public issue #45](https://github.com/dornglut/runen-ui/issues/45). After final M5 closure, M6 pickup authority must be activated only from the exact accepted M5 reconciliation squash and recorded in work tracking before implementation begins.
 
 Use this pickup sequence:
 
@@ -84,20 +84,23 @@ explicitly owner-accepted at exact reviewed head
 squash share exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`, and accepted-main CI #1244 /
 `32108782685` passed at that squash.
 
-M5E #51 is the sole active M5 slice and starts only from exact accepted main
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. It owns integration, migration,
-and milestone-closure proof only: reuse accepted M5A-M5D public machinery,
-preserve the public-only `runenui_testing` ownership boundary, remove retired
-semantic/testing compatibility authority rather than retaining aliases, and
-keep M6/#59 implementation blocked until M5E is explicitly owner-accepted,
-guarded-merged, accepted-main verified, and any required bounded reconciliation
-is complete. No `internal-test-seams`, hidden mutation bridge,
-semantic-to-`MountedNodeId` shortcut, bare semantic-ID surface guessing,
-unbounded settle, wall-clock wait, parallel runtime model, semantic
-LogicalScroll compatibility helper, native accessibility work, or M6 paint/hit
-implementation belongs in M5E.
+M5E #51 completed the integrated M5 feature/proof package. Exact reviewed head
+`7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI #1294 /
+`32130312467`, received explicit repository-owner merge authorization, and was
+guarded-squash-merged in PR #67 as
+`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`. Reviewed feature head and squash
+share exact complete repository tree
+`c5dc7fa000496d76c35e98f3a481fc1de5762f4c`. Accepted-main CI #1296 /
+`32135074552` then validated that exact squash through unchanged read-only PR
+#68, which was closed unmerged. Final authority/current-contract reconciliation
+PR #69 is the only remaining M5 transition: it may promote only the five M5E
+rows and align accepted-state authority. No M6/#59 implementation, native
+accessibility work, renderer scene, compatibility path, or semantic/runtime
+redesign belongs in that reconciliation. M6 may begin only from the exact
+accepted PR #69 squash after its own exact-head review/authorization/merge and
+accepted-main validation complete.
 
-A future thread should need only the repository, umbrella issue, and active slice/audit issue to locate current work.
+A future thread should need only the repository, roadmap/status records, and active milestone pickup issue to locate current work.
 
 ## Preflight and scope
 

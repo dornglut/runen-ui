@@ -15,35 +15,35 @@ Support labels:
 | `deferred` | Accepted later target outside the first foundation or release. |
 | `unsupported` | Not available and not safe to infer from current APIs. |
 
-M4 is complete and owner-accepted through M4D3. M5 is active. M5A semantic
-contribution/independent identity, M5B semantic publication/incremental updates,
-M5C semantic action ingress/accessibility resolution, and M5D public
-deterministic headless testing are fully accepted and reconciled. M5D exact
-reviewed feature head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619`
-passed exact-head CI #1230 / `31962536977` and was guarded-squash-merged in
-[PR #64](https://github.com/dornglut/runen-ui/pull/64) as
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Its mandatory reconciliation was
-explicitly owner-accepted at exact reviewed head
-`522b2770a2e6763e54e9eb6237fefc83e88d8cf9`, passed exact-head CI #1242 /
-`31969642341`, and was guarded-squash-merged in
-[PR #65](https://github.com/dornglut/runen-ui/pull/65) as
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. Reviewed reconciliation head and
-squash share exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`, and
-accepted-main CI #1244 / `32108782685` passed at that exact squash.
+M4 is complete and owner-accepted through M4D3. M5 is complete through M5E.
+M5A semantic contribution/independent identity, M5B semantic publication/
+incremental updates, M5C semantic action ingress/accessibility resolution, M5D
+public deterministic headless testing, and M5E integrated conformance/migration
+closure are owner-accepted. M5E exact reviewed feature head
+`7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI #1294 /
+`32130312467`, received explicit repository-owner merge authorization, and was
+guarded-squash-merged in [PR #67](https://github.com/dornglut/runen-ui/pull/67)
+as `b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`. Reviewed head and squash share
+exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`;
+accepted-main CI #1296 / `32135074552` validated that exact squash through
+read-only PR #68, which was closed unmerged.
 
-M5D adds the downstream public `runenui_testing` harness/query/time/inspection
-surface without exposing mounted semantic-owner routing identity, enabling
-private test seams, or adding a second runtime/trace/semantic action authority.
-It does not add semantic LogicalScroll, native accessibility, production
-renderer scenes, or native host translation.
+M5D supplies the downstream public `runenui_testing` harness/query/time/
+inspection surface without exposing mounted semantic-owner routing identity,
+enabling private test seams, or adding a second runtime/trace/semantic action
+authority. M5E adds integrated Counter/downstream public-only conformance,
+clean-cutover migration/authority evidence, and the source-grounded adapter-
+neutral mapping review without introducing native accessibility or renderer
+scene behavior.
 
-Accepted M5E-base truth is `53 total / 48 owner-accepted / 5 blocked`, M4 truth
-is `237 total / 237 owner-accepted`, and aggregate configured truth is `290 total
-/ 285 owner-accepted / 5 blocked`. M5E #51 is the sole active M5 slice from exact
-accepted main `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; M6/#59 remains future
-work and does not change current support. Exact branch, head, validation, and
-next-action state belongs in the [work-tracking system](work-tracking.md), GitHub
-issues, and pull requests. Historical acceptance evidence remains in the
+Final M5 truth is `53 total / 53 owner-accepted / 0 blocked`, M4 truth is `237
+total / 237 owner-accepted`, and aggregate configured truth is `290 total / 290
+owner-accepted / 0 blocked`. M6 renderer-neutral paint/hit scenes remain
+unimplemented; its roadmap requires an accepted render-protocol ADR before scene
+implementation. Issue #59 is M6-readiness work and does not itself change current
+support. Exact branch, head, validation, and next-action state belongs in the
+[work-tracking system](work-tracking.md), GitHub issues, and pull requests.
+Historical acceptance evidence remains in the
 [public repository migration history](history/public-repository-migration.md).
 
 ## 1. Authoring and composition
@@ -182,7 +182,7 @@ issues, and pull requests. Historical acceptance evidence remains in the
 | Semantic supported actions/state | `proof` | Support is distinct from current availability; composed disabled state includes owner-wide disabled; M5 vocabulary is exactly `Activate`, `RequestFocus`, `OpenMenu`, `OpenContextMenu`; no semantic LogicalScroll alias; M5C admission rechecks exact support/state/readiness; M5D proves disabled/inert queryability-versus-rejection and hidden withdrawal | Semantic scrolling remains deferred to M7 | M5B–M5D complete; M7 |
 | Semantic actions | `proof` | Public `SemanticActionRequest` values constructed with `SemanticActionRequest::new(surface, target, action)` and submitted via `AppRuntime::submit_semantic_action`; exact current surface/identity/publication/support/state/readiness/freshness/capacity admission; no callback at submission; canonical FIFO/`WorkSequence`/route/default/trace convergence; queue-front and post-callback revalidation; exact owned-request recovery on rejection; M5D exact scoped helpers delegate to the same ingress | No semantic LogicalScroll, public mounted-owner shortcut, or native adapter | M5C–M5D complete; M7/M10 later |
 | Accessibility queries/tests | `proof` | Public M5D `SemanticQuery`/`SemanticQueryMatches`/`SemanticTarget` operate on one exact committed snapshot, retain exact `SurfaceId + SemanticNodeId`, distinguish missing vs ambiguous unique matches, and drive accepted semantic ingress through `TestHarness` without first/last fallback | No native accessibility adapter or snapshot-golden framework | M5D complete; M10 native bridge |
-| AccessKit adapter | `planned` | Accepted adapter-only direction; M5B vocabulary plus M5C exact semantic action ingress provide platform-neutral tree/focus/state/actions/relationships/bounds/update/action facts without AccessKit/native types | M5E source-grounded mapping review remains required; no native bridge in M5 | M5E review; M10 bridge |
+| AccessKit adapter | `planned` | Accepted adapter-only direction; M5B vocabulary plus M5C exact semantic action ingress provide platform-neutral tree/focus/state/actions/relationships/bounds/update/action facts, and the M5E source-grounded mapping review confirms the adapter seam without adding AccessKit/native types | Mapping evidence is complete; no native platform bridge or AccessKit dependency exists in M5 | M5E mapping complete; M10 bridge |
 | Native accessibility bridge | `planned` | Required desktop profile | Depends on host/platform integration | M10 |
 | Accessible text ranges | `planned` | Required production text contract | Depends on editable text and semantic mapping | M8 |
 

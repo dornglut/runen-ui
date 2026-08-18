@@ -6,21 +6,21 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M0 through M4 are complete and owner-accepted. M5 is active.
-M5A semantic contribution/independent identity, the #55 semantic readiness
-authority, M5B semantic publication/incremental updates, M5C semantic action
-ingress/accessibility resolution, and M5D public deterministic headless testing
-are fully owner-accepted, reconciled, accepted-main verified where required, and
-closed. M5E [#51](https://github.com/dornglut/runen-ui/issues/51) is the sole
-active M5 slice from exact accepted main
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. It owns integrated public-only
-conformance, migration/current-document closure, adapter-neutral mapping evidence,
-and the final M5 acceptance gate; it does not implement M6. M6 remains blocked
-until M5E is accepted, guarded-merged, accepted-main verified, and any required
-bounded final M5 reconciliation is complete. Current maturity, durable sequence,
-work ownership, and historical acceptance evidence live in the
-[status map](docs/status-map.md), [roadmap](docs/roadmap.md),
-[work-tracking contract](docs/work-tracking.md), and
+Milestone status: M0 through M5 are complete and owner-accepted. M5E's final
+reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790` passed
+exact-head CI #1294 / `32130312467`, received explicit repository-owner merge
+authorization, and was guarded-squash-merged in PR #67 as
+`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`. Reviewed head and squash share
+exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`;
+accepted-main CI #1296 / `32135074552` validated that exact squash through
+read-only PR #68, which was closed unmerged. Final authority reconciliation PR
+#69 records all five M5E rows as owner-accepted and closes M5 current-contract
+authority. M6 renderer-neutral paint/hit scene design is the next milestone; it
+must satisfy its accepted render-protocol architecture gate before scene
+implementation, and issue #59 is M6-readiness work rather than permission to
+bypass that gate. Current maturity, durable sequence, work ownership, and
+historical acceptance evidence live in the [status map](docs/status-map.md),
+[roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and
 [public repository migration history](docs/history/public-repository-migration.md).
 
 ## What exists today
@@ -171,12 +171,12 @@ typed diagnostics, and deterministic revisions/updates. M5C supplies public
 exact semantic-node action ingress/resolution for `Activate`, `RequestFocus`,
 `OpenMenu`, and `OpenContextMenu` through the canonical queue/routed/default/trace
 architecture. M5D supplies the public deterministic `runenui_testing` harness on
-top of those existing public contracts. M5 still does **not** provide semantic
-LogicalScroll, AccessKit/native accessibility, or multi-surface lifecycle; those
-remain M7/M10 work. Paint/hit scenes, production layout/style/text, native hosts,
-renderer backends, and production controls also remain absent. The current
-runtime has one mounted root, one focus domain, and one logical surface with
-bounded proof-level displayed hit-test history.
+top of those existing public contracts. Accepted M5 still does **not** provide
+semantic LogicalScroll, AccessKit/native accessibility, or multi-surface
+lifecycle; those remain M7/M10 work. Paint/hit scenes, production
+layout/style/text, native hosts, renderer backends, and production controls also
+remain absent. The current runtime has one mounted root, one focus domain, and
+one logical surface with bounded proof-level displayed hit-test history.
 
 ## Production profiles
 
@@ -219,9 +219,10 @@ input, clock, semantic, trace, and replay APIs without acquiring live runtime
 authority. Tree changes rebuild topology-dependent renderer facts from one
 current mounted preorder snapshot. Compatible style and layout changes retain
 topology and read current mounted style/layout state; layout movement refreshes
-semantic bounds without rerunning unchanged semantic contribution. M5E currently
-owns integrated M5 conformance/migration/current-document closure. M6 owns
-renderer-neutral paint/hit scene products only after accepted M5 closure.
+semantic bounds without rerunning unchanged semantic contribution. M5E integrated
+conformance and migration closure is accepted. M6 now owns the next architecture
+boundary: renderer-neutral paint/hit scene products, with an accepted
+render-protocol ADR required before implementation.
 
 ## Canonical project documents
 

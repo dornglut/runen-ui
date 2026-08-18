@@ -30,6 +30,6 @@ Both core and runtime remain safe-Rust by repository policy. Payload/type mismat
 
 `runenui_core` must not own persistent mounted or semantic storage, semantic publication/revisions, live scheduling, queue/work/trace state, application state, native windows/accessibility adapters, concrete renderer backends, ECS integration, or legacy compatibility paths. Runtime alone owns live identity allocation, reconciliation, routing, scheduling, publication, and semantic action resolution.
 
-M0–M4 are complete. M5A–M5D are accepted and reconciled; M5E #51 is the active integration/migration/closure slice. M6 implementation remains blocked until M5 closes.
+M0–M5 are complete. M5 semantics/testing ownership is closed without moving live authority into core; M6 is the next renderer-neutral scene milestone and does not change this core/runtime boundary unless an accepted M6 protocol decision requires a public host-neutral scene value.
 
 See the [public API contract](../../docs/architecture/public-api.md), [workspace structure](../../docs/architecture/workspace-structure.md), [M5 charter](../../docs/architecture/m5-semantics-and-testing-charter.md), [status map](../../docs/status-map.md), and [roadmap](../../docs/roadmap.md).
