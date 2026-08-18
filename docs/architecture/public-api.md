@@ -5,8 +5,9 @@
 This document records the reviewed public surface for application work, the
 deterministic scheduler, routed semantic commands, canonical trace, semantic
 contribution/identity, renderer-independent semantic publication/update/
-diagnostics, and accepted M5C semantic action ingress/accessibility resolution.
-Source-level Rust documentation is authoritative for signatures.
+diagnostics, accepted M5C semantic action ingress/accessibility resolution, and
+the accepted M5D public deterministic testing surface. Source-level Rust
+documentation is authoritative for signatures.
 [ADR 0003](../adr/0003-extensible-view-widget-component-protocol.md) defines the
 open authoring/widget foundation; [ADR 0004](../adr/0004-mounted-runtime-reconciliation.md)
 defines mounted ownership and reconciliation; accepted
@@ -71,18 +72,34 @@ attempt 2 in temporary PR #60, which was closed unmerged. The mandatory M5B
 reconciliation was then owner-accepted and guarded-squash-merged in PR #61 as
 `afb7f8f363a8df3eb51be1a9bc5f0f180f84190b`; accepted-main CI #1090 passed.
 
-M5C semantic action ingress and accessibility resolution is now owner-accepted.
-Exact reviewed feature head `504899b79059eb94ad4474d67bba1e27eb30b374`
-passed exact-head CI #1170 / `31889342640`, was explicitly accepted by the
-repository owner, and was guarded-squash-merged in
+M5C semantic action ingress and accessibility resolution is fully accepted and
+reconciled. Exact reviewed feature head
+`504899b79059eb94ad4474d67bba1e27eb30b374` passed exact-head CI #1170 /
+`31889342640`, was explicitly accepted by the repository owner, and was
+guarded-squash-merged in
 [PR #62](https://github.com/dornglut/runen-ui/pull/62) as
 `846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. Reviewed head and squash share
 exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
-#1171 / `31903354382` passed at that exact squash. The mandatory M5C post-merge
-current-contract reconciliation is the current gate; M5D #50 remains blocked
+#1171 / `31903354382` passed at that exact squash. The mandatory M5C
+reconciliation was then explicitly owner-accepted at reviewed head
+`fbd0bdf44bddd660e06b4642a56f7a1d64bccab2`, passed exact-head CI #1179 /
+`31914448654`, and was guarded-squash-merged in PR #63 as
+`b2064f24e778bd69e2876ec09a7431d612682304`. Reviewed reconciliation head and
+squash share exact tree `82625aedbdc03a5754949cffee51025e99cd6949`, and
+accepted-main push CI #1180 / `31938332306` passed at that exact squash.
+
+M5D public deterministic headless testing is owner-accepted and feature-merged.
+Exact reviewed feature head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619`
+passed canonical exact-head CI #1230 / `31962536977` and final critical review,
+was explicitly accepted by the repository owner, and was guarded-squash-merged
+in [PR #64](https://github.com/dornglut/runen-ui/pull/64) as
+`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
+exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
+#1231 / `31967898198` passed at that exact squash. The mandatory post-M5D
+current-contract reconciliation is the current gate; M5E #51 remains blocked
 until that reconciliation is accepted, merged, and accepted-main verified. The
 accepted [M5 semantics and testing charter](m5-semantics-and-testing-charter.md)
-owns the remaining sequential M5D–M5E boundaries; the
+owns the sequential M5D–M5E boundaries; the
 [M5 conformance matrix](m5-conformance-matrix.md) owns observable acceptance;
 and [work tracking](../work-tracking.md) owns volatile branch, head, blocker,
 and next-action state.
@@ -150,6 +167,20 @@ and M5C vocabulary includes:
 - `SurfacePublication` as the complete aligned publication aggregate with
   explicit renderer-only and complete-product observation/extraction.
 
+`runenui_testing` is a downstream public convenience crate over those accepted
+core/runtime contracts. It owns no live runtime state, queue, mounted/semantic
+storage, publication authority, trace authority, or private test seam. Its public
+surface is:
+
+- `TestHarness<App>`;
+- `MissingPublication`, `HarnessSemanticQueryError`, and
+  `HarnessSurfaceCommandError`;
+- `SemanticQuery`, `SemanticQueryMatches`, `SemanticTarget`,
+  `SemanticTargetError`, `UniqueSemanticQueryError`, and `query_semantics`;
+- `SettleBudget`, `SettleOutcome`, and `SettleReport`;
+- `TestSurfaceConfig`, `TestSurfaceConfigError`, and
+  `DEFAULT_TEST_SURFACE_SIZE`.
+
 The ordinary preludes remain narrow. Specialist runtime/mounted/lifecycle
 inspection is imported explicitly from crate roots. Generated IDs and
 sequences, queue/envelope storage, mounted state, mounted/semantic arena storage,
@@ -161,7 +192,58 @@ read-only semantic snapshots/updates. M5C accepts those exact public IDs only
 through `SemanticActionRequest`, resolves them against private mounted owner/key
 bindings, and exposes read-only semantic-origin callback metadata through
 `SemanticActionTarget`; neither surface exposes a public semantic-to-
-`MountedNodeId` routing shortcut.
+`MountedNodeId` routing shortcut. M5D testing targets likewise preserve exact
+snapshot `SurfaceId + SemanticNodeId` scope and expose no semantic-to-mounted
+conversion or bare-ID helper that guesses surface scope.
+
+## Public deterministic testing harness
+
+`TestHarness<App>` owns one ordinary public `AppRuntime<App>`, a clone-shared
+public `ManualClock`, deterministic test-surface configuration, and at most the
+latest complete immutable `SurfacePublication` for read-only inspection. It does
+not retain a parallel expected application/runtime model. `TestHarness::mount`
+uses deterministic defaults; explicit configuration remains available through
+the public runtime/surface configuration types.
+
+Publication is explicit. The harness can publish using its deterministic fixed
+non-zero surface, a caller-provided public `MeasurementProvider`, or a caller-
+provided ordinary `SurfaceBuildContext`. The retained publication remains the
+source of exact `SurfaceInputContext`, frame/layout/hit/paint facts, semantic
+snapshot/update state, and surface scope. Pointer helpers are constructed from
+that exact public context rather than a private surface constructor.
+
+`SemanticQuery` filters one exact committed semantic snapshot using accepted
+public semantic facts. `query_semantics`/`SemanticQueryMatches` retain every
+matching target in deterministic published order. `unique` distinguishes missing
+from ambiguous and never chooses first/last. `SemanticTarget` has private scope
+fields and can be formed only from exact snapshot membership; it retains the
+snapshot's `SurfaceId` and exact `SemanticNodeId`. Semantic-action helpers create
+the ordinary public M5C request from that scoped target and delegate to
+`AppRuntime::submit_semantic_action`; they never resolve or expose a
+`MountedNodeId` semantic owner. There is no semantic LogicalScroll helper.
+
+Harness mutation helpers delegate to ordinary public runtime ingress for pointer,
+keyboard, committed text, composition, automation, application actions, exact
+mounted commands when intentionally testing that public path, and semantic
+actions. They do not invoke widget callbacks directly, mutate mounted state,
+replace snapshots, seed generations/sequences/counters, or call doc-hidden
+`__runtime` bridges.
+
+`TestHarness::pump` remains one explicit bounded runtime pump.
+`run_until_idle` requires a caller-supplied finite `SettleBudget`; there is no
+unbounded convenience constructor. `SettleOutcome` distinguishes idle, explicit
+iteration limit, closed, and terminal outcomes. Idle is reported only after one
+complete zero-progress quiescent pump. Publication dirtiness, dormant future
+timers, and externally pending host work do not cause hidden waiting; self-
+requeue remains capped by the finite iteration/pump budgets. Logical time advances
+through the public `ManualClock` without wall-clock sleeping.
+
+Read-only harness observations expose application state, focus, reconciliation,
+latest publication and its frame/layout/hit/paint/semantic products, scheduler
+outcomes/pending host work where the runtime exposes them, canonical trace,
+export, and inert replay. M5D adds no snapshot-golden framework, native host
+translation, AccessKit adapter, production text editing, or production renderer
+scene assertion authority.
 
 ## Queue, pump, and runtime status
 
@@ -646,7 +728,8 @@ resolution, M4D1 implements normalized in-memory trace reconstruction, M4D2
 implements deterministic export and bounded subordinate sink delivery, M4D3
 implements accepted offline replay plus final migration/closure proofs, M5A
 implements semantic contribution/identity, M5B implements semantic publication,
-and M5C implements semantic accessibility action resolution.
+M5C implements semantic accessibility action resolution, and M5D implements the
+public deterministic downstream testing harness.
 
 One runtime-owned `FocusState` retains the exact focused mounted lifetime, its
 committed focus-within route, exact-generation scope memories, last
@@ -970,8 +1053,9 @@ silently claiming equivalent behavior.
 
 This replay surface is accepted M4 headless causal-proof infrastructure. M5C
 proves its semantic records survive deterministic export and replay as inert
-observation. Replay still does not provide the M5D public test harness, semantic
-query/action convenience model, or an application-specific expectation engine.
+observation. M5D exposes that same public export/replay authority through the
+headless testing harness; replay itself remains observational and is not a second
+runtime, semantic action engine, or application-specific expectation engine.
 
 M4C3 adds pointer submission, ordered validation and stream resolution,
 physical-path and boundary-bundle planning, default applied/suppressed,
@@ -1017,7 +1101,7 @@ already-accepted mutable work, the runtime becomes terminal before the pending
 mutable callback and cancels queued work. The accepted M4D2 export/sink surface
 remains the sole live projection/transport over the canonical in-memory
 authority; accepted M4D3 replay consumes only its serialized output offline.
-M5A–M5C introduce no second trace or behavior engine.
+M5A–M5D introduce no second trace or behavior engine.
 
 ## Breaking migrations
 
@@ -1100,7 +1184,12 @@ Added:
   `CommandSubmission` receipt, typed semantic submission errors with exact request
   recovery, `AppRuntime::submit_semantic_action`, private exact semantic-to-mounted
   binding resolution, queue-front/post-callback revalidation, and canonical
-  semantic binding/processing/default trace outcomes.
+  semantic binding/processing/default trace outcomes;
+- M5D downstream `runenui_testing` with `TestHarness`, explicit finite
+  `SettleBudget`/`SettleOutcome`/`SettleReport`, snapshot-scoped
+  `SemanticQuery`/`SemanticQueryMatches`/`SemanticTarget`, deterministic
+  `TestSurfaceConfig`, and ordinary public runtime/publication/trace/replay
+  delegation without private runtime authority.
 
 M1 validated values, textual identity, typed configuration, arity-free
 composition, protected generated products, and finite saturating geometry remain
@@ -1115,8 +1204,10 @@ surface, the owner-accepted M4D3 offline replay/M4 closure proof surface, M5A
 semantic contribution/independent identity, M5B independent semantic
 snapshot/update/diagnostic publication, runtime-derived semantic focus/absolute
 bounds, relationship resolution, support composition, renderer-independent
-publication cutover, and M5C exact semantic action ingress/accessibility
-resolution through the canonical command/routed/default/trace architecture. M4
-is complete and M5 is active. M5D public testing harness, AccessKit/native
-accessibility, native host translation, production scrolling, editable text, and
-platform IME objects remain later work.
+publication cutover, M5C exact semantic action ingress/accessibility resolution
+through the canonical command/routed/default/trace architecture, and M5D public
+deterministic headless testing over those same public authorities. M4 is complete
+and M5 is active. M5E integrated closure is next only after this M5D
+reconciliation is accepted. AccessKit/native accessibility, native host
+translation, production scrolling, editable text, and platform IME objects
+remain later work.

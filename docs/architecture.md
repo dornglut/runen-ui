@@ -41,14 +41,15 @@ The current implementation is a deterministic mounted headless proof with this
 narrower shape. M4 is complete and owner-accepted through M4D3. M5 is active.
 M5A semantic contribution/independent identity, the #55 readiness amendment,
 M5B semantic publication/incremental updates, and M5C semantic action ingress/
-accessibility resolution are owner-accepted. M5C exact reviewed head
-`504899b79059eb94ad4474d67bba1e27eb30b374` passed exact-head CI #1170 /
-`31889342640` and was guarded-squash-merged in
-[PR #62](https://github.com/dornglut/runen-ui/pull/62) as
-`846c4e6adfdcd9236586f1b9978f63e71ff4fb86`. Reviewed head and squash share
-exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
-#1171 / `31903354382` passed at that exact squash. The mandatory post-M5C
-current-contract reconciliation is the current gate; M5D #50 remains blocked
+accessibility resolution are fully accepted and reconciled. M5D public
+deterministic headless testing is owner-accepted and feature-merged. M5D exact
+reviewed head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed exact-head CI
+#1230 / `31962536977` and was guarded-squash-merged in
+[PR #64](https://github.com/dornglut/runen-ui/pull/64) as
+`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
+exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
+#1231 / `31967898198` passed at that exact squash. The mandatory post-M5D
+current-contract reconciliation is the current gate; M5E #51 remains blocked
 until that reconciliation is accepted, merged, and accepted-main verified.
 
 The accepted M4 history remains unchanged: M4C3 was squash-merged in PR #15 as
@@ -81,6 +82,7 @@ Application-owned State + Action
   -> provider-backed row/column measurement and arrangement when dirty
   -> SurfaceFrame + SurfaceStyleReport + SurfaceLayoutReport
   -> independent SemanticPublication + SemanticDiagnosticReport sibling products
+  -> public downstream deterministic testing through runenui_testing
 ```
 
 `MountedNodeId` and `SemanticNodeId` are distinct runtime-instance-local opaque
@@ -95,7 +97,8 @@ advances generation and never retargets a stale ID. M5B publishes those IDs only
 through the independent read-only semantic snapshot/update product. M5C accepts
 exact current IDs only through `SemanticActionRequest` and resolves them against
 the private mounted owner/key binding; neither product exposes a public semantic-
-to-mounted routing shortcut.
+to-mounted routing shortcut. M5D testing targets retain exact semantic snapshot
+surface/node scope and likewise expose no mounted-owner shortcut.
 
 Unique sibling element keys reorder without changing mounted lifetime; unkeyed
 children match by unkeyed ordinal; duplicate keys preserve no ambiguous mounted
@@ -151,6 +154,19 @@ caused semantic invalidation remain distinct canonical trace outcomes. Semantic-
 origin callback metadata is read-only and is not inherited by ordinary or
 delegated commands. No semantic LogicalScroll, second queue/default engine, or
 native accessibility adapter is introduced.
+
+M5D adds the public downstream `runenui_testing` crate without moving runtime
+authority out of `runenui_runtime`. `TestHarness<App>` composes one ordinary
+`AppRuntime<App>` with deterministic public `ManualClock` authority, nonzero
+configurable fixed-surface publication, explicit bounded pumping and finite
+settling, snapshot-scoped semantic queries/targets, ordinary public pointer/
+keyboard/text/composition/automation/action/command/semantic-action ingress, and
+read-only state/focus/reconciliation/frame/layout/hit/paint/semantic/trace/replay
+inspection. Semantic query ambiguity is explicit; scoped targets preserve exact
+`SurfaceId + SemanticNodeId`; no testing helper reconstructs `MountedNodeId` or
+guesses surface scope from a bare semantic ID. The crate enables no
+`internal-test-seams`, hidden mutation bridge, wall-clock waiting, unbounded
+settle, parallel runtime model, or semantic LogicalScroll compatibility path.
 
 Compatible widget update is transactional; mismatch replaces in the current
 mounted generation. Mount/update run in preorder, removal/replacement/shutdown
@@ -244,13 +260,14 @@ contribution vocabulary and independent semantic lifetime storage. M5B completes
 the renderer-independent semantic publication/update/diagnostic layer and clean
 renderer semantic cutover described above. M5C completes exact surface-scoped
 semantic-node action ingress/accessibility resolution through the existing M4
-command/routed/default/trace authority. Recursive component action mapping
+command/routed/default/trace authority. M5D completes the public deterministic
+downstream testing harness described above. Recursive component action mapping
 preserves semantic contribution content exactly. Core/runtime still has no
 AccessKit/native dependency and no second semantic action queue. The accepted
 [M5 semantics and testing charter](architecture/m5-semantics-and-testing-charter.md)
-and [M5 conformance matrix](architecture/m5-conformance-matrix.md) define the
-remaining M5D–M5E work. The mandatory M5C post-merge reconciliation is the gate
-before M5D begins.
+and [M5 conformance matrix](architecture/m5-conformance-matrix.md) define M5
+acceptance. The mandatory M5D post-merge reconciliation is the gate before M5E
+begins.
 
 The accepted M4C5 behavior does not add editable text, native IME objects, or a
 platform host. Public automation work/trace-sequence exhaustion is a deliberate
@@ -270,11 +287,12 @@ drain. `Delivered`, `Full`, and first `Closed` remain same-record diagnostic
 facts and consume no second trace sequence. M4D3 consumes only that serialized
 projection in an inert offline causal model with replay-only identities,
 contiguous retained-sequence and parent validation, explicit dropped-prefix
-incompleteness, and Counter reconstruction after the live runtime is gone. It is
-not the M5D public test harness or semantic expectation engine. M5C semantic
-binding/rejection/default records extend the same canonical schema and remain
-inert replay observations. See the
-[public API contract](architecture/public-api.md), [ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
+incompleteness, and Counter reconstruction after the live runtime is gone. M5D
+exposes that accepted replay authority through its public harness without making
+replay a runtime or semantic expectation engine. M5C semantic binding/rejection/
+default records extend the same canonical schema and remain inert replay
+observations. See the [public API contract](architecture/public-api.md),
+[ADR 0003](adr/0003-extensible-view-widget-component-protocol.md), and
 [work-tracking contract](work-tracking.md).
 
 ## Ownership rules
@@ -294,15 +312,17 @@ inert replay observations. See the
 - Public host-neutral protocol/value definitions live in `runenui_core`; the
   live namespace, mounted/semantic storage authority, routing, scheduler, host
   integration, trace, shutdown, semantic publication, and semantic action
-  resolution live in `runenui_runtime`, which depends on core. M5 introduces no
-  third authority crate before the independently justified public M5D testing
-  crate.
+  resolution live in `runenui_runtime`, which depends on core.
+- Public deterministic testing convenience lives in downstream
+  `runenui_testing`, which depends on core/runtime and must not become runtime
+  authority or enable private test seams.
 
 External crates can define widgets and participate in mounted state, lifecycle,
 activation, layout, paint, canonical semantic contribution, diagnostic,
-invalidation, semantic-publication consumption, semantic action submission, and
-inspection paths without modifying RunenUI. M5D–M8 own the remaining production
-subsystem contracts before host/backend production work.
+invalidation, semantic-publication consumption, semantic action submission,
+public deterministic harness testing, and inspection paths without modifying
+RunenUI. M5E–M8 own the remaining production subsystem contracts before
+host/backend production work.
 
 ## Application and effect model
 
@@ -504,13 +524,13 @@ The required profiles are headless/test, standalone desktop, and embedded host. 
 ## Current workspace boundary
 
 The active workspace intentionally contains `runenui_core`, `runenui_runtime`,
-the `counter` example, the non-publishable test-owned
-`runenui_external_widget_conformance` package, and `xtask`. New crates require
-real ownership, dependency, optionality, independent-consumer, or conformance
-pressure. A target crate diagram is not permission to create empty crates, and
-the facade crate is deferred until lower-level APIs warrant a stable public
-surface. M5A/M5B/M5C introduce no new crate; the public `runenui_testing` crate
-remains M5D work.
+the public downstream `runenui_testing` crate, the `counter` example, the non-
+publishable test-owned `runenui_external_widget_conformance` package, and
+`xtask`. New crates require real ownership, dependency, optionality, independent-
+consumer, or conformance pressure. A target crate diagram is not permission to
+create empty crates, and the facade crate is deferred until lower-level APIs
+warrant a stable public surface. `runenui_testing` is deliberately downstream of
+runtime and owns testing ergonomics only; runtime does not depend on it.
 
 ## Required ADRs before implementation choices
 
@@ -526,10 +546,11 @@ closure proof surface. Public M4 proof requirements are fixed in the M4
 conformance matrix and directional-focus corpus.
 
 The accepted M5 semantics/testing charter and M5 conformance matrix own the
-active semantics/testing program. M5A, #55, M5B, and the M5C feature
-implementation are owner-accepted. The current gate is M5C's mandatory
-post-merge current-contract reconciliation; M5D #50 and M5E remain blocked in
-order until their predecessor acceptance/reconciliation gates complete.
+active semantics/testing program. M5A, #55, M5B, and M5C are fully accepted and
+reconciled; the M5D feature implementation is owner-accepted and accepted-main
+verified. The current gate is M5D's mandatory post-merge current-contract
+reconciliation. M5E #51 remains blocked until that gate is accepted, merged, and
+accepted-main verified.
 
 The following later choices still require dedicated analysis and review:
 standard layout algorithm, production text stack, conventional renderer, crate
