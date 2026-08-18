@@ -11,18 +11,23 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | Document path | Category | Current disposition | Purpose |
 |---|---|---|---|
 | `README.md` | Current contract | Retained active | Truthful entry point, current proof, production profiles, canonical links, validation, and licensing |
+| `ARCHITECTURE.md` | Current contract | Retained active | Compact architecture and ownership entry point with current milestone boundary |
+| `TESTING.md` | Guide | Retained active | Testing/validation entry point and public deterministic harness boundary |
 | `docs/architecture.md` | Target architecture | Retained active | Canonical current-versus-target pipeline and ownership overview |
-| `docs/architecture/public-api.md` | Current contract | Retained active | Reviewed application-work, four-budget scheduler, queue/runtime surface, migrations, and limits |
+| `docs/architecture/public-api.md` | Current contract | Retained active | Reviewed application-work, scheduler, routed/semantic ingress, publication, testing surface, migrations, and limits |
 | `docs/status-map.md` | Current contract | Retained active | Subsystem maturity using the canonical status taxonomy |
 | `docs/feature-support-matrix.md` | Current contract | Retained active | Capability-level support, limitations, and milestone ownership |
 | `docs/roadmap.md` | Current contract | Retained active | M0–M12 dependency gates and completion criteria |
 | `docs/documentation-retention-plan.md` | Current contract | Retained active | Active/removed document disposition and recovery record |
 | `docs/architecture/styling.md` | Target architecture | Retained active | Consolidated current and target styling contract |
 | `docs/architecture/layout.md` | Target architecture | Retained active | Consolidated current and target layout/measurement contract |
-| `docs/architecture/events-effects-and-scheduling.md` | Target architecture | Retained active | Canonical M4 overview distinguishing implemented application work/scheduling from routed-event and trace-export targets |
-| `docs/architecture/m4-conformance-matrix.md` | Target architecture | Retained active | Normative public behavioral proof matrix, including mounted declaration, terminal pointer, executor-refusal, and sink-backpressure cases, required before M4 can be declared complete |
+| `docs/architecture/events-effects-and-scheduling.md` | Target architecture | Retained active | Canonical M4 overview plus accepted M5 extensions that reuse M4 routing/scheduling/trace authority |
+| `docs/architecture/m4-conformance-matrix.md` | Target architecture | Retained active | Normative public M4 behavioral proof matrix |
 | `docs/architecture/m4-directional-focus-corpus.md` | Target architecture | Retained active | Accepted normative M4 public-outcome vectors for directional focus, scope policy, restoration, and eligibility without exposing the private scoring formula |
 | `docs/architecture/m4c-delivery-and-routed-transaction-charter.md` | Target architecture | Retained active | Accepted M4C–M4D implementation ownership, transaction, and delivery sequencing contract |
+| `docs/architecture/m5-semantics-and-testing-charter.md` | Target architecture | Retained active | Accepted durable M5 semantic/testing ownership, transaction, slice, migration, and exit-gate contract |
+| `docs/architecture/m5-conformance-matrix.md` | Target architecture | Retained active | Normative M5 observable acceptance inventory and proof ownership |
+| `docs/architecture/m5-accesskit-mapping-review.md` | Guide | Retained active | M5E source-grounded adapter compatibility evidence; not semantic authority |
 | `docs/architecture/workspace-structure.md` | Target architecture | Retained active | Current workspace and evidence-based extraction rules |
 | `docs/adr/0001-typed-token-authoring.md` | ADR | Retained active | Accepted typed-expression token authoring decision |
 | `docs/adr/0002-keep-layout-in-runtime.md` | ADR | Retained active | Accepted layout ownership and extraction-gate decision |
@@ -35,10 +40,11 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `docs/work-tracking.md` | Current contract | Retained active | Public issue, pull-request, status, acceptance, and pickup authority |
 | `docs/vocabulary.md` | Current contract | Retained active | Explicit current and target terms |
 | `docs/influences.md` | Guide | Retained active | Non-authoritative upstream lessons and candidates |
-| `docs/tooling/validation.md` | Guide | Retained active | Locked root/nested validation, stable formatting, and link-checker scope |
-| `docs/tooling/repository-audit.md` | Guide | Retained active | Deterministic fatal authority invariants, non-fatal concentration diagnostics, thresholds, and JSON schema |
-| `crates/runenui_core/README.md` | Current contract | Retained active | Actual crate ownership and limitations |
-| `crates/runenui_runtime/README.md` | Current contract | Retained active | Actual runtime proof ownership and limitations |
+| `docs/tooling/validation.md` | Guide | Retained active | Locked root/nested validation, stable formatting, link-checker scope, and exact-head CI relationship |
+| `docs/tooling/repository-audit.md` | Guide | Retained active | Deterministic fatal structural/authority invariants, non-fatal concentration diagnostics, thresholds, and JSON schema |
+| `crates/runenui_core/README.md` | Current contract | Retained active | Current core ownership and limitations |
+| `crates/runenui_runtime/README.md` | Current contract | Retained active | Current runtime ownership and limitations |
+| `crates/runenui_testing/README.md` | Current contract | Retained active | Current public downstream testing ownership and limitations |
 | `examples/counter/README.md` | Guide | Retained active | Current headless Counter proof and non-goals |
 | `tools/context/README.md` | Guide | Retained active | Context profiles, coverage, budgets, and exclusions |
 | `tests/external_widget/README.md` | Guide | Retained active | Downstream custom-widget conformance package scope and execution |
@@ -52,6 +58,8 @@ Allowed categories are **Current contract**, **Target architecture**, **ADR**, *
 | `docs/unsafe-code-policy.md` | Current contract | Retained active | Safe-Rust default and future unsafe-boundary review |
 | `LICENSE` | Current contract | Retained active | Owner-approved MIT license for the current repository |
 | `xtask/README.md` | Guide | Retained active | Shared validation task ownership and usage |
+
+The inventory is intentionally authority-focused rather than a list of every Markdown file. A retained document that declares one of the categories above and makes current behavior, ownership, status, or target-architecture claims must be represented here or be explicitly subordinate to an inventoried parent document. Ephemeral PR/issue execution records are governed by `docs/work-tracking.md`, not this table.
 
 ## Removed or consolidated M0 baseline documents
 
