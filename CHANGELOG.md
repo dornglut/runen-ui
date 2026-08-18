@@ -8,6 +8,27 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- Accepted the M6A0 renderer-neutral paint/hit scene architecture and conformance
+  authority in [PR #73](https://github.com/dornglut/runen-ui/pull/73). Exact
+  reviewed head `c0169ebea044a0009a334f3d5ecc13ff8d495885` passed canonical
+  exact-head CI #1349 / `32181344340`, received explicit repository-owner merge
+  authorization, and was guarded-squash-merged as
+  `966778dd31e0f6b6df76ee4f6283a984fc724b36`. Reviewed head and squash share
+  exact complete repository tree `fe057a3fef9ea6de053ce86ce336212f0aa3a413`.
+  Because the connector-origin merge did not expose an exact-squash push run
+  through the available workflow lookup, accepted-main CI #1351 /
+  `32186597198` independently validated that exact squash through unchanged
+  read-only PR #74, which was closed unmerged. Accepted ADR 0007 now freezes the
+  renderer-neutral paint/displayed-input/layout/semantic/diagnostic ownership,
+  paint revision/damage/scale model, explicit paint/hit geometry/order/policy,
+  stable resource-reference identity, and clean proof-era migration target;
+  the dedicated M6 matrix records 36 M6A–M6D observable rows. Architecture
+  acceptance is not behavior acceptance: M6 remains `36 total / 0
+  owner-accepted / 36 blocked`, and configured M4+M5+M6 truth is `326 total /
+  290 owner-accepted / 36 blocked`. The bounded post-M6A0 current-contract
+  reconciliation is the final pre-implementation gate; #59/M6A may begin only
+  from its exact accepted squash after that reconciliation is owner-accepted,
+  guarded-squash-merged, tree-verified, and accepted-main validated.
 - Owner-accepted and guarded-squash-merged M5E integrated conformance, migration,
   and M5 feature closure in [PR #67](https://github.com/dornglut/runen-ui/pull/67).
   Exact reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790`
