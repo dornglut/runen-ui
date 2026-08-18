@@ -82,8 +82,9 @@ The M6 matrix references inherited observations rather than duplicating them.
 successful publication atomically aligns distinct immutable products:
 
 - `PaintScene` — renderer-neutral logical visual content only;
-- paint-publication metadata — renderer scale, sound damage relative to the
-  previous accepted paint publication, and derived scene requirements;
+- paint-publication metadata — exact logical surface size, renderer scale, sound
+  damage relative to the previous accepted paint publication, and derived scene
+  requirements;
 - `HitTestScene` — input-facing shapes, transforms/clips, pointer policy,
   deterministic order, runtime-injected mounted targets, and its exact
   `SurfaceInputContext`;
@@ -102,7 +103,8 @@ products read-only. Extracting a snapshot never transfers live runtime authority
 
 `PaintScene` equality/content identity is history-independent: two scenes with
 the same logical items/resources/order compare as the same scene regardless of
-which predecessor caused their current damage. Publication-relative damage is
+which predecessor caused their current damage or which logical surface extent
+currently hosts them. Publication-relative damage and target surface extent are
 therefore deliberately not stored as scene content. This lets #59 share an
 unchanged `PaintScene` while a new publication wrapper carries different damage
 or display metadata.
@@ -121,7 +123,7 @@ surface placement, deterministic global order, retained displayed scenes, dirty
 phase planning, publication transaction state, publication-relative renderer
 metadata, and immutable public snapshots. Widgets cannot author/forge
 `MountedNodeId`, `SurfaceId`, `SurfaceInputContext`, scene-order identity, live
-publication generations, or damage history.
+publication generations, surface-publication extent, or damage history.
 
 This follows the accepted M5 precedent: add focused production vocabulary at
 its ownership seam rather than split unrelated responsibilities.
@@ -272,7 +274,8 @@ semantics. For each region from topmost to bottommost:
 1. map the surface-logical point through the inverse of the region's exact
    local-to-surface transform;
 2. test the region shape in that local space;
-3. evaluate every explicit clip with that clip's own clip-to-surface transform;
+3. map the surface-logical point through the inverse of each clip's exact
+   clip-to-surface transform and require it to be inside every clip shape;
 4. when contained and unclipped, apply `PointerPolicy`.
 
 A non-invertible region transform makes that region non-hittable with deterministic
@@ -364,19 +367,29 @@ never reinterpretation as another primitive or concrete widget kind.
 The paint publication carries metadata aligned with `PaintScene` but not part of
 its history-independent content identity.
 
+The metadata contains the exact validated logical surface size. It is the
+renderer consumer's target logical canvas extent and defines the full-surface
+logical rectangle from origin `(0, 0)` to that size. A renderer must not consult
+layout reports or mounted storage to discover the target extent. Surface size is
+publication metadata because the same reusable scene content may be hosted by a
+different accepted logical extent.
+
 Raster scale is one validated positive finite value used only for renderer
 realization. All layout/paint/hit/pointer geometry stays logical. Headless default
 is `1.0`; production host ownership of scale changes belongs to M10.
 
 Damage is a deterministic logical delta **relative to the previous accepted paint
-publication**. It must never under-report changed renderer-relevant output. A
-full-surface rectangle is valid when finer invalidation cannot be proven. Empty
-damage is valid only when `PaintScene` content and all renderer-relevant metadata
-other than damage are unchanged.
+publication**. It must never under-report changed renderer-relevant output. The
+first accepted paint publication has full-surface damage. A logical surface-size
+or raster-scale change also requires full-surface damage. A full-surface damage
+rectangle is always permitted when finer invalidation cannot be proven. Empty
+damage is permitted only when `PaintScene` content, logical surface size, raster
+scale, and other renderer-relevant metadata except damage are unchanged.
 
 Because damage is predecessor-relative, it is publication metadata rather than a
 field that changes `PaintScene` content equality. #59 may therefore reuse an
-unchanged scene across publications while computing a fresh damage record.
+unchanged scene across publications while computing fresh extent/scale/damage
+metadata.
 
 Scene requirements are derived from canonical `PaintScene` content and exposed
 with the paint publication. Consumer capabilities are external input. Capability
@@ -515,6 +528,8 @@ Positive consequences:
   proofs;
 - scene coordinates/order are self-contained and deterministic;
 - paint content identity remains reusable and history-independent;
+- renderer consumers receive an explicit logical canvas extent without reading
+  layout authority;
 - accepted M4 displayed-input identity remains intact;
 - runtime no longer needs two hit representations;
 - custom widgets gain explicit paint/hit contribution without registration;
