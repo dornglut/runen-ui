@@ -1,5 +1,7 @@
 # runenui_testing
 
+> **Category: Current contract**
+
 `runenui_testing` provides deterministic headless testing ergonomics for ordinary RunenUI applications. It is intentionally a downstream consumer of the public `runenui_core` and `runenui_runtime` APIs rather than a privileged runtime test seam.
 
 ## What it owns
@@ -19,5 +21,7 @@ The crate owns testing ergonomics only. It does not own runtime behavior, mounte
 Semantic actions are deliberately surface-scoped: test targets are produced from an exact committed `SemanticSnapshot` and preserve both its `SurfaceId` and the exact `SemanticNodeId`. Ambiguous semantic queries return every deterministic match instead of selecting a first or last node.
 
 Settling is always explicitly bounded. A settle attempt reports `Idle` only after a complete zero-progress pump iteration; dormant future timers, redraw debt, and externally pending work do not cause hidden waits, while self-requeue remains capped by the caller's finite iteration budget.
+
+M5D is accepted and reconciled. M5E #51 is the active integration/migration/closure slice; this crate acquires no new runtime authority in M5E.
 
 See the repository [workspace structure](../../docs/architecture/workspace-structure.md) and [M5 semantics/testing charter](../../docs/architecture/m5-semantics-and-testing-charter.md) for the ownership and milestone contract.
