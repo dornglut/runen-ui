@@ -519,7 +519,7 @@ fn audit_retired_m5_authorities(
                 }
             }
 
-            let code = rust_code_without_comments_or_literals(line);
+            let code = rust_code_without_line_comments_or_strings(line);
             for pattern in RETIRED_M5_CODE_PATTERNS {
                 if code.contains(pattern) {
                     findings.push(Finding::fatal(
@@ -531,17 +531,17 @@ fn audit_retired_m5_authorities(
                     ));
                 }
             }
+        }
 
-            let trimmed = code.trim_start();
-            if trimmed.starts_with("pub type ")
-                && let Some((_, target)) = trimmed.split_once('=')
+        for (line, statement) in public_type_alias_statements(contents) {
+            if let Some((_, target)) = statement.split_once('=')
                 && SEMANTIC_ALIAS_TARGETS.iter().any(|semantic| {
                     statement_identifiers(target).any(|identifier| identifier == *semantic)
                 })
             {
                 findings.push(Finding::fatal(
                     "source.retired_m5_authority",
-                    Some(format!("{path}:{line_number}")),
+                    Some(format!("{path}:{line}")),
                     "public type aliases around accepted semantic/testing authority are forbidden by the M5 clean-cutover contract",
                 ));
             }
@@ -564,11 +564,10 @@ fn audit_retired_m5_authorities(
     }
 }
 
-fn rust_code_without_comments_or_literals(line: &str) -> String {
+fn rust_code_without_line_comments_or_strings(line: &str) -> String {
     let mut output = String::with_capacity(line.len());
     let mut characters = line.chars().peekable();
     let mut in_string = false;
-    let mut in_char = false;
     let mut escaped = false;
 
     while let Some(character) = characters.next() {
@@ -583,30 +582,14 @@ fn rust_code_without_comments_or_literals(line: &str) -> String {
             output.push(' ');
             continue;
         }
-        if in_char {
-            if escaped {
-                escaped = false;
-            } else if character == '\\' {
-                escaped = true;
-            } else if character == '\'' {
-                in_char = false;
-            }
-            output.push(' ');
-            continue;
-        }
         if character == '/' && characters.peek() == Some(&'/') {
             break;
         }
-        match character {
-            '"' => {
-                in_string = true;
-                output.push(' ');
-            }
-            '\'' => {
-                in_char = true;
-                output.push(' ');
-            }
-            _ => output.push(character),
+        if character == '"' {
+            in_string = true;
+            output.push(' ');
+        } else {
+            output.push(character);
         }
     }
 
@@ -673,6 +656,35 @@ fn public_reexport_statements(contents: &str) -> Vec<(usize, String)> {
             continue;
         }
         if trimmed.starts_with("pub use ") {
+            if trimmed.contains(';') {
+                statements.push((line_number, trimmed.to_owned()));
+            } else {
+                current = Some((line_number, trimmed.to_owned()));
+            }
+        }
+    }
+
+    statements
+}
+
+fn public_type_alias_statements(contents: &str) -> Vec<(usize, String)> {
+    let mut statements = Vec::new();
+    let mut current: Option<(usize, String)> = None;
+
+    for (index, line) in contents.lines().enumerate() {
+        let line_number = index + 1;
+        let code = rust_code_without_line_comments_or_strings(line);
+        let trimmed = code.trim_start();
+        if let Some((start, statement)) = current.as_mut() {
+            statement.push(' ');
+            statement.push_str(trimmed);
+            if trimmed.contains(';') {
+                statements.push((*start, core::mem::take(statement)));
+                current = None;
+            }
+            continue;
+        }
+        if trimmed.starts_with("pub type ") {
             if trimmed.contains(';') {
                 statements.push((line_number, trimmed.to_owned()));
             } else {
@@ -933,7 +945,7 @@ mod tests {
         SURFACE_PUBLICATION_ENTRYPOINT_PATH, audit_retired_authorities,
         audit_retired_m5_authorities, audit_surface_publication_entrypoint, declaration_symbol,
         defines_struct, module_metrics, normalized_identifier,
-        rust_code_without_comments_or_literals,
+        rust_code_without_line_comments_or_strings,
     };
 
     fn production_source(path: &str, contents: &str) -> (super::ModuleMetrics, String) {
@@ -1001,10 +1013,10 @@ mod tests {
     }
 
     #[test]
-    fn retired_m5_authority_audit_rejects_stubs_scroll_and_aliases() {
+    fn retired_m5_authority_audit_rejects_stubs_scroll_and_multiline_aliases() {
         let production = vec![production_source(
             "crates/example/src/lib.rs",
-            "pub struct WidgetSemanticProof;\npub fn activate_semantic() {}\npub type AccessibilityAction = SemanticAction;\nfn old_scroll() { let _ = SemanticAction::LogicalScroll; }\n",
+            "pub struct WidgetSemanticProof;\npub fn activate_semantic() {}\npub type AccessibilityAction<'a> =\n    SemanticAction;\nfn old_scroll() { let _ = SemanticAction::LogicalScroll; }\n",
         )];
         let mut findings = Vec::new();
         audit_retired_m5_authorities(&production, &mut findings);
@@ -1016,20 +1028,22 @@ mod tests {
     }
 
     #[test]
-    fn retired_m5_pattern_scanner_ignores_comments_and_literals() {
+    fn retired_m5_pattern_scanner_ignores_comments_and_strings_but_preserves_lifetimes() {
         assert!(
-            !rust_code_without_comments_or_literals("// SemanticAction::LogicalScroll")
+            !rust_code_without_line_comments_or_strings("// SemanticAction::LogicalScroll")
                 .contains("SemanticAction::LogicalScroll")
         );
         assert!(
-            !rust_code_without_comments_or_literals(
+            !rust_code_without_line_comments_or_strings(
                 "let note = \"SemanticAction::LogicalScroll\";"
             )
             .contains("SemanticAction::LogicalScroll")
         );
         assert!(
-            rust_code_without_comments_or_literals("let action = SemanticAction::LogicalScroll;")
-                .contains("SemanticAction::LogicalScroll")
+            rust_code_without_line_comments_or_strings(
+                "pub type Alias<'a> = SemanticAction::LogicalScroll;"
+            )
+            .contains("SemanticAction::LogicalScroll")
         );
     }
 
