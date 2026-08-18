@@ -46,6 +46,10 @@ The accepted baseline deliberately does not already contain that protocol:
   cost;
 - semantic publication is already an independently typed sibling and must not
   be folded back into renderer or hit-test authority;
+- `SurfaceBuildContext` already owns explicit host-neutral inputs for one surface
+  publication (style tokens, root constraints, and measurement provider), making
+  it the natural future boundary for neutral raster scale rather than a renderer
+  setter or native host type;
 - `runenui_testing` retains only an ordinary immutable `SurfacePublication`, and
   the genuine downstream external-widget package directly implements the
   proof-level paint hook.
@@ -83,7 +87,7 @@ successful publication atomically aligns distinct immutable products:
 
 - `PaintPublication` — the renderer-facing immutable update/snapshot for one
   exact logical surface, containing its `PaintRevision`, optional base revision,
-  history-independent `PaintScene`, exact logical surface size, renderer scale,
+  history-independent `PaintScene`, exact logical surface size, `RasterScale`,
   and sound damage;
 - `HitTestScene` — input-facing shapes, transforms/clips, pointer policy,
   deterministic order, runtime-injected mounted targets, and its exact
@@ -130,14 +134,15 @@ revision, and carries full-surface damage. After that, runtime compares the exac
 renderer-relevant snapshot tuple:
 
 ```text
-(PaintScene content, logical surface size, raster scale)
+(PaintScene content, logical surface size, RasterScale)
 ```
 
-If that tuple is unchanged, a successful surface publication reuses the **exact
-same `PaintPublication` and `PaintRevision`**. Semantic-only, hit-only, focus-only,
-diagnostic-only, and other non-renderer changes therefore do not fabricate paint
-updates. They may still advance their own accepted authorities such as displayed
-hit generation where those contracts require it.
+If that tuple is unchanged, a successful surface publication reuses the same
+immutable `PaintPublication` value and `PaintRevision`; internal storage may be
+shared. Semantic-only, hit-only, focus-only, diagnostic-only, and other
+non-renderer changes therefore do not fabricate paint updates. They may still
+advance their own accepted authorities such as displayed hit generation where
+those contracts require it.
 
 If the renderer-relevant tuple changes, runtime allocates exactly one checked next
 `PaintRevision`, creates a new `PaintPublication`, and records the immediately
@@ -182,10 +187,11 @@ existing widget-owned contribution seam. M6 does not justify a broad
 `runenui_runtime` owns scene composition, mounted-target injection, layout-to-
 surface placement, deterministic global order, retained displayed scenes, dirty
 phase planning, publication transaction state, `PaintRevision` allocation,
-publication-relative renderer metadata, and immutable public snapshots. Widgets
-cannot author/forge `MountedNodeId`, `SurfaceId`, `SurfaceInputContext`,
-`PaintRevision`, paint base revisions, scene-order identity, live input
-publication generations, surface-publication extent, or damage history.
+validated `RasterScale`, publication-relative renderer metadata, and immutable
+public snapshots. Widgets cannot author/forge `MountedNodeId`, `SurfaceId`,
+`SurfaceInputContext`, `PaintRevision`, paint base revisions, scene-order
+identity, live input publication generations, surface-publication extent,
+raster-scale authority, or damage history.
 
 This follows the accepted M5 precedent: add focused production vocabulary at
 its ownership seam rather than split unrelated responsibilities.
@@ -207,7 +213,7 @@ finite **clip-to-surface affine transform**. This permits later ancestor clip
 chains without requiring all clips to share the item's local space. Paint and
 hit consumers evaluate only transforms contained in the immutable product.
 
-All scene geometry remains logical. Raster scale never alters this coordinate
+All scene geometry remains logical. `RasterScale` never alters this coordinate
 contract.
 
 ### Paint contributions are owner-local immutable fragments
@@ -216,7 +222,8 @@ The production paint hook replaces `WidgetPaintProof` with immutable
 `PaintContribution` evaluated from mounted widget state during paint work. Its
 read-only context contains the owner's final local logical size and resolved
 computed style. It receives no runtime arena, surface origin, semantic tree,
-backend/GPU/host object, resource cache, prior publication, or paint revision.
+backend/GPU/host object, resource cache, prior publication, paint revision, or
+raster-scale authority.
 
 A contribution is an ordered list of self-contained items. Each contributed
 item owns a primitive, owner-local transform, zero or more clips, opacity, and a
@@ -437,6 +444,25 @@ boundary. Missing, expired, or kind-mismatched refs are deterministic
 consumer/admission errors, never reinterpretation as another primitive or
 concrete widget kind.
 
+### Raster scale has one neutral input authority
+
+M6 introduces public runtime `RasterScale`, a validated finite strictly-positive
+logical-to-raster scale value. `RasterScale::ONE` is the deterministic/headless
+default. Invalid zero, negative, NaN, or infinite values are rejected by checked
+construction and never enter publication state.
+
+The existing public `SurfaceBuildContext` is the sole neutral M6 input boundary
+for raster scale. M6C extends it with a `RasterScale` value/default and exposes
+read-only access; the exact builder method name is API detail. The runtime copies
+that accepted value into `PaintPublication`. Widgets, paint contributions,
+`PaintScene`, and renderer consumers cannot mutate or override it.
+
+This is not premature native-host integration. M6 deterministic callers can
+publish the same surface at scale `1.0` and `2.0` through ordinary neutral
+surface-build input. M10 later reads native/window DPI or scale policy and supplies
+that result through the same `SurfaceBuildContext` boundary; native types never
+enter the M6 scene or contribution vocabulary.
+
 ### Paint publication metadata and damage
 
 Every `PaintPublication` is a complete renderer snapshot for one exact
@@ -450,13 +476,14 @@ layout reports or mounted storage to discover the target extent. Surface size is
 publication metadata because the same reusable scene content may be hosted by a
 different accepted logical extent.
 
-Raster scale is one validated positive finite value used only for renderer
-realization. All layout/paint/hit/pointer geometry stays logical. Headless default
-is `1.0`; production host ownership of scale changes belongs to M10.
+The publication also contains the exact accepted `RasterScale`. Scale is used
+only for renderer realization; all layout/paint/hit/pointer geometry stays
+logical. A scale change is renderer-relevant publication state but never changes
+logical coordinate meaning.
 
 Damage is a deterministic logical delta **from `base_revision` to the current
 `PaintRevision`**. The first paint publication has no base and full-surface
-damage. A logical surface-size or raster-scale change also requires full-surface
+damage. A logical surface-size or `RasterScale` change also requires full-surface
 damage. For other renderer-state changes, damage must never under-report changed
 renderer-relevant output; conservative full-surface damage is always permitted.
 A newly allocated paint revision cannot use empty damage unless the accepted
@@ -478,9 +505,9 @@ alternate scenes, silently lower primitives, or select a concrete renderer.
 
 `runenui_testing` remains convenience authority only. It retains the latest
 ordinary `SurfacePublication` and exposes/asserts public paint/hit products. It
-does not fabricate paint revisions/base revisions, scene IDs, mounted targets,
-input generations, regions, publication state, damage history, or a second hit
-algorithm.
+does not fabricate paint revisions/base revisions, raster scale, scene IDs,
+mounted targets, input generations, regions, publication state, damage history,
+or a second hit algorithm.
 
 The genuine downstream custom-widget package must migrate from
 `WidgetPaintProof` through public contribution APIs. M6 requires two independent
@@ -534,7 +561,7 @@ rectangle primitive/region composition, exact deterministic order, and the
 canonical retained hit-scene ring. Migrate the built-in/downstream vertical
 proof and remove `WidgetPaintProof`, duplicate private hit snapshots, and old hit
 authority where replacements become live. Identity transforms, no clips, opacity
-`1`, layer `0`, `Target`, raster scale `1`, and conservative full damage suffice
+`1`, layer `0`, `Target`, `RasterScale::ONE`, and conservative full damage suffice
 for this first kernel; M6C extends the same products rather than creating another
 path.
 
@@ -542,8 +569,9 @@ path.
 
 Complete transformed/rounded/clipped composition and hit semantics, immutable
 self-disambiguating resource references, exact paint revision/base consumer
-semantics, logical extent/scale metadata, sound incremental damage, `Block`
-policy, and consumer capability checking on the same M6B products.
+semantics, neutral `SurfaceBuildContext` raster-scale input, logical extent/scale
+metadata, sound incremental damage, `Block` policy, and consumer capability
+checking on the same M6B products.
 
 ### M6D — independent consumers, migration, and milestone closure
 
@@ -579,6 +607,11 @@ input-retention semantics.
 Rejected: `PaintScene` is reusable history-independent content. The versioned
 thing is the renderer-facing surface snapshot containing scene plus extent/scale
 and damage lineage, so revision belongs to `PaintPublication`.
+
+### Let a renderer or widget set raster scale
+Rejected: raster scale is a per-publication surface input, not widget paint state
+or renderer feedback. `SurfaceBuildContext` already owns the neutral input seam;
+M10 later supplies native scale through that same seam.
 
 ### Add an explicit pass-through hit policy
 Rejected: not contributing a region already provides exactly that targeting
@@ -639,8 +672,8 @@ Positive consequences:
   can safely use damage after contiguous updates or recover from missed updates
   by realizing the complete snapshot;
 - semantic/hit-only surface publications do not fabricate renderer updates;
-- renderer consumers receive an explicit logical canvas extent without reading
-  layout authority;
+- renderer consumers receive explicit logical canvas extent and validated scale
+  without reading layout authority or owning scale mutation;
 - accepted M4 displayed-input identity remains intact and independent;
 - runtime no longer needs two hit representations;
 - custom widgets gain explicit paint/hit contribution without registration;
@@ -655,6 +688,7 @@ Costs and constraints:
 - downstream widgets must adopt explicit hit participation/new paint contribution;
 - runtime gains one checked paint revision counter, consumed only by actual
   renderer-relevant snapshot changes;
+- runtime gains one validated neutral raster-scale value in surface build input;
 - hit invalidation gains one public bit and proof burden;
 - coordinate/order/transformed hit semantics require deterministic tests;
 - fixture resource resolvers are required until M8/M10 production producers;
