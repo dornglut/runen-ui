@@ -35,15 +35,16 @@ Its main public testing surface is `TestHarness<App>` plus explicit supporting v
 
 The testing crate is convenience authority only. It must not use doc-hidden runtime bridges, mutate mounted state, fabricate IDs or generations/sequences, seed runtime counters, replace publication snapshots, invoke callbacks directly, use wall-clock sleeps, provide a bare semantic-ID helper that guesses surface scope, expose a semantic-to-mounted routing shortcut, or recreate semantic `LogicalScroll` compatibility vocabulary.
 
-M5D is fully owner-accepted, reconciled, accepted-main verified, and closed. Its
-reviewed feature head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619`
-passed exact-head CI #1230 / `31962536977` and was guarded-squash-merged in PR
-#64 as `72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Its mandatory reconciliation
-was then owner-accepted and guarded-squash-merged in PR #65 as exact accepted
-main `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; accepted-main CI #1244 /
-`32108782685` passed at that squash. M5E #51 is the sole active M5 slice and owns
-integrated conformance, migration/current-document closure, and the final M5
-acceptance gate. M6 implementation remains blocked until M5E closes.
+M5 is complete through M5E. M5E's reviewed feature head
+`7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI #1294 /
+`32130312467` and was guarded-squash-merged in PR #67 as
+`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`; reviewed head and squash share
+exact tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`. Accepted-main CI #1296 /
+`32135074552` then validated that exact squash through read-only PR #68, which
+was closed unmerged. Final M5 authority reconciliation PR #69 records the five
+M5E rows as owner-accepted and completes current-contract closure. M6 is the
+next milestone after that reconciliation is accepted, merged, and exact-main
+validated; no M6 behavior is implied by the M5 testing surface.
 
 The maintained command inventory, CI relationship, audit details, and infrastructure-only waiver policy are documented in:
 
