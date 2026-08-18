@@ -35,16 +35,18 @@ Its main public testing surface is `TestHarness<App>` plus explicit supporting v
 
 The testing crate is convenience authority only. It must not use doc-hidden runtime bridges, mutate mounted state, fabricate IDs or generations/sequences, seed runtime counters, replace publication snapshots, invoke callbacks directly, use wall-clock sleeps, provide a bare semantic-ID helper that guesses surface scope, expose a semantic-to-mounted routing shortcut, or recreate semantic `LogicalScroll` compatibility vocabulary.
 
-M5 is complete through M5E. M5E's reviewed feature head
-`7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI #1294 /
-`32130312467` and was guarded-squash-merged in PR #67 as
-`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`; reviewed head and squash share
-exact tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`. Accepted-main CI #1296 /
-`32135074552` then validated that exact squash through read-only PR #68, which
-was closed unmerged. Final M5 authority reconciliation PR #69 records the five
-M5E rows as owner-accepted and completes current-contract closure. M6 is the
-next milestone after that reconciliation is accepted, merged, and exact-main
-validated; no M6 behavior is implied by the M5 testing surface.
+M5 is complete through M5E. M6A0 has accepted architecture/conformance authority
+but no M6 scene implementation. PR #73 froze accepted ADR 0007 and the 36-row
+M6 matrix at reviewed head `c0169ebea044a0009a334f3d5ecc13ff8d495885`;
+exact-head CI #1349 / `32181344340` passed, guarded squash
+`966778dd31e0f6b6df76ee4f6283a984fc724b36` has the identical reviewed tree
+`fe057a3fef9ea6de053ce86ce336212f0aa3a413`, and accepted-main CI #1351 /
+`32186597198` validated that exact squash through read-only PR #74. All 36 M6
+behavior rows remain `blocked`. The existing M5D harness therefore still exposes
+only the accepted M4/M5 proof products; M6 scene assertions/consumers become real
+only when their matrix rows are implemented. #59/M6A remains blocked until the
+bounded M6A0 current-contract reconciliation is itself accepted and
+accepted-main validated.
 
 The maintained command inventory, CI relationship, audit details, and infrastructure-only waiver policy are documented in:
 
@@ -52,6 +54,7 @@ The maintained command inventory, CI relationship, audit details, and infrastruc
 - [Work-tracking and evidence rules](docs/work-tracking.md)
 - [M4 conformance matrix](docs/architecture/m4-conformance-matrix.md)
 - [M5 conformance matrix](docs/architecture/m5-conformance-matrix.md)
+- [M6 conformance matrix](docs/architecture/m6-conformance-matrix.md)
 - [`runenui_testing` crate README](crates/runenui_testing/README.md)
 
 CI may invoke `cargo validate` through shared orchestration, but shared workflows do not own or recreate RunenUI validation semantics.
