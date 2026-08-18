@@ -23,8 +23,21 @@ Crate and subsystem boundaries, current proof behavior, target products, and acc
 - [M4 conformance matrix](docs/architecture/m4-conformance-matrix.md)
 - [M5 semantics and testing charter](docs/architecture/m5-semantics-and-testing-charter.md)
 - [M5 conformance matrix](docs/architecture/m5-conformance-matrix.md)
+- [ADR 0007 renderer-neutral paint/hit scene protocol](docs/adr/0007-renderer-neutral-paint-hit-scene-protocol.md)
+- [M6 conformance matrix](docs/architecture/m6-conformance-matrix.md)
 - [Architecture decision records](docs/adr/)
 
-M0–M5 are complete. M5E's reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI #1294 / `32130312467`, was repository-owner-authorized and guarded-squash-merged as `b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`, and shares exact tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c` with that squash. Accepted-main CI #1296 / `32135074552` then validated the exact squash through read-only PR #68, which was closed unmerged. The final M5 authority reconciliation records all five M5E rows as owner-accepted and establishes the exact accepted base from which M6 may begin. M6 owns the renderer-neutral paint/hit scene protocol and must first satisfy its roadmap architecture gate; issue #59 is M6-readiness work, not permission to bypass that gate.
+M0–M5 are complete. M6A0 architecture/conformance authority is also accepted,
+but no M6 scene behavior is implemented yet. Exact reviewed PR #73 head
+`c0169ebea044a0009a334f3d5ecc13ff8d495885` passed exact-head CI #1349 /
+`32181344340`, was repository-owner-authorized, and was guarded-squash-merged as
+`966778dd31e0f6b6df76ee4f6283a984fc724b36`. Reviewed and squash trees are
+identical at `fe057a3fef9ea6de053ce86ce336212f0aa3a413`; accepted-main CI #1351 /
+`32186597198` then validated the exact squash through read-only PR #74, which was
+closed unmerged. ADR 0007 and the 36-row M6 matrix are therefore accepted target
+architecture/conformance authority while all 36 behavior rows remain `blocked`.
+The bounded M6A0 current-contract reconciliation is the final
+pre-implementation gate; #59/M6A may begin only after that reconciliation is
+itself accepted, merged, tree-verified, and accepted-main validated.
 
 Current implementation maturity belongs in the [status map](docs/status-map.md). Delivery sequence belongs in the [roadmap](docs/roadmap.md). Live branch and issue state belongs in GitHub according to the [work-tracking contract](docs/work-tracking.md).

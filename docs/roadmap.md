@@ -19,7 +19,7 @@ Historical foundations—typed application flow, transient element descriptions,
 ## Non-negotiable sequencing
 
 - Do not add broad controls before M2–M5 establish extensibility, mounted identity, events, semantics, and public testing.
-- Do not implement renderer backends before M6 accepts the neutral paint and hit-test protocols.
+- Do not implement renderer backends before M6 implements and proves the accepted neutral paint and hit-test protocols.
 - Do not implement interaction-state styling before mounted hover, pressed, focus, and disabled state exist.
 - Do not implement editable text before the M4 event model, M5 semantics, and M8 text contracts are coherent.
 - Do not manufacture target crates without independent ownership or dependency pressure.
@@ -608,7 +608,7 @@ accepted and merged, and no transitional authority remains.
 
 ## M6 — Renderer-neutral paint and hit-test scene protocol
 
-**Status:** `queued`.
+**Status:** `active` at the accepted architecture/readiness boundary; all 36 M6 behavior rows remain `blocked`.
 
 **Goal:** Publish backend-neutral paint and hit-test products without widget semantics.
 
@@ -618,7 +618,7 @@ accepted and merged, and no transitional authority remains.
 
 **Explicit non-goals:** Concrete desktop/SDF backend, production text shaping, full layout/styling expansion, or semantic widget kinds in renderer input.
 
-**Dependencies:** Mounted generation identity; completed M5 semantic separation; **accepted render-protocol ADR before scene implementation**.
+**Dependencies:** Mounted generation identity and completed M5 semantic separation are satisfied. The render-protocol architecture dependency is satisfied by accepted [ADR 0007](adr/0007-renderer-neutral-paint-hit-scene-protocol.md) and the accepted [M6 conformance matrix](architecture/m6-conformance-matrix.md). Implementation remains gated on completion of the bounded post-M6A0 current-contract reconciliation.
 
 **Required proofs/tests:** Two independent deterministic consumers; custom backend proof renders without knowing `Button`; hit tests respect clips/transforms/visibility/order; scene snapshots are stable and generational targets reject stale input.
 
@@ -627,7 +627,9 @@ the renderer protocol; paint, hit, semantics, layout, and diagnostics are
 distinct authoritative products; no backend-specific vocabulary leaks into
 public scenes.
 
-**Pickup gate:** The first M6 work is a repository-first readiness/design slice from the exact accepted final-M5 reconciliation squash. It must freeze the renderer-neutral scene/publication ownership and accept the render-protocol ADR before scene implementation. Issue #59 is an input to that design for retained-publication persistence/cost; it is not standalone authorization to implement M6.
+**Accepted M6A0 gate:** PR #73 accepted ADR 0007 and the 36-row M6 matrix from exact reviewed head `c0169ebea044a0009a334f3d5ecc13ff8d495885`; exact-head CI #1349 / `32181344340` passed. Guarded squash `966778dd31e0f6b6df76ee4f6283a984fc724b36` has the identical reviewed tree `fe057a3fef9ea6de053ce86ce336212f0aa3a413`, and accepted-main CI #1351 / `32186597198` validated that exact squash through read-only PR #74. A0 accepts architecture/conformance only, not behavior.
+
+**Pickup gate:** The bounded M6A0 current-contract reconciliation is the final pre-implementation gate and must itself be owner-accepted, guarded-squash-merged, tree-verified, and accepted-main validated. Only then does issue #59 become the first M6A implementation slice from that exact accepted reconciliation squash. No #59/runtime implementation belongs in the reconciliation.
 
 **Unblocks:** M7 rendering integration and M10 backends.
 

@@ -19,14 +19,17 @@ M4 is complete and owner-accepted through M4D3. M5 is complete through M5E.
 M5A semantic contribution/independent identity, M5B semantic publication/
 incremental updates, M5C semantic action ingress/accessibility resolution, M5D
 public deterministic headless testing, and M5E integrated conformance/migration
-closure are owner-accepted. M5E exact reviewed feature head
-`7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI #1294 /
-`32130312467`, received explicit repository-owner merge authorization, and was
-guarded-squash-merged in [PR #67](https://github.com/dornglut/runen-ui/pull/67)
-as `b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`. Reviewed head and squash share
-exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`;
-accepted-main CI #1296 / `32135074552` validated that exact squash through
-read-only PR #68, which was closed unmerged.
+closure are owner-accepted. M6A0 architecture/conformance authority is also
+owner-accepted through PR #73, but it adds no current scene implementation or
+support.
+
+M6A0 exact reviewed head `c0169ebea044a0009a334f3d5ecc13ff8d495885`
+passed exact-head CI #1349 / `32181344340`, received explicit repository-owner
+merge authorization, and was guarded-squash-merged as
+`966778dd31e0f6b6df76ee4f6283a984fc724b36`. Reviewed and squash trees are
+identical at `fe057a3fef9ea6de053ce86ce336212f0aa3a413`; accepted-main CI #1351 /
+`32186597198` validated that exact squash through read-only PR #74, which was
+closed unmerged.
 
 M5D supplies the downstream public `runenui_testing` harness/query/time/
 inspection surface without exposing mounted semantic-owner routing identity,
@@ -37,12 +40,15 @@ neutral mapping review without introducing native accessibility or renderer
 scene behavior.
 
 Final M5 truth is `53 total / 53 owner-accepted / 0 blocked`, M4 truth is `237
-total / 237 owner-accepted`, and aggregate configured truth is `290 total / 290
-owner-accepted / 0 blocked`. M6 renderer-neutral paint/hit scenes remain
-unimplemented; its roadmap requires an accepted render-protocol ADR before scene
-implementation. Issue #59 is M6-readiness work and does not itself change current
-support. Exact branch, head, validation, and next-action state belongs in the
-[work-tracking system](work-tracking.md), GitHub issues, and pull requests.
+total / 237 owner-accepted`, and M6 truth is `36 total / 0 owner-accepted / 36
+blocked`. Aggregate configured M4+M5+M6 truth is `326 total / 290
+owner-accepted / 36 blocked`. Accepted ADR 0007 and the M6 matrix define the
+renderer-neutral paint/hit target, but M6 scene behavior remains unimplemented.
+The bounded M6A0 current-contract reconciliation is the final pre-implementation
+gate. After it is accepted, merged, tree-verified, and accepted-main validated,
+issue #59 becomes the first M6A implementation slice; it does not itself change
+current support. Exact branch, head, validation, and next-action state belongs in
+the [work-tracking system](work-tracking.md), GitHub issues, and pull requests.
 Historical acceptance evidence remains in the
 [public repository migration history](history/public-repository-migration.md).
 
@@ -191,17 +197,17 @@ Historical acceptance evidence remains in the
 | Capability | Current support | Current proof or API | Known limitation | Target milestone |
 |---|---|---|---|---|
 | Unified surface publication | `proof` | Fallible `SurfacePublication` is one staged admit/plan/final-preflight/commit transaction and carries renderer products plus mandatory independent semantic publication and semantic diagnostics; complete versus renderer-only equality/extraction is explicit; M5D retains one complete immutable publication for public inspection | One logical surface; no neutral paint scene; whole-`SurfaceCache` clone debt is tracked by #59 | M5B/M5D proof; M6/M10 later |
-| Publication failure/backpressure | `proof` | Recoverable stationary-rehit queue `Full` performs zero publication/cache/semantic/snapshot/trace/redraw/rehit commit and leaves redraw pending; redraw/hit-test/coordinate/semantic counter exhaustion is typed terminal authority with no wrap/saturation | Proof-level retained cache architecture is not yet M6's persistent scene design | M5B complete; M6 readiness #59 |
+| Publication failure/backpressure | `proof` | Recoverable stationary-rehit queue `Full` performs zero publication/cache/semantic/snapshot/trace/redraw/rehit commit and leaves redraw pending; redraw/hit-test/coordinate/semantic counter exhaustion is typed terminal authority with no wrap/saturation | Proof-level retained cache architecture is not yet M6's persistent scene design | M5B complete; M6A #59 after reconciliation |
 | Logical bounds inspection | `proof` | Renderer `SurfaceNode` rectangles plus independent semantic absolute logical bounds; M5D exposes both through read-only publication inspection | Bounds remain proof-level rectangles rather than a production layout/hit/paint scene | M5D proof; M6–M7 |
 | Rectangle hit testing | `proof` | Reverse frame order and M5D public point/context construction | No hit scene, stacking, clips, transforms, visibility, or pointer policy | M5D proof; M6 |
-| Renderer-neutral paint scene | `unsupported` | M2 deterministic per-widget paint/debug proof facts | Facts are not paint primitives, resources, clips, transforms, order, or damage | M6 |
-| Paint primitives/resources | `unsupported` | None | No shapes, strokes, glyph/image handles, clips, layers, or damage | M6 |
+| Renderer-neutral paint scene | `unsupported` | Accepted ADR 0007 and M6 matrix define the target; current implementation still exposes only M2 deterministic per-widget paint/debug proof facts | No `PaintScene`/`PaintPublication`, primitives/resources, clips, transforms, order, revisions, scale, or damage implementation exists yet | M6 |
+| Paint primitives/resources | `unsupported` | Accepted ADR 0007 defines the minimum target vocabulary | No current shapes, strokes, image/shaped-run resource refs, clips, layers, or damage API/behavior | M6 |
 | Surface/frame generation | `proof` | Fresh runtime-issued coordinate revision and displayed hit-test generation on every public publication; semantic revision is separately surface-scoped and advances only on adapter-visible semantic change | One logical surface; not a paint-scene generation or multi-window lifecycle | M4/M5B complete; M6/M10 later |
-| Retained surface-input snapshots | `proof` | Configurable nonzero bounded immutable hit-test snapshots, exact historical targeting, oldest-first retirement, and retired/missing/foreign/revision outcomes | Retains hit-test facts only, not production layout/paint scenes | M4 complete; M6 later |
+| Retained surface-input snapshots | `proof` | Configurable nonzero bounded immutable hit-test snapshots, exact historical targeting, oldest-first retirement, and retired/missing/foreign/revision outcomes | Retains proof-level hit facts only; accepted ADR 0007 requires a production `HitTestScene` without changing current behavior yet | M4 complete; M6 later |
 | Multi-surface publication | `unsupported` | None | No independent surface lifecycle or scale | M10 |
 | Debug/renderer semantic separation | `proof` | Renderer-facing `SurfaceFrame`, `SurfaceNode`, and debug output do not carry production semantic contribution; semantics are consumed from the sibling `SemanticPublication`, M5C action resolution remains private runtime authority, and M5D inspection consumes both products without joining them | No native accessibility adapter, paint-scene consumer, or renderer backend | M5B–M5D complete; M6/M10 later |
-| Deterministic paint-scene consumer | `planned` | None | Needs accepted paint/hit protocols | M6 |
-| Conventional renderer backend | `unsupported` | None | Protocol must stabilize first | M10 |
+| Deterministic paint-scene consumer | `planned` | Accepted ADR 0007 and the M6 matrix require two independent deterministic consumers | No M6 scene implementation exists yet | M6 |
+| Conventional renderer backend | `unsupported` | None | Protocol implementation must stabilize first | M10 |
 | Embedded/SDF renderer consumer | `deferred` | None | Follows neutral protocol and conventional proof | M10 or M12 |
 
 ## 10. Text
@@ -267,7 +273,7 @@ Historical acceptance evidence remains in the
 | Deterministic time/tasks | `proof` | M5D `ManualClock` advancement, future timer observation, finite settle, externally pending host work, and bounded self-requeue prove deterministic scheduler behavior without sleeping | No production animation system | M4/M5D complete |
 | Snapshot/golden/replay tests | `partial` | Deterministic JSONL snapshots are byte-stable; M4D3 round-trips real exported JSONL and reconstructs Counter causality; M5B adds deterministic semantic snapshots/update chains; M5C proves semantic trace export/replay remains inert; M5D exposes exact snapshot queries and trace export/replay through the public harness | No snapshot-golden framework or application-specific expectation engine | M4/M5B–M5D complete |
 | Property/fuzz testing | `unsupported` | None | Production hardening work | M11 |
-| Benchmarks and budgets | `unsupported` | None | No performance gates; #59 owns retained-publication clone investigation | M6 readiness; M11 |
+| Benchmarks and budgets | `unsupported` | None | No performance gates; #59 owns retained-publication clone investigation | M6A #59; M11 |
 | Cross-platform CI | `unsupported` | Ubuntu-only CI | Windows/macOS jobs absent | M11 |
 | Controller-only application operation | `unsupported` | None | No raw controller/device translation, applicable control conformance, or game-oriented reference proof | M11 |
 
