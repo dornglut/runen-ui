@@ -216,9 +216,13 @@ existing command FIFO/routed/default/action/update/trace path without exposing
 mounted identity or creating a second semantic dispatcher. M5D adds a separate
 downstream testing crate that composes the same public runtime, publication,
 input, clock, semantic, trace, and replay APIs without acquiring live runtime
-authority. M5E integrated conformance and migration closure is accepted. M6 now
-owns the next architecture boundary: renderer-neutral paint/hit scene products,
-with an accepted render-protocol ADR required before implementation.
+authority. Tree changes rebuild topology-dependent renderer facts from one
+current mounted preorder snapshot. Compatible style and layout changes retain
+topology and read current mounted style/layout state; layout movement refreshes
+semantic bounds without rerunning unchanged semantic contribution. M5E integrated
+conformance and migration closure is accepted. M6 now owns the next architecture
+boundary: renderer-neutral paint/hit scene products, with an accepted
+render-protocol ADR required before implementation.
 
 ## Canonical project documents
 
