@@ -6,21 +6,24 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
-Milestone status: M0 through M5 are complete and owner-accepted. M5E's final
-reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790` passed
-exact-head CI #1294 / `32130312467`, received explicit repository-owner merge
-authorization, and was guarded-squash-merged in PR #67 as
-`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`. Reviewed head and squash share
-exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`;
-accepted-main CI #1296 / `32135074552` validated that exact squash through
-read-only PR #68, which was closed unmerged. Final authority reconciliation PR
-#69 records all five M5E rows as owner-accepted and closes M5 current-contract
-authority. M6 renderer-neutral paint/hit scene design is the next milestone; it
-must satisfy its accepted render-protocol architecture gate before scene
-implementation, and issue #59 is M6-readiness work rather than permission to
-bypass that gate. Current maturity, durable sequence, work ownership, and
-historical acceptance evidence live in the [status map](docs/status-map.md),
-[roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and
+Milestone status: M0 through M5 are complete and owner-accepted. M6A0
+architecture/conformance authority is also accepted, but no M6 scene behavior is
+implemented. Exact reviewed PR #73 head
+`c0169ebea044a0009a334f3d5ecc13ff8d495885` passed exact-head CI #1349 /
+`32181344340`, was explicitly repository-owner-authorized, and was guarded-
+squash-merged as `966778dd31e0f6b6df76ee4f6283a984fc724b36`.
+Reviewed and squash trees are identical at
+`fe057a3fef9ea6de053ce86ce336212f0aa3a413`; accepted-main CI #1351 /
+`32186597198` validated that exact squash through read-only PR #74, which was
+closed unmerged. Accepted ADR 0007 and the 36-row M6 matrix now freeze the
+renderer-neutral paint/hit scene target; all 36 M6 behavior rows remain
+`blocked`. The bounded M6A0 current-contract reconciliation is the final
+pre-implementation gate. Only after that reconciliation is itself accepted,
+merged, tree-verified, and accepted-main validated may issue #59 become M6A
+implementation pickup authority. Current maturity, durable sequence, work
+ownership, and historical acceptance evidence live in the
+[status map](docs/status-map.md), [roadmap](docs/roadmap.md),
+[work-tracking contract](docs/work-tracking.md), and
 [public repository migration history](docs/history/public-repository-migration.md).
 
 ## What exists today
@@ -153,8 +156,9 @@ The active workspace proves:
   warmed structural cache changes; semantic identities remain a separate public
   semantic product rather than a renderer-product projection;
 - a proof-level retained surface cache with topology/style/layout/hit/paint
-  phase facts and independently tested execution reports; #59 owns removal of
-  whole-cache deep cloning before or during M6 without weakening M5B atomicity;
+  phase facts and independently tested execution reports; #59 owns the first M6A
+  persistent retained-publication implementation after the M6A0 reconciliation,
+  without weakening M5B atomicity;
 - a Counter application plus genuine downstream widgets exercising the current
   public crates through semantic publication/action and the M5D testing harness,
   including pointer, keyboard/text/composition, controller focus/restoration,
@@ -221,8 +225,10 @@ current mounted preorder snapshot. Compatible style and layout changes retain
 topology and read current mounted style/layout state; layout movement refreshes
 semantic bounds without rerunning unchanged semantic contribution. M5E integrated
 conformance and migration closure is accepted. M6 now owns the next architecture
-boundary: renderer-neutral paint/hit scene products, with an accepted
-render-protocol ADR required before implementation.
+boundary: renderer-neutral paint/hit scene products. ADR 0007 and the M6
+conformance matrix are accepted target authority; implementation remains blocked
+until the bounded M6A0 current-contract reconciliation is accepted and
+accepted-main validated.
 
 ## Canonical project documents
 
@@ -235,6 +241,8 @@ render-protocol ADR required before implementation.
 - [Detailed architecture](docs/architecture.md)
 - [M5 semantics and testing charter](docs/architecture/m5-semantics-and-testing-charter.md)
 - [M5 conformance matrix](docs/architecture/m5-conformance-matrix.md)
+- [ADR 0007 renderer-neutral paint/hit scene protocol](docs/adr/0007-renderer-neutral-paint-hit-scene-protocol.md)
+- [M6 conformance matrix](docs/architecture/m6-conformance-matrix.md)
 - [Public repository migration history](docs/history/public-repository-migration.md)
 - [Documentation retention and disposition](docs/documentation-retention-plan.md)
 - [Validation details](docs/tooling/validation.md)
