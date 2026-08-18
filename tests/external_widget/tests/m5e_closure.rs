@@ -46,7 +46,7 @@ fn trace_position(kinds: &[&str], expected: &str) -> usize {
     kinds
         .iter()
         .position(|kind| *kind == expected)
-        .unwrap_or_else(|| panic!("missing canonical trace record {expected}"))
+        .unwrap_or_else(|| unreachable!("missing canonical trace record {expected}"))
 }
 
 #[test]
