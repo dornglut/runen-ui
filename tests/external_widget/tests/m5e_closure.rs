@@ -66,16 +66,26 @@ fn mapped_downstream_widget_preserves_semantics_action_runtime_and_trace_authori
         .with_supported_action(SemanticAction::Activate);
     let target = harness
         .unique_semantic_target(&pulse)
-        .unwrap_or_else(|error| unreachable!("mapped downstream semantic target is unique: {error:?}"));
+        .unwrap_or_else(|error| {
+            unreachable!("mapped downstream semantic target is unique: {error:?}")
+        });
 
     harness
         .submit_semantic_action(&target, SemanticAction::Activate)
-        .unwrap_or_else(|error| unreachable!("mapped downstream semantic action is accepted: {error:?}"));
+        .unwrap_or_else(|error| {
+            unreachable!("mapped downstream semantic action is accepted: {error:?}")
+        });
     assert_eq!(
         harness.run_until_idle(settle_budget()).outcome(),
         SettleOutcome::Idle
     );
-    assert_eq!(harness.state(), &MappedState { pulses: 1, resets: 0 });
+    assert_eq!(
+        harness.state(),
+        &MappedState {
+            pulses: 1,
+            resets: 0
+        }
+    );
 
     assert!(harness.publish().is_ok());
     assert!(matches!(
