@@ -113,7 +113,7 @@ export, or replay paths.
 
 ## M5 contract terms
 
-These terms are fixed by the accepted [M5 semantics and testing charter](architecture/m5-semantics-and-testing-charter.md) and [M5 conformance matrix](architecture/m5-conformance-matrix.md). M5A–M5D are owner-accepted and reconciled; M5E is the active integration/migration/closure slice.
+These terms are fixed by the accepted [M5 semantics and testing charter](architecture/m5-semantics-and-testing-charter.md) and [M5 conformance matrix](architecture/m5-conformance-matrix.md). M5 is complete and owner-accepted through M5E; these terms remain the accepted semantics/testing boundary for successor milestones.
 
 | Term | Meaning |
 |---|---|
