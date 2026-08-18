@@ -293,7 +293,8 @@ M6's minimum primitive vocabulary is:
 - filled logical rectangle;
 - stroked logical rectangle with finite non-negative logical width;
 - image resource reference in a logical rectangle;
-- shaped-text-run resource reference at logical placement.
+- shaped-text-run resource reference at logical placement with an ordinary
+  literal core `Color` foreground.
 
 Production shaping and image decoding are not primitive semantics. Text/image
 primitives reference resources supplied by another owner.
@@ -307,12 +308,18 @@ vocabulary must name such behavior explicitly rather than making it a renderer
 default.
 
 A shaped-text-run primitive maps the resource's own logical `(0, 0)` origin to
-its finite authored logical placement point. Glyph positions and other logical
+its finite authored logical placement point. Glyph positions and coverage
 geometry already contained in that shaped resource remain relative to that
-origin; the primitive performs no hidden baseline inference, fit, scaling,
-reshaping, line breaking, or reflow. Item transforms may still transform the
-result under the ordinary scene transform contract. Production shaping and the
-contents/lifetime of shaped-run resources remain M8/provider work.
+origin. The primitive's literal `Color` is the run's scene-owned monochrome
+foreground and is independent of shaped-resource identity, so changing only
+resolved foreground color changes paint scene content without requiring a new
+shaped-run `ResourceRef`. The primitive performs no hidden baseline inference,
+fit, scaling, reshaping, line breaking, or reflow. Item transforms may still
+transform the result under the ordinary scene transform contract. Production
+shaping and the contents/lifetime of shaped-run resources remain M8/provider
+work. Intrinsic multi-color glyph payloads are not part of the minimum M6
+shaped-run contract and require a later explicit resource/primitive extension
+rather than silently changing foreground semantics.
 
 All transforms must be finite. Opacity must be finite and in closed `[0, 1]`;
 checked construction rejects values outside the contract rather than clamping or
@@ -320,22 +327,24 @@ silently normalizing them. Layer values are ordering facts only, never identity.
 
 ### Literal color, opacity, and basic rectangle stroke semantics are exact
 
-M6 fill/stroke literal colors reuse the existing core `Color`; no duplicate scene
-color type is introduced for the same sRGB8 case. In renderer-facing paint, its
-red/green/blue bytes are **unpremultiplied sRGB-encoded 8-bit channels** and its
-alpha byte is **linear coverage** in `[0, 255]`. Consumers normalize alpha to
-`[0, 1]`, decode RGB to linear-light sRGB for compositing, may premultiply
-internally, and composite scene items with ordinary source-over semantics in the
-accepted scene order. The item's validated opacity multiplies source alpha (and
-therefore premultiplied source color) before source-over. M6 defines no alternate
-blend modes.
+M6 fill, stroke, and shaped-text-run literal colors reuse the existing core
+`Color`; no duplicate scene color type is introduced for the same sRGB8 case. In
+renderer-facing paint, its red/green/blue bytes are **unpremultiplied sRGB-encoded
+8-bit channels** and its alpha byte is **linear coverage** in `[0, 255]`.
+Consumers normalize alpha to `[0, 1]`, decode RGB to linear-light sRGB for
+compositing, may premultiply internally, and composite scene items with ordinary
+source-over semantics in the accepted scene order. The item's validated opacity
+multiplies source alpha (and therefore premultiplied source color) before
+source-over. M6 defines no alternate blend modes.
 
 This color rule applies to literal scene colors. Resource payload color metadata
-remains owned by the resource/provider contract; a consumer cannot reinterpret a
-literal `Color` according to backend defaults. Physical display color management,
-raster sampling, and anti-aliasing implementation are backend concerns and are
-not pixel-exact M6 scene semantics, but they must not change the scene's literal
-sRGB color meaning or source-over ordering.
+remains owned by the resource/provider contract for resource kinds that define
+such metadata; it cannot override the literal foreground of the minimum M6
+monochrome shaped-run primitive. A consumer cannot reinterpret a literal `Color`
+according to backend defaults. Physical display color management, raster
+sampling, and anti-aliasing implementation are backend concerns and are not
+pixel-exact M6 scene semantics, but they must not change the scene's literal sRGB
+color meaning or source-over ordering.
 
 A filled rectangle with zero logical width or height produces no paint coverage.
 A stroked logical rectangle's width is measured in the primitive's local logical
@@ -611,6 +620,13 @@ content for renderer comparison purposes; replacing that content requires a new
 `ResourceRef` value. Backend realization/cache objects may of course change
 without changing the logical reference.
 
+For the minimum M6 shaped-text-run resource kind, that immutable logical content
+is the shaped glyph/coverage geometry and its non-paint metadata. The primitive's
+literal foreground `Color` is deliberately **not** part of the shaped resource
+identity. A resolved foreground-only style change therefore reuses the same
+shaped `ResourceRef` and changes ordinary `PaintScene` content instead of
+requiring reshaping or provider mutation.
+
 Consumers receive the **whole `ResourceRef`** and resolve it through one neutral
 resolver boundary; they do not split a local key from the value and guess/select
 a provider. The resolver/provider owns bytes and realization lifetime. M6 does
@@ -759,11 +775,11 @@ creating another path.
 ### M6C — transforms, clips, resources, metadata, damage, and capabilities
 
 Complete transformed/rounded/intersection-clipped composition and hit semantics,
-exact image/shaped-run logical placement, immutable self-disambiguating resource
-references, exact paint revision/base consumer semantics, neutral
-`SurfaceBuildContext` raster-scale input, logical extent/scale metadata, sound
-incremental damage, `Block` policy, and consumer capability checking on the same
-M6B products.
+exact image/shaped-run logical placement and shaped-run scene-owned literal
+foreground color, immutable self-disambiguating resource references, exact paint
+revision/base consumer semantics, neutral `SurfaceBuildContext` raster-scale
+input, logical extent/scale metadata, sound incremental damage, `Block` policy,
+and consumer capability checking on the same M6B products.
 
 ### M6D — independent consumers, migration, and milestone closure
 
@@ -851,6 +867,14 @@ named destination rectangle; shaped runs translate their own local origin to the
 named logical placement. Decode, shaping, raster sampling, and realization remain
 provider/backend work.
 
+### Put resolved foreground color into shaped-resource identity
+Rejected: resolved foreground is already a paint-relevant style fact and the
+paint contribution receives resolved style but no resource/provider mutation
+authority. Encoding foreground into shaped-resource identity would force a
+paint-only style change to mint a new shaping resource or couple the shaping
+provider to M7 paint style. The minimum M6 shaped-run primitive therefore owns an
+ordinary literal `Color` foreground independently from reusable shaped geometry.
+
 ### Leave literal color encoding or stroke alignment backend-defined
 Rejected: two independent renderer consumers could otherwise interpret the same
 scene differently. M6 fixes literal `Color` as unpremultiplied sRGB8 plus linear
@@ -903,9 +927,11 @@ Positive consequences:
 - renderer/hit consumers receive explicit products rather than widget/debug
   proofs;
 - scene coordinates/order are self-contained and deterministic;
-- literal color/compositing, exact rectangle stroke geometry, paint clip
-  intersection, resource placement, and rounded hit/clip geometry have one
-  cross-consumer interpretation;
+- literal fill/stroke/shaped-run color/compositing, exact rectangle stroke
+  geometry, paint clip intersection, resource placement, and rounded hit/clip
+  geometry have one cross-consumer interpretation;
+- shaped glyph geometry remains reusable across resolved foreground-only paint
+  changes instead of making shaping/resource identity style-owned;
 - point-hit participation, exact historical mounted-target membership, and
   directional-focus geometry remain distinct facts without duplicate live
   authorities;
@@ -937,9 +963,10 @@ Costs and constraints:
 - runtime focus selection must read retained layout geometry after the old mixed
   snapshot is removed;
 - hit invalidation gains one public bit and proof burden;
-- color conversion/compositing, rectangle-stroke geometry, clip intersection,
-  resource placement, rounded-radius normalization, coordinate/order, and
-  transformed hit semantics require deterministic tests;
+- color conversion/compositing, shaped-run foreground independence,
+  rectangle-stroke geometry, clip intersection, resource placement,
+  rounded-radius normalization, coordinate/order, and transformed hit semantics
+  require deterministic tests;
 - fixture resource resolvers are required until M8/M10 production producers;
 - retained immutable products must preserve simple staged atomicity.
 
