@@ -190,21 +190,26 @@ input snapshots and may advance on successful surface publications even when
 paint is unchanged. `PaintRevision` identifies renderer-relevant snapshot change
 only. Neither substitutes for the other.
 
-### Core owns contribution vocabulary; runtime owns composed scenes
+### Core owns neutral contribution/resource protocol; runtime owns composed scenes
 
 The dependency direction remains `runenui_runtime -> runenui_core`.
 
-`runenui_core` owns public host- and renderer-neutral contribution vocabulary:
-focused paint contribution types, focused hit contribution types, and the
-existing widget-owned contribution seam. M6 does not justify a broad
-`Element`/`Widget` source reorganization or a registry of concrete controls.
+`runenui_core` owns public host- and renderer-neutral contribution/resource
+consumer vocabulary: focused paint contribution types, focused hit contribution
+types, `ResourceRef`/resource-kind values, the small read-only neutral
+resource-resolver consumer protocol, and the existing widget-owned contribution
+seam. Core owning the protocol does **not** make core a resource store, provider
+registry, decoder, shaping service, or renderer cache. M6 does not justify a
+broad `Element`/`Widget` source reorganization or a registry of concrete controls.
 
 `runenui_runtime` owns scene composition, mounted-region target injection, exact
 displayed-generation mounted-target membership, layout-to-surface placement,
 deterministic global order, retained displayed scenes, dirty phase planning,
 publication transaction state, `PaintRevision` allocation, validated
 `RasterScale`, publication-relative renderer metadata, and immutable public
-snapshots. Widgets cannot author/forge `MountedNodeId`, `SurfaceId`,
+snapshots. Runtime carries `ResourceRef` values without registering providers,
+resolving logical payload bytes, decoding/shaping them, or owning backend
+realization caches. Widgets cannot author/forge `MountedNodeId`, `SurfaceId`,
 `SurfaceInputContext`, displayed-snapshot membership, `PaintRevision`, paint base
 revisions, scene-order identity, live input publication generations,
 surface-publication extent, raster-scale authority, or damage history.
@@ -617,12 +622,13 @@ must not be recreated as a second focus cache merely to remove `HitTestSnapshot`
 The retained displayed-input phase similarly owns both its region storage and
 exact generation membership; no second membership cache is introduced.
 
-### Resource references are logical, self-disambiguating, live-domain-stable values
+### Resource references and resolver ownership are explicit
 
 M6 resource references carry an explicit neutral kind, such as image or shaped
-text run, plus one opaque provider-issued identity value. That opaque value
-includes the issuing namespace as part of its equality/identity contract, so two
-providers issuing the same local key do not collide.
+text run, plus one opaque identity value whose equality includes the issuing
+resolver-domain/provider namespace. Resolver-domain/provider implementations are
+responsible for namespace issuance such that concurrently live namespaces do not
+collide; consumers never reconstruct or guess that namespace from a local key.
 
 A reference is not resource bytes, a provider object, GPU handle, font object,
 native image, mounted/semantic identity, or scene-item identity. It is not a
@@ -643,21 +649,32 @@ identity. A resolved foreground-only style change therefore reuses the same
 shaped `ResourceRef` and changes ordinary `PaintScene` content instead of
 requiring reshaping or provider mutation.
 
-Consumers receive the **whole `ResourceRef`** and resolve it through one neutral
-live resolver boundary; they do not split a local key from the value and
-guess/select a provider. The resolver/provider owns bytes and backend realization
-lifetime. M6 does not standardize storage layout, decoding, shaping, upload, or
-backend realization caches, but it does standardize the logical identity
-lifetime needed by complete snapshots: a ref does not silently retire while its
-issuing resolver/runtime domain remains live. A later explicit lease/retirement
-protocol may extend that rule; silent live-domain expiry is not M6 behavior.
+The resolver **instance/domain is external to `runenui_runtime` publication
+state**. Application/provider/testing/backend glue supplies a matching
+implementation of the core-owned read-only neutral resolver protocol alongside a
+`PaintPublication` when a consumer needs resource payloads. `PaintPublication`
+and `PaintScene` contain refs only; they do not retain provider objects, resolver
+instances, byte stores, callbacks, or mutable cache authority. Runtime does not
+invoke the resolver while composing/committing scenes and therefore cannot make
+resource I/O or provider failure part of the surface-publication transaction.
 
-Deterministic M6 proofs may use fixture resolvers/resources. M8/M10 later provide
-production text/resource producers and realization behind this same reference
-boundary. Unknown/foreign-domain or kind-mismatched refs are deterministic
-consumer/admission errors, never reinterpretation as another primitive or
-concrete widget kind. `Expired` is not a valid state for a ref issued by the
-matching still-live M6 resolver domain.
+Consumers pass the **whole `ResourceRef`** to that one resolver boundary. A
+resolver may internally route multiple provider namespaces, but the consumer does
+not split a local key and choose a provider itself. The resolver/provider owns
+logical payload storage or reconstruction and any backend realization lifetime.
+M6 does not standardize storage layout, decoding, shaping, upload, or backend
+realization caches; it standardizes only the neutral lookup result contract and
+the logical identity lifetime needed by complete snapshots. A later explicit
+lease/retirement protocol may extend that rule; silent live-domain expiry is not
+M6 behavior.
+
+Deterministic M6 proofs use fixture resolver/provider implementations of this same
+public boundary. M8/M10 later provide production text/image resource producers
+and backend realization behind the same contract rather than adding a second
+resolver path. Unknown/foreign-domain or kind-mismatched refs are deterministic
+resolver/consumer errors, never reinterpretation as another primitive or concrete
+widget kind. `Expired` is not a valid state for a ref issued by the matching
+still-live M6 resolver domain.
 
 ### Raster scale has one neutral input authority
 
@@ -722,12 +739,15 @@ alternate scenes, silently lower primitives, or select a concrete renderer.
 ordinary `SurfacePublication` and exposes/asserts public paint/hit products. It
 does not fabricate paint revisions/base revisions, raster scale, scene IDs,
 mounted targets, input generations, regions, snapshot membership, publication
-state, damage history, or a second point/resolved-target algorithm.
+state, damage history, resource providers/resolvers, or a second
+point/resolved-target algorithm.
 
 The genuine downstream custom-widget package must migrate from
 `WidgetPaintProof` through public contribution APIs. M6 requires two independent
 deterministic scene consumers; at least one is a genuine external/custom
-renderer consumer with no concrete widget-kind knowledge.
+renderer consumer with no concrete widget-kind knowledge. Resource-bearing
+consumer proofs receive the same ordinary neutral resolver boundary supplied by
+the test/application layer, not a private runtime bridge.
 
 ### Clean pre-1.0 migration
 
@@ -798,10 +818,10 @@ creating another path.
 Complete transformed/rounded/intersection-clipped composition and hit semantics,
 exact image/shaped-run logical placement and shaped-run scene-owned literal
 foreground color, immutable self-disambiguating live-domain-stable resource
-references, exact paint revision/base consumer semantics, neutral
-`SurfaceBuildContext` raster-scale input, logical extent/scale metadata, sound
-incremental damage, `Block` policy, and consumer capability checking on the same
-M6B products.
+references plus the core-owned read-only neutral resolver protocol, exact paint
+revision/base consumer semantics, neutral `SurfaceBuildContext` raster-scale
+input, logical extent/scale metadata, sound incremental damage, `Block` policy,
+and consumer capability checking on the same M6B products.
 
 ### M6D — independent consumers, migration, and milestone closure
 
@@ -944,6 +964,20 @@ resolver/runtime-domain lifetime; only disposable backend realizations may be
 evicted. Any future bounded retirement/lease protocol requires an explicit
 extension with its own lifetime/consumer rules.
 
+### Put provider registration, payload storage, or resolver instances in runtime publication authority
+Rejected: runtime needs only stable logical refs to publish deterministic scene
+content. Making it own provider registration/bytes/resolver instances would add a
+resource subsystem/cache authority unrelated to surface publication and couple
+provider failure/I/O to the M5 transaction. Core owns only the neutral read-only
+resolver protocol; external provider/application layers own instances and logical
+payload lifetime.
+
+### Put a mutable resolver/provider object inside `PaintPublication`
+Rejected: the publication is an immutable logical snapshot and should stay
+cloneable/inspectable without transferring provider mutation authority. Consumers
+receive a matching resolver as a separate read-only dependency when realizing
+resource-bearing primitives.
+
 ### Add a giant renderer/widget trait or split the whole widget module first
 Rejected: #10 remains a broad non-blocking concentration audit; M6 has focused
 paint/hit seams.
@@ -982,6 +1016,8 @@ Positive consequences:
 - complete paint snapshots remain realizable after backend-cache/device loss
   because logical resource refs cannot silently expire inside the live resolver
   domain;
+- resource-bearing consumers use one public neutral resolver contract without
+  turning runtime/core into resource stores or provider registries;
 - semantic/hit-only surface publications do not fabricate renderer updates;
 - renderer consumers receive explicit logical canvas extent and validated scale
   without reading layout authority or owning scale mutation;
