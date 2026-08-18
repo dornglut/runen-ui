@@ -169,7 +169,7 @@ repeated fallback scans.
 
 The repository owner explicitly accepted exact final reviewed head
 `3b9db8b37098786cc0d53d38ae5d597c3460c38b`. Exact-head CI #1082 /
-`31847771313` passed. PR #58 was guarded-squash-merged pinned to that head as
+`31847771313` passed. PR #58 was guarded-squash-merged pinned to the accepted head as
 `43d23aefb81757a516ae569b3e86b9e0f2c71e23`. Reviewed head and squash share
 exact tree `1708d2536c6f1d202ac58dd7cb5f3cc97a438517`, proving exact repository
 content identity.
@@ -210,8 +210,8 @@ The mandatory M5C authority/current-contract reconciliation was then explicitly
 owner-accepted at exact reviewed head
 `fbd0bdf44bddd660e06b4642a56f7a1d64bccab2`. Exact-head CI #1179 /
 `31914448654` passed. PR #63 was guarded-squash-merged as
-`b2064f24e778bd69e2876ec09a7431d612682304`; reviewed reconciliation head and
-squash share exact tree `82625aedbdc03a5754949cffee51025e99cd6949`. Accepted-main push CI
+`b2064f24e778bd69e2876ec09a7431d612682304`; reviewed head and squash share
+exact tree `82625aedbdc03a5754949cffee51025e99cd6949`. Accepted-main push CI
 #1180 / `31938332306` passed at that exact squash. M5C is therefore fully
 accepted, reconciled, accepted-main verified, and #49 is closed.
 
@@ -223,7 +223,7 @@ passed canonical exact-head CI #1230 / `31962536977`. The final COMMENT review
 found no feature blocker, and the repository owner explicitly accepted that
 exact head.
 
-PR #64 was guarded-squash-merged pinned to the accepted head as
+PR #64 was guarded-squash-merged pinned to that accepted head as
 `72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
 exact complete repository tree `bdbf19f5c2197490d6b922fb792791b205f40370`.
 Accepted-main push CI #1231 / `31967898198` passed on the exact squash.
@@ -243,9 +243,9 @@ M5D's mandatory authority/current-contract reconciliation was then explicitly
 owner-accepted at exact reviewed head
 `522b2770a2e6763e54e9eb6237fefc83e88d8cf9`. Exact-head CI #1242 /
 `31969642341` passed. PR #65 was guarded-squash-merged as
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; reviewed reconciliation head and
-squash share exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`. Accepted-main CI #1244 /
-`32108782685` passed at that squash. M5D is therefore fully accepted,
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; reviewed head and squash share
+exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`. Accepted-main CI #1244 /
+`32108782685` passed at that exact squash. M5D is therefore fully accepted,
 reconciled, accepted-main verified, and #50 is closed.
 
 M5E #51 was implemented/proved in PR #67 from exact accepted M5D
