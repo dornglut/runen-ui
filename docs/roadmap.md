@@ -558,7 +558,7 @@ M4 conformance, repository truth audit, `cargo validate`, exact-head CI, owner
 review, and merge.
 
 **Completion record:** The accepted feature head
-`b5f72ccaa89a9fb54d64ae64a346525d4e3c9c155` passed canonical exact-head CI run
+`b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d` passed canonical exact-head CI run
 `31398930987` / #765, including exact checkout-revision proof and the stable plus
 Rust 1.93.0 repository validation authority, and passed the final critical cold
 review. PR #43 was guarded-squash-merged as
