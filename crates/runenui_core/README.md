@@ -2,63 +2,34 @@
 
 > **Category: Current contract**
 
-`runenui_core` is the host- and renderer-neutral authored-data crate in the
-current RunenUI headless proof.
+`runenui_core` owns RunenUI's host-neutral authored values and public protocol vocabulary. It contains no live mounted runtime, native host, renderer backend, or platform accessibility adapter.
 
-The application-work protocol implemented here is the M4B surface currently in
-review; routed interaction remains blocked in M4C.
+## Current ownership
 
-It owns validated logical lengths, authored IDs/keys, typed token references and
-non-overwriting token definitions, style intent/resolution, and the open
-transient `View`/`Element`/`Widget` architecture. `text`, `button`, `row`, and
-`column` return typed views/widgets using the same protocol as downstream
-implementations. `View` erases one value, iterator/collection `Views` scales
-homogeneous children, and `children!` collects any number of heterogeneous
-children.
+Core owns:
 
-Dynamic identifier and float constructors are fallible. Identifier semantics are
-Unicode text-based regardless of allocation-free static or owned storage; literal
-macros enforce the same grammar at compile time. Builder identifier convenience
-records invalid authoring diagnostics rather than storing invalid identity. Token
-families are non-exhaustive for future style evolution. The runtime diagnoses
-duplicate tree IDs and sibling keys. The old
-`Px`/`Length` split, unused length-token family, generic no-op element setters,
-argument-builder duplicates, and tuple arity implementations are gone.
+- `UiApp`, `HostProtocol`, `NoHostProtocol`, ordered effects, subscriptions, task/timer/host-request descriptions, and validated `WorkKey` values;
+- validated logical geometry, authored IDs/keys, typed token/style values, transient `View`/`Element` authoring, typed built-in views, and the open state-aware `Widget` / `ChildLayoutWidget` contracts;
+- lifecycle, event, activation, invalidation, focusability, pointer/input, semantic-command, and application-work protocol values consumed by runtime;
+- opaque runtime-issued protocol identity types including `MountedNodeId`, `SemanticNodeId`, `SurfaceId`, `SurfaceInputContext`, `MonotonicInstant`, and `WorkSequence`; ordinary application code cannot construct a live identity or extract its private namespace/slot/generation authority;
+- canonical M5 semantic authoring vocabulary: `SemanticKey`, `SemanticRole`, values/text/state, `SemanticAction`, relationships, bounds, `SemanticItem`, `SemanticNodeContribution`, `SemanticContribution`, validation/error/context, and read-only `SemanticActionTarget` metadata.
 
-`ElementKind` and the old built-in element views are removed. `WidgetTypeId`
-wraps process-local Rust type identity, private safe erasure preserves
-state-aware capabilities, and `map_action` recursively maps typed component
-actions without changing widget or state identity. Public built-in authored views
-convert into private behavior-only widget payloads. `ChildLayoutWidget`,
-`ChildLayout`, and canonical `Container<Action>`/`container` authoring give
-downstream and built-in child-layout widgets the same atomic ownership and gap
-path. Every implementation declares `State` and `create_state`;
-mount/update/unmount and activation receive runtime-owned contexts, all
-capabilities observe persistent state, and stateless widgets use `State = ()`.
-Built-in buttons use repeatable `on_activate` action factories, so each accepted
-proof activation can produce a fresh action without requiring `Action: Clone`,
-`Copy`, or `Debug`.
-Core also owns the host-neutral application-work vocabulary: `UiApp`,
-`HostProtocol`/`NoHostProtocol`, opaque ordered `Effects`, validated `WorkKey`,
-task/timer/host-request descriptions, and complete-set application/mounted
-`SubscriptionSet` declarations. These values are inert; the runtime alone owns
-live execution, generations, clocks, queues, and cancellation.
-`SendSubscriptionSource::start` is a nonblocking, exactly-once attempt returning
-`SendSubscriptionStartOutcome`; `SendSubscriptionSink::try_send` returns
-`SendSubscriptionSinkError::Full`, `Closed`, or `Stale` with exact item
-ownership. Refusal never implies a runtime retry.
-`WidgetInvalidation` is a manual selective bitset. `StyleTokens` carries a
-monotonic diagnostic revision, while sound runtime cache compatibility compares
-the complete token definitions and values. The `__runtime` bridge
-is technically public only because core and runtime are separate crates; it is
-outside the prelude, doc-hidden, unstable, unsupported for applications, and
-semver-exempt before 1.0. It safely consumes transient elements into checked,
-non-forgeable mounted widget/state plumbing without exposing payload or arena
-construction.
-The crate does not own mounted storage, input routing, live effect execution, layout execution,
-semantics, paint scenes, renderer backends, native hosts, application state, ECS,
-or legacy dependencies.
+`SemanticNodeId` is a distinct opaque semantic identity type. It shares the runtime namespace needed for foreign-runtime rejection but is allocated by a separate runtime-owned semantic arena; it is not derived from or coupled to a mounted arena slot/generation. One mounted owner may own zero, one, or many semantic lifetimes.
 
-See the [public API contract](../../docs/architecture/public-api.md), workspace
-[status](../../docs/status-map.md), [support matrix](../../docs/feature-support-matrix.md),
-and [roadmap](../../docs/roadmap.md).
+Widgets contribute action-type-independent owner-local semantic forests keyed by `SemanticKey`. They do not author live semantic IDs, mounted IDs, runtime focus, absolute surface coordinates, adapter objects, or platform vocabulary. M5 semantic actions are `Activate`, `RequestFocus`, `OpenMenu`, and `OpenContextMenu`; routed `SemanticCommand::LogicalScroll` remains M4 command behavior and is not a semantic-node action or compatibility alias.
+
+Built-in and downstream widgets use the same checked erased protocol. Every widget declares persistent `State`; stateless widgets use `State = ()`. Recursive `map_action` changes only application-action plumbing and preserves widget/state identity and semantic contribution. `Button::on_activate` is a repeatable action factory; retired `on_press` and M2 `WidgetSemanticProof` authority are absent.
+
+## Core/runtime bridge
+
+The doc-hidden `runenui_core::__runtime` module exists only because core and runtime are separate crates. It safely consumes transient elements into checked erased widget/state plumbing needed by `runenui_runtime`. It is outside the prelude, unstable, unsupported for application use, and provides no live runtime namespace, mounted/semantic arena, queue, sequence, publication, or mutation authority.
+
+Both core and runtime remain safe-Rust by repository policy. Payload/type mismatches are diagnosed and fail closed rather than granting unchecked typed access.
+
+## Must not own
+
+`runenui_core` must not own persistent mounted or semantic storage, semantic publication/revisions, live scheduling, queue/work/trace state, application state, native windows/accessibility adapters, concrete renderer backends, ECS integration, or legacy compatibility paths. Runtime alone owns live identity allocation, reconciliation, routing, scheduling, publication, and semantic action resolution.
+
+M0–M4 are complete. M5A–M5D are accepted and reconciled; M5E #51 is the active integration/migration/closure slice. M6 implementation remains blocked until M5 closes.
+
+See the [public API contract](../../docs/architecture/public-api.md), [workspace structure](../../docs/architecture/workspace-structure.md), [M5 charter](../../docs/architecture/m5-semantics-and-testing-charter.md), [status map](../../docs/status-map.md), and [roadmap](../../docs/roadmap.md).
