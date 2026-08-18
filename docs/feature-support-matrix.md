@@ -17,28 +17,33 @@ Support labels:
 
 M4 is complete and owner-accepted through M4D3. M5 is active. M5A semantic
 contribution/independent identity, M5B semantic publication/incremental updates,
-and M5C semantic action ingress/accessibility resolution are fully accepted and
-reconciled. M5D public deterministic headless testing is owner-accepted and
-feature-merged. M5D exact reviewed head
-`471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed exact-head CI #1230 /
-`31962536977` and was guarded-squash-merged in
+M5C semantic action ingress/accessibility resolution, and M5D public
+deterministic headless testing are fully accepted and reconciled. M5D exact
+reviewed feature head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619`
+passed exact-head CI #1230 / `31962536977` and was guarded-squash-merged in
 [PR #64](https://github.com/dornglut/runen-ui/pull/64) as
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`; reviewed head and squash share
-exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
-#1231 / `31967898198` passed at that exact squash. M5D adds the downstream public
-`runenui_testing` harness/query/time/inspection surface without exposing mounted
-semantic-owner routing identity, enabling private test seams, or adding a second
-runtime/trace/semantic action authority. It does not add semantic LogicalScroll,
-native accessibility, production renderer scenes, or native host translation.
+`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Its mandatory reconciliation was
+explicitly owner-accepted at exact reviewed head
+`522b2770a2e6763e54e9eb6237fefc83e88d8cf9`, passed exact-head CI #1242 /
+`31969642341`, and was guarded-squash-merged in
+[PR #65](https://github.com/dornglut/runen-ui/pull/65) as
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. Reviewed reconciliation head and
+squash share exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`, and
+accepted-main CI #1244 / `32108782685` passed at that exact squash.
 
-This post-merge reconciliation records M5 truth as `53 total / 48
-owner-accepted / 5 blocked`, M4 truth as `237 total / 237 owner-accepted`, and
-aggregate configured truth as `290 total / 285 owner-accepted / 5 blocked`.
-M5D #50 remains open for this reconciliation only; M5E #51 remains blocked until
-the reconciliation itself is accepted, merged, and accepted-main verified.
-Exact branch, head, blocker, validation, and next-action state belongs in the
-[work-tracking system](work-tracking.md), GitHub issues, and pull requests.
-Historical acceptance evidence remains in the
+M5D adds the downstream public `runenui_testing` harness/query/time/inspection
+surface without exposing mounted semantic-owner routing identity, enabling
+private test seams, or adding a second runtime/trace/semantic action authority.
+It does not add semantic LogicalScroll, native accessibility, production
+renderer scenes, or native host translation.
+
+Accepted M5E-base truth is `53 total / 48 owner-accepted / 5 blocked`, M4 truth
+is `237 total / 237 owner-accepted`, and aggregate configured truth is `290 total
+/ 285 owner-accepted / 5 blocked`. M5E #51 is the sole active M5 slice from exact
+accepted main `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; M6/#59 remains future
+work and does not change current support. Exact branch, head, validation, and
+next-action state belongs in the [work-tracking system](work-tracking.md), GitHub
+issues, and pull requests. Historical acceptance evidence remains in the
 [public repository migration history](history/public-repository-migration.md).
 
 ## 1. Authoring and composition

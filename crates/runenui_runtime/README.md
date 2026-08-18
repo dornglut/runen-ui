@@ -2,107 +2,51 @@
 
 > **Category: Current contract**
 
-`runenui_runtime` owns deterministic mounted execution and surface publication
-for the RunenUI headless proof.
+`runenui_runtime` owns RunenUI's live deterministic mounted execution, scheduling, routing, tracing, and surface publication for the current headless proof. It consumes public `runenui_core` protocol values and remains independent from `runenui_testing`, native window/accessibility implementations, and concrete renderer backends.
 
-The deterministic application-work scheduler is the M4B slice currently in
-review. M4C routed interaction and M4D trace export/replay remain blocked.
+## Current ownership
 
-`AppRuntime` binds application state, typed actions, update, and transient root
-authoring. Each authored root is consumed by sibling-local reconciliation into a
-private safe generational arena. Unique keys match regardless of sibling
-position; unkeyed children match by unkeyed ordinal; duplicate keys preserve no
-ambiguous state; and cross-parent moves remount. Compatible nodes retain mounted
-and semantic IDs, widget state, interaction slots, focus, and clean capability
-caches. A checked update runs before the newly authored widget description is
-committed; mismatch replaces the old subtree immediately.
+Runtime owns:
 
-Mounted IDs contain a runtime-instance `Arc` token, arena slot, and non-wrapping
-generation. Lowest vacant slots are reused first; `u64::MAX` slots retire.
-Stale same-runtime and foreign-runtime targets have distinct results. Logical
-mounted preorder, never arena order, drives inspection, focus traversal, and
-publication.
+- one persistent generational mounted tree with sibling-local keyed reconciliation, widget state/lifecycle, interaction slots, focus, invalidation, and checked mounted targeting;
+- one separate generational semantic arena plus exact mounted-owner/`SemanticKey` bindings. `SemanticNodeId` allocation is independent from mounted arena allocation; one mounted owner may own zero, one, or many semantic lifetimes;
+- one generalized sequenced FIFO and explicit four-budget pump for application actions, routed commands, tasks, timers, subscriptions, host responses, and committed work;
+- deterministic manual/host monotonic time, live-only producer generations, cancellation/replacement, configured backpressure, wake/redraw authority, terminal/shutdown behavior, and one bounded canonical trace plus deterministic JSONL export and inert offline replay;
+- exact mounted command routing with Capture/Target/Bubble, defaults, pointer lifecycle/capture, focus scopes/modality, raw keyboard, committed text, IME composition, authored-ID automation, and exact displayed-surface input contexts;
+- one fallible staged surface-publication transaction and the retained proof-level renderer publication cache;
+- an independent `SemanticPublication` sibling with stable semantic identities, deterministic tree order, absolute logical bounds, resolved relationships, composed state/support, runtime-derived visible-PRIMARY focus, revisions/deltas/full-resync behavior, and typed semantic diagnostics;
+- public exact surface-scoped semantic action admission/resolution through `SemanticActionRequest`, with private semantic-to-mounted owner/key resolution and convergence onto the existing command FIFO/routed/default/update/trace architecture.
 
-The runtime executes mount/update in preorder, unmount in postorder, replacement
-before new mount, and shutdown exactly once through explicit `shutdown`,
-`into_state`, and `Drop`. Nodes remain arena-live through unmount; slot release
-and state drop follow the hook. One runtime-owned generalized FIFO is the only
-work-order authority. `submit_action` returns a non-wrapping
-`WorkSequence` or the exact unaccepted action, and the explicit
-processed-envelope pump handles a caller-bounded number of envelopes without
-recursion. Each action update completes reconciliation and focus validation
-before the next envelope begins.
+## Identity and authority boundaries
 
-The canonical FIFO also sequences effect starts/cancellations, final mapped
-application actions, timer firings, and complete-set subscription
-reconciliation. Ready local/send task and subscription values, host responses,
-and typed start failures map directly to one final action envelope instead of
-passing through an action-bearing completion envelope. Readiness checkpoints
-share four explicit per-pump budgets for
-processed envelopes, completion imports, local-work polls, and timer promotions.
-`PumpReport` exposes exact counters, exhaustion flags, serviceable readiness,
-future deadlines, and publication dirtiness. Local futures use wake-aware
-eligibility; send payloads cross a bounded ingress and map to non-`Send` actions
-only after UI-thread generation validation.
+`MountedNodeId` and `SemanticNodeId` are distinct opaque runtime-issued identities under the same runtime namespace. Mounted IDs address mounted widget lifetimes. Semantic IDs use a separate semantic arena slot/generation and are retained by exact mounted-owner lifetime plus stable owner-local `SemanticKey`. Removing a semantic key revokes that semantic lifetime; replacing/removing its mounted owner revokes all owned semantic lifetimes. Later semantic slot reuse advances generation and never retargets stale IDs.
 
-Application and exact mounted owners share one generational work registry.
-Keyed replacement and cancellation never retarget a newer generation. Manual or
-host monotonic time drives deterministic one-shot/repeating timers. Typed host
-requests expose opaque runtime-local tokens and validate response kind before
-mapping. Atomic wake requests and revisioned redraw take/acknowledgment remain
-separate; shutdown closes producers and reports per-family cancellation counts.
+Public semantic snapshots expose semantic IDs only. They do not expose or reconstruct the private mounted owner. `SemanticActionTarget` is read-only exact semantic-origin metadata, not a mounted routing capability. There is no public semantic-to-`MountedNodeId` shortcut, bare semantic-ID surface guessing, direct semantic activation path, second semantic queue/default engine, or semantic `LogicalScroll` compatibility path.
 
-Transitional proof activation preflights runtime status, target capability,
-generation capacity, queue capacity, work sequencing, and mandatory trace
-sequences before it mutates persistent widget state or invokes an action
-factory. Its subscription invalidation, primary action, and auxiliary outputs
-commit through one plan: owner cancellation cleanup, mounted subscription
-reconciliation, primary action, then auxiliary collector order. It returns
-without pumping; state-only activation remains distinct. Queue-full, closed,
-and terminal outcomes invoke no mutable callback. Reconciliation reports record
-the completed generation and exact mounted/updated/unmounted/moved lifetime
-counts.
+## Publication
 
-State-aware activation, measurement, child layout, paint, semantics, and
-diagnostics use integrity-aware caches per mounted node. `WidgetInvalidation`
-clears only declared capabilities and schedules operational tree/style/layout/
-hit-test/paint/semantics/diagnostics/focus phases. The runtime retains the last
-proof publication. Its context key contains root constraints, an exact owned
-style-token content snapshot, and measurement-provider identity/revision. A
-provider must change identity or revision whenever measurement behavior changes.
-The topology snapshot retains mounted/semantic identity, parent, authored ID,
-widget type, and ordered children only. Style resolution looks up current
-mounted `StyleIntent`; layout constructs publication-local resolved nodes from
-current mounted `LayoutStyle`. Reconciliation schedules authored token-reference
-and gap changes independently from context-key comparison. Explicit topology/
-style/layout/hit-test/paint/semantic/diagnostic functions build
-`SurfacePhaseReport` only after they run, while private test-only probes count
-entry into those functions independently; clean publication executes none.
-This is a whole-surface proof cache, not a production retained layout cache.
+`AppRuntime::publish_surface` is the sole live surface-publication authority. A successful `SurfacePublication` contains aligned renderer-facing frame/style/layout/hit/paint proof products plus the independent semantic publication and semantic diagnostic report. Renderer-facing `SurfaceFrame`/`SurfaceNode`/debug products do not carry production semantic authority.
 
-`ReconciliationDiagnostic` is structured. Duplicate-key records contain the
-key, parent path, and all old/new occurrence paths. Payload mismatch remains an
-integrity error even when deterministic publication fallbacks are used.
+Publication follows the accepted staged boundary:
 
-`MountedTreeIndex`, `SurfaceFrame`, `SurfaceStyleReport`, and
-`SurfaceLayoutReport` are generated read-only products with identical mounted
-ID, semantic ID, parent, and authored-ID sequences. Tree changes collect one
-current mounted preorder snapshot and rebuild every node-aligned fact. The
-current row/column layout,
-measurement provider, paint facts, and semantic facts remain bounded headless
-proofs.
+```text
+admit -> read-only/staged plan -> candidate-dependent final preflight -> commit
+```
 
-The current single-root/focus/publication domain has exactly one mounted root,
-one active focus domain, and one current publication domain. Its trace is one
-bounded canonical record sequence with
-non-wrapping trace identities, opaque exact scheduler-work identity and
-structured outcomes, actual accepted work sequences, basic causal lineage, and
-an exclusive eviction watermark. There is no
-routed event model, pointer identity or true capture, release-inside activation,
-trace sink/export/replay or full trace-v2 normalization,
-production semantic tree/accessibility adapter, renderer-neutral paint/hit
-scene, production layout/style/text, native host, or renderer backend.
+Recoverable refusal exposes no partial new publication and preserves prior coherent semantic IDs/product/revision. Checked publication-counter, work/trace-sequence, or integrity exhaustion never wraps or saturates into false success.
 
-See the [public API contract](../../docs/architecture/public-api.md), workspace
-[status](../../docs/status-map.md), [support matrix](../../docs/feature-support-matrix.md),
-and [roadmap](../../docs/roadmap.md).
+The current retained renderer cache is proof-level and still deep-clones whole `SurfaceCache` state for some planning paths; issue #59 owns removing that cost before or during M6 without weakening accepted M5 atomicity.
+
+## Scheduling, routing, and tracing
+
+The runtime has one queue and one canonical work/trace lineage. Accepted semantic actions, pointer/keyboard/automation/programmatic commands, application actions, and scheduler outputs converge through existing sequencing rather than creating source-specific behavior engines. Submission rejection is fail-closed and returns owned input where the public API promises recovery. Accepted work is revalidated at processing boundaries and never retargets stale identities.
+
+`AppRuntime::pump` is caller-bounded. Runtime never hides an unbounded settle loop or wall-clock sleep. `ManualClock` enables deterministic time; `runenui_testing` composes these public APIs but owns no live runtime state or private mutation seam.
+
+## Must not own
+
+`runenui_runtime` must not own application-domain policy/state, testing convenience authority, native window/event-loop or AccessKit adapters, concrete renderer backends, production controls/text, ECS assumptions, or compatibility aliases preserving retired prototype APIs.
+
+M0–M4 are complete. M5A–M5D are accepted and reconciled; M5E #51 is the active integration/migration/closure slice. M6 implementation remains blocked until accepted M5 closure.
+
+See the [public API contract](../../docs/architecture/public-api.md), [workspace structure](../../docs/architecture/workspace-structure.md), [M5 charter](../../docs/architecture/m5-semantics-and-testing-charter.md), [status map](../../docs/status-map.md), [testing guide](../../TESTING.md), and [roadmap](../../docs/roadmap.md).

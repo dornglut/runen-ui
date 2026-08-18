@@ -11,24 +11,34 @@ The M5 readiness gate #55 and its mandatory reconciliation are also complete.
 M5B semantic publication/incremental updates and M5C semantic action ingress/
 accessibility resolution are fully accepted and reconciled.
 
-M5D public deterministic headless testing is owner-accepted and feature-merged.
-Exact reviewed head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619`
-passed exact-head CI #1230 / `31962536977` and was guarded-squash-merged in
+M5D public deterministic headless testing is fully accepted, reconciled,
+accepted-main verified, and closed. Exact reviewed feature head
+`471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed exact-head CI #1230 /
+`31962536977` and was guarded-squash-merged in
 [PR #64](https://github.com/dornglut/runen-ui/pull/64) as
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
-exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
-#1231 / `31967898198` passed at that exact squash.
+`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Its mandatory reconciliation was
+explicitly owner-accepted at exact reviewed head
+`522b2770a2e6763e54e9eb6237fefc83e88d8cf9`, passed exact-head CI #1242 /
+`31969642341`, and was guarded-squash-merged in
+[PR #65](https://github.com/dornglut/runen-ui/pull/65) as
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. Reviewed reconciliation head and
+squash share exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`, and
+accepted-main CI #1244 / `32108782685` passed at that squash.
 
-This reconciliation records exactly the ten M5D-owned rows as owner-accepted.
-Current M5 truth is `53 total / 48 owner-accepted / 0 implementation-complete /
-0 proof-complete / 5 blocked`. Aggregate configured truth is `290 total / 285
-owner-accepted / 0 implementation-complete / 0 proof-complete / 5 blocked`.
-M4 remains `237 total / 237 owner-accepted / 0 proof-complete / 0 blocked`.
+Accepted-base M5 truth is `53 total / 48 owner-accepted / 0
+implementation-complete / 0 proof-complete / 5 blocked`. Aggregate configured
+truth is `290 total / 285 owner-accepted / 0 implementation-complete / 0
+proof-complete / 5 blocked`. M4 remains `237 total / 237 owner-accepted / 0
+proof-complete / 0 blocked`.
 
-The sole current M5 gate is the mandatory post-M5D authority/current-contract
-reconciliation. M5D #50 remains open for this reconciliation only, and M5E #51
-remains blocked until the reconciliation is exact-head validated, critically
-reviewed, explicitly owner-accepted, guarded-merged, and accepted-main verified.
+M5E [#51](https://github.com/dornglut/runen-ui/issues/51) is the sole active M5
+slice from exact accepted main
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. It owns integrated public-only
+conformance, clean-cutover migration/audit closure, adapter-neutral mapping
+review, and the explicit M5 owner-acceptance gate. M6 readiness
+[#59](https://github.com/dornglut/runen-ui/issues/59) is non-blocking future work
+and does not authorize M6 implementation before M5E is accepted, merged,
+accepted-main verified, and the bounded final M5 reconciliation is complete.
 
 ## Maturity states
 
@@ -91,26 +101,26 @@ continues to own M4 implementation/delivery constraints, and the accepted
 [M4 conformance matrix](architecture/m4-conformance-matrix.md) remains M4
 observable-acceptance authority.
 
-M5 is active. M5A, the #55 readiness authority, M5B, and M5C are fully accepted
-and reconciled. The M5D feature implementation is owner-accepted and merged.
-M5D exact reviewed head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619`
-passed exact-head CI #1230 / `31962536977`; accepted feature squash/main is
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`, with exact reviewed/squash tree
-`bdbf19f5c2197490d6b922fb792791b205f40370` and accepted-main push CI #1231 /
-`31967898198` success.
+M5 is active. M5A, the #55 readiness authority, M5B, M5C, and M5D are fully
+accepted and reconciled. Exact accepted main for M5E is
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; its post-M5D reconciliation tree
+is `7e72b2738d539042ed28a032b305fc27cb45042a`, and accepted-main CI #1244 /
+`32108782685` passed at that exact squash.
 
-This reconciliation records conformance truth as `53 total / 48 owner-accepted /
-0 implementation-complete / 0 proof-complete / 5 blocked`; aggregate configured
+Accepted-base conformance truth is `53 total / 48 owner-accepted / 0
+implementation-complete / 0 proof-complete / 5 blocked`; aggregate configured
 truth is `290 total / 285 owner-accepted / 0 implementation-complete / 0
 proof-complete / 5 blocked`. M4 remains fully owner-accepted.
 
-The current execution gate is the mandatory M5D post-merge reconciliation on
-`codex/m5d-authority-reconciliation`, created from exact accepted feature squash
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. M5D
-[#50](https://github.com/dornglut/runen-ui/issues/50) remains open for this
-reconciliation only. M5E [#51](https://github.com/dornglut/runen-ui/issues/51)
-remains blocked until the reconciliation is owner-accepted, merged, and
-accepted-main verified. The roadmap remains the durable milestone authority.
+The current execution gate is M5E
+[#51](https://github.com/dornglut/runen-ui/issues/51). It must remain an
+integration/migration/closure slice: prove accepted semantics/action/runtime/
+trace authority through public downstream/Counter use, remove retired
+compatibility authority, complete source-grounded adapter mapping evidence, run
+stable/MSRV exact-head validation, and stop at explicit repository-owner
+acceptance before merge. M6 [#59](https://github.com/dornglut/runen-ui/issues/59)
+remains out of implementation scope until M5 closes. The roadmap remains the
+durable milestone authority.
 
 Merged acceptance evidence belongs in pull requests and the
 [public repository migration history](history/public-repository-migration.md).

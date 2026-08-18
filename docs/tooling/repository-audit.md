@@ -22,29 +22,48 @@ A fatal finding returns a non-zero exit status. Diagnostics never change the exi
 status. `cargo validate` invokes the same fatal invariant implementation after the
 locked stable/MSRV baseline and relative Markdown-link validation.
 
+The audit enforces explicit structural and modeled-authority contracts. It does
+**not** infer arbitrary semantic equivalence between prose in different retained
+documents. Migration/closure work therefore still requires the authority-impact
+cross-document review defined by `AGENTS.md` and `docs/work-tracking.md`.
+
 ## Fatal invariants
 
 The audit fails for:
 
-- duplicate, malformed, invalid-status, or summary-inconsistent M4 conformance
-  matrix rows;
+- duplicate, malformed, invalid-status, invalid-schema, gate-policy, or
+  summary-inconsistent rows in the configured M4/M5 conformance matrices,
+  including permanent-ID duplication across the configured matrix set;
 - workspace members missing manifests or package names, duplicate package names,
-  undocumented members, documented missing members, or forbidden workspace
-  dependency direction;
+  undocumented members, documented missing members, forbidden workspace
+  dependency direction, or reviewed dependency-section drift;
 - public issue links outside the issue set owned by `docs/work-tracking.md`;
-- active obsolete-default-branch authority outside `CHANGELOG.md` and `docs/history/`;
+- active obsolete-default-branch authority outside the documented historical
+  exemptions;
 - private-archive URLs outside
   `docs/history/public-repository-migration.md`;
-- MIT notice, workspace license, or `publish = false` policy drift;
-- missing, relocated, or duplicate definitions of the canonical `WorkQueue`,
-  `Trace`, or runtime `SurfacePublicationState` authorities.
+- repository/governance inventory drift, including required entry points, issue
+  templates, and the accepted read-only CI workflow contract;
+- MIT notice, workspace license, repository metadata, or `publish = false`
+  policy drift;
+- missing, relocated, or duplicate definitions of canonical runtime/source
+  authorities modeled by the source audit;
+- narrowly modeled retired M5 public/source authorities that would recreate a
+  forbidden compatibility or parallel semantic/testing path.
 
 The workspace dependency projection is the executable form of
 `docs/architecture/workspace-structure.md`: `runenui_core` and `xtask` have no
 workspace-package dependencies, `runenui_runtime` depends only on
-`runenui_core`, and the Counter/downstream conformance packages may depend on
-core and runtime. A new production package is fatal until its reviewed ownership
-and dependency direction are added to both the architecture contract and audit.
+`runenui_core`, `runenui_testing` is downstream of core/runtime, and the
+Counter/downstream conformance packages follow their documented production/dev
+dependency directions. A new production package is fatal until its reviewed
+ownership and dependency direction are added to both the architecture contract
+and audit.
+
+Source-absence checks are deliberately structural. They are appropriate when the
+absence of a retired public authority is itself the accepted contract; they are
+not a substitute for behavioral/conformance tests and must not ban incidental
+method names used legitimately by diagnostics, trace, or unrelated APIs.
 
 ## Diagnostics
 
@@ -64,7 +83,9 @@ must never determine correctness, extraction, or crate boundaries.
 
 ## JSON schema
 
-Schema version `1` is a single JSON object with stable key order:
+Schema version `1` is a single JSON object with stable key order. The numeric
+values below are illustrative schema values, **not current repository metrics**;
+current counts come from the checked-out matrices/workspace at execution time.
 
 ```json
 {
@@ -72,14 +93,14 @@ Schema version `1` is a single JSON object with stable key order:
   "status": "pass",
   "metrics": {
     "matrix": {
-      "total_rows": 237,
-      "owner_accepted": 132,
+      "total_rows": 290,
+      "owner_accepted": 285,
       "implementation_complete": 0,
-      "proof_complete": 0,
-      "blocked": 105
+      "proof_complete": 3,
+      "blocked": 2
     },
     "workspace": {
-      "members": 5,
+      "members": 6,
       "production_crates": 2
     },
     "source": {
@@ -88,7 +109,7 @@ Schema version `1` is a single JSON object with stable key order:
     },
     "authority": {
       "files": 0,
-      "modeled_public_issues": 11
+      "modeled_public_issues": 0
     }
   },
   "findings": [

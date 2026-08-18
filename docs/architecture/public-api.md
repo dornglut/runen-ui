@@ -88,21 +88,25 @@ reconciliation was then explicitly owner-accepted at reviewed head
 squash share exact tree `82625aedbdc03a5754949cffee51025e99cd6949`, and
 accepted-main push CI #1180 / `31938332306` passed at that exact squash.
 
-M5D public deterministic headless testing is owner-accepted and feature-merged.
-Exact reviewed feature head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619`
-passed canonical exact-head CI #1230 / `31962536977` and final critical review,
-was explicitly accepted by the repository owner, and was guarded-squash-merged
-in [PR #64](https://github.com/dornglut/runen-ui/pull/64) as
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
-exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
-#1231 / `31967898198` passed at that exact squash. The mandatory post-M5D
-current-contract reconciliation is the current gate; M5E #51 remains blocked
-until that reconciliation is accepted, merged, and accepted-main verified. The
-accepted [M5 semantics and testing charter](m5-semantics-and-testing-charter.md)
-owns the sequential M5D–M5E boundaries; the
+M5D public deterministic headless testing is fully owner-accepted, reconciled,
+accepted-main verified, and closed. Exact reviewed feature head
+`471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed canonical exact-head CI
+#1230 / `31962536977` and final critical review, was explicitly accepted by the
+repository owner, and was guarded-squash-merged in
+[PR #64](https://github.com/dornglut/runen-ui/pull/64) as
+`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Its mandatory reconciliation was
+explicitly owner-accepted at exact reviewed head
+`522b2770a2e6763e54e9eb6237fefc83e88d8cf9`, passed exact-head CI #1242 /
+`31969642341`, and was guarded-squash-merged in PR #65 as exact accepted main
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; accepted-main CI #1244 /
+`32108782685` passed at that squash. M5E #51 is the sole active M5
+integration/migration/current-document closure slice from that accepted base.
+The accepted [M5 semantics and testing charter](m5-semantics-and-testing-charter.md)
+owns the sequential M5 boundaries; the
 [M5 conformance matrix](m5-conformance-matrix.md) owns observable acceptance;
 and [work tracking](../work-tracking.md) owns volatile branch, head, blocker,
-and next-action state.
+and next-action state. M6 implementation remains blocked until accepted M5
+closure.
 
 ## Ownership and inventory
 
@@ -1207,7 +1211,9 @@ bounds, relationship resolution, support composition, renderer-independent
 publication cutover, M5C exact semantic action ingress/accessibility resolution
 through the canonical command/routed/default/trace architecture, and M5D public
 deterministic headless testing over those same public authorities. M4 is complete
-and M5 is active. M5E integrated closure is next only after this M5D
-reconciliation is accepted. AccessKit/native accessibility, native host
-translation, production scrolling, editable text, and platform IME objects
-remain later work.
+and M5 is active. M5D and its mandatory reconciliation are fully accepted and
+closed; M5E #51 is the sole active M5 integration/migration/current-document
+closure slice from exact accepted main
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. AccessKit/native accessibility,
+native host translation, production scrolling, editable text, and platform IME
+objects remain later work.
