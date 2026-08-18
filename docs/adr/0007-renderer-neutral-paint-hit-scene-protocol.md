@@ -82,9 +82,8 @@ The M6 matrix references inherited observations rather than duplicating them.
 successful publication atomically aligns distinct immutable products:
 
 - `PaintScene` — renderer-neutral logical visual content only;
-- paint-publication metadata — exact logical surface size, renderer scale, sound
-  damage relative to the previous accepted paint publication, and derived scene
-  requirements;
+- paint-publication metadata — exact logical surface size, renderer scale, and
+  sound damage relative to the previous accepted paint publication;
 - `HitTestScene` — input-facing shapes, transforms/clips, pointer policy,
   deterministic order, runtime-injected mounted targets, and its exact
   `SurfaceInputContext`;
@@ -108,6 +107,11 @@ currently hosts them. Publication-relative damage and target surface extent are
 therefore deliberately not stored as scene content. This lets #59 share an
 unchanged `PaintScene` while a new publication wrapper carries different damage
 or display metadata.
+
+Scene requirements are a deterministic **derived view of `PaintScene` content**,
+not another authoritative stored product. Runtime/consumers may cache that view
+internally, but any cache must be exactly reconstructible from the immutable
+scene and cannot diverge from it.
 
 ### Core owns contribution vocabulary; runtime owns composed scenes
 
@@ -181,9 +185,8 @@ Global paint order is the stable ascending tuple:
 (layer, mounted logical preorder, contribution-local order)
 ```
 
-Equal tuples preserve contribution order. Hash-map/storage/backend iteration
-cannot redefine it. Later M7 stacking policy may select layer values but consumes
-this ordering contract.
+Hash-map/storage/backend iteration cannot redefine it. Later M7 stacking policy
+may select layer values but consumes this ordering contract.
 
 ### Hit contributions are independent from paint and semantics
 
@@ -200,13 +203,17 @@ Each contributed region contains:
 - a snapshot-local signed layer;
 - one `PointerPolicy`.
 
-`PointerPolicy` has three outcomes:
+`PointerPolicy` has exactly two outcomes:
 
 - `Target` — the topmost containing eligible region resolves to its
   runtime-injected mounted owner;
 - `Block` — the topmost containing eligible region terminates physical hit
-  testing with no mounted target;
-- `PassThrough` — the region is skipped and lower regions remain eligible.
+  testing with no mounted target.
+
+**Pass-through is represented canonically by not contributing a region.** There
+is no `PassThrough` enum value because such a region would be observationally
+identical to absence for target selection and would create two representations
+of the same behavior.
 
 The default downstream hit contribution is empty. Layout participation alone
 never implies pointer targetability. Controls requiring direct physical pointer
@@ -244,10 +251,11 @@ The public immutable `HitTestScene` associated with a successful
 for pointer targeting. Runtime must not copy it into another rectangle snapshot
 or re-run `SurfaceFrame` hit testing.
 
-A retained scene stores the runtime-issued `SurfaceInputContext` for that
-displayed publication plus immutable region data. `SurfacePublication::input_context`
-names the same context. The retained generation ring stores cheap immutable
-handles to these exact scenes.
+The retained scene is the single storage owner of its runtime-issued
+`SurfaceInputContext`; `SurfacePublication::input_context()` exposes that same
+value through the hit scene rather than maintaining a second independently
+stored context field. The retained generation ring stores cheap immutable handles
+to these exact scenes.
 
 `SurfaceInputContext::hit_test_generation()` remains the sole public displayed
 hit-scene generation. M6 adds no second hit-scene generation/target namespace.
@@ -286,8 +294,10 @@ diagnosed; it never makes the clip disappear.
 On a containing eligible region:
 
 - `Target` returns the runtime-injected mounted owner;
-- `Block` returns blocked/no-target and stops;
-- `PassThrough` continues lower.
+- `Block` returns blocked/no-target and stops.
+
+If no contributed region contains the point, physical hit testing returns no
+target. That is the sole pass-through representation.
 
 This replaces both `SurfaceFrame::hit_test` authority and the private copied
 rectangle resolver. A surviving debug/layout snapshot must have a separate
@@ -342,25 +352,29 @@ It must guarantee:
 
 The internal smart-pointer/container type is not public protocol.
 
-### Resource references are logical, provider-owned values
+### Resource references are logical, self-disambiguating values
 
 M6 resource references carry an explicit neutral kind, such as image or shaped
-text run. A reference is a logical immutable value supplied to a widget by a
-resource-producing owner; it is not bytes, provider object, GPU handle, font
-object, native image, mounted/semantic identity, or scene-item identity.
+text run, plus one opaque provider-issued identity value. That opaque value
+includes the issuing namespace as part of its equality/identity contract, so two
+providers issuing the same local key do not collide.
 
-Reference equality is stable by value across scene snapshots within the issuing
-provider's namespace. References are not scene-local indices. The issuing
-provider owns resolution; a scene/consumer may carry and compare the opaque
-logical value but cannot infer bytes or backend realization.
+A reference is not resource bytes, a provider object, GPU handle, font object,
+native image, mounted/semantic identity, or scene-item identity. It is not a
+scene-local index. Reference equality is stable by value across scene snapshots
+for the lifetime in which the issuing resolver keeps that resource identity
+valid.
 
-M6 specifies reference identity/kind and deterministic consumer requirements. It
-does not load, decode, shape, upload, evict, or cache resource bytes. M6 proofs
-may use fixture providers/resources. M8/M10 later provide production
-text/resource producers and backend realization behind this boundary.
+Consumers receive the **whole `ResourceRef`** and resolve it through one neutral
+resolver boundary; they do not split a local key from the value and guess/select
+a provider. The resolver/provider owns bytes and realization lifetime. M6 does
+not standardize storage, decoding, shaping, upload, eviction, or backend handles.
 
-Missing or kind-mismatched resources are deterministic consumer/admission errors,
-never reinterpretation as another primitive or concrete widget kind.
+Deterministic M6 proofs may use fixture resolvers/resources. M8/M10 later provide
+production text/resource producers and realization behind this same reference
+boundary. Missing, expired, or kind-mismatched refs are deterministic
+consumer/admission errors, never reinterpretation as another primitive or
+concrete widget kind.
 
 ### Paint publication metadata is separate from scene content
 
@@ -391,11 +405,10 @@ field that changes `PaintScene` content equality. #59 may therefore reuse an
 unchanged scene across publications while computing fresh extent/scale/damage
 metadata.
 
-Scene requirements are derived from canonical `PaintScene` content and exposed
-with the paint publication. Consumer capabilities are external input. Capability
-checking reports unsupported requirements deterministically; it never makes
-core/runtime emit backend-specific alternate scenes, silently lower primitives,
-or select a concrete renderer.
+Scene requirements are derived from canonical `PaintScene` content. Consumer
+capabilities are external input. Capability checking reports unsupported
+requirements deterministically; it never makes core/runtime emit backend-specific
+alternate scenes, silently lower primitives, or select a concrete renderer.
 
 ### Public observation uses ordinary immutable products
 
@@ -461,7 +474,7 @@ products rather than creating another path.
 ### M6C — transforms, clips, resources, metadata, damage, and capabilities
 
 Complete transformed/rounded/clipped composition and hit semantics, resource
-references, paint-publication metadata, sound damage, pointer-policy breadth, and
+references, paint-publication metadata, sound damage, `Block` policy, and
 consumer capability checking on the same M6B products.
 
 ### M6D — independent consumers, migration, and milestone closure
@@ -488,6 +501,10 @@ authority.
 Rejected: `MountedNodeId` and `SurfaceInputContext` already own the necessary
 route-target and displayed-generation lifetimes.
 
+### Add an explicit pass-through hit policy
+Rejected: not contributing a region already provides exactly that targeting
+behavior. A public no-op variant would create duplicate representation.
+
 ### Derive hit testing from paint primitives
 Rejected: visual coverage and interaction policy differ.
 
@@ -503,6 +520,11 @@ but must contribute/invalidate each through its own authority.
 Rejected: identical scene content can have different damage after different
 predecessors. That would make scene identity history-dependent and frustrate
 persistent scene reuse.
+
+### Store scene requirements as independent publication authority
+Rejected: requirements are exactly derivable from `PaintScene`. A cached
+materialization may exist internally but cannot become a separately mutable or
+versioned product.
 
 ### Add a giant renderer/widget trait or split the whole widget module first
 Rejected: #10 remains a broad non-blocking concentration audit; M6 has focused
@@ -544,7 +566,7 @@ Costs and constraints:
 - downstream widgets must adopt explicit hit participation/new paint contribution;
 - hit invalidation gains one public bit and proof burden;
 - coordinate/order/transformed hit semantics require deterministic tests;
-- fixture resource providers are required until M8/M10 production producers;
+- fixture resource resolvers are required until M8/M10 production producers;
 - retained immutable products must preserve simple staged atomicity.
 
 ## Acceptance
