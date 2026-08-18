@@ -40,17 +40,13 @@ A renderer consumes paint primitives and resources. It does not interpret semant
 The current implementation is a deterministic mounted headless proof with this
 narrower shape. M4 is complete and owner-accepted through M4D3. M5 is active.
 M5A semantic contribution/independent identity, the #55 readiness amendment,
-M5B semantic publication/incremental updates, and M5C semantic action ingress/
-accessibility resolution are fully accepted and reconciled. M5D public
-deterministic headless testing is owner-accepted and feature-merged. M5D exact
-reviewed head `471d2acf402a0f7d3f89a1de2a1b908fe23ff619` passed exact-head CI
-#1230 / `31962536977` and was guarded-squash-merged in
-[PR #64](https://github.com/dornglut/runen-ui/pull/64) as
-`72d2405211a3fd6d11e0d17680b7769df90b5ffe`. Reviewed head and squash share
-exact tree `bdbf19f5c2197490d6b922fb792791b205f40370`, and accepted-main push CI
-#1231 / `31967898198` passed at that exact squash. The mandatory post-M5D
-current-contract reconciliation is the current gate; M5E #51 remains blocked
-until that reconciliation is accepted, merged, and accepted-main verified.
+M5B semantic publication/incremental updates, M5C semantic action ingress/
+accessibility resolution, and M5D public deterministic headless testing are
+fully owner-accepted, reconciled, accepted-main verified where required, and
+closed. Exact accepted main for M5E is
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; M5E #51 is the sole active M5
+integration/migration/current-document closure slice. M6 implementation remains
+blocked until accepted M5 closure.
 
 The accepted M4 history remains unchanged: M4C3 was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`, M4C4 in
@@ -266,8 +262,9 @@ preserves semantic contribution content exactly. Core/runtime still has no
 AccessKit/native dependency and no second semantic action queue. The accepted
 [M5 semantics and testing charter](architecture/m5-semantics-and-testing-charter.md)
 and [M5 conformance matrix](architecture/m5-conformance-matrix.md) define M5
-acceptance. The mandatory M5D post-merge reconciliation is the gate before M5E
-begins.
+acceptance. M5D's mandatory post-merge reconciliation is complete; M5E #51 is
+the sole active M5 integration/migration/current-document closure slice from
+exact accepted main `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`.
 
 The accepted M4C5 behavior does not add editable text, native IME objects, or a
 platform host. Public automation work/trace-sequence exhaustion is a deliberate
@@ -546,11 +543,11 @@ closure proof surface. Public M4 proof requirements are fixed in the M4
 conformance matrix and directional-focus corpus.
 
 The accepted M5 semantics/testing charter and M5 conformance matrix own the
-active semantics/testing program. M5A, #55, M5B, and M5C are fully accepted and
-reconciled; the M5D feature implementation is owner-accepted and accepted-main
-verified. The current gate is M5D's mandatory post-merge current-contract
-reconciliation. M5E #51 remains blocked until that gate is accepted, merged, and
-accepted-main verified.
+active semantics/testing program. M5A, #55, M5B, M5C, and M5D are fully accepted,
+reconciled, and closed. M5E #51 is the sole active M5 integration/migration/
+current-document closure slice from exact accepted main
+`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. M6 implementation remains blocked
+until accepted M5 closure.
 
 The following later choices still require dedicated analysis and review:
 standard layout algorithm, production text stack, conventional renderer, crate
