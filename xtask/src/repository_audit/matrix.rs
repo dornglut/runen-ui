@@ -17,6 +17,7 @@ const M4_DELIVERY_SLICES: &[&str] = &[
     "M4A", "M4B", "M4C0", "M4C1", "M4C2", "M4C3", "M4C4", "M4C5", "M4D1", "M4D2", "M4D3", "M5",
 ];
 const M5_DELIVERY_SLICES: &[&str] = &["M5A0", "M5A", "M5B", "M5C", "M5D", "M5E"];
+const M6_DELIVERY_SLICES: &[&str] = &["M6A", "M6B", "M6C", "M6D"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
@@ -50,7 +51,12 @@ const M5_SPEC: MatrixSpec = MatrixSpec {
     allowed_delivery_slices: M5_DELIVERY_SLICES,
     gate_policy: GatePolicy::Required,
 };
-const MATRIX_SPECS: &[MatrixSpec] = &[M4_SPEC, M5_SPEC];
+const M6_SPEC: MatrixSpec = MatrixSpec {
+    path: "docs/architecture/m6-conformance-matrix.md",
+    allowed_delivery_slices: M6_DELIVERY_SLICES,
+    gate_policy: GatePolicy::Required,
+};
+const MATRIX_SPECS: &[MatrixSpec] = &[M4_SPEC, M5_SPEC, M6_SPEC];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct MatrixMetrics {
@@ -468,7 +474,9 @@ fn compare_optional_zero_summary(
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{M4_SPEC, M5_SPEC, analyze_contents, declared_metric, parse_rows, valid_id};
+    use super::{
+        M4_SPEC, M5_SPEC, M6_SPEC, analyze_contents, declared_metric, parse_rows, valid_id,
+    };
 
     #[test]
     fn permanent_id_parser_accepts_multi_segment_families() {
@@ -477,6 +485,7 @@ mod tests {
         assert!(valid_id("M4-CLOSE-05"));
         assert!(valid_id("SEM-ID-01"));
         assert!(valid_id("M5-CLOSE-03"));
+        assert!(valid_id("SCENE-PUB-01"));
         assert!(!valid_id("PTR-1"));
         assert!(!valid_id("ptr-01"));
         assert!(!valid_id("PTR--01"));
@@ -537,6 +546,27 @@ mod tests {
         let mut findings = Vec::new();
         let mut seen = BTreeSet::new();
         let analysis = analyze_contents(M5_SPEC, invalid, &mut seen, &mut findings);
+        assert_eq!(analysis.invalid_schemas, 1);
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[test]
+    fn m6_gate_policy_requires_required_for_m6_slices() {
+        let valid = "| ID | A | B | C | D | E | F | G |\n\
+|---|---|---|---|---|---|---|---|\n\
+| SCENE-PUB-01 | A | B | C | D | M6A | blocked | Required |\n";
+        let mut findings = Vec::new();
+        let mut seen = BTreeSet::new();
+        let analysis = analyze_contents(M6_SPEC, valid, &mut seen, &mut findings);
+        assert_eq!(analysis.invalid_schemas, 0);
+        assert!(findings.is_empty());
+
+        let invalid = "| ID | A | B | C | D | E | F | G |\n\
+|---|---|---|---|---|---|---|---|\n\
+| SCENE-PUB-02 | A | B | C | D | M5A | blocked | Required |\n";
+        let mut findings = Vec::new();
+        let mut seen = BTreeSet::new();
+        let analysis = analyze_contents(M6_SPEC, invalid, &mut seen, &mut findings);
         assert_eq!(analysis.invalid_schemas, 1);
         assert_eq!(findings.len(), 1);
     }
