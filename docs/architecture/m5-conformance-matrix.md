@@ -108,14 +108,14 @@ squash share exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`, and
 accepted-main CI #1244 / `32108782685` passed at that exact squash. M5E #51
 therefore activated from that exact accepted base.
 
-Current pre-owner-acceptance candidate summary for this 53-row authority:
+Current review-reopened candidate summary for this 53-row authority:
 
 ```text
 53 total unique rows
 48 owner-accepted
 0 implementation-complete
-5 proof-complete
-0 blocked
+3 proof-complete
+2 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -196,19 +196,19 @@ Current pre-owner-acceptance candidate summary for this 53-row authority:
 | M5-INTEG-01 | At least one genuine downstream custom widget contributes semantics, composes through recursive action mapping, publishes through the public harness, receives an exact surface-scoped semantic action, updates parent application state, and leaves canonical trace/replay evidence without a private bridge. | `m5e_closure::mapped_downstream_widget_preserves_semantics_action_runtime_and_trace_authority` | Built-in/private-path-only and semantic-to-mounted shortcut audits | Public canonical trace/replay lineage | M5E | proof-complete | Required |
 | M5-INTEG-02 | Accessibility-like semantic action, pointer activation, keyboard activation, authored-ID automation activation, and programmatic activation converge on the same canonical command/routed/default/application-action architecture without duplicate action-engine paths. | Counter public-harness five-origin convergence proof + accepted M4 origin proof | Origin-specific bypass/parallel queue/default audit | Cross-origin canonical trace comparison | M5E | proof-complete | Required |
 | M5-INTEG-03 | Current Counter exercises semantic snapshot inspection, exact semantic activation, public harness pumping, semantic update publication, and canonical trace/replay evidence after migration. | Counter M5E closure proof | Hidden private-test API and bare-ID semantic routing audits | Counter trace/replay proof | M5E | proof-complete | Required |
-| M5-INTEG-04 | Superseded public testing helpers, M2 mixed semantic proof authority, retired semantic stubs/actions, compatibility aliases/wrappers, and dead current-contract architecture text are absent before acceptance. Retaining a retired compatibility API with documentation does not satisfy this row. | Canonical repository/public-API/current-doc audit | Fatal retired-M5 symbol/action/alias, private-seam, stale-doc, and compatibility-surface audits | Repository authority audit | M5E | proof-complete | Required |
-| M5-INTEG-05 | At one frozen M5E feature head, all predecessor M5 rows and inherited M4 `ACCESS-01`/`ACCESS-02` remain `owner-accepted`, `M5-INTEG-01..04` are proof-complete, canonical stable and Rust 1.93.0 exact-head validation is green, and explicit repository-owner acceptance is the only remaining transition for the five-row M5E package itself. | Frozen-head matrix/status + exact-head stable/MSRV CI audit | Blocked/incomplete predecessor, non-green head, or self-acceptance prerequisite audit | Final pre-owner-acceptance evidence | M5E | proof-complete | Required |
+| M5-INTEG-04 | Superseded public testing helpers, M2 mixed semantic proof authority, retired semantic stubs/actions, compatibility aliases/wrappers, and dead current-contract architecture text are absent before acceptance. Retaining a retired compatibility API with documentation does not satisfy this row. | Canonical repository/public-API/current-doc audit | Fatal retired-M5 symbol/action/alias, private-seam, stale-doc, and compatibility-surface audits | Repository authority audit | M5E | blocked | Required |
+| M5-INTEG-05 | At one frozen M5E feature head, all predecessor M5 rows and inherited M4 `ACCESS-01`/`ACCESS-02` remain `owner-accepted`, `M5-INTEG-01..04` are proof-complete, canonical stable and Rust 1.93.0 exact-head validation is green, and explicit repository-owner acceptance is the only remaining transition for the five-row M5E package itself. | Frozen-head matrix/status + exact-head stable/MSRV CI audit | Blocked/incomplete predecessor, non-green head, or self-acceptance prerequisite audit | Final pre-owner-acceptance evidence | M5E | blocked | Required |
 
-## Repository-wide aggregate at M5E proof-complete candidate
+## Repository-wide aggregate at reopened M5E review
 
-The repository-wide permanent inventory at the pre-owner-acceptance M5E candidate is:
+The repository-wide permanent inventory while M5E closure review is reopened is:
 
 ```text
 290 total unique rows
 285 owner-accepted
 0 implementation-complete
-5 proof-complete
-0 blocked
+3 proof-complete
+2 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
