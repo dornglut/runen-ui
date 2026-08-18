@@ -932,7 +932,8 @@ mod tests {
     use super::{
         SURFACE_PUBLICATION_ENTRYPOINT_PATH, audit_retired_authorities,
         audit_retired_m5_authorities, audit_surface_publication_entrypoint, declaration_symbol,
-        defines_struct, module_metrics, normalized_identifier, rust_code_without_comments_or_literals,
+        defines_struct, module_metrics, normalized_identifier,
+        rust_code_without_comments_or_literals,
     };
 
     fn production_source(path: &str, contents: &str) -> (super::ModuleMetrics, String) {
@@ -1016,18 +1017,20 @@ mod tests {
 
     #[test]
     fn retired_m5_pattern_scanner_ignores_comments_and_literals() {
-        assert!(!rust_code_without_comments_or_literals(
-            "// SemanticAction::LogicalScroll"
-        )
-        .contains("SemanticAction::LogicalScroll"));
-        assert!(!rust_code_without_comments_or_literals(
-            "let note = \"SemanticAction::LogicalScroll\";"
-        )
-        .contains("SemanticAction::LogicalScroll"));
-        assert!(rust_code_without_comments_or_literals(
-            "let action = SemanticAction::LogicalScroll;"
-        )
-        .contains("SemanticAction::LogicalScroll"));
+        assert!(
+            !rust_code_without_comments_or_literals("// SemanticAction::LogicalScroll")
+                .contains("SemanticAction::LogicalScroll")
+        );
+        assert!(
+            !rust_code_without_comments_or_literals(
+                "let note = \"SemanticAction::LogicalScroll\";"
+            )
+            .contains("SemanticAction::LogicalScroll")
+        );
+        assert!(
+            rust_code_without_comments_or_literals("let action = SemanticAction::LogicalScroll;")
+                .contains("SemanticAction::LogicalScroll")
+        );
     }
 
     #[test]
