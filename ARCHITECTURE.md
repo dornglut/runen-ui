@@ -25,6 +25,6 @@ Crate and subsystem boundaries, current proof behavior, target products, and acc
 - [M5 conformance matrix](docs/architecture/m5-conformance-matrix.md)
 - [Architecture decision records](docs/adr/)
 
-M0–M4 are complete. M5 is active: M5A–M5D are accepted and reconciled, while M5E #51 is the sole active integration/migration/closure slice from accepted main `3c50f2fe0732871a3e2fdf7dba45983a23b813a1`. M6 implementation remains blocked until accepted M5 closure.
+M0–M5 are complete. M5E's reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790` passed exact-head CI #1294 / `32130312467`, was repository-owner-authorized and guarded-squash-merged as `b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`, and shares exact tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c` with that squash. Accepted-main CI #1296 / `32135074552` then validated the exact squash through read-only PR #68, which was closed unmerged. The final M5 authority reconciliation records all five M5E rows as owner-accepted and establishes the exact accepted base from which M6 may begin. M6 owns the renderer-neutral paint/hit scene protocol and must first satisfy its roadmap architecture gate; issue #59 is M6-readiness work, not permission to bypass that gate.
 
 Current implementation maturity belongs in the [status map](docs/status-map.md). Delivery sequence belongs in the [roadmap](docs/roadmap.md). Live branch and issue state belongs in GitHub according to the [work-tracking contract](docs/work-tracking.md).
