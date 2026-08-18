@@ -81,9 +81,10 @@ The M6 matrix references inherited observations rather than duplicating them.
 `runenui_runtime` continues to own one live surface-publication authority. A
 successful publication atomically aligns distinct immutable products:
 
-- `PaintScene` — renderer-neutral logical visual content only;
-- paint-publication metadata — exact logical surface size, renderer scale, and
-  sound damage relative to the previous accepted paint publication;
+- `PaintPublication` — the renderer-facing immutable update/snapshot for one
+  exact logical surface, containing its `PaintRevision`, optional base revision,
+  history-independent `PaintScene`, exact logical surface size, renderer scale,
+  and sound damage;
 - `HitTestScene` — input-facing shapes, transforms/clips, pointer policy,
   deterministic order, runtime-injected mounted targets, and its exact
   `SurfaceInputContext`;
@@ -91,27 +92,83 @@ successful publication atomically aligns distinct immutable products:
 - semantic publication;
 - semantic diagnostics and ordinary diagnostics.
 
-These products may share immutable internal phase storage but are not one mixed
-node model. Paint consumers do not receive semantic roles, `WidgetTypeId`,
-concrete control kinds, mutable mounted state, or backend handles. Semantic
-consumers do not receive paint primitives. Layout and diagnostics remain
-inspectable without becoming renderer input.
+`PaintScene` is reusable renderer-neutral logical visual content nested in the
+paint publication. It is not a second live publication authority. These products
+may share immutable internal phase storage but are not one mixed node model.
+Paint consumers do not receive semantic roles, `WidgetTypeId`, concrete control
+kinds, mutable mounted state, or backend handles. Semantic consumers do not
+receive paint primitives. Layout and diagnostics remain inspectable without
+becoming renderer input.
 
 `SurfacePublication` is the public alignment boundary. It exposes sibling
-products read-only. Extracting a snapshot never transfers live runtime authority.
+products read-only. `SurfacePublication::paint_publication()` exposes the exact
+paint publication aligned with that surface commit; convenience access to its
+scene, if provided, is derived from that same value and does not duplicate state.
+Extracting a snapshot never transfers live runtime authority.
 
 `PaintScene` equality/content identity is history-independent: two scenes with
 the same logical items/resources/order compare as the same scene regardless of
 which predecessor caused their current damage or which logical surface extent
-currently hosts them. Publication-relative damage and target surface extent are
-therefore deliberately not stored as scene content. This lets #59 share an
-unchanged `PaintScene` while a new publication wrapper carries different damage
-or display metadata.
+currently hosts them. Publication-relative damage, revision lineage, and target
+surface extent are therefore deliberately not stored as scene content. This lets
+#59 share an unchanged `PaintScene` across paint publications.
 
 Scene requirements are a deterministic **derived view of `PaintScene` content**,
 not another authoritative stored product. Runtime/consumers may cache that view
 internally, but any cache must be exactly reconstructible from the immutable
 scene and cannot diverge from it.
+
+### Paint publication revisions are renderer update identity
+
+`PaintRevision` is a runtime-owned public non-zero, non-wrapping revision value,
+following the accepted `SemanticRevision` precedent. A revision is meaningful
+only for the exact `SurfaceId` carried by its `PaintPublication`; consumers do
+not compare revisions across surfaces as one global sequence.
+
+The first accepted paint publication for one surface is revision `1`, has no base
+revision, and carries full-surface damage. After that, runtime compares the exact
+renderer-relevant snapshot tuple:
+
+```text
+(PaintScene content, logical surface size, raster scale)
+```
+
+If that tuple is unchanged, a successful surface publication reuses the **exact
+same `PaintPublication` and `PaintRevision`**. Semantic-only, hit-only, focus-only,
+diagnostic-only, and other non-renderer changes therefore do not fabricate paint
+updates. They may still advance their own accepted authorities such as displayed
+hit generation where those contracts require it.
+
+If the renderer-relevant tuple changes, runtime allocates exactly one checked next
+`PaintRevision`, creates a new `PaintPublication`, and records the immediately
+previous accepted paint revision as `base_revision`. Damage in that new value is
+relative to exactly that base. Revision allocation occurs in the staged
+publication plan/final-preflight boundary: exhaustion when a new paint revision
+is required fails before commit under the existing non-wrapping terminal/atomic
+counter discipline. An unchanged renderer tuple consumes no paint revision.
+
+A renderer consumer tracks the exact `(SurfaceId, PaintRevision)` it has
+successfully realized:
+
+- if an observed paint publication has that same revision, there is no new paint
+  update;
+- if its current revision equals the publication's `base_revision`, it may apply
+  the publication's damage incrementally and then adopt the new revision;
+- if it has no matching base — including first observation, skipped revisions,
+  stale state, another surface, or recovery after renderer loss — it ignores the
+  incremental-damage optimization and realizes the complete immutable
+  `PaintScene` using the publication's complete extent/scale metadata, then
+  adopts the current revision.
+
+RunenUI does not retain renderer acknowledgements or invent a second handshake to
+make this work. The publication is always a complete snapshot; revision/base
+facts only say when its damage delta is safe as an optimization.
+
+This renderer revision is deliberately distinct from
+`SurfaceInputContext::hit_test_generation()`. Hit generations identify retained
+input snapshots and may advance on successful surface publications even when
+paint is unchanged. `PaintRevision` identifies renderer-relevant snapshot change
+only. Neither substitutes for the other.
 
 ### Core owns contribution vocabulary; runtime owns composed scenes
 
@@ -124,9 +181,10 @@ existing widget-owned contribution seam. M6 does not justify a broad
 
 `runenui_runtime` owns scene composition, mounted-target injection, layout-to-
 surface placement, deterministic global order, retained displayed scenes, dirty
-phase planning, publication transaction state, publication-relative renderer
-metadata, and immutable public snapshots. Widgets cannot author/forge
-`MountedNodeId`, `SurfaceId`, `SurfaceInputContext`, scene-order identity, live
+phase planning, publication transaction state, `PaintRevision` allocation,
+publication-relative renderer metadata, and immutable public snapshots. Widgets
+cannot author/forge `MountedNodeId`, `SurfaceId`, `SurfaceInputContext`,
+`PaintRevision`, paint base revisions, scene-order identity, live input
 publication generations, surface-publication extent, or damage history.
 
 This follows the accepted M5 precedent: add focused production vocabulary at
@@ -158,7 +216,7 @@ The production paint hook replaces `WidgetPaintProof` with immutable
 `PaintContribution` evaluated from mounted widget state during paint work. Its
 read-only context contains the owner's final local logical size and resolved
 computed style. It receives no runtime arena, surface origin, semantic tree,
-backend/GPU/host object, resource cache, or prior publication.
+backend/GPU/host object, resource cache, prior publication, or paint revision.
 
 A contribution is an ordered list of self-contained items. Each contributed
 item owns a primitive, owner-local transform, zero or more clips, opacity, and a
@@ -270,9 +328,9 @@ A successful surface publication may issue a fresh displayed hit generation even
 when region content is unchanged, preserving M4 publication semantics; immutable
 region storage may still be shared across wrappers.
 
-Paint has no independently targetable generation. Paint content identity is the
-immutable `PaintScene` aligned by `SurfacePublication`; another live counter
-solely for symmetry is rejected.
+Paint has no independently targetable **scene generation**. Renderer update
+identity is the surface-scoped `PaintRevision` owned by `PaintPublication`, not a
+second input-like generation or target namespace.
 
 ### Hit testing uses one exact algorithm
 
@@ -363,7 +421,10 @@ A reference is not resource bytes, a provider object, GPU handle, font object,
 native image, mounted/semantic identity, or scene-item identity. It is not a
 scene-local index. Reference equality is stable by value across scene snapshots
 for the lifetime in which the issuing resolver keeps that resource identity
-valid.
+valid. While a reference remains valid, it denotes immutable logical resource
+content for renderer comparison purposes; replacing that content requires a new
+`ResourceRef` value. Backend realization/cache objects may of course change
+without changing the logical reference.
 
 Consumers receive the **whole `ResourceRef`** and resolve it through one neutral
 resolver boundary; they do not split a local key from the value and guess/select
@@ -376,12 +437,13 @@ boundary. Missing, expired, or kind-mismatched refs are deterministic
 consumer/admission errors, never reinterpretation as another primitive or
 concrete widget kind.
 
-### Paint publication metadata is separate from scene content
+### Paint publication metadata and damage
 
-The paint publication carries metadata aligned with `PaintScene` but not part of
-its history-independent content identity.
+Every `PaintPublication` is a complete renderer snapshot for one exact
+`SurfaceId`. In addition to revision/base revision and `PaintScene`, it carries
+metadata that is not part of the scene's history-independent content identity.
 
-The metadata contains the exact validated logical surface size. It is the
+The publication contains the exact validated logical surface size. It is the
 renderer consumer's target logical canvas extent and defines the full-surface
 logical rectangle from origin `(0, 0)` to that size. A renderer must not consult
 layout reports or mounted storage to discover the target extent. Surface size is
@@ -392,18 +454,20 @@ Raster scale is one validated positive finite value used only for renderer
 realization. All layout/paint/hit/pointer geometry stays logical. Headless default
 is `1.0`; production host ownership of scale changes belongs to M10.
 
-Damage is a deterministic logical delta **relative to the previous accepted paint
-publication**. It must never under-report changed renderer-relevant output. The
-first accepted paint publication has full-surface damage. A logical surface-size
-or raster-scale change also requires full-surface damage. A full-surface damage
-rectangle is always permitted when finer invalidation cannot be proven. Empty
-damage is permitted only when `PaintScene` content, logical surface size, raster
-scale, and other renderer-relevant metadata except damage are unchanged.
+Damage is a deterministic logical delta **from `base_revision` to the current
+`PaintRevision`**. The first paint publication has no base and full-surface
+damage. A logical surface-size or raster-scale change also requires full-surface
+damage. For other renderer-state changes, damage must never under-report changed
+renderer-relevant output; conservative full-surface damage is always permitted.
+A newly allocated paint revision cannot use empty damage unless the accepted
+renderer comparison proves the new tuple is visually unchanged under a future
+explicit optimization; M6's required baseline may simply use conservative damage.
+An unchanged renderer tuple creates no new paint revision/publication at all.
 
 Because damage is predecessor-relative, it is publication metadata rather than a
 field that changes `PaintScene` content equality. #59 may therefore reuse an
-unchanged scene across publications while computing fresh extent/scale/damage
-metadata.
+unchanged scene across distinct changed paint publications while computing fresh
+revision/extent/scale/damage facts.
 
 Scene requirements are derived from canonical `PaintScene` content. Consumer
 capabilities are external input. Capability checking reports unsupported
@@ -414,8 +478,9 @@ alternate scenes, silently lower primitives, or select a concrete renderer.
 
 `runenui_testing` remains convenience authority only. It retains the latest
 ordinary `SurfacePublication` and exposes/asserts public paint/hit products. It
-does not fabricate scene IDs, mounted targets, generations, regions, publication
-state, damage history, or a second hit algorithm.
+does not fabricate paint revisions/base revisions, scene IDs, mounted targets,
+input generations, regions, publication state, damage history, or a second hit
+algorithm.
 
 The genuine downstream custom-widget package must migrate from
 `WidgetPaintProof` through public contribution APIs. M6 requires two independent
@@ -446,7 +511,7 @@ M6A0 freezes architecture/conformance only and owns no scene behavior.
 After its architecture/conformance PR is owner-accepted, guarded-squash-merged,
 and content identity is verified, perform one bounded M6A0 current-contract
 reconciliation. It records the actual accepted A0 squash, ADR/matrix
-retention/discoverability, M6's 35-blocked baseline, umbrella/pickup state, and
+retention/discoverability, M6's conformance baseline, umbrella/pickup state, and
 next exact base in roadmap/status/support/work-tracking/retention owners. It must
 itself be owner-accepted, merged, and accepted-main validated. **No M6
 implementation branch may start before this reconciliation completes.**
@@ -463,19 +528,22 @@ required to prove the storage boundary.
 ### M6B — canonical paint/hit scene kernel and displayed-hit cutover
 
 Introduce focused core contribution vocabulary, explicit hit invalidation,
-public immutable `PaintScene`/`HitTestScene`, runtime placement/target injection,
-basic rectangle primitive/region composition, exact deterministic order, and the
+public immutable `PaintPublication`/`PaintScene`/`HitTestScene`, runtime
+placement/target injection, surface-scoped non-wrapping paint revisions, basic
+rectangle primitive/region composition, exact deterministic order, and the
 canonical retained hit-scene ring. Migrate the built-in/downstream vertical
 proof and remove `WidgetPaintProof`, duplicate private hit snapshots, and old hit
 authority where replacements become live. Identity transforms, no clips, opacity
-`1`, layer `0`, and `Target` suffice for this first kernel; M6C extends the same
-products rather than creating another path.
+`1`, layer `0`, `Target`, raster scale `1`, and conservative full damage suffice
+for this first kernel; M6C extends the same products rather than creating another
+path.
 
 ### M6C — transforms, clips, resources, metadata, damage, and capabilities
 
-Complete transformed/rounded/clipped composition and hit semantics, resource
-references, paint-publication metadata, sound damage, `Block` policy, and
-consumer capability checking on the same M6B products.
+Complete transformed/rounded/clipped composition and hit semantics, immutable
+self-disambiguating resource references, exact paint revision/base consumer
+semantics, logical extent/scale metadata, sound incremental damage, `Block`
+policy, and consumer capability checking on the same M6B products.
 
 ### M6D — independent consumers, migration, and milestone closure
 
@@ -500,6 +568,17 @@ authority.
 ### Add an independent scene target/generation namespace
 Rejected: `MountedNodeId` and `SurfaceInputContext` already own the necessary
 route-target and displayed-generation lifetimes.
+
+### Reuse `SurfaceInputContext` or hit generation as renderer revision
+Rejected: input snapshot identity and renderer-change identity have different
+advance rules and consumers. Coupling them would fabricate renderer updates for
+semantic/hit-only surface publications and make renderer recovery depend on
+input-retention semantics.
+
+### Add `PaintSceneGeneration` instead of a paint publication revision
+Rejected: `PaintScene` is reusable history-independent content. The versioned
+thing is the renderer-facing surface snapshot containing scene plus extent/scale
+and damage lineage, so revision belongs to `PaintPublication`.
 
 ### Add an explicit pass-through hit policy
 Rejected: not contributing a region already provides exactly that targeting
@@ -526,6 +605,12 @@ Rejected: requirements are exactly derivable from `PaintScene`. A cached
 materialization may exist internally but cannot become a separately mutable or
 versioned product.
 
+### Let a resource reference resolve mutable logical content
+Rejected: paint-scene equality and revision reuse would become unsound if the same
+logical reference could silently change renderer-relevant content. Content
+replacement receives a new `ResourceRef`; only backend realization caches may
+change behind a stable ref.
+
 ### Add a giant renderer/widget trait or split the whole widget module first
 Rejected: #10 remains a broad non-blocking concentration audit; M6 has focused
 paint/hit seams.
@@ -550,9 +635,13 @@ Positive consequences:
   proofs;
 - scene coordinates/order are self-contained and deterministic;
 - paint content identity remains reusable and history-independent;
+- renderer consumers receive an explicit surface-scoped revision/base chain and
+  can safely use damage after contiguous updates or recover from missed updates
+  by realizing the complete snapshot;
+- semantic/hit-only surface publications do not fabricate renderer updates;
 - renderer consumers receive an explicit logical canvas extent without reading
   layout authority;
-- accepted M4 displayed-input identity remains intact;
+- accepted M4 displayed-input identity remains intact and independent;
 - runtime no longer needs two hit representations;
 - custom widgets gain explicit paint/hit contribution without registration;
 - semantic, paint, hit, layout, diagnostics, and paint-publication metadata have
@@ -564,6 +653,8 @@ Costs and constraints:
 
 - M6 deliberately breaks proof paint/hit APIs before 1.0;
 - downstream widgets must adopt explicit hit participation/new paint contribution;
+- runtime gains one checked paint revision counter, consumed only by actual
+  renderer-relevant snapshot changes;
 - hit invalidation gains one public bit and proof burden;
 - coordinate/order/transformed hit semantics require deterministic tests;
 - fixture resource resolvers are required until M8/M10 production producers;
