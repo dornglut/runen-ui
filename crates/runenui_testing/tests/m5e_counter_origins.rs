@@ -6,9 +6,12 @@ use runenui_core::{
     SemanticCommand, SemanticRole,
 };
 use runenui_runtime::{
-    LogicalPoint, PointerDeviceKind, PointerId, PointerPhase, PumpBudget, SemanticUpdateResult,
+    LogicalPoint, MountedNodeId, PointerDeviceKind, PointerId, PointerPhase, PumpBudget,
+    SemanticUpdateResult,
 };
-use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
+use runenui_testing::{
+    SemanticQuery, SemanticTarget, SettleBudget, SettleOutcome, TestHarness,
+};
 
 #[path = "../../../examples/counter/src/app.rs"]
 mod app;
@@ -24,6 +27,12 @@ enum ActivationOrigin {
     Keyboard,
     Automation,
     Programmatic,
+}
+
+struct CounterTargets {
+    semantic: SemanticTarget,
+    mounted: MountedNodeId,
+    point: LogicalPoint,
 }
 
 fn settle_budget() -> SettleBudget {
@@ -61,27 +70,18 @@ fn kind_count(kinds: &[&str], expected: &str) -> usize {
     kinds.iter().filter(|kind| **kind == expected).count()
 }
 
-fn run_origin(origin: ActivationOrigin) {
-    let mut harness = TestHarness::<CounterApp>::mount(Counter::new());
-    assert!(harness.publish().is_ok());
-
-    let Ok(snapshot) = harness.semantic_snapshot() else {
-        unreachable!("explicit Counter publication produces semantics")
-    };
-    let baseline_surface = snapshot.surface_id().clone();
-    let baseline_revision = snapshot.revision();
-
+fn increment_targets(harness: &TestHarness<CounterApp>) -> CounterTargets {
     let increment_query = SemanticQuery::new()
         .with_role(SemanticRole::Button)
         .with_name("+")
         .with_supported_action(SemanticAction::Activate);
-    let semantic_target = harness
+    let semantic = harness
         .unique_semantic_target(&increment_query)
         .unwrap_or_else(|error| {
             unreachable!("Counter increment semantic target is unique: {error:?}")
         });
 
-    let Some((mounted_target, point)) = (|| {
+    let Some((mounted, point)) = (|| {
         let publication = harness.publication()?;
         let authored = authored_id("counter.increment");
         let node = publication
@@ -100,97 +100,94 @@ fn run_origin(origin: ActivationOrigin) {
         unreachable!("published Counter increment has exact public frame identity and bounds")
     };
 
-    match origin {
-        ActivationOrigin::SemanticAction => {
-            harness
-                .submit_semantic_action(&semantic_target, SemanticAction::Activate)
-                .unwrap_or_else(|error| {
-                    unreachable!("Counter semantic activation is accepted: {error:?}")
-                });
-        }
-        ActivationOrigin::Pointer => {
-            let pointer_id =
-                PointerId::new(1).unwrap_or_else(|| unreachable!("pointer identity is non-zero"));
-            let down = harness
-                .pointer_event(
-                    pointer_id,
-                    PointerDeviceKind::Mouse,
-                    PointerPhase::Down,
-                    point,
-                )
-                .unwrap_or_else(|_| unreachable!("published Counter accepts pointer context"))
-                .with_changed_button(PointerButton::Primary)
-                .with_buttons(PointerButtons::new([PointerButton::Primary]));
-            harness.submit_pointer(down).unwrap_or_else(|error| {
-                unreachable!("Counter pointer down is accepted: {error:?}")
-            });
-            settle(&mut harness);
-            assert_eq!(harness.state().count, 0);
+    CounterTargets {
+        semantic,
+        mounted,
+        point,
+    }
+}
 
-            let up = harness
-                .pointer_event(
-                    pointer_id,
-                    PointerDeviceKind::Mouse,
-                    PointerPhase::Up,
-                    point,
-                )
-                .unwrap_or_else(|_| unreachable!("published Counter accepts pointer context"))
-                .with_changed_button(PointerButton::Primary);
-            harness
-                .submit_pointer(up)
-                .unwrap_or_else(|error| unreachable!("Counter pointer up is accepted: {error:?}"));
-        }
+fn submit_pointer_activation(harness: &mut TestHarness<CounterApp>, point: LogicalPoint) {
+    let pointer_id =
+        PointerId::new(1).unwrap_or_else(|| unreachable!("pointer identity is non-zero"));
+    let down = harness
+        .pointer_event(
+            pointer_id,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            point,
+        )
+        .unwrap_or_else(|_| unreachable!("published Counter accepts pointer context"))
+        .with_changed_button(PointerButton::Primary)
+        .with_buttons(PointerButtons::new([PointerButton::Primary]));
+    harness
+        .submit_pointer(down)
+        .unwrap_or_else(|error| unreachable!("Counter pointer down is accepted: {error:?}"));
+    settle(harness);
+    assert_eq!(harness.state().count, 0);
+
+    let up = harness
+        .pointer_event(
+            pointer_id,
+            PointerDeviceKind::Mouse,
+            PointerPhase::Up,
+            point,
+        )
+        .unwrap_or_else(|_| unreachable!("published Counter accepts pointer context"))
+        .with_changed_button(PointerButton::Primary);
+    harness
+        .submit_pointer(up)
+        .unwrap_or_else(|error| unreachable!("Counter pointer up is accepted: {error:?}"));
+}
+
+fn submit_activation(
+    harness: &mut TestHarness<CounterApp>,
+    origin: ActivationOrigin,
+    targets: CounterTargets,
+) {
+    match origin {
+        ActivationOrigin::SemanticAction => harness
+            .submit_semantic_action(&targets.semantic, SemanticAction::Activate)
+            .unwrap_or_else(|error| {
+                unreachable!("Counter semantic activation is accepted: {error:?}")
+            }),
+        ActivationOrigin::Pointer => submit_pointer_activation(harness, targets.point),
         ActivationOrigin::Keyboard => {
             harness
                 .submit_command(
-                    mounted_target.clone(),
+                    targets.mounted,
                     SemanticCommand::RequestFocus,
                     CommandOrigin::programmatic(),
                 )
                 .unwrap_or_else(|error| {
                     unreachable!("Counter increment focus request is accepted: {error:?}")
                 });
-            settle(&mut harness);
+            settle(harness);
             harness
                 .submit_keyboard(enter_down())
                 .unwrap_or_else(|error| unreachable!("Counter Enter is accepted: {error:?}"));
         }
-        ActivationOrigin::Automation => {
-            harness
-                .submit_automation_command(
-                    authored_id("counter.increment"),
-                    SemanticCommand::Activate,
-                )
-                .unwrap_or_else(|error| {
-                    unreachable!("Counter automation activation is accepted: {error:?}")
-                });
-        }
-        ActivationOrigin::Programmatic => {
-            harness
-                .submit_command(
-                    mounted_target,
-                    SemanticCommand::Activate,
-                    CommandOrigin::programmatic(),
-                )
-                .unwrap_or_else(|error| {
-                    unreachable!("Counter programmatic activation is accepted: {error:?}")
-                });
-        }
-    }
+        ActivationOrigin::Automation => harness
+            .submit_automation_command(
+                authored_id("counter.increment"),
+                SemanticCommand::Activate,
+            )
+            .unwrap_or_else(|error| {
+                unreachable!("Counter automation activation is accepted: {error:?}")
+            }),
+        ActivationOrigin::Programmatic => harness
+            .submit_command(
+                targets.mounted,
+                SemanticCommand::Activate,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|error| {
+                unreachable!("Counter programmatic activation is accepted: {error:?}")
+            }),
+    };
+}
 
-    settle(&mut harness);
-    assert_eq!(
-        harness.state().count,
-        1,
-        "origin {origin:?} must update Counter once"
-    );
-
-    assert!(harness.publish().is_ok());
-    assert!(matches!(
-        harness.semantic_update_from(&baseline_surface, baseline_revision),
-        Ok(SemanticUpdateResult::Delta(_))
-    ));
-
+fn assert_trace(harness: &TestHarness<CounterApp>, origin: ActivationOrigin) {
     let replay = harness
         .trace_replay()
         .unwrap_or_else(|error| unreachable!("Counter trace must replay for {origin:?}: {error}"));
@@ -223,6 +220,33 @@ fn run_origin(origin: ActivationOrigin) {
         }
         ActivationOrigin::Programmatic => {}
     }
+}
+
+fn run_origin(origin: ActivationOrigin) {
+    let mut harness = TestHarness::<CounterApp>::mount(Counter::new());
+    assert!(harness.publish().is_ok());
+
+    let Ok(snapshot) = harness.semantic_snapshot() else {
+        unreachable!("explicit Counter publication produces semantics")
+    };
+    let baseline_surface = snapshot.surface_id().clone();
+    let baseline_revision = snapshot.revision();
+    let targets = increment_targets(&harness);
+
+    submit_activation(&mut harness, origin, targets);
+    settle(&mut harness);
+    assert_eq!(
+        harness.state().count,
+        1,
+        "origin {origin:?} must update Counter once"
+    );
+
+    assert!(harness.publish().is_ok());
+    assert!(matches!(
+        harness.semantic_update_from(&baseline_surface, baseline_revision),
+        Ok(SemanticUpdateResult::Delta(_))
+    ));
+    assert_trace(&harness, origin);
 }
 
 #[test]
