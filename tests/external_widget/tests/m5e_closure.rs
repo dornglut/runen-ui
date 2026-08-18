@@ -4,7 +4,7 @@ use core::num::NonZeroUsize;
 
 use runenui_core::{IntoEffects, NoHostProtocol, SemanticAction, SemanticRole, UiApp, View};
 use runenui_external_widget_conformance::{ChildAction, ParentAction, parent_view};
-use runenui_runtime::{PumpBudget, SemanticUpdateResult};
+use runenui_runtime::PumpBudget;
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
 
 #[derive(Debug, Default, Eq, PartialEq)]
@@ -88,10 +88,15 @@ fn mapped_downstream_widget_preserves_semantics_action_runtime_and_trace_authori
     );
 
     assert!(harness.publish().is_ok());
-    assert!(matches!(
-        harness.semantic_update_from(&baseline_surface, baseline_revision),
-        Ok(SemanticUpdateResult::Delta(_))
-    ));
+    let Ok(snapshot) = harness.semantic_snapshot() else {
+        unreachable!("republished downstream semantics remain available")
+    };
+    assert_eq!(snapshot.surface_id(), &baseline_surface);
+    assert_eq!(
+        snapshot.revision(),
+        baseline_revision,
+        "application-only state change must not invent a semantic update"
+    );
 
     let replay = harness
         .trace_replay()
