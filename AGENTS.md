@@ -20,7 +20,7 @@ Historical tags and removed legacy material are never active implementation auth
 
 ## Work tracking and pickup
 
-The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrices, GitHub issues, pull requests, and current-status documents. Determine the active milestone from the accepted roadmap/status records, then use that milestone's GitHub umbrella/pickup issue. M4's public issue #3 is completed historical coordination; M5 used [public issue #45](https://github.com/dornglut/runen-ui/issues/45). After final M5 closure, M6 pickup authority must be activated only from the exact accepted M5 reconciliation squash and recorded in work tracking before implementation begins.
+The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrices, GitHub issues, pull requests, and current-status documents. Determine the active milestone from the accepted roadmap/status records, then use that milestone's GitHub umbrella/pickup issue. M4's public issue #3 is completed historical coordination; M5 used [public issue #45](https://github.com/dornglut/runen-ui/issues/45). M6 uses [issue #71](https://github.com/dornglut/runen-ui/issues/71) as its umbrella and [issue #72](https://github.com/dornglut/runen-ui/issues/72) for the accepted M6A0 architecture/conformance gate. No M6 implementation may begin until the bounded post-M6A0 current-contract reconciliation from exact accepted squash `966778dd31e0f6b6df76ee4f6283a984fc724b36` is itself owner-accepted, merged, tree-verified, and accepted-main validated; only then may #59/M6A become implementation pickup authority.
 
 Use this pickup sequence:
 
@@ -92,13 +92,22 @@ guarded-squash-merged in PR #67 as
 share exact complete repository tree
 `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`. Accepted-main CI #1296 /
 `32135074552` then validated that exact squash through unchanged read-only PR
-#68, which was closed unmerged. Final authority/current-contract reconciliation
-PR #69 is the only remaining M5 transition: it may promote only the five M5E
-rows and align accepted-state authority. No M6/#59 implementation, native
-accessibility work, renderer scene, compatibility path, or semantic/runtime
-redesign belongs in that reconciliation. M6 may begin only from the exact
-accepted PR #69 squash after its own exact-head review/authorization/merge and
-accepted-main validation complete.
+#68, which was closed unmerged. Final M5 authority reconciliation PR #69 is also
+accepted, merged, and accepted-main validated, closing M5 at `53/53` and
+configured M4+M5 at `290/290` owner-accepted.
+
+M6A0 #72 then froze accepted [ADR 0007](docs/adr/0007-renderer-neutral-paint-hit-scene-protocol.md)
+and the 36-row [M6 conformance matrix](docs/architecture/m6-conformance-matrix.md).
+Exact reviewed PR #73 head `c0169ebea044a0009a334f3d5ecc13ff8d495885`
+passed exact-head CI #1349 / `32181344340`, was explicitly owner-authorized, and
+was guarded-squash-merged as exact accepted `main`
+`966778dd31e0f6b6df76ee4f6283a984fc724b36`. Reviewed and squash trees are
+identical at `fe057a3fef9ea6de053ce86ce336212f0aa3a413`. Accepted-main CI #1351 /
+`32186597198` independently validated that exact squash through read-only PR #74,
+which was closed unmerged. All 36 M6 behavior rows remain `blocked`: A0 accepts
+architecture/conformance authority only. The bounded current-contract
+reconciliation is the sole remaining pre-implementation gate; #59/M6A must not
+start until that reconciliation is itself accepted and accepted-main validated.
 
 A future thread should need only the repository, roadmap/status records, and active milestone pickup issue to locate current work.
 
