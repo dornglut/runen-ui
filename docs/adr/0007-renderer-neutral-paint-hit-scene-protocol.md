@@ -216,6 +216,33 @@ hit consumers evaluate only transforms contained in the immutable product.
 All scene geometry remains logical. `RasterScale` never alters this coordinate
 contract.
 
+### Rounded-rectangle geometry has one normalization rule
+
+M6 rounded-rectangle hit/clip geometry uses four finite non-negative **circular**
+corner radii: top-left, top-right, bottom-right, and bottom-left. Elliptical
+per-axis radii are not part of M6. The outer rectangle uses the existing
+`LogicalRect` half-open edge contract: left/top are inclusive and right/bottom
+are exclusive.
+
+Before any rounded-rectangle clip or hit test, runtime/consumers normalize all
+four radii by one common factor. Starting with `f = 1`, take the minimum of `1`
+and each applicable ratio below whose denominator is positive:
+
+```text
+width  / (top_left + top_right)
+width  / (bottom_left + bottom_right)
+height / (top_left + bottom_left)
+height / (top_right + bottom_right)
+```
+
+Each effective radius is `radius * f`. This preserves corner proportions while
+ensuring adjacent radii fit the rectangle. A zero-sized outer rectangle is empty
+under the inherited half-open rectangle contract. Within a normalized corner,
+arc containment includes the circular boundary (`distance² <= radius²`) after
+the outer half-open rectangle check. Clips and hit regions use the same
+normalized-shape semantics; no backend or storage representation may choose a
+different oversized-radius policy.
+
 ### Paint contributions are owner-local immutable fragments
 
 The production paint hook replaces `WidgetPaintProof` with immutable
@@ -243,6 +270,31 @@ primitives reference resources supplied by another owner.
 All transforms must be finite. Opacity must be finite and in closed `[0, 1]`;
 checked construction rejects values outside the contract rather than clamping or
 silently normalizing them. Layer values are ordering facts only, never identity.
+
+### Literal color, opacity, and basic rectangle stroke semantics are exact
+
+M6 fill/stroke literal colors reuse the existing core `Color`; no duplicate scene
+color type is introduced for the same sRGB8 case. In renderer-facing paint, its
+red/green/blue bytes are **unpremultiplied sRGB-encoded 8-bit channels** and its
+alpha byte is **linear coverage** in `[0, 255]`. Consumers normalize alpha to
+`[0, 1]`, decode RGB to linear-light sRGB for compositing, may premultiply
+internally, and composite scene items with ordinary source-over semantics in the
+accepted scene order. The item's validated opacity multiplies source alpha (and
+therefore premultiplied source color) before source-over. M6 defines no alternate
+blend modes.
+
+This color rule applies to literal scene colors. Resource payload color metadata
+remains owned by the resource/provider contract; a consumer cannot reinterpret a
+literal `Color` according to backend defaults. Physical display color management,
+raster sampling, and anti-aliasing implementation are backend concerns and are
+not pixel-exact M6 scene semantics, but they must not change the scene's literal
+sRGB color meaning or source-over ordering.
+
+A stroked logical rectangle's width is measured in the primitive's local logical
+space before the item transform. Width `0` produces no stroke coverage; it is
+never a device-dependent hairline. A positive-width stroke is centered on the
+rectangle boundary, extending half the width to each side before transformation.
+Consumers must not silently choose inside-only or outside-only stroke alignment.
 
 Global paint order is the stable ascending tuple:
 
@@ -346,9 +398,11 @@ semantics. For each region from topmost to bottommost:
 
 1. map the surface-logical point through the inverse of the region's exact
    local-to-surface transform;
-2. test the region shape in that local space;
+2. test the region shape in that local space, using the normalized rounded-
+   rectangle rule above where applicable;
 3. map the surface-logical point through the inverse of each clip's exact
-   clip-to-surface transform and require it to be inside every clip shape;
+   clip-to-surface transform and require it to be inside every clip shape using
+   the same rectangle/rounded-rectangle containment rules;
 4. when contained and unclipped, apply `PointerPolicy`.
 
 A non-invertible region transform makes that region non-hittable with deterministic
@@ -628,6 +682,18 @@ Rejected: semantics are an independent meaning/accessibility product, not
 physical input authority. An owning control may intentionally align both products
 but must contribute/invalidate each through its own authority.
 
+### Leave literal color encoding or stroke alignment backend-defined
+Rejected: two independent renderer consumers could otherwise interpret the same
+scene differently. M6 fixes literal `Color` as unpremultiplied sRGB8 plus linear
+alpha, source-over compositing, item-opacity multiplication, centered positive
+rectangle strokes, and zero-width no-op semantics. Backend rasterization remains
+free only where it does not reinterpret those logical facts.
+
+### Let oversized rounded radii use backend-specific clamping
+Rejected: rounded clips and hit regions are public deterministic geometry. M6
+normalizes all four circular radii by one proportional factor before containment,
+so consumers cannot disagree on oversized corners.
+
 ### Put predecessor-relative damage inside `PaintScene` content
 Rejected: identical scene content can have different damage after different
 predecessors. That would make scene identity history-dependent and frustrate
@@ -667,6 +733,8 @@ Positive consequences:
 - renderer/hit consumers receive explicit products rather than widget/debug
   proofs;
 - scene coordinates/order are self-contained and deterministic;
+- literal color/compositing, basic stroke placement, and rounded hit/clip geometry
+  have one cross-consumer interpretation;
 - paint content identity remains reusable and history-independent;
 - renderer consumers receive an explicit surface-scoped revision/base chain and
   can safely use damage after contiguous updates or recover from missed updates
@@ -690,7 +758,8 @@ Costs and constraints:
   renderer-relevant snapshot changes;
 - runtime gains one validated neutral raster-scale value in surface build input;
 - hit invalidation gains one public bit and proof burden;
-- coordinate/order/transformed hit semantics require deterministic tests;
+- color conversion/compositing, rounded-radius normalization, coordinate/order,
+  and transformed hit semantics require deterministic tests;
 - fixture resource resolvers are required until M8/M10 production producers;
 - retained immutable products must preserve simple staged atomicity.
 
