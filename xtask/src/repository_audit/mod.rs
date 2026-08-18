@@ -994,6 +994,10 @@ mod tests {
                 "```text\n1 total unique rows\n0 owner-accepted\n0 implementation-complete\n0 proof-complete\n1 blocked\n0 duplicate IDs\n0 invalid statuses\n0 invalid schemas\n```\n\n| ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |\n|---|---|---|---|---|---|---|---|\n| SEM-ID-01 | observation | positive | negative | diagnostic | M5A | blocked | Required |\n",
             )?;
             self.write(
+                "docs/architecture/m6-conformance-matrix.md",
+                "```text\n1 total unique rows\n0 owner-accepted\n0 implementation-complete\n0 proof-complete\n1 blocked\n0 duplicate IDs\n0 invalid statuses\n0 invalid schemas\n```\n\n| ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |\n|---|---|---|---|---|---|---|---|\n| SCENE-PUB-01 | observation | positive | negative | diagnostic | M6A | blocked | Required |\n",
+            )?;
+            self.write(
                 "docs/work-tracking.md",
                 "[umbrella](https://github.com/dornglut/runen-ui/issues/3)\n",
             )?;
