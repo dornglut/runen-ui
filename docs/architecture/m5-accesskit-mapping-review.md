@@ -36,14 +36,15 @@ This file records compatibility of concepts only. M5 adds no AccessKit/native de
 
 ## M5 action mapping
 
-Only mappings backed by the accepted M5 vocabulary are valid at this boundary:
+Only direct mappings backed by both the reviewed AccessKit action vocabulary and the accepted M5 vocabulary are valid at this boundary:
 
-- AccessKit click/activation intent can map to RunenUI `SemanticAction::Activate`.
-- AccessKit focus intent can map to RunenUI `SemanticAction::RequestFocus` when the current RunenUI node advertises/supports it.
-- A platform context-menu intent can map to `SemanticAction::OpenContextMenu` where the target advertises it.
-- A platform menu/open intent may map to `SemanticAction::OpenMenu` only where the adapter can make that meaning exact and the target advertises it.
+- AccessKit `Action::Click` can map to RunenUI `SemanticAction::Activate` when the current RunenUI node advertises/supports it.
+- AccessKit `Action::Focus` can map to RunenUI `SemanticAction::RequestFocus` when the current RunenUI node advertises/supports it.
+- AccessKit `Action::ShowContextMenu` can map to RunenUI `SemanticAction::OpenContextMenu` when the current RunenUI node advertises/supports it.
 
-AccessKit actions that require production text replacement/value editing, selection mutation, scrolling, numeric increment/decrement, or other semantics not present in the accepted M5 `SemanticAction` vocabulary are rejected/not advertised by an M5 adapter. They are not silent no-ops and do not justify compatibility wrappers. In particular, AccessKit scroll actions do not resurrect retired `SemanticAction::LogicalScroll`; semantic scrolling remains later-milestone work while routed M4 `SemanticCommand::LogicalScroll` remains ordinary non-semantic command behavior.
+The reviewed AccessKit `Action` enum has no generic open-menu action corresponding exactly to RunenUI `SemanticAction::OpenMenu`. An M5 adapter therefore does not map `OpenMenu` from `Action::Expand`, `Action::ShowContextMenu`, or another merely similar platform action. Any future mapping requires a later adapter contract that makes the semantics exact.
+
+AccessKit actions for blur, collapse/expand, custom actions, tooltips, production text replacement/value editing, selection mutation, scrolling, numeric increment/decrement, or other semantics without an exact accepted M5 `SemanticAction` counterpart are rejected/not advertised by an M5 adapter. They are not silent no-ops and do not justify compatibility wrappers. In particular, AccessKit scroll actions do not resurrect retired `SemanticAction::LogicalScroll`; semantic scrolling remains later-milestone work while routed M4 `SemanticCommand::LogicalScroll` remains ordinary non-semantic command behavior.
 
 `ActionRequest.data` is consumed only when an accepted RunenUI semantic action has corresponding request data. M5's accepted actions carry no platform-specific action payload, so payload-dependent platform actions remain unsupported rather than being truncated.
 
