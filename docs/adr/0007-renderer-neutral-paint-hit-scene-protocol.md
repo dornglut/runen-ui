@@ -34,6 +34,9 @@ The accepted baseline deliberately does not already contain that protocol:
 - runtime pointer ingress does not use that public hit method. It copies
   `(MountedNodeId, LogicalRect)` into a second private retained
   `HitTestSnapshot` ring and resolves displayed input there;
+- that private snapshot also validates whether a checked resolved
+  `MountedNodeId` belonged to the exact named historical surface generation,
+  preserving accepted M4 `SURFACE-10` independently from point-hit geometry;
 - that same private snapshot also supplies `current_focus_geometry()` for M4
   directional focus, so the current proof accidentally conflates an all-mounted
   published-layout geometry view with pointer hit authority even though those
@@ -95,9 +98,10 @@ successful publication atomically aligns distinct immutable products:
   exact logical surface, containing its `PaintRevision`, optional base revision,
   history-independent `PaintScene`, exact logical surface size, `RasterScale`,
   and sound damage;
-- `HitTestScene` — input-facing shapes, transforms/clips, pointer policy,
-  deterministic order, runtime-injected mounted targets, and its exact
-  `SurfaceInputContext`;
+- `HitTestScene` — the exact displayed-input snapshot, containing ordered
+  input-facing shapes/transforms/clips/pointer policy, exact runtime-injected
+  mounted-target membership for the published generation, deterministic order,
+  and its exact `SurfaceInputContext`;
 - layout result/report plus the retained layout-phase facts required by current
   runtime focus selection;
 - semantic publication;
@@ -191,14 +195,15 @@ focused paint contribution types, focused hit contribution types, and the
 existing widget-owned contribution seam. M6 does not justify a broad
 `Element`/`Widget` source reorganization or a registry of concrete controls.
 
-`runenui_runtime` owns scene composition, mounted-target injection, layout-to-
-surface placement, deterministic global order, retained displayed scenes, dirty
-phase planning, publication transaction state, `PaintRevision` allocation,
-validated `RasterScale`, publication-relative renderer metadata, and immutable
-public snapshots. Widgets cannot author/forge `MountedNodeId`, `SurfaceId`,
-`SurfaceInputContext`, `PaintRevision`, paint base revisions, scene-order
-identity, live input publication generations, surface-publication extent,
-raster-scale authority, or damage history.
+`runenui_runtime` owns scene composition, mounted-region target injection, exact
+displayed-generation mounted-target membership, layout-to-surface placement,
+deterministic global order, retained displayed scenes, dirty phase planning,
+publication transaction state, `PaintRevision` allocation, validated
+`RasterScale`, publication-relative renderer metadata, and immutable public
+snapshots. Widgets cannot author/forge `MountedNodeId`, `SurfaceId`,
+`SurfaceInputContext`, displayed-snapshot membership, `PaintRevision`, paint base
+revisions, scene-order identity, live input publication generations,
+surface-publication extent, raster-scale authority, or damage history.
 
 This follows the accepted M5 precedent: add focused production vocabulary at
 its ownership seam rather than split unrelated responsibilities.
@@ -222,6 +227,25 @@ hit consumers evaluate only transforms contained in the immutable product.
 
 All scene geometry remains logical. `RasterScale` never alters this coordinate
 contract.
+
+### Paint clip composition is exact
+
+Paint clips are conjunctive logical coverage constraints, not an ordered command
+stack. An item with zero clips is unrestricted by clipping. With one or more
+clips, a surface-logical sample contributes paint only when it is inside **every**
+clip after mapping through each clip's own inverse `clip-to-surface` transform.
+Multiple clips therefore form their geometric intersection; clip order cannot
+change the result and no consumer may choose union, first/last-wins, or implicit
+replacement semantics.
+
+Paint primitive coverage is evaluated through the item's exact
+`local-to-surface` transform. A non-invertible item transform produces no paint
+coverage and is diagnosed rather than falling back to untransformed geometry. A
+non-invertible clip transform excludes coverage for that item and is diagnosed;
+it never makes the clip disappear. Rectangle and rounded-rectangle clips use the
+same logical shape rules frozen below. Raster edge sampling and anti-aliasing may
+remain backend-specific, but they cannot change these logical inclusion,
+intersection, or singular-transform semantics.
 
 ### Rounded-rectangle geometry has one normalization rule
 
@@ -274,6 +298,22 @@ M6's minimum primitive vocabulary is:
 Production shaping and image decoding are not primitive semantics. Text/image
 primitives reference resources supplied by another owner.
 
+Image and shaped-run placement nevertheless have exact scene semantics. An image
+primitive maps the complete normalized resource domain `(0, 0)..(1, 1)`
+affinely onto its destination logical rectangle: normalized `(0, 0)` maps to the
+rectangle origin and `(1, 1)` maps to its far corner. M6 has no implicit
+contain/cover, crop, repeat/tile, nine-slice, or intrinsic-size fit mode; later
+vocabulary must name such behavior explicitly rather than making it a renderer
+default.
+
+A shaped-text-run primitive maps the resource's own logical `(0, 0)` origin to
+its finite authored logical placement point. Glyph positions and other logical
+geometry already contained in that shaped resource remain relative to that
+origin; the primitive performs no hidden baseline inference, fit, scaling,
+reshaping, line breaking, or reflow. Item transforms may still transform the
+result under the ordinary scene transform contract. Production shaping and the
+contents/lifetime of shaped-run resources remain M8/provider work.
+
 All transforms must be finite. Opacity must be finite and in closed `[0, 1]`;
 checked construction rejects values outside the contract rather than clamping or
 silently normalizing them. Layer values are ordering facts only, never identity.
@@ -297,11 +337,21 @@ raster sampling, and anti-aliasing implementation are backend concerns and are
 not pixel-exact M6 scene semantics, but they must not change the scene's literal
 sRGB color meaning or source-over ordering.
 
+A filled rectangle with zero logical width or height produces no paint coverage.
 A stroked logical rectangle's width is measured in the primitive's local logical
 space before the item transform. Width `0` produces no stroke coverage; it is
-never a device-dependent hairline. A positive-width stroke is centered on the
-rectangle boundary, extending half the width to each side before transformation.
-Consumers must not silently choose inside-only or outside-only stroke alignment.
+never a device-dependent hairline. A stroked rectangle whose own logical width
+or height is zero also produces no coverage.
+
+For a non-empty rectangle and positive stroke width `w`, the exact logical stroke
+is the axis-aligned **mitered ring** formed by the rectangle expanded by `w / 2`
+on all four sides minus the rectangle inset by `w / 2` on all four sides. If the
+inset collapses either dimension to zero or below, the inset is empty and the
+stroke is the complete expanded rectangle. This fixes centered alignment and
+square/mitered corners without introducing backend-selected round/bevel joins.
+Raster edge sampling and anti-aliasing remain backend concerns, but consumers
+must not silently choose inside-only, outside-only, rounded, beveled, or
+hairline stroke geometry.
 
 Global paint order is the stable ascending tuple:
 
@@ -368,12 +418,28 @@ traversal of it. Storage iteration, backend order, and current-tree traversal
 cannot change the result after publication. Layer remains snapshot-local ordering
 policy, not identity.
 
-### The hit scene is the canonical displayed pointer snapshot
+### The hit scene is the canonical displayed input snapshot
 
 The public immutable `HitTestScene` associated with a successful
 `SurfacePublication` is the exact scene retained by `SurfacePublicationState`
-for pointer targeting. Runtime must not copy it into another rectangle snapshot
-or re-run `SurfaceFrame` hit testing.
+for displayed point targeting **and** checked resolved-target membership. Runtime
+must not copy it into another rectangle/membership snapshot or re-run
+`SurfaceFrame` hit testing.
+
+The hit scene owns two distinct runtime-composed facts:
+
+- ordered pointer-hit regions, used only to resolve a logical point;
+- exact mounted-target membership for every mounted node published in that
+  generation, used only to prove that a checked resolved target belonged to the
+  exact named historical snapshot before inherited current mounted-target
+  validation/routing proceeds.
+
+These facts must not be inferred from each other. A mounted node may be a valid
+member of the named snapshot while contributing no hit region. Conversely, the
+presence of a hit region does not create a separate target lifetime or bypass
+mounted identity validation. Region absence therefore means pointer
+pass-through only; it does **not** remove historical snapshot membership or make
+resolved surface ingress fail `TargetNotInSnapshot`.
 
 The retained scene is the single storage owner of its runtime-issued
 `SurfaceInputContext`; `SurfacePublication::input_context()` exposes that same
@@ -382,17 +448,23 @@ stored context field. The retained generation ring stores cheap immutable handle
 to these exact scenes.
 
 `SurfaceInputContext::hit_test_generation()` remains the sole public displayed
-hit-scene generation. M6 adds no second hit-scene generation/target namespace.
+input-scene generation. M6 adds no second hit-scene generation/target namespace.
 Current and retained contexts resolve only against the scene they name;
 retired/missing/foreign/mismatched contexts retain accepted M4 behavior.
+Historical point resolution uses the named scene's regions. Historical checked
+resolved-target ingress uses the named scene's exact mounted-target membership;
+it never asks the current tree whether the target happened to exist in that old
+snapshot.
 
 `MountedNodeId` remains the canonical route target injected by runtime into
-`Target` regions. Scene order, resource IDs, authored IDs, semantic IDs, and
-primitive identities never substitute for mounted target identity.
+`Target` regions and retained in exact snapshot membership. Scene order,
+resource IDs, authored IDs, semantic IDs, and primitive identities never
+substitute for mounted target identity.
 
 A successful surface publication may issue a fresh displayed hit generation even
-when region content is unchanged, preserving M4 publication semantics; immutable
-region storage may still be shared across wrappers.
+when region and membership content are unchanged, preserving M4 publication
+semantics; immutable region/membership storage may still be shared across
+wrappers.
 
 Paint has no independently targetable **scene generation**. Renderer update
 identity is the surface-scoped `PaintRevision` owned by `PaintPublication`, not a
@@ -420,20 +492,24 @@ selection may derive or cheaply expose the private current projection from that
 same retained immutable product. Directional focus uses the current accepted
 published layout, not a historical `SurfaceInputContext` generation.
 
-The private proof `HitTestSnapshot` may be removed only after both of its old
+The private proof `HitTestSnapshot` may be removed only after all of its old
 consumer roles are migrated in the same accepted cutover sequence:
 
-- pointer/current-and-retained surface resolution -> canonical `HitTestScene`;
+- point/current-and-retained surface resolution -> canonical `HitTestScene`
+  regions;
+- checked resolved-target historical membership -> canonical `HitTestScene`
+  membership;
 - current focus-navigation geometry -> retained layout-phase projection.
 
-The full inherited M4 directional-focus corpus and focus trace behavior must pass
-unchanged after this split. M6 does not redefine scoring, scope, restoration,
-eligibility, or logical-focus-scroll policy.
+The full inherited M4 surface-context and directional-focus corpora and their
+trace behavior must pass unchanged after this split. M6 does not redefine
+scoring, scope, restoration, eligibility, resolved-target validation,
+logical-focus-scroll policy, or historical no-retargeting behavior.
 
 ### Hit testing uses one exact algorithm
 
 Runtime input and public deterministic consumers use the same `HitTestScene`
-semantics. For each region from topmost to bottommost:
+point-resolution semantics. For each region from topmost to bottommost:
 
 1. map the surface-logical point through the inverse of the region's exact
    local-to-surface transform;
@@ -455,11 +531,14 @@ On a containing eligible region:
 - `Block` returns blocked/no-target and stops.
 
 If no contributed region contains the point, physical hit testing returns no
-target. That is the sole pass-through representation.
+target. That is the sole pass-through representation. This point algorithm never
+uses snapshot membership as synthetic geometry.
 
 This replaces both `SurfaceFrame::hit_test` authority and the private copied
-rectangle resolver. A surviving debug/layout snapshot must have a separate
-truthful purpose and no hit authority.
+rectangle resolver. Checked resolved-target validation uses the same retained
+`HitTestScene` wrapper's membership rather than a second snapshot. A surviving
+debug/layout snapshot must have a separate truthful purpose and no hit or
+historical-membership authority.
 
 ### Hit invalidation is explicit
 
@@ -467,9 +546,11 @@ M6 adds public `WidgetInvalidation::HIT_TEST` and includes it in `ALL`.
 
 - `HIT_TEST` invalidates widget hit contribution and dirties hit composition;
 - `LAYOUT` implies hit work because context/surface placement may change;
-- structural change rebuilds hit topology/order;
+- structural change rebuilds hit topology/order and exact displayed-snapshot
+  membership;
 - state changes to shape, existence, layer, clips, transform, or pointer policy
   independent of layout require explicit `HIT_TEST`;
+- ordinary hit-contribution changes do not alter mounted snapshot membership;
 - `PAINT` alone never changes hit testing;
 - `SEMANTICS` alone never changes hit testing;
 - `INTERACTION` does not silently imply widget hit invalidation. Runtime-owned
@@ -511,6 +592,8 @@ It must guarantee:
 The internal smart-pointer/container type is not public protocol. Retained layout
 storage used by focus navigation is part of this one phase-product authority; it
 must not be recreated as a second focus cache merely to remove `HitTestSnapshot`.
+The retained displayed-input phase similarly owns both its region storage and
+exact generation membership; no second membership cache is introduced.
 
 ### Resource references are logical, self-disambiguating values
 
@@ -601,8 +684,8 @@ alternate scenes, silently lower primitives, or select a concrete renderer.
 `runenui_testing` remains convenience authority only. It retains the latest
 ordinary `SurfacePublication` and exposes/asserts public paint/hit products. It
 does not fabricate paint revisions/base revisions, raster scale, scene IDs,
-mounted targets, input generations, regions, publication state, damage history,
-or a second hit algorithm.
+mounted targets, input generations, regions, snapshot membership, publication
+state, damage history, or a second point/resolved-target algorithm.
 
 The genuine downstream custom-widget package must migrate from
 `WidgetPaintProof` through public contribution APIs. M6 requires two independent
@@ -617,10 +700,12 @@ or truthfully narrow:
 - `WidgetPaintProof` and its mounted capability cache;
 - renderer-facing paint claims on `SurfaceFrame`/`SurfaceNode`;
 - `SurfaceFrame::hit_test` / `hit_test_id` as hit authority;
-- the private copied `HitTestSnapshot`/rectangle resolver once pointer targeting
-  has moved to `HitTestScene` **and** current focus geometry has moved to the
-  retained layout-phase projection;
-- debug/test helpers independently reproducing renderer/hit semantics;
+- the private copied `HitTestSnapshot`/rectangle resolver once point targeting
+  and exact historical resolved-target membership have moved to `HitTestScene`
+  **and** current focus geometry has moved to the retained layout-phase
+  projection;
+- debug/test helpers independently reproducing renderer/hit or historical
+  snapshot-membership semantics;
 - stale docs/support claims naming proof products as production scene inputs.
 
 `SurfaceLayoutReport`, style reports, mounted inspection, and diagnostics may
@@ -634,11 +719,13 @@ M6A0 freezes architecture/conformance only and owns no scene behavior.
 
 After its architecture/conformance PR is owner-accepted, guarded-squash-merged,
 and content identity is verified, perform one bounded M6A0 current-contract
-reconciliation. It records the actual accepted A0 squash, ADR/matrix
-retention/discoverability, M6's conformance baseline, umbrella/pickup state, and
-next exact base in roadmap/status/support/work-tracking/retention owners. It must
-itself be owner-accepted, merged, and accepted-main validated. **No M6
-implementation branch may start before this reconciliation completes.**
+reconciliation. The A0 package itself already registers ADR 0007 and the M6
+matrix in the retained-document inventory. The reconciliation records the actual
+accepted A0 squash, accepted discoverability/status, M6's conformance baseline,
+umbrella/pickup state, and next exact base in roadmap/status/support/work-tracking
+and other affected current-contract owners. It must itself be owner-accepted,
+merged, and accepted-main validated. **No M6 implementation branch may start
+before this reconciliation completes.**
 
 Then the minimum implementation order is:
 
@@ -648,39 +735,43 @@ Replace whole-`SurfaceCache` cloning with immutable shared phase products while
 preserving M5 transaction/failure behavior. Prove narrow publications reuse
 unchanged products. Preserve a single retained layout phase that can serve both
 public layout reporting and the runtime-private current focus-geometry projection;
-do not add a second focus cache. Do not add parallel cache or scene behavior
+do not add a second focus cache. Preserve one retained displayed-input phase that
+can serve both point-region lookup and exact historical mounted-target membership;
+do not add a second membership cache. Do not add parallel cache or scene behavior
 unless strictly required to prove the storage boundary.
 
 ### M6B — canonical paint/hit scene kernel and displayed-hit cutover
 
 Introduce focused core contribution vocabulary, explicit hit invalidation,
 public immutable `PaintPublication`/`PaintScene`/`HitTestScene`, runtime
-placement/target injection, surface-scoped non-wrapping paint revisions, basic
-rectangle primitive/region composition, exact deterministic order, and the
-canonical retained hit-scene ring. Migrate pointer resolution to `HitTestScene`
-and directional-focus geometry to the retained layout phase before removing the
-old mixed private snapshot. Migrate the built-in/downstream vertical proof and
-remove `WidgetPaintProof`, duplicate private hit snapshots, and old hit authority
-where replacements become live. Identity transforms, no clips, opacity `1`,
-layer `0`, `Target`, `RasterScale::ONE`, and conservative full damage suffice for
-this first kernel; M6C extends the same products rather than creating another
-path.
+placement/target injection, exact displayed-generation mounted-target membership,
+surface-scoped non-wrapping paint revisions, basic rectangle primitive/region
+composition, exact deterministic order, and the canonical retained hit-scene
+ring. Migrate point resolution and checked historical resolved-target validation
+to `HitTestScene`, and directional-focus geometry to the retained layout phase,
+before removing the old mixed private snapshot. Migrate the built-in/downstream
+vertical proof and remove `WidgetPaintProof`, duplicate private hit snapshots,
+and old hit authority where replacements become live. Identity transforms, no
+clips, opacity `1`, layer `0`, `Target`, `RasterScale::ONE`, and conservative full
+damage suffice for this first kernel; M6C extends the same products rather than
+creating another path.
 
 ### M6C — transforms, clips, resources, metadata, damage, and capabilities
 
-Complete transformed/rounded/clipped composition and hit semantics, immutable
-self-disambiguating resource references, exact paint revision/base consumer
-semantics, neutral `SurfaceBuildContext` raster-scale input, logical extent/scale
-metadata, sound incremental damage, `Block` policy, and consumer capability
-checking on the same M6B products.
+Complete transformed/rounded/intersection-clipped composition and hit semantics,
+exact image/shaped-run logical placement, immutable self-disambiguating resource
+references, exact paint revision/base consumer semantics, neutral
+`SurfaceBuildContext` raster-scale input, logical extent/scale metadata, sound
+incremental damage, `Block` policy, and consumer capability checking on the same
+M6B products.
 
 ### M6D — independent consumers, migration, and milestone closure
 
 Prove two independent deterministic consumers including one genuine downstream
 renderer without widget-kind knowledge; complete public testing assertions;
 remove remaining obsolete proof claims; run integrated M4/M5 inheritance plus M6
-conformance, including the unchanged directional-focus corpus; reconcile current
-authority and close M6.
+conformance, including unchanged surface-context and directional-focus corpora;
+reconcile current authority and close M6.
 
 A later critical audit may split a slice only when it reduces a real acceptance
 boundary without duplicate authority. M6B cannot precede accepted M6A because
@@ -692,9 +783,10 @@ that would knowingly build real scenes around the cache #59 must replace.
 Rejected: it contains mounted/widget/debug/style facts and proof paint.
 
 ### Keep a private hit snapshot beside a public hit scene
-Rejected: two pointer representations can diverge; the public retained scene is
-the pointer-hit authority. The independent focus-geometry consumer moves to the
-retained layout phase rather than justifying a second hit representation.
+Rejected: two displayed-input representations can diverge. The public retained
+scene owns both exact point-hit regions and exact historical mounted-target
+membership. The independent focus-geometry consumer moves to the retained layout
+phase rather than justifying a second hit or membership representation.
 
 ### Use `HitTestScene` as directional-focus geometry
 Rejected: explicit pointer participation is not focus participation. A keyboard-
@@ -702,6 +794,13 @@ focusable widget may deliberately contribute no hit region, while a hit region
 may belong to a non-focusable owner. M4 focus geometry therefore remains a
 current retained-layout projection and does not acquire hit-scene identity or
 retention semantics.
+
+### Derive resolved-target snapshot membership from hit regions
+Rejected: accepted M4 checked resolved-target ingress validates whether an exact
+`MountedNodeId` belonged to the named historical snapshot independently of point
+hit participation. A no-hit mounted node may still be a valid historical resolved
+target. `HitTestScene` therefore retains exact generation membership as a
+separate fact inside the same displayed-input product.
 
 ### Add an independent scene target/generation namespace
 Rejected: `MountedNodeId` and `SurfaceInputContext` already own the necessary
@@ -738,11 +837,26 @@ Rejected: semantics are an independent meaning/accessibility product, not
 physical input authority. An owning control may intentionally align both products
 but must contribute/invalidate each through its own authority.
 
+### Let paint clips use consumer-selected composition semantics
+Rejected: self-contained clips are public logical coverage constraints. Zero
+clips mean no restriction, multiple clips intersect, and singular clip/item
+transforms fail closed for coverage. Union, last-wins, stack-like replacement, or
+singular-transform fallback would let independent consumers disagree on the same
+scene.
+
+### Leave image or shaped-run placement renderer-defined
+Rejected: a resource reference does not authorize a consumer to invent fit or
+origin semantics. Images map the complete normalized resource domain to the
+named destination rectangle; shaped runs translate their own local origin to the
+named logical placement. Decode, shaping, raster sampling, and realization remain
+provider/backend work.
+
 ### Leave literal color encoding or stroke alignment backend-defined
 Rejected: two independent renderer consumers could otherwise interpret the same
 scene differently. M6 fixes literal `Color` as unpremultiplied sRGB8 plus linear
 alpha, source-over compositing, item-opacity multiplication, centered positive
-rectangle strokes, and zero-width no-op semantics. Backend rasterization remains
+rectangle strokes as one mitered expanded-minus-inset ring, zero-area rectangle
+no-coverage, and zero-width stroke no-op semantics. Backend rasterization remains
 free only where it does not reinterpret those logical facts.
 
 ### Let oversized rounded radii use backend-specific clamping
@@ -789,10 +903,12 @@ Positive consequences:
 - renderer/hit consumers receive explicit products rather than widget/debug
   proofs;
 - scene coordinates/order are self-contained and deterministic;
-- literal color/compositing, basic stroke placement, and rounded hit/clip geometry
-  have one cross-consumer interpretation;
-- pointer hit participation and directional-focus geometry no longer share an
-  accidental representation or influence each other's eligibility;
+- literal color/compositing, exact rectangle stroke geometry, paint clip
+  intersection, resource placement, and rounded hit/clip geometry have one
+  cross-consumer interpretation;
+- point-hit participation, exact historical mounted-target membership, and
+  directional-focus geometry remain distinct facts without duplicate live
+  authorities;
 - paint content identity remains reusable and history-independent;
 - renderer consumers receive an explicit surface-scoped revision/base chain and
   can safely use damage after contiguous updates or recover from missed updates
@@ -800,9 +916,9 @@ Positive consequences:
 - semantic/hit-only surface publications do not fabricate renderer updates;
 - renderer consumers receive explicit logical canvas extent and validated scale
   without reading layout authority or owning scale mutation;
-- accepted M4 displayed-input and focus-navigation authority remain intact and
-  independent;
-- runtime no longer needs two pointer hit representations;
+- accepted M4 displayed-input, resolved-target, and focus-navigation authority
+  remain intact and independent;
+- runtime no longer needs two displayed-input representations;
 - custom widgets gain explicit paint/hit contribution without registration;
 - semantic, paint, hit, layout, diagnostics, and paint-publication metadata have
   distinct ownership;
@@ -816,11 +932,14 @@ Costs and constraints:
 - runtime gains one checked paint revision counter, consumed only by actual
   renderer-relevant snapshot changes;
 - runtime gains one validated neutral raster-scale value in surface build input;
+- runtime must retain exact displayed-generation mounted-target membership inside
+  the same hit-scene product used for point regions;
 - runtime focus selection must read retained layout geometry after the old mixed
   snapshot is removed;
 - hit invalidation gains one public bit and proof burden;
-- color conversion/compositing, rounded-radius normalization, coordinate/order,
-  and transformed hit semantics require deterministic tests;
+- color conversion/compositing, rectangle-stroke geometry, clip intersection,
+  resource placement, rounded-radius normalization, coordinate/order, and
+  transformed hit semantics require deterministic tests;
 - fixture resource resolvers are required until M8/M10 production producers;
 - retained immutable products must preserve simple staged atomicity.
 
