@@ -224,6 +224,8 @@ pub mod prelude;
 mod runtime_protocol;
 mod semantic;
 mod semantic_action;
+#[cfg(test)]
+mod semantic_action_contract;
 mod style;
 mod style_resolution;
 mod style_tokens;
