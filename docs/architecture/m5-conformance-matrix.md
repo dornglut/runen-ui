@@ -17,11 +17,10 @@ implementation boundaries and slice order. The accepted
 M5A0 owns the documentation/conformance authority and repository-audit tooling
 gate. It owns no framework behavior row. M5A semantic contribution and
 independent identity, M5B semantic publication/incremental updates, M5C
-semantic action ingress/accessibility resolution, and M5D public deterministic
-headless testing are owner-accepted and fully reconciled. M5E #51 is the sole
-active M5 slice from exact accepted main
-`3c50f2fe0732871a3e2fdf7dba45983a23b813a1`; it owns integration, migration,
-and milestone closure only.
+semantic action ingress/accessibility resolution, M5D public deterministic
+headless testing, and M5E integrated conformance/migration closure are all
+owner-accepted. The final authority reconciliation records completed M5 truth
+and establishes the exact accepted base for M6.
 
 Allowed statuses remain:
 
@@ -108,13 +107,27 @@ squash share exact tree `7e72b2738d539042ed28a032b305fc27cb45042a`, and
 accepted-main CI #1244 / `32108782685` passed at that exact squash. M5E #51
 therefore activated from that exact accepted base.
 
-Current pre-owner-acceptance candidate summary for this 53-row authority:
+M5E's final reviewed feature head
+`7f3e0c9e881ff384516459db66436e662c5fb790` passed canonical exact-head CI
+#1294 / `32130312467` and the corrected complete-diff plus authority-impact
+review. The repository owner explicitly authorized that exact head for merge.
+PR #67 was guarded-squash-merged as
+`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e`; reviewed head and squash share
+exact complete repository tree `c5dc7fa000496d76c35e98f3a481fc1de5762f4c`.
+Because connector-origin push-run enumeration is unavailable, the accepted
+squash was independently revalidated through unchanged read-only PR #68; CI
+#1296 / `32135074552` checked out exact SHA
+`b07ae423d6a3573a4dd8a96a7ce5d6b5b1f0be1e` and passed canonical stable/MSRV
+repository validation. PR #68 was closed unmerged. Exactly the five M5E-owned
+rows below are therefore `owner-accepted`.
+
+Final M5 summary for this 53-row authority:
 
 ```text
 53 total unique rows
-48 owner-accepted
+53 owner-accepted
 0 implementation-complete
-5 proof-complete
+0 proof-complete
 0 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -193,21 +206,21 @@ Current pre-owner-acceptance candidate summary for this 53-row authority:
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| M5-INTEG-01 | At least one genuine downstream custom widget contributes semantics, composes through recursive action mapping, publishes through the public harness, receives an exact surface-scoped semantic action, updates parent application state, and leaves canonical trace/replay evidence without a private bridge. | `m5e_closure::mapped_downstream_widget_preserves_semantics_action_runtime_and_trace_authority` | Built-in/private-path-only and semantic-to-mounted shortcut audits | Public canonical trace/replay lineage | M5E | proof-complete | Required |
-| M5-INTEG-02 | Accessibility-like semantic action, pointer activation, keyboard activation, authored-ID automation activation, and programmatic activation converge on the same canonical command/routed/default/application-action architecture without duplicate action-engine paths. | Counter public-harness five-origin convergence proof + accepted M4 origin proof | Origin-specific bypass/parallel queue/default audit | Cross-origin canonical trace comparison | M5E | proof-complete | Required |
-| M5-INTEG-03 | Current Counter exercises semantic snapshot inspection, exact semantic activation, public harness pumping, semantic update publication, and canonical trace/replay evidence after migration. | Counter M5E closure proof | Hidden private-test API and bare-ID semantic routing audits | Counter trace/replay proof | M5E | proof-complete | Required |
-| M5-INTEG-04 | Superseded public testing helpers, M2 mixed semantic proof authority, retired semantic stubs/actions, compatibility aliases/wrappers, and dead current-contract architecture text are absent before acceptance. Retaining a retired compatibility API with documentation does not satisfy this row. | Canonical repository/public-API/current-doc audit | Fatal retired-M5 symbol/action/alias, private-seam, stale-doc, and compatibility-surface audits | Repository authority audit | M5E | proof-complete | Required |
-| M5-INTEG-05 | At one frozen M5E feature head, all predecessor M5 rows and inherited M4 `ACCESS-01`/`ACCESS-02` remain `owner-accepted`, `M5-INTEG-01..04` are proof-complete, canonical stable and Rust 1.93.0 exact-head validation is green, and explicit repository-owner acceptance is the only remaining transition for the five-row M5E package itself. | Frozen-head matrix/status + exact-head stable/MSRV CI audit | Blocked/incomplete predecessor, non-green head, or self-acceptance prerequisite audit | Final pre-owner-acceptance evidence | M5E | proof-complete | Required |
+| M5-INTEG-01 | At least one genuine downstream custom widget contributes semantics, composes through recursive action mapping, publishes through the public harness, receives an exact surface-scoped semantic action, updates parent application state, and leaves canonical trace/replay evidence without a private bridge. | `m5e_closure::mapped_downstream_widget_preserves_semantics_action_runtime_and_trace_authority` | Built-in/private-path-only and semantic-to-mounted shortcut audits | Public canonical trace/replay lineage | M5E | owner-accepted | Required |
+| M5-INTEG-02 | Accessibility-like semantic action, pointer activation, keyboard activation, authored-ID automation activation, and programmatic activation converge on the same canonical command/routed/default/application-action architecture without duplicate action-engine paths. | Counter public-harness five-origin convergence proof + accepted M4 origin proof | Origin-specific bypass/parallel queue/default audit | Cross-origin canonical trace comparison | M5E | owner-accepted | Required |
+| M5-INTEG-03 | Current Counter exercises semantic snapshot inspection, exact semantic activation, public harness pumping, semantic update publication, and canonical trace/replay evidence after migration. | Counter M5E closure proof | Hidden private-test API and bare-ID semantic routing audits | Counter trace/replay proof | M5E | owner-accepted | Required |
+| M5-INTEG-04 | Superseded public testing helpers, M2 mixed semantic proof authority, retired semantic stubs/actions, compatibility aliases/wrappers, and dead current-contract architecture text are absent before acceptance. Retaining a retired compatibility API with documentation does not satisfy this row. | Canonical repository/public-API/current-doc audit | Fatal retired-M5 symbol/action/alias, private-seam, stale-doc, and compatibility-surface audits | Repository authority audit | M5E | owner-accepted | Required |
+| M5-INTEG-05 | At one frozen M5E feature head, all predecessor M5 rows and inherited M4 `ACCESS-01`/`ACCESS-02` remain `owner-accepted`, `M5-INTEG-01..04` are proof-complete, canonical stable and Rust 1.93.0 exact-head validation is green, and explicit repository-owner acceptance is the only remaining transition for the five-row M5E package itself. | Frozen-head matrix/status + exact-head stable/MSRV CI audit | Blocked/incomplete predecessor, non-green head, or self-acceptance prerequisite audit | Final pre-owner-acceptance evidence | M5E | owner-accepted | Required |
 
-## Repository-wide aggregate at pre-owner-acceptance candidate
+## Repository-wide aggregate after M5 acceptance
 
-The repository-wide permanent inventory while M5E awaits explicit owner acceptance is:
+The repository-wide permanent inventory is:
 
 ```text
 290 total unique rows
-285 owner-accepted
+290 owner-accepted
 0 implementation-complete
-5 proof-complete
+0 proof-complete
 0 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -220,12 +233,9 @@ permanent acceptance ID is duplicated.
 
 ## Reconciliation rule
 
-After each M5 implementation slice reaches `owner-accepted`, perform a separate
-reviewed current-contract reconciliation before the next slice starts. The
-reconciliation updates this matrix, roadmap/status map, feature support,
-architecture/public API where needed, execution tracking, umbrella issue, and
-slice issue to one accepted story. A completed feature without that
-reconciliation does not activate the successor slice. M5E itself stops at the
-explicit owner-acceptance gate before merge; after guarded merge, perform only
-the bounded final M5 current-contract reconciliation required to make accepted
-`main` truthful before closing M5 and activating M6.
+Each M5 implementation slice required reviewed current-contract reconciliation
+before its successor could start. M5E was the final feature slice: after its
+guarded feature merge and exact accepted-main verification, this bounded final
+reconciliation promotes only `M5-INTEG-01..05`, aligns current authority, closes
+M5, and establishes the exact accepted base from which M6 may begin. No M6
+implementation belongs in the M5 reconciliation itself.
