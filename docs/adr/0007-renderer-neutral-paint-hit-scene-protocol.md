@@ -178,7 +178,11 @@ successfully realized:
 
 RunenUI does not retain renderer acknowledgements or invent a second handshake to
 make this work. The publication is always a complete snapshot; revision/base
-facts only say when its damage delta is safe as an optimization.
+facts only say when its damage delta is safe as an optimization. While the
+matching live resource-resolver domain exists, every logical resource referenced
+by that complete snapshot remains resolvable independently of any disposable
+backend realization cache, so full realization does not depend on hidden prior
+renderer state.
 
 This renderer revision is deliberately distinct from
 `SurfaceInputContext::hit_test_generation()`. Hit generations identify retained
@@ -316,10 +320,11 @@ resolved foreground color changes paint scene content without requiring a new
 shaped-run `ResourceRef`. The primitive performs no hidden baseline inference,
 fit, scaling, reshaping, line breaking, or reflow. Item transforms may still
 transform the result under the ordinary scene transform contract. Production
-shaping and the contents/lifetime of shaped-run resources remain M8/provider
-work. Intrinsic multi-color glyph payloads are not part of the minimum M6
-shaped-run contract and require a later explicit resource/primitive extension
-rather than silently changing foreground semantics.
+shaping and the contents of shaped-run resources remain M8/provider work; M6
+already fixes the logical `ResourceRef` identity and live-domain lifetime
+contract consumed by those later providers. Intrinsic multi-color glyph payloads
+are not part of the minimum M6 shaped-run contract and require a later explicit
+resource/primitive extension rather than silently changing foreground semantics.
 
 All transforms must be finite. Opacity must be finite and in closed `[0, 1]`;
 checked construction rejects values outside the contract rather than clamping or
@@ -411,8 +416,16 @@ contract requires that behavior. This preserves routed behavior such as a
 disabled control remaining physically targetable while later canonical
 command/default eligibility suppresses activation.
 
-M6 scene visibility means whether a region exists in the composed hit scene; it
-is an explicit hit/publication fact, not an implicit semantic-tree read.
+M6 resolves the roadmap's physical hit visibility/inertness vocabulary without
+adding redundant per-region booleans. In the final published hit scene, physical
+visibility is region presence. The only observable point-selection outcomes are
+`Target`, `Block`, or no containing region/pass-through. A physical policy that
+hides or makes an owner (or, under a later explicit interaction contract, a
+subtree) inert must lower that policy before publication by suppressing the
+affected hit regions for pass-through behavior or by publishing `Block` where
+physical occlusion is intended. Semantic `hidden`/`inert` state never performs
+that lowering implicitly, and consumers never reinterpret semantic state as a
+fourth hit outcome.
 
 ### Hit order is exact
 
@@ -604,7 +617,7 @@ must not be recreated as a second focus cache merely to remove `HitTestSnapshot`
 The retained displayed-input phase similarly owns both its region storage and
 exact generation membership; no second membership cache is introduced.
 
-### Resource references are logical, self-disambiguating values
+### Resource references are logical, self-disambiguating, live-domain-stable values
 
 M6 resource references carry an explicit neutral kind, such as image or shaped
 text run, plus one opaque provider-issued identity value. That opaque value
@@ -613,12 +626,15 @@ providers issuing the same local key do not collide.
 
 A reference is not resource bytes, a provider object, GPU handle, font object,
 native image, mounted/semantic identity, or scene-item identity. It is not a
-scene-local index. Reference equality is stable by value across scene snapshots
-for the lifetime in which the issuing resolver keeps that resource identity
-valid. While a reference remains valid, it denotes immutable logical resource
-content for renderer comparison purposes; replacing that content requires a new
-`ResourceRef` value. Backend realization/cache objects may of course change
-without changing the logical reference.
+scene-local index. Once a live resolver/provider domain issues a `ResourceRef`
+that may enter an accepted M6 scene, reference equality is stable by value for
+that resolver-domain/runtime lifetime and the reference continues to denote the
+same immutable logical renderer content for that lifetime. Logical content
+replacement therefore requires a new `ResourceRef` value. A live-domain ref does
+not expire merely because a renderer drops a GPU/image/glyph realization or the
+provider evicts a disposable realization cache; the resolver/provider must retain
+or reconstruct the same logical content so a current complete paint snapshot can
+be realized again without hidden prior renderer state.
 
 For the minimum M6 shaped-text-run resource kind, that immutable logical content
 is the shaped glyph/coverage geometry and its non-paint metadata. The primitive's
@@ -628,15 +644,20 @@ shaped `ResourceRef` and changes ordinary `PaintScene` content instead of
 requiring reshaping or provider mutation.
 
 Consumers receive the **whole `ResourceRef`** and resolve it through one neutral
-resolver boundary; they do not split a local key from the value and guess/select
-a provider. The resolver/provider owns bytes and realization lifetime. M6 does
-not standardize storage, decoding, shaping, upload, eviction, or backend handles.
+live resolver boundary; they do not split a local key from the value and
+guess/select a provider. The resolver/provider owns bytes and backend realization
+lifetime. M6 does not standardize storage layout, decoding, shaping, upload, or
+backend realization caches, but it does standardize the logical identity
+lifetime needed by complete snapshots: a ref does not silently retire while its
+issuing resolver/runtime domain remains live. A later explicit lease/retirement
+protocol may extend that rule; silent live-domain expiry is not M6 behavior.
 
 Deterministic M6 proofs may use fixture resolvers/resources. M8/M10 later provide
 production text/resource producers and realization behind this same reference
-boundary. Missing, expired, or kind-mismatched refs are deterministic
+boundary. Unknown/foreign-domain or kind-mismatched refs are deterministic
 consumer/admission errors, never reinterpretation as another primitive or
-concrete widget kind.
+concrete widget kind. `Expired` is not a valid state for a ref issued by the
+matching still-live M6 resolver domain.
 
 ### Raster scale has one neutral input authority
 
@@ -776,10 +797,11 @@ creating another path.
 
 Complete transformed/rounded/intersection-clipped composition and hit semantics,
 exact image/shaped-run logical placement and shaped-run scene-owned literal
-foreground color, immutable self-disambiguating resource references, exact paint
-revision/base consumer semantics, neutral `SurfaceBuildContext` raster-scale
-input, logical extent/scale metadata, sound incremental damage, `Block` policy,
-and consumer capability checking on the same M6B products.
+foreground color, immutable self-disambiguating live-domain-stable resource
+references, exact paint revision/base consumer semantics, neutral
+`SurfaceBuildContext` raster-scale input, logical extent/scale metadata, sound
+incremental damage, `Block` policy, and consumer capability checking on the same
+M6B products.
 
 ### M6D — independent consumers, migration, and milestone closure
 
@@ -841,6 +863,15 @@ M10 later supplies native scale through that same seam.
 ### Add an explicit pass-through hit policy
 Rejected: not contributing a region already provides exactly that targeting
 behavior. A public no-op variant would create duplicate representation.
+
+### Add independent per-region visibility or inertness booleans
+Rejected: the final physical hit scene already has one canonical representation
+for each observable point-selection outcome: `Target`, `Block`, or omitted
+region/pass-through. A separate visible/inert bit would create overlapping states
+unless it merely re-encoded one of those outcomes. Semantic hidden/inert remains
+an independent meaning/accessibility fact; explicit control/runtime policy lowers
+physical hidden/inert behavior into the canonical hit representation before
+publication.
 
 ### Derive hit testing from paint primitives
 Rejected: visual coverage and interaction policy differ.
@@ -904,6 +935,15 @@ logical reference could silently change renderer-relevant content. Content
 replacement receives a new `ResourceRef`; only backend realization caches may
 change behind a stable ref.
 
+### Allow a live-domain resource reference to expire while current scenes still name it
+Rejected: `PaintPublication` is a complete snapshot and must support full
+realization after skipped revisions or renderer cache/device loss. Silent logical
+expiry would make current scene content depend on hidden prior renderer state.
+M6 therefore keeps issued logical refs immutable and resolvable for the live
+resolver/runtime-domain lifetime; only disposable backend realizations may be
+evicted. Any future bounded retirement/lease protocol requires an explicit
+extension with its own lifetime/consumer rules.
+
 ### Add a giant renderer/widget trait or split the whole widget module first
 Rejected: #10 remains a broad non-blocking concentration audit; M6 has focused
 paint/hit seams.
@@ -939,6 +979,9 @@ Positive consequences:
 - renderer consumers receive an explicit surface-scoped revision/base chain and
   can safely use damage after contiguous updates or recover from missed updates
   by realizing the complete snapshot;
+- complete paint snapshots remain realizable after backend-cache/device loss
+  because logical resource refs cannot silently expire inside the live resolver
+  domain;
 - semantic/hit-only surface publications do not fabricate renderer updates;
 - renderer consumers receive explicit logical canvas extent and validated scale
   without reading layout authority or owning scale mutation;
@@ -967,7 +1010,9 @@ Costs and constraints:
   rectangle-stroke geometry, clip intersection, resource placement,
   rounded-radius normalization, coordinate/order, and transformed hit semantics
   require deterministic tests;
-- fixture resource resolvers are required until M8/M10 production producers;
+- fixture resource resolvers are required until M8/M10 production producers and
+  must preserve issued logical refs for their live resolver-domain lifetime even
+  if backend realization caches are dropped;
 - retained immutable products must preserve simple staged atomicity.
 
 ## Acceptance
