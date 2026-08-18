@@ -316,3 +316,8 @@ pub use subscription::{
     SendSubscriptionSource, SendSubscriptionStartOutcome, SubscriptionSet,
 };
 pub use value::{LogicalLength, LogicalLengthError};
+pub use widget_context::{
+    WidgetActivationContext, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
+    WidgetUnmountReason, WidgetUpdateContext,
+};
+pub use work::{SendTaskStartFailure, TimerEffect, WorkFamily, WorkKey, WorkKeyError};
