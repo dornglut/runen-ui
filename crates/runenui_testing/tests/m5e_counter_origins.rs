@@ -9,9 +9,7 @@ use runenui_runtime::{
     LogicalPoint, MountedNodeId, PointerDeviceKind, PointerId, PointerPhase, PumpBudget,
     SemanticUpdateResult,
 };
-use runenui_testing::{
-    SemanticQuery, SemanticTarget, SettleBudget, SettleOutcome, TestHarness,
-};
+use runenui_testing::{SemanticQuery, SemanticTarget, SettleBudget, SettleOutcome, TestHarness};
 
 #[path = "../../../examples/counter/src/app.rs"]
 mod app;
