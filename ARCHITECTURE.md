@@ -27,17 +27,13 @@ Crate and subsystem boundaries, current proof behavior, target products, and acc
 - [M6 conformance matrix](docs/architecture/m6-conformance-matrix.md)
 - [Architecture decision records](docs/adr/)
 
-M0–M5 are complete. M6A0 architecture/conformance authority is also accepted,
-but no M6 scene behavior is implemented yet. Exact reviewed PR #73 head
-`c0169ebea044a0009a334f3d5ecc13ff8d495885` passed exact-head CI #1349 /
-`32181344340`, was repository-owner-authorized, and was guarded-squash-merged as
-`966778dd31e0f6b6df76ee4f6283a984fc724b36`. Reviewed and squash trees are
-identical at `fe057a3fef9ea6de053ce86ce336212f0aa3a413`; accepted-main CI #1351 /
-`32186597198` then validated the exact squash through read-only PR #74, which was
-closed unmerged. ADR 0007 and the 36-row M6 matrix are therefore accepted target
-architecture/conformance authority while all 36 behavior rows remain `blocked`.
-The bounded M6A0 current-contract reconciliation is the final
-pre-implementation gate; #59/M6A may begin only after that reconciliation is
-itself accepted, merged, tree-verified, and accepted-main validated.
+M0–M5 are complete. M6A0 architecture/conformance authority and its required
+bounded current-contract reconciliation are also accepted, but no M6 scene
+behavior is implemented yet. PR #73 accepted ADR 0007 and the 36-row M6 matrix;
+PR #75 completed the post-A0 current-contract reconciliation. All 36 behavior
+rows remain `blocked`. The first M6A implementation slice is
+[#59](https://github.com/dornglut/runen-ui/issues/59), limited to the persistent
+retained-publication substrate required by `SCENE-PUB-01..05`; it does not
+introduce M6B scene APIs or renderer/backend behavior.
 
 Current implementation maturity belongs in the [status map](docs/status-map.md). Delivery sequence belongs in the [roadmap](docs/roadmap.md). Live branch and issue state belongs in GitHub according to the [work-tracking contract](docs/work-tracking.md).

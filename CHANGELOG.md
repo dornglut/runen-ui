@@ -22,13 +22,13 @@ All notable changes to RunenUI are recorded here. The format follows [Keep a Cha
   renderer-neutral paint/displayed-input/layout/semantic/diagnostic ownership,
   paint revision/damage/scale model, explicit paint/hit geometry/order/policy,
   stable resource-reference identity, and clean proof-era migration target;
-  the dedicated M6 matrix records 36 M6A–M6D observable rows. Architecture
-  acceptance is not behavior acceptance: M6 remains `36 total / 0
-  owner-accepted / 36 blocked`, and configured M4+M5+M6 truth is `326 total /
-  290 owner-accepted / 36 blocked`. The bounded post-M6A0 current-contract
-  reconciliation is the final pre-implementation gate; #59/M6A may begin only
-  from its exact accepted squash after that reconciliation is owner-accepted,
-  guarded-squash-merged, tree-verified, and accepted-main validated.
+  the dedicated M6 matrix records 36 M6A–M6D observable rows. PR #75 then
+  completed the required bounded post-M6A0 current-contract reconciliation
+  without implementing M6 behavior. M6 therefore remains `36 total / 0
+  owner-accepted / 36 blocked`, configured M4+M5+M6 truth remains `326 total /
+  290 owner-accepted / 36 blocked`, and #59 is the first M6A implementation
+  slice, owning only the persistent retained-publication substrate required by
+  `SCENE-PUB-01..05`.
 - Owner-accepted and guarded-squash-merged M5E integrated conformance, migration,
   and M5 feature closure in [PR #67](https://github.com/dornglut/runen-ui/pull/67).
   Exact reviewed feature head `7f3e0c9e881ff384516459db66436e662c5fb790`

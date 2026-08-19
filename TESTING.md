@@ -35,18 +35,14 @@ Its main public testing surface is `TestHarness<App>` plus explicit supporting v
 
 The testing crate is convenience authority only. It must not use doc-hidden runtime bridges, mutate mounted state, fabricate IDs or generations/sequences, seed runtime counters, replace publication snapshots, invoke callbacks directly, use wall-clock sleeps, provide a bare semantic-ID helper that guesses surface scope, expose a semantic-to-mounted routing shortcut, or recreate semantic `LogicalScroll` compatibility vocabulary.
 
-M5 is complete through M5E. M6A0 has accepted architecture/conformance authority
-but no M6 scene implementation. PR #73 froze accepted ADR 0007 and the 36-row
-M6 matrix at reviewed head `c0169ebea044a0009a334f3d5ecc13ff8d495885`;
-exact-head CI #1349 / `32181344340` passed, guarded squash
-`966778dd31e0f6b6df76ee4f6283a984fc724b36` has the identical reviewed tree
-`fe057a3fef9ea6de053ce86ce336212f0aa3a413`, and accepted-main CI #1351 /
-`32186597198` validated that exact squash through read-only PR #74. All 36 M6
-behavior rows remain `blocked`. The existing M5D harness therefore still exposes
-only the accepted M4/M5 proof products; M6 scene assertions/consumers become real
-only when their matrix rows are implemented. #59/M6A remains blocked until the
-bounded M6A0 current-contract reconciliation is itself accepted and
-accepted-main validated.
+M5 is complete through M5E. M6A0 architecture/conformance authority and its
+bounded current-contract reconciliation are accepted, but no M6 scene behavior is
+implemented. All 36 M6 rows remain `blocked`. The existing M5D harness therefore
+still exposes only accepted M4/M5 proof products; M6 scene assertions and
+consumers become real only when their owning matrix rows are implemented. The
+first M6A implementation slice is #59 and is limited to the retained-publication
+substrate required by `SCENE-PUB-01..05`; it does not itself add scene assertion
+APIs or renderer behavior.
 
 The maintained command inventory, CI relationship, audit details, and infrastructure-only waiver policy are documented in:
 

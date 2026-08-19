@@ -608,7 +608,7 @@ accepted and merged, and no transitional authority remains.
 
 ## M6 — Renderer-neutral paint and hit-test scene protocol
 
-**Status:** `active` at the accepted architecture/readiness boundary; all 36 M6 behavior rows remain `blocked`.
+**Status:** `active` at the M6A implementation boundary; all 36 M6 behavior rows remain `blocked`.
 
 **Goal:** Publish backend-neutral paint and hit-test products without widget semantics.
 
@@ -618,7 +618,7 @@ accepted and merged, and no transitional authority remains.
 
 **Explicit non-goals:** Concrete desktop/SDF backend, production text shaping, full layout/styling expansion, or semantic widget kinds in renderer input.
 
-**Dependencies:** Mounted generation identity and completed M5 semantic separation are satisfied. The render-protocol architecture dependency is satisfied by accepted [ADR 0007](adr/0007-renderer-neutral-paint-hit-scene-protocol.md) and the accepted [M6 conformance matrix](architecture/m6-conformance-matrix.md). Implementation remains gated on completion of the bounded post-M6A0 current-contract reconciliation.
+**Dependencies:** Mounted generation identity and completed M5 semantic separation are satisfied. The render-protocol architecture dependency is satisfied by accepted [ADR 0007](adr/0007-renderer-neutral-paint-hit-scene-protocol.md) and the accepted [M6 conformance matrix](architecture/m6-conformance-matrix.md). The required bounded post-M6A0 current-contract reconciliation is complete; implementation proceeds in the accepted M6A–M6D dependency order.
 
 **Required proofs/tests:** Two independent deterministic consumers; custom backend proof renders without knowing `Button`; hit tests respect clips/transforms/visibility/order; scene snapshots are stable and generational targets reject stale input.
 
@@ -627,9 +627,9 @@ the renderer protocol; paint, hit, semantics, layout, and diagnostics are
 distinct authoritative products; no backend-specific vocabulary leaks into
 public scenes.
 
-**Accepted M6A0 gate:** PR #73 accepted ADR 0007 and the 36-row M6 matrix from exact reviewed head `c0169ebea044a0009a334f3d5ecc13ff8d495885`; exact-head CI #1349 / `32181344340` passed. Guarded squash `966778dd31e0f6b6df76ee4f6283a984fc724b36` has the identical reviewed tree `fe057a3fef9ea6de053ce86ce336212f0aa3a413`, and accepted-main CI #1351 / `32186597198` validated that exact squash through read-only PR #74. A0 accepts architecture/conformance only, not behavior.
+**Accepted M6A0 gate:** PR #73 accepted ADR 0007 and the 36-row M6 matrix from exact reviewed head `c0169ebea044a0009a334f3d5ecc13ff8d495885`; exact-head CI #1349 / `32181344340` passed. Guarded squash `966778dd31e0f6b6df76ee4f6283a984fc724b36` has the identical reviewed tree `fe057a3fef9ea6de053ce86ce336212f0aa3a413`, and accepted-main CI #1351 / `32186597198` validated that exact squash through read-only PR #74. A0 accepts architecture/conformance only, not behavior. PR #75 completed the required bounded post-A0 current-contract reconciliation without implementing M6 behavior.
 
-**Pickup gate:** The bounded M6A0 current-contract reconciliation is the final pre-implementation gate and must itself be owner-accepted, guarded-squash-merged, tree-verified, and accepted-main validated. Only then does issue #59 become the first M6A implementation slice from that exact accepted reconciliation squash. No #59/runtime implementation belongs in the reconciliation.
+**First implementation slice:** Issue #59 is M6A and owns exactly `SCENE-PUB-01..05`: persistent/shared retained phase products, explicit dirty-phase replacement, preservation of staged publication atomicity, semantic-product independence, and bounded narrow-publication copy cost. It must not introduce M6B paint/hit scene APIs, renderer/backend behavior, or promote unrelated M6 rows.
 
 **Unblocks:** M7 rendering integration and M10 backends.
 

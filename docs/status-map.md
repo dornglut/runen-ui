@@ -10,19 +10,11 @@ contribution and independent identity, the #55 readiness authority, M5B semantic
 publication/incremental updates, M5C semantic action ingress/accessibility
 resolution, M5D public deterministic headless testing, and M5E integrated
 conformance/migration closure are owner-accepted. M6A0 architecture/conformance
-authority is also owner-accepted; it defines the target protocol but implements
-none of the 36 M6 behavior rows.
+authority and its required bounded current-contract reconciliation are also
+owner-accepted; they define and reconcile the target protocol but implement none
+of the 36 M6 behavior rows.
 
-M6A0's exact reviewed PR #73 head
-`c0169ebea044a0009a334f3d5ecc13ff8d495885` passed exact-head CI #1349 /
-`32181344340`, received explicit repository-owner merge authorization, and was
-guarded-squash-merged as `966778dd31e0f6b6df76ee4f6283a984fc724b36`.
-Reviewed head and squash share exact complete repository tree
-`fe057a3fef9ea6de053ce86ce336212f0aa3a413`. Accepted-main CI #1351 /
-`32186597198` independently validated that exact squash through read-only PR #74,
-which was closed unmerged. Accepted ADR 0007 and the M6 conformance matrix are
-therefore current target authority.
-
+Accepted ADR 0007 and the M6 conformance matrix are current target authority.
 Final M5 conformance truth is `53 total / 53 owner-accepted / 0
 implementation-complete / 0 proof-complete / 0 blocked`. M4 remains `237 total /
 237 owner-accepted / 0 proof-complete / 0 blocked`. M6 currently has `36 total /
@@ -31,12 +23,11 @@ Aggregate configured M4+M5+M6 truth is therefore `326 total / 290
 owner-accepted / 0 implementation-complete / 0 proof-complete / 36 blocked`.
 
 M6 renderer-neutral paint/hit scene **implementation remains absent**. The
-architecture dependency is now satisfied by accepted ADR 0007, but the bounded
-post-M6A0 current-contract reconciliation must itself be accepted, merged,
-tree-verified, and accepted-main validated before any implementation branch is
-authorized. After that gate, [#59](https://github.com/dornglut/runen-ui/issues/59)
-is the first M6A retained-publication implementation slice; it does not authorize
-a renderer backend or later M6 behavior.
+architecture and post-A0 current-contract dependencies are satisfied. The first
+M6A implementation slice is [#59](https://github.com/dornglut/runen-ui/issues/59),
+which owns the persistent retained-publication substrate required by
+`SCENE-PUB-01..05`; it does not authorize M6B scene APIs, a renderer backend, or
+later M6 behavior.
 
 ## Maturity states
 
@@ -104,20 +95,14 @@ rows as owner-accepted. Accepted
 [M6 conformance matrix](architecture/m6-conformance-matrix.md) now own M6 target
 architecture and its 36 blocked observable requirements.
 
-M6A0 acceptance is anchored at reviewed PR #73 head
-`c0169ebea044a0009a334f3d5ecc13ff8d495885`, squash/main
-`966778dd31e0f6b6df76ee4f6283a984fc724b36`, shared tree
-`fe057a3fef9ea6de053ce86ce336212f0aa3a413`, exact-head CI #1349 /
-`32181344340`, and accepted-main CI #1351 / `32186597198` through closed-unmerged
-verification PR #74. Configured truth is now `326 total / 290 owner-accepted /
-36 blocked`; M6 itself remains `36/36 blocked` because architecture acceptance is
-not behavior acceptance.
-
-The bounded M6A0 current-contract reconciliation is the active pre-implementation
-slice. It changes accepted status/discoverability/evidence only and must not
-implement #59 or any M6 behavior. After that reconciliation is owner-accepted,
-guarded-squash-merged, tree-verified, and accepted-main validated, #59 becomes
-the first eligible M6A implementation slice from that exact accepted base.
+M6A0 and the bounded post-A0 current-contract reconciliation are complete.
+Configured truth is `326 total / 290 owner-accepted / 36 blocked`; M6 itself
+remains `36/36 blocked` because architecture/readiness acceptance is not behavior
+acceptance. The current implementation slice is #59/M6A, which owns only
+`SCENE-PUB-01..05`: persistent/shared retained phase products, explicit dirty
+replacement, preserved staged atomicity, semantic-product independence, and
+bounded narrow-publication copy cost. No M6B scene protocol or renderer/backend
+work is implied by that pickup.
 
 Merged acceptance evidence belongs in pull requests and the
 [public repository migration history](history/public-repository-migration.md).
