@@ -45,7 +45,7 @@ owner-accepted at feature head `b5f72ccaa89a9fb54d81ec3f35701cbdfbc9ba5d` after 
 guarded-squash-merged in
 [PR #43](https://github.com/dornglut/runen-ui/pull/43) as
 `596f0d823b9833d71a038cc4aebe834c7b94e4a6`, and all 16 changed-file blob
-identities match between reviewed feature head and accepted squash. The final M4
+identities match between the reviewed feature head and accepted squash. The final M4
 authority reconciliation records all eight M4D3-owned rows as owner-accepted,
 closes M4, and activates M5 semantics and deterministic public testing. The accepted
 [M4C delivery and routed-transaction charter](m4c-delivery-and-routed-transaction-charter.md)
@@ -114,10 +114,10 @@ reconciliation PR #69 records the five M5E rows as owner-accepted and closes M5
 at `53/53` owner-accepted with configured M4+M5 aggregate `290/290`.
 The accepted [M5 semantics and testing charter](m5-semantics-and-testing-charter.md)
 and [M5 conformance matrix](m5-conformance-matrix.md) remain the semantics/testing
-contract. M6 renderer-neutral paint/hit scene work is next, but scene
-implementation requires the roadmap's accepted render-protocol ADR/readiness gate;
-issue #59 is an input to that design rather than standalone implementation
-authority.
+contract. M6A0 renderer-neutral paint/hit architecture and the bounded post-A0
+current-contract reconciliation are accepted; all 36 M6 behavior rows remain
+`blocked`. Issue #59 is the first M6A implementation slice and owns only
+`SCENE-PUB-01..05`; no M6B scene API or renderer/backend behavior is implied.
 
 ## Ownership and inventory
 
@@ -1226,5 +1226,6 @@ complete. M5E's accepted integrated public-only conformance and migration closur
 adds no new behavior engine and preserves the same public API ownership.
 AccessKit/native accessibility, native host translation, production scrolling,
 editable text, platform IME objects, and renderer-neutral M6 paint/hit scenes
-remain later work; M6 scene implementation requires the accepted render-protocol
-ADR/readiness gate first.
+remain later work. M6A0 readiness is satisfied, but M6 scene behavior remains
+unimplemented; #59 is limited to the retained-publication substrate while
+M6B–M6D own the scene protocol implementation and closure.
