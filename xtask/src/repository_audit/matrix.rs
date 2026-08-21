@@ -510,7 +510,10 @@ mod tests {
             declared_metric("237 total unique rows\n", "total unique rows"),
             Some(237)
         );
-        assert_eq!(declared_metric("237 total rows\n", "total unique rows"), None);
+        assert_eq!(
+            declared_metric("237 total rows\n", "total unique rows"),
+            None
+        );
     }
 
     #[test]
