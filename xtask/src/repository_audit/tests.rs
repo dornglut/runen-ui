@@ -91,6 +91,21 @@ impl Fixture {
         self.write(".github/workflows/ci.yml", &expected_ci_workflow())?;
 
         self.write(
+            "tools/context/export_repo_context.py",
+            "DEFAULT_PROFILE = \"offline-review\"\n",
+        )?;
+        for profile in [
+            "full-audit.toml",
+            "implementation-review.toml",
+            "offline-review.toml",
+        ] {
+            self.write(
+                &format!("tools/context/profiles/{profile}"),
+                "description = \"offline review\"\ninclude = [\"README.md\"]\n",
+            )?;
+        }
+
+        self.write(
             "crates/runenui_core/Cargo.toml",
             "[package]\nname = \"runenui_core\"\n\n[dependencies]\n",
         )?;
@@ -317,6 +332,30 @@ fn ci_contract_drift_is_fatal() -> Result<(), String> {
     fixture.write(".github/workflows/ci.yml", "name: Other\n")?;
     let report = build_report(fixture.path())?;
     assert_fatal_code(&report, "repository.workflow_contract");
+    Ok(())
+}
+
+#[test]
+fn context_default_profile_drift_is_fatal() -> Result<(), String> {
+    let fixture = Fixture::new("context-default")?;
+    fixture.write(
+        "tools/context/export_repo_context.py",
+        "DEFAULT_PROFILE = \"ai-core\"\n",
+    )?;
+    let report = build_report(fixture.path())?;
+    assert_fatal_code(&report, "context.default_profile");
+    Ok(())
+}
+
+#[test]
+fn context_profile_inventory_drift_is_fatal() -> Result<(), String> {
+    let fixture = Fixture::new("context-inventory")?;
+    fixture.write(
+        "tools/context/profiles/current-work.toml",
+        "description = \"legacy current work\"\ninclude = [\"README.md\"]\n",
+    )?;
+    let report = build_report(fixture.path())?;
+    assert_fatal_code(&report, "context.profile_inventory");
     Ok(())
 }
 
