@@ -57,11 +57,7 @@ fn audit_profile_inventory(root: &Path, findings: &mut Vec<Finding>) -> Result<(
 fn audit_default_profile(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
     let contents = fs::read_to_string(root.join(EXPORTER_PATH))
         .map_err(|error| format!("failed to read {EXPORTER_PATH}: {error}"))?;
-    let declarations = contents
-        .lines()
-        .map(str::trim)
-        .filter(|line| line.starts_with(DEFAULT_PROFILE_PREFIX))
-        .collect::<Vec<_>>();
+    let declarations = default_profile_declarations(&contents);
     if declarations != [DEFAULT_PROFILE_DECLARATION] {
         findings.push(Finding::fatal(
             "context.default_profile",
@@ -72,6 +68,14 @@ fn audit_default_profile(root: &Path, findings: &mut Vec<Finding>) -> Result<(),
         ));
     }
     Ok(())
+}
+
+fn default_profile_declarations(contents: &str) -> Vec<&str> {
+    contents
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with(DEFAULT_PROFILE_PREFIX))
+        .collect()
 }
 
 fn audit_profile_volatility(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
@@ -91,4 +95,18 @@ fn audit_profile_volatility(root: &Path, findings: &mut Vec<Finding>) -> Result<
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DEFAULT_PROFILE_DECLARATION, default_profile_declarations};
+
+    #[test]
+    fn commented_expected_default_does_not_mask_active_drift() {
+        let declarations = default_profile_declarations(
+            "# DEFAULT_PROFILE = \"offline-review\"\nDEFAULT_PROFILE = \"ai-core\"\n",
+        );
+        assert_eq!(declarations, ["DEFAULT_PROFILE = \"ai-core\""]);
+        assert_ne!(declarations, [DEFAULT_PROFILE_DECLARATION]);
+    }
 }
