@@ -24,9 +24,15 @@ The audit fails closed for material repository-contract violations including:
 - issue-template or canonical read-only CI workflow drift;
 - active historical repository/default-branch identities outside explicit history/report exemptions;
 - private archive references outside the migration-history owner;
-- volatile live-work evidence embedded in designated durable current-authority documents.
+- volatile live-work evidence embedded in current durable documentation.
 
-The last category protects the single-owner model. Durable entrypoints/current architecture/status/roadmap must not become a manually synchronized database of RunenUI issue/PR URLs, full commit SHAs, CI run identifiers, current heads/branches/blockers, or pickup state. GitHub owns those facts. Explicit `history/`, `reports/`, ADR rationale, and changelog material may preserve point-in-time provenance where appropriate.
+The documentation audit derives volatility policy from repository location instead of maintaining a filename allowlist:
+
+- ordinary root, crate, example, test, policy, status, roadmap, and `docs/architecture/` Markdown are **strict current authority** and must not mirror live issue/PR/run URLs, full commit SHAs, current heads/branches/blockers, or pickup state;
+- `docs/conformance/` is **frozen contract authority**: accepted provenance may remain where it explains an immutable proof state, but mutable current-head/branch/pickup markers are forbidden;
+- changelog, ADR, history, report, tooling, GitHub-template/workflow, and context-tool material is **provenance/tooling authority** and may legitimately contain immutable revision evidence or examples.
+
+This protects the single-owner model without erasing useful historical evidence. GitHub owns live work and delivery state; durable documentation owns contracts, architecture, policy, and accepted capability truth.
 
 ## Conformance audit
 
