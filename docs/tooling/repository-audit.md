@@ -28,11 +28,12 @@ The audit fails closed for material repository-contract violations including:
 
 The documentation audit derives volatility policy from artifact class and repository location instead of maintaining a filename allowlist:
 
-- ordinary root, crate, example, test, policy, status, roadmap, architecture, tooling, and context-guide Markdown is **strict current authority** and must not mirror live issue/PR/run URLs, full commit SHAs, current heads/branches/blockers, or pickup state;
+- ordinary root, crate, example, test, policy, status, roadmap, architecture, tooling, context-guide, pull-request-template, and issue-template material is **strict current authority** and must not hard-code live issue/PR/run URLs, full commit SHAs, current heads/branches/blockers, or pickup state;
 - accepted ADR/design/conformance material is **frozen contract authority**: immutable acceptance provenance may remain where it explains the contract, but mutable current-head/branch/blocker/pickup markers are forbidden;
-- changelog, history, and report material is **provenance authority** and may preserve point-in-time revision evidence; GitHub workflow/template YAML is treated as repository process configuration and is validated by its owning governance checks rather than documentation-volatility rules.
+- changelog, history, and report material is **provenance authority** and may preserve point-in-time revision evidence;
+- `.github/workflows/` is exempt from documentation-volatility rules because the canonical workflow requires an immutable reusable-workflow revision and is independently enforced by the exact workflow-contract audit.
 
-This protects the single-owner model without erasing useful historical evidence. GitHub owns live work and delivery state; durable documentation owns contracts, architecture, policy, and accepted capability truth.
+This protects the single-owner model without erasing useful historical evidence. GitHub owns live work and delivery state; durable documentation and active repository templates own contracts, architecture, policy, accepted capability truth, and reusable process prompts—not copied execution state.
 
 ## Conformance audit
 
