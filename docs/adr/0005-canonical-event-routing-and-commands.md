@@ -15,10 +15,10 @@
 ## Implementation authority clarification
 
 This ADR remains the behavioral authority. The accepted
-[M4C delivery and routed-transaction charter](../architecture/m4c-delivery-and-routed-transaction-charter.md)
+[M4C delivery and routed-transaction charter](../conformance/m4c-delivery-and-routed-transaction-charter.md)
 fixes implementation ownership, public protocol boundaries, transaction
 admission, mutation policy, trace causality, and the M4C0–M4D3 delivery sequence.
-The [M4 conformance matrix](../architecture/m4-conformance-matrix.md) remains the
+The [M4 conformance matrix](../conformance/m4-conformance-matrix.md) remains the
 observable acceptance and proof contract. Charter acceptance does not claim
 runtime implementation.
 
@@ -446,7 +446,7 @@ deterministic internal candidate-selection policy:
 
 The exact score and weights remain private runtime policy. Observable outcomes
 are frozen by the normative
-[`M4 directional-focus corpus`](../architecture/m4-directional-focus-corpus.md),
+[`M4 directional-focus corpus`](../conformance/m4-directional-focus-corpus.md),
 whose vectors cover direct movement, beams/off-beam choices, partial and unequal
 geometry, overlap and ties, nested scope policies, root boundaries, exact-
 generation restoration, stale fallback, eligibility filtering, half-plane
@@ -600,7 +600,7 @@ Low-level test helpers may remain only when they call the canonical queue and
 preserve normal surface, target, ordering, trace, and reconciliation behavior.
 
 The required proof matrix is normative and lives in
-[`../architecture/m4-conformance-matrix.md`](../architecture/m4-conformance-matrix.md).
+[`../conformance/m4-conformance-matrix.md`](../conformance/m4-conformance-matrix.md).
 It covers downstream widgets, Counter, every required input modality, command
 families, routing/default controls, focus/capture/composition lifetimes,
 stationary-pointer geometry changes, retired/missing terminal pointer cleanup,

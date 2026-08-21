@@ -791,7 +791,7 @@ package migrate together without a compatibility runtime. The application API
 keeps the simple two-argument update shape with `()` as the no-effects result.
 
 The normative proof matrix is
-[`../architecture/m4-conformance-matrix.md`](../architecture/m4-conformance-matrix.md).
+[`../conformance/m4-conformance-matrix.md`](../conformance/m4-conformance-matrix.md).
 It includes initial work, state-derived subscriptions, keyed replacement,
 dedicated mounted complete-set declarations/invalidation, keyed replacement,
 transaction ordering, non-`Send` actions, local/send tasks, terminal executor
