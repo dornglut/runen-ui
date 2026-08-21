@@ -404,7 +404,7 @@ mod tests {
         let root = workspace_root()?;
         let files = validate_markdown_links(&root)?;
         assert!(files.contains(&PathBuf::from("README.md")));
-        assert!(files.contains(&PathBuf::from("docs/status-map.md")));
+        assert!(files.contains(&PathBuf::from("docs/status.md")));
         Ok(())
     }
 
@@ -418,7 +418,7 @@ mod tests {
             );
             let files = validate_markdown_links(&workspace_root()?)?;
             assert!(files.contains(&PathBuf::from("README.md")));
-            assert!(files.contains(&PathBuf::from("docs/status-map.md")));
+            assert!(files.contains(&PathBuf::from("docs/status.md")));
             return Ok(());
         }
 
@@ -493,8 +493,8 @@ mod tests {
         assert_eq!(local_link_path("https://example.com"), None);
         assert_eq!(local_link_path("#section"), None);
         assert_eq!(
-            local_link_path("docs/status-map.md#current"),
-            Some("docs/status-map.md")
+            local_link_path("docs/status.md#current"),
+            Some("docs/status.md")
         );
     }
 

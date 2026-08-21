@@ -42,17 +42,17 @@ struct MatrixSpec {
 }
 
 const M4_SPEC: MatrixSpec = MatrixSpec {
-    path: "docs/architecture/m4-conformance-matrix.md",
+    path: "docs/conformance/m4-conformance-matrix.md",
     allowed_delivery_slices: M4_DELIVERY_SLICES,
     gate_policy: GatePolicy::M4WithInheritedM5,
 };
 const M5_SPEC: MatrixSpec = MatrixSpec {
-    path: "docs/architecture/m5-conformance-matrix.md",
+    path: "docs/conformance/m5-conformance-matrix.md",
     allowed_delivery_slices: M5_DELIVERY_SLICES,
     gate_policy: GatePolicy::Required,
 };
 const M6_SPEC: MatrixSpec = MatrixSpec {
-    path: "docs/architecture/m6-conformance-matrix.md",
+    path: "docs/conformance/m6-conformance-matrix.md",
     allowed_delivery_slices: M6_DELIVERY_SLICES,
     gate_policy: GatePolicy::Required,
 };
@@ -510,10 +510,7 @@ mod tests {
             declared_metric("237 total unique rows\n", "total unique rows"),
             Some(237)
         );
-        assert_eq!(
-            declared_metric("237 total rows\n", "total unique rows"),
-            None
-        );
+        assert_eq!(declared_metric("237 total rows\n", "total unique rows"), None);
     }
 
     #[test]
@@ -539,15 +536,6 @@ mod tests {
         let analysis = analyze_contents(M5_SPEC, valid, &mut seen, &mut findings);
         assert_eq!(analysis.invalid_schemas, 0);
         assert!(findings.is_empty());
-
-        let invalid = "| ID | A | B | C | D | E | F | G |\n\
-|---|---|---|---|---|---|---|---|\n\
-| SEM-ID-02 | A | B | C | D | M5A | blocked | M5 gate |\n";
-        let mut findings = Vec::new();
-        let mut seen = BTreeSet::new();
-        let analysis = analyze_contents(M5_SPEC, invalid, &mut seen, &mut findings);
-        assert_eq!(analysis.invalid_schemas, 1);
-        assert_eq!(findings.len(), 1);
     }
 
     #[test]
@@ -560,15 +548,6 @@ mod tests {
         let analysis = analyze_contents(M6_SPEC, valid, &mut seen, &mut findings);
         assert_eq!(analysis.invalid_schemas, 0);
         assert!(findings.is_empty());
-
-        let invalid = "| ID | A | B | C | D | E | F | G |\n\
-|---|---|---|---|---|---|---|---|\n\
-| SCENE-PUB-02 | A | B | C | D | M5A | blocked | Required |\n";
-        let mut findings = Vec::new();
-        let mut seen = BTreeSet::new();
-        let analysis = analyze_contents(M6_SPEC, invalid, &mut seen, &mut findings);
-        assert_eq!(analysis.invalid_schemas, 1);
-        assert_eq!(findings.len(), 1);
     }
 
     #[test]

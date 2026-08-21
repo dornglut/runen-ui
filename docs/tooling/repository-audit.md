@@ -1,129 +1,85 @@
 # Repository Audit
 
-> **Category: Guide**
+`cargo xtask audit-repository` is RunenUI's deterministic, network-free repository structure and authority audit. It reads the checked-out tree only, never modifies files, and reports findings in stable order.
 
-`cargo xtask audit-repository` is the deterministic, network-free repository
-structure and authority audit. It reads the checked-out tree only, never modifies
-files, and reports findings in stable code/path/message order.
-
-Run the human-readable report:
-
-```powershell
+```text
 cargo xtask audit-repository
-```
-
-Run the machine-readable report:
-
-```powershell
 cargo xtask audit-repository --format json
 ```
 
-A fatal finding returns a non-zero exit status. Diagnostics never change the exit
-status. `cargo validate` invokes the same fatal invariant implementation after the
-locked stable/MSRV baseline and relative Markdown-link validation.
+Fatal findings return non-zero. Diagnostics are informational. The fatal audit is also part of `cargo validate`.
 
-The audit enforces explicit structural and modeled-authority contracts. It does
-**not** infer arbitrary semantic equivalence between prose in different retained
-documents. Migration/closure work therefore still requires the authority-impact
-cross-document review defined by `AGENTS.md` and `docs/work-tracking.md`.
+The audit enforces **structural authority boundaries**. It does not claim to prove arbitrary semantic equivalence between prose documents; human review still verifies that the canonical owner contains the correct rule.
 
 ## Fatal invariants
 
-The audit fails for:
+The audit fails closed for material repository-contract violations including:
 
-- duplicate, malformed, invalid-status, invalid-schema, gate-policy, or
-  summary-inconsistent rows in the configured M4/M5 conformance matrices,
-  including permanent-ID duplication across the configured matrix set;
-- workspace members missing manifests or package names, duplicate package names,
-  undocumented members, documented missing members, forbidden workspace
-  dependency direction, or reviewed dependency-section drift;
-- public issue links outside the issue set owned by `docs/work-tracking.md`;
-- active obsolete-default-branch authority outside the documented historical
-  exemptions;
-- private-archive URLs outside
-  `docs/history/public-repository-migration.md`;
-- repository/governance inventory drift, including required entry points, issue
-  templates, and the accepted read-only CI workflow contract;
-- MIT notice, workspace license, repository metadata, or `publish = false`
-  policy drift;
-- missing, relocated, or duplicate definitions of canonical runtime/source
-  authorities modeled by the source audit;
-- narrowly modeled retired M5 public/source authorities that would recreate a
-  forbidden compatibility or parallel semantic/testing path.
+- required root/documentation entrypoints missing;
+- retired duplicate-authority paths reintroduced;
+- malformed, duplicate, invalid-status/schema, gate-policy, or summary-inconsistent conformance rows;
+- workspace members/package names/dependency direction drifting from the documented workspace contract;
+- forbidden or missing source authorities covered by the source-ownership audit;
+- repository metadata/license/publication-policy drift;
+- issue-template or canonical read-only CI workflow drift;
+- active historical repository/default-branch identities outside explicit history/report exemptions;
+- private archive references outside the migration-history owner;
+- volatile live-work evidence embedded in designated durable current-authority documents.
 
-The workspace dependency projection is the executable form of
-`docs/architecture/workspace-structure.md`: `runenui_core` and `xtask` have no
-workspace-package dependencies, `runenui_runtime` depends only on
-`runenui_core`, `runenui_testing` is downstream of core/runtime, and the
-Counter/downstream conformance packages follow their documented production/dev
-dependency directions. A new production package is fatal until its reviewed
-ownership and dependency direction are added to both the architecture contract
-and audit.
+The last category protects the single-owner model. Durable entrypoints/current architecture/status/roadmap must not become a manually synchronized database of RunenUI issue/PR URLs, full commit SHAs, CI run identifiers, current heads/branches/blockers, or pickup state. GitHub owns those facts. Explicit `history/`, `reports/`, ADR rationale, and changelog material may preserve point-in-time provenance where appropriate.
 
-Source-absence checks are deliberately structural. They are appropriate when the
-absence of a retired public authority is itself the accepted contract; they are
-not a substitute for behavioral/conformance tests and must not ban incidental
-method names used legitimately by diagnostics, trace, or unrelated APIs.
+## Conformance audit
 
-## Diagnostics
+Configured M4/M5/M6 matrices are loaded from `docs/conformance/`. The audit validates:
 
-Diagnostics identify review candidates without asserting architecture failure:
+- permanent ID format and uniqueness across configured matrices;
+- exact row schema;
+- allowed accepted-state vocabulary;
+- allowed delivery-slice/gate policy;
+- declared summary counts versus parsed rows.
 
-- production source modules with at least 900 lines;
-- modules with at least 40 public or crate-visible item declarations;
-- modules with at least 10 `pub use` statements;
-- item declarations spanning at least five responsibility vocabularies;
-- composite god-file candidates combining size with public-surface or
-  responsibility concentration;
-- test modules with at least 800 lines or 20 `#[test]` cases;
-- architecture documents containing volatile branch, PR, or current-head markers.
+Matrix status describes accepted default-branch conformance state. The audit does not model in-flight GitHub issue/PR state.
 
-These thresholds are triage signals only. Line count or vocabulary coincidence
-must never determine correctness, extraction, or crate boundaries.
+## Workspace and source audit
+
+Workspace checks enforce the accepted package inventory and dependency direction documented in [workspace structure](../architecture/workspace-structure.md). Source checks enforce narrowly modeled canonical runtime/source authorities and retired-path absence where the absence itself is an accepted architecture contract.
+
+File size, public-item count, responsibility vocabulary, and similar concentration checks are diagnostics only. They identify review candidates and must not decide crate boundaries or correctness by themselves.
+
+## CI contract
+
+The active workflow inventory remains intentionally small. The repository caller must be read-only, trigger on pull requests and pushes to `main`, and invoke the accepted immutable reusable `cargo validate` workflow without product-specific steps, secrets, or source mutation.
 
 ## JSON schema
 
-Schema version `1` is a single JSON object with stable key order. The numeric
-values below are illustrative schema values, **not current repository metrics**;
-current counts come from the checked-out matrices/workspace at execution time.
+Schema version `2` reports stable matrix/workspace/source/authority metrics and findings. Numeric values below illustrate shape only:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "pass",
   "metrics": {
     "matrix": {
-      "total_rows": 290,
-      "owner_accepted": 285,
+      "total_rows": 0,
+      "owner_accepted": 0,
       "implementation_complete": 0,
-      "proof_complete": 3,
-      "blocked": 2
+      "proof_complete": 0,
+      "blocked": 0
     },
     "workspace": {
-      "members": 6,
-      "production_crates": 2
+      "members": 0,
+      "production_crates": 0
     },
     "source": {
       "production_modules": 0,
       "test_modules": 0
     },
     "authority": {
-      "files": 0,
-      "modeled_public_issues": 0
+      "files": 0
     }
   },
-  "findings": [
-    {
-      "severity": "diagnostic",
-      "code": "diagnostic.large_source_module",
-      "path": "crates/example/src/lib.rs",
-      "message": "..."
-    }
-  ]
+  "findings": []
 }
 ```
 
-`status` is `pass` when no fatal finding exists and `fail` otherwise. `path` is a
-repository-relative slash-normalized string or `null`. Consumers must branch on
-`schema_version`, `severity`, and `code`; human messages may become more precise
-without a schema-version change.
+Consumers branch on `schema_version`, finding `severity`, and finding `code`; human-readable messages may become more precise without changing the schema version.

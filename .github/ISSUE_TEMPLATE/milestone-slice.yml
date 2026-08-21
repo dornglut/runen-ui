@@ -1,44 +1,37 @@
 name: Milestone slice
-description: Track one accepted roadmap and conformance-matrix delivery slice.
+description: Define one bounded accepted roadmap/conformance delivery slice.
 title: "[M?] "
 body:
   - type: markdown
     attributes:
       value: |
-        Use one issue per delivery slice. Keep permanent behavioral requirements in the conformance matrix and volatile execution state here.
+        Use one issue for one coherent delivery slice. Permanent behavioral requirements live in conformance documents; live execution, review, and blocker state live in GitHub.
   - type: textarea
     id: authority
     attributes:
-      label: Authority documents
-      description: Link the governing ADRs, charter, matrix, roadmap, and stable architecture contracts.
+      label: Governing authority
+      description: Link the relevant roadmap section, ADR/design, architecture owner, and conformance contract.
     validations:
       required: true
-  - type: input
-    id: prerequisite
+  - type: textarea
+    id: problem
     attributes:
-      label: Exact prerequisite
-      description: Name the accepted prerequisite milestone or slice.
-    validations:
-      required: true
-  - type: input
-    id: base
-    attributes:
-      label: Exact accepted base SHA
-      description: Use the accepted main SHA, never an unmerged feature head.
+      label: Problem and required outcome
+      description: State the concrete current problem and the observable outcome this slice must deliver.
     validations:
       required: true
   - type: textarea
     id: dependencies
     attributes:
       label: Dependencies
-      description: Link blocking issues and accepted prerequisite PRs.
+      description: Name accepted prerequisites and blocking work, if any. Do not predeclare speculative branch or PR identifiers.
     validations:
       required: true
   - type: textarea
-    id: matrix
+    id: conformance
     attributes:
-      label: Included matrix rows
-      description: Add checkboxes for the permanent IDs owned by this slice.
+      label: Conformance obligations
+      description: List permanent IDs and required positive, negative, diagnostic, or trace proof obligations, or state why this slice has none.
     validations:
       required: true
   - type: textarea
@@ -54,38 +47,16 @@ body:
     validations:
       required: true
   - type: textarea
-    id: proofs
-    attributes:
-      label: Positive, negative, and trace proof owners
-    validations:
-      required: true
-  - type: textarea
     id: validation
     attributes:
-      label: Validation commands and audits
-    validations:
-      required: true
-  - type: input
-    id: branch
-    attributes:
-      label: Target branch
-    validations:
-      required: true
-  - type: input
-    id: pr_title
-    attributes:
-      label: Target draft PR title
+      label: Validation and evidence
+      description: Name focused checks/proofs in addition to the canonical cargo validate baseline.
     validations:
       required: true
   - type: textarea
-    id: current
+    id: stop_conditions
     attributes:
-      label: Current head, blockers, and acceptance state
-    validations:
-      required: true
-  - type: textarea
-    id: next
-    attributes:
-      label: Next unblocked issue
+      label: Stop conditions
+      description: State material unknowns or boundary changes that require investigation or authority revision before implementation/merge continues.
     validations:
       required: true
