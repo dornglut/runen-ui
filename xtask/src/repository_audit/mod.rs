@@ -1,5 +1,6 @@
 //! Deterministic repository structure and authority audit.
 
+mod context;
 mod matrix;
 mod source;
 mod workspace;
@@ -244,6 +245,7 @@ fn build_report(root: &Path) -> Result<AuditReport, String> {
 
     audit_repository_governance(root, &mut report.findings)?;
     audit_documentation_authority(root, &mut report.findings)?;
+    context::audit(root, &mut report.findings)?;
     report.metrics.matrix = matrix::audit(root, &mut report.findings)?;
     report.metrics.workspace = workspace::audit(root, &mut report.findings)?;
     report.metrics.source = source::audit(root, &mut report.findings)?;
