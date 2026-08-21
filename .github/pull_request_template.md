@@ -2,7 +2,7 @@
 
 - Owning issue or accepted decision:
 - Accepted implementation base, when relevant:
-- Reviewed feature head:
+- Reviewed exact head:
 
 ## Outcome
 
