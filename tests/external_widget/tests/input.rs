@@ -163,11 +163,12 @@ fn downstream_widget_uses_only_public_keyboard_text_and_composition_protocols() 
             .iter()
             .filter(|fact| fact.kind() == &kind)
             .collect::<Vec<_>>();
+        let (deliveries, remainder) = routed.as_slice().as_chunks::<3>();
         assert!(
-            routed.chunks_exact(3).remainder().is_empty(),
+            remainder.is_empty(),
             "each routed input delivery has exactly three phases"
         );
-        assert!(routed.chunks_exact(3).all(|delivery| {
+        assert!(deliveries.iter().all(|delivery| {
             delivery.iter().map(|fact| fact.phase()).eq([
                 EventPhase::Capture,
                 EventPhase::Target,
