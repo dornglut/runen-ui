@@ -121,14 +121,14 @@ impl Fixture {
             "tools/context/export_repo_context.py",
             "DEFAULT_PROFILE = \"offline-review\"\n",
         )?;
-        for profile in [
-            "full-audit.toml",
-            "implementation-review.toml",
-            "offline-review.toml",
-        ] {
+        self.write(
+            "tools/context/profiles/full-audit.toml",
+            "description = \"full audit\"\ninclude = [\"README.md\"]\n",
+        )?;
+        for profile in ["implementation-review.toml", "offline-review.toml"] {
             self.write(
                 &format!("tools/context/profiles/{profile}"),
-                "description = \"offline review\"\ninclude = [\"README.md\"]\n",
+                "description = \"offline review\"\ninclude = [\n  \"README.md\",\n]\nexclude = [\n  \"Cargo.lock\",\n  \"docs/history/**\",\n  \"docs/reports/**\",\n  \"legacy/**\",\n]\n",
             )?;
         }
         Ok(())
@@ -383,6 +383,18 @@ fn context_profile_inventory_drift_is_fatal() -> Result<(), String> {
     )?;
     let report = build_report(fixture.path())?;
     assert_fatal_code(&report, "context.profile_inventory");
+    Ok(())
+}
+
+#[test]
+fn context_bounded_profile_history_exclusion_drift_is_fatal() -> Result<(), String> {
+    let fixture = Fixture::new("context-bounded-profile")?;
+    fixture.write(
+        "tools/context/profiles/offline-review.toml",
+        "description = \"offline review\"\ninclude = [\n  \"docs/**\",\n]\nexclude = [\n  \"Cargo.lock\",\n  \"docs/reports/**\",\n  \"legacy/**\",\n]\n",
+    )?;
+    let report = build_report(fixture.path())?;
+    assert_fatal_code(&report, "context.bounded_profile_contract");
     Ok(())
 }
 
