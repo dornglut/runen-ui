@@ -1,0 +1,23 @@
+description = "Bounded offline/manual review of durable RunenUI authority and repository procedures; not live work state."
+
+include = [
+  "README.md",
+  "AGENTS.md",
+  "ARCHITECTURE.md",
+  "TESTING.md",
+  "Cargo.toml",
+  "rust-toolchain.toml",
+  "docs/**",
+  "crates/*/Cargo.toml",
+  "crates/*/README.md",
+  ".github/pull_request_template.md",
+  ".github/ISSUE_TEMPLATE/**",
+  "tools/context/README.md",
+  "tools/context/profiles/*.toml",
+]
+
+exclude = [
+  "Cargo.lock",
+  "legacy/**",
+  "context/**",
+]
