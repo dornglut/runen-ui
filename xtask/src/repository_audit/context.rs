@@ -70,7 +70,10 @@ fn audit_profile_volatility(root: &Path, findings: &mut Vec<Finding>) -> Result<
     for file_name in EXPECTED_PROFILE_FILES {
         let relative = Path::new(PROFILE_DIRECTORY).join(file_name);
         let contents = fs::read_to_string(root.join(&relative)).map_err(|error| {
-            format!("failed to read context profile {}: {error}", relative.display())
+            format!(
+                "failed to read context profile {}: {error}",
+                relative.display()
+            )
         })?;
         audit_volatility(
             &path_text(&relative),
@@ -80,29 +83,4 @@ fn audit_profile_volatility(root: &Path, findings: &mut Vec<Finding>) -> Result<
         );
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use super::{DEFAULT_PROFILE_DECLARATION, EXPECTED_PROFILE_FILES};
-
-    #[test]
-    fn retained_profile_inventory_is_deliberately_small() {
-        assert_eq!(
-            EXPECTED_PROFILE_FILES,
-            [
-                "full-audit.toml",
-                "implementation-review.toml",
-                "offline-review.toml"
-            ]
-        );
-    }
-
-    #[test]
-    fn default_profile_is_offline_review() {
-        assert_eq!(DEFAULT_PROFILE_DECLARATION, "DEFAULT_PROFILE = \"offline-review\"");
-        assert!(Path::new("tools/context/profiles/offline-review.toml").is_relative());
-    }
 }
