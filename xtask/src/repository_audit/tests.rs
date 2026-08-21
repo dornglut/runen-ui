@@ -50,6 +50,15 @@ impl Fixture {
     }
 
     fn write_baseline(&self) -> Result<(), String> {
+        self.write_repository_baseline()?;
+        self.write_documentation_baseline()?;
+        self.write_github_baseline()?;
+        self.write_context_baseline()?;
+        self.write_workspace_baseline()?;
+        self.write_conformance_baseline()
+    }
+
+    fn write_repository_baseline(&self) -> Result<(), String> {
         self.write(
             "Cargo.toml",
             "[workspace]\nmembers = [\n  \"crates/runenui_core\",\n  \"crates/runenui_runtime\",\n  \"xtask\",\n]\n\n[workspace.package]\nrepository = \"https://github.com/dornglut/runen-ui\"\nlicense = \"MIT\"\npublish = false\n",
@@ -57,8 +66,10 @@ impl Fixture {
         self.write(
             "LICENSE",
             "MIT License\n\nCopyright (c) 2026 Crystonix\n\nPermission is hereby granted, free of charge\nTHE SOFTWARE IS PROVIDED \"AS IS\"\n",
-        )?;
+        )
+    }
 
+    fn write_documentation_baseline(&self) -> Result<(), String> {
         for (path, contents) in [
             ("README.md", "# RunenUI\n"),
             ("AGENTS.md", "Start from accepted `main`.\n"),
@@ -77,19 +88,35 @@ impl Fixture {
         ] {
             self.write(path, contents)?;
         }
+        self.write(
+            "docs/architecture/workspace-structure.md",
+            "| Package | Current ownership | Must not own |\n|---|---|---|\n| `runenui_core` | Core | Runtime |\n| `runenui_runtime` | Runtime | Platform |\n| `xtask` | Tooling | Runtime |\n",
+        )?;
+        self.write(
+            "docs/history/public-repository-migration.md",
+            &format!("https://{PRIVATE_ARCHIVE_URL}\n"),
+        )
+    }
 
+    fn write_github_baseline(&self) -> Result<(), String> {
         self.write(
             ".github/ISSUE_TEMPLATE/config.yml",
             "blank_issues_enabled: false\ncontact_links:\n  - name: Security\n    url: https://github.com/dornglut/runen-ui/security/policy\n    about: Private security reporting.\n  - name: Engineering\n    url: https://github.com/dornglut/engineering/issues/new\n    about: Cross-repository decisions.\n",
         )?;
-        self.write(".github/ISSUE_TEMPLATE/defect.yml", "name: Defect\n")?;
-        self.write(
-            ".github/ISSUE_TEMPLATE/milestone-slice.yml",
-            "name: Milestone slice\n",
-        )?;
-        self.write(".github/ISSUE_TEMPLATE/proposal.yml", "name: Proposal\n")?;
-        self.write(".github/workflows/ci.yml", &expected_ci_workflow())?;
+        for (path, contents) in [
+            (".github/ISSUE_TEMPLATE/defect.yml", "name: Defect\n"),
+            (
+                ".github/ISSUE_TEMPLATE/milestone-slice.yml",
+                "name: Milestone slice\n",
+            ),
+            (".github/ISSUE_TEMPLATE/proposal.yml", "name: Proposal\n"),
+        ] {
+            self.write(path, contents)?;
+        }
+        self.write(".github/workflows/ci.yml", &expected_ci_workflow())
+    }
 
+    fn write_context_baseline(&self) -> Result<(), String> {
         self.write(
             "tools/context/export_repo_context.py",
             "DEFAULT_PROFILE = \"offline-review\"\n",
@@ -104,42 +131,47 @@ impl Fixture {
                 "description = \"offline review\"\ninclude = [\"README.md\"]\n",
             )?;
         }
+        Ok(())
+    }
 
-        self.write(
-            "crates/runenui_core/Cargo.toml",
-            "[package]\nname = \"runenui_core\"\n\n[dependencies]\n",
-        )?;
-        self.write(
-            "crates/runenui_core/src/lib.rs",
-            "#![forbid(unsafe_code)]\n",
-        )?;
-        self.write(
-            "crates/runenui_runtime/Cargo.toml",
-            "[package]\nname = \"runenui_runtime\"\n\n[dependencies]\nrunenui_core = { path = \"../runenui_core\" }\n",
-        )?;
-        self.write(
-            "crates/runenui_runtime/src/queue.rs",
-            "pub(crate) struct WorkQueue<Action> { value: Option<Action> }\n",
-        )?;
-        self.write(
-            "crates/runenui_runtime/src/trace/store.rs",
-            "pub struct Trace;\n",
-        )?;
-        self.write(
-            "crates/runenui_runtime/src/runtime/surface_publication.rs",
-            "pub(crate) struct SurfacePublicationState;\n",
-        )?;
-        self.write(
-            "xtask/Cargo.toml",
-            "[package]\nname = \"xtask\"\n\n[dependencies]\n",
-        )?;
-        self.write("xtask/src/main.rs", "fn main() {}\n")?;
+    fn write_workspace_baseline(&self) -> Result<(), String> {
+        for (path, contents) in [
+            (
+                "crates/runenui_core/Cargo.toml",
+                "[package]\nname = \"runenui_core\"\n\n[dependencies]\n",
+            ),
+            (
+                "crates/runenui_core/src/lib.rs",
+                "#![forbid(unsafe_code)]\n",
+            ),
+            (
+                "crates/runenui_runtime/Cargo.toml",
+                "[package]\nname = \"runenui_runtime\"\n\n[dependencies]\nrunenui_core = { path = \"../runenui_core\" }\n",
+            ),
+            (
+                "crates/runenui_runtime/src/queue.rs",
+                "pub(crate) struct WorkQueue<Action> { value: Option<Action> }\n",
+            ),
+            (
+                "crates/runenui_runtime/src/trace/store.rs",
+                "pub struct Trace;\n",
+            ),
+            (
+                "crates/runenui_runtime/src/runtime/surface_publication.rs",
+                "pub(crate) struct SurfacePublicationState;\n",
+            ),
+            (
+                "xtask/Cargo.toml",
+                "[package]\nname = \"xtask\"\n\n[dependencies]\n",
+            ),
+            ("xtask/src/main.rs", "fn main() {}\n"),
+        ] {
+            self.write(path, contents)?;
+        }
+        Ok(())
+    }
 
-        self.write(
-            "docs/architecture/workspace-structure.md",
-            "| Package | Current ownership | Must not own |\n|---|---|---|\n| `runenui_core` | Core | Runtime |\n| `runenui_runtime` | Runtime | Platform |\n| `xtask` | Tooling | Runtime |\n",
-        )?;
-
+    fn write_conformance_baseline(&self) -> Result<(), String> {
         for (path, id, slice) in [
             (
                 "docs/conformance/m4-conformance-matrix.md",
@@ -164,11 +196,6 @@ impl Fixture {
                 ),
             )?;
         }
-
-        self.write(
-            "docs/history/public-repository-migration.md",
-            &format!("https://{PRIVATE_ARCHIVE_URL}\n"),
-        )?;
         Ok(())
     }
 }
