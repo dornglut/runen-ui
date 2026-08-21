@@ -15,7 +15,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_PROFILE = "ai-core"
+DEFAULT_PROFILE = "offline-review"
 DEFAULT_CONTEXT_DIR = "context"
 DEFAULT_EXTENSIONS = {
     ".json",
