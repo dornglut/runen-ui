@@ -86,10 +86,7 @@ fn default_profile_declarations(contents: &str) -> Vec<&str> {
         .collect()
 }
 
-fn audit_bounded_profile_contract(
-    root: &Path,
-    findings: &mut Vec<Finding>,
-) -> Result<(), String> {
+fn audit_bounded_profile_contract(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
     let required = REQUIRED_BOUNDED_PROFILE_EXCLUDES
         .iter()
         .map(|value| (*value).to_owned())
