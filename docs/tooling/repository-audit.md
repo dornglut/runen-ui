@@ -26,11 +26,11 @@ The audit fails closed for material repository-contract violations including:
 - private archive references outside the migration-history owner;
 - volatile live-work evidence embedded in current durable documentation.
 
-The documentation audit derives volatility policy from repository location instead of maintaining a filename allowlist:
+The documentation audit derives volatility policy from artifact class and repository location instead of maintaining a filename allowlist:
 
-- ordinary root, crate, example, test, policy, status, roadmap, and `docs/architecture/` Markdown are **strict current authority** and must not mirror live issue/PR/run URLs, full commit SHAs, current heads/branches/blockers, or pickup state;
-- `docs/conformance/` is **frozen contract authority**: accepted provenance may remain where it explains an immutable proof state, but mutable current-head/branch/pickup markers are forbidden;
-- changelog, ADR, history, report, tooling, GitHub-template/workflow, and context-tool material is **provenance/tooling authority** and may legitimately contain immutable revision evidence or examples.
+- ordinary root, crate, example, test, policy, status, roadmap, architecture, tooling, and context-guide Markdown is **strict current authority** and must not mirror live issue/PR/run URLs, full commit SHAs, current heads/branches/blockers, or pickup state;
+- accepted ADR/design/conformance material is **frozen contract authority**: immutable acceptance provenance may remain where it explains the contract, but mutable current-head/branch/blocker/pickup markers are forbidden;
+- changelog, history, and report material is **provenance authority** and may preserve point-in-time revision evidence; GitHub workflow/template YAML is treated as repository process configuration and is validated by its owning governance checks rather than documentation-volatility rules.
 
 This protects the single-owner model without erasing useful historical evidence. GitHub owns live work and delivery state; durable documentation owns contracts, architecture, policy, and accepted capability truth.
 

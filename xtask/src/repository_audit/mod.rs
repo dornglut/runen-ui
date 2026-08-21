@@ -404,7 +404,7 @@ fn audit_historical_references(
 }
 
 fn volatility_policy(relative: &Path) -> VolatilityPolicy {
-    if relative.starts_with("docs/conformance") {
+    if is_frozen_contract_path(relative) {
         VolatilityPolicy::FrozenContract
     } else if is_provenance_path(relative) {
         VolatilityPolicy::Provenance
@@ -413,14 +413,17 @@ fn volatility_policy(relative: &Path) -> VolatilityPolicy {
     }
 }
 
+fn is_frozen_contract_path(relative: &Path) -> bool {
+    relative.starts_with("docs/adr")
+        || relative.starts_with("docs/design")
+        || relative.starts_with("docs/conformance")
+}
+
 fn is_provenance_path(relative: &Path) -> bool {
     relative == Path::new("CHANGELOG.md")
-        || relative.starts_with("docs/adr")
         || relative.starts_with("docs/history")
         || relative.starts_with("docs/reports")
-        || relative.starts_with("docs/tooling")
         || relative.starts_with(".github")
-        || relative.starts_with("tools")
 }
 
 fn audit_volatility(
@@ -773,5 +776,7 @@ fn json_escape(value: &str) -> String {
     output
 }
 
+#[cfg(test)]
+mod policy_tests;
 #[cfg(test)]
 mod tests;
