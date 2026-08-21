@@ -1,105 +1,51 @@
-## Repository state
+## Authority
 
-- Branch:
-- Base SHA:
-- Merge base:
-- Previous reviewed head:
-- Current head:
-- Remote head:
-- Owning issue:
+- Owning issue or accepted decision:
+- Accepted implementation base, when relevant:
+- Reviewed exact head:
+
+## Outcome
+
+Describe the completed outcome and why it belongs in RunenUI.
 
 ## Scope
 
 ### Included
 
+-
 
-### Explicit non-goals
+### Excluded
 
+-
 
-## Changes by responsibility
+## Conformance
 
-For each responsibility, describe:
-
-- previous problem;
-- implemented correction;
-- authority owner;
-- tests;
-- matrix rows;
-- deferred scope.
-
-## Public API
-
-### Added
-
-- None.
-
-### Changed
-
-- None.
-
-### Removed
-
-- None.
-
-## Structure and ownership
-
-- Changed modules:
-- Responsibility boundaries:
-- Remaining god-file risks:
-- Remaining architecture debt:
-- New queue/store/runtime authority: none.
-
-## Conformance matrix
-
-```text
-total rows:
-owner-accepted:
-proof-complete:
-implementation-complete:
-blocked:
-duplicates:
-invalid statuses:
-invalid schemas:
-```
+List permanent conformance IDs affected by this change, or `N/A`. Describe any accepted-state changes without copying live issue/PR state into durable conformance documents.
 
 ## Validation
 
-- [ ] `cargo metadata --no-deps --format-version 1`
-- [ ] `cargo +stable fmt --all --check`
-- [ ] `cargo test --workspace --all-features --locked`
-- [ ] `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
-- [ ] `cargo +1.93.0 test --workspace --all-features --locked`
-- [ ] `cargo test --doc --workspace --all-features --locked`
-- [ ] `cargo validate`
-- [ ] `git diff --check`
-- [ ] matrix uniqueness/status/schema/count audit
-- [ ] public API audit
-- [ ] removed-symbol audit
-- [ ] unsafe-code audit
-- [ ] cross-document truth audit
-- [ ] exact base/head/remote verification
-- [ ] clean-worktree verification
+```text
+command:
+revision:
+result:
+```
 
-Do not reuse a result from an earlier head.
+Add slice-specific behavioral/proof evidence required by the owning issue. Do not restate the internal subcommands already owned by `cargo validate`.
 
-## Exact-head CI
+## Impact
 
-- Workflow:
-- Run ID:
-- Job:
-- Head SHA:
-- Status:
-- Conclusion:
+- Public API or compatibility:
+- Architecture/ownership:
+- Migration or release:
+- Security/permissions:
+- Documentation:
 
 ## Review checklist
 
-- [ ] Actual diff and every changed source/test file reviewed.
-- [ ] ADR, charter, matrix, and roadmap compared against behavior.
-- [ ] Positive, negative, and trace proofs are complete for the claimed scope.
-- [ ] No duplicate authority, hidden compatibility layer, or premature later-slice API.
-- [ ] Documentation reports accepted truth and keeps volatile state in issues/PRs.
-- [ ] The next slice does not begin from this branch before merge.
-
-## Final status
-
-State the exact truthful milestone/slice status. Do not claim owner acceptance or merge before they occur.
+- [ ] The diff has one coherent purpose and matches the owning authority.
+- [ ] Code/tests remain the source of current behavior; durable docs were changed only where their owned concern changed.
+- [ ] Required conformance positive/negative/diagnostic or trace proofs are satisfied.
+- [ ] No duplicate authority, hidden compatibility path, or premature later-milestone API was introduced.
+- [ ] `cargo validate` and required slice-specific checks passed on the reviewed head.
+- [ ] Exact-head CI refers to the reviewed feature head; moved heads invalidate earlier evidence.
+- [ ] Remaining work is owned elsewhere and is not hidden in this pull request.

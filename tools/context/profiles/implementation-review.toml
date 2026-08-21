@@ -1,0 +1,24 @@
+description = "Offline/manual implementation review over current RunenUI authority, source, examples, and tests."
+
+include = [
+  "README.md",
+  "AGENTS.md",
+  "ARCHITECTURE.md",
+  "TESTING.md",
+  "Cargo.toml",
+  "rust-toolchain.toml",
+  ".cargo/**",
+  "docs/**",
+  "crates/**",
+  "examples/**",
+  "tests/**",
+  "xtask/**",
+]
+
+exclude = [
+  "Cargo.lock",
+  "docs/history/**",
+  "docs/reports/**",
+  "legacy/**",
+  "context/**",
+]

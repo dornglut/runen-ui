@@ -1,39 +1,42 @@
 # RunenUI Architecture
 
-RunenUI is a host-neutral, renderer-neutral Rust UI framework. Its durable ownership direction is:
+RunenUI is a host-neutral, renderer-neutral Rust UI framework. The durable ownership direction is:
 
 ```text
 application state and actions
-    -> transient View/Element authoring
+    -> transient typed View/Element descriptions
     -> keyed reconciliation
     -> persistent mounted runtime tree
-    -> interaction, style, layout, and semantics
-    -> hit-test and paint products
+    -> interaction / style / layout / semantics
+    -> staged surface publication
+         ├── renderer-facing products
+         ├── hit/input products
+         ├── semantic publication
+         └── diagnostics
     -> host integration and renderer backend
 ```
 
-The mounted tree owns runtime identity, widget state, lifecycle, invalidation, focus, pointer interaction, task/subscription ownership, and publication authority. The authored tree is transient input and must not become a parallel retained runtime. Semantic identity is independently allocated by runtime and published through a renderer-independent semantic product; it is not a mounted-arena alias or renderer-frame field.
+The authored tree is transient reconciliation input. The mounted runtime tree is the persistent authority for runtime identity, widget-local state, lifecycle, invalidation, focus, interaction state, work ownership, and publication coordination.
 
-Crate and subsystem boundaries, current proof behavior, target products, and accepted constraints are documented in:
+Semantic identity is independently runtime-issued and published through a renderer-independent semantic product. It is not a mounted-arena alias and must not be folded into renderer scene authority. Surface publication is staged and atomic: rejected or terminally failed publication must not expose a partial new RunenUI-owned product.
 
-- [Detailed architecture](docs/architecture.md)
-- [Workspace structure](docs/architecture/workspace-structure.md)
-- [Public API](docs/architecture/public-api.md)
-- [M4 delivery charter](docs/architecture/m4c-delivery-and-routed-transaction-charter.md)
-- [M4 conformance matrix](docs/architecture/m4-conformance-matrix.md)
-- [M5 semantics and testing charter](docs/architecture/m5-semantics-and-testing-charter.md)
-- [M5 conformance matrix](docs/architecture/m5-conformance-matrix.md)
-- [ADR 0007 renderer-neutral paint/hit scene protocol](docs/adr/0007-renderer-neutral-paint-hit-scene-protocol.md)
-- [M6 conformance matrix](docs/architecture/m6-conformance-matrix.md)
-- [Architecture decision records](docs/adr/)
+## Workspace ownership
 
-M0–M5 are complete. M6A0 architecture/conformance authority and its required
-bounded current-contract reconciliation are also accepted, but no M6 scene
-behavior is implemented yet. PR #73 accepted ADR 0007 and the 36-row M6 matrix;
-PR #75 completed the post-A0 current-contract reconciliation. All 36 behavior
-rows remain `blocked`. The first M6A implementation slice is
-[#59](https://github.com/dornglut/runen-ui/issues/59), limited to the persistent
-retained-publication substrate required by `SCENE-PUB-01..05`; it does not
-introduce M6B scene APIs or renderer/backend behavior.
+- `runenui_core` — host-neutral public application, authoring, geometry, style, event, effect, identity, and semantic protocol values.
+- `runenui_runtime` — live mounted/semantic storage, reconciliation, routing, focus/input state, scheduling, tracing, publication, and shutdown.
+- `runenui_testing` — downstream deterministic testing ergonomics over ordinary public core/runtime contracts.
+- concrete hosts, platform adapters, renderer backends, and product state remain outside those ownership boundaries until real implementations justify their own edge contracts.
 
-Current implementation maturity belongs in the [status map](docs/status-map.md). Delivery sequence belongs in the [roadmap](docs/roadmap.md). Live branch and issue state belongs in GitHub according to the [work-tracking contract](docs/work-tracking.md).
+The workspace dependency and extraction rules are defined in [workspace structure](docs/architecture/workspace-structure.md).
+
+## Current behavior and required contracts
+
+Code and executable tests are the evidence for what the current implementation does. Accepted ADRs, architecture/design contracts, and conformance observations define what the implementation is required to do. A mismatch is a defect or requires an explicit reviewed contract revision; implementation never silently overrides accepted architecture.
+
+Detailed current architecture is indexed under [docs/architecture](docs/architecture/README.md). Durable decisions live in [ADRs](docs/adr/). Permanent observable/proof contracts live under [conformance](docs/conformance/README.md). High-level dependency sequence lives in the [roadmap](docs/roadmap.md). Current accepted maturity is summarized in [status](docs/status.md).
+
+Accepted future architecture becomes current API only after implementation and acceptance. In particular, renderer-neutral paint/hit scene contracts are accepted successor architecture, not current Rust scene behavior.
+
+Exact public Rust signatures remain authoritative in source and Rustdoc; conceptual public ownership is summarized in the [public API contract](docs/architecture/public-api.md).
+
+Live issue, branch, pull-request, head, CI-run, blocker, and pickup state belongs in GitHub and is deliberately absent from this document.

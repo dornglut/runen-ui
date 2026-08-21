@@ -1,66 +1,35 @@
 # Styling Architecture
 
-> **Category: Target architecture**
->
-> Current implementation facts and accepted targets are separated below.
+> **Category: Current architecture**
 
-## Current contract
+This document describes the style system that exists in the current headless framework foundation. Production theme/recipe/state-style expansion belongs to the roadmap and requires its own accepted contracts before replacing this model.
 
-`runenui_core` currently owns a small renderer- and host-neutral style proof:
+## Current ownership
+
+`runenui_core` owns renderer- and host-neutral style values, typed token references, `StyleIntent`, `StyleTokens`, pure resolution, `ComputedStyle`, provenance, and deterministic diagnostics. `runenui_runtime` owns mounted authored-style observation, resolution orchestration, cache compatibility, invalidation, and publication of resolved style facts.
+
+Renderers consume resolved visual facts. They do not resolve token names, authored style intent, or future theme policy. Layout consumes only resolved geometry-affecting style values.
+
+## Current proof behavior
+
+The current implementation provides:
 
 - literal colors, padding, and corner radii;
 - typed color, spacing, and radius token references;
-- `StyleIntent`, `StyleTokens`, and pure resolution;
-- concrete `ComputedStyle` containing no token references;
-- per-field provenance and unresolved-token diagnostics.
+- deterministic token definition and lookup with validated textual identity;
+- `StyleIntent` to `ComputedStyle` resolution;
+- per-field provenance and unresolved-token diagnostics;
+- exact token-content compatibility for retained publication rather than trusting only a revision counter;
+- mounted current-value reads so retained topology cannot freeze stale authored style;
+- dependency-aware invalidation: padding changes affect layout/hit/semantic bounds/paint placement, while visual-only changes can remain paint-only.
 
-`AppRuntime::publish_surface` resolves current mounted authored style for each
-publication context. The same resolution product supplies concrete style to
-`SurfaceFrame` and provenance/diagnostics to `SurfaceStyleReport`. Computed
-padding participates in measurement, placement, and outer-bound hit testing for
-built-in and downstream widgets alike.
+Missing tokens are non-fatal but explicit: the unresolved field remains absent, provenance records the missing token, and diagnostics retain the failure. Consumers do not invent a hidden fallback.
 
-Missing tokens are non-fatal: the computed field is absent, provenance records the missing token, diagnostics retain it, and render/layout consumers do not invent a fallback.
-
-`StyleTokens::revision()` advances after every successful definition and remains
-a diagnostic/change hint. The M3 proof publication cache owns and compares an
-exact token-content snapshot, so independent same-revision sets, divergent
-clones, and saturated revisions cannot alias. The topology cache owns no
-`StyleIntent`; style resolution checks each topology ID and reads current authored
-style from the mounted node. Reconciliation separately detects an authored token
-reference change even when token content and revision are unchanged. Style
-resolution compares old and new computed facts: padding changes schedule layout
-and hit testing, while foreground/background/radius-only changes schedule paint
-without layout.
-
-This proof does not include typography, borders, shadows, opacity, transforms, themes, recipes, variants, interaction-state layers, inheritance, external theme loading, or renderer materials. M1 removed the unused `LengthToken`/`LengthValue` family, unified geometry on validated `LogicalLength`, and made duplicate token definitions explicit non-overwriting errors. Token identity is Unicode-validated identifier text independent of static or owned storage, so mixed-form lookup and duplicate detection agree. `TokenFamily` is `#[non_exhaustive]`: color, spacing, and radius are inspectable current variants, while typography, borders, shadows, opacity, transforms, themes, recipes, and interaction-state styling make future families plausible.
-
-## Target pipeline
-
-```text
-platform and user preferences
-  -> theme tokens
-  -> control recipe
-  -> variant
-  -> interaction state
-  -> local override
-  -> computed style
-  -> layout inputs + paint scene + accessibility inspection
-```
-
-The resolution order must be explicit, deterministic, and inspectable. A general CSS selector/cascade system is not the initial model.
-
-Application state owns durable meaning such as validation or selection. Mounted
-widgets now own persistent proof slots for hover, pressed, focus, capture
-placeholder, and scroll offset. Recipes and interaction-state styling still wait
-for the M4 interaction contract and M7 styling policy; M3 slots alone do not
-define production state layers.
-
-Renderers consume resolved visual facts only. They never resolve tokens, recipes, variants, or themes. Layout consumes resolved geometry-affecting values. Accessibility/testing may inspect contrast, focus indication, disabled state, error state, and provenance without renderer ownership.
+`StyleTokens::revision()` is a diagnostic/change hint, not sole cache authority. Independent token sets with equal revisions cannot alias when their content differs.
 
 ## Authoring
 
-Typed Rust expressions remain the accepted token authoring form:
+Typed Rust expressions remain the current token authoring form:
 
 ```rust
 button("Save")
@@ -69,14 +38,18 @@ button("Save")
     .radius(radius_token!("radius.control"))
 ```
 
-`element!` uses the same typed expressions. Token-specific string shorthand remains deferred until real usage or external-source pressure justifies macro grammar expansion. See [ADR 0001](../adr/0001-typed-token-authoring.md).
+`element!` uses the same typed expressions. See [ADR 0001](../adr/0001-typed-token-authoring.md).
 
-## Ownership and extraction
+## Current limitations
 
-Keep primitive values, token references, pure resolution, computed style, provenance, and missing-token diagnostics in `runenui_core` while the model is narrow. Keep mounted-tree orchestration and invalidation in `runenui_runtime`.
+The current style proof does not provide production typography, borders, shadows, opacity, transforms, themes, recipes, variants, inheritance, external theme loading, interaction-state layers, high-contrast/reduced-motion policy, or renderer material systems.
 
-A dedicated style/theme crate requires an independently valuable policy boundary such as external theme loading, recipes/state layers, fallback/inheritance, serialized validation, multiple independent consumers, or a dependency direction Cargo must enforce. Moving existing types alone is not sufficient.
+Application state remains authoritative for durable product meaning such as validation or selection. Mounted interaction state exists independently, but a production recipe/state-layer model is not implied merely because hover, press, focus, and related runtime facts are available.
 
-## Milestone boundary
+## Extraction rule
 
-M1 repairs invalid/unused vocabulary. M3 supplies mounted state. M7 owns themes, recipes, variants, interaction state, preferences, the broader property set, and conformance. M8 integrates typography. No current style proof is a production theme system.
+Primitive values, token references, pure resolution, computed style, provenance, and narrow diagnostics remain in `runenui_core`; mounted orchestration remains in `runenui_runtime`.
+
+A dedicated style/theme crate requires a real independent policy or dependency boundary such as external theme loading, recipes/state layers, fallback/inheritance, serialized validation, multiple independent consumers, or optional dependencies that Cargo should enforce. Moving existing types or reacting to file size is insufficient.
+
+The [roadmap](../roadmap.md) owns production styling sequencing. Future theme/recipe resolution rules require accepted architecture rather than being pre-decided here.

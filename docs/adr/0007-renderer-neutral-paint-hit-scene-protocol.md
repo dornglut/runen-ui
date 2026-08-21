@@ -10,12 +10,10 @@
 >
 > **Reviewed baseline:** `8e09a61832e2077db0e1366472b628c9b2478880`
 >
-> **Acceptance condition:** This ADR is operative only after the exact M6A0
-> architecture/conformance package containing it is explicitly accepted by the
-> repository owner and merged. Its accepted status describes the intended state
-> of that accepted squash; an unmerged branch never overrides accepted `main`.
-> M6 implementation remains blocked until the required bounded post-merge M6A0
-> current-contract reconciliation is also accepted and accepted-main validated.
+> **Acceptance:** This ADR is accepted target architecture. Acceptance freezes the
+> renderer-neutral M6 contract but does not claim that any M6 scene behavior is
+> implemented. Observable implementation state remains owned by the M6
+> conformance matrix and accepted default-branch code/tests.
 
 ## Context
 
@@ -49,8 +47,7 @@ The accepted baseline deliberately does not already contain that protocol:
   `DirtyPhases` has `HIT_TEST`; ordinary hit recomputation is currently implied
   by layout;
 - non-structural publication planning clones the complete `SurfaceCache` before
-  replacing dirty phase facts. Issue #59 records the resulting narrow-update
-  cost;
+  replacing dirty phase facts. M6A owns removal of that narrow-update cost;
 - semantic publication is already an independently typed sibling and must not
   be folded back into renderer or hit-test authority;
 - `SurfaceBuildContext` already owns explicit host-neutral inputs for one surface
@@ -125,8 +122,8 @@ Extracting a snapshot never transfers live runtime authority.
 the same logical items/resources/order compare as the same scene regardless of
 which predecessor caused their current damage or which logical surface extent
 currently hosts them. Publication-relative damage, revision lineage, and target
-surface extent are therefore deliberately not stored as scene content. This lets
-#59 share an unchanged `PaintScene` across paint publications.
+surface extent are therefore deliberately not stored as scene content. This
+allows M6A to share an unchanged `PaintScene` across paint publications.
 
 Scene requirements are a deterministic **derived view of `PaintScene` content**,
 not another authoritative stored product. Runtime/consumers may cache that view
@@ -515,7 +512,7 @@ Conversely, a pointer-targetable region does not become focusable merely because
 it appears in `HitTestScene`.
 
 No new public `FocusScene`, focus generation, or second layout authority is
-introduced. #59's retained layout phase remains the storage owner; focus
+introduced. The M6A retained layout phase remains the storage owner; focus
 selection may derive or cheaply expose the private current projection from that
 same retained immutable product. Directional focus uses the current accepted
 published layout, not a historical `SurfaceInputContext` generation.
@@ -598,7 +595,8 @@ remains competing production authority.
 
 ### Retained publication uses immutable phase products
 
-Issue #59 is the first implementation prerequisite after M6A0.
+M6A first replaces whole-`SurfaceCache` cloning with immutable shared phase
+products while preserving M5 transaction/failure behavior.
 
 The one runtime publication authority stores retained phase products via cheap
 immutable handles or equivalent persistent representation. Non-structural
@@ -714,7 +712,7 @@ explicit optimization; M6's required baseline may simply use conservative damage
 An unchanged renderer tuple creates no new paint revision/publication at all.
 
 Because damage is predecessor-relative, it is publication metadata rather than a
-field that changes `PaintScene` content equality. #59 may therefore reuse an
+field that changes `PaintScene` content equality. M6A may therefore reuse an
 unchanged scene across distinct changed paint publications while computing fresh
 revision/extent/scale/damage facts.
 
@@ -762,21 +760,10 @@ deprecated wrapper, duplicate alias, or hidden parallel path is required before
 
 ## Implementation and acceptance sequence
 
-M6A0 freezes architecture/conformance only and owns no scene behavior.
+M6A0 freezes architecture/conformance only and owns no scene behavior. M6 then
+proceeds in dependency order; accepting this ADR never promotes a behavior row.
 
-After its architecture/conformance PR is owner-accepted, guarded-squash-merged,
-and content identity is verified, perform one bounded M6A0 current-contract
-reconciliation. The A0 package itself already registers ADR 0007 and the M6
-matrix in the retained-document inventory. The reconciliation records the actual
-accepted A0 squash, accepted discoverability/status, M6's conformance baseline,
-umbrella/pickup state, and next exact base in roadmap/status/support/work-tracking
-and other affected current-contract owners. It must itself be owner-accepted,
-merged, and accepted-main validated. **No M6 implementation branch may start
-before this reconciliation completes.**
-
-Then the minimum implementation order is:
-
-### M6A — persistent retained-publication substrate (#59)
+### M6A — persistent retained-publication substrate
 
 Replace whole-`SurfaceCache` cloning with immutable shared phase products while
 preserving M5 transaction/failure behavior. Prove narrow publications reuse
@@ -824,7 +811,8 @@ reconcile current authority and close M6.
 
 A later critical audit may split a slice only when it reduces a real acceptance
 boundary without duplicate authority. M6B cannot precede accepted M6A because
-that would knowingly build real scenes around the cache #59 must replace.
+the retained publication substrate must be accepted before real scene products
+build on it.
 
 ## Rejected alternatives
 
@@ -968,7 +956,7 @@ cloneable/inspectable without transferring provider mutation authority. Resource
 payload ownership remains external and is named only by stable refs in M6.
 
 ### Add a giant renderer/widget trait or split the whole widget module first
-Rejected: #10 remains a broad non-blocking concentration audit; M6 has focused
+Rejected: a broad concentration audit remains non-blocking; M6 has focused
 paint/hit seams.
 
 ### Generate backend-specific scenes from capability negotiation
@@ -1013,7 +1001,7 @@ Positive consequences:
 - custom widgets gain explicit paint/hit contribution without registration;
 - semantic, paint, hit, layout, diagnostics, and paint-publication metadata have
   distinct ownership;
-- #59 is resolved before real scenes multiply retained-cache copying;
+- retained publication cost is addressed before real scenes multiply it;
 - resource-reference/scale/damage/capability boundaries exist without a concrete
   backend or resource subsystem.
 
@@ -1040,9 +1028,8 @@ Costs and constraints:
 
 ## Acceptance
 
-The normative observable requirements are recorded in
-[`../architecture/m6-conformance-matrix.md`](../architecture/m6-conformance-matrix.md).
-The M6A0 architecture/conformance merge does not by itself authorize M6A. M6
-implementation remains blocked until the bounded A0 current-contract
-reconciliation records the accepted squash and itself passes owner acceptance,
-merge, content-identity, and accepted-main validation.
+The normative observable requirements are recorded in the
+[M6 conformance matrix](../conformance/m6-conformance-matrix.md). Accepting this
+ADR or its conformance inventory does not by itself implement or promote any M6
+behavior row; row status changes only with accepted default-branch implementation
+and proof.

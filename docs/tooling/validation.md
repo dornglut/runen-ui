@@ -31,8 +31,8 @@ cargo +1.93.0 test --workspace --all-features --locked
 
 The fatal repository audit reuses the checked-in matrix, workspace, authority,
 license, and canonical-runtime ownership contracts. It is network-free and
-read-only. Its architecture concentration findings are diagnostics and do not
-fail validation. See [Repository audit](repository-audit.md).
+read-only. Its source-concentration findings are diagnostics and do not fail
+validation. See [Repository audit](repository-audit.md).
 
 The Markdown checker deliberately validates inline Markdown links to repository files. Targets resolve relative to the document containing the link. It does not fetch external URLs or validate same-document anchors, reference-style links, URL-encoded paths, or unusual Markdown constructs that are not covered by tests. It is not a complete Markdown specification parser.
 

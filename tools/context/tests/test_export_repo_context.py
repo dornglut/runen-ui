@@ -23,18 +23,50 @@ class ContextProfileTests(unittest.TestCase):
         profile = EXPORTER.load_profile(profile_name, PROFILES_DIRECTORY)
         return set(EXPORTER.iter_context_files(root=root, profile=profile))
 
-    def test_normal_profiles_exclude_cargo_lock(self) -> None:
-        for profile_name in (
-            "ai-core",
-            "current-work",
-            "domain-work",
-            "implementation-work",
-            "workspace-planning",
-        ):
-            with self.subTest(profile=profile_name):
-                self.assertNotIn(Path("Cargo.lock"), self.files_for_profile(profile_name))
+    def assert_bounded_profile_exclusions(self, files: set[Path]) -> None:
+        self.assertNotIn(Path("Cargo.lock"), files)
+        self.assertNotIn(Path("docs/history/public-repository-migration.md"), files)
+        self.assertNotIn(Path("docs/reports/m5-accesskit-mapping-review.md"), files)
 
-    def test_full_audit_includes_governance_ci_lockfile_and_licenses(self) -> None:
+    def test_profile_inventory_is_small_and_offline_review_is_default(self) -> None:
+        self.assertEqual(EXPORTER.DEFAULT_PROFILE, "offline-review")
+        self.assertEqual(
+            EXPORTER.list_profiles(PROFILES_DIRECTORY),
+            ["full-audit", "implementation-review", "offline-review"],
+        )
+
+    def test_offline_review_contains_authority_without_implementation_source(self) -> None:
+        files = self.files_for_profile("offline-review")
+        required = {
+            Path("README.md"),
+            Path("AGENTS.md"),
+            Path("ARCHITECTURE.md"),
+            Path("TESTING.md"),
+            Path("docs/documentation-architecture.md"),
+            Path("docs/status.md"),
+            Path("docs/roadmap.md"),
+            Path(".github/pull_request_template.md"),
+            Path(".github/ISSUE_TEMPLATE/milestone-slice.yml"),
+            Path("crates/runenui_core/README.md"),
+        }
+        self.assertTrue(required.issubset(files), required - files)
+        self.assert_bounded_profile_exclusions(files)
+        self.assertNotIn(Path("crates/runenui_core/src/lib.rs"), files)
+
+    def test_implementation_review_contains_source_tests_and_validation_tooling(self) -> None:
+        files = self.files_for_profile("implementation-review")
+        required = {
+            Path("AGENTS.md"),
+            Path("docs/status.md"),
+            Path("crates/runenui_core/src/lib.rs"),
+            Path("crates/runenui_runtime/src/lib.rs"),
+            Path("tests/external_widget/src/lib.rs"),
+            Path("xtask/src/main.rs"),
+        }
+        self.assertTrue(required.issubset(files), required - files)
+        self.assert_bounded_profile_exclusions(files)
+
+    def test_full_audit_includes_governance_provenance_lockfile_and_licenses(self) -> None:
         files = self.files_for_profile("full-audit")
         required = {
             Path(".github/workflows/ci.yml"),
@@ -45,6 +77,8 @@ class ContextProfileTests(unittest.TestCase):
             Path("LICENSE-APACHE"),
             Path("LICENSE-MIT"),
             Path("SECURITY.md"),
+            Path("docs/history/public-repository-migration.md"),
+            Path("docs/reports/m5-accesskit-mapping-review.md"),
         }
         self.assertTrue(required.issubset(files), required - files)
 

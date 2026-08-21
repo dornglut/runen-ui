@@ -38,16 +38,6 @@ const RESPONSIBILITY_TERMS: &[&str] = &[
     "work",
 ];
 
-const VOLATILE_ARCHITECTURE_PATTERNS: &[&str] = &[
-    "Current head:",
-    "Draft PR:",
-    "Exact accepted base SHA",
-    "codex/",
-    "governance/",
-    "tooling/",
-    "https://github.com/Crystonix/runen-ui/pull/",
-];
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct SourceMetrics {
     pub(super) production_modules: usize,
@@ -281,7 +271,6 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMe
     audit_surface_publication_entrypoint(&production_metrics, findings);
     audit_retired_authorities(&production_metrics, findings);
     audit_retired_m5_authorities(&production_metrics, findings);
-    audit_volatile_architecture_state(root, findings)?;
 
     Ok(SourceMetrics {
         production_modules: production_files.len(),
@@ -698,48 +687,6 @@ fn statement_identifiers(statement: &str) -> impl Iterator<Item = &str> {
         .filter(|token| !token.is_empty())
 }
 
-fn audit_volatile_architecture_state(
-    root: &Path,
-    findings: &mut Vec<Finding>,
-) -> Result<(), String> {
-    let mut files = Vec::new();
-    let root_architecture = root.join("docs/architecture.md");
-    if root_architecture.is_file() {
-        files.push(PathBuf::from("docs/architecture.md"));
-    }
-    let architecture_directory = root.join("docs/architecture");
-    if architecture_directory.is_dir() {
-        collect_markdown_files(root, &architecture_directory, &mut files)?;
-    }
-    files.sort();
-
-    for relative in files {
-        let contents = fs::read_to_string(root.join(&relative)).map_err(|error| {
-            format!(
-                "failed to read architecture document {}: {error}",
-                relative.display()
-            )
-        })?;
-        let patterns = VOLATILE_ARCHITECTURE_PATTERNS
-            .iter()
-            .copied()
-            .filter(|pattern| contents.contains(pattern))
-            .collect::<Vec<_>>();
-        if !patterns.is_empty() {
-            findings.push(Finding::diagnostic(
-                "diagnostic.volatile_architecture_state",
-                Some(path_text(&relative)),
-                format!(
-                    "architecture document contains volatile execution markers: {}",
-                    patterns.join(", ")
-                ),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
 fn collect_test_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
     let crates = root.join("crates");
@@ -811,33 +758,6 @@ fn collect_rust_files_from(
             FileKind::AllRust => true,
         };
         if include {
-            files.push(relative.to_path_buf());
-        }
-    }
-    Ok(())
-}
-
-fn collect_markdown_files(
-    root: &Path,
-    directory: &Path,
-    files: &mut Vec<PathBuf>,
-) -> Result<(), String> {
-    let entries = fs::read_dir(directory)
-        .map_err(|error| format!("failed to read {}: {error}", directory.display()))?;
-    for entry in entries {
-        let entry = entry.map_err(|error| {
-            format!(
-                "failed to inspect an entry in {}: {error}",
-                directory.display()
-            )
-        })?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_markdown_files(root, &path, files)?;
-        } else if path.extension() == Some(OsStr::new("md")) {
-            let relative = path
-                .strip_prefix(root)
-                .map_err(|error| format!("failed to relativize {}: {error}", path.display()))?;
             files.push(relative.to_path_buf());
         }
     }

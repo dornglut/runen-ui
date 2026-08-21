@@ -2,167 +2,60 @@
 
 > **Category: Guide**
 
-`export_repo_context.py` exports selected repository files into one line-numbered text file for AI or manual review.
+`export_repo_context.py` is optional convenience tooling for offline/manual review or environments that cannot inspect the repository directly. It is **not** repository authority and is not the normal contributor/agent startup path. Normal work starts from `AGENTS.md`, the current repository, and the owning GitHub issue.
 
-The default export writes into the repository-local `context/` folder:
+The exporter writes selected repository files into one line-numbered generated text file. Generated exports are ignored by Git and must not be committed.
 
 ```bash
 python3 tools/context/export_repo_context.py
 ```
 
-Default output shape:
-
-```text
-context/<repo-folder-name>-<profile>-context.txt
-```
-
-For this repository and the default profile, that is normally:
-
-```text
-context/RunenUI-ai-core-context.txt
-```
-
-The `context/` folder is for generated exports only. Its generated files are ignored by Git and should not be committed.
+The default `offline-review` profile is deliberately bounded. Default output is written below `context/` using the repository folder and selected profile name.
 
 ## Profiles
-
-List available profiles:
 
 ```bash
 python3 tools/context/export_repo_context.py --list-profiles
 ```
 
-Use a profile:
+Three profiles are retained because they represent materially different offline/manual review breadth:
+
+- `offline-review` — durable authority, repository procedures, package manifests/readmes, and intake templates without implementation source;
+- `implementation-review` — current authority plus Rust source, examples, tests, and repository validation tooling;
+- `full-audit` — comprehensive active-repository material, including the lockfile and governance/license files.
+
+Use the smallest profile that supports the review. Add exact task-specific paths with `--include` instead of adding domain-, milestone-, issue-, or branch-specific profiles.
+
+Examples:
 
 ```bash
-python3 tools/context/export_repo_context.py --profile current-work
-python3 tools/context/export_repo_context.py --profile domain-work
-python3 tools/context/export_repo_context.py --profile implementation-work --include 'crates/ui_core/src/**'
+python3 tools/context/export_repo_context.py
+python3 tools/context/export_repo_context.py --profile implementation-review --include 'crates/runenui_runtime/src/**'
 python3 tools/context/export_repo_context.py --profile full-audit --warn-only
 ```
 
-Profiles live in:
+`full-audit` is intentionally large and is never the default. The bounded profiles exclude generated/build directories, historical legacy content, and `Cargo.lock`.
 
-```text
-tools/context/profiles/
-```
+## Budgets and output
 
-## Profile intent
-
-```text
-ai-core
-  Small RunenUI authority context for normal AI startup.
-
-current-work
-  Current RunenUI work context, including root authority, docs, tools, source, crates, examples, and tests.
-
-workspace-planning
-  Planning and documentation context without implementation-heavy legacy audit.
-
-domain-work
-  Domain and crate-level context for architecture or boundary review.
-
-implementation-work
-  Generic implementation context. Add exact crate, module, test, or example paths with --include.
-
-full-audit
-  Comprehensive active-repository audit context. Includes CI YAML, Cargo.lock,
-  license files, and other repository metadata; excludes historical legacy content.
-```
-
-`Cargo.lock` is included only by `full-audit` (or an explicit command-line override). Normal AI, current-work, planning, domain, and implementation profiles explicitly exclude it to keep routine exports focused. Every active profile excludes `legacy/`.
-
-## Task-specific overrides
-
-Profiles should stay generic. Add task-specific paths at the command line instead of creating hardcoded profiles for one feature area.
+Budget limits prevent accidental oversized exports:
 
 ```bash
-python3 tools/context/export_repo_context.py \
-  --profile implementation-work \
-  --include 'crates/ui_core/src/**' \
-  --include 'crates/ui_core/tests/**'
+python3 tools/context/export_repo_context.py --max-files 120 --max-bytes 1500000
 ```
 
-Other override options:
-
-```bash
-python3 tools/context/export_repo_context.py --profile current-work --include 'apps/**'
-python3 tools/context/export_repo_context.py --profile implementation-work --extension json
-python3 tools/context/export_repo_context.py --profile implementation-work --include-filename AGENTS.md
-```
-
-## Explicit output path
-
-Use `--output` only when a task needs a named export:
-
-```bash
-python3 tools/context/export_repo_context.py \
-  --profile current-work \
-  --output context/current-work-context.txt
-```
-
-Relative output paths are resolved from the repository root. Absolute paths are used as-is.
-
-## Windows PowerShell examples
-
-From the repository root:
-
-```powershell
-py tools/context/export_repo_context.py
-py tools/context/export_repo_context.py --profile current-work
-py tools/context/export_repo_context.py --profile implementation-work --include 'crates/ui_core/src/**'
-```
-
-Copy the generated context for a new AI thread:
-
-```powershell
-Get-Content .\context\RunenUI-ai-core-context.txt -Raw | Set-Clipboard
-```
-
-## Budgets
-
-Budget options prevent accidentally creating a huge context file:
-
-```bash
-python3 tools/context/export_repo_context.py --profile current-work --max-files 120 --max-bytes 1500000
-```
-
-By default, a budget breach fails the export. To write anyway:
-
-```bash
-python3 tools/context/export_repo_context.py --profile full-audit --max-bytes 3000000 --warn-only
-```
-
-## Manifest
-
-Every generated context file starts with a manifest that records:
-
-```text
-profile name
-description
-root path
-included file count
-total source bytes
-include globs
-exclude globs
-extensions
-include filenames
-warnings
-```
-
-This makes it clear whether a new AI thread is seeing a small authority context, current work context, implementation context, or full audit dump.
+Use `--output` only when a task requires a specific generated file. Relative paths are resolved from the repository root. Every export begins with a manifest describing the profile, root, included file count/bytes, include/exclude rules, and warnings.
 
 ## Rules
 
-Use the smallest profile that can answer the task.
+- Generated exports are snapshots, never current-work, architecture, or startup authority.
+- Do not use an export when direct current repository inspection is available.
+- Do not infer GitHub issue, pull-request, blocker, priority, or CI state from an export; those remain live GitHub authority.
+- Do not commit generated context files.
+- Do not add a profile merely to encode one roadmap slice, domain, current issue, or branch.
+- Historical material remains available through Git/history rather than bounded review profiles.
 
-Do not use `full-audit` as the default. It is intentionally large. Historical
-material removed from the active branch remains available through the archival
-tag documented in `docs/history/legacy-archive.md`.
-
-Do not add feature-specific profiles for every roadmap item. Use `--include` and `--exclude` for task-specific scope.
-
-Profile inclusion/exclusion behavior is covered by repository tests:
+Profile inclusion/exclusion behavior is covered by:
 
 ```bash
 python3 -m unittest discover -s tools/context/tests -v
