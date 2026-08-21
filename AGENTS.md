@@ -20,7 +20,7 @@ Historical tags and removed legacy material are never active implementation auth
 
 ## Work tracking and pickup
 
-The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrices, GitHub issues, pull requests, and current-status documents. Determine the active milestone from the accepted roadmap/status records, then use that milestone's GitHub umbrella/pickup issue. M4's public issue #3 is completed historical coordination; M5 used [public issue #45](https://github.com/dornglut/runen-ui/issues/45). M6 uses [issue #71](https://github.com/dornglut/runen-ui/issues/71) as its umbrella and [issue #72](https://github.com/dornglut/runen-ui/issues/72) for the accepted M6A0 architecture/conformance gate. No M6 implementation may begin until the bounded post-M6A0 current-contract reconciliation from exact accepted squash `966778dd31e0f6b6df76ee4f6283a984fc724b36` is itself owner-accepted, merged, tree-verified, and accepted-main validated; only then may #59/M6A become implementation pickup authority.
+The [work-tracking contract](docs/work-tracking.md) defines the operational split between roadmap, conformance matrices, GitHub issues, pull requests, and current-status documents. Determine the active milestone from the accepted roadmap/status records, then use that milestone's GitHub umbrella/pickup issue. M4's public issue #3 is completed historical coordination; M5 used [public issue #45](https://github.com/dornglut/runen-ui/issues/45). M6 uses [issue #71](https://github.com/dornglut/runen-ui/issues/71) as its umbrella, [issue #72](https://github.com/dornglut/runen-ui/issues/72) for the accepted M6A0 architecture/conformance gate, and [issue #59](https://github.com/dornglut/runen-ui/issues/59) as the first M6A implementation slice. The required bounded post-M6A0 current-contract reconciliation completed in PR #75; all 36 M6 behavior rows remain `blocked`. #59 owns only the persistent retained-publication substrate required by `SCENE-PUB-01..05` and does not authorize M6B scene APIs, renderer/backend work, or later M6 behavior.
 
 Use this pickup sequence:
 
@@ -100,14 +100,15 @@ M6A0 #72 then froze accepted [ADR 0007](docs/adr/0007-renderer-neutral-paint-hit
 and the 36-row [M6 conformance matrix](docs/architecture/m6-conformance-matrix.md).
 Exact reviewed PR #73 head `c0169ebea044a0009a334f3d5ecc13ff8d495885`
 passed exact-head CI #1349 / `32181344340`, was explicitly owner-authorized, and
-was guarded-squash-merged as exact accepted `main`
+was guarded-squash-merged as
 `966778dd31e0f6b6df76ee4f6283a984fc724b36`. Reviewed and squash trees are
-identical at `fe057a3fef9ea6de053ce86ce336212f0aa3a413`. Accepted-main CI #1351 /
-`32186597198` independently validated that exact squash through read-only PR #74,
-which was closed unmerged. All 36 M6 behavior rows remain `blocked`: A0 accepts
-architecture/conformance authority only. The bounded current-contract
-reconciliation is the sole remaining pre-implementation gate; #59/M6A must not
-start until that reconciliation is itself accepted and accepted-main validated.
+identical at `fe057a3fef9ea6de053ce86ce336212f0aa3a413`; accepted-main CI #1351 /
+`32186597198` validated that exact squash through read-only PR #74. The required
+bounded current-contract reconciliation then completed in PR #75. All 36 M6
+behavior rows remain `blocked`: A0 and its reconciliation accept target authority
+only, not scene behavior. The first implementation pickup is #59/M6A, limited to
+`SCENE-PUB-01..05` and required to preserve the accepted staged publication
+transaction and semantic-product separation.
 
 A future thread should need only the repository, roadmap/status records, and active milestone pickup issue to locate current work.
 

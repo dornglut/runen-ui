@@ -55,12 +55,11 @@ coordination history after final reconciliation.
 M6 uses [umbrella issue #71](https://github.com/dornglut/runen-ui/issues/71).
 [M6A0 issue #72](https://github.com/dornglut/runen-ui/issues/72) established the
 renderer-neutral scene/publication architecture and conformance gate through
-accepted ADR 0007 and the 36-row M6 matrix. That A0 authority is accepted at
-squash/main `966778dd31e0f6b6df76ee4f6283a984fc724b36`, but M6 implementation is
-still blocked until the bounded post-A0 current-contract reconciliation is itself
-owner-accepted, merged, tree-verified, and accepted-main validated. Only then may
-[#59](https://github.com/dornglut/runen-ui/issues/59) become the first M6A
-implementation pickup issue from that exact reconciliation squash.
+accepted ADR 0007 and the 36-row M6 matrix. The required bounded post-A0
+current-contract reconciliation completed in PR #75. All 36 M6 behavior rows
+remain `blocked`. [#59](https://github.com/dornglut/runen-ui/issues/59) is the
+first M6A implementation pickup and owns only `SCENE-PUB-01..05`; later scene,
+renderer, and backend behavior remains outside that slice.
 
 Each active milestone issue owns volatile state such as:
 
@@ -121,11 +120,11 @@ coordination and pickup authority. M5A0 #46, M5A #47, readiness amendment #55,
 M5B #48, M5C #49, M5D #50, and M5E #51 are complete through the final M5
 authority reconciliation.
 
-M6 is now the active roadmap milestone at the architecture/readiness boundary.
-M6A0 #72 is accepted through PR #73; the bounded post-A0 current-contract
-reconciliation is the sole remaining gate before implementation. It must not
-change M6 matrix statuses or implement #59. After it is accepted and
-accepted-main validated, #59 is the first eligible M6A implementation slice.
+M6 is now the active roadmap milestone at the M6A implementation boundary.
+M6A0 #72 is accepted through PR #73 and its bounded current-contract
+reconciliation completed in PR #75. #59 is the first M6A implementation slice;
+it must preserve all inherited publication/input/semantic contracts and is
+limited to `SCENE-PUB-01..05`.
 
 Accepted M5A evidence remains:
 
@@ -293,7 +292,10 @@ validated through unchanged read-only PR #74. CI #1351 / `32186597198` checked
 out that exact squash and passed canonical validation; PR #74 was then closed
 unmerged.
 
-ADR 0007 and the M6 matrix are accepted target authority. M6 behavior remains:
+The required bounded current-contract reconciliation then completed in PR #75.
+It changed current status/discoverability/evidence only and did not promote any
+M6 behavior row or implement #59. ADR 0007 and the M6 matrix remain accepted
+target authority. M6 behavior remains:
 
 ```text
 M6:        36 total / 0 owner-accepted / 0 implementation-complete / 0 proof-complete / 36 blocked
@@ -324,8 +326,8 @@ The accepted M5 implementation sequence is complete:
 The M6 execution graph begins:
 
 - [#71 — M6 renderer-neutral paint/hit scene protocol](https://github.com/dornglut/runen-ui/issues/71), active umbrella;
-- [#72 — M6A0 architecture/conformance authority](https://github.com/dornglut/runen-ui/issues/72), accepted through PR #73; its bounded current-contract reconciliation is the last pre-implementation gate;
-- [#59 — retained-publication persistence/cost](https://github.com/dornglut/runen-ui/issues/59), first M6A implementation slice **only after** the A0 reconciliation is accepted and accepted-main validated.
+- [#72 — M6A0 architecture/conformance authority](https://github.com/dornglut/runen-ui/issues/72), accepted through PR #73 and reconciled through PR #75;
+- [#59 — retained-publication persistence/cost](https://github.com/dornglut/runen-ui/issues/59), first M6A implementation slice, owning `SCENE-PUB-01..05` only.
 
 Architecture and tooling follow-up:
 
@@ -339,7 +341,7 @@ rather than recreated as false closed public issues.
 ## Required pickup sequence
 
 1. Read the roadmap and status map to identify the active milestone.
-2. Open the milestone umbrella and active slice/readiness issue. For M6, use #71; after the accepted A0 reconciliation, #59 is the first M6A implementation pickup.
+2. Open the milestone umbrella and active slice/readiness issue. For M6, use #71 and #59 for the first M6A implementation slice.
 3. Verify exact accepted `main`, branch, pull request, and live head.
 4. Read linked ADRs, accepted charters/matrices where applicable, and stable architecture contracts.
 5. Inspect current source, tests, unresolved review findings, and exact-head CI.
@@ -347,17 +349,17 @@ rather than recreated as false closed public issues.
 7. Update execution records after each reviewed green checkpoint, material review correction, readiness transition, and merge.
 8. Never begin the next slice from an unmerged feature or authority branch.
 
-A new thread at the current pre-implementation boundary should need only:
+A new thread at the current implementation boundary should need only:
 
 ```text
 Repository: dornglut/runen-ui
 Completed milestones: M0–M5
 Active milestone: M6 renderer-neutral paint/hit scene protocol
-Accepted M6A0 authority: PR #73 / squash 966778dd31e0f6b6df76ee4f6283a984fc724b36
-Accepted M6 target: ADR 0007 + 36-row matrix, all 36 rows blocked
-Current gate: bounded M6A0 current-contract reconciliation
-Next implementation after that gate: #59 / M6A retained-publication substrate
-Do not begin implementation from the unreconciled A0 squash.
+Accepted M6A0 authority: ADR 0007 + 36-row matrix, all 36 rows blocked
+Post-A0 current-contract reconciliation: complete through PR #75
+Current implementation slice: #59 / M6A retained-publication substrate
+Owned rows: SCENE-PUB-01..05
+Do not introduce M6B scene APIs or renderer/backend behavior in #59.
 ```
 
 ## Execution and branch discipline

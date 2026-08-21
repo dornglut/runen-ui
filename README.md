@@ -7,23 +7,17 @@ RunenUI is a pre-1.0 Rust-native UI framework project. Its production goal is a 
 Today RunenUI is a coherent **headless architecture proof**. It is not a production UI framework, native desktop toolkit, renderer backend, or finished control library. Current APIs are experimental and may change incompatibly while the foundations are corrected.
 
 Milestone status: M0 through M5 are complete and owner-accepted. M6A0
-architecture/conformance authority is also accepted, but no M6 scene behavior is
-implemented. Exact reviewed PR #73 head
-`c0169ebea044a0009a334f3d5ecc13ff8d495885` passed exact-head CI #1349 /
-`32181344340`, was explicitly repository-owner-authorized, and was guarded-
-squash-merged as `966778dd31e0f6b6df76ee4f6283a984fc724b36`.
-Reviewed and squash trees are identical at
-`fe057a3fef9ea6de053ce86ce336212f0aa3a413`; accepted-main CI #1351 /
-`32186597198` validated that exact squash through read-only PR #74, which was
-closed unmerged. Accepted ADR 0007 and the 36-row M6 matrix now freeze the
-renderer-neutral paint/hit scene target; all 36 M6 behavior rows remain
-`blocked`. The bounded M6A0 current-contract reconciliation is the final
-pre-implementation gate. Only after that reconciliation is itself accepted,
-merged, tree-verified, and accepted-main validated may issue #59 become M6A
-implementation pickup authority. Current maturity, durable sequence, work
-ownership, and historical acceptance evidence live in the
-[status map](docs/status-map.md), [roadmap](docs/roadmap.md),
-[work-tracking contract](docs/work-tracking.md), and
+architecture/conformance authority and its bounded current-contract reconciliation
+are also accepted, but no M6 scene behavior is implemented. Accepted ADR 0007
+and the 36-row M6 matrix freeze the renderer-neutral paint/hit scene target; all
+36 M6 behavior rows remain `blocked`. The first M6A implementation slice is
+[issue #59](https://github.com/dornglut/runen-ui/issues/59), which owns only the
+persistent retained-publication substrate required by `SCENE-PUB-01..05` and
+must preserve the accepted staged publication transaction and semantic-product
+separation. It does not authorize M6B scene APIs, a renderer backend, or later
+M6 behavior. Current maturity, durable sequence, work ownership, and historical
+acceptance evidence live in the [status map](docs/status-map.md),
+[roadmap](docs/roadmap.md), [work-tracking contract](docs/work-tracking.md), and
 [public repository migration history](docs/history/public-repository-migration.md).
 
 ## What exists today
@@ -226,9 +220,11 @@ topology and read current mounted style/layout state; layout movement refreshes
 semantic bounds without rerunning unchanged semantic contribution. M5E integrated
 conformance and migration closure is accepted. M6 now owns the next architecture
 boundary: renderer-neutral paint/hit scene products. ADR 0007 and the M6
-conformance matrix are accepted target authority; implementation remains blocked
-until the bounded M6A0 current-contract reconciliation is accepted and
-accepted-main validated.
+conformance matrix are accepted target authority, the bounded M6A0
+current-contract reconciliation is complete, and #59 is the first M6A
+implementation slice for the persistent retained-publication substrate. No M6
+scene behavior is accepted until its owning conformance rows complete their
+normal implementation/proof/owner-acceptance lifecycle.
 
 ## Canonical project documents
 

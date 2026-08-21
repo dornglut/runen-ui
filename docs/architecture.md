@@ -45,17 +45,13 @@ observable rows. Those are accepted target contracts only: all 36 rows remain
 
 The current implementation is a deterministic mounted headless proof with this
 narrower shape. M4 and M5 are complete and owner-accepted. M6A0 target
-architecture/conformance authority is also accepted, but no M6 scene behavior is
-implemented. Exact reviewed PR #73 head
-`c0169ebea044a0009a334f3d5ecc13ff8d495885` passed exact-head CI #1349 /
-`32181344340`, was explicitly repository-owner-authorized, and was guarded-
-squash-merged as `966778dd31e0f6b6df76ee4f6283a984fc724b36`.
-Reviewed and squash trees are identical at
-`fe057a3fef9ea6de053ce86ce336212f0aa3a413`; accepted-main CI #1351 /
-`32186597198` validated that exact squash through read-only PR #74, which was
-closed unmerged. The bounded M6A0 current-contract reconciliation is the final
-pre-implementation gate. #59/M6A must not begin until that reconciliation is
-itself accepted, merged, tree-verified, and accepted-main validated.
+architecture/conformance authority and its required bounded current-contract
+reconciliation are also accepted, but no M6 scene behavior is implemented. PR
+#73 accepted ADR 0007 and the 36-row M6 matrix; PR #75 completed the post-A0
+current-contract reconciliation. All 36 M6 behavior rows remain `blocked`.
+[#59](https://github.com/dornglut/runen-ui/issues/59) is the first M6A
+implementation slice and is limited to the persistent retained-publication
+substrate required by `SCENE-PUB-01..05`.
 
 The accepted M4 history remains unchanged: M4C3 was squash-merged in PR #15 as
 `2fc165b9386f55c061d61232400375b13ad175bf`, M4C4 in
@@ -231,10 +227,9 @@ independently verify the public execution report. Mounted index, frame, style,
 and layout products share logical-preorder mounted IDs, parents, and authored
 metadata for every live node; semantic IDs are intentionally published through
 the separate M5B product. The current non-structural planner still deep-clones
-whole `SurfaceCache` values; accepted M6A0 places #59 as the first M6A
-implementation slice after the bounded current-contract reconciliation, where it
-must replace that cloning with persistent/staged retained publication without
-weakening M5B atomicity.
+whole `SurfaceCache` values; #59 is the active first M6A implementation slice
+and must replace that cloning with persistent/shared staged retained publication
+without weakening M5B atomicity or introducing M6B scene behavior.
 
 M1 repaired the proof surface around this implementation: logical distances and
 sizes are validated, typed builders prevent incompatible configuration, child
@@ -573,13 +568,13 @@ completed semantics/testing program. M5A, #55, M5B, M5C, M5D, and M5E are
 accepted; the final M5 reconciliation closes current-contract authority without
 adding M6 behavior.
 
-M6 renderer-neutral architecture is now accepted in ADR 0007 with its 36-row
-conformance matrix. That acceptance removes the old design-choice blocker but
-does not implement the target. The bounded post-A0 current-contract
-reconciliation must be accepted and accepted-main validated before #59/M6A may
-change retained publication storage. Production scene kernel, transforms/clips,
-resource references, metadata/damage/capabilities, and independent-consumer
-proofs remain assigned to M6B–M6D by the accepted matrix/ADR sequence.
+M6 renderer-neutral architecture is accepted in ADR 0007 with its 36-row
+conformance matrix, and the bounded post-A0 current-contract reconciliation is
+complete. #59/M6A is the first implementation slice and may change retained
+publication storage only within `SCENE-PUB-01..05`. Production scene kernel,
+transforms/clips, resource references, metadata/damage/capabilities, and
+independent-consumer proofs remain assigned to M6B–M6D by the accepted
+matrix/ADR sequence.
 
 The following later choices still require dedicated analysis and review:
 standard layout algorithm, production text stack, conventional renderer, crate
