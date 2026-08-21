@@ -1,66 +1,36 @@
 # Layout and Measurement Architecture
 
-> **Category: Target architecture**
->
-> Current implementation facts and production targets are separated below.
+> **Category: Current architecture**
 
-## Current contract
+This document describes the layout and measurement behavior that exists in the current headless framework foundation. Production layout expansion belongs to the roadmap and requires its own accepted design decision before replacing this contract.
 
-The current headless proof provides:
+## Current ownership
+
+`runenui_core` owns host-neutral logical geometry, constraints, measurement inputs/results, authored layout intent, and the public widget participation vocabulary. `runenui_runtime` owns mounted capability caching, measurement orchestration, arrangement, invalidation, publication-local layout products, diagnostics, and hit/semantic/paint dependencies derived from layout.
+
+Renderers do not own layout policy. Measurement providers may supply host/resource-dependent measurement facts through the public renderer-neutral provider seam; they do not gain mounted or runtime mutation authority.
+
+## Current proof behavior
+
+The current implementation provides:
 
 - normalized independent minimum/maximum constraints with finite and unbounded maxima;
-- a borrowed synchronous renderer-neutral `MeasurementProvider` for text and
-  control labels, with explicit stable cache identity and behavior revision;
-- deterministic Unicode-scalar-count measurement for tests and headless examples;
-- computed padding applied through outer/content box constraints;
-- one `MountedNodeId`/`SemanticNodeId`-aligned measured result per live node;
-- persistent selective intrinsic-measurement and child-layout capability caches;
-- measurement-free arrangement from those exact publication-local snapshots;
-- intrinsic main-axis row/column sizing and loose finite cross-axis maxima;
-- aligned desired/constrained size and overflow diagnostics.
-- open intrinsic widget measurement for fixed size, text, and unsupported
-  capabilities, independent from open linear child layout;
+- validated finite logical geometry and saturating derived arithmetic at finite boundaries;
+- a borrowed synchronous `MeasurementProvider` with explicit cache identity and behavior revision;
+- deterministic Unicode-scalar-count text/control measurement for tests and headless examples only;
+- state-aware widget intrinsic measurement and open linear child-layout participation;
+- persistent selective measurement and child-layout capability caches;
+- one publication-local measurement snapshot reused by arrangement;
+- intrinsic row/column main-axis sizing, loose finite cross-axis maxima, gaps, padding, and deterministic overflow/unsupported diagnostics;
+- aligned mounted-order layout products used by hit testing, semantic bounds, directional focus geometry, and paint placement.
 
-The first surface preparation queries dirty `Widget::measure(state)` and
-`ChildLayoutWidget::child_layout(state)` capabilities once. Intrinsic sizing,
-child measurement, arrangement, and layout diagnostics reuse the mounted cache.
-The M3 proof publication context key includes root constraints, exact
-`StyleTokens` content, and measurement-provider identity/revision. Providers
-must change identity or revision whenever measurement behavior changes; a change
-invalidates measurement-dependent layout without clearing clean widget
-capability descriptors.
-A retained topology snapshot supplies only structural order and identity.
-Whenever layout executes, its publication-local resolved nodes read current
-mounted `LayoutStyle` values and combine them with current cached style
-resolutions. Compatible gap and padding changes therefore update child bounds,
-content constraints, and hit-test bounds without a tree rebuild.
-A clean later publication performs no widget query; `LAYOUT` invalidation clears
-both caches. Publication-context changes may still recompute proof layout from
-clean capability facts. Layout execution rebuilds bounds and the hit-test
-projection while reusing clean paint and semantic capability facts. This is not
-the production retained layout cache owned by M7/M11.
+Provider identity or behavior revision must change whenever provider behavior changes. Publication context changes may recompute layout from clean widget capability facts; ordinary clean publication does not re-enter widget measurement merely to reproduce an unchanged capability description.
 
-For a child-layout widget, the M2 proof combines its intrinsic minimum with its
-measured child-layout content using component-wise maximum. It then constrains
-content, expands padding, and applies outer constraints. A default container has
-zero intrinsic minimum; fixed and text minimum panels can enlarge child content.
-This deterministic rule is not the final M7 custom-layout policy.
+`LAYOUT` invalidation clears measurement and child-layout capability caches and schedules dependent geometry work. Compatible authored style/layout changes are read from current mounted state; retained topology does not own stale layout/style authoring values.
 
-`WidgetMeasure::Unsupported` produces a deterministic
-`runenui.measurement.unsupported` layout diagnostic. The runtime's required
-cross-crate wildcard produces `runenui.measurement.unrecognized` for a newer
-unknown capability. Both use explicit zero fallback geometry only alongside the
-diagnostic; unknown behavior is never silently treated as ordinary zero size.
-The core and runtime measurement vocabularies both call generic control text
-`ControlLabel`; no button-specific alias is retained.
+## Current box rule
 
-`ChildLayout::Linear { axis }` is the current child policy. A future unknown
-variant produces `runenui.child-layout.unrecognized`, uses a vertical linear
-fallback, and still measures, arranges, frames, styles, and publishes every
-child. Layout diagnostics are the ordered `SurfaceLayoutNode::diagnostics()`
-collection.
-
-The box order is:
+The proof-level box calculation is:
 
 ```text
 outer constraints
@@ -72,31 +42,16 @@ outer constraints
   -> constrain outer size
 ```
 
-Provider sizes are structurally finite and non-negative. Authored invalid geometry is rejected; valid finite arithmetic that overflows during measurement, padding expansion, arrangement cursors, constraint subtraction, or derived rectangle-edge calculation saturates at a finite boundary. Overflow is diagnostic only: the current algorithm does not clip or scroll. Button minimum dimensions are temporary private runtime policy, not a production control recipe.
-
-The deterministic measurement provider is explicitly a test/headless proof.
-Character counting is not production text geometry. `WidgetMeasure` is the
-bounded M2 participation proof; it does not freeze the M7 production custom
-layout contract.
+For child-layout widgets, a default container has zero intrinsic minimum; a widget's intrinsic minimum can enlarge its child content. Unsupported or unrecognized capability produces a deterministic diagnostic with an explicit fallback rather than being silently interpreted as ordinary zero-size behavior.
 
 ## Current limitations
 
-There is no complete sizing/min/max/fill/shrink vocabulary, flex/grid, main/cross alignment, baseline use, wrapping, stack/absolute/overlay layout, margin/border box, aspect ratio, clipping, scrolling, transforms, virtualization, retained cache, or incremental invalidation. M1 now enforces finite non-negative `LogicalLength`/`LogicalSize` values, fallible finite signed points, normalized constraints, finite saturating current-layout arithmetic (including generated bounds and hit-test edges), and validated baselines; broader sizing behavior remains M7 work.
+This is not a production general-purpose layout engine. It does not currently provide complete sizing/min/max/fill/shrink semantics, flex/grid, full alignment/baselines/wrapping, stack/absolute/overlay positioning, full box model, scrolling/extents, transforms, virtualization, or the retained incremental production layout system targeted later.
 
-## Production contract
+The deterministic scalar-count provider is test/headless infrastructure, not production text geometry. Production typography and shaping belong to the text subsystem rather than being hidden inside this proof provider.
 
-RunenUI owns public layout semantics, logical geometry, constraints, measurement inputs/results, diagnostics, custom layout extension points, and conformance tests. Hosts/resource providers may supply measurement facts; renderers do not own layout policy.
+## Extraction rule
 
-The production layout system must support normal responsive applications and tools: sizing and min/max, fill/shrink, flex/alignment/baselines/wrap, stack and absolute/overlay positioning, full box model, clipping, scrolling and extents, transforms, incremental invalidation, and custom layouts.
+Layout remains in `runenui_runtime`; see [ADR 0002](../adr/0002-keep-layout-in-runtime.md). A future crate extraction requires a real ownership/dependency/consumer boundary such as identity-independent inputs/outputs, independently valuable conformance, substantial algorithms, meaningful optionality, or independent consumers. File size alone is not sufficient.
 
-Text measurement evolves through the M8 text subsystem with typography, shaping, wrapping, baselines, resource identity, and invalidation inputs. No cache may hide inputs that are not explicit.
-
-## Algorithm decision
-
-Before flex/grid expansion, an ADR must compare a custom engine, a mature algorithm such as Taffy behind adapters, and a hybrid approach. RunenUI’s public tree and vocabulary must remain independent of an internal dependency.
-
-## Crate boundary
-
-Layout remains in `runenui_runtime`; see [ADR 0002](../adr/0002-keep-layout-in-runtime.md). Extraction requires identity-independent inputs/outputs, explicit geometry ownership, real typography/resource inputs, a conformance harness independent of full application publication, and hard pressure from an independent consumer, dependency rule, multiple substantial algorithms, or meaningful optionality.
-
-Do not genericize identity or split publication solely to manufacture a crate.
+The [roadmap](../roadmap.md) owns production layout/style sequencing. Any adopt-versus-build decision for a broader layout engine requires an accepted ADR/design rather than being pre-decided by this current-architecture document.

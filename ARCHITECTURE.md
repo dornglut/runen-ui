@@ -4,11 +4,15 @@ RunenUI is a host-neutral, renderer-neutral Rust UI framework. The durable owner
 
 ```text
 application state and actions
-    -> transient View/Element authoring
+    -> transient typed View/Element descriptions
     -> keyed reconciliation
     -> persistent mounted runtime tree
-    -> interaction, style, layout, and semantics
-    -> hit-test and paint products
+    -> interaction / style / layout / semantics
+    -> staged surface publication
+         ├── renderer-facing products
+         ├── hit/input products
+         ├── semantic publication
+         └── diagnostics
     -> host integration and renderer backend
 ```
 
@@ -21,16 +25,18 @@ Semantic identity is independently runtime-issued and published through a render
 - `runenui_core` — host-neutral public application, authoring, geometry, style, event, effect, identity, and semantic protocol values.
 - `runenui_runtime` — live mounted/semantic storage, reconciliation, routing, focus/input state, scheduling, tracing, publication, and shutdown.
 - `runenui_testing` — downstream deterministic testing ergonomics over ordinary public core/runtime contracts.
-- concrete hosts, platform adapters, renderer backends, and product state remain outside those ownership boundaries until their roadmap milestones justify real implementations.
+- concrete hosts, platform adapters, renderer backends, and product state remain outside those ownership boundaries until real implementations justify their own edge contracts.
 
 The workspace dependency and extraction rules are defined in [workspace structure](docs/architecture/workspace-structure.md).
 
-## Current and target architecture
+## Current behavior and required contracts
 
-Current accepted behavior is established by code/tests and summarized in [current status](docs/status.md). Detailed current architecture is indexed under [docs/architecture](docs/architecture/README.md).
+Code and executable tests are the evidence for what the current implementation does. Accepted ADRs, architecture/design contracts, and conformance observations define what the implementation is required to do. A mismatch is a defect or requires an explicit reviewed contract revision; implementation never silently overrides accepted architecture.
 
-Accepted future architecture is introduced only through its owning ADR/design/conformance authority. In particular, the renderer-neutral paint/hit scene contract is accepted target architecture, but target vocabulary is not current Rust API until implemented and accepted.
+Detailed current architecture is indexed under [docs/architecture](docs/architecture/README.md). Durable decisions live in [ADRs](docs/adr/). Permanent observable/proof contracts live under [conformance](docs/conformance/README.md). High-level dependency sequence lives in the [roadmap](docs/roadmap.md). Current accepted maturity is summarized in [status](docs/status.md).
 
-Durable decisions live in [ADRs](docs/adr/). Permanent observable/proof contracts live under [conformance](docs/conformance/README.md). High-level dependency sequence lives in the [roadmap](docs/roadmap.md). Exact public Rust signatures remain authoritative in source/Rustdoc; conceptual public ownership is summarized in the [public API contract](docs/architecture/public-api.md).
+Accepted future architecture becomes current API only after implementation and acceptance. In particular, renderer-neutral paint/hit scene contracts are accepted successor architecture, not current Rust scene behavior.
+
+Exact public Rust signatures remain authoritative in source and Rustdoc; conceptual public ownership is summarized in the [public API contract](docs/architecture/public-api.md).
 
 Live issue, branch, pull-request, head, CI-run, blocker, and pickup state belongs in GitHub and is deliberately absent from this document.

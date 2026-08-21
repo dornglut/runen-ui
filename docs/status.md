@@ -1,53 +1,48 @@
-# RunenUI Status
+# Current Status
 
-RunenUI is pre-1.0. This document summarizes **accepted current capability maturity**; it does not track branches, pull requests, CI runs, blockers, or next actions.
+> **Category: Current status**
+
+This file is the single durable owner of RunenUI capability maturity. It describes accepted default-branch capability, not active implementation progress, branch state, pull-request state, or blocker state.
 
 ## Maturity vocabulary
 
-| State | Meaning |
-|---|---|
-| `absent` | No accepted implementation exists. |
-| `planned` | Accepted target; implementation is not current behavior. |
-| `proof` | Narrow deterministic behavior exists and is tested. |
-| `partial` | Real implementation exists but major production behavior is missing. |
-| `usable` | Suitable for current internal/headless uses within documented limits. |
-| `stable` | Public compatibility and production support are intentionally guaranteed. |
-| `deferred` | Deliberately outside the current production foundation. |
-| `archived` | Historical material only. |
+- **absent** — no accepted implementation exists;
+- **planned** — roadmap/accepted target contract exists, but implementation is absent;
+- **proof** — bounded implementation demonstrates the architecture/conformance contract but is not production breadth;
+- **partial** — meaningful implementation exists but required production behavior is incomplete;
+- **usable** — intended profile works for real downstream use with documented limitations;
+- **stable** — compatibility/support policy is deliberately committed and release-grade;
+- **deferred** — intentionally outside the active production path;
+- **archived** — historical only; not active authority.
 
-No RunenUI subsystem is currently `stable`.
+No current subsystem is `stable`.
 
-## Current capability map
+## Capability map
 
-| Area | Maturity | Accepted capability | Decisive limitation / next owner |
+| Area | Maturity | Current accepted capability | Decisive limitation / durable next owner |
 |---|---|---|---|
-| Authoring and composition | `usable` | typed transient views/elements, builders, component action mapping, arbitrary child counts, downstream widgets | production control breadth remains later |
-| Application model | `proof` | application-owned state/actions, explicit update, queued effects and subscriptions | one mounted application root; no native host |
-| Mounted identity and reconciliation | `usable` | generational mounted identity, keyed reconciliation, lifecycle, state retention, stale/foreign rejection | runtime-local/process-local; one logical surface |
-| Events and interaction | `proof` | canonical queued semantic commands, pointer, focus, keyboard, committed text, composition, automation, capture/target/bubble | host translation and production scrolling/editing absent |
-| Focus and navigation | `proof` | scopes, traversal, directional navigation, restoration, modality | cross-surface focus is later host work |
-| Effects and scheduling | `proof` | one sequenced FIFO, bounded pump, tasks/timers/subscriptions/host requests, cancellation, wake/redraw | runtime supplies seams rather than a default platform executor |
-| Trace and replay | `partial` | bounded canonical trace, deterministic JSONL projection, redaction, subordinate sink, inert replay | diagnostic/headless foundation, not a production observability service |
-| Styling | `partial` | typed values/tokens, computed style, provenance, diagnostics | themes/recipes/state styling and production breadth belong to M7 |
-| Layout and measurement | `proof` | explicit constraints, measurement-provider seam, deterministic row/column proof, aligned products | no production flex/grid/scroll/incremental layout; M7 |
-| Semantic contribution and identity | `partial` | owner-local semantic forests, independent runtime semantic IDs, strict validation | native platform accessibility adapter absent |
-| Semantic publication and actions | `proof` | independent surface-scoped semantic snapshot/update/diagnostics plus exact semantic action ingress | one logical surface; native adapter later |
-| Public deterministic testing | `partial` | downstream `runenui_testing`, deterministic time, bounded settle, public interaction and semantic queries, read-only observation | no production scene/platform test matrix yet |
-| Surface publication | `proof` | staged atomic publication with renderer-facing proof products and independent semantics | retained narrow publications still use proof-level cache representation; M6 owns production scene substrate |
-| Hit testing | `proof` | deterministic rectangle proof targeting with displayed-generation safety | no production `HitTestScene`, clips/transforms/stacking; M6 |
-| Renderer-neutral paint/hit scene | `absent` | accepted target contracts exist | no current production scene API; M6 |
-| Production renderer backend | `absent` | none | requires accepted neutral scene first; M10 |
-| Deterministic text measurement | `proof` | provider seam and deterministic headless metrics | not shaping, bidi, wrapping, font fallback, or editing |
-| Production text subsystem | `absent` | none | M8 |
-| Built-in button | `proof` | canonical activation convergence and semantic participation | production styling/control breadth/native adapters later |
-| Standard control library | `absent` | proof controls only | M9 |
-| Host neutrality | `usable` | core/runtime/testing contain no native window, GPU, ECS, or accessibility-adapter dependency | neutrality alone is not a host implementation |
-| Native host/platform integration | `absent` | host-neutral seams only | event loop, DPI, clipboard, cursor, IME, accessibility, multi-window: M10 |
-| Raw controller/gamepad translation | `absent` | normalized controller-origin commands only | device lifecycle/axes/dead-zone/platform mapping: M10 |
-| Source formats and advanced devtools | `deferred` | no UI source language or visual tooling | M12 |
+| Application model | proof | typed `UiApp` state/action/update and transient typed view authoring | broader ergonomic facade remains later production work |
+| Mounted runtime | proof | persistent keyed generational mounted tree, state/lifecycle, invalidation, exact targeting | production breadth still depends on later subsystems |
+| Effects/scheduling | proof | bounded FIFO/pump, tasks/timers/subscriptions/host requests, deterministic time, wake/redraw, terminal/shutdown | host/platform integration and production operational breadth remain later |
+| Routed interaction | proof | pointer, focus scopes/navigation, keyboard, committed text, composition, automation, semantic commands | native translation and production controls/text remain later |
+| Trace/replay | proof | bounded canonical trace, deterministic export, optional sink, inert offline replay | production devtools/inspection UI remains later |
+| Semantics/accessibility core | proof | independent semantic identity/tree/update/action ingress with deterministic public testing | native accessibility adapter remains later |
+| Testing | usable | public deterministic headless harness over ordinary public runtime contracts | scene/backend/native-host assertions follow those later capabilities |
+| Styling | proof | validated typed style/token proof and computed style/provenance | production themes/recipes/state layers/property breadth belong to M7 |
+| Layout/measurement | proof | deterministic measurement/layout proof with gaps/padding/linear child layout and invalidation | production responsive layout breadth belongs to M7 |
+| Renderer-neutral paint/hit scenes | planned | accepted M6 target architecture and conformance contract | no accepted M6 scene behavior exists yet |
+| Concrete renderer backend | absent | none | M10 after renderer-neutral scene protocol is implemented |
+| Native window/event-loop host | absent | none | M10 |
+| Native accessibility adapter | absent | none | M10 |
+| Production text shaping/editing | absent | routed text/IME transport only | M8 |
+| Standard control library | partial | proof-level built-in authoring widgets used by conformance/examples | production control behavior/recipes/accessibility breadth belongs to M9 |
+| Multi-window/multi-surface host lifecycle | absent | one logical surface proof | M10 |
+| Stable facade/release | absent | lower-level pre-1.0 crates only | M11 |
 
-## Accepted foundation
+## Milestone summary
 
-The repository has completed the foundational sequence through renderer-independent semantics and deterministic public testing (M0–M5). The accepted M6 architecture/conformance contract defines the next renderer-neutral scene work, but target contracts do not imply implemented scene behavior. Conformance details and accepted default-branch row state are authoritative under [conformance](conformance/README.md).
+M0–M5 form the accepted headless foundation: repository/tooling policy, typed core values, open widget/component architecture, mounted runtime/layout/style proofs, deterministic effects and routed interaction, trace/replay, semantic publication/action ingress, and public deterministic testing.
 
-See the [roadmap](roadmap.md) for durable sequencing and [architecture](architecture/README.md) for current ownership. Live execution state belongs in GitHub.
+M6 and later are successor outcomes. Accepted target documents do not promote capability maturity by themselves; maturity changes only when accepted default-branch implementation and required conformance evidence change.
+
+See the [roadmap](roadmap.md) for durable sequencing and [conformance](conformance/README.md) for permanent observable/proof contracts.

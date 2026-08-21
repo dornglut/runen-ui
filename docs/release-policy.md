@@ -4,23 +4,23 @@
 
 ## Current state
 
-All workspace packages are version `0.1.0` and set `publish = false`. No package may be published until a reviewed release-infrastructure slice deliberately changes that metadata.
+All workspace packages are pre-1.0 and publication remains disabled. No package may be published until a reviewed release-infrastructure slice deliberately changes repository/package metadata and adds the required release validation.
 
 ## Pre-release requirements
 
-Any future 0.x release must have a scoped changelog entry, passing `cargo validate`, reviewed package metadata/license/readmes, a clean locked dependency graph, documented API migrations, and an explicit decision about which packages are released. Tags and artifacts must be created by reviewed release automation or a documented maintainer procedure, never incidental CI source mutation.
+Any future 0.x release requires a scoped changelog/release note, passing `cargo validate`, reviewed package metadata/license/readmes, a clean locked dependency graph, documented public migrations, and an explicit decision about which packages are released. Tags and artifacts must be created by reviewed release automation or a documented maintainer procedure, never incidental CI source mutation.
 
 ## Stable release gate
 
-`1.0.0` requires every M11 exit criterion: headless, standalone Windows/macOS/Linux, and embedded profiles; production controls/text/layout/accessibility; one supported conventional renderer; neutral scene protocol; deterministic public testing/replay; cross-platform CI; security/dependency/license policy enforcement; performance budgets; API/semver review; release candidates through real applications; and no unresolved P0/P1 correctness defects.
+`1.0.0` requires the production-hardening outcome in the [roadmap](roadmap.md): supported headless, standalone desktop, and embedded profiles; production controls/text/layout/accessibility; one supported conventional renderer; neutral scene protocol; deterministic public testing/replay; cross-platform CI; security/dependency/license policy enforcement; performance budgets; API/semver review; release candidates through real applications; and no unresolved release-blocking correctness defects.
 
 ## Release checklist baseline
 
-1. Confirm roadmap/support/status and documentation are current.
-2. Confirm version, MSRV, licenses, dependencies, readmes, and changelog.
-3. Run the full local/CI baseline and release-specific cross-platform, package, semver, security, license, benchmark, and stress checks required by the milestone.
+1. Confirm the roadmap, current status, conformance state, and affected documentation are coherent with accepted default-branch behavior.
+2. Confirm version, MSRV, licenses, dependencies, package readmes, and changelog/release notes.
+3. Run the canonical validation baseline plus the release-specific cross-platform, package, semver, security, license, benchmark, stress, and compatibility checks required by the release gate.
 4. Review generated artifacts and dry-run publication before enabling publication.
-5. Create signed/annotated release metadata through the reviewed process.
-6. Publish only approved packages, verify artifacts, and record follow-up or rollback guidance.
+5. Create signed or otherwise deliberately authenticated release metadata through the reviewed process.
+6. Publish only approved packages, verify the released artifacts, and record follow-up or rollback guidance where required.
 
-M0 establishes this policy; it does not enable or perform a release.
+Release process state and exact artifact/CI evidence belong in the release issue/pull request and release system, not this durable policy document.
