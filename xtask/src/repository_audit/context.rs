@@ -169,15 +169,16 @@ mod tests {
     }
 
     #[test]
-    fn profile_array_parser_reads_string_values_without_order_dependence() {
+    fn profile_array_parser_reads_string_values_without_order_dependence() -> Result<(), String> {
         let values = profile_string_array(
             "include = [\n  \"README.md\",\n]\nexclude = [\n  \"legacy/**\",\n  \"Cargo.lock\"\n]\n",
             "exclude",
         )
-        .expect("exclude array must parse");
+        .ok_or_else(|| "exclude array must parse".to_owned())?;
 
         assert_eq!(values.len(), 2);
         assert!(values.contains("Cargo.lock"));
         assert!(values.contains("legacy/**"));
+        Ok(())
     }
 }
