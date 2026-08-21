@@ -9,12 +9,20 @@ const EXPECTED_PROFILE_FILES: &[&str] = &[
     "implementation-review.toml",
     "offline-review.toml",
 ];
+const BOUNDED_PROFILE_FILES: &[&str] = &["implementation-review.toml", "offline-review.toml"];
+const REQUIRED_BOUNDED_PROFILE_EXCLUDES: &[&str] = &[
+    "Cargo.lock",
+    "docs/history/**",
+    "docs/reports/**",
+    "legacy/**",
+];
 const DEFAULT_PROFILE_PREFIX: &str = "DEFAULT_PROFILE =";
 const DEFAULT_PROFILE_DECLARATION: &str = "DEFAULT_PROFILE = \"offline-review\"";
 
 pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
     audit_profile_inventory(root, findings)?;
     audit_default_profile(root, findings)?;
+    audit_bounded_profile_contract(root, findings)?;
     audit_profile_volatility(root, findings)
 }
 
@@ -78,6 +86,66 @@ fn default_profile_declarations(contents: &str) -> Vec<&str> {
         .collect()
 }
 
+fn audit_bounded_profile_contract(
+    root: &Path,
+    findings: &mut Vec<Finding>,
+) -> Result<(), String> {
+    let required = REQUIRED_BOUNDED_PROFILE_EXCLUDES
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<BTreeSet<_>>();
+
+    for file_name in BOUNDED_PROFILE_FILES {
+        let relative = Path::new(PROFILE_DIRECTORY).join(file_name);
+        let relative_text = path_text(&relative);
+        let contents = fs::read_to_string(root.join(&relative))
+            .map_err(|error| format!("failed to read {relative_text}: {error}"))?;
+        let Some(excludes) = profile_string_array(&contents, "exclude") else {
+            findings.push(Finding::fatal(
+                "context.bounded_profile_contract",
+                Some(relative_text),
+                "bounded context profile must define a simple string-array exclude contract",
+            ));
+            continue;
+        };
+
+        let missing = required.difference(&excludes).cloned().collect::<Vec<_>>();
+        if !missing.is_empty() {
+            findings.push(Finding::fatal(
+                "context.bounded_profile_contract",
+                Some(relative_text),
+                format!("bounded context profile is missing required excludes {missing:?}"),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn profile_string_array(contents: &str, key: &str) -> Option<BTreeSet<String>> {
+    let opening = format!("{key} = [");
+    let mut lines = contents.lines().map(str::trim);
+
+    while let Some(line) = lines.next() {
+        if line != opening {
+            continue;
+        }
+
+        let mut values = BTreeSet::new();
+        for line in lines.by_ref() {
+            if line == "]" {
+                return Some(values);
+            }
+            let value = line.strip_suffix(',').unwrap_or(line);
+            let value = value.strip_prefix('"')?.strip_suffix('"')?;
+            values.insert(value.to_owned());
+        }
+        return None;
+    }
+
+    None
+}
+
 fn audit_profile_volatility(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
     for file_name in EXPECTED_PROFILE_FILES {
         let relative = Path::new(PROFILE_DIRECTORY).join(file_name);
@@ -99,7 +167,7 @@ fn audit_profile_volatility(root: &Path, findings: &mut Vec<Finding>) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_PROFILE_DECLARATION, default_profile_declarations};
+    use super::{DEFAULT_PROFILE_DECLARATION, default_profile_declarations, profile_string_array};
 
     #[test]
     fn commented_expected_default_does_not_mask_active_drift() {
@@ -108,5 +176,18 @@ mod tests {
         );
         assert_eq!(declarations, ["DEFAULT_PROFILE = \"ai-core\""]);
         assert_ne!(declarations, [DEFAULT_PROFILE_DECLARATION]);
+    }
+
+    #[test]
+    fn profile_array_parser_reads_string_values_without_order_dependence() {
+        let values = profile_string_array(
+            "include = [\n  \"README.md\",\n]\nexclude = [\n  \"legacy/**\",\n  \"Cargo.lock\"\n]\n",
+            "exclude",
+        )
+        .expect("exclude array must parse");
+
+        assert_eq!(values.len(), 2);
+        assert!(values.contains("Cargo.lock"));
+        assert!(values.contains("legacy/**"));
     }
 }
