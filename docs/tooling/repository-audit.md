@@ -22,7 +22,7 @@ The audit fails closed for material repository-contract violations including:
 - forbidden or missing source authorities covered by the source-ownership audit;
 - repository metadata/license/publication-policy drift;
 - issue-template or canonical read-only CI workflow drift;
-- retained context-export profile inventory/default drift;
+- retained context-export profile inventory/default/bounded-profile drift;
 - active historical repository/default-branch identities outside explicit history/report exemptions;
 - private archive references outside the migration-history owner;
 - volatile live-work evidence embedded in current durable documentation or retained context-profile configuration.
@@ -34,7 +34,7 @@ The documentation audit derives volatility policy from artifact class and reposi
 - changelog, history, and report material is **provenance authority** and may preserve point-in-time revision evidence;
 - `.github/workflows/` is exempt from documentation-volatility rules because the canonical workflow requires an immutable reusable-workflow revision and is independently enforced by the exact workflow-contract audit.
 
-The retained context exporter has a separate structural guard: exactly `offline-review`, `implementation-review`, and `full-audit` profiles are permitted, `offline-review` must remain the default, and every retained profile is volatility-audited as strict-current configuration. The Python profile tests remain tool-specific behavioral checks; they are not made a prerequisite for Rust validation merely because the optional exporter exists.
+The retained context exporter has a separate structural guard: exactly `offline-review`, `implementation-review`, and `full-audit` profiles are permitted; `offline-review` must remain the default; every retained profile is volatility-audited as strict-current configuration; and the two bounded profiles must exclude `Cargo.lock`, `docs/history/**`, `docs/reports/**`, and `legacy/**`. `full-audit` remains the intentionally comprehensive profile. The Python profile tests remain tool-specific behavioral checks; they are not made a prerequisite for Rust validation merely because the optional exporter exists.
 
 This protects the single-owner model without erasing useful historical evidence. GitHub owns live work and delivery state; durable documentation and active repository templates own contracts, architecture, policy, accepted capability truth, and reusable process prompts—not copied execution state.
 
