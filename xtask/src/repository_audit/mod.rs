@@ -423,7 +423,7 @@ fn is_provenance_path(relative: &Path) -> bool {
     relative == Path::new("CHANGELOG.md")
         || relative.starts_with("docs/history")
         || relative.starts_with("docs/reports")
-        || relative.starts_with(".github")
+        || relative.starts_with(".github/workflows")
 }
 
 fn audit_volatility(
