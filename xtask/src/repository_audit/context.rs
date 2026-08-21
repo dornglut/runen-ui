@@ -125,24 +125,17 @@ fn audit_bounded_profile_contract(
 fn profile_string_array(contents: &str, key: &str) -> Option<BTreeSet<String>> {
     let opening = format!("{key} = [");
     let mut lines = contents.lines().map(str::trim);
+    lines.find(|line| *line == opening)?;
 
-    while let Some(line) = lines.next() {
-        if line != opening {
-            continue;
+    let mut values = BTreeSet::new();
+    for line in lines {
+        if line == "]" {
+            return Some(values);
         }
-
-        let mut values = BTreeSet::new();
-        for line in lines.by_ref() {
-            if line == "]" {
-                return Some(values);
-            }
-            let value = line.strip_suffix(',').unwrap_or(line);
-            let value = value.strip_prefix('"')?.strip_suffix('"')?;
-            values.insert(value.to_owned());
-        }
-        return None;
+        let value = line.strip_suffix(',').unwrap_or(line);
+        let value = value.strip_prefix('"')?.strip_suffix('"')?;
+        values.insert(value.to_owned());
     }
-
     None
 }
 
