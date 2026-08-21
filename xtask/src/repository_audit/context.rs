@@ -9,6 +9,7 @@ const EXPECTED_PROFILE_FILES: &[&str] = &[
     "implementation-review.toml",
     "offline-review.toml",
 ];
+const DEFAULT_PROFILE_PREFIX: &str = "DEFAULT_PROFILE =";
 const DEFAULT_PROFILE_DECLARATION: &str = "DEFAULT_PROFILE = \"offline-review\"";
 
 pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
@@ -56,11 +57,18 @@ fn audit_profile_inventory(root: &Path, findings: &mut Vec<Finding>) -> Result<(
 fn audit_default_profile(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
     let contents = fs::read_to_string(root.join(EXPORTER_PATH))
         .map_err(|error| format!("failed to read {EXPORTER_PATH}: {error}"))?;
-    if !contents.contains(DEFAULT_PROFILE_DECLARATION) {
+    let declarations = contents
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with(DEFAULT_PROFILE_PREFIX))
+        .collect::<Vec<_>>();
+    if declarations != [DEFAULT_PROFILE_DECLARATION] {
         findings.push(Finding::fatal(
             "context.default_profile",
             Some(EXPORTER_PATH.to_owned()),
-            format!("context exporter must contain {DEFAULT_PROFILE_DECLARATION:?}"),
+            format!(
+                "context exporter must contain exactly one active {DEFAULT_PROFILE_DECLARATION:?} declaration; found {declarations:?}"
+            ),
         ));
     }
     Ok(())
