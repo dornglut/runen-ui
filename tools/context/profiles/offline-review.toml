@@ -18,6 +18,8 @@ include = [
 
 exclude = [
   "Cargo.lock",
+  "docs/history/**",
+  "docs/reports/**",
   "legacy/**",
   "context/**",
 ]
