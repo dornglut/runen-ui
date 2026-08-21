@@ -23,6 +23,11 @@ class ContextProfileTests(unittest.TestCase):
         profile = EXPORTER.load_profile(profile_name, PROFILES_DIRECTORY)
         return set(EXPORTER.iter_context_files(root=root, profile=profile))
 
+    def assert_bounded_profile_exclusions(self, files: set[Path]) -> None:
+        self.assertNotIn(Path("Cargo.lock"), files)
+        self.assertNotIn(Path("docs/history/public-repository-migration.md"), files)
+        self.assertNotIn(Path("docs/reports/m5-accesskit-mapping-review.md"), files)
+
     def test_profile_inventory_is_small_and_offline_review_is_default(self) -> None:
         self.assertEqual(EXPORTER.DEFAULT_PROFILE, "offline-review")
         self.assertEqual(
@@ -45,7 +50,7 @@ class ContextProfileTests(unittest.TestCase):
             Path("crates/runenui_core/README.md"),
         }
         self.assertTrue(required.issubset(files), required - files)
-        self.assertNotIn(Path("Cargo.lock"), files)
+        self.assert_bounded_profile_exclusions(files)
         self.assertNotIn(Path("crates/runenui_core/src/lib.rs"), files)
 
     def test_implementation_review_contains_source_tests_and_validation_tooling(self) -> None:
@@ -59,9 +64,9 @@ class ContextProfileTests(unittest.TestCase):
             Path("xtask/src/main.rs"),
         }
         self.assertTrue(required.issubset(files), required - files)
-        self.assertNotIn(Path("Cargo.lock"), files)
+        self.assert_bounded_profile_exclusions(files)
 
-    def test_full_audit_includes_governance_ci_lockfile_and_licenses(self) -> None:
+    def test_full_audit_includes_governance_provenance_lockfile_and_licenses(self) -> None:
         files = self.files_for_profile("full-audit")
         required = {
             Path(".github/workflows/ci.yml"),
@@ -72,6 +77,8 @@ class ContextProfileTests(unittest.TestCase):
             Path("LICENSE-APACHE"),
             Path("LICENSE-MIT"),
             Path("SECURITY.md"),
+            Path("docs/history/public-repository-migration.md"),
+            Path("docs/reports/m5-accesskit-mapping-review.md"),
         }
         self.assertTrue(required.issubset(files), required - files)
 
