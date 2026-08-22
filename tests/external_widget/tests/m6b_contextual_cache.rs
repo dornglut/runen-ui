@@ -111,6 +111,16 @@ fn paint_contribution_cache_is_keyed_by_exact_owner_visible_context() {
         shade: Shade::Black,
         paint_calls: Rc::clone(&paint_calls),
     });
+    assert!(
+        runtime
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .is_quiescent()
+    );
     let tokens = runenui_core::StyleTokens::new();
     let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
 
