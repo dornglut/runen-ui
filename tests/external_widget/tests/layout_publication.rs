@@ -131,6 +131,9 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     assert!((first.frame().size().width() - 144.0).abs() <= f32::EPSILON);
     assert!((first.frame().size().height() - 27.0).abs() <= f32::EPSILON);
     let first_context = first.input_context().clone();
+    let first_paint = first.paint_publication().clone();
+    let first_hit_regions = first.hit_test_scene().regions().to_vec();
+    let first_membership = first.hit_test_scene().mounted_targets().to_vec();
     let first_products = first.clone().into_renderer_products();
 
     let second = publish(&mut runtime, &context);
@@ -140,9 +143,15 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     );
     assert!(second.input_context().coordinate_revision() > first_context.coordinate_revision());
     assert!(second.input_context().hit_test_generation() > first_context.hit_test_generation());
+    assert_eq!(second.paint_publication(), &first_paint);
+    assert_eq!(second.hit_test_scene().regions(), first_hit_regions.as_slice());
+    assert_eq!(
+        second.hit_test_scene().mounted_targets(),
+        first_membership.as_slice()
+    );
+    assert_ne!(second.hit_test_scene(), first.hit_test_scene());
     assert!(second.renderer_products_eq(&first));
-    assert_eq!(second, first);
-    assert_eq!(second.into_renderer_products(), first_products);
+    assert_eq!(second.clone().into_renderer_products(), first_products);
     assert_eq!(
         (panel.get(), text.get(), fixed.get(), layout.get()),
         (1, 1, 1, 1)
@@ -154,11 +163,13 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     provider.width.set(200.0);
     let revised = publish(&mut runtime, &context);
     assert!((revised.frame().size().width() - 200.0).abs() <= f32::EPSILON);
+    assert!(revised.paint_publication().revision() > first_paint.revision());
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[
             runenui_runtime::SurfacePhase::Layout,
             runenui_runtime::SurfacePhase::HitTesting,
+            runenui_runtime::SurfacePhase::Paint,
             runenui_runtime::SurfacePhase::Semantics,
         ]
     );
