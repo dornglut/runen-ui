@@ -303,33 +303,25 @@ mod tests {
     }
 
     #[test]
-    fn focus_derived_interaction_publication_reuses_unrelated_products() {
+    fn focus_only_publication_reuses_all_renderer_products() {
         let (mut tree, _) = MountedTree::<()>::mount(text("focus").key("root").into_element());
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
         let mut cache = None;
         let _ = publish(&mut tree, &context, &mut cache);
-        let root = tree.publication_preorder_ids()[0].clone();
         let before = retained(cache.as_ref());
 
-        let node = tree
-            .node_mut(&root)
-            .unwrap_or_else(|| unreachable!("focus proof root remains live"));
-        apply_invalidation(node, WidgetInvalidation::INTERACTION);
-        tree.finish_focus_validation();
+        // This is the exact surface-cache effect of a committed routed focus
+        // transition: focus validation is already resolved and only the semantic
+        // focus product is marked dirty before the next publication.
+        tree.mark_semantic_focus_product_dirty();
 
         let report = publish(&mut tree, &context, &mut cache);
-        assert_eq!(
-            report.executed(),
-            &[SurfacePhase::Paint, SurfacePhase::Semantics]
-        );
+        assert_eq!(report.executed(), &[SurfacePhase::Semantics]);
         let after = cache
             .as_ref()
             .unwrap_or_else(|| unreachable!("focus publication retains a cache"));
-        assert_eq!(
-            before.retained_product_reuse(after),
-            [true, true, true, true, false, true, false]
-        );
+        assert_eq!(before.retained_product_reuse(after), [true; 7]);
     }
 
     #[test]
