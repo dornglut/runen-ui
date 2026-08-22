@@ -90,14 +90,14 @@ impl Widget<()> for OpacityOwner {
 
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
         let radius = Radius::all(LogicalLength::from(5_u16));
-        let half = SceneOpacity::new(0.5)
-            .unwrap_or_else(|_| unreachable!("test opacity is valid"));
+        let half = SceneOpacity::new(0.5).unwrap_or_else(|_| unreachable!("test opacity is valid"));
         PaintContribution::new(vec![
             PaintContributionItem::fill_rect(rect(), Color::rgba(255, 0, 0, 255)),
             PaintContributionItem::fill_rect(rect(), Color::rgba(0, 0, 255, 255))
                 .with_opacity(half)
                 .with_clip(ContributionClip::identity(SceneShape::rounded_rect(
-                    rect(), radius,
+                    rect(),
+                    radius,
                 ))),
         ])
     }
