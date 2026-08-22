@@ -70,6 +70,11 @@ pub(crate) fn apply_invalidation<Action>(
     if invalidation.contains(WidgetInvalidation::LAYOUT) {
         node.caches.measurement = CachedCapability::Unresolved;
         node.caches.child_layout = CachedCapability::Unresolved;
+        node.caches.paint = CachedCapability::Unresolved;
+        node.caches.hit_test = CachedCapability::Unresolved;
+    }
+    if invalidation.contains(WidgetInvalidation::HIT_TEST) {
+        node.caches.hit_test = CachedCapability::Unresolved;
     }
     if invalidation.contains(WidgetInvalidation::PAINT) {
         node.caches.paint = CachedCapability::Unresolved;
@@ -93,6 +98,7 @@ const fn publication_phases(invalidation: WidgetInvalidation) -> DirtyPhases {
     if invalidation.contains(WidgetInvalidation::LAYOUT) {
         phases.insert(DirtyPhases::LAYOUT);
         phases.insert(DirtyPhases::HIT_TEST);
+        phases.insert(DirtyPhases::PAINT);
     }
     if invalidation.contains(WidgetInvalidation::HIT_TEST) {
         phases.insert(DirtyPhases::HIT_TEST);
