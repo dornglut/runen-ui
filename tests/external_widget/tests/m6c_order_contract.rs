@@ -191,7 +191,7 @@ fn assert_hit_order(
     assert_eq!(
         regions
             .iter()
-            .map(|region| region.layer())
+            .map(runenui_runtime::HitTestRegion::layer)
             .collect::<Vec<_>>(),
         vec![
             SceneLayer::new(-1),
@@ -205,14 +205,14 @@ fn assert_hit_order(
     assert_eq!(
         regions
             .iter()
-            .map(|region| region.target())
+            .map(runenui_runtime::HitTestRegion::target)
             .collect::<Vec<_>>(),
         vec![first, second, first, first, second, second]
     );
     assert_eq!(
         regions
             .iter()
-            .map(|region| region.pointer_policy())
+            .map(runenui_runtime::HitTestRegion::pointer_policy)
             .collect::<Vec<_>>(),
         vec![
             PointerPolicy::Block,
