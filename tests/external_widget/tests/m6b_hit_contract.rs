@@ -17,11 +17,11 @@ impl Widget<()> for FocusableNoHit {
 
     fn create_state(&self) -> Self::State {}
 
-    fn activation(&self, _: &Self::State) -> WidgetActivation {
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
         WidgetActivation::actionable(true)
     }
 
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State) -> WidgetMeasure {
         WidgetMeasure::Fixed {
             width: LogicalLength::from(20_u16),
             height: LogicalLength::from(10_u16),
@@ -37,14 +37,14 @@ impl Widget<()> for HitOnly {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State) -> WidgetMeasure {
         WidgetMeasure::Fixed {
             width: LogicalLength::from(20_u16),
             height: LogicalLength::from(10_u16),
         }
     }
 
-    fn hit_test(&self, _: &Self::State, context: HitContributionContext) -> HitContribution {
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
         let size = context.local_size();
         let rect = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
             .unwrap_or_else(|_| unreachable!("validated local size yields a valid hit rectangle"));
@@ -59,7 +59,7 @@ impl UiApp for App {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> Element<Self::Action> {
+    fn root((): &Self::State) -> Element<Self::Action> {
         column(children![
             Element::new(FocusableNoHit).id("focusable-no-hit"),
             Element::new(HitOnly).id("hit-only"),
@@ -68,7 +68,7 @@ impl UiApp for App {
         .into_element()
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 fn authored(value: &str) -> ElementId {
@@ -114,7 +114,7 @@ fn hit_regions_membership_and_focusability_are_independent_authorities() {
         runtime
             .index()
             .node(&focusable)
-            .is_some_and(|node| node.is_focusable())
+            .is_some_and(runenui_runtime::MountedNodeRef::is_focusable)
     );
     assert!(
         runtime
@@ -153,14 +153,14 @@ fn hit_regions_membership_and_focusability_are_independent_authorities() {
     assert_eq!(scene.regions().len(), 1);
 
     let context = publication.input_context().clone();
-    let error = runtime
-        .submit_surface_command(
-            context.clone(),
-            focusable_point,
-            SemanticCommand::RequestFocus,
-            CommandOrigin::programmatic(),
-        )
-        .expect_err("point ingress must not infer targetability from membership");
+    let Err(error) = runtime.submit_surface_command(
+        context.clone(),
+        focusable_point,
+        SemanticCommand::RequestFocus,
+        CommandOrigin::programmatic(),
+    ) else {
+        unreachable!("point ingress must not infer targetability from membership")
+    };
     assert_eq!(error.kind(), SubmitSurfaceCommandErrorKind::NoTarget);
 
     runtime
