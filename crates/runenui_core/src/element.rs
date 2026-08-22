@@ -349,11 +349,7 @@ pub trait Widget<Action>: fmt::Debug {
     }
 
     /// Returns this owner's renderer-neutral paint contribution in local logical coordinates.
-    fn paint(
-        &self,
-        _state: &Self::State,
-        _context: PaintContributionContext,
-    ) -> PaintContribution {
+    fn paint(&self, _state: &Self::State, _context: PaintContributionContext) -> PaintContribution {
         PaintContribution::empty()
     }
 
@@ -361,11 +357,7 @@ pub trait Widget<Action>: fmt::Debug {
     ///
     /// Empty is the default and canonical pass-through representation. The
     /// runtime injects mounted target identity only when composing a hit scene.
-    fn hit_test(
-        &self,
-        _state: &Self::State,
-        _context: HitContributionContext,
-    ) -> HitContribution {
+    fn hit_test(&self, _state: &Self::State, _context: HitContributionContext) -> HitContribution {
         HitContribution::empty()
     }
 
