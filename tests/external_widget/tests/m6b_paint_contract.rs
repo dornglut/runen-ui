@@ -113,10 +113,7 @@ fn source_over(dst: [f32; 4], color: Color) -> [f32; 4] {
     let one_minus_alpha = 1.0 - alpha;
     [
         dst[0].mul_add(one_minus_alpha, srgb8_to_linear(color.red()) * alpha),
-        dst[1].mul_add(
-            one_minus_alpha,
-            srgb8_to_linear(color.green()) * alpha,
-        ),
+        dst[1].mul_add(one_minus_alpha, srgb8_to_linear(color.green()) * alpha),
         dst[2].mul_add(one_minus_alpha, srgb8_to_linear(color.blue()) * alpha),
         dst[3].mul_add(one_minus_alpha, alpha),
     ]
