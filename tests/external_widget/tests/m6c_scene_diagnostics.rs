@@ -61,7 +61,7 @@ fn diagnostic_codes(publication: &runenui_runtime::SurfacePublication) -> Vec<&s
         .unwrap_or_else(|| unreachable!("diagnostic root is published"))
         .diagnostics()
         .iter()
-        .map(|diagnostic| diagnostic.code())
+        .map(runenui_core::WidgetDiagnostic::code)
         .collect()
 }
 
@@ -240,7 +240,7 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
     );
     assert_eq!(
         paint_fixed.hit_test_scene().target_at(lower_sample),
-        paint_fixed.frame().root().map(|node| node.id())
+        paint_fixed.frame().root().map(runenui_runtime::SurfaceNode::id)
     );
     assert_eq!(
         paint_fixed.hit_test_scene().target_at(invalid_only_sample),
