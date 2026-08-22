@@ -2,7 +2,7 @@
 
 use runenui_core::{
     CommandOrigin, Element, ElementId, HitContribution, HitContributionContext, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, SemanticCommand, StyleTokens, UiApp, Widget,
+    LogicalPoint, LogicalRect, NoHostProtocol, SemanticCommand, StyleTokens, UiApp, View, Widget,
     WidgetActivation, WidgetMeasure, children, column,
 };
 use runenui_runtime::{
