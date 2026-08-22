@@ -4,8 +4,8 @@ use core::num::NonZeroU64;
 use std::sync::Arc;
 
 use runenui_core::{
-    LogicalPoint, LogicalRect, LogicalTransform, MountedNodeId, PaintPrimitive, SurfaceId,
-    SurfaceInputContext,
+    LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, MountedNodeId, PaintPrimitive,
+    SurfaceId, SurfaceInputContext,
 };
 
 /// One self-contained renderer-neutral paint item in stable scene order.
@@ -84,10 +84,15 @@ impl PaintRevision {
 }
 
 /// Immutable renderer update for one logical surface.
+///
+/// M6B owns scene content, exact logical extent, and renderer revision identity.
+/// M6C extends this same value with scale/base/damage metadata rather than
+/// introducing another renderer publication path.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PaintPublication {
     surface_id: SurfaceId,
     revision: PaintRevision,
+    logical_size: LogicalSize,
     scene: PaintScene,
 }
 
@@ -95,11 +100,13 @@ impl PaintPublication {
     pub(crate) const fn new(
         surface_id: SurfaceId,
         revision: PaintRevision,
+        logical_size: LogicalSize,
         scene: PaintScene,
     ) -> Self {
         Self {
             surface_id,
             revision,
+            logical_size,
             scene,
         }
     }
@@ -114,6 +121,12 @@ impl PaintPublication {
     #[must_use]
     pub const fn revision(&self) -> PaintRevision {
         self.revision
+    }
+
+    /// Returns the exact logical renderer target extent.
+    #[must_use]
+    pub const fn logical_size(&self) -> LogicalSize {
+        self.logical_size
     }
 
     /// Returns the complete immutable renderer scene for this revision.
@@ -257,5 +270,25 @@ impl HitTestScene {
 
     pub(crate) const fn content(&self) -> &HitTestSceneContent {
         &self.content
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn replace_target_for_test(
+        &mut self,
+        original: &MountedNodeId,
+        replacement: MountedNodeId,
+    ) {
+        let data = Arc::make_mut(&mut self.content.data);
+        for region in &mut data.regions {
+            if &region.target == original {
+                region.target = replacement.clone();
+            }
+        }
+        let member = data
+            .membership
+            .iter_mut()
+            .find(|member| *member == original)
+            .unwrap_or_else(|| unreachable!("test original target is retained"));
+        *member = replacement;
     }
 }
