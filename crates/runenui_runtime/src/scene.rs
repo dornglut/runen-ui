@@ -16,10 +16,7 @@ pub struct PaintSceneItem {
 }
 
 impl PaintSceneItem {
-    pub(crate) const fn new(
-        primitive: PaintPrimitive,
-        local_to_surface: LogicalTransform,
-    ) -> Self {
+    pub(crate) const fn new(primitive: PaintPrimitive, local_to_surface: LogicalTransform) -> Self {
         Self {
             primitive,
             local_to_surface,
@@ -194,11 +191,11 @@ impl HitTestSceneContent {
         }
     }
 
-    fn regions(&self) -> &[HitTestRegion] {
+    pub(crate) fn regions(&self) -> &[HitTestRegion] {
         self.data.regions.as_slice()
     }
 
-    fn membership(&self) -> &[MountedNodeId] {
+    pub(crate) fn membership(&self) -> &[MountedNodeId] {
         self.data.membership.as_slice()
     }
 
