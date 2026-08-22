@@ -81,6 +81,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn seed_next_paint_revision_for_test(&mut self, revision: Option<u64>) {
+        self.surface_publication
+            .seed_next_paint_revision_for_test(revision);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
     pub(crate) fn replace_surface_snapshot_target_for_test(
         &mut self,
         context: &SurfaceInputContext,
