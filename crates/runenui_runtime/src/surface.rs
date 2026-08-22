@@ -474,6 +474,13 @@ fn layout_context_changed(current: &SurfaceCache, next: &cache::SurfaceContextKe
         || current.context_key.measurement_revision != next.measurement_revision
 }
 
+fn stage_non_structural_cache(cache: Option<&SurfaceCache>) -> SurfaceCache {
+    cache.map_or_else(
+        || unreachable!("non-structural publication has a cache"),
+        SurfaceCache::staged,
+    )
+}
+
 /// Plans aligned renderer-facing and diagnostic products without committing
 /// RunenUI-owned publication state.
 ///
@@ -492,10 +499,7 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         return plan_structural_surface(tree, context, next_context);
     }
 
-    let mut current = cache.map_or_else(
-        || unreachable!("non-structural publication has a cache"),
-        SurfaceCache::staged,
-    );
+    let mut current = stage_non_structural_cache(cache);
     let style_dirty = pending.contains(DirtyPhases::STYLE)
         || current
             .context_key
@@ -791,21 +795,18 @@ mod tests {
         tree
     }
 
-    fn staged_cache(cache: &Option<SurfaceCache>) -> SurfaceCache {
+    fn staged_cache(cache: Option<&SurfaceCache>) -> SurfaceCache {
         cache
-            .as_ref()
             .unwrap_or_else(|| unreachable!("publication retains phase products"))
             .staged()
     }
 
     fn assert_retained_reuse(
         before: &SurfaceCache,
-        cache: &Option<SurfaceCache>,
+        cache: Option<&SurfaceCache>,
         expected: [bool; 7],
     ) {
-        let after = cache
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("publication retains phase products"));
+        let after = cache.unwrap_or_else(|| unreachable!("publication retains phase products"));
         assert_eq!(before.retained_product_reuse(after), expected);
     }
 
@@ -844,19 +845,19 @@ mod tests {
         let _ = publish(&mut tree, &context, &mut cache);
         let root = tree.publication_preorder_ids()[0].clone();
 
-        let retained = staged_cache(&cache);
+        let retained = staged_cache(cache.as_ref());
         let (_, clean) = publish(&mut tree, &context, &mut cache);
         assert!(clean.executed().is_empty());
-        assert_retained_reuse(&retained, &cache, [true; 7]);
+        assert_retained_reuse(&retained, cache.as_ref(), [true; 7]);
 
-        let retained = staged_cache(&cache);
+        let retained = staged_cache(cache.as_ref());
         let node = tree
             .node_mut(&root)
             .unwrap_or_else(|| unreachable!("test root remains live"));
         apply_invalidation(node, WidgetInvalidation::SEMANTICS);
         let (_, semantic) = publish(&mut tree, &context, &mut cache);
         assert_eq!(semantic.executed(), &[super::SurfacePhase::Semantics]);
-        assert_retained_reuse(&retained, &cache, [true; 7]);
+        assert_retained_reuse(&retained, cache.as_ref(), [true; 7]);
     }
 
     #[test]
@@ -868,7 +869,7 @@ mod tests {
         let _ = publish(&mut tree, &context, &mut cache);
         let root = tree.publication_preorder_ids()[0].clone();
 
-        let retained = staged_cache(&cache);
+        let retained = staged_cache(cache.as_ref());
         let node = tree
             .node_mut(&root)
             .unwrap_or_else(|| unreachable!("test root remains live"));
@@ -877,11 +878,11 @@ mod tests {
         assert_eq!(paint.executed(), &[super::SurfacePhase::Paint]);
         assert_retained_reuse(
             &retained,
-            &cache,
+            cache.as_ref(),
             [true, true, true, true, false, true, false],
         );
 
-        let retained = staged_cache(&cache);
+        let retained = staged_cache(cache.as_ref());
         let node = tree
             .node_mut(&root)
             .unwrap_or_else(|| unreachable!("test root remains live"));
@@ -890,7 +891,7 @@ mod tests {
         assert_eq!(diagnostics.executed(), &[super::SurfacePhase::Diagnostics]);
         assert_retained_reuse(
             &retained,
-            &cache,
+            cache.as_ref(),
             [true, true, true, true, true, false, false],
         );
     }
@@ -903,7 +904,7 @@ mod tests {
         let mut cache = None;
         let _ = publish(&mut tree, &context, &mut cache);
         let root = tree.publication_preorder_ids()[0].clone();
-        let retained = staged_cache(&cache);
+        let retained = staged_cache(cache.as_ref());
 
         let node = tree
             .node_mut(&root)
@@ -920,7 +921,7 @@ mod tests {
         );
         assert_retained_reuse(
             &retained,
-            &cache,
+            cache.as_ref(),
             [true, true, false, false, true, true, false],
         );
     }
@@ -932,7 +933,7 @@ mod tests {
         let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
         let mut cache = None;
         let _ = publish(&mut tree, &context, &mut cache);
-        let retained = staged_cache(&cache);
+        let retained = staged_cache(cache.as_ref());
 
         tree.reconcile(
             text("reuse")
@@ -947,7 +948,7 @@ mod tests {
         );
         assert_retained_reuse(
             &retained,
-            &cache,
+            cache.as_ref(),
             [true, false, true, true, false, true, false],
         );
     }
