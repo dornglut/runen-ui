@@ -311,9 +311,9 @@ mod tests {
         let _ = publish(&mut tree, &context, &mut cache);
         let before = retained(cache.as_ref());
 
-        // This is the exact surface-cache effect of a committed routed focus
-        // transition: focus validation is already resolved and only the semantic
-        // focus product is marked dirty before the next publication.
+        // `Runtime::finish_routed_invalidation` uses this exact tree operation
+        // when a routed commit changes focus. Focus validation has already been
+        // consumed; only the semantic focus product is dirty for publication.
         tree.mark_semantic_focus_product_dirty();
 
         let report = publish(&mut tree, &context, &mut cache);
