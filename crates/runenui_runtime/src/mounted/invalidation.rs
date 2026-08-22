@@ -94,6 +94,9 @@ const fn publication_phases(invalidation: WidgetInvalidation) -> DirtyPhases {
         phases.insert(DirtyPhases::LAYOUT);
         phases.insert(DirtyPhases::HIT_TEST);
     }
+    if invalidation.contains(WidgetInvalidation::HIT_TEST) {
+        phases.insert(DirtyPhases::HIT_TEST);
+    }
     if invalidation.contains(WidgetInvalidation::PAINT) {
         phases.insert(DirtyPhases::PAINT);
     }
