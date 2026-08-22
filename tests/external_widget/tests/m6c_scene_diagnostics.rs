@@ -3,8 +3,8 @@
 use runenui_core::{
     Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
     LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PaintPrimitive, SceneShape, StyleTokens, UiApp,
-    Widget, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
+    PaintContributionContext, PaintContributionItem, PaintPrimitive, SceneShape, StyleTokens,
+    UiApp, Widget, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PaintSceneItem, PumpBudget, SurfaceBuildContext, SurfacePhase,
@@ -109,9 +109,8 @@ impl Widget<SceneDiagnosticAction> for SceneDiagnosticOwner {
         let full = rect(0.0, 0.0, 20.0, 20.0);
         PaintContribution::new(vec![
             PaintContributionItem::fill_rect(full, Color::BLACK).with_transform(transform),
-            PaintContributionItem::fill_rect(full, Color::WHITE).with_clip(
-                ContributionClip::new(SceneShape::rect(full), transform),
-            ),
+            PaintContributionItem::fill_rect(full, Color::WHITE)
+                .with_clip(ContributionClip::new(SceneShape::rect(full), transform)),
         ])
     }
 
@@ -125,10 +124,8 @@ impl Widget<SceneDiagnosticAction> for SceneDiagnosticOwner {
         HitContribution::new(vec![
             HitRegion::rect(rect(0.0, 0.0, 8.0, 8.0)),
             HitRegion::rect(full).with_transform(transform),
-            HitRegion::rect(full).with_clip(ContributionClip::new(
-                SceneShape::rect(full),
-                transform,
-            )),
+            HitRegion::rect(full)
+                .with_clip(ContributionClip::new(SceneShape::rect(full), transform)),
         ])
     }
 }
@@ -214,7 +211,10 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
         initial.hit_test_scene().target_at(lower_sample),
         Some(root.id())
     );
-    assert_eq!(initial.hit_test_scene().target_at(invalid_only_sample), None);
+    assert_eq!(
+        initial.hit_test_scene().target_at(invalid_only_sample),
+        None
+    );
     assert_eq!(
         diagnostic_codes(&initial),
         vec![
@@ -242,7 +242,10 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
         paint_fixed.hit_test_scene().target_at(lower_sample),
         paint_fixed.frame().root().map(|node| node.id())
     );
-    assert_eq!(paint_fixed.hit_test_scene().target_at(invalid_only_sample), None);
+    assert_eq!(
+        paint_fixed.hit_test_scene().target_at(invalid_only_sample),
+        None
+    );
     assert_eq!(
         diagnostic_codes(&paint_fixed),
         vec![
@@ -264,7 +267,10 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
         .root()
         .unwrap_or_else(|| unreachable!("diagnostic root remains published"))
         .id();
-    assert_eq!(hit_fixed.hit_test_scene().target_at(lower_sample), Some(target));
+    assert_eq!(
+        hit_fixed.hit_test_scene().target_at(lower_sample),
+        Some(target)
+    );
     assert_eq!(
         hit_fixed.hit_test_scene().target_at(invalid_only_sample),
         Some(target)
