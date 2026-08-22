@@ -290,10 +290,7 @@ fn mounted_surface_products_align_and_hit_testing_targets_mounted_ids() {
         .frame()
         .nodes()
         .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == "press")
-        })
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "press"))
         .unwrap_or_else(|| unreachable!("the press button is published"));
     let bounds = press.bounds();
     let point = LogicalPoint::new(
@@ -301,7 +298,10 @@ fn mounted_surface_products_align_and_hit_testing_targets_mounted_ids() {
         bounds.y() + bounds.height() / 2.0,
     )
     .unwrap_or_else(|_| unreachable!("published button bounds are finite"));
-    assert_eq!(publication.hit_test_scene().target_at(point), Some(press.id()));
+    assert_eq!(
+        publication.hit_test_scene().target_at(point),
+        Some(press.id())
+    );
 }
 
 #[test]
@@ -720,7 +720,10 @@ fn equivalent_common_authored_fields_execute_no_publication_phase() {
         LayoutConstraints::unbounded(),
     );
     assert!(before.renderer_products_eq(&after));
-    assert_eq!(before.hit_test_scene().regions(), after.hit_test_scene().regions());
+    assert_eq!(
+        before.hit_test_scene().regions(),
+        after.hit_test_scene().regions()
+    );
     assert_eq!(
         before.hit_test_scene().mounted_targets(),
         after.hit_test_scene().mounted_targets()
@@ -862,7 +865,10 @@ fn equal_token_content_can_reuse_the_warmed_publication() {
         first_publication.hit_test_scene().mounted_targets(),
         second_publication.hit_test_scene().mounted_targets()
     );
-    assert_ne!(first_publication.input_context(), second_publication.input_context());
+    assert_ne!(
+        first_publication.input_context(),
+        second_publication.input_context()
+    );
     assert!(runtime.last_surface_phase_report().executed().is_empty());
 }
 
