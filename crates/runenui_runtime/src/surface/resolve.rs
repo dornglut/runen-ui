@@ -1,9 +1,11 @@
 use crate::MountedNodeId;
 use crate::mounted::SurfaceCapabilityPlan;
+use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneItem};
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
-    Axis, ChildLayout, ElementId, LayoutStyle, StyleResolution, StyleTokens, WidgetDiagnostic,
-    WidgetMeasure, WidgetPaintProof, WidgetTypeId, resolve_style,
+    Axis, ChildLayout, ElementId, HitContributionContext, LayoutStyle, LogicalRect,
+    LogicalTransform, PaintContributionContext, StyleResolution, StyleTokens, WidgetDiagnostic,
+    WidgetMeasure, WidgetTypeId, resolve_style,
 };
 
 /// Topology and publication-alignment facts for one mounted preorder.
@@ -212,22 +214,83 @@ impl ResolvedSurfaceNode {
     }
 }
 
-pub(super) fn resolve_paint(
-    topology: &SurfaceTopologySnapshot,
-    capabilities: &SurfaceCapabilityPlan,
-) -> Vec<WidgetPaintProof> {
-    #[cfg(test)]
-    super::cache::note_paint_phase_execution();
-    topology
-        .nodes
+pub(super) fn paint_contexts(
+    layout: &super::cache::CachedLayoutFacts,
+    styles: &CachedStyleFacts,
+) -> Vec<PaintContributionContext> {
+    layout
+        .bounds
         .iter()
-        .enumerate()
-        .map(|(position, node)| {
-            capabilities
-                .paint_at(position, &node.id)
-                .unwrap_or_default()
+        .zip(&styles.resolutions)
+        .map(|(bounds, style)| {
+            PaintContributionContext::__runtime_new(bounds.size(), style.computed_style())
         })
         .collect()
+}
+
+pub(super) fn hit_contexts(
+    layout: &super::cache::CachedLayoutFacts,
+) -> Vec<HitContributionContext> {
+    layout
+        .bounds
+        .iter()
+        .map(|bounds| HitContributionContext::__runtime_new(bounds.size()))
+        .collect()
+}
+
+pub(super) fn resolve_paint(
+    topology: &SurfaceTopologySnapshot,
+    layout: &super::cache::CachedLayoutFacts,
+    capabilities: &SurfaceCapabilityPlan,
+) -> PaintScene {
+    #[cfg(test)]
+    super::cache::note_paint_phase_execution();
+    let mut items = Vec::new();
+    for (position, node) in topology.nodes.iter().enumerate() {
+        let Some(contribution) = capabilities.paint_at(position, &node.id) else {
+            continue;
+        };
+        let bounds = layout.bounds[position];
+        let placement = LogicalTransform::translation(bounds.x(), bounds.y())
+            .unwrap_or_else(|_| unreachable!("published layout origin is finite"));
+        items.extend(contribution.items().iter().map(|item| {
+            PaintSceneItem::new(item.primitive().clone(), placement)
+        }));
+    }
+    PaintScene::new(items)
+}
+
+pub(super) fn resolve_hit_test(
+    topology: &SurfaceTopologySnapshot,
+    layout: &super::cache::CachedLayoutFacts,
+    capabilities: &SurfaceCapabilityPlan,
+) -> HitTestSceneContent {
+    #[cfg(test)]
+    super::cache::note_hit_test_phase_execution();
+    let membership = topology.nodes.iter().map(|node| node.id.clone()).collect();
+    let mut regions = Vec::new();
+    for (position, node) in topology.nodes.iter().enumerate() {
+        let Some(contribution) = capabilities.hit_test_at(position, &node.id) else {
+            continue;
+        };
+        let bounds = layout.bounds[position];
+        let placement = LogicalTransform::translation(bounds.x(), bounds.y())
+            .unwrap_or_else(|_| unreachable!("published layout origin is finite"));
+        for region in contribution.regions() {
+            let local_rect = region.logical_rect();
+            let Some(surface_origin) = placement.transform_point(local_rect.origin()) else {
+                continue;
+            };
+            let surface_rect = LogicalRect::new(surface_origin, local_rect.size());
+            regions.push(HitTestRegion::new(
+                node.id.clone(),
+                local_rect,
+                placement,
+                surface_rect,
+            ));
+        }
+    }
+    HitTestSceneContent::new(regions, membership)
 }
 
 pub(super) fn resolve_diagnostics(
