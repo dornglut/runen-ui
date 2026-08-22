@@ -1,11 +1,12 @@
 use crate::element::{
     AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, Widget,
-    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
-    WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
+    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetStateTypeId,
+    WidgetTextInput, WidgetTypeId,
 };
 use crate::{
     CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, FocusScope, Focusability,
-    LayoutStyle, MonotonicInstant, MountedNodeId, PointerId, SemanticContribution,
+    HitContribution, HitContributionContext, LayoutStyle, MonotonicInstant, MountedNodeId,
+    PaintContribution, PaintContributionContext, PointerId, SemanticContribution,
     SemanticContributionContext, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
     WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
@@ -52,7 +53,16 @@ pub trait ErasedWidget<Action>: fmt::Debug {
     ) -> Result<WidgetActivationOutput<Action>, WidgetBridgeError>;
     fn measure(&self, state: &dyn Any) -> Result<WidgetMeasure, WidgetBridgeError>;
     fn child_layout(&self, state: &dyn Any) -> Result<Option<ChildLayout>, WidgetBridgeError>;
-    fn paint(&self, state: &dyn Any) -> Result<WidgetPaintProof, WidgetBridgeError>;
+    fn paint(
+        &self,
+        state: &dyn Any,
+        context: PaintContributionContext,
+    ) -> Result<PaintContribution, WidgetBridgeError>;
+    fn hit_test(
+        &self,
+        state: &dyn Any,
+        context: HitContributionContext,
+    ) -> Result<HitContribution, WidgetBridgeError>;
     fn semantics(
         &self,
         state: &dyn Any,
@@ -162,8 +172,23 @@ where
     fn child_layout(&self, _state: &dyn Any) -> Result<Option<ChildLayout>, WidgetBridgeError> {
         Ok(None)
     }
-    fn paint(&self, state: &dyn Any) -> Result<WidgetPaintProof, WidgetBridgeError> {
-        Ok(self.0.paint(downcast_ref::<Implementation::State>(state)?))
+    fn paint(
+        &self,
+        state: &dyn Any,
+        context: PaintContributionContext,
+    ) -> Result<PaintContribution, WidgetBridgeError> {
+        Ok(self
+            .0
+            .paint(downcast_ref::<Implementation::State>(state)?, context))
+    }
+    fn hit_test(
+        &self,
+        state: &dyn Any,
+        context: HitContributionContext,
+    ) -> Result<HitContribution, WidgetBridgeError> {
+        Ok(self
+            .0
+            .hit_test(downcast_ref::<Implementation::State>(state)?, context))
     }
     fn semantics(
         &self,
@@ -280,8 +305,23 @@ where
             Implementation::State,
         >(state)?)))
     }
-    fn paint(&self, state: &dyn Any) -> Result<WidgetPaintProof, WidgetBridgeError> {
-        Ok(self.0.paint(downcast_ref::<Implementation::State>(state)?))
+    fn paint(
+        &self,
+        state: &dyn Any,
+        context: PaintContributionContext,
+    ) -> Result<PaintContribution, WidgetBridgeError> {
+        Ok(self
+            .0
+            .paint(downcast_ref::<Implementation::State>(state)?, context))
+    }
+    fn hit_test(
+        &self,
+        state: &dyn Any,
+        context: HitContributionContext,
+    ) -> Result<HitContribution, WidgetBridgeError> {
+        Ok(self
+            .0
+            .hit_test(downcast_ref::<Implementation::State>(state)?, context))
     }
     fn semantics(
         &self,
@@ -532,8 +572,19 @@ impl<Action> MountedWidget<Action> {
     ) -> Result<Option<ChildLayout>, WidgetBridgeError> {
         self.inner.child_layout(state.value.as_ref())
     }
-    pub fn paint(&self, state: &MountedWidgetState) -> Result<WidgetPaintProof, WidgetBridgeError> {
-        self.inner.paint(state.value.as_ref())
+    pub fn paint(
+        &self,
+        state: &MountedWidgetState,
+        context: PaintContributionContext,
+    ) -> Result<PaintContribution, WidgetBridgeError> {
+        self.inner.paint(state.value.as_ref(), context)
+    }
+    pub fn hit_test(
+        &self,
+        state: &MountedWidgetState,
+        context: HitContributionContext,
+    ) -> Result<HitContribution, WidgetBridgeError> {
+        self.inner.hit_test(state.value.as_ref(), context)
     }
     pub fn semantics(
         &self,
