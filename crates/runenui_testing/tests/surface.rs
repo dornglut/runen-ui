@@ -60,7 +60,11 @@ fn fixed_surface_layout_neutral_scenes_and_custom_measurement_are_public_and_det
             runenui_runtime::LogicalPoint::new(node.bounds().x() + 1.0, node.bounds().y() + 1.0)
                 .ok()?;
         assert_eq!(publication.hit_test_scene().target_at(point), None);
-        assert!(publication.hit_test_scene().contains_mounted_target(node.id()));
+        assert!(
+            publication
+                .hit_test_scene()
+                .contains_mounted_target(node.id())
+        );
         Some((node.bounds(), node.id().clone()))
     })() else {
         return;
