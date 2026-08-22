@@ -39,14 +39,14 @@ impl Widget<Action> for PaintProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State) -> WidgetMeasure {
         WidgetMeasure::Fixed {
             width: LogicalLength::from(10_u16),
             height: LogicalLength::from(10_u16),
         }
     }
 
-    fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
+    fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
         self.paint_calls.set(self.paint_calls.get() + 1);
         let Some(color) = context.computed_style().background() else {
             return PaintContribution::empty();
