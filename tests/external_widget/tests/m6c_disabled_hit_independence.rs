@@ -119,7 +119,10 @@ fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability
     assert!(report.contains(SurfacePhase::Paint));
     assert!(report.contains(SurfacePhase::Semantics));
     assert!(!report.contains(SurfacePhase::HitTesting));
-    assert_eq!(disabled.hit_test_scene().regions(), initial_regions.as_slice());
+    assert_eq!(
+        disabled.hit_test_scene().regions(),
+        initial_regions.as_slice()
+    );
     assert_eq!(disabled.hit_test_scene().target_at(sample), Some(&target));
     assert!(
         runtime
