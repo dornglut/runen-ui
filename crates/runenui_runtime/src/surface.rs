@@ -429,12 +429,8 @@ fn resolve_layout_phase<Action>(
     capability_plan: &SurfaceCapabilityPlan,
     context: &SurfaceBuildContext<'_>,
 ) -> CachedLayoutFacts {
-    let resolved = ResolvedSurfaceTree::for_layout(
-        tree,
-        &current.topology,
-        &current.styles,
-        capability_plan,
-    );
+    let resolved =
+        ResolvedSurfaceTree::for_layout(tree, &current.topology, &current.styles, capability_plan);
     let (size, bounds, report) = layout_resolved_surface(
         &resolved,
         context.root_constraints(),
@@ -503,7 +499,12 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         semantic_product_dirty.then(|| tree.plan_semantic_publication_capabilities());
 
     if layout_dirty {
-        current.layout = Arc::new(resolve_layout_phase(tree, &current, &capability_plan, context));
+        current.layout = Arc::new(resolve_layout_phase(
+            tree,
+            &current,
+            &capability_plan,
+            context,
+        ));
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
     }
