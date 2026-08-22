@@ -52,8 +52,10 @@ impl Widget<Action> for PaintProbe {
             return PaintContribution::empty();
         };
         let size = context.local_size();
-        let rect = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
-            .unwrap_or_else(|_| unreachable!("validated local size yields a valid paint rectangle"));
+        let rect =
+            LogicalRect::try_new(0.0, 0.0, size.width(), size.height()).unwrap_or_else(|_| {
+                unreachable!("validated local size yields a valid paint rectangle")
+            });
         PaintContribution::single(PaintContributionItem::fill_rect(rect, color))
     }
 }
