@@ -10,9 +10,10 @@ This document describes the **conceptual ownership and invariants** of RunenUI's
 - validated authored identity, style, geometry, transient `View`/`Element` authoring, and typed built-in view vocabulary;
 - state-aware open widget/lifecycle/event contracts and typed action mapping;
 - runtime-local opaque protocol identity types such as mounted/semantic/surface/work identities, without allocation authority;
-- host-neutral pointer/keyboard/text/composition/focus/semantic command and semantic contribution/action vocabulary.
+- host-neutral pointer/keyboard/text/composition/focus/semantic command and semantic contribution/action vocabulary;
+- renderer- and host-neutral paint/hit contribution values plus logical scene-geometry values used by the accepted M6B scene protocol.
 
-Core must not own persistent mounted/semantic storage, live queue/scheduler state, runtime identity allocation, native window/accessibility objects, renderer backend handles, application product state, or testing-only mutation seams.
+Core must not own persistent mounted/semantic storage, live queue/scheduler state, runtime identity allocation, native window/accessibility objects, renderer backend handles, resource-provider/cache authority, application product state, or testing-only mutation seams.
 
 ## `runenui_runtime`
 
@@ -24,9 +25,11 @@ Core must not own persistent mounted/semantic storage, live queue/scheduler stat
 - exact routed command/input processing and defaults;
 - bounded canonical trace, deterministic export, and inert replay projections;
 - measurement/layout execution and staged surface publication;
+- canonical renderer-neutral paint-scene composition and `PaintPublication` revision/alignment authority;
+- canonical displayed `HitTestScene` composition, mounted-target/membership injection, retained displayed-generation lookup, and point/resolved-target authority;
 - independent semantic publication/update/diagnostics and exact semantic-action admission/resolution.
 
-Runtime must not depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, or a second semantic/testing authority.
+Runtime must not depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, resource-provider/payload/cache ownership, or a second semantic/paint/hit/testing authority.
 
 ## `runenui_testing`
 
@@ -58,13 +61,14 @@ Exact semantic action requests are admitted against current published semantic a
 
 Surface publication follows a staged transaction with admission, read-only/staged planning, candidate-dependent final preflight, and commit. Recoverable refusal or terminal failure must not expose a partial new RunenUI-owned publication state.
 
-Renderer-facing products, hit/input products, semantics, layout, and diagnostics remain distinct authorities even when committed together.
+Renderer-facing paint products, hit/input products, semantics, layout, and diagnostics remain distinct authorities even when committed together. Accepted M6B uses immutable `PaintScene`/`PaintPublication` and `HitTestScene` products; paint revision identity remains distinct from displayed input generation.
 
 ## Current limitations
 
 The current public surface is pre-1.0 and may change incompatibly when accepted architecture requires a clean cutover. Important missing production capabilities include:
 
-- renderer-neutral production paint/hit scenes and concrete renderer backends;
+- complete M6C transform/clip/resource/raster-scale/damage/capability breadth and M6D independent-consumer/migration closure for the accepted paint/hit products;
+- concrete renderer backends;
 - native window/event-loop/platform accessibility adapters and multi-window lifecycle;
 - production text shaping, international layout, editing, clipboard, and native IME integration;
 - production responsive layout/style breadth and a complete standard control library.

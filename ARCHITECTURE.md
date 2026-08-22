@@ -35,7 +35,7 @@ Code and executable tests are the evidence for what the current implementation d
 
 Detailed current architecture is indexed under [docs/architecture](docs/architecture/README.md). Durable decisions live in [ADRs](docs/adr/). Permanent observable/proof contracts live under [conformance](docs/conformance/README.md). High-level dependency sequence lives in the [roadmap](docs/roadmap.md). Current accepted maturity is summarized in [status](docs/status.md).
 
-Accepted future architecture becomes current API only after implementation and acceptance. In particular, renderer-neutral paint/hit scene contracts are accepted successor architecture, not current Rust scene behavior.
+Accepted future architecture becomes current API only after implementation and acceptance. The M6A retained-publication substrate and M6B canonical renderer-neutral `PaintPublication`/`PaintScene`/`HitTestScene`, explicit hit invalidation, and displayed-generation hit cutover are accepted current behavior. M6C composition/resource/metadata/capability breadth and M6D independent-consumer/migration closure remain target architecture.
 
 Exact public Rust signatures remain authoritative in source and Rustdoc; conceptual public ownership is summarized in the [public API contract](docs/architecture/public-api.md).
 
