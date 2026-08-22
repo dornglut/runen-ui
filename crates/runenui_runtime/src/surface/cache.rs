@@ -296,9 +296,8 @@ mod tests {
         report
     }
 
-    fn retained(cache: &Option<SurfaceCache>) -> SurfaceCache {
+    fn retained(cache: Option<&SurfaceCache>) -> SurfaceCache {
         cache
-            .as_ref()
             .unwrap_or_else(|| unreachable!("initial publication retains a cache"))
             .staged()
     }
@@ -311,7 +310,7 @@ mod tests {
         let mut cache = None;
         let _ = publish(&mut tree, &context, &mut cache);
         let root = tree.publication_preorder_ids()[0].clone();
-        let before = retained(&cache);
+        let before = retained(cache.as_ref());
 
         let node = tree
             .node_mut(&root)
@@ -341,7 +340,7 @@ mod tests {
         let mut cache = None;
         let _ = publish(&mut tree, &context, &mut cache);
         let root = tree.publication_preorder_ids()[0].clone();
-        let before = retained(&cache);
+        let before = retained(cache.as_ref());
 
         let node = tree
             .node_mut(&root)
