@@ -69,11 +69,11 @@ fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication
             .any()
     );
     let hit = publication
-        .frame()
-        .hit_test(LogicalPoint::new(1.0, 25.0).unwrap_or_else(|_| unreachable!()))
-        .unwrap_or_else(|| unreachable!());
+        .hit_test_scene()
+        .target_at(LogicalPoint::new(1.0, 25.0).unwrap_or_else(|_| unreachable!()))
+        .unwrap_or_else(|| unreachable!("button A is targetable in the canonical hit scene"));
     assert_ne!(
-        hit.id(),
+        hit,
         publication
             .frame()
             .root()
