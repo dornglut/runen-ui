@@ -51,7 +51,7 @@ impl PaintContribution {
 
     /// Creates one contribution from already validated items in local order.
     #[must_use]
-    pub fn new(items: Vec<PaintContributionItem>) -> Self {
+    pub const fn new(items: Vec<PaintContributionItem>) -> Self {
         Self { items }
     }
 
