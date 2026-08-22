@@ -144,7 +144,10 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     assert!(second.input_context().coordinate_revision() > first_context.coordinate_revision());
     assert!(second.input_context().hit_test_generation() > first_context.hit_test_generation());
     assert_eq!(second.paint_publication(), &first_paint);
-    assert_eq!(second.hit_test_scene().regions(), first_hit_regions.as_slice());
+    assert_eq!(
+        second.hit_test_scene().regions(),
+        first_hit_regions.as_slice()
+    );
     assert_eq!(
         second.hit_test_scene().mounted_targets(),
         first_membership.as_slice()
