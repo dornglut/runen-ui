@@ -248,7 +248,8 @@ fn keyed_reorder_preserves_mounted_state_focus_and_slots() {
         matches!(
             item.primitive(),
             PaintPrimitive::FillRect { rect, color }
-                if rect.width() == 21.0 && *color == Color::rgba(1, 0, 0, 255)
+                if (rect.width() - 21.0).abs() <= f32::EPSILON
+                    && *color == Color::rgba(1, 0, 0, 255)
         )
     }));
     assert_eq!(runtime.reconciliation_report().moved_count(), 2);
