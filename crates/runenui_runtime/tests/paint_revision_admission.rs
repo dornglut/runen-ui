@@ -49,7 +49,10 @@ fn exhausted_paint_revision_does_not_block_unchanged_renderer_publication() {
         .unwrap_or_else(|_| unreachable!("unchanged paint reuses its accepted publication"));
 
     assert_eq!(second.paint_publication(), first.paint_publication());
-    assert_eq!(second.paint_publication().revision(), first.paint_publication().revision());
+    assert_eq!(
+        second.paint_publication().revision(),
+        first.paint_publication().revision()
+    );
     assert_eq!(published_count(&runtime), published_before + 1);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
@@ -67,7 +70,10 @@ fn paint_revision_max_is_issued_once_then_changed_publication_fails_before_commi
         .publish_surface(&SurfaceBuildContext::tight(&tokens, size(32, 16)))
         .unwrap_or_else(|_| unreachable!("the final non-wrapping paint revision is admitted"));
     assert_eq!(max_revision.paint_publication().revision().get(), u64::MAX);
-    assert_eq!(max_revision.paint_publication().logical_size(), size(32, 16));
+    assert_eq!(
+        max_revision.paint_publication().logical_size(),
+        size(32, 16)
+    );
 
     let phase_before_failure = runtime.last_surface_phase_report().clone();
     let published_before_failure = published_count(&runtime);
@@ -76,7 +82,10 @@ fn paint_revision_max_is_issued_once_then_changed_publication_fails_before_commi
         SurfacePublicationCounter::PaintRevision,
     );
 
-    assert_eq!(result.as_ref().err(), Some(&PublishSurfaceError::Terminal(reason)));
+    assert_eq!(
+        result.as_ref().err(),
+        Some(&PublishSurfaceError::Terminal(reason))
+    );
     assert_eq!(runtime.status(), RuntimeStatus::Terminal(reason));
     assert_eq!(published_count(&runtime), published_before_failure);
     assert_eq!(runtime.last_surface_phase_report(), &phase_before_failure);
