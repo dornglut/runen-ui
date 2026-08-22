@@ -28,10 +28,10 @@ freezes the contract and implementation sequence; it does not promote any row.
 
 ```text
 36 total unique rows
-0 owner-accepted
+5 owner-accepted
 0 implementation-complete
 0 proof-complete
-36 blocked
+31 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -68,11 +68,11 @@ scene is not valid conformance.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| SCENE-PUB-01 | Non-structural planning starts from cheap immutable/shared retained phase products and does not deep-clone the complete surface cache before deciding dirty replacements. | Narrow-publication retained-product reuse tests and allocation/copy characterization | Whole-`SurfaceCache` clone regression proof across clean, focus-only, semantic-only, style-only, layout, and paint cases | Publication phase diagnostics/benchmark evidence | M6A | blocked | Required |
-| SCENE-PUB-02 | Unchanged topology/style/layout/hit/paint/diagnostic products are reused while each dirty phase owns an explicit replacement; deterministic output order is independent of the chosen storage handles; the retained layout phase remains the single storage owner from which runtime derives current directional-focus geometry without a second focus cache. | Per-phase handle/reuse and dirty-replacement tests plus current-focus geometry projection/reuse proof | Cross-phase accidental replacement, storage-order iteration, alias-to-mutable-state, duplicate focus cache, and hit-scene-as-focus-geometry tests | Surface phase report plus retained-product/focus-projection identity diagnostics | M6A | blocked | Required |
-| SCENE-PUB-03 | The retained-storage migration preserves accepted M5 `SEM-PUB-04`: rejected/backpressured/counter-exhausted/integrity-failed plans commit zero new cache, semantic, displayed-hit, redraw, rehit, or success-trace state. | Existing M5 atomicity corpus rerun against new substrate plus M6 narrow-plan cases | Partial-swap, rollback-copy, lost-reservation, and terminal-wrap regression proof | Inherited M5 publication trace/counter evidence | M6A | blocked | Required |
-| SCENE-PUB-04 | Semantic publication remains an independently typed sibling coordinated by the same final surface commit; persistent renderer phase storage never becomes semantic identity/tree authority. | Public semantic-versus-renderer product independence proof after storage migration | Semantic facts in renderer cache/scene and renderer facts in semantic product audit | Cross-product publication diagnostics and M5 semantic trace regression | M6A | blocked | Required |
-| SCENE-PUB-05 | Structural and dirty-phase publications remain deterministic while narrow clean/focus/semantic publications demonstrate no O(surface) deep copy of every retained renderer-side phase. | Structural/narrow regression suite and bounded cost characterization required by #59 | Reintroduced whole-surface copies, hidden rollback snapshots, or second mutable cache audit | #59 performance record plus exact phase-execution diagnostics | M6A | blocked | Required |
+| SCENE-PUB-01 | Non-structural planning starts from cheap immutable/shared retained phase products and does not deep-clone the complete surface cache before deciding dirty replacements. | Narrow-publication retained-product reuse tests and allocation/copy characterization | Whole-`SurfaceCache` clone regression proof across clean, focus-only, semantic-only, style-only, layout, and paint cases | Publication phase diagnostics/benchmark evidence | M6A | owner-accepted | Required |
+| SCENE-PUB-02 | Unchanged topology/style/layout/hit/paint/diagnostic products are reused while each dirty phase owns an explicit replacement; deterministic output order is independent of the chosen storage handles; the retained layout phase remains the single storage owner from which runtime derives current directional-focus geometry without a second focus cache. | Per-phase handle/reuse and dirty-replacement tests plus current-focus geometry projection/reuse proof | Cross-phase accidental replacement, storage-order iteration, alias-to-mutable-state, duplicate focus cache, and hit-scene-as-focus-geometry tests | Surface phase report plus retained-product/focus-projection identity diagnostics | M6A | owner-accepted | Required |
+| SCENE-PUB-03 | The retained-storage migration preserves accepted M5 `SEM-PUB-04`: rejected/backpressured/counter-exhausted/integrity-failed plans commit zero new cache, semantic, displayed-hit, redraw, rehit, or success-trace state. | Existing M5 atomicity corpus rerun against new substrate plus M6 narrow-plan cases | Partial-swap, rollback-copy, lost-reservation, and terminal-wrap regression proof | Inherited M5 publication trace/counter evidence | M6A | owner-accepted | Required |
+| SCENE-PUB-04 | Semantic publication remains an independently typed sibling coordinated by the same final surface commit; persistent renderer phase storage never becomes semantic identity/tree authority. | Public semantic-versus-renderer product independence proof after storage migration | Semantic facts in renderer cache/scene and renderer facts in semantic product audit | Cross-product publication diagnostics and M5 semantic trace regression | M6A | owner-accepted | Required |
+| SCENE-PUB-05 | Structural and dirty-phase publications remain deterministic while narrow clean/focus/semantic publications demonstrate no O(surface) deep copy of every retained renderer-side phase. | Structural/narrow regression suite and bounded cost characterization required by #59 | Reintroduced whole-surface copies, hidden rollback snapshots, or second mutable cache audit | #59 performance record plus exact phase-execution diagnostics | M6A | owner-accepted | Required |
 
 ## M6B — canonical paint/hit scene kernel and displayed-hit cutover
 
