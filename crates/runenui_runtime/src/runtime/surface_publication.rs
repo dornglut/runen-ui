@@ -478,23 +478,25 @@ impl SurfacePublicationState {
         &mut self,
         geometry: &[(MountedNodeId, [f32; 4])],
     ) {
-        let snapshot = self
-            .snapshots
-            .back_mut()
-            .unwrap_or_else(|| unreachable!("test publishes before replacing focus geometry"));
-        for (id, [x, y, width, height]) in geometry {
-            let node = snapshot
-                .nodes
-                .iter_mut()
-                .find(|node| &node.id == id)
-                .unwrap_or_else(|| unreachable!("test geometry names a published node"));
-            node.bounds = LogicalRect::new(
-                LogicalPoint::new(*x, *y)
-                    .unwrap_or_else(|_| unreachable!("test focus origin is finite")),
-                crate::LogicalSize::try_new(*width, *height)
-                    .unwrap_or_else(|_| unreachable!("test focus size is finite and non-negative")),
-            );
-        }
+        let projected = geometry
+            .iter()
+            .map(|(id, [x, y, width, height])| {
+                (
+                    id.clone(),
+                    LogicalRect::new(
+                        LogicalPoint::new(*x, *y)
+                            .unwrap_or_else(|_| unreachable!("test focus origin is finite")),
+                        crate::LogicalSize::try_new(*width, *height).unwrap_or_else(|_| {
+                            unreachable!("test focus size is finite and non-negative")
+                        }),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+        self.cache
+            .as_mut()
+            .unwrap_or_else(|| unreachable!("test publishes before replacing focus geometry"))
+            .replace_focus_geometry_for_test(&projected);
     }
 
     #[cfg(feature = "internal-test-seams")]
@@ -515,17 +517,11 @@ impl SurfacePublicationState {
         &self.phase_report
     }
 
-    /// Clones current published rectangles for one focus-selection transaction.
+    /// Projects current focus-selection geometry from the retained layout phase.
     pub(crate) fn current_focus_geometry(&self) -> Vec<(MountedNodeId, LogicalRect)> {
-        self.snapshots
-            .back()
-            .map(|snapshot| {
-                snapshot
-                    .nodes
-                    .iter()
-                    .map(|node| (node.id.clone(), node.bounds))
-                    .collect()
-            })
+        self.cache
+            .as_ref()
+            .map(SurfaceCache::current_focus_geometry)
             .unwrap_or_default()
     }
 
