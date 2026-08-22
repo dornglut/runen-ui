@@ -71,13 +71,17 @@ pub(crate) fn apply_invalidation<Action>(
         node.caches.measurement = CachedCapability::Unresolved;
         node.caches.child_layout = CachedCapability::Unresolved;
         node.caches.paint = CachedCapability::Unresolved;
+        node.caches.paint_context = None;
         node.caches.hit_test = CachedCapability::Unresolved;
+        node.caches.hit_test_context = None;
     }
     if invalidation.contains(WidgetInvalidation::HIT_TEST) {
         node.caches.hit_test = CachedCapability::Unresolved;
+        node.caches.hit_test_context = None;
     }
     if invalidation.contains(WidgetInvalidation::PAINT) {
         node.caches.paint = CachedCapability::Unresolved;
+        node.caches.paint_context = None;
     }
     if invalidation.contains(WidgetInvalidation::SEMANTICS) {
         invalidate_semantic_structure(node);
