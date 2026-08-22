@@ -15,14 +15,14 @@ impl Widget<()> for PaintProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State) -> WidgetMeasure {
         WidgetMeasure::Fixed {
             width: LogicalLength::from(10_u16),
             height: LogicalLength::from(10_u16),
         }
     }
 
-    fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
+    fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
         let size = context.local_size();
         let full = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
             .unwrap_or_else(|_| unreachable!("validated local size yields a valid rectangle"));
@@ -48,11 +48,11 @@ impl UiApp for App {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> Element<Self::Action> {
+    fn root((): &Self::State) -> Element<Self::Action> {
         Element::new(PaintProbe).key("paint-probe")
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 fn logical_rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
@@ -112,10 +112,13 @@ fn source_over(dst: [f32; 4], color: Color) -> [f32; 4] {
     let alpha = f32::from(color.alpha()) / 255.0;
     let one_minus_alpha = 1.0 - alpha;
     [
-        srgb8_to_linear(color.red()) * alpha + dst[0] * one_minus_alpha,
-        srgb8_to_linear(color.green()) * alpha + dst[1] * one_minus_alpha,
-        srgb8_to_linear(color.blue()) * alpha + dst[2] * one_minus_alpha,
-        alpha + dst[3] * one_minus_alpha,
+        dst[0].mul_add(one_minus_alpha, srgb8_to_linear(color.red()) * alpha),
+        dst[1].mul_add(
+            one_minus_alpha,
+            srgb8_to_linear(color.green()) * alpha,
+        ),
+        dst[2].mul_add(one_minus_alpha, srgb8_to_linear(color.blue()) * alpha),
+        dst[3].mul_add(one_minus_alpha, alpha),
     ]
 }
 
@@ -128,11 +131,12 @@ fn composite(primitives: &[PaintPrimitive], sample: LogicalPoint) -> [f32; 4] {
         })
 }
 
+fn close(actual: f32, expected: f32) -> bool {
+    (actual - expected).abs() <= 1.0e-6
+}
+
 fn assert_close(actual: f32, expected: f32) {
-    assert!(
-        (actual - expected).abs() <= 1.0e-6,
-        "{actual} != {expected}"
-    );
+    assert!(close(actual, expected), "{actual} != {expected}");
 }
 
 #[test]
@@ -148,22 +152,26 @@ fn downstream_scene_preserves_basic_rect_literals_order_and_owner_placement() {
     let items = publication.paint_scene().items();
 
     assert_eq!(items.len(), 4);
-    assert_eq!(
-        items[0].local_to_surface().components(),
-        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
-    );
+    for (actual, expected) in items[0]
+        .local_to_surface()
+        .components()
+        .into_iter()
+        .zip([1.0, 0.0, 0.0, 1.0, 0.0, 0.0])
+    {
+        assert_close(actual, expected);
+    }
     assert!(matches!(
         items[0].primitive(),
         PaintPrimitive::FillRect { rect, color }
-            if rect.width() == 10.0
-                && rect.height() == 10.0
+            if close(rect.width(), 10.0)
+                && close(rect.height(), 10.0)
                 && *color == Color::rgba(255, 0, 0, 128)
     ));
     assert!(matches!(
         items[1].primitive(),
         PaintPrimitive::StrokeRect { rect, color, width }
-            if rect.width() == 10.0
-                && rect.height() == 10.0
+            if close(rect.width(), 10.0)
+                && close(rect.height(), 10.0)
                 && *color == Color::rgba(0, 0, 255, 128)
                 && *width == LogicalLength::from(2_u16)
     ));
@@ -235,5 +243,10 @@ fn independent_fixed_opacity_compositor_decodes_srgb_and_uses_source_over_scene_
     assert_close(red_then_blue[3], alpha + alpha * (1.0 - alpha));
     assert_close(blue_then_red[0], alpha);
     assert_close(blue_then_red[2], alpha * (1.0 - alpha));
-    assert_ne!(red_then_blue, blue_then_red);
+    assert!(
+        red_then_blue
+            .iter()
+            .zip(blue_then_red)
+            .any(|(red_first, blue_first)| !close(*red_first, blue_first))
+    );
 }
