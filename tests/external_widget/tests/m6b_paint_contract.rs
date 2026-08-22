@@ -124,7 +124,12 @@ fn composite(primitives: &[PaintPrimitive], sample: LogicalPoint) -> [f32; 4] {
         .iter()
         .filter(|primitive| primitive_covers(primitive, sample))
         .fold([0.0; 4], |dst, primitive| {
-            source_over(dst, primitive.color())
+            source_over(
+                dst,
+                primitive
+                    .color()
+                    .unwrap_or_else(|| unreachable!("fixture primitive carries literal color")),
+            )
         })
 }
 

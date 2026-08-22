@@ -177,7 +177,11 @@ fn paint_colors(publication: &SurfacePublication) -> Vec<Color> {
         .paint_scene()
         .items()
         .iter()
-        .map(|item| item.primitive().color())
+        .map(|item| {
+            item.primitive()
+                .color()
+                .unwrap_or_else(|| unreachable!("order fixture carries literal colors"))
+        })
         .collect()
 }
 

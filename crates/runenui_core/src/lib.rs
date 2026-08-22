@@ -223,6 +223,7 @@ mod layout;
 mod paint;
 mod pointer;
 pub mod prelude;
+mod resource;
 mod runtime_protocol;
 mod scene_geometry;
 mod semantic;
@@ -270,7 +271,8 @@ pub use input::{
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
 };
 pub use paint::{
-    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
+    ImagePrimitive, PaintContribution, PaintContributionContext, PaintContributionItem,
+    PaintPrimitive, ShapedTextRunPrimitive,
 };
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///
@@ -298,6 +300,7 @@ pub use pointer::{
     PointerCaptureEvent, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId,
     PointerPhase,
 };
+pub use resource::{ResourceKind, ResourceKindMismatch, ResourceRef};
 pub use runtime_protocol::{
     MonotonicInstant, MonotonicTimeError, MountedNodeId, SemanticNodeId, SurfaceId,
     SurfaceInputContext, WorkSequence,

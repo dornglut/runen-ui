@@ -46,7 +46,10 @@ fn srgb8_to_linear(channel: u8) -> f32 {
 }
 
 fn source_over(dst: [f32; 4], item: &PaintSceneItem) -> [f32; 4] {
-    let color = item.primitive().color();
+    let color = item
+        .primitive()
+        .color()
+        .unwrap_or_else(|| unreachable!("fixture primitive carries literal color"));
     let alpha = (f32::from(color.alpha()) / 255.0) * item.opacity().get();
     let one_minus_alpha = 1.0 - alpha;
     [
