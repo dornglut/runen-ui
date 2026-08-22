@@ -94,14 +94,16 @@ use std::{
 };
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, CompositionCancelReason, CompositionEvent, Container,
-    EdgeInsets, Element, EventContext, EventPhase, FocusEventKind, FocusReason, IntoEffects,
-    KeyboardPhase, LogicalLength, NoHostProtocol, SemanticAction, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
-    SubscriptionSet, UiApp, UiEvent, View, Views, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic, WidgetEventOutput,
-    WidgetInvalidation, WidgetMeasure, WidgetMountContext, WidgetPaintProof, WidgetTextKind,
-    WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children, column, container, text,
+    Axis, ChildLayout, ChildLayoutWidget, Color, CompositionCancelReason, CompositionEvent,
+    Container, EdgeInsets, Element, EventContext, EventPhase, FocusEventKind, FocusReason,
+    HitContribution, HitContributionContext, IntoEffects, KeyboardPhase, LogicalLength,
+    LogicalRect, LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
+    PaintContributionItem, SemanticAction, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticRole, SemanticState, SubscriptionSet, UiApp, UiEvent, View,
+    Views, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+    WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetMountContext,
+    WidgetTextKind, WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children, column,
+    container, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -535,7 +537,7 @@ impl ExternalSubscriptionWidget {
     }
 }
 
-impl<Action> Widget<Action> for ExternalSubscriptionWidget {
+impl<Action> Widget<Action> for ExternalSubscriptionWidget<Action> {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -639,8 +641,28 @@ impl Widget<ChildAction> for PulseButton {
         }
     }
 
-    fn paint(&self, _state: &Self::State) -> WidgetPaintProof {
-        WidgetPaintProof::new("pulse", format!("label={:?}", self.label))
+    fn paint(
+        &self,
+        _state: &Self::State,
+        context: PaintContributionContext,
+    ) -> PaintContribution {
+        let rect = external_local_rect(context.local_size());
+        PaintContribution::new(vec![
+            PaintContributionItem::fill_rect(rect, Color::rgba(32, 64, 96, 255)),
+            PaintContributionItem::stroke_rect(
+                rect,
+                Color::rgba(224, 224, 224, 255),
+                LogicalLength::from(1_u16),
+            ),
+        ])
+    }
+
+    fn hit_test(
+        &self,
+        _state: &Self::State,
+        context: HitContributionContext,
+    ) -> HitContribution {
+        HitContribution::single_rect(external_local_rect(context.local_size()))
     }
 
     fn semantics(
@@ -677,6 +699,11 @@ impl Widget<ChildAction> for PulseButton {
     }
 }
 
+fn external_local_rect(size: LogicalSize) -> LogicalRect {
+    LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+        .unwrap_or_else(|_| unreachable!("validated local size yields a valid local rectangle"))
+}
+
 #[must_use]
 pub fn child_component() -> Element<ChildAction> {
     Element::new(PulseButton::new("Pulse"))
@@ -705,9 +732,6 @@ pub struct CustomColumn;
 impl<Action> Widget<Action> for CustomColumn {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn paint(&self, _state: &Self::State) -> WidgetPaintProof {
-        WidgetPaintProof::new("external-panel", "axis=Vertical")
-    }
     fn semantics(
         &self,
         _state: &Self::State,
@@ -747,9 +771,6 @@ pub struct CustomRow;
 impl<Action> Widget<Action> for CustomRow {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn paint(&self, _state: &Self::State) -> WidgetPaintProof {
-        WidgetPaintProof::new("external-row", "axis=Horizontal")
-    }
     fn semantics(
         &self,
         _state: &Self::State,
