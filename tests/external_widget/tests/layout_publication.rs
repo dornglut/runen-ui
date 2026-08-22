@@ -154,7 +154,7 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     );
     assert_ne!(second.hit_test_scene(), first.hit_test_scene());
     assert!(second.renderer_products_eq(&first));
-    assert_eq!(second.clone().into_renderer_products(), first_products);
+    assert_eq!(second.into_renderer_products(), first_products);
     assert_eq!(
         (panel.get(), text.get(), fixed.get(), layout.get()),
         (1, 1, 1, 1)
