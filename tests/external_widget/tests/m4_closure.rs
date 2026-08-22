@@ -4,11 +4,11 @@ use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
     Axis, ChildLayout, ChildLayoutWidget, CommandOrigin, CompositionEvent, Element, EventContext,
-    EventPhase, FocusEventKind, LogicalLength, LogicalPoint, NoHostProtocol, PointerButton,
-    PointerButtons, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
-    SemanticCommand, StyleTokens, UiApp, UiEvent, View, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation,
-    WidgetMeasure, WidgetTextInput, container,
+    EventPhase, FocusEventKind, HitContribution, HitContributionContext, LogicalLength, LogicalPoint,
+    LogicalRect, NoHostProtocol, PointerButton, PointerButtons, PointerCaptureKind,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand, StyleTokens, UiApp,
+    UiEvent, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+    WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetTextInput, container,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext, TraceRecordKind,
@@ -161,6 +161,13 @@ impl Widget<ChildAction> for ClosureWidget {
             width: LogicalLength::from(24_u16),
             height: LogicalLength::from(24_u16),
         }
+    }
+
+    fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {
+        let size = context.local_size();
+        let rect = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+            .unwrap_or_else(|_| unreachable!("validated local size yields a valid hit rectangle"));
+        HitContribution::single_rect(rect)
     }
 }
 
