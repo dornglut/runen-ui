@@ -313,11 +313,11 @@ mod tests {
 
         tree.mark_semantic_focus_product_dirty();
         let report = publish(&mut tree, &context, &mut cache);
-
-        assert_eq!(report.executed(), &[SurfacePhase::Semantics]);
         let after = cache
             .as_ref()
             .unwrap_or_else(|| unreachable!("focus publication retains a cache"));
+
+        assert_eq!(report.executed(), &[SurfacePhase::Semantics]);
         assert_eq!(before.retained_product_reuse(after), [true; 7]);
     }
 
