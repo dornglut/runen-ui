@@ -1,16 +1,22 @@
-use runenui_core::{ChildLayout, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof};
+use runenui_core::{
+    ChildLayout, HitContribution, HitContributionContext, PaintContribution,
+    PaintContributionContext, WidgetDiagnostic, WidgetMeasure,
+};
 
 use super::{CachedCapability, DirtyPhases, MountedNodeId, MountedTree, node::state_is_corrupted};
 
 pub(crate) struct SurfaceCapabilityPlan {
     owners: Vec<PlannedSurfaceCapabilities>,
+    needs_paint: bool,
+    needs_hit_test: bool,
 }
 
 struct PlannedSurfaceCapabilities {
     owner: MountedNodeId,
     measurement: Option<CachedCapability<WidgetMeasure>>,
     child_layout: Option<CachedCapability<Option<ChildLayout>>>,
-    paint: Option<CachedCapability<WidgetPaintProof>>,
+    paint: Option<CachedCapability<PaintContribution>>,
+    hit_test: Option<CachedCapability<HitContribution>>,
     diagnostics: Option<CachedCapability<Vec<WidgetDiagnostic>>>,
     mark_integrity_failed: bool,
 }
@@ -44,9 +50,20 @@ impl SurfaceCapabilityPlan {
         &self,
         position: usize,
         owner: &MountedNodeId,
-    ) -> Option<WidgetPaintProof> {
+    ) -> Option<PaintContribution> {
         self.owner_at(position, owner)
             .paint
+            .as_ref()
+            .and_then(CachedCapability::ready)
+    }
+
+    pub(crate) fn hit_test_at(
+        &self,
+        position: usize,
+        owner: &MountedNodeId,
+    ) -> Option<HitContribution> {
+        self.owner_at(position, owner)
+            .hit_test
             .as_ref()
             .and_then(CachedCapability::ready)
     }
@@ -76,15 +93,23 @@ impl SurfaceCapabilityPlan {
 }
 
 impl<Action> MountedTree<Action> {
+    /// Stages capabilities that do not depend on final publication-local layout.
+    /// Paint and hit callbacks are deliberately deferred until their contexts can
+    /// be built from the final retained layout/style candidate.
     pub(crate) fn plan_surface_publication_capabilities(
         &self,
         phases: DirtyPhases,
     ) -> SurfaceCapabilityPlan {
         let needs_layout = phases.contains(DirtyPhases::LAYOUT);
         let needs_paint = phases.contains(DirtyPhases::PAINT);
+        let needs_hit_test = phases.contains(DirtyPhases::HIT_TEST);
         let needs_diagnostics = phases.contains(DirtyPhases::DIAGNOSTICS);
-        if !needs_layout && !needs_paint && !needs_diagnostics {
-            return SurfaceCapabilityPlan { owners: Vec::new() };
+        if !needs_layout && !needs_paint && !needs_hit_test && !needs_diagnostics {
+            return SurfaceCapabilityPlan {
+                owners: Vec::new(),
+                needs_paint: false,
+                needs_hit_test: false,
+            };
         }
         let owners = self
             .publication_preorder_ids()
@@ -98,6 +123,7 @@ impl<Action> MountedTree<Action> {
                     measurement: None,
                     child_layout: None,
                     paint: None,
+                    hit_test: None,
                     diagnostics: None,
                     mark_integrity_failed: false,
                 };
@@ -109,35 +135,31 @@ impl<Action> MountedTree<Action> {
                     if needs_paint {
                         planned.paint = Some(CachedCapability::StatePayloadMismatch);
                     }
+                    if needs_hit_test {
+                        planned.hit_test = Some(CachedCapability::StatePayloadMismatch);
+                    }
                     if needs_diagnostics {
                         planned.diagnostics = Some(CachedCapability::StatePayloadMismatch);
                     }
                     planned.mark_integrity_failed =
-                        needs_layout || needs_paint || needs_diagnostics;
+                        needs_layout || needs_paint || needs_hit_test || needs_diagnostics;
                     return planned;
                 }
 
                 if needs_layout {
-                    planned.measurement = Some(stage_capability(
+                    planned.measurement = Some(stage_cached_capability(
                         &node.caches.measurement,
                         || node.widget.measure(&node.state),
                         &mut planned.mark_integrity_failed,
                     ));
-                    planned.child_layout = Some(stage_capability(
+                    planned.child_layout = Some(stage_cached_capability(
                         &node.caches.child_layout,
                         || node.widget.child_layout(&node.state),
                         &mut planned.mark_integrity_failed,
                     ));
                 }
-                if needs_paint {
-                    planned.paint = Some(stage_capability(
-                        &node.caches.paint,
-                        || node.widget.paint(&node.state),
-                        &mut planned.mark_integrity_failed,
-                    ));
-                }
                 if needs_diagnostics {
-                    planned.diagnostics = Some(stage_capability(
+                    planned.diagnostics = Some(stage_cached_capability(
                         &node.caches.diagnostics,
                         || node.widget.diagnostics(&node.state),
                         &mut planned.mark_integrity_failed,
@@ -146,7 +168,58 @@ impl<Action> MountedTree<Action> {
                 planned
             })
             .collect();
-        SurfaceCapabilityPlan { owners }
+        SurfaceCapabilityPlan {
+            owners,
+            needs_paint,
+            needs_hit_test,
+        }
+    }
+
+    /// Evaluates contextual scene contributions after final layout/style facts
+    /// exist. Whenever the owning phase executes the callback is evaluated fresh;
+    /// reuse happens by skipping the phase, not by replaying a contribution that
+    /// was produced for an older local size or resolved style.
+    pub(crate) fn plan_surface_publication_contributions(
+        &self,
+        plan: &mut SurfaceCapabilityPlan,
+        paint_contexts: &[PaintContributionContext],
+        hit_contexts: &[HitContributionContext],
+    ) {
+        if !plan.needs_paint && !plan.needs_hit_test {
+            return;
+        }
+        debug_assert_eq!(plan.owners.len(), paint_contexts.len());
+        debug_assert_eq!(plan.owners.len(), hit_contexts.len());
+        for (position, planned) in plan.owners.iter_mut().enumerate() {
+            if planned.paint.is_some() && planned.hit_test.is_some() {
+                continue;
+            }
+            let node = self
+                .node(&planned.owner)
+                .unwrap_or_else(|| unreachable!("surface capability owner remains live"));
+            if state_is_corrupted(node) {
+                if plan.needs_paint && planned.paint.is_none() {
+                    planned.paint = Some(CachedCapability::StatePayloadMismatch);
+                }
+                if plan.needs_hit_test && planned.hit_test.is_none() {
+                    planned.hit_test = Some(CachedCapability::StatePayloadMismatch);
+                }
+                planned.mark_integrity_failed = true;
+                continue;
+            }
+            if plan.needs_paint && planned.paint.is_none() {
+                planned.paint = Some(stage_fresh_capability(
+                    || node.widget.paint(&node.state, paint_contexts[position]),
+                    &mut planned.mark_integrity_failed,
+                ));
+            }
+            if plan.needs_hit_test && planned.hit_test.is_none() {
+                planned.hit_test = Some(stage_fresh_capability(
+                    || node.widget.hit_test(&node.state, hit_contexts[position]),
+                    &mut planned.mark_integrity_failed,
+                ));
+            }
+        }
     }
 
     pub(crate) fn commit_surface_publication_capabilities(&mut self, plan: SurfaceCapabilityPlan) {
@@ -163,6 +236,9 @@ impl<Action> MountedTree<Action> {
             if let Some(paint) = planned.paint {
                 node.caches.paint = paint;
             }
+            if let Some(hit_test) = planned.hit_test {
+                node.caches.hit_test = hit_test;
+            }
             if let Some(diagnostics) = planned.diagnostics {
                 node.caches.diagnostics = diagnostics;
             }
@@ -171,19 +247,28 @@ impl<Action> MountedTree<Action> {
     }
 }
 
-fn stage_capability<T: Clone, E>(
+fn stage_cached_capability<T: Clone, E>(
     cached: &CachedCapability<T>,
     resolve: impl FnOnce() -> Result<T, E>,
     mark_integrity_failed: &mut bool,
 ) -> CachedCapability<T> {
     match cached {
-        CachedCapability::Unresolved => resolve().map_or_else(
-            |_| {
-                *mark_integrity_failed = true;
-                CachedCapability::StatePayloadMismatch
-            },
-            CachedCapability::Ready,
-        ),
+        CachedCapability::Unresolved => {
+            stage_fresh_capability(resolve, mark_integrity_failed)
+        }
         cached => cached.clone(),
     }
+}
+
+fn stage_fresh_capability<T, E>(
+    resolve: impl FnOnce() -> Result<T, E>,
+    mark_integrity_failed: &mut bool,
+) -> CachedCapability<T> {
+    resolve().map_or_else(
+        |_| {
+            *mark_integrity_failed = true;
+            CachedCapability::StatePayloadMismatch
+        },
+        CachedCapability::Ready,
+    )
 }
