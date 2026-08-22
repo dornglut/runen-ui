@@ -311,9 +311,8 @@ mod tests {
         let _ = publish(&mut tree, &context, &mut cache);
         let before = retained(cache.as_ref());
 
-        // `Runtime::finish_routed_invalidation` uses this exact tree operation
-        // when a routed commit changes focus. Focus validation has already been
-        // consumed; only the semantic focus product is dirty for publication.
+        // This is the exact retained-publication effect of the runtime's
+        // focus-changed commit path before the next surface publication.
         tree.mark_semantic_focus_product_dirty();
 
         let report = publish(&mut tree, &context, &mut cache);
