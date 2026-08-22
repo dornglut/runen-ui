@@ -3,10 +3,11 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, Element, HitContribution, HitContributionContext, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution, PaintContributionContext,
-    SemanticContribution, SemanticContributionContext, StyleTokens, UiApp, View, Widget,
-    WidgetActivation, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
+    ChildLayout, ChildLayoutWidget, Element, HitContribution, HitContributionContext,
+    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
+    PaintContributionContext, SemanticContribution, SemanticContributionContext, StyleTokens,
+    UiApp, View, Widget, WidgetActivation, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure,
+    WidgetUpdateContext,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase,
@@ -267,7 +268,11 @@ fn layout_and_semantics_invalidation_execute_exact_dependencies() {
         &[SurfacePhase::Semantics]
     );
     assert_eq!(
-        (calls.semantics.get(), calls.paint.get(), calls.hit_test.get()),
+        (
+            calls.semantics.get(),
+            calls.paint.get(),
+            calls.hit_test.get()
+        ),
         (2, 2, 2)
     );
 }
