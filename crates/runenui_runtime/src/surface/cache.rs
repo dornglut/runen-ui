@@ -272,3 +272,102 @@ pub(super) fn context_key(context: &SurfaceBuildContext<'_>) -> SurfaceContextKe
         measurement_revision: context.measurement_provider().cache_revision(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use runenui_core::{StyleTokens, View, WidgetInvalidation, text};
+
+    use super::{SurfaceCache, SurfacePhase};
+    use crate::{
+        LayoutConstraints,
+        mounted::{DirtyPhases, MountedTree, apply_invalidation},
+        surface::{SurfaceBuildContext, plan_mounted_surface_cached},
+    };
+
+    fn publish(
+        tree: &mut MountedTree<()>,
+        context: &SurfaceBuildContext<'_>,
+        cache: &mut Option<SurfaceCache>,
+    ) -> super::SurfacePhaseReport {
+        let planned = plan_mounted_surface_cached(tree, context, cache.as_ref())
+            .unwrap_or_else(|_| unreachable!("reuse proof has valid semantic planning"));
+        let commit = planned.commit_store();
+        let (_, report) = commit.commit(tree, cache);
+        report
+    }
+
+    fn retained(cache: &Option<SurfaceCache>) -> SurfaceCache {
+        cache
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("initial publication retains a cache"))
+            .staged()
+    }
+
+    #[test]
+    fn focus_derived_interaction_publication_reuses_unrelated_products() {
+        let (mut tree, _) = MountedTree::<()>::mount(text("focus").key("root").into_element());
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let root = tree.publication_preorder_ids()[0].clone();
+        let before = retained(&cache);
+
+        let node = tree
+            .node_mut(&root)
+            .unwrap_or_else(|| unreachable!("focus proof root remains live"));
+        apply_invalidation(node, WidgetInvalidation::INTERACTION);
+        tree.finish_focus_validation();
+
+        let report = publish(&mut tree, &context, &mut cache);
+        assert_eq!(
+            report.executed(),
+            &[SurfacePhase::Paint, SurfacePhase::Semantics]
+        );
+        let after = cache
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("focus publication retains a cache"));
+        assert_eq!(
+            before.retained_product_reuse(after),
+            [true, true, true, true, false, true, false]
+        );
+    }
+
+    #[test]
+    fn dropped_dirty_non_structural_plan_leaves_live_cache_and_dirty_work_unchanged() {
+        let (mut tree, _) = MountedTree::<()>::mount(text("rollback").key("root").into_element());
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let root = tree.publication_preorder_ids()[0].clone();
+        let before = retained(&cache);
+
+        let node = tree
+            .node_mut(&root)
+            .unwrap_or_else(|| unreachable!("rollback proof root remains live"));
+        apply_invalidation(node, WidgetInvalidation::PAINT);
+        let dirty_before = tree.pending_phases();
+        assert!(dirty_before.contains(DirtyPhases::PAINT));
+
+        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
+            .unwrap_or_else(|_| unreachable!("dirty staged plan remains valid"));
+        drop(planned);
+
+        let still_live = cache
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("dropped plan leaves live cache retained"));
+        assert_eq!(before.retained_product_reuse(still_live), [true; 7]);
+        assert_eq!(tree.pending_phases(), dirty_before);
+
+        let report = publish(&mut tree, &context, &mut cache);
+        assert_eq!(report.executed(), &[SurfacePhase::Paint]);
+        let after = cache
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("successful retry retains a cache"));
+        assert_eq!(
+            before.retained_product_reuse(after),
+            [true, true, true, true, false, true, false]
+        );
+    }
+}
