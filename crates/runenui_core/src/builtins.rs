@@ -1,11 +1,11 @@
 use core::fmt;
 
 use crate::{
-    Axis, ColorValue, ElementId, ElementKey, HitContribution, HitContributionContext, IntoElementId,
-    IntoElementKey, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, PaintContribution,
-    PaintContributionContext, PaintContributionItem, RadiusValue, SemanticAction,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
-    SemanticState, SemanticText, SpacingValue, StyleIntent, WidgetActivationContext,
+    Axis, ColorValue, ElementId, ElementKey, HitContribution, HitContributionContext,
+    IntoElementId, IntoElementKey, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
+    PaintContribution, PaintContributionContext, PaintContributionItem, RadiusValue,
+    SemanticAction, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
+    SemanticRole, SemanticState, SemanticText, SpacingValue, StyleIntent, WidgetActivationContext,
     WidgetInvalidation, WidgetUpdateContext,
     element::{
         AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View,
@@ -486,15 +486,15 @@ pub fn row<Action>(children: impl Views<Action>) -> Container<Action> {
 }
 
 fn background_paint(context: PaintContributionContext) -> PaintContribution {
-    context.computed_style().background().map_or_else(
-        PaintContribution::empty,
-        |color| {
+    context
+        .computed_style()
+        .background()
+        .map_or_else(PaintContribution::empty, |color| {
             PaintContribution::single(PaintContributionItem::fill_rect(
                 local_rect(context.local_size()),
                 color,
             ))
-        },
-    )
+        })
 }
 
 fn local_rect(size: LogicalSize) -> LogicalRect {
