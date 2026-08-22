@@ -184,7 +184,7 @@ impl HitTestRegion {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(super) struct HitTestSceneContent {
+pub struct HitTestSceneContent {
     data: Arc<HitTestSceneContentData>,
 }
 
