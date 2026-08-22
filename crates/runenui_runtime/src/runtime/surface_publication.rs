@@ -230,11 +230,11 @@ impl SurfacePublicationState {
             current.scene() != planned.paint_scene() || current.logical_size() != paint_size
         });
         let (paint_publication, allocated_paint_revision) = if paint_changed {
-            let value = self
-                .next_paint_revision
-                .ok_or(SurfacePublicationPlanError::CounterExhausted(
-                    SurfacePublicationCounter::PaintRevision,
-                ))?;
+            let value =
+                self.next_paint_revision
+                    .ok_or(SurfacePublicationPlanError::CounterExhausted(
+                        SurfacePublicationCounter::PaintRevision,
+                    ))?;
             let revision = PaintRevision::new(value)
                 .unwrap_or_else(|| unreachable!("paint revision starts at one and never wraps"));
             (
@@ -309,8 +309,7 @@ impl SurfacePublicationState {
         if self.snapshots.len() == self.retained_snapshot_limit.get()
             && let Some(retired) = self.snapshots.pop_front()
         {
-            self.retired_through_generation =
-                Some(retired.input_context().hit_test_generation());
+            self.retired_through_generation = Some(retired.input_context().hit_test_generation());
         }
         self.snapshots.push_back(scene);
     }
@@ -426,9 +425,11 @@ impl SurfacePublicationState {
         if surface_id != self.surface_id {
             return Err(SurfaceSnapshotError::ForeignSurface);
         }
-        let Some(snapshot) = self.snapshots.iter().find(|snapshot| {
-            snapshot.input_context().hit_test_generation() == hit_test_generation
-        }) else {
+        let Some(snapshot) = self
+            .snapshots
+            .iter()
+            .find(|snapshot| snapshot.input_context().hit_test_generation() == hit_test_generation)
+        else {
             return Err(
                 if self
                     .retired_through_generation
@@ -545,8 +546,7 @@ impl SurfacePublicationState {
     pub(crate) fn clear_cache(&mut self) {
         self.cache = None;
         if let Some(latest) = self.snapshots.back() {
-            self.retired_through_generation =
-                Some(latest.input_context().hit_test_generation());
+            self.retired_through_generation = Some(latest.input_context().hit_test_generation());
         }
         self.snapshots.clear();
     }
