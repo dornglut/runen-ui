@@ -71,19 +71,19 @@ impl SurfacePublication {
 
     /// Returns the renderer-facing frame.
     #[must_use]
-    pub const fn frame(&self) -> &SurfaceFrame {
+    pub fn frame(&self) -> &SurfaceFrame {
         self.products.frame()
     }
 
     /// Returns the style-resolution report aligned with the frame.
     #[must_use]
-    pub const fn style_report(&self) -> &SurfaceStyleReport {
+    pub fn style_report(&self) -> &SurfaceStyleReport {
         self.products.style_report()
     }
 
     /// Returns the layout report aligned with the frame.
     #[must_use]
-    pub const fn layout_report(&self) -> &SurfaceLayoutReport {
+    pub fn layout_report(&self) -> &SurfaceLayoutReport {
         self.products.layout_report()
     }
 

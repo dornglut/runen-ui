@@ -12,6 +12,8 @@ mod measure;
 mod resolve;
 mod transaction;
 
+use std::sync::Arc;
+
 pub(crate) use cache::SurfaceCache;
 use cache::{CachedLayoutFacts, build_hit_test_facts, context_key};
 pub use cache::{SurfacePhase, SurfacePhaseReport};
@@ -364,48 +366,76 @@ impl SurfaceLayoutReport {
 }
 
 /// Aligned renderer-facing and diagnostic products from one surface preparation.
+///
+/// The backing allocation is immutable and shared. Runtime-issued publication
+/// clones therefore remain O(1) until a consumer explicitly extracts owned
+/// component values through [`Self::into_parts`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfacePublication {
+    products: Arc<SurfacePublicationProducts>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SurfacePublicationProducts {
     frame: SurfaceFrame,
     style_report: SurfaceStyleReport,
     layout_report: SurfaceLayoutReport,
 }
 
 impl SurfacePublication {
-    const fn new(
+    fn new(
         frame: SurfaceFrame,
         style_report: SurfaceStyleReport,
         layout_report: SurfaceLayoutReport,
     ) -> Self {
         Self {
-            frame,
-            style_report,
-            layout_report,
+            products: Arc::new(SurfacePublicationProducts {
+                frame,
+                style_report,
+                layout_report,
+            }),
         }
     }
 
     /// Returns the renderer-facing surface frame.
     #[must_use]
-    pub const fn frame(&self) -> &SurfaceFrame {
-        &self.frame
+    pub fn frame(&self) -> &SurfaceFrame {
+        &self.products.frame
     }
 
     /// Returns style provenance and diagnostics aligned to the frame nodes.
     #[must_use]
-    pub const fn style_report(&self) -> &SurfaceStyleReport {
-        &self.style_report
+    pub fn style_report(&self) -> &SurfaceStyleReport {
+        &self.products.style_report
     }
 
     /// Returns layout diagnostics aligned to the frame nodes.
     #[must_use]
-    pub const fn layout_report(&self) -> &SurfaceLayoutReport {
-        &self.layout_report
+    pub fn layout_report(&self) -> &SurfaceLayoutReport {
+        &self.products.layout_report
     }
 
     /// Consumes the publication and returns its aligned products.
+    ///
+    /// The common unshared case moves the values without copying. Extracting
+    /// owned parts from one of multiple shared clones performs the necessary
+    /// explicit clone at this ownership boundary.
     #[must_use]
     pub fn into_parts(self) -> (SurfaceFrame, SurfaceStyleReport, SurfaceLayoutReport) {
-        (self.frame, self.style_report, self.layout_report)
+        let products = match Arc::try_unwrap(self.products) {
+            Ok(products) => products,
+            Err(shared) => (*shared).clone(),
+        };
+        (
+            products.frame,
+            products.style_report,
+            products.layout_report,
+        )
+    }
+
+    #[cfg(test)]
+    fn shares_storage_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.products, &other.products)
     }
 }
 
@@ -444,6 +474,13 @@ fn layout_context_changed(current: &SurfaceCache, next: &cache::SurfaceContextKe
         || current.context_key.measurement_revision != next.measurement_revision
 }
 
+fn stage_non_structural_cache(cache: Option<&SurfaceCache>) -> SurfaceCache {
+    cache.map_or_else(
+        || unreachable!("non-structural publication has a cache"),
+        SurfaceCache::staged,
+    )
+}
+
 /// Plans aligned renderer-facing and diagnostic products without committing
 /// RunenUI-owned publication state.
 ///
@@ -462,9 +499,7 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         return plan_structural_surface(tree, context, next_context);
     }
 
-    let mut current = cache
-        .cloned()
-        .unwrap_or_else(|| unreachable!("non-structural publication has a cache"));
+    let mut current = stage_non_structural_cache(cache);
     let style_dirty = pending.contains(DirtyPhases::STYLE)
         || current
             .context_key
@@ -482,7 +517,7 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         let next_styles = resolve_styles(tree, &current.topology, context.style_tokens());
         layout_dirty |= current.styles.padding_changed(&next_styles);
         paint_dirty |= current.styles.paint_changed(&next_styles);
-        current.styles = next_styles;
+        current.styles = Arc::new(next_styles);
         report.record(SurfacePhase::Style);
         completed.insert(DirtyPhases::STYLE);
     }
@@ -509,24 +544,24 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
             context.root_constraints(),
             context.measurement_provider(),
         );
-        current.layout = CachedLayoutFacts {
+        current.layout = Arc::new(CachedLayoutFacts {
             size,
             bounds,
             report: layout_report,
-        };
+        });
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
 
-        current.hit_test = build_hit_test_facts(&current.layout);
+        current.hit_test = Arc::new(build_hit_test_facts(&current.layout));
         report.record(SurfacePhase::HitTesting);
         completed.insert(DirtyPhases::HIT_TEST);
     } else if pending.contains(DirtyPhases::HIT_TEST) {
-        current.hit_test = build_hit_test_facts(&current.layout);
+        current.hit_test = Arc::new(build_hit_test_facts(&current.layout));
         report.record(SurfacePhase::HitTesting);
         completed.insert(DirtyPhases::HIT_TEST);
     }
     if paint_dirty {
-        current.paint = resolve_paint(&current.topology, &capability_plan);
+        current.paint = Arc::new(resolve_paint(&current.topology, &capability_plan));
         report.record(SurfacePhase::Paint);
         completed.insert(DirtyPhases::PAINT);
     }
@@ -541,13 +576,18 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         completed.insert(DirtyPhases::SEMANTICS);
     }
     if diagnostics_dirty {
-        current.diagnostics = resolve_diagnostics(&current.topology, &capability_plan);
+        current.diagnostics = Arc::new(resolve_diagnostics(&current.topology, &capability_plan));
         report.record(SurfacePhase::Diagnostics);
         completed.insert(DirtyPhases::DIAGNOSTICS);
     }
 
-    current.context_key = next_context;
-    if !report.executed().is_empty() {
+    current.context_key = Arc::new(next_context);
+    if report.contains(SurfacePhase::Style)
+        || report.contains(SurfacePhase::Layout)
+        || report.contains(SurfacePhase::HitTesting)
+        || report.contains(SurfacePhase::Paint)
+        || report.contains(SurfacePhase::Diagnostics)
+    {
         current.publication = compose_publication(&current);
     }
     Ok(PlannedSurfacePublication::new(
@@ -603,13 +643,13 @@ fn plan_structural_surface<'tree, Action>(
         SurfaceLayoutReport::default(),
     );
     let mut rebuilt = SurfaceCache {
-        context_key,
-        topology,
-        styles,
-        layout,
-        hit_test,
-        paint,
-        diagnostics,
+        context_key: Arc::new(context_key),
+        topology: Arc::new(topology),
+        styles: Arc::new(styles),
+        layout: Arc::new(layout),
+        hit_test: Arc::new(hit_test),
+        paint: Arc::new(paint),
+        diagnostics: Arc::new(diagnostics),
         publication: placeholder,
     };
     rebuilt.publication = compose_publication(&rebuilt);
@@ -745,6 +785,31 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("surface test semantic planning remains valid"))
     }
 
+    fn reuse_tree() -> MountedTree<()> {
+        let (tree, _) = MountedTree::mount(
+            text("reuse")
+                .foreground(Color::BLACK)
+                .key("root")
+                .into_element(),
+        );
+        tree
+    }
+
+    fn staged_cache(cache: Option<&SurfaceCache>) -> SurfaceCache {
+        cache
+            .unwrap_or_else(|| unreachable!("publication retains phase products"))
+            .staged()
+    }
+
+    fn assert_retained_reuse(
+        before: &SurfaceCache,
+        cache: Option<&SurfaceCache>,
+        expected: [bool; 7],
+    ) {
+        let after = cache.unwrap_or_else(|| unreachable!("publication retains phase products"));
+        assert_eq!(before.retained_product_reuse(after), expected);
+    }
+
     #[test]
     fn phase_function_counters_track_only_actual_execution_branches() {
         let (mut tree, _) = MountedTree::<()>::mount(text("phase").key("root").into_element());
@@ -769,6 +834,123 @@ mod tests {
         let (_, paint) = publish(&mut tree, &context, &mut cache);
         assert_eq!(paint.executed(), &[super::SurfacePhase::Paint]);
         assert_eq!(phase_function_counts(), [1, 1, 1, 1, 2, 1, 1]);
+    }
+
+    #[test]
+    fn clean_and_semantic_publications_reuse_all_retained_products() {
+        let mut tree = reuse_tree();
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let root = tree.publication_preorder_ids()[0].clone();
+
+        let retained = staged_cache(cache.as_ref());
+        let (_, clean) = publish(&mut tree, &context, &mut cache);
+        assert!(clean.executed().is_empty());
+        assert_retained_reuse(&retained, cache.as_ref(), [true; 7]);
+
+        let retained = staged_cache(cache.as_ref());
+        let node = tree
+            .node_mut(&root)
+            .unwrap_or_else(|| unreachable!("test root remains live"));
+        apply_invalidation(node, WidgetInvalidation::SEMANTICS);
+        let (_, semantic) = publish(&mut tree, &context, &mut cache);
+        assert_eq!(semantic.executed(), &[super::SurfacePhase::Semantics]);
+        assert_retained_reuse(&retained, cache.as_ref(), [true; 7]);
+    }
+
+    #[test]
+    fn paint_and_diagnostic_publications_replace_only_owned_products() {
+        let mut tree = reuse_tree();
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let root = tree.publication_preorder_ids()[0].clone();
+
+        let retained = staged_cache(cache.as_ref());
+        let node = tree
+            .node_mut(&root)
+            .unwrap_or_else(|| unreachable!("test root remains live"));
+        apply_invalidation(node, WidgetInvalidation::PAINT);
+        let (_, paint) = publish(&mut tree, &context, &mut cache);
+        assert_eq!(paint.executed(), &[super::SurfacePhase::Paint]);
+        assert_retained_reuse(
+            &retained,
+            cache.as_ref(),
+            [true, true, true, true, false, true, false],
+        );
+
+        let retained = staged_cache(cache.as_ref());
+        let node = tree
+            .node_mut(&root)
+            .unwrap_or_else(|| unreachable!("test root remains live"));
+        apply_invalidation(node, WidgetInvalidation::DIAGNOSTICS);
+        let (_, diagnostics) = publish(&mut tree, &context, &mut cache);
+        assert_eq!(diagnostics.executed(), &[super::SurfacePhase::Diagnostics]);
+        assert_retained_reuse(
+            &retained,
+            cache.as_ref(),
+            [true, true, true, true, true, false, false],
+        );
+    }
+
+    #[test]
+    fn layout_publication_replaces_layout_hit_and_renderer_products() {
+        let mut tree = reuse_tree();
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let root = tree.publication_preorder_ids()[0].clone();
+        let retained = staged_cache(cache.as_ref());
+
+        let node = tree
+            .node_mut(&root)
+            .unwrap_or_else(|| unreachable!("test root remains live"));
+        apply_invalidation(node, WidgetInvalidation::LAYOUT);
+        let (_, layout) = publish(&mut tree, &context, &mut cache);
+        assert_eq!(
+            layout.executed(),
+            &[
+                super::SurfacePhase::Layout,
+                super::SurfacePhase::HitTesting,
+                super::SurfacePhase::Semantics,
+            ]
+        );
+        assert_retained_reuse(
+            &retained,
+            cache.as_ref(),
+            [true, true, false, false, true, true, false],
+        );
+    }
+
+    #[test]
+    fn style_publication_replaces_style_paint_and_renderer_products() {
+        let mut tree = reuse_tree();
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let retained = staged_cache(cache.as_ref());
+
+        tree.reconcile(
+            text("reuse")
+                .foreground(Color::WHITE)
+                .key("root")
+                .into_element(),
+        );
+        let (_, style) = publish(&mut tree, &context, &mut cache);
+        assert_eq!(
+            style.executed(),
+            &[super::SurfacePhase::Style, super::SurfacePhase::Paint]
+        );
+        assert_retained_reuse(
+            &retained,
+            cache.as_ref(),
+            [true, false, true, true, false, true, false],
+        );
     }
 
     #[test]
