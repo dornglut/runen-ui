@@ -30,7 +30,7 @@ use runenui_core::{
     WidgetTypeId,
 };
 
-use crate::mounted::{DirtyPhases, SemanticReconcileError};
+use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan};
 use crate::style_debug::SurfaceStyleReport;
 use crate::{LayoutConstraints, MountedNodeId};
 
@@ -103,7 +103,7 @@ impl SurfaceNode {
     }
 
     #[must_use]
-    pub const fn computed_style(&self) -> ComputedStyle {
+    pub const fn computed_style(&self) -> ComputStyle {
         self.computed_style
     }
 }
@@ -383,26 +383,31 @@ impl From<SemanticReconcileError> for SurfacePlanningError {
     }
 }
 
-fn surface_capability_phases(
-    layout_dirty: bool,
-    hit_dirty: bool,
-    paint_dirty: bool,
-    diagnostics_dirty: bool,
-) -> DirtyPhases {
-    let mut phases = DirtyPhases::default();
-    if layout_dirty {
-        phases.insert(DirtyPhases::LAYOUT);
+#[derive(Clone, Copy)]
+struct SurfaceCapabilityNeeds {
+    layout: bool,
+    hit_test: bool,
+    paint: bool,
+    diagnostics: bool,
+}
+
+impl SurfaceCapabilityNeeds {
+    fn dirty_phases(self) -> DirtyPhases {
+        let mut phases = DirtyPhases::default();
+        if self.layout {
+            phases.insert(DirtyPhases::LAYOUT);
+        }
+        if self.hit_test {
+            phases.insert(DirtyPhases::HIT_TEST);
+        }
+        if self.paint {
+            phases.insert(DirtyPhases::PAINT);
+        }
+        if self.diagnostics {
+            phases.insert(DirtyPhases::DIAGNOSTICS);
+        }
+        phases
     }
-    if hit_dirty {
-        phases.insert(DirtyPhases::HIT_TEST);
-    }
-    if paint_dirty {
-        phases.insert(DirtyPhases::PAINT);
-    }
-    if diagnostics_dirty {
-        phases.insert(DirtyPhases::DIAGNOSTICS);
-    }
-    phases
 }
 
 fn layout_context_changed(current: &SurfaceCache, next: &cache::SurfaceContextKey) -> bool {
@@ -416,6 +421,30 @@ fn stage_non_structural_cache(cache: Option<&SurfaceCache>) -> SurfaceCache {
         || unreachable!("non-structural publication has a cache"),
         SurfaceCache::staged,
     )
+}
+
+fn resolve_layout_phase<Action>(
+    tree: &crate::mounted::MountedTree<Action>,
+    current: &SurfaceCache,
+    capability_plan: &SurfaceCapabilityPlan,
+    context: &SurfaceBuildContext<'_>,
+) -> CachedLayoutFacts {
+    let resolved = ResolvedSurfaceTree::for_layout(
+        tree,
+        &current.topology,
+        &current.styles,
+        capability_plan,
+    );
+    let (size, bounds, report) = layout_resolved_surface(
+        &resolved,
+        context.root_constraints(),
+        context.measurement_provider(),
+    );
+    CachedLayoutFacts {
+        size,
+        bounds,
+        report,
+    }
 }
 
 pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
@@ -462,28 +491,19 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     let semantic_product_dirty =
         semantics_dirty || layout_dirty || pending.contains(DirtyPhases::FOCUS_VALIDATION);
     let mut capability_plan = tree.plan_surface_publication_capabilities(
-        surface_capability_phases(layout_dirty, hit_dirty, paint_dirty, diagnostics_dirty),
+        SurfaceCapabilityNeeds {
+            layout: layout_dirty,
+            hit_test: hit_dirty,
+            paint: paint_dirty,
+            diagnostics: diagnostics_dirty,
+        }
+        .dirty_phases(),
     );
     let semantic_capability_plan =
         semantic_product_dirty.then(|| tree.plan_semantic_publication_capabilities());
 
     if layout_dirty {
-        let resolved = ResolvedSurfaceTree::for_layout(
-            tree,
-            &current.topology,
-            &current.styles,
-            &capability_plan,
-        );
-        let (size, bounds, layout_report) = layout_resolved_surface(
-            &resolved,
-            context.root_constraints(),
-            context.measurement_provider(),
-        );
-        current.layout = Arc::new(CachedLayoutFacts {
-            size,
-            bounds,
-            report: layout_report,
-        });
+        current.layout = Arc::new(resolve_layout_phase(tree, &current, &capability_plan, context));
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
     }
@@ -668,7 +688,7 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
             || layout.id() != &topology.id
             || layout.parent() != topology.parent.as_ref()
             || layout.authored_id() != topology.authored_id.as_ref()
-            || &cache.hit_test.membership()[index] != &topology.id
+            || cache.hit_test.membership()[index] != topology.id
         {
             return Err("surface cache node identity is not topology-aligned");
         }
