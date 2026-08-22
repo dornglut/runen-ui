@@ -253,9 +253,7 @@ fn stage_cached_capability<T: Clone, E>(
     mark_integrity_failed: &mut bool,
 ) -> CachedCapability<T> {
     match cached {
-        CachedCapability::Unresolved => {
-            stage_fresh_capability(resolve, mark_integrity_failed)
-        }
+        CachedCapability::Unresolved => stage_fresh_capability(resolve, mark_integrity_failed),
         cached => cached.clone(),
     }
 }
