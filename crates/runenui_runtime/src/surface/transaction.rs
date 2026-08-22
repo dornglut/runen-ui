@@ -2,6 +2,7 @@ use crate::mounted::{
     DirtyPhases, FinalizedSemanticPublication, MountedTree, SemanticMountedCommit,
     SurfaceCapabilityPlan,
 };
+use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::semantic_compositor::{SemanticCandidate, SemanticOwnerFacts, compose_semantics};
 use crate::{MountedNodeId, SemanticDiagnostic};
 
@@ -53,6 +54,14 @@ impl<'a> PlannedSurfacePublication<'a> {
 
     pub(crate) const fn publication(&self) -> &SurfacePublication {
         &self.cache.publication
+    }
+
+    pub(crate) const fn paint_scene(&self) -> &PaintScene {
+        &self.cache.paint
+    }
+
+    pub(crate) const fn hit_test_content(&self) -> &HitTestSceneContent {
+        &self.cache.hit_test
     }
 
     /// Composes the renderer-independent semantic candidate and semantic-owner
