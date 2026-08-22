@@ -461,12 +461,9 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
 
     let semantic_product_dirty =
         semantics_dirty || layout_dirty || pending.contains(DirtyPhases::FOCUS_VALIDATION);
-    let mut capability_plan = tree.plan_surface_publication_capabilities(surface_capability_phases(
-        layout_dirty,
-        hit_dirty,
-        paint_dirty,
-        diagnostics_dirty,
-    ));
+    let mut capability_plan = tree.plan_surface_publication_capabilities(
+        surface_capability_phases(layout_dirty, hit_dirty, paint_dirty, diagnostics_dirty),
+    );
     let semantic_capability_plan =
         semantic_product_dirty.then(|| tree.plan_semantic_publication_capabilities());
 
