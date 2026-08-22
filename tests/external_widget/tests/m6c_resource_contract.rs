@@ -125,12 +125,9 @@ fn opaque_refs_disambiguate_providers_and_resource_primitives_preserve_exact_log
     assert_ne!(image_a, replaced);
 
     assert!(PaintContributionItem::image(shaped.clone(), rect()).is_err());
-    assert!(PaintContributionItem::shaped_text_run(
-        image_a.clone(),
-        origin(),
-        Color::WHITE,
-    )
-    .is_err());
+    assert!(
+        PaintContributionItem::shaped_text_run(image_a.clone(), origin(), Color::WHITE,).is_err()
+    );
 
     let mut runtime = AppRuntime::<App>::mount(State {
         image: image_a.clone(),
