@@ -160,8 +160,8 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("test rectangle is valid"));
         let second_rect = LogicalRect::try_new(1.0, 2.0, 3.0, 4.0)
             .unwrap_or_else(|_| unreachable!("test rectangle is valid"));
-        let stroke = LogicalLength::new(2.0)
-            .unwrap_or_else(|_| unreachable!("test stroke width is valid"));
+        let stroke =
+            LogicalLength::new(2.0).unwrap_or_else(|_| unreachable!("test stroke width is valid"));
         let contribution = PaintContribution::new(vec![
             PaintContributionItem::fill_rect(first_rect, Color::rgba(1, 2, 3, 4)),
             PaintContributionItem::stroke_rect(second_rect, Color::rgba(5, 6, 7, 8), stroke),
