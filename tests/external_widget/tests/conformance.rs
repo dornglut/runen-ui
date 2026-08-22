@@ -3,11 +3,12 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, Element, LogicalLength, NoHostProtocol, SemanticAction, SemanticCommand,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
-    StyleTokens, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
+    Color, CommandOrigin, Element, LogicalLength, LogicalRect, NoHostProtocol, PaintContribution,
+    PaintContributionContext, PaintContributionItem, PaintPrimitive, SemanticAction,
+    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
+    SemanticRole, StyleTokens, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
     WidgetActivationOutput, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure,
-    WidgetMountContext, WidgetPaintProof, WidgetUnmountContext, WidgetUpdateContext, column,
+    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, column,
 };
 use runenui_runtime::{
     AppRuntime, FocusReason, LayoutConstraints, MountedNodeId, PumpBudget, SubmitCommandErrorKind,
@@ -54,7 +55,7 @@ fn route_focus<App: UiApp>(runtime: &mut AppRuntime<App>, target: MountedNodeId)
         .unwrap_or_else(|_| unreachable!("the exact live focus target is accepted"));
     assert_eq!(
         runtime
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX,))
             .processed_envelopes(),
         1
     );
@@ -128,11 +129,20 @@ impl Widget<()> for StatefulPulse {
             height: LogicalLength::from(10_u16),
         }
     }
-    fn paint(&self, state: &Self::State) -> WidgetPaintProof {
-        WidgetPaintProof::new(
-            "stateful-pulse",
-            format!("{}:{}", self.name, state.activations),
-        )
+    fn paint(
+        &self,
+        state: &Self::State,
+        context: PaintContributionContext,
+    ) -> PaintContribution {
+        let size = context.local_size();
+        let rect = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+            .unwrap_or_else(|_| unreachable!("validated local size yields a valid rectangle"));
+        let activation_channel = u8::try_from(state.activations.min(u16::from(u8::MAX)))
+            .unwrap_or(u8::MAX);
+        PaintContribution::single(PaintContributionItem::fill_rect(
+            rect,
+            Color::rgba(activation_channel, 0, 0, 255),
+        ))
     }
     fn semantics(
         &self,
@@ -238,15 +248,13 @@ fn keyed_reorder_preserves_mounted_state_focus_and_slots() {
     );
     let tokens = StyleTokens::new();
     let publication = publish(&mut runtime, &tokens);
-    assert_eq!(
-        publication
-            .frame()
-            .node(&a)
-            .unwrap_or_else(|| unreachable!())
-            .paint()
-            .description(),
-        "a:1"
-    );
+    assert!(publication.paint_scene().items().iter().any(|item| {
+        matches!(
+            item.primitive(),
+            PaintPrimitive::FillRect { rect, color }
+                if rect.width() == 21.0 && *color == Color::rgba(1, 0, 0, 255)
+        )
+    }));
     assert_eq!(runtime.reconciliation_report().moved_count(), 2);
     assert!(log.borrow().iter().any(|entry| entry == "update:a"));
     assert!(
