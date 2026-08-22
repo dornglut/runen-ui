@@ -492,9 +492,10 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         return plan_structural_surface(tree, context, next_context);
     }
 
-    let mut current = cache
-        .map(SurfaceCache::staged)
-        .unwrap_or_else(|| unreachable!("non-structural publication has a cache"));
+    let mut current = cache.map_or_else(
+        || unreachable!("non-structural publication has a cache"),
+        SurfaceCache::staged,
+    );
     let style_dirty = pending.contains(DirtyPhases::STYLE)
         || current
             .context_key
@@ -780,6 +781,34 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("surface test semantic planning remains valid"))
     }
 
+    fn reuse_tree() -> MountedTree<()> {
+        let (tree, _) = MountedTree::mount(
+            text("reuse")
+                .foreground(Color::BLACK)
+                .key("root")
+                .into_element(),
+        );
+        tree
+    }
+
+    fn staged_cache(cache: &Option<SurfaceCache>) -> SurfaceCache {
+        cache
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("publication retains phase products"))
+            .staged()
+    }
+
+    fn assert_retained_reuse(
+        before: &SurfaceCache,
+        cache: &Option<SurfaceCache>,
+        expected: [bool; 7],
+    ) {
+        let after = cache
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("publication retains phase products"));
+        assert_eq!(before.retained_product_reuse(after), expected);
+    }
+
     #[test]
     fn phase_function_counters_track_only_actual_execution_branches() {
         let (mut tree, _) = MountedTree::<()>::mount(text("phase").key("root").into_element());
@@ -807,95 +836,75 @@ mod tests {
     }
 
     #[test]
-    fn narrow_publications_reuse_unchanged_retained_products() {
-        let (mut tree, _) = MountedTree::<()>::mount(
-            text("reuse")
-                .foreground(Color::BLACK)
-                .key("root")
-                .into_element(),
-        );
+    fn clean_and_semantic_publications_reuse_all_retained_products() {
+        let mut tree = reuse_tree();
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
         let mut cache = None;
         let _ = publish(&mut tree, &context, &mut cache);
         let root = tree.publication_preorder_ids()[0].clone();
 
-        let retained = cache
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("initial publication retains products"))
-            .staged();
+        let retained = staged_cache(&cache);
         let (_, clean) = publish(&mut tree, &context, &mut cache);
         assert!(clean.executed().is_empty());
-        assert_eq!(
-            retained.retained_product_reuse(
-                cache
-                    .as_ref()
-                    .unwrap_or_else(|| unreachable!("clean publication retains products"))
-            ),
-            [true; 7]
-        );
+        assert_retained_reuse(&retained, &cache, [true; 7]);
 
-        let retained = cache
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("clean publication retains products"))
-            .staged();
+        let retained = staged_cache(&cache);
         let node = tree
             .node_mut(&root)
             .unwrap_or_else(|| unreachable!("test root remains live"));
         apply_invalidation(node, WidgetInvalidation::SEMANTICS);
         let (_, semantic) = publish(&mut tree, &context, &mut cache);
         assert_eq!(semantic.executed(), &[super::SurfacePhase::Semantics]);
-        assert_eq!(
-            retained.retained_product_reuse(
-                cache
-                    .as_ref()
-                    .unwrap_or_else(|| unreachable!("semantic publication retains products"))
-            ),
-            [true; 7]
-        );
+        assert_retained_reuse(&retained, &cache, [true; 7]);
+    }
 
-        let retained = cache
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("semantic publication retains products"))
-            .staged();
+    #[test]
+    fn paint_and_diagnostic_publications_replace_only_owned_products() {
+        let mut tree = reuse_tree();
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let root = tree.publication_preorder_ids()[0].clone();
+
+        let retained = staged_cache(&cache);
         let node = tree
             .node_mut(&root)
             .unwrap_or_else(|| unreachable!("test root remains live"));
         apply_invalidation(node, WidgetInvalidation::PAINT);
         let (_, paint) = publish(&mut tree, &context, &mut cache);
         assert_eq!(paint.executed(), &[super::SurfacePhase::Paint]);
-        assert_eq!(
-            retained.retained_product_reuse(
-                cache
-                    .as_ref()
-                    .unwrap_or_else(|| unreachable!("paint publication retains products"))
-            ),
-            [true, true, true, true, false, true, false]
+        assert_retained_reuse(
+            &retained,
+            &cache,
+            [true, true, true, true, false, true, false],
         );
 
-        let retained = cache
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("paint publication retains products"))
-            .staged();
+        let retained = staged_cache(&cache);
         let node = tree
             .node_mut(&root)
             .unwrap_or_else(|| unreachable!("test root remains live"));
         apply_invalidation(node, WidgetInvalidation::DIAGNOSTICS);
         let (_, diagnostics) = publish(&mut tree, &context, &mut cache);
         assert_eq!(diagnostics.executed(), &[super::SurfacePhase::Diagnostics]);
-        assert_eq!(
-            retained.retained_product_reuse(
-                cache
-                    .as_ref()
-                    .unwrap_or_else(|| unreachable!("diagnostic publication retains products"))
-            ),
-            [true, true, true, true, true, false, false]
+        assert_retained_reuse(
+            &retained,
+            &cache,
+            [true, true, true, true, true, false, false],
         );
+    }
 
-        let retained = cache
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("diagnostic publication retains products"))
-            .staged();
+    #[test]
+    fn layout_publication_replaces_layout_hit_and_renderer_products() {
+        let mut tree = reuse_tree();
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let root = tree.publication_preorder_ids()[0].clone();
+        let retained = staged_cache(&cache);
+
         let node = tree
             .node_mut(&root)
             .unwrap_or_else(|| unreachable!("test root remains live"));
@@ -909,19 +918,22 @@ mod tests {
                 super::SurfacePhase::Semantics,
             ]
         );
-        assert_eq!(
-            retained.retained_product_reuse(
-                cache
-                    .as_ref()
-                    .unwrap_or_else(|| unreachable!("layout publication retains products"))
-            ),
-            [true, true, false, false, true, true, false]
+        assert_retained_reuse(
+            &retained,
+            &cache,
+            [true, true, false, false, true, true, false],
         );
+    }
 
-        let retained = cache
-            .as_ref()
-            .unwrap_or_else(|| unreachable!("layout publication retains products"))
-            .staged();
+    #[test]
+    fn style_publication_replaces_style_paint_and_renderer_products() {
+        let mut tree = reuse_tree();
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let retained = staged_cache(&cache);
+
         tree.reconcile(
             text("reuse")
                 .foreground(Color::WHITE)
@@ -933,13 +945,10 @@ mod tests {
             style.executed(),
             &[super::SurfacePhase::Style, super::SurfacePhase::Paint]
         );
-        assert_eq!(
-            retained.retained_product_reuse(
-                cache
-                    .as_ref()
-                    .unwrap_or_else(|| unreachable!("style publication retains products"))
-            ),
-            [true, false, true, true, false, true, false]
+        assert_retained_reuse(
+            &retained,
+            &cache,
+            [true, false, true, true, false, true, false],
         );
     }
 
