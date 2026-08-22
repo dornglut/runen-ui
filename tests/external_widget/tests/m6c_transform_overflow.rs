@@ -118,7 +118,7 @@ fn finite_authored_transforms_that_overflow_surface_composition_are_excluded_and
         overflow
             .diagnostics()
             .iter()
-            .map(|diagnostic| diagnostic.code())
+            .map(runenui_core::WidgetDiagnostic::code)
             .collect::<Vec<_>>(),
         vec![
             "runenui.scene.hit-transform-non-finite",
