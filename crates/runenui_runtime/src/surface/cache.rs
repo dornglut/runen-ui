@@ -312,8 +312,8 @@ mod tests {
         let before = retained(cache.as_ref());
 
         tree.mark_semantic_focus_product_dirty();
-
         let report = publish(&mut tree, &context, &mut cache);
+
         assert_eq!(report.executed(), &[SurfacePhase::Semantics]);
         let after = cache
             .as_ref()
