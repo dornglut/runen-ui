@@ -30,7 +30,7 @@ impl PartialEq for SurfacePublication {
 }
 
 impl SurfacePublication {
-    pub(crate) fn new(
+    pub(crate) const fn new(
         input_context: SurfaceInputContext,
         products: crate::surface::SurfacePublication,
         semantic_publication: SemanticPublication,
