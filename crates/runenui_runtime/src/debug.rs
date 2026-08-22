@@ -1,14 +1,14 @@
 //! Debug rendering helpers for surface frames.
 //!
-//! This module renders a [`SurfaceFrame`] into deterministic text for tests,
-//! diagnostics, and early host integration. It is not a pixel renderer and does
-//! not define a backend abstraction.
+//! This module renders a [`SurfaceFrame`] into deterministic text for tests and
+//! diagnostics. `SurfaceFrame` is layout/debug state only; canonical paint is
+//! rendered or inspected from [`crate::PaintPublication`] / [`crate::PaintScene`].
 
 use core::fmt::{self, Write as _};
 
 use crate::{LogicalRect, LogicalSize, MountedNodeId, SurfaceFrame, SurfaceNode};
 
-/// Deterministic text renderer for renderer-facing surface frames.
+/// Deterministic text renderer for layout/debug surface frames.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct DebugSurfaceRenderer;
 
@@ -26,7 +26,7 @@ impl DebugSurfaceRenderer {
     }
 }
 
-/// Renders a surface frame into deterministic diagnostic text.
+/// Renders a layout/debug surface frame into deterministic diagnostic text.
 #[must_use]
 pub fn render_debug_surface_frame(frame: &SurfaceFrame) -> String {
     let mut output = String::new();
@@ -55,13 +55,11 @@ impl fmt::Display for DebugSurfaceNode<'_> {
 
         write!(
             formatter,
-            "node id={} parent={} authored={} bounds={} paint={} {:?} diagnostics={:?}",
+            "node id={} parent={} authored={} bounds={} diagnostics={:?}",
             format_node_id(node.id()),
             format_parent(node.parent()),
             format_authored_id(node),
             format_rect(node.bounds()),
-            node.paint().category(),
-            node.paint().description(),
             node.diagnostics(),
         )
     }
