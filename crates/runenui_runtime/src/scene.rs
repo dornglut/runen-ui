@@ -4,22 +4,74 @@ use core::num::NonZeroU64;
 use std::sync::Arc;
 
 use runenui_core::{
-    LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, MountedNodeId, PaintPrimitive,
-    SurfaceId, SurfaceInputContext,
+    LogicalPoint, LogicalSize, LogicalTransform, MountedNodeId, PaintPrimitive, PointerPolicy,
+    SceneLayer, SceneOpacity, SceneShape, SurfaceId, SurfaceInputContext,
 };
+
+/// One self-contained conjunctive scene clip in surface-logical coordinates.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SceneClip {
+    shape: SceneShape,
+    clip_to_surface: LogicalTransform,
+}
+
+impl SceneClip {
+    pub(crate) const fn new(shape: SceneShape, clip_to_surface: LogicalTransform) -> Self {
+        Self {
+            shape,
+            clip_to_surface,
+        }
+    }
+
+    /// Returns the exact logical clip shape.
+    #[must_use]
+    pub const fn shape(self) -> SceneShape {
+        self.shape
+    }
+
+    /// Returns the exact clip-local to surface-logical transform.
+    #[must_use]
+    pub const fn clip_to_surface(self) -> LogicalTransform {
+        self.clip_to_surface
+    }
+
+    /// Evaluates one surface-logical point against this clip.
+    ///
+    /// A non-invertible clip transform excludes coverage rather than making the
+    /// clip disappear or falling back to untransformed geometry.
+    #[must_use]
+    pub fn contains_surface_point(self, point: LogicalPoint) -> bool {
+        self.clip_to_surface
+            .inverse()
+            .and_then(|surface_to_clip| surface_to_clip.transform_point(point))
+            .is_some_and(|clip_point| self.shape.contains(clip_point))
+    }
+}
 
 /// One self-contained renderer-neutral paint item in stable scene order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PaintSceneItem {
     primitive: PaintPrimitive,
     local_to_surface: LogicalTransform,
+    clips: Vec<SceneClip>,
+    opacity: SceneOpacity,
+    layer: SceneLayer,
 }
 
 impl PaintSceneItem {
-    pub(crate) const fn new(primitive: PaintPrimitive, local_to_surface: LogicalTransform) -> Self {
+    pub(crate) const fn new(
+        primitive: PaintPrimitive,
+        local_to_surface: LogicalTransform,
+        clips: Vec<SceneClip>,
+        opacity: SceneOpacity,
+        layer: SceneLayer,
+    ) -> Self {
         Self {
             primitive,
             local_to_surface,
+            clips,
+            opacity,
+            layer,
         }
     }
 
@@ -29,10 +81,28 @@ impl PaintSceneItem {
         &self.primitive
     }
 
-    /// Returns the exact owner-local to surface-logical placement transform.
+    /// Returns the exact primitive-local to surface-logical transform.
     #[must_use]
     pub const fn local_to_surface(&self) -> LogicalTransform {
         self.local_to_surface
+    }
+
+    /// Returns conjunctive clips in exact authored order.
+    #[must_use]
+    pub const fn clips(&self) -> &[SceneClip] {
+        self.clips.as_slice()
+    }
+
+    /// Returns validated explicit item opacity.
+    #[must_use]
+    pub const fn opacity(&self) -> SceneOpacity {
+        self.opacity
+    }
+
+    /// Returns the snapshot-local ordering layer.
+    #[must_use]
+    pub const fn layer(&self) -> SceneLayer {
+        self.layer
     }
 }
 
@@ -136,50 +206,90 @@ impl PaintPublication {
     }
 }
 
-/// One runtime-targeted physical rectangle in stable hit-scene order.
+/// One runtime-targeted physical hit region in stable hit-scene order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HitTestRegion {
     target: MountedNodeId,
-    local_rect: LogicalRect,
+    shape: SceneShape,
     local_to_surface: LogicalTransform,
-    surface_rect: LogicalRect,
+    clips: Vec<SceneClip>,
+    layer: SceneLayer,
+    pointer_policy: PointerPolicy,
 }
 
 impl HitTestRegion {
     pub(crate) const fn new(
         target: MountedNodeId,
-        local_rect: LogicalRect,
+        shape: SceneShape,
         local_to_surface: LogicalTransform,
-        surface_rect: LogicalRect,
+        clips: Vec<SceneClip>,
+        layer: SceneLayer,
+        pointer_policy: PointerPolicy,
     ) -> Self {
         Self {
             target,
-            local_rect,
+            shape,
             local_to_surface,
-            surface_rect,
+            clips,
+            layer,
+            pointer_policy,
         }
     }
 
-    /// Returns the exact runtime-injected mounted target.
+    /// Returns the exact runtime-injected mounted owner.
     #[must_use]
     pub const fn target(&self) -> &MountedNodeId {
         &self.target
     }
 
-    /// Returns the widget-authored owner-local rectangle.
+    /// Returns the exact logical region shape.
     #[must_use]
-    pub const fn local_rect(&self) -> LogicalRect {
-        self.local_rect
+    pub const fn shape(&self) -> SceneShape {
+        self.shape
     }
 
-    /// Returns the runtime-composed owner-local to surface-logical placement.
+    /// Returns the exact region-local to surface-logical transform.
     #[must_use]
     pub const fn local_to_surface(&self) -> LogicalTransform {
         self.local_to_surface
     }
 
-    fn contains_surface_point(&self, point: LogicalPoint) -> bool {
-        self.surface_rect.contains(point)
+    /// Returns conjunctive clips in exact authored order.
+    #[must_use]
+    pub const fn clips(&self) -> &[SceneClip] {
+        self.clips.as_slice()
+    }
+
+    /// Returns the snapshot-local ordering layer.
+    #[must_use]
+    pub const fn layer(&self) -> SceneLayer {
+        self.layer
+    }
+
+    /// Returns the first-containing pointer policy.
+    #[must_use]
+    pub const fn pointer_policy(&self) -> PointerPolicy {
+        self.pointer_policy
+    }
+
+    /// Evaluates one surface-logical point against the exact transformed shape
+    /// and every conjunctive clip.
+    ///
+    /// Non-invertible region or clip transforms produce no eligible coverage.
+    #[must_use]
+    pub fn contains_surface_point(&self, point: LogicalPoint) -> bool {
+        let Some(region_point) = self
+            .local_to_surface
+            .inverse()
+            .and_then(|surface_to_local| surface_to_local.transform_point(point))
+        else {
+            return false;
+        };
+        self.shape.contains(region_point)
+            && self
+                .clips
+                .iter()
+                .all(|clip| clip.contains_surface_point(point))
     }
 }
 
@@ -258,14 +368,23 @@ impl HitTestScene {
         self.content.membership()
     }
 
-    /// Resolves the topmost targetable M6B rectangle at one surface-logical point.
+    /// Resolves the first containing region in topmost order.
+    ///
+    /// `Target` returns the runtime-injected mounted owner. `Block` terminates
+    /// resolution with no target. Omitted regions remain the sole pass-through
+    /// representation.
     #[must_use]
     pub fn target_at(&self, point: LogicalPoint) -> Option<&MountedNodeId> {
-        self.regions()
-            .iter()
-            .rev()
-            .find(|region| region.contains_surface_point(point))
-            .map(HitTestRegion::target)
+        for region in self.regions().iter().rev() {
+            if !region.contains_surface_point(point) {
+                continue;
+            }
+            return match region.pointer_policy() {
+                PointerPolicy::Target => Some(region.target()),
+                PointerPolicy::Block => None,
+            };
+        }
+        None
     }
 
     /// Returns whether the target belonged to this exact displayed snapshot.

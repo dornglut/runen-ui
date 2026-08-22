@@ -170,8 +170,12 @@ pub(crate) struct SurfaceCache {
     pub(super) hit_test: HitTestSceneContent,
     // Canonical renderer-neutral paint scene content.
     pub(super) paint: PaintScene,
-    // Diagnostic-phase facts.
+    // Widget diagnostic-phase facts.
     pub(super) diagnostics: Arc<Vec<Vec<WidgetDiagnostic>>>,
+    // Hit-composition diagnostics are owned and replaced with the hit phase.
+    pub(super) hit_diagnostics: Arc<Vec<Vec<WidgetDiagnostic>>>,
+    // Paint-composition diagnostics are owned and replaced with the paint phase.
+    pub(super) paint_diagnostics: Arc<Vec<Vec<WidgetDiagnostic>>>,
     // Derived layout/debug materialization of aligned phase facts above, never
     // renderer or pointer authority. Its clone is cheap immutable sharing.
     // No authored StyleIntent or LayoutStyle is retained here.
@@ -191,6 +195,8 @@ impl SurfaceCache {
             hit_test: self.hit_test.clone(),
             paint: self.paint.clone(),
             diagnostics: Arc::clone(&self.diagnostics),
+            hit_diagnostics: Arc::clone(&self.hit_diagnostics),
+            paint_diagnostics: Arc::clone(&self.paint_diagnostics),
             publication: self.publication.clone(),
         }
     }
@@ -231,7 +237,9 @@ impl SurfaceCache {
             Arc::ptr_eq(&self.layout, &other.layout),
             self.hit_test.shares_storage_with(&other.hit_test),
             self.paint.shares_storage_with(&other.paint),
-            Arc::ptr_eq(&self.diagnostics, &other.diagnostics),
+            Arc::ptr_eq(&self.diagnostics, &other.diagnostics)
+                && Arc::ptr_eq(&self.hit_diagnostics, &other.hit_diagnostics)
+                && Arc::ptr_eq(&self.paint_diagnostics, &other.paint_diagnostics),
             self.publication.shares_storage_with(&other.publication),
         ]
     }

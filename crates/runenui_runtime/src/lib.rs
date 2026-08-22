@@ -264,6 +264,7 @@ pub use runtime::{
 };
 pub use scene::{
     HitTestRegion, HitTestScene, PaintPublication, PaintRevision, PaintScene, PaintSceneItem,
+    SceneClip,
 };
 pub use semantic_action::{SubmitSemanticActionError, SubmitSemanticActionErrorKind};
 pub use semantic_diagnostic::{

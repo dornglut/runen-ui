@@ -1,9 +1,9 @@
 use crate::MountedNodeId;
 use crate::mounted::SurfaceCapabilityPlan;
-use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneItem};
+use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneItem, SceneClip};
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
-    Axis, ChildLayout, ElementId, HitContributionContext, LayoutStyle, LogicalRect,
+    Axis, ChildLayout, ContributionClip, ElementId, HitContributionContext, LayoutStyle,
     LogicalTransform, PaintContributionContext, StyleResolution, StyleTokens, WidgetDiagnostic,
     WidgetMeasure, WidgetTypeId, resolve_style,
 };
@@ -238,62 +238,243 @@ pub(super) fn hit_contexts(
         .collect()
 }
 
+#[derive(Clone, Copy)]
+enum SceneContributionFamily {
+    Paint,
+    Hit,
+}
+
+fn scene_transform_diagnostic(
+    family: SceneContributionFamily,
+    contribution_local_order: usize,
+    clip_order: Option<usize>,
+    non_finite: bool,
+) -> WidgetDiagnostic {
+    let (code, subject) = match (family, clip_order, non_finite) {
+        (SceneContributionFamily::Paint, None, true) => (
+            "runenui.scene.paint-transform-non-finite",
+            format!("paint item {contribution_local_order} final transform"),
+        ),
+        (SceneContributionFamily::Paint, None, false) => (
+            "runenui.scene.paint-transform-non-invertible",
+            format!("paint item {contribution_local_order} final transform"),
+        ),
+        (SceneContributionFamily::Paint, Some(clip_order), true) => (
+            "runenui.scene.paint-clip-transform-non-finite",
+            format!("paint item {contribution_local_order} clip {clip_order} final transform"),
+        ),
+        (SceneContributionFamily::Paint, Some(clip_order), false) => (
+            "runenui.scene.paint-clip-transform-non-invertible",
+            format!("paint item {contribution_local_order} clip {clip_order} final transform"),
+        ),
+        (SceneContributionFamily::Hit, None, true) => (
+            "runenui.scene.hit-transform-non-finite",
+            format!("hit region {contribution_local_order} final transform"),
+        ),
+        (SceneContributionFamily::Hit, None, false) => (
+            "runenui.scene.hit-transform-non-invertible",
+            format!("hit region {contribution_local_order} final transform"),
+        ),
+        (SceneContributionFamily::Hit, Some(clip_order), true) => (
+            "runenui.scene.hit-clip-transform-non-finite",
+            format!("hit region {contribution_local_order} clip {clip_order} final transform"),
+        ),
+        (SceneContributionFamily::Hit, Some(clip_order), false) => (
+            "runenui.scene.hit-clip-transform-non-invertible",
+            format!("hit region {contribution_local_order} clip {clip_order} final transform"),
+        ),
+    };
+    let message = if non_finite {
+        format!("{subject} cannot be represented finitely; the contribution is excluded")
+    } else {
+        format!("{subject} is non-invertible; logical coverage is empty")
+    };
+    WidgetDiagnostic::new(code, message)
+}
+
+fn empty_scene_diagnostics(topology: &SurfaceTopologySnapshot) -> Vec<Vec<WidgetDiagnostic>> {
+    vec![Vec::new(); topology.nodes.len()]
+}
+
+fn compose_scene_clips(
+    clips: &[ContributionClip],
+    owner_to_surface: LogicalTransform,
+    family: SceneContributionFamily,
+    contribution_local_order: usize,
+    diagnostics: &mut Vec<WidgetDiagnostic>,
+) -> Option<Vec<SceneClip>> {
+    let mut composed = Vec::with_capacity(clips.len());
+    for (clip_order, clip) in clips.iter().enumerate() {
+        let Ok(clip_to_surface) = clip.local_to_owner().then(owner_to_surface) else {
+            diagnostics.push(scene_transform_diagnostic(
+                family,
+                contribution_local_order,
+                Some(clip_order),
+                true,
+            ));
+            return None;
+        };
+        if clip_to_surface.inverse().is_none() {
+            diagnostics.push(scene_transform_diagnostic(
+                family,
+                contribution_local_order,
+                Some(clip_order),
+                false,
+            ));
+        }
+        composed.push(SceneClip::new(clip.shape(), clip_to_surface));
+    }
+    Some(composed)
+}
+
+pub(super) struct ResolvedPaint {
+    pub(super) scene: PaintScene,
+    pub(super) diagnostics: Vec<Vec<WidgetDiagnostic>>,
+}
+
 pub(super) fn resolve_paint(
     topology: &SurfaceTopologySnapshot,
     layout: &super::cache::CachedLayoutFacts,
     capabilities: &SurfaceCapabilityPlan,
-) -> PaintScene {
+) -> ResolvedPaint {
     #[cfg(test)]
     super::cache::note_paint_phase_execution();
-    let mut items = Vec::new();
-    for (position, node) in topology.nodes.iter().enumerate() {
-        let Some(contribution) = capabilities.paint_at(position, &node.id) else {
+    let mut diagnostics = empty_scene_diagnostics(topology);
+    let mut ordered = Vec::new();
+    for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
+        let Some(contribution) = capabilities.paint_at(mounted_preorder, &node.id) else {
             continue;
         };
-        let bounds = layout.bounds[position];
-        let placement = LogicalTransform::translation(bounds.x(), bounds.y())
+        let bounds = layout.bounds[mounted_preorder];
+        let owner_to_surface = LogicalTransform::translation(bounds.x(), bounds.y())
             .unwrap_or_else(|_| unreachable!("published layout origin is finite"));
-        items.extend(
-            contribution
-                .items()
-                .iter()
-                .map(|item| PaintSceneItem::new(item.primitive().clone(), placement)),
-        );
+        for (contribution_local_order, item) in contribution.items().iter().enumerate() {
+            let Ok(local_to_surface) = item.local_transform().then(owner_to_surface) else {
+                diagnostics[mounted_preorder].push(scene_transform_diagnostic(
+                    SceneContributionFamily::Paint,
+                    contribution_local_order,
+                    None,
+                    true,
+                ));
+                continue;
+            };
+            if local_to_surface.inverse().is_none() {
+                diagnostics[mounted_preorder].push(scene_transform_diagnostic(
+                    SceneContributionFamily::Paint,
+                    contribution_local_order,
+                    None,
+                    false,
+                ));
+            }
+            let Some(clips) = compose_scene_clips(
+                item.clips(),
+                owner_to_surface,
+                SceneContributionFamily::Paint,
+                contribution_local_order,
+                &mut diagnostics[mounted_preorder],
+            ) else {
+                continue;
+            };
+            ordered.push((
+                item.layer(),
+                mounted_preorder,
+                contribution_local_order,
+                PaintSceneItem::new(
+                    item.primitive().clone(),
+                    local_to_surface,
+                    clips,
+                    item.opacity(),
+                    item.layer(),
+                ),
+            ));
+        }
     }
-    PaintScene::new(items)
+    ordered.sort_by_key(|(layer, mounted_preorder, contribution_local_order, _)| {
+        (*layer, *mounted_preorder, *contribution_local_order)
+    });
+    ResolvedPaint {
+        scene: PaintScene::new(ordered.into_iter().map(|(_, _, _, item)| item).collect()),
+        diagnostics,
+    }
+}
+
+pub(super) struct ResolvedHitTest {
+    pub(super) scene: HitTestSceneContent,
+    pub(super) diagnostics: Vec<Vec<WidgetDiagnostic>>,
 }
 
 pub(super) fn resolve_hit_test(
     topology: &SurfaceTopologySnapshot,
     layout: &super::cache::CachedLayoutFacts,
     capabilities: &SurfaceCapabilityPlan,
-) -> HitTestSceneContent {
+) -> ResolvedHitTest {
     #[cfg(test)]
     super::cache::note_hit_test_phase_execution();
     let membership = topology.nodes.iter().map(|node| node.id.clone()).collect();
-    let mut regions = Vec::new();
-    for (position, node) in topology.nodes.iter().enumerate() {
-        let Some(contribution) = capabilities.hit_test_at(position, &node.id) else {
+    let mut diagnostics = empty_scene_diagnostics(topology);
+    let mut ordered = Vec::new();
+    for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
+        let Some(contribution) = capabilities.hit_test_at(mounted_preorder, &node.id) else {
             continue;
         };
-        let bounds = layout.bounds[position];
-        let placement = LogicalTransform::translation(bounds.x(), bounds.y())
+        let bounds = layout.bounds[mounted_preorder];
+        let owner_to_surface = LogicalTransform::translation(bounds.x(), bounds.y())
             .unwrap_or_else(|_| unreachable!("published layout origin is finite"));
-        for region in contribution.regions() {
-            let local_rect = region.logical_rect();
-            let Some(surface_origin) = placement.transform_point(local_rect.origin()) else {
+        for (contribution_local_order, region) in contribution.regions().iter().enumerate() {
+            let Ok(local_to_surface) = region.local_transform().then(owner_to_surface) else {
+                diagnostics[mounted_preorder].push(scene_transform_diagnostic(
+                    SceneContributionFamily::Hit,
+                    contribution_local_order,
+                    None,
+                    true,
+                ));
                 continue;
             };
-            let surface_rect = LogicalRect::new(surface_origin, local_rect.size());
-            regions.push(HitTestRegion::new(
-                node.id.clone(),
-                local_rect,
-                placement,
-                surface_rect,
+            if local_to_surface.inverse().is_none() {
+                diagnostics[mounted_preorder].push(scene_transform_diagnostic(
+                    SceneContributionFamily::Hit,
+                    contribution_local_order,
+                    None,
+                    false,
+                ));
+            }
+            let Some(clips) = compose_scene_clips(
+                region.clips(),
+                owner_to_surface,
+                SceneContributionFamily::Hit,
+                contribution_local_order,
+                &mut diagnostics[mounted_preorder],
+            ) else {
+                continue;
+            };
+            ordered.push((
+                region.layer(),
+                mounted_preorder,
+                contribution_local_order,
+                HitTestRegion::new(
+                    node.id.clone(),
+                    region.shape(),
+                    local_to_surface,
+                    clips,
+                    region.layer(),
+                    region.pointer_policy(),
+                ),
             ));
         }
     }
-    HitTestSceneContent::new(regions, membership)
+    ordered.sort_by_key(|(layer, mounted_preorder, contribution_local_order, _)| {
+        (*layer, *mounted_preorder, *contribution_local_order)
+    });
+    ResolvedHitTest {
+        scene: HitTestSceneContent::new(
+            ordered
+                .into_iter()
+                .map(|(_, _, _, region)| region)
+                .collect(),
+            membership,
+        ),
+        diagnostics,
+    }
 }
 
 pub(super) fn resolve_diagnostics(

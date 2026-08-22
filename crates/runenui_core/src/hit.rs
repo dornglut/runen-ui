@@ -1,6 +1,8 @@
 //! Owner-local physical hit contribution vocabulary.
 
-use crate::{LogicalRect, LogicalSize};
+use crate::{
+    ContributionClip, LogicalRect, LogicalSize, LogicalTransform, Radius, SceneLayer, SceneShape,
+};
 
 /// Read-only facts supplied while one mounted widget contributes physical hit geometry.
 ///
@@ -71,34 +73,119 @@ impl HitContribution {
     }
 }
 
-/// One owner-local targetable physical hit region.
+/// Physical policy applied by the first containing region in topmost hit order.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum PointerPolicy {
+    /// Resolve the region to its runtime-injected mounted owner.
+    #[default]
+    Target,
+    /// Terminate physical hit testing without a mounted target.
+    Block,
+}
+
+/// One self-contained owner-local physical hit region.
 ///
-/// M6B intentionally starts with the rectangle shape required for the canonical
-/// displayed-hit cutover. Rounded shapes, explicit clips, arbitrary authored
-/// transforms, layering, and blocking policy extend this same value in M6C.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Shape, transform, conjunctive clips, ordering layer, and pointer policy are
+/// explicit values. Omission is the only pass-through representation; a present
+/// [`PointerPolicy::Block`] region is intentionally occluding.
+#[derive(Clone, Debug, PartialEq)]
 pub struct HitRegion {
-    rect: LogicalRect,
+    shape: SceneShape,
+    local_transform: LogicalTransform,
+    clips: Vec<ContributionClip>,
+    layer: SceneLayer,
+    pointer_policy: PointerPolicy,
 }
 
 impl HitRegion {
+    const fn from_shape(shape: SceneShape) -> Self {
+        Self {
+            shape,
+            local_transform: LogicalTransform::IDENTITY,
+            clips: Vec::new(),
+            layer: SceneLayer::ZERO,
+            pointer_policy: PointerPolicy::Target,
+        }
+    }
+
     /// Creates one owner-local logical rectangle region.
     #[must_use]
     pub const fn rect(rect: LogicalRect) -> Self {
-        Self { rect }
+        Self::from_shape(SceneShape::rect(rect))
     }
 
-    /// Returns the owner-local logical rectangle.
+    /// Creates one owner-local rounded-rectangle region.
     #[must_use]
-    pub const fn logical_rect(self) -> LogicalRect {
-        self.rect
+    pub const fn rounded_rect(rect: LogicalRect, radius: Radius) -> Self {
+        Self::from_shape(SceneShape::rounded_rect(rect, radius))
+    }
+
+    /// Replaces the region-local to owner-local transform.
+    #[must_use]
+    pub const fn with_transform(mut self, transform: LogicalTransform) -> Self {
+        self.local_transform = transform;
+        self
+    }
+
+    /// Appends one conjunctive owner-local clip.
+    #[must_use]
+    pub fn with_clip(mut self, clip: ContributionClip) -> Self {
+        self.clips.push(clip);
+        self
+    }
+
+    /// Replaces the snapshot-local ordering layer.
+    #[must_use]
+    pub const fn with_layer(mut self, layer: SceneLayer) -> Self {
+        self.layer = layer;
+        self
+    }
+
+    /// Replaces the first-containing pointer policy.
+    #[must_use]
+    pub const fn with_pointer_policy(mut self, pointer_policy: PointerPolicy) -> Self {
+        self.pointer_policy = pointer_policy;
+        self
+    }
+
+    /// Returns the owner-local logical shape.
+    #[must_use]
+    pub const fn shape(&self) -> SceneShape {
+        self.shape
+    }
+
+    /// Returns region-local to owner-local transform.
+    #[must_use]
+    pub const fn local_transform(&self) -> LogicalTransform {
+        self.local_transform
+    }
+
+    /// Returns conjunctive clips in authored order.
+    #[must_use]
+    pub const fn clips(&self) -> &[ContributionClip] {
+        self.clips.as_slice()
+    }
+
+    /// Returns the snapshot-local ordering layer.
+    #[must_use]
+    pub const fn layer(&self) -> SceneLayer {
+        self.layer
+    }
+
+    /// Returns the first-containing pointer policy.
+    #[must_use]
+    pub const fn pointer_policy(&self) -> PointerPolicy {
+        self.pointer_policy
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HitContribution, HitRegion};
-    use crate::LogicalRect;
+    use super::{HitContribution, HitRegion, PointerPolicy};
+    use crate::{
+        ContributionClip, LogicalLength, LogicalRect, LogicalTransform, Radius, SceneLayer,
+        SceneShape,
+    };
 
     #[test]
     fn empty_is_the_only_default_hit_contribution() {
@@ -111,6 +198,36 @@ mod tests {
         let rect = LogicalRect::try_new(1.0, 2.0, 3.0, 4.0)
             .unwrap_or_else(|_| unreachable!("test rectangle is valid"));
         let contribution = HitContribution::new(vec![HitRegion::rect(rect)]);
-        assert_eq!(contribution.regions(), &[HitRegion::rect(rect)]);
+        assert_eq!(contribution.regions()[0].shape(), SceneShape::rect(rect));
+    }
+
+    #[test]
+    fn region_composition_defaults_and_explicit_values_are_self_contained() {
+        let rect = LogicalRect::try_new(0.0, 0.0, 10.0, 12.0)
+            .unwrap_or_else(|_| unreachable!("test rectangle is valid"));
+        let default_region = HitRegion::rect(rect);
+        assert_eq!(default_region.shape(), SceneShape::rect(rect));
+        assert_eq!(default_region.local_transform(), LogicalTransform::IDENTITY);
+        assert!(default_region.clips().is_empty());
+        assert_eq!(default_region.layer(), SceneLayer::ZERO);
+        assert_eq!(default_region.pointer_policy(), PointerPolicy::Target);
+
+        let transform = LogicalTransform::translation(2.0, 3.0)
+            .unwrap_or_else(|_| unreachable!("test transform is valid"));
+        let clip = ContributionClip::identity(SceneShape::rect(rect));
+        let radius = Radius::all(
+            LogicalLength::new(2.0).unwrap_or_else(|_| unreachable!("test radius is valid")),
+        );
+        let region = HitRegion::rounded_rect(rect, radius)
+            .with_transform(transform)
+            .with_clip(clip)
+            .with_layer(SceneLayer::new(-4))
+            .with_pointer_policy(PointerPolicy::Block);
+
+        assert_eq!(region.shape(), SceneShape::rounded_rect(rect, radius));
+        assert_eq!(region.local_transform(), transform);
+        assert_eq!(region.clips(), &[clip]);
+        assert_eq!(region.layer(), SceneLayer::new(-4));
+        assert_eq!(region.pointer_policy(), PointerPolicy::Block);
     }
 }

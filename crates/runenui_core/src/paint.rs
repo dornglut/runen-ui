@@ -1,6 +1,9 @@
 //! Renderer-neutral owner-local paint contribution vocabulary.
 
-use crate::{Color, ComputedStyle, LogicalLength, LogicalRect, LogicalSize};
+use crate::{
+    Color, ComputedStyle, ContributionClip, LogicalLength, LogicalRect, LogicalSize,
+    LogicalTransform, SceneLayer, SceneOpacity,
+};
 
 /// Read-only facts supplied while one mounted widget contributes paint.
 ///
@@ -75,18 +78,34 @@ impl PaintContribution {
 }
 
 /// One owner-local renderer-neutral paint item.
+///
+/// Every item is self-contained: primitive, owner-local transform, conjunctive
+/// clips, validated opacity, and snapshot-local layer are explicit values rather
+/// than push/pop command state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PaintContributionItem {
     primitive: PaintPrimitive,
+    local_transform: LogicalTransform,
+    clips: Vec<ContributionClip>,
+    opacity: SceneOpacity,
+    layer: SceneLayer,
 }
 
 impl PaintContributionItem {
+    const fn from_primitive(primitive: PaintPrimitive) -> Self {
+        Self {
+            primitive,
+            local_transform: LogicalTransform::IDENTITY,
+            clips: Vec::new(),
+            opacity: SceneOpacity::OPAQUE,
+            layer: SceneLayer::ZERO,
+        }
+    }
+
     /// Creates a filled logical rectangle using one literal core color.
     #[must_use]
     pub const fn fill_rect(rect: LogicalRect, color: Color) -> Self {
-        Self {
-            primitive: PaintPrimitive::FillRect { rect, color },
-        }
+        Self::from_primitive(PaintPrimitive::FillRect { rect, color })
     }
 
     /// Creates a centered logical rectangle stroke.
@@ -96,9 +115,35 @@ impl PaintContributionItem {
     /// hairline request.
     #[must_use]
     pub const fn stroke_rect(rect: LogicalRect, color: Color, width: LogicalLength) -> Self {
-        Self {
-            primitive: PaintPrimitive::StrokeRect { rect, color, width },
-        }
+        Self::from_primitive(PaintPrimitive::StrokeRect { rect, color, width })
+    }
+
+    /// Replaces the item's primitive-local to owner-local transform.
+    #[must_use]
+    pub const fn with_transform(mut self, transform: LogicalTransform) -> Self {
+        self.local_transform = transform;
+        self
+    }
+
+    /// Appends one conjunctive owner-local clip.
+    #[must_use]
+    pub fn with_clip(mut self, clip: ContributionClip) -> Self {
+        self.clips.push(clip);
+        self
+    }
+
+    /// Replaces item opacity.
+    #[must_use]
+    pub const fn with_opacity(mut self, opacity: SceneOpacity) -> Self {
+        self.opacity = opacity;
+        self
+    }
+
+    /// Replaces snapshot-local ordering layer.
+    #[must_use]
+    pub const fn with_layer(mut self, layer: SceneLayer) -> Self {
+        self.layer = layer;
+        self
     }
 
     /// Returns the renderer-neutral primitive.
@@ -106,9 +151,33 @@ impl PaintContributionItem {
     pub const fn primitive(&self) -> &PaintPrimitive {
         &self.primitive
     }
+
+    /// Returns primitive-local to owner-local transform.
+    #[must_use]
+    pub const fn local_transform(&self) -> LogicalTransform {
+        self.local_transform
+    }
+
+    /// Returns conjunctive clips in authored order.
+    #[must_use]
+    pub const fn clips(&self) -> &[ContributionClip] {
+        self.clips.as_slice()
+    }
+
+    /// Returns validated item opacity.
+    #[must_use]
+    pub const fn opacity(&self) -> SceneOpacity {
+        self.opacity
+    }
+
+    /// Returns snapshot-local ordering layer.
+    #[must_use]
+    pub const fn layer(&self) -> SceneLayer {
+        self.layer
+    }
 }
 
-/// Minimum M6B renderer-neutral paint primitive vocabulary.
+/// Minimum renderer-neutral paint primitive vocabulary.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum PaintPrimitive {
@@ -152,7 +221,10 @@ impl PaintPrimitive {
 #[cfg(test)]
 mod tests {
     use super::{PaintContribution, PaintContributionItem, PaintPrimitive};
-    use crate::{Color, LogicalLength, LogicalRect};
+    use crate::{
+        Color, ContributionClip, LogicalLength, LogicalRect, LogicalTransform, SceneLayer,
+        SceneOpacity, SceneShape,
+    };
 
     #[test]
     fn contribution_preserves_literal_color_geometry_and_order() {
@@ -188,5 +260,31 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("test rectangle is valid"));
         let item = PaintContributionItem::stroke_rect(rect, Color::BLACK, LogicalLength::ZERO);
         assert_eq!(item.primitive().stroke_width(), Some(LogicalLength::ZERO));
+    }
+
+    #[test]
+    fn item_composition_defaults_and_explicit_values_are_self_contained() {
+        let rect = LogicalRect::try_new(0.0, 0.0, 4.0, 5.0)
+            .unwrap_or_else(|_| unreachable!("test rectangle is valid"));
+        let default_item = PaintContributionItem::fill_rect(rect, Color::WHITE);
+        assert_eq!(default_item.local_transform(), LogicalTransform::IDENTITY);
+        assert!(default_item.clips().is_empty());
+        assert_eq!(default_item.opacity(), SceneOpacity::OPAQUE);
+        assert_eq!(default_item.layer(), SceneLayer::ZERO);
+
+        let transform = LogicalTransform::translation(3.0, 7.0)
+            .unwrap_or_else(|_| unreachable!("test transform is valid"));
+        let opacity =
+            SceneOpacity::new(0.5).unwrap_or_else(|_| unreachable!("test opacity is valid"));
+        let clip = ContributionClip::identity(SceneShape::rect(rect));
+        let item = default_item
+            .with_transform(transform)
+            .with_clip(clip)
+            .with_opacity(opacity)
+            .with_layer(SceneLayer::new(-2));
+        assert_eq!(item.local_transform(), transform);
+        assert_eq!(item.clips(), &[clip]);
+        assert_eq!(item.opacity(), opacity);
+        assert_eq!(item.layer(), SceneLayer::new(-2));
     }
 }
