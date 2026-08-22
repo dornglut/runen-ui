@@ -129,16 +129,12 @@ impl Widget<()> for StatefulPulse {
             height: LogicalLength::from(10_u16),
         }
     }
-    fn paint(
-        &self,
-        state: &Self::State,
-        context: PaintContributionContext,
-    ) -> PaintContribution {
+    fn paint(&self, state: &Self::State, context: PaintContributionContext) -> PaintContribution {
         let size = context.local_size();
         let rect = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
             .unwrap_or_else(|_| unreachable!("validated local size yields a valid rectangle"));
-        let activation_channel = u8::try_from(state.activations.min(u16::from(u8::MAX)))
-            .unwrap_or(u8::MAX);
+        let activation_channel =
+            u8::try_from(state.activations.min(u16::from(u8::MAX))).unwrap_or(u8::MAX);
         PaintContribution::single(PaintContributionItem::fill_rect(
             rect,
             Color::rgba(activation_channel, 0, 0, 255),
