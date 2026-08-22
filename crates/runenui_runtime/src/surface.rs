@@ -882,10 +882,7 @@ mod tests {
             .unwrap_or_else(|| unreachable!("test root remains live"));
         apply_invalidation(node, WidgetInvalidation::DIAGNOSTICS);
         let (_, diagnostics) = publish(&mut tree, &context, &mut cache);
-        assert_eq!(
-            diagnostics.executed(),
-            &[super::SurfacePhase::Diagnostics]
-        );
+        assert_eq!(diagnostics.executed(), &[super::SurfacePhase::Diagnostics]);
         assert_eq!(
             retained.retained_product_reuse(
                 cache
