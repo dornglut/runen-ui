@@ -441,8 +441,8 @@ mod tests {
     fn resource_primitives_validate_kind_and_preserve_placement_and_foreground() {
         let rect = LogicalRect::try_new(2.0, 3.0, 40.0, 50.0)
             .unwrap_or_else(|_| unreachable!("test destination is valid"));
-        let origin = LogicalPoint::new(4.0, 7.0)
-            .unwrap_or_else(|_| unreachable!("test origin is finite"));
+        let origin =
+            LogicalPoint::new(4.0, 7.0).unwrap_or_else(|_| unreachable!("test origin is finite"));
         let image_ref = ResourceRef::new(ResourceKind::Image);
         let shaped_ref = ResourceRef::new(ResourceKind::ShapedTextRun);
 
