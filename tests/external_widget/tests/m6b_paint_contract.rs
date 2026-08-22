@@ -55,7 +55,7 @@ impl UiApp for App {
     fn update(_: &mut Self::State, _: Self::Action) {}
 }
 
-fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
+fn logical_rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
     LogicalRect::try_new(x, y, width, height)
         .unwrap_or_else(|_| unreachable!("test rectangle is finite and non-negative"))
 }
@@ -75,7 +75,7 @@ fn primitive_covers(primitive: &PaintPrimitive, sample: LogicalPoint) -> bool {
                 return false;
             }
             let half = stroke / 2.0;
-            let expanded = rect(
+            let expanded = logical_rect(
                 rect.x() - half,
                 rect.y() - half,
                 rect.width() + stroke,
@@ -87,7 +87,7 @@ fn primitive_covers(primitive: &PaintPrimitive, sample: LogicalPoint) -> bool {
             if rect.width() <= stroke || rect.height() <= stroke {
                 return true;
             }
-            let inset = rect(
+            let inset = logical_rect(
                 rect.x() + half,
                 rect.y() + half,
                 rect.width() - stroke,
@@ -95,6 +95,7 @@ fn primitive_covers(primitive: &PaintPrimitive, sample: LogicalPoint) -> bool {
             );
             !inset.contains(sample)
         }
+        _ => false,
     }
 }
 
@@ -128,7 +129,10 @@ fn composite(primitives: &[PaintPrimitive], sample: LogicalPoint) -> [f32; 4] {
 }
 
 fn assert_close(actual: f32, expected: f32) {
-    assert!((actual - expected).abs() <= 1.0e-6, "{actual} != {expected}");
+    assert!(
+        (actual - expected).abs() <= 1.0e-6,
+        "{actual} != {expected}"
+    );
 }
 
 #[test]
@@ -144,7 +148,10 @@ fn downstream_scene_preserves_basic_rect_literals_order_and_owner_placement() {
     let items = publication.paint_scene().items();
 
     assert_eq!(items.len(), 4);
-    assert_eq!(items[0].local_to_surface().components(), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+    assert_eq!(
+        items[0].local_to_surface().components(),
+        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    );
     assert!(matches!(
         items[0].primitive(),
         PaintPrimitive::FillRect { rect, color }
@@ -164,32 +171,35 @@ fn downstream_scene_preserves_basic_rect_literals_order_and_owner_placement() {
         items[2].primitive(),
         PaintPrimitive::FillRect { rect, .. } if rect.width() == 0.0
     ));
-    assert_eq!(items[3].primitive().stroke_width(), Some(LogicalLength::ZERO));
+    assert_eq!(
+        items[3].primitive().stroke_width(),
+        Some(LogicalLength::ZERO)
+    );
 }
 
 #[test]
 fn independent_logical_coverage_proves_degenerate_and_centered_miter_strokes() {
     let fill_zero_width = PaintPrimitive::FillRect {
-        rect: rect(0.0, 0.0, 0.0, 10.0),
+        rect: logical_rect(0.0, 0.0, 0.0, 10.0),
         color: Color::WHITE,
     };
     let stroke_zero_rect = PaintPrimitive::StrokeRect {
-        rect: rect(0.0, 0.0, 0.0, 10.0),
+        rect: logical_rect(0.0, 0.0, 0.0, 10.0),
         color: Color::WHITE,
         width: LogicalLength::from(2_u16),
     };
     let stroke_zero_width = PaintPrimitive::StrokeRect {
-        rect: rect(0.0, 0.0, 10.0, 10.0),
+        rect: logical_rect(0.0, 0.0, 10.0, 10.0),
         color: Color::WHITE,
         width: LogicalLength::ZERO,
     };
     let centered = PaintPrimitive::StrokeRect {
-        rect: rect(0.0, 0.0, 10.0, 10.0),
+        rect: logical_rect(0.0, 0.0, 10.0, 10.0),
         color: Color::WHITE,
         width: LogicalLength::from(2_u16),
     };
     let collapsed_inset = PaintPrimitive::StrokeRect {
-        rect: rect(0.0, 0.0, 1.0, 10.0),
+        rect: logical_rect(0.0, 0.0, 1.0, 10.0),
         color: Color::WHITE,
         width: LogicalLength::from(2_u16),
     };
@@ -206,7 +216,7 @@ fn independent_logical_coverage_proves_degenerate_and_centered_miter_strokes() {
 
 #[test]
 fn independent_fixed_opacity_compositor_decodes_srgb_and_uses_source_over_scene_order() {
-    let area = rect(0.0, 0.0, 10.0, 10.0);
+    let area = logical_rect(0.0, 0.0, 10.0, 10.0);
     let red = PaintPrimitive::FillRect {
         rect: area,
         color: Color::rgba(255, 0, 0, 128),
