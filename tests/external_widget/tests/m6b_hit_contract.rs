@@ -171,7 +171,9 @@ fn hit_regions_membership_and_focusability_are_independent_authorities() {
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| {
-            unreachable!("resolved ingress validates exact snapshot membership without a hit region")
+            unreachable!(
+                "resolved ingress validates exact snapshot membership without a hit region"
+            )
         });
     assert_eq!(
         runtime
