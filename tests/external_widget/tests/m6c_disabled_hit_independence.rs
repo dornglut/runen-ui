@@ -87,7 +87,7 @@ fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability
         .unwrap_or_else(|| unreachable!("control is published"));
     let target = control.id().clone();
     let sample = center(control.bounds());
-    let initial_hit_generation = initial.input_context().hit_test_generation();
+    let initial_regions = initial.hit_test_scene().regions().to_vec();
     let initial_semantic = initial
         .semantic_publication()
         .snapshot()
@@ -119,10 +119,7 @@ fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability
     assert!(report.contains(SurfacePhase::Paint));
     assert!(report.contains(SurfacePhase::Semantics));
     assert!(!report.contains(SurfacePhase::HitTesting));
-    assert_eq!(
-        disabled.input_context().hit_test_generation(),
-        initial_hit_generation
-    );
+    assert_eq!(disabled.hit_test_scene().regions(), initial_regions.as_slice());
     assert_eq!(disabled.hit_test_scene().target_at(sample), Some(&target));
     assert!(
         runtime
