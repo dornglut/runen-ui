@@ -103,7 +103,7 @@ impl SurfaceNode {
     }
 
     #[must_use]
-    pub const fn computed_style(&self) -> ComputStyle {
+    pub const fn computed_style(&self) -> ComputedStyle {
         self.computed_style
     }
 }
