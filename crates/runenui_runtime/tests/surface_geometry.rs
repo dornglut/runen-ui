@@ -37,7 +37,11 @@ impl UiApp for CompositeApp {
     fn root((): &Self::State) -> Element<Self::Action> {
         column(children![
             text("Title").id("title"),
-            row(children![button("A"), button("B").disabled()]).gap(8_u16),
+            row(children![
+                button("A").on_activate(|| ()),
+                button("B").disabled()
+            ])
+            .gap(8_u16),
         ])
         .gap(4_u16)
         .into_element()
