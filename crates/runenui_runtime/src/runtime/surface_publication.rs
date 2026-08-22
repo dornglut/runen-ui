@@ -401,7 +401,7 @@ impl SurfacePublicationState {
             .ok_or(SurfaceSnapshotError::TargetNotInSnapshot)
     }
 
-    fn selection(
+    const fn selection(
         snapshot: &HitTestScene,
         snapshot_kind: SurfaceSnapshotKind,
     ) -> SurfaceSnapshotSelection {
