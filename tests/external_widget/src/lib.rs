@@ -537,7 +537,7 @@ impl ExternalSubscriptionWidget {
     }
 }
 
-impl<Action> Widget<Action> for ExternalSubscriptionWidget<Action> {
+impl<Action> Widget<Action> for ExternalSubscriptionWidget {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -641,11 +641,7 @@ impl Widget<ChildAction> for PulseButton {
         }
     }
 
-    fn paint(
-        &self,
-        _state: &Self::State,
-        context: PaintContributionContext,
-    ) -> PaintContribution {
+    fn paint(&self, _state: &Self::State, context: PaintContributionContext) -> PaintContribution {
         let rect = external_local_rect(context.local_size());
         PaintContribution::new(vec![
             PaintContributionItem::fill_rect(rect, Color::rgba(32, 64, 96, 255)),
@@ -657,11 +653,7 @@ impl Widget<ChildAction> for PulseButton {
         ])
     }
 
-    fn hit_test(
-        &self,
-        _state: &Self::State,
-        context: HitContributionContext,
-    ) -> HitContribution {
+    fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {
         HitContribution::single_rect(external_local_rect(context.local_size()))
     }
 
