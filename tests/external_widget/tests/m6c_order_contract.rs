@@ -189,7 +189,10 @@ fn assert_hit_order(
     let regions = publication.hit_test_scene().regions();
     assert_eq!(regions.len(), 6);
     assert_eq!(
-        regions.iter().map(|region| region.layer()).collect::<Vec<_>>(),
+        regions
+            .iter()
+            .map(|region| region.layer())
+            .collect::<Vec<_>>(),
         vec![
             SceneLayer::new(-1),
             SceneLayer::new(-1),
@@ -200,7 +203,10 @@ fn assert_hit_order(
         ]
     );
     assert_eq!(
-        regions.iter().map(|region| region.target()).collect::<Vec<_>>(),
+        regions
+            .iter()
+            .map(|region| region.target())
+            .collect::<Vec<_>>(),
         vec![first, second, first, first, second, second]
     );
     assert_eq!(
@@ -217,7 +223,10 @@ fn assert_hit_order(
             PointerPolicy::Block,
         ]
     );
-    assert_eq!(publication.hit_test_scene().target_at(point(5.0, 5.0)), None);
+    assert_eq!(
+        publication.hit_test_scene().target_at(point(5.0, 5.0)),
+        None
+    );
     assert_eq!(
         publication.hit_test_scene().target_at(point(15.0, 5.0)),
         Some(second)
@@ -240,7 +249,14 @@ fn layer_preorder_and_local_order_follow_logical_reorder_not_retained_storage_or
     let b = node_id(&initial, "order.b");
     assert_eq!(
         paint_colors(&initial),
-        vec![colors("a")[0], colors("b")[0], colors("a")[1], colors("a")[2], colors("b")[1], colors("b")[2]]
+        vec![
+            colors("a")[0],
+            colors("b")[0],
+            colors("a")[1],
+            colors("a")[2],
+            colors("b")[1],
+            colors("b")[2]
+        ]
     );
     assert_hit_order(&initial, &a, &b);
 
@@ -258,7 +274,14 @@ fn layer_preorder_and_local_order_follow_logical_reorder_not_retained_storage_or
     assert_eq!(node_id(&reordered, "order.b"), b);
     assert_eq!(
         paint_colors(&reordered),
-        vec![colors("b")[0], colors("a")[0], colors("b")[1], colors("b")[2], colors("a")[1], colors("a")[2]]
+        vec![
+            colors("b")[0],
+            colors("a")[0],
+            colors("b")[1],
+            colors("b")[2],
+            colors("a")[1],
+            colors("a")[2]
+        ]
     );
     assert_hit_order(&reordered, &b, &a);
 }
