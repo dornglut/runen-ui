@@ -55,10 +55,7 @@ impl LogicalTransform {
         tx: f32,
         ty: f32,
     ) -> Result<Self, LogicalTransformError> {
-        if [m11, m12, m21, m22, tx, ty]
-            .into_iter()
-            .all(f32::is_finite)
-        {
+        if [m11, m12, m21, m22, tx, ty].into_iter().all(f32::is_finite) {
             Ok(Self {
                 m11,
                 m12,
@@ -94,8 +91,12 @@ impl LogicalTransform {
     /// is returned rather than manufacturing renderer-dependent coordinates.
     #[must_use]
     pub fn transform_point(self, point: LogicalPoint) -> Option<LogicalPoint> {
-        let x = self.m11.mul_add(point.x(), self.m21.mul_add(point.y(), self.tx));
-        let y = self.m12.mul_add(point.x(), self.m22.mul_add(point.y(), self.ty));
+        let x = self
+            .m11
+            .mul_add(point.x(), self.m21.mul_add(point.y(), self.tx));
+        let y = self
+            .m12
+            .mul_add(point.x(), self.m22.mul_add(point.y(), self.ty));
         LogicalPoint::new(x, y).ok()
     }
 }
@@ -123,8 +124,8 @@ mod tests {
     fn translation_maps_logical_points_exactly() {
         let transform = LogicalTransform::translation(5.0, -3.0)
             .unwrap_or_else(|_| unreachable!("test translation is finite"));
-        let point = LogicalPoint::new(2.0, 7.0)
-            .unwrap_or_else(|_| unreachable!("test point is finite"));
+        let point =
+            LogicalPoint::new(2.0, 7.0).unwrap_or_else(|_| unreachable!("test point is finite"));
         let mapped = transform
             .transform_point(point)
             .unwrap_or_else(|| unreachable!("test mapping remains finite"));
