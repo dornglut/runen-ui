@@ -383,31 +383,14 @@ impl From<SemanticReconcileError> for SurfacePlanningError {
     }
 }
 
-#[derive(Clone, Copy)]
-struct SurfaceCapabilityNeeds {
-    layout: bool,
-    hit_test: bool,
-    paint: bool,
-    diagnostics: bool,
-}
-
-impl SurfaceCapabilityNeeds {
-    fn dirty_phases(self) -> DirtyPhases {
-        let mut phases = DirtyPhases::default();
-        if self.layout {
-            phases.insert(DirtyPhases::LAYOUT);
+fn surface_capability_phases(entries: [(bool, DirtyPhases); 4]) -> DirtyPhases {
+    let mut phases = DirtyPhases::default();
+    for (is_dirty, phase) in entries {
+        if is_dirty {
+            phases.insert(phase);
         }
-        if self.hit_test {
-            phases.insert(DirtyPhases::HIT_TEST);
-        }
-        if self.paint {
-            phases.insert(DirtyPhases::PAINT);
-        }
-        if self.diagnostics {
-            phases.insert(DirtyPhases::DIAGNOSTICS);
-        }
-        phases
     }
+    phases
 }
 
 fn layout_context_changed(current: &SurfaceCache, next: &cache::SurfaceContextKey) -> bool {
@@ -487,13 +470,12 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     let semantic_product_dirty =
         semantics_dirty || layout_dirty || pending.contains(DirtyPhases::FOCUS_VALIDATION);
     let mut capability_plan = tree.plan_surface_publication_capabilities(
-        SurfaceCapabilityNeeds {
-            layout: layout_dirty,
-            hit_test: hit_dirty,
-            paint: paint_dirty,
-            diagnostics: diagnostics_dirty,
-        }
-        .dirty_phases(),
+        surface_capability_phases([
+            (layout_dirty, DirtyPhases::LAYOUT),
+            (hit_dirty, DirtyPhases::HIT_TEST),
+            (paint_dirty, DirtyPhases::PAINT),
+            (diagnostics_dirty, DirtyPhases::DIAGNOSTICS),
+        ]),
     );
     let semantic_capability_plan =
         semantic_product_dirty.then(|| tree.plan_semantic_publication_capabilities());
