@@ -14,11 +14,11 @@ impl UiApp for App {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         text("probe")
     }
 
-    fn update(_: &mut Self::State, _: Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 fn size(width: u16, height: u16) -> LogicalSize {
