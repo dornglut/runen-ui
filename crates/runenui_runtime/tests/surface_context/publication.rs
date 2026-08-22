@@ -185,8 +185,11 @@ fn current_and_retained_contexts_use_their_exact_geometry() {
     let current_context = current.input_context().clone();
     let secondary = authored_target(&current, "surface.secondary");
 
-    assert_eq!(old.frame().hit_test_id(old_point), Some(primary));
-    assert_eq!(current.frame().hit_test_id(old_point), Some(secondary));
+    assert_eq!(old.hit_test_scene().target_at(old_point), Some(&primary));
+    assert_eq!(
+        current.hit_test_scene().target_at(old_point),
+        Some(&secondary)
+    );
 
     activate_point(&mut runtime, old_context.clone(), old_point);
     assert_eq!(runtime.state().primary_activations, 1);
