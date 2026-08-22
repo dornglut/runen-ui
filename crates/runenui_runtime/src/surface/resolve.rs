@@ -253,9 +253,12 @@ pub(super) fn resolve_paint(
         let bounds = layout.bounds[position];
         let placement = LogicalTransform::translation(bounds.x(), bounds.y())
             .unwrap_or_else(|_| unreachable!("published layout origin is finite"));
-        items.extend(contribution.items().iter().map(|item| {
-            PaintSceneItem::new(item.primitive().clone(), placement)
-        }));
+        items.extend(
+            contribution
+                .items()
+                .iter()
+                .map(|item| PaintSceneItem::new(item.primitive().clone(), placement)),
+        );
     }
     PaintScene::new(items)
 }
