@@ -184,7 +184,7 @@ impl HitTestRegion {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct HitTestSceneContent {
+pub(super) struct HitTestSceneContent {
     data: Arc<HitTestSceneContentData>,
 }
 
@@ -195,7 +195,7 @@ struct HitTestSceneContentData {
 }
 
 impl HitTestSceneContent {
-    pub(crate) fn new(regions: Vec<HitTestRegion>, membership: Vec<MountedNodeId>) -> Self {
+    pub(super) fn new(regions: Vec<HitTestRegion>, membership: Vec<MountedNodeId>) -> Self {
         Self {
             data: Arc::new(HitTestSceneContentData {
                 regions,
@@ -204,16 +204,16 @@ impl HitTestSceneContent {
         }
     }
 
-    pub(crate) fn regions(&self) -> &[HitTestRegion] {
+    pub(super) fn regions(&self) -> &[HitTestRegion] {
         self.data.regions.as_slice()
     }
 
-    pub(crate) fn membership(&self) -> &[MountedNodeId] {
+    pub(super) fn membership(&self) -> &[MountedNodeId] {
         self.data.membership.as_slice()
     }
 
     #[cfg(test)]
-    pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
+    pub(super) fn shares_storage_with(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.data, &other.data)
     }
 }
@@ -230,8 +230,14 @@ pub struct HitTestScene {
 }
 
 impl HitTestScene {
-    pub(crate) const fn new(context: SurfaceInputContext, content: HitTestSceneContent) -> Self {
-        Self { context, content }
+    pub(crate) const fn new(
+        input_context: SurfaceInputContext,
+        scene_content: HitTestSceneContent,
+    ) -> Self {
+        Self {
+            context: input_context,
+            content: scene_content,
+        }
     }
 
     /// Returns the exact runtime-issued displayed input context owned by this scene.
