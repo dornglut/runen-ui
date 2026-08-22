@@ -11,7 +11,7 @@ Application state
   -> persistent mounted runtime tree
   -> interaction / computed style / layout / semantics
   -> surface publication
-       ├── renderer-facing proof/scene products
+       ├── renderer-facing paint publication/scene products
        ├── hit/input products
        ├── semantic publication
        └── diagnostics
@@ -36,6 +36,6 @@ Durable decisions are recorded separately in [ADRs](../adr/). Permanent observab
 
 ## Current boundary versus target architecture
 
-RunenUI currently provides a deterministic headless framework foundation with renderer-facing proof products, independent semantic publication, and public deterministic testing. Accepted renderer-neutral paint/hit scene contracts are successor target authority, not current scene API. See [status](../status.md) for current maturity and the [roadmap](../roadmap.md) for durable sequencing.
+RunenUI currently provides a deterministic headless framework foundation with accepted M6A retained publication, canonical renderer-neutral M6B paint/hit products, independent semantic publication, and public deterministic testing. M6C composition/resource/metadata/capability breadth and M6D independent-consumer/migration closure remain successor target authority. See [status](../status.md) for current maturity and the [roadmap](../roadmap.md) for durable sequencing.
 
 Concrete native hosts, accessibility adapters, renderer backends, product state, and engine/ECS integration remain edge or consumer responsibilities. RunenUI core/runtime must not acquire those dependencies merely because future production profiles need adapters for them.
