@@ -6,10 +6,11 @@ use std::{
 };
 
 use runenui_core::{
-    Element, EventContext, LogicalLength, LogicalPoint, NoHostProtocol, PointerButton,
-    PointerButtons, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
-    StyleTokens, SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetMeasure,
+    Element, EventContext, HitContribution, HitContributionContext, LogicalLength, LogicalPoint,
+    LogicalRect, NoHostProtocol, PointerButton, PointerButtons, PointerCaptureKind,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleTokens, SurfaceInputContext,
+    UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
+    WidgetActivationOutput, WidgetEventOutput, WidgetMeasure,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TraceDeliveryOutcome,
@@ -101,6 +102,13 @@ impl Widget<Action> for Probe {
             width: LogicalLength::new(32.0).unwrap_or_default(),
             height: LogicalLength::new(32.0).unwrap_or_default(),
         }
+    }
+
+    fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {
+        let size = context.local_size();
+        let rect = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+            .unwrap_or_else(|_| unreachable!("validated local size yields a valid hit rectangle"));
+        HitContribution::single_rect(rect)
     }
 }
 
