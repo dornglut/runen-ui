@@ -196,6 +196,7 @@ mod pump;
 mod queue;
 mod redraw;
 mod runtime;
+mod scene;
 mod semantic_action;
 mod semantic_compositor;
 mod semantic_diagnostic;
@@ -260,6 +261,9 @@ pub use runtime::{
     ReconciliationGeneration, ReconciliationReport, RuntimeError, RuntimeStatus,
     RuntimeTerminalReason, ShutdownReport, SubscriptionDiagnostic, SubscriptionOwnerKind,
     SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
+};
+pub use scene::{
+    HitTestRegion, HitTestScene, PaintPublication, PaintRevision, PaintScene, PaintSceneItem,
 };
 pub use semantic_action::{SubmitSemanticActionError, SubmitSemanticActionErrorKind};
 pub use semantic_diagnostic::{

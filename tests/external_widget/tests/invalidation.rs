@@ -3,9 +3,11 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, Element, NoHostProtocol, SemanticContribution,
-    SemanticContributionContext, StyleTokens, UiApp, View, Widget, WidgetActivation,
-    WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetPaintProof, WidgetUpdateContext,
+    ChildLayout, ChildLayoutWidget, Element, HitContribution, HitContributionContext,
+    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
+    PaintContributionContext, SemanticContribution, SemanticContributionContext, StyleTokens,
+    UiApp, View, Widget, WidgetActivation, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure,
+    WidgetUpdateContext,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase,
@@ -33,44 +35,83 @@ struct Calls {
     measure: Cell<usize>,
     layout: Cell<usize>,
     paint: Cell<usize>,
+    hit_test: Cell<usize>,
     semantics: Cell<usize>,
     diagnostics: Cell<usize>,
+}
+
+#[derive(Debug)]
+struct ProbeState {
+    hit_enabled: bool,
 }
 
 #[derive(Debug)]
 struct InvalidationProbe {
     calls: Rc<Calls>,
     invalidation: WidgetInvalidation,
+    hit_enabled: bool,
 }
+
 impl Widget<()> for InvalidationProbe {
-    type State = ();
-    fn create_state(&self) -> Self::State {}
-    fn update(&self, (): &mut Self::State, context: &mut WidgetUpdateContext) {
-        context.invalidate(self.invalidation);
+    type State = ProbeState;
+
+    fn create_state(&self) -> Self::State {
+        ProbeState {
+            hit_enabled: self.hit_enabled,
+        }
     }
-    fn activation(&self, (): &Self::State) -> WidgetActivation {
+
+    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext) {
+        context.invalidate(self.invalidation);
+        if state.hit_enabled != self.hit_enabled {
+            state.hit_enabled = self.hit_enabled;
+            context.invalidate(WidgetInvalidation::HIT_TEST);
+        }
+    }
+
+    fn activation(&self, _: &Self::State) -> WidgetActivation {
         self.calls.activation.set(self.calls.activation.get() + 1);
         WidgetActivation::NONE
     }
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
+
+    fn measure(&self, _: &Self::State) -> WidgetMeasure {
         self.calls.measure.set(self.calls.measure.get() + 1);
-        WidgetMeasure::default()
+        WidgetMeasure::Fixed {
+            width: LogicalLength::from(10_u16),
+            height: LogicalLength::from(10_u16),
+        }
     }
-    fn paint(&self, (): &Self::State) -> WidgetPaintProof {
+
+    fn paint(&self, _: &Self::State, _: PaintContributionContext) -> PaintContribution {
         self.calls.paint.set(self.calls.paint.get() + 1);
-        WidgetPaintProof::default()
+        PaintContribution::empty()
     }
-    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+
+    fn hit_test(&self, state: &Self::State, context: HitContributionContext) -> HitContribution {
+        self.calls.hit_test.set(self.calls.hit_test.get() + 1);
+        if state.hit_enabled {
+            let size = context.local_size();
+            let rect = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+                .unwrap_or_else(|_| unreachable!("validated local size yields a valid hit rect"));
+            HitContribution::single_rect(rect)
+        } else {
+            HitContribution::empty()
+        }
+    }
+
+    fn semantics(&self, _: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         self.calls.semantics.set(self.calls.semantics.get() + 1);
         SemanticContribution::empty()
     }
-    fn diagnostics(&self, (): &Self::State) -> Vec<WidgetDiagnostic> {
+
+    fn diagnostics(&self, _: &Self::State) -> Vec<WidgetDiagnostic> {
         self.calls.diagnostics.set(self.calls.diagnostics.get() + 1);
         Vec::new()
     }
 }
+
 impl ChildLayoutWidget<()> for InvalidationProbe {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
+    fn child_layout(&self, _: &Self::State) -> ChildLayout {
         self.calls.layout.set(self.calls.layout.get() + 1);
         ChildLayout::Linear {
             axis: runenui_core::Axis::Vertical,
@@ -81,22 +122,29 @@ impl ChildLayoutWidget<()> for InvalidationProbe {
 #[derive(Debug)]
 struct CacheState {
     invalidation: WidgetInvalidation,
+    hit_enabled: bool,
     calls: Rc<Calls>,
 }
+
 #[derive(Clone, Copy, Debug)]
 enum CacheAction {
     Invalidate(WidgetInvalidation),
+    SetHit(bool),
 }
+
 struct CacheApp;
+
 impl UiApp for CacheApp {
     type State = CacheState;
     type Action = CacheAction;
     type HostProtocol = NoHostProtocol;
+
     fn root(state: &Self::State) -> Element<Self::Action> {
         runenui_core::container(
             InvalidationProbe {
                 calls: Rc::clone(&state.calls),
                 invalidation: state.invalidation,
+                hit_enabled: state.hit_enabled,
             },
             Vec::<Element<()>>::new(),
         )
@@ -104,9 +152,15 @@ impl UiApp for CacheApp {
         .into_element()
         .map_action(|()| unreachable!())
     }
+
     fn update(state: &mut Self::State, action: Self::Action) {
-        let CacheAction::Invalidate(value) = action;
-        state.invalidation = value;
+        match action {
+            CacheAction::Invalidate(value) => state.invalidation = value,
+            CacheAction::SetHit(enabled) => {
+                state.invalidation = WidgetInvalidation::NONE;
+                state.hit_enabled = enabled;
+            }
+        }
     }
 }
 
@@ -114,6 +168,7 @@ fn mounted_cache() -> (Rc<Calls>, AppRuntime<CacheApp>, StyleTokens) {
     let calls = Rc::new(Calls::default());
     let mut runtime = AppRuntime::<CacheApp>::mount(CacheState {
         invalidation: WidgetInvalidation::NONE,
+        hit_enabled: false,
         calls: Rc::clone(&calls),
     });
     let _ = runtime.pump(PumpBudget::new(
@@ -125,14 +180,19 @@ fn mounted_cache() -> (Rc<Calls>, AppRuntime<CacheApp>, StyleTokens) {
     (calls, runtime, StyleTokens::new())
 }
 
-fn publish(runtime: &mut AppRuntime<CacheApp>, tokens: &StyleTokens) {
-    let _ = runtime.publish_surface(&context(tokens));
+fn publish(
+    runtime: &mut AppRuntime<CacheApp>,
+    tokens: &StyleTokens,
+) -> runenui_runtime::SurfacePublication {
+    runtime
+        .publish_surface(&context(tokens))
+        .unwrap_or_else(|_| unreachable!("cache publication is admitted"))
 }
 
 #[test]
 fn clean_and_paint_only_publication_skip_unrelated_work() {
     let (calls, mut runtime, tokens) = mounted_cache();
-    publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &tokens);
     assert!(
         runtime
             .last_surface_phase_report()
@@ -144,12 +204,13 @@ fn clean_and_paint_only_publication_skip_unrelated_work() {
             calls.measure.get(),
             calls.layout.get(),
             calls.paint.get(),
+            calls.hit_test.get(),
             calls.semantics.get(),
             calls.diagnostics.get(),
         ),
-        (1, 1, 1, 1, 1, 1)
+        (1, 1, 1, 1, 1, 1, 1)
     );
-    publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &tokens);
     assert!(runtime.last_surface_phase_report().executed().is_empty());
     assert_eq!(calls.measure.get(), 1);
 
@@ -157,28 +218,32 @@ fn clean_and_paint_only_publication_skip_unrelated_work() {
         &mut runtime,
         CacheAction::Invalidate(WidgetInvalidation::PAINT),
     );
-    publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Paint]
     );
-    assert_eq!((calls.paint.get(), calls.measure.get()), (2, 1));
+    assert_eq!(
+        (calls.paint.get(), calls.hit_test.get(), calls.measure.get()),
+        (2, 1, 1)
+    );
 }
 
 #[test]
 fn layout_and_semantics_invalidation_execute_exact_dependencies() {
     let (calls, mut runtime, tokens) = mounted_cache();
-    publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &tokens);
     process_one(
         &mut runtime,
         CacheAction::Invalidate(WidgetInvalidation::LAYOUT),
     );
-    publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
+            SurfacePhase::Paint,
             SurfacePhase::Semantics,
         ]
     );
@@ -187,32 +252,90 @@ fn layout_and_semantics_invalidation_execute_exact_dependencies() {
             calls.measure.get(),
             calls.layout.get(),
             calls.paint.get(),
+            calls.hit_test.get(),
             calls.semantics.get(),
         ),
-        (2, 2, 1, 1)
+        (2, 2, 2, 2, 1)
     );
 
     process_one(
         &mut runtime,
         CacheAction::Invalidate(WidgetInvalidation::SEMANTICS),
     );
-    publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Semantics]
     );
-    assert_eq!((calls.semantics.get(), calls.paint.get()), (2, 1));
+    assert_eq!(
+        (
+            calls.semantics.get(),
+            calls.paint.get(),
+            calls.hit_test.get()
+        ),
+        (2, 2, 2)
+    );
+}
+
+#[test]
+fn hit_invalidation_recomputes_only_hit_and_changes_targetability() {
+    let (calls, mut runtime, tokens) = mounted_cache();
+    let initial = publish(&mut runtime, &tokens);
+    let point = LogicalPoint::new(1.0, 1.0).unwrap_or_else(|_| unreachable!());
+    assert!(initial.hit_test_scene().target_at(point).is_none());
+    let counts_before = (
+        calls.measure.get(),
+        calls.layout.get(),
+        calls.paint.get(),
+        calls.hit_test.get(),
+        calls.semantics.get(),
+        calls.diagnostics.get(),
+    );
+
+    process_one(&mut runtime, CacheAction::SetHit(true));
+    let targetable = publish(&mut runtime, &tokens);
+    assert_eq!(
+        runtime.last_surface_phase_report().executed(),
+        &[SurfacePhase::HitTesting]
+    );
+    assert!(targetable.hit_test_scene().target_at(point).is_some());
+    assert_eq!(
+        (
+            calls.measure.get(),
+            calls.layout.get(),
+            calls.paint.get(),
+            calls.hit_test.get(),
+            calls.semantics.get(),
+            calls.diagnostics.get(),
+        ),
+        (
+            counts_before.0,
+            counts_before.1,
+            counts_before.2,
+            counts_before.3 + 1,
+            counts_before.4,
+            counts_before.5,
+        )
+    );
+
+    process_one(&mut runtime, CacheAction::SetHit(false));
+    let pass_through = publish(&mut runtime, &tokens);
+    assert_eq!(
+        runtime.last_surface_phase_report().executed(),
+        &[SurfacePhase::HitTesting]
+    );
+    assert!(pass_through.hit_test_scene().target_at(point).is_none());
 }
 
 #[test]
 fn diagnostics_and_interaction_invalidation_are_operationally_isolated() {
     let (calls, mut runtime, tokens) = mounted_cache();
-    publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &tokens);
     process_one(
         &mut runtime,
         CacheAction::Invalidate(WidgetInvalidation::DIAGNOSTICS),
     );
-    publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &tokens);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Diagnostics]
@@ -228,7 +351,7 @@ fn diagnostics_and_interaction_invalidation_are_operationally_isolated() {
             .last_surface_phase_report()
             .contains(SurfacePhase::FocusValidation)
     );
-    publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &tokens);
     assert!(
         !runtime
             .last_surface_phase_report()
@@ -239,8 +362,9 @@ fn diagnostics_and_interaction_invalidation_are_operationally_isolated() {
             calls.activation.get(),
             calls.measure.get(),
             calls.paint.get(),
+            calls.hit_test.get(),
             calls.semantics.get(),
         ),
-        (2, 1, 1, 1)
+        (2, 1, 1, 1, 1)
     );
 }

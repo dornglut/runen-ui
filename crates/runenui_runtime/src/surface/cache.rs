@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use runenui_core::{StyleTokens, WidgetDiagnostic, WidgetPaintProof};
+use runenui_core::{StyleTokens, WidgetDiagnostic};
 
+use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
 
 use super::{
@@ -148,26 +149,12 @@ pub(super) struct CachedLayoutFacts {
     pub(super) report: SurfaceLayoutReport,
 }
 
-#[derive(Clone, Debug)]
-pub(super) struct CachedHitTestFacts {
-    // Layout-phase fact projected by the explicit hit-test phase.
-    pub(super) bounds: Vec<LogicalRect>,
-}
-
-pub(super) fn build_hit_test_facts(layout: &CachedLayoutFacts) -> CachedHitTestFacts {
-    #[cfg(test)]
-    note_hit_test_phase_execution();
-    CachedHitTestFacts {
-        bounds: layout.bounds.clone(),
-    }
-}
-
-/// Sole retained renderer-side publication substrate.
+/// Sole retained renderer/input-side publication substrate.
 ///
 /// Every phase product is immutable once retained. Non-structural planning
-/// stages by cloning these handles and replaces only the products owned by
-/// phases that actually execute. This keeps rollback behavior structural rather
-/// than relying on a deep clone of the complete surface state.
+/// stages by cloning these handles and replaces only products owned by phases
+/// that actually execute. Canonical paint and hit scene content are retained
+/// directly; there is no proof-era paint vector or layout-derived hit snapshot.
 pub(crate) struct SurfaceCache {
     // Context key.
     pub(super) context_key: Arc<SurfaceContextKey>,
@@ -178,21 +165,22 @@ pub(crate) struct SurfaceCache {
     // Layout-phase facts. This is the single retained geometry storage owner
     // used by layout publication and current directional-focus projection.
     pub(super) layout: Arc<CachedLayoutFacts>,
-    // Layout-phase hit-test projection.
-    pub(super) hit_test: Arc<CachedHitTestFacts>,
-    // Paint-phase facts.
-    pub(super) paint: Arc<Vec<WidgetPaintProof>>,
+    // Canonical physical-hit content; displayed context is added only by the
+    // runtime-owned publication state when a generation is committed.
+    pub(super) hit_test: HitTestSceneContent,
+    // Canonical renderer-neutral paint scene content.
+    pub(super) paint: PaintScene,
     // Diagnostic-phase facts.
     pub(super) diagnostics: Arc<Vec<Vec<WidgetDiagnostic>>>,
-    // Derived materialization of the aligned phase facts above, never separate
-    // authority. Its clone is cheap immutable snapshot sharing.
+    // Derived layout/debug materialization of aligned phase facts above, never
+    // renderer or pointer authority. Its clone is cheap immutable sharing.
     // No authored StyleIntent or LayoutStyle is retained here.
     pub(super) publication: SurfacePublication,
 }
 
 impl SurfaceCache {
     /// Creates a staged non-structural candidate by sharing every retained
-    /// product. Dirty phase execution must replace the corresponding handle
+    /// product. Dirty phase execution must replace the corresponding product
     /// explicitly before this candidate can commit.
     pub(super) fn staged(&self) -> Self {
         Self {
@@ -200,16 +188,15 @@ impl SurfaceCache {
             topology: Arc::clone(&self.topology),
             styles: Arc::clone(&self.styles),
             layout: Arc::clone(&self.layout),
-            hit_test: Arc::clone(&self.hit_test),
-            paint: Arc::clone(&self.paint),
+            hit_test: self.hit_test.clone(),
+            paint: self.paint.clone(),
             diagnostics: Arc::clone(&self.diagnostics),
             publication: self.publication.clone(),
         }
     }
 
     /// Projects current directional-focus geometry from the retained layout
-    /// phase. The displayed-input snapshot remains separate until M6B because
-    /// it still owns historical input-generation membership and point routing.
+    /// phase, independently of physical hit participation.
     pub(crate) fn current_focus_geometry(&self) -> Vec<(MountedNodeId, LogicalRect)> {
         self.topology
             .nodes
@@ -242,8 +229,8 @@ impl SurfaceCache {
             Arc::ptr_eq(&self.topology, &other.topology),
             Arc::ptr_eq(&self.styles, &other.styles),
             Arc::ptr_eq(&self.layout, &other.layout),
-            Arc::ptr_eq(&self.hit_test, &other.hit_test),
-            Arc::ptr_eq(&self.paint, &other.paint),
+            self.hit_test.shares_storage_with(&other.hit_test),
+            self.paint.shares_storage_with(&other.paint),
             Arc::ptr_eq(&self.diagnostics, &other.diagnostics),
             self.publication.shares_storage_with(&other.publication),
         ]
@@ -355,7 +342,7 @@ mod tests {
             .unwrap_or_else(|| unreachable!("successful retry retains a cache"));
         assert_eq!(
             before.retained_product_reuse(after),
-            [true, true, true, true, false, true, false]
+            [true, true, true, true, false, true, true]
         );
     }
 }

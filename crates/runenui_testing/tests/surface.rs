@@ -41,7 +41,7 @@ impl MeasurementProvider for WideMeasurement {
 }
 
 #[test]
-fn fixed_surface_layout_hit_paint_and_custom_measurement_are_public_and_deterministic() {
+fn fixed_surface_layout_neutral_scenes_and_custom_measurement_are_public_and_deterministic() {
     let mut harness = TestHarness::<SurfaceApp>::mount(());
     assert_eq!(harness.surface_config().size(), DEFAULT_TEST_SURFACE_SIZE);
 
@@ -54,14 +54,16 @@ fn fixed_surface_layout_hit_paint_and_custom_measurement_are_public_and_determin
             .nodes()
             .iter()
             .find(|node| node.authored_id() == Some(&authored))?;
-        assert_ne!(node.paint().category(), "none");
+        assert!(publication.paint_scene().is_empty());
         assert!(publication.layout_report().node(node.id()).is_some());
         let point =
             runenui_runtime::LogicalPoint::new(node.bounds().x() + 1.0, node.bounds().y() + 1.0)
                 .ok()?;
-        assert_eq!(
-            publication.frame().hit_test_id(point),
-            Some(node.id().clone())
+        assert_eq!(publication.hit_test_scene().target_at(point), None);
+        assert!(
+            publication
+                .hit_test_scene()
+                .contains_mounted_target(node.id())
         );
         Some((node.bounds(), node.id().clone()))
     })() else {

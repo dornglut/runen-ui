@@ -1,14 +1,15 @@
 use core::fmt;
 
 use crate::{
-    Axis, ColorValue, ElementId, ElementKey, IntoElementId, IntoElementKey, LayoutStyle,
-    LogicalLength, RadiusValue, SemanticAction, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, SemanticState, SemanticText, SpacingValue, StyleIntent,
-    WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
+    Axis, ColorValue, ElementId, ElementKey, HitContribution, HitContributionContext,
+    IntoElementId, IntoElementKey, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
+    PaintContribution, PaintContributionContext, PaintContributionItem, RadiusValue,
+    SemanticAction, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
+    SemanticRole, SemanticState, SemanticText, SpacingValue, StyleIntent, WidgetActivationContext,
+    WidgetInvalidation, WidgetUpdateContext,
     element::{
         AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View,
-        Views, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetPaintProof,
-        WidgetTextKind,
+        Views, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetTextKind,
     },
     widget_erasure::{ChildLayoutWidgetAdapter, ErasedWidget, WidgetAdapter},
 };
@@ -103,8 +104,8 @@ impl<Action> Widget<Action> for TextWidget {
             minimum_height: LogicalLength::ZERO,
         }
     }
-    fn paint(&self, _: &Self::State) -> WidgetPaintProof {
-        WidgetPaintProof::new("text", self.content.clone())
+    fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
+        background_paint(context)
     }
     fn semantics(
         &self,
@@ -243,11 +244,19 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
                     | WidgetInvalidation::SEMANTICS,
             );
         }
-        if state.enabled != self.enabled || state.actionable != self.actionable {
+        if state.enabled != self.enabled {
             context.invalidate(
                 WidgetInvalidation::INTERACTION
                     | WidgetInvalidation::PAINT
                     | WidgetInvalidation::SEMANTICS,
+            );
+        }
+        if state.actionable != self.actionable {
+            context.invalidate(
+                WidgetInvalidation::INTERACTION
+                    | WidgetInvalidation::PAINT
+                    | WidgetInvalidation::SEMANTICS
+                    | WidgetInvalidation::HIT_TEST,
             );
         }
         state.label.clone_from(&self.label);
@@ -286,14 +295,15 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
             minimum_height: LogicalLength::new(32.0).unwrap_or_default(),
         }
     }
-    fn paint(&self, state: &Self::State) -> WidgetPaintProof {
-        WidgetPaintProof::new(
-            "button",
-            format!(
-                "label={:?} enabled={} activations={}",
-                self.label, self.enabled, state.activation_count
-            ),
-        )
+    fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
+        background_paint(context)
+    }
+    fn hit_test(&self, state: &Self::State, context: HitContributionContext) -> HitContribution {
+        if state.actionable {
+            HitContribution::single_rect(local_rect(context.local_size()))
+        } else {
+            HitContribution::empty()
+        }
     }
     fn semantics(
         &self,
@@ -398,8 +408,8 @@ impl<Action> Widget<Action> for LinearContainerWidget {
             *state = self.axis;
         }
     }
-    fn paint(&self, _: &Self::State) -> WidgetPaintProof {
-        WidgetPaintProof::new("container", format!("axis={:?}", self.axis))
+    fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
+        background_paint(context)
     }
     fn semantics(
         &self,
@@ -473,6 +483,23 @@ pub fn row<Action>(children: impl Views<Action>) -> Container<Action> {
         },
         children,
     )
+}
+
+fn background_paint(context: PaintContributionContext) -> PaintContribution {
+    context
+        .computed_style()
+        .background()
+        .map_or_else(PaintContribution::empty, |color| {
+            PaintContribution::single(PaintContributionItem::fill_rect(
+                local_rect(context.local_size()),
+                color,
+            ))
+        })
+}
+
+fn local_rect(size: LogicalSize) -> LogicalRect {
+    LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+        .unwrap_or_else(|_| unreachable!("validated local size yields a valid local rectangle"))
 }
 
 fn assign_id(

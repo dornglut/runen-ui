@@ -2,8 +2,7 @@
 //!
 //! The example owns its state, actions, update function, and screens. The
 //! runtime owns typed action dispatch, update execution, root rebuilds, semantic
-//! activation, trace recording, surface-frame publication, and debug surface
-//! rendering.
+//! activation, trace recording, surface publication, and layout/debug rendering.
 
 mod app;
 mod ui;
@@ -402,17 +401,19 @@ mod tests {
     }
 
     #[test]
-    fn debug_surface_output_exposes_counter_screen() {
+    fn debug_surface_output_exposes_counter_layout() {
         let mut runtime = mounted_counter(Counter::new());
         let surface = debug_surface(&mut runtime);
 
         assert!(surface.contains("surface size=(240.0,160.0) nodes=7"));
-        assert!(surface.contains("paint=text \"Counter\""));
+        assert!(surface.contains("authored=counter.title"));
+        assert!(surface.contains("authored=counter.value"));
         let increment = surface
             .lines()
             .find(|line| line.contains("authored=counter.increment"))
             .unwrap_or_else(|| unreachable!("increment node is present in debug surface"));
         assert!(!increment.contains("semantics="));
+        assert!(!surface.contains("paint="));
 
         let tokens = StyleTokens::new();
         let publication = runtime
@@ -436,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn debug_surface_output_exposes_win_screen_after_rebuild() {
+    fn debug_surface_output_exposes_win_layout_after_rebuild() {
         let mut runtime = mounted_counter(Counter::new());
 
         for _ in 0..WIN_COUNT {
@@ -454,9 +455,10 @@ mod tests {
         let surface = debug_surface(&mut runtime);
 
         assert!(surface.contains("surface size=(240.0,160.0) nodes=4"));
-        assert!(surface.contains("paint=text \"You win\""));
-        assert!(surface.contains("paint=text \"Count: 10\""));
+        assert!(surface.contains("authored=counter.win.title"));
+        assert!(surface.contains("authored=counter.value"));
         assert!(surface.contains("authored=counter.reset"));
+        assert!(!surface.contains("paint="));
     }
 
     #[test]
@@ -478,19 +480,18 @@ mod tests {
             .submit_automation_command(authored_id("counter.increment"), SemanticCommand::Activate)
             .unwrap_or_else(|_| unreachable!("automation resolves increment"));
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+        assert_eq!(runtime.state(), &Counter { count: 1 });
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
+        let publication = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|_| unreachable!("counter identity publication is admitted"));
+        assert!(publication.frame().node(&increment).is_some());
         assert!(
-            runtime
-                .publish_surface(&context)
-                .unwrap_or_else(|_| unreachable!("counter identity publication is admitted"))
-                .frame()
-                .node(&increment)
-                .unwrap_or_else(|| unreachable!())
-                .paint()
-                .description()
-                .contains("activations=1")
+            publication
+                .hit_test_scene()
+                .contains_mounted_target(&increment)
         );
         for _ in 1..WIN_COUNT {
             runtime

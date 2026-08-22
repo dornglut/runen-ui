@@ -90,8 +90,8 @@ fn increment_targets(harness: &TestHarness<CounterApp>) -> CounterTargets {
         let bounds = node.bounds();
         let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0).ok()?;
         assert_eq!(
-            publication.frame().hit_test_id(point),
-            Some(node.id().clone())
+            publication.hit_test_scene().target_at(point),
+            Some(node.id())
         );
         Some((node.id().clone(), point))
     })() else {

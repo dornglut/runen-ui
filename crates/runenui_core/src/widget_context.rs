@@ -22,12 +22,15 @@ impl WidgetInvalidation {
     pub const PAINT: Self = Self(1 << 2);
     pub const SEMANTICS: Self = Self(1 << 3);
     pub const DIAGNOSTICS: Self = Self(1 << 4);
+    /// Re-evaluates this widget's owner-local physical hit contribution.
+    pub const HIT_TEST: Self = Self(1 << 5);
     pub const ALL: Self = Self(
         Self::INTERACTION.0
             | Self::LAYOUT.0
             | Self::PAINT.0
             | Self::SEMANTICS.0
-            | Self::DIAGNOSTICS.0,
+            | Self::DIAGNOSTICS.0
+            | Self::HIT_TEST.0,
     );
 
     #[must_use]
@@ -425,9 +428,10 @@ mod tests {
 
     #[test]
     fn invalidation_union_and_containment_are_exact() {
-        let value = WidgetInvalidation::LAYOUT | WidgetInvalidation::PAINT;
+        let value = WidgetInvalidation::LAYOUT | WidgetInvalidation::HIT_TEST;
         assert!(value.contains(WidgetInvalidation::LAYOUT));
-        assert!(value.contains(WidgetInvalidation::PAINT));
+        assert!(value.contains(WidgetInvalidation::HIT_TEST));
+        assert!(!value.contains(WidgetInvalidation::PAINT));
         assert!(!value.contains(WidgetInvalidation::SEMANTICS));
         assert!(WidgetInvalidation::NONE.is_empty());
         assert!(WidgetInvalidation::ALL.contains(value));

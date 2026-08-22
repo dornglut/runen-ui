@@ -3,10 +3,10 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Element, ElementId, EventContext, EventPhase, LogicalLength, LogicalPoint, NoHostProtocol,
-    PointerBoundaryKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleTokens,
-    SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure, children,
-    row,
+    Element, ElementId, EventContext, EventPhase, HitContribution, HitContributionContext,
+    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PointerBoundaryKind,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleTokens, SurfaceInputContext,
+    UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure, children, row,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext, TraceRecordKind,
@@ -114,6 +114,13 @@ impl Widget<()> for BoundaryProbe {
             width: LogicalLength::new(32.0).unwrap_or_default(),
             height: LogicalLength::new(32.0).unwrap_or_default(),
         }
+    }
+
+    fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {
+        let size = context.local_size();
+        let rect = LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+            .unwrap_or_else(|_| unreachable!("validated local size yields a valid hit rectangle"));
+        HitContribution::single_rect(rect)
     }
 }
 

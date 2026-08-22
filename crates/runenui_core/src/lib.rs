@@ -216,12 +216,15 @@ mod event;
 mod event_context;
 mod focus;
 mod geometry;
+mod hit;
 mod identity;
 mod input;
 mod layout;
+mod paint;
 mod pointer;
 pub mod prelude;
 mod runtime_protocol;
+mod scene_geometry;
 mod semantic;
 mod semantic_action;
 mod style;
@@ -246,8 +249,8 @@ pub use computed_style::ComputedStyle;
 pub use effects::{Effects, IntoEffects};
 pub use element::{
     AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
-    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
-    WidgetStateTypeId, WidgetTextInput, WidgetTextKind, WidgetTypeId,
+    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetStateTypeId,
+    WidgetTextInput, WidgetTextKind, WidgetTypeId,
 };
 pub use event::{
     CommandDerivation, CommandOrigin, EventPhase, EventSource, SemanticCommand,
@@ -259,11 +262,15 @@ pub use focus::{
     FocusScopePolicy, Focusability, InputModality,
 };
 pub use geometry::{LogicalRect, LogicalRectError, LogicalSize};
+pub use hit::{HitContribution, HitContributionContext, HitRegion};
 pub use input::{
     CommittedTextError, CommittedTextEvent, CompositionCancel, CompositionCancelReason,
     CompositionEnd, CompositionEvent, CompositionGeneration, CompositionRange,
     CompositionRangeError, CompositionStart, CompositionUpdate, KeyLocation,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
+};
+pub use paint::{
+    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
 };
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///
@@ -295,6 +302,7 @@ pub use runtime_protocol::{
     MonotonicInstant, MonotonicTimeError, MountedNodeId, SemanticNodeId, SurfaceId,
     SurfaceInputContext, WorkSequence,
 };
+pub use scene_geometry::{LogicalTransform, LogicalTransformError};
 pub use semantic::{
     SemanticAction, SemanticBounds, SemanticContribution, SemanticContributionContext,
     SemanticContributionError, SemanticContributionValidation, SemanticItem, SemanticKey,

@@ -114,8 +114,8 @@ fn pointer_helper_preserves_context_and_drives_public_pointer_activation() {
         let bounds = node.bounds();
         let point = LogicalPoint::new(bounds.x() + 1.0, bounds.y() + 1.0).ok()?;
         assert_eq!(
-            publication.frame().hit_test_id(point),
-            Some(node.id().clone())
+            publication.hit_test_scene().target_at(point),
+            Some(node.id())
         );
         Some((
             publication.input_context().clone(),

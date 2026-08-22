@@ -286,11 +286,21 @@ fn mounted_surface_products_align_and_hit_testing_targets_mounted_ids() {
     }
     let debug = render_debug_surface_frame(publication.frame());
     assert!(debug.contains("authored=press"));
-    assert!(
-        publication
-            .frame()
-            .hit_test_id(LogicalPoint::new(1.0, 1.0).unwrap_or_else(|_| unreachable!()))
-            .is_some()
+    let press = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "press"))
+        .unwrap_or_else(|| unreachable!("the press button is published"));
+    let bounds = press.bounds();
+    let point = LogicalPoint::new(
+        bounds.x() + bounds.width() / 2.0,
+        bounds.y() + bounds.height() / 2.0,
+    )
+    .unwrap_or_else(|_| unreachable!("published button bounds are finite"));
+    assert_eq!(
+        publication.hit_test_scene().target_at(point),
+        Some(press.id())
     );
 }
 
@@ -526,6 +536,7 @@ fn warmed_literal_padding_change_updates_geometry_from_current_mounted_style() {
             SurfacePhase::Style,
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
+            SurfacePhase::Paint,
             SurfacePhase::Semantics,
         ],
     );
@@ -595,6 +606,7 @@ fn warmed_spacing_token_reference_change_uses_unchanged_current_token_set() {
             SurfacePhase::Style,
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
+            SurfacePhase::Paint,
             SurfacePhase::Semantics,
         ],
     );
@@ -641,6 +653,7 @@ fn warmed_container_gap_change_reads_current_mounted_layout() {
         &[
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
+            SurfacePhase::Paint,
             SurfacePhase::Semantics,
         ],
     );
@@ -706,7 +719,16 @@ fn equivalent_common_authored_fields_execute_no_publication_phase() {
         &tokens,
         LayoutConstraints::unbounded(),
     );
-    assert_eq!(before, after);
+    assert!(before.renderer_products_eq(&after));
+    assert_eq!(
+        before.hit_test_scene().regions(),
+        after.hit_test_scene().regions()
+    );
+    assert_eq!(
+        before.hit_test_scene().mounted_targets(),
+        after.hit_test_scene().mounted_targets()
+    );
+    assert_ne!(before.input_context(), after.input_context());
     assert!(runtime.last_surface_phase_report().executed().is_empty());
     assert_mounted_identities(&mut runtime, &identities);
 }
@@ -774,6 +796,7 @@ fn different_token_sets_with_the_same_revision_never_alias() {
             runenui_runtime::SurfacePhase::Style,
             runenui_runtime::SurfacePhase::Layout,
             runenui_runtime::SurfacePhase::HitTesting,
+            runenui_runtime::SurfacePhase::Paint,
             runenui_runtime::SurfacePhase::Semantics,
         ]
     );
@@ -833,7 +856,19 @@ fn equal_token_content_can_reuse_the_warmed_publication() {
         &mut runtime,
         &SurfaceBuildContext::new(&second, LayoutConstraints::unbounded()),
     );
-    assert_eq!(first_publication, second_publication);
+    assert!(first_publication.renderer_products_eq(&second_publication));
+    assert_eq!(
+        first_publication.hit_test_scene().regions(),
+        second_publication.hit_test_scene().regions()
+    );
+    assert_eq!(
+        first_publication.hit_test_scene().mounted_targets(),
+        second_publication.hit_test_scene().mounted_targets()
+    );
+    assert_ne!(
+        first_publication.input_context(),
+        second_publication.input_context()
+    );
     assert!(runtime.last_surface_phase_report().executed().is_empty());
 }
 

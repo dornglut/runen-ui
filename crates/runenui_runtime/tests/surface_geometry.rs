@@ -37,7 +37,11 @@ impl UiApp for CompositeApp {
     fn root((): &Self::State) -> Element<Self::Action> {
         column(children![
             text("Title").id("title"),
-            row(children![button("A"), button("B").disabled()]).gap(8_u16),
+            row(children![
+                button("A").on_activate(|| ()),
+                button("B").disabled()
+            ])
+            .gap(8_u16),
         ])
         .gap(4_u16)
         .into_element()
@@ -69,11 +73,11 @@ fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication
             .any()
     );
     let hit = publication
-        .frame()
-        .hit_test(LogicalPoint::new(1.0, 25.0).unwrap_or_else(|_| unreachable!()))
-        .unwrap_or_else(|| unreachable!());
+        .hit_test_scene()
+        .target_at(LogicalPoint::new(1.0, 25.0).unwrap_or_else(|_| unreachable!()))
+        .unwrap_or_else(|| unreachable!("button A is targetable in the canonical hit scene"));
     assert_ne!(
-        hit.id(),
+        hit,
         publication
             .frame()
             .root()

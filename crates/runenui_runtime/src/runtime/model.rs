@@ -49,6 +49,7 @@ impl MutationPhase {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SurfacePublicationCounter {
     RedrawRevision,
+    PaintRevision,
     HitTestGeneration,
     CoordinateRevision,
     SemanticRevision,
@@ -82,6 +83,7 @@ impl fmt::Display for RuntimeTerminalReason {
                 formatter.write_str("surface publication counter exhausted: ")?;
                 formatter.write_str(match counter {
                     SurfacePublicationCounter::RedrawRevision => "redraw revision",
+                    SurfacePublicationCounter::PaintRevision => "paint revision",
                     SurfacePublicationCounter::HitTestGeneration => "hit-test generation",
                     SurfacePublicationCounter::CoordinateRevision => "coordinate revision",
                     SurfacePublicationCounter::SemanticRevision => "semantic revision",

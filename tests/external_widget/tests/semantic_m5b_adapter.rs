@@ -560,8 +560,12 @@ fn public_semantic_product_and_complete_aggregate_are_explicitly_separate_from_r
     assert_eq!(nodes, 2);
 
     let renderer_only = publication.clone().into_renderer_products();
-    assert_eq!(renderer_only.0.nodes().len(), 1);
+    assert_eq!(renderer_only.0.surface_id(), &surface);
+    assert_eq!(renderer_only.1.nodes().len(), 1);
     let complete = publication.into_complete_products();
-    assert_eq!(complete.4.snapshot().surface_id(), &surface);
-    assert_eq!(complete.5.surface_id(), &surface);
+    assert_eq!(complete.0.surface_id(), &surface);
+    assert_eq!(complete.1.input_context().surface_id(), &surface);
+    assert_eq!(complete.2.nodes().len(), 1);
+    assert_eq!(complete.5.snapshot().surface_id(), &surface);
+    assert_eq!(complete.6.surface_id(), &surface);
 }
