@@ -7,7 +7,8 @@ use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAda
 use crate::widget_mapping::MappedWidget;
 use crate::{
     Axis, ColorValue, ElementId, ElementKey, EventContext, FocusScope, Focusability,
-    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, LogicalLength, RadiusValue,
+    HitContribution, HitContributionContext, IdentifierError, IntoElementId, IntoElementKey,
+    LayoutStyle, LogicalLength, PaintContribution, PaintContributionContext, RadiusValue,
     SemanticContribution, SemanticContributionContext, SpacingValue, StyleIntent, SubscriptionSet,
     UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetInvalidation, WidgetMountContext,
     WidgetUnmountContext, WidgetUpdateContext,
@@ -93,39 +94,6 @@ impl Default for WidgetMeasure {
 pub enum WidgetTextKind {
     Text,
     ControlLabel,
-}
-
-/// Deterministic renderer-neutral contribution used to prove paint participation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WidgetPaintProof {
-    category: String,
-    description: String,
-}
-
-impl WidgetPaintProof {
-    #[must_use]
-    pub fn new(category: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            category: category.into(),
-            description: description.into(),
-        }
-    }
-
-    #[must_use]
-    pub const fn category(&self) -> &str {
-        self.category.as_str()
-    }
-
-    #[must_use]
-    pub const fn description(&self) -> &str {
-        self.description.as_str()
-    }
-}
-
-impl Default for WidgetPaintProof {
-    fn default() -> Self {
-        Self::new("none", "")
-    }
 }
 
 /// Deterministic widget-authored or capability diagnostic.
@@ -320,9 +288,9 @@ impl WidgetActivation {
 
 /// Public downstream widget implementation contract.
 ///
-/// Methods contribute bounded runtime behavior. Semantic contribution is the
-/// production M5 owner-local semantic description contract; paint and measurement
-/// remain their current proof-level capabilities until their later milestones.
+/// Methods contribute bounded runtime behavior. Paint, physical hit, and
+/// semantics are action-type-independent owner-local description contracts;
+/// runtime alone composes them with mounted identity and surface placement.
 pub trait Widget<Action>: fmt::Debug {
     /// Runtime-local state type stored by the mounted runtime.
     type State: 'static;
@@ -380,9 +348,25 @@ pub trait Widget<Action>: fmt::Debug {
         WidgetMeasure::default()
     }
 
-    /// Returns deterministic proof-level paint/debug facts.
-    fn paint(&self, _state: &Self::State) -> WidgetPaintProof {
-        WidgetPaintProof::default()
+    /// Returns this owner's renderer-neutral paint contribution in local logical coordinates.
+    fn paint(
+        &self,
+        _state: &Self::State,
+        _context: PaintContributionContext,
+    ) -> PaintContribution {
+        PaintContribution::empty()
+    }
+
+    /// Returns this owner's physical hit contribution in local logical coordinates.
+    ///
+    /// Empty is the default and canonical pass-through representation. The
+    /// runtime injects mounted target identity only when composing a hit scene.
+    fn hit_test(
+        &self,
+        _state: &Self::State,
+        _context: HitContributionContext,
+    ) -> HitContribution {
+        HitContribution::empty()
     }
 
     /// Returns this mounted owner's complete action-type-independent semantic contribution.
