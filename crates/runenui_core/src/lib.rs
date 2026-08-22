@@ -249,8 +249,8 @@ pub use computed_style::ComputedStyle;
 pub use effects::{Effects, IntoEffects};
 pub use element::{
     AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
-    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetPaintProof,
-    WidgetStateTypeId, WidgetTextInput, WidgetTextKind, WidgetTypeId,
+    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetStateTypeId,
+    WidgetTextInput, WidgetTextKind, WidgetTypeId,
 };
 pub use event::{
     CommandDerivation, CommandOrigin, EventPhase, EventSource, SemanticCommand,
