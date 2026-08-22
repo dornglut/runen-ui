@@ -288,7 +288,7 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
             bounds.y() + bounds.height() / 2.0,
         )
         .unwrap_or_else(|_| unreachable!());
-        assert_eq!(publication.frame().hit_test_id(point), Some(action.clone()));
+        assert_eq!(publication.hit_test_scene().target_at(point), Some(&action));
         submit_layout_activate(&mut runtime, action);
         assert_eq!(
             runtime
