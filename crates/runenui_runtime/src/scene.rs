@@ -268,10 +268,6 @@ impl HitTestScene {
         self.mounted_targets().iter().any(|member| member == target)
     }
 
-    pub(crate) const fn content(&self) -> &HitTestSceneContent {
-        &self.content
-    }
-
     #[cfg(feature = "internal-test-seams")]
     pub(crate) fn replace_target_for_test(
         &mut self,
