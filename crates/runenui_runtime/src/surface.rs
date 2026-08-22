@@ -1,9 +1,9 @@
-//! Renderer-facing surface-frame data model.
+//! Surface layout/debug products and canonical scene planning.
 #![allow(clippy::redundant_pub_crate)]
 //!
-//! Surface frames are host-neutral snapshots that later renderer stages can
-//! consume. This module owns explicit surface build inputs, a small row/column
-//! layout pass, concrete computed-style delivery, and bounds hit testing.
+//! `SurfaceFrame` remains an aligned layout/debug snapshot. Canonical renderer
+//! paint and pointer-hit authority live in `PaintScene`/`PaintPublication` and
+//! `HitTestScene`, not in this debug product.
 
 mod arrange;
 mod cache;
@@ -15,51 +15,50 @@ mod transaction;
 use std::sync::Arc;
 
 pub(crate) use cache::SurfaceCache;
-use cache::{CachedLayoutFacts, build_hit_test_facts, context_key};
+use cache::{CachedLayoutFacts, context_key};
 pub use cache::{SurfacePhase, SurfacePhaseReport};
 pub use context::SurfaceBuildContext;
 use measure::layout_resolved_surface;
 use resolve::{
-    ResolvedSurfaceTree, collect_topology, resolve_diagnostics, resolve_paint, resolve_styles,
+    ResolvedSurfaceTree, collect_topology, hit_contexts, paint_contexts, resolve_diagnostics,
+    resolve_hit_test, resolve_paint, resolve_styles,
 };
 pub(crate) use transaction::PlannedSurfacePublication;
 
 use runenui_core::{
     ComputedStyle, ElementId, LogicalLength, LogicalRect, LogicalSize, WidgetDiagnostic,
-    WidgetPaintProof, WidgetTypeId,
+    WidgetTypeId,
 };
 
 use crate::mounted::{DirtyPhases, SemanticReconcileError};
 use crate::style_debug::SurfaceStyleReport;
-use crate::{LayoutConstraints, LogicalPoint, MountedNodeId};
+use crate::{LayoutConstraints, MountedNodeId};
 
-/// One ordered node in a renderer-facing surface frame.
+/// One ordered node in the non-renderer layout/debug surface frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceNode {
     id: MountedNodeId,
     parent: Option<MountedNodeId>,
     authored_id: Option<ElementId>,
     bounds: LogicalRect,
-    widget_proof: SurfaceWidgetProof,
+    widget_debug: SurfaceWidgetDebug,
     computed_style: ComputedStyle,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct SurfaceWidgetProof {
+struct SurfaceWidgetDebug {
     widget_type_id: WidgetTypeId,
-    paint: WidgetPaintProof,
     diagnostics: Vec<WidgetDiagnostic>,
 }
 
 impl SurfaceNode {
-    /// Creates a surface node.
     #[must_use]
     const fn new(
         id: MountedNodeId,
         parent: Option<MountedNodeId>,
         authored_id: Option<ElementId>,
         bounds: LogicalRect,
-        widget_proof: SurfaceWidgetProof,
+        widget_debug: SurfaceWidgetDebug,
         computed_style: ComputedStyle,
     ) -> Self {
         Self {
@@ -67,61 +66,49 @@ impl SurfaceNode {
             parent,
             authored_id,
             bounds,
-            widget_proof,
+            widget_debug,
             computed_style,
         }
     }
 
-    /// Returns the generated runtime node ID.
     #[must_use]
     pub const fn id(&self) -> &MountedNodeId {
         &self.id
     }
 
-    /// Returns the generated runtime parent ID, if present.
     #[must_use]
     pub const fn parent(&self) -> Option<&MountedNodeId> {
         self.parent.as_ref()
     }
 
-    /// Returns the optional authored element ID.
     #[must_use]
     pub const fn authored_id(&self) -> Option<&ElementId> {
         self.authored_id.as_ref()
     }
 
-    /// Returns the resolved logical outer bounds.
     #[must_use]
     pub const fn bounds(&self) -> LogicalRect {
         self.bounds
     }
 
-    /// Returns the process-local concrete widget implementation identity.
+    /// Returns process-local widget identity for diagnostics only.
     #[must_use]
     pub const fn widget_type_id(&self) -> WidgetTypeId {
-        self.widget_proof.widget_type_id
+        self.widget_debug.widget_type_id
     }
 
-    /// Returns proof-level renderer-neutral paint/debug facts.
-    #[must_use]
-    pub const fn paint(&self) -> &WidgetPaintProof {
-        &self.widget_proof.paint
-    }
-
-    /// Returns deterministic widget diagnostics.
     #[must_use]
     pub const fn diagnostics(&self) -> &[WidgetDiagnostic] {
-        self.widget_proof.diagnostics.as_slice()
+        self.widget_debug.diagnostics.as_slice()
     }
 
-    /// Returns the concrete resolved style consumed by layout and renderers.
     #[must_use]
     pub const fn computed_style(&self) -> ComputedStyle {
         self.computed_style
     }
 }
 
-/// Renderer-facing surface snapshot for one UI tree.
+/// Non-renderer layout/debug snapshot for one UI tree.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceFrame {
     size: LogicalSize,
@@ -129,62 +116,37 @@ pub struct SurfaceFrame {
 }
 
 impl SurfaceFrame {
-    /// Creates a surface frame from a frame size and ordered nodes.
     #[must_use]
     pub(crate) const fn new(size: LogicalSize, nodes: Vec<SurfaceNode>) -> Self {
         Self { size, nodes }
     }
 
-    /// Returns the logical frame size.
     #[must_use]
     pub const fn size(&self) -> LogicalSize {
         self.size
     }
 
-    /// Returns the ordered surface nodes.
     #[must_use]
     pub const fn nodes(&self) -> &[SurfaceNode] {
         self.nodes.as_slice()
     }
 
-    /// Returns whether this frame contains no surface nodes.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
 
-    /// Returns the surface node for the provided runtime node ID.
     #[must_use]
     pub fn node(&self, id: &MountedNodeId) -> Option<&SurfaceNode> {
         self.nodes.iter().find(|node| node.id() == id)
     }
 
-    /// Returns the root surface node, when present.
     #[must_use]
     pub fn root(&self) -> Option<&SurfaceNode> {
         self.nodes.first()
     }
-
-    /// Returns the topmost surface node containing the provided point.
-    ///
-    /// Nodes are checked in reverse surface order so later/deeper nodes win over
-    /// parent containers whose bounds also contain the point.
-    #[must_use]
-    pub fn hit_test(&self, point: LogicalPoint) -> Option<&SurfaceNode> {
-        self.nodes
-            .iter()
-            .rev()
-            .find(|node| node.bounds().contains(point))
-    }
-
-    /// Returns the runtime node ID for the topmost node containing the point.
-    #[must_use]
-    pub fn hit_test_id(&self, point: LogicalPoint) -> Option<MountedNodeId> {
-        self.hit_test(point).map(|node| node.id().clone())
-    }
 }
 
-/// Per-axis overflow pressure recorded during surface layout.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct LayoutOverflow {
     width: bool,
@@ -196,26 +158,22 @@ impl LayoutOverflow {
         Self { width, height }
     }
 
-    /// Returns whether horizontal layout pressure exceeded a finite maximum.
     #[must_use]
     pub const fn width(&self) -> bool {
         self.width
     }
 
-    /// Returns whether vertical layout pressure exceeded a finite maximum.
     #[must_use]
     pub const fn height(&self) -> bool {
         self.height
     }
 
-    /// Returns whether either axis overflowed.
     #[must_use]
     pub const fn any(&self) -> bool {
         self.width || self.height
     }
 }
 
-/// One runtime-node-aligned diagnostic result from surface measurement.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceLayoutNode {
     id: MountedNodeId,
@@ -270,7 +228,6 @@ impl SurfaceLayoutNode {
         self
     }
 
-    /// Returns the generated runtime node ID.
     #[must_use]
     pub const fn id(&self) -> &MountedNodeId {
         &self.id
@@ -286,50 +243,42 @@ impl SurfaceLayoutNode {
         self.authored_id.as_ref()
     }
 
-    /// Returns the outer constraints supplied to this node.
     #[must_use]
     pub const fn outer_constraints(&self) -> LayoutConstraints {
         self.outer_constraints
     }
 
-    /// Returns this node's padding-adjusted content-box constraints.
     #[must_use]
     pub const fn content_constraints(&self) -> LayoutConstraints {
         self.content_constraints
     }
 
-    /// Returns the sanitized content size desired before content constraints.
     #[must_use]
     pub const fn desired_content_size(&self) -> LogicalSize {
         self.desired_content_size
     }
 
-    /// Returns the desired outer size after content constraints and box policy.
     #[must_use]
     pub const fn desired_outer_size(&self) -> LogicalSize {
         self.desired_outer_size
     }
 
-    /// Returns the final outer size used by arrangement.
     #[must_use]
     pub const fn constrained_outer_size(&self) -> LogicalSize {
         self.constrained_outer_size
     }
 
-    /// Returns deterministic overflow pressure for this node.
     #[must_use]
     pub const fn overflow(&self) -> LayoutOverflow {
         self.overflow
     }
 
-    /// Returns ordered proof-level layout capability diagnostics.
     #[must_use]
     pub const fn diagnostics(&self) -> &[WidgetDiagnostic] {
         self.diagnostics.as_slice()
     }
 }
 
-/// Runtime-node-aligned layout diagnostics from one surface publication.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SurfaceLayoutReport {
     nodes: Vec<SurfaceLayoutNode>,
@@ -340,36 +289,28 @@ impl SurfaceLayoutReport {
         Self { nodes }
     }
 
-    /// Returns measured nodes in the same order as the surface frame.
     #[must_use]
     pub const fn nodes(&self) -> &[SurfaceLayoutNode] {
         self.nodes.as_slice()
     }
 
-    /// Returns whether this report contains no layout nodes.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
 
-    /// Returns the layout node for the provided runtime node ID.
     #[must_use]
     pub fn node(&self, id: &MountedNodeId) -> Option<&SurfaceLayoutNode> {
         self.nodes.iter().find(|node| node.id() == id)
     }
 
-    /// Returns the root layout node, when present.
     #[must_use]
     pub fn root(&self) -> Option<&SurfaceLayoutNode> {
         self.nodes.first()
     }
 }
 
-/// Aligned renderer-facing and diagnostic products from one surface preparation.
-///
-/// The backing allocation is immutable and shared. Runtime-issued publication
-/// clones therefore remain O(1) until a consumer explicitly extracts owned
-/// component values through [`Self::into_parts`].
+/// Aligned layout/debug products from one surface preparation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfacePublication {
     products: Arc<SurfacePublicationProducts>,
@@ -397,29 +338,21 @@ impl SurfacePublication {
         }
     }
 
-    /// Returns the renderer-facing surface frame.
     #[must_use]
     pub fn frame(&self) -> &SurfaceFrame {
         &self.products.frame
     }
 
-    /// Returns style provenance and diagnostics aligned to the frame nodes.
     #[must_use]
     pub fn style_report(&self) -> &SurfaceStyleReport {
         &self.products.style_report
     }
 
-    /// Returns layout diagnostics aligned to the frame nodes.
     #[must_use]
     pub fn layout_report(&self) -> &SurfaceLayoutReport {
         &self.products.layout_report
     }
 
-    /// Consumes the publication and returns its aligned products.
-    ///
-    /// The common unshared case moves the values without copying. Extracting
-    /// owned parts from one of multiple shared clones performs the necessary
-    /// explicit clone at this ownership boundary.
     #[must_use]
     pub fn into_parts(self) -> (SurfaceFrame, SurfaceStyleReport, SurfaceLayoutReport) {
         let products = match Arc::try_unwrap(self.products) {
@@ -452,12 +385,16 @@ impl From<SemanticReconcileError> for SurfacePlanningError {
 
 fn surface_capability_phases(
     layout_dirty: bool,
+    hit_dirty: bool,
     paint_dirty: bool,
     diagnostics_dirty: bool,
 ) -> DirtyPhases {
     let mut phases = DirtyPhases::default();
     if layout_dirty {
         phases.insert(DirtyPhases::LAYOUT);
+    }
+    if hit_dirty {
+        phases.insert(DirtyPhases::HIT_TEST);
     }
     if paint_dirty {
         phases.insert(DirtyPhases::PAINT);
@@ -481,12 +418,6 @@ fn stage_non_structural_cache(cache: Option<&SurfaceCache>) -> SurfaceCache {
     )
 }
 
-/// Plans aligned renderer-facing and diagnostic products without committing
-/// RunenUI-owned publication state.
-///
-/// The returned move-only plan may retain the semantic-store borrow guard. The
-/// caller must perform every candidate-dependent preflight before consuming the
-/// plan through `commit_store`.
 pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
@@ -507,6 +438,7 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
             .content_differs(&next_context.style_tokens);
     let mut layout_dirty =
         pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
+    let mut hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
     let mut paint_dirty = pending.contains(DirtyPhases::PAINT);
     let semantics_dirty = pending.contains(DirtyPhases::SEMANTICS);
     let diagnostics_dirty = pending.contains(DirtyPhases::DIAGNOSTICS);
@@ -522,10 +454,16 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         completed.insert(DirtyPhases::STYLE);
     }
 
+    if layout_dirty {
+        hit_dirty = true;
+        paint_dirty = true;
+    }
+
     let semantic_product_dirty =
         semantics_dirty || layout_dirty || pending.contains(DirtyPhases::FOCUS_VALIDATION);
-    let capability_plan = tree.plan_surface_publication_capabilities(surface_capability_phases(
+    let mut capability_plan = tree.plan_surface_publication_capabilities(surface_capability_phases(
         layout_dirty,
+        hit_dirty,
         paint_dirty,
         diagnostics_dirty,
     ));
@@ -551,17 +489,23 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         });
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
+    }
 
-        current.hit_test = Arc::new(build_hit_test_facts(&current.layout));
-        report.record(SurfacePhase::HitTesting);
-        completed.insert(DirtyPhases::HIT_TEST);
-    } else if pending.contains(DirtyPhases::HIT_TEST) {
-        current.hit_test = Arc::new(build_hit_test_facts(&current.layout));
+    let paint_contexts = paint_contexts(&current.layout, &current.styles);
+    let hit_contexts = hit_contexts(&current.layout);
+    tree.plan_surface_publication_contributions(
+        &mut capability_plan,
+        &paint_contexts,
+        &hit_contexts,
+    );
+
+    if hit_dirty {
+        current.hit_test = resolve_hit_test(&current.topology, &current.layout, &capability_plan);
         report.record(SurfacePhase::HitTesting);
         completed.insert(DirtyPhases::HIT_TEST);
     }
     if paint_dirty {
-        current.paint = Arc::new(resolve_paint(&current.topology, &capability_plan));
+        current.paint = resolve_paint(&current.topology, &current.layout, &capability_plan);
         report.record(SurfacePhase::Paint);
         completed.insert(DirtyPhases::PAINT);
     }
@@ -584,8 +528,6 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     current.context_key = Arc::new(next_context);
     if report.contains(SurfacePhase::Style)
         || report.contains(SurfacePhase::Layout)
-        || report.contains(SurfacePhase::HitTesting)
-        || report.contains(SurfacePhase::Paint)
         || report.contains(SurfacePhase::Diagnostics)
     {
         current.publication = compose_publication(&current);
@@ -609,7 +551,7 @@ fn plan_structural_surface<'tree, Action>(
     report.record(SurfacePhase::Tree);
     let styles = resolve_styles(tree, &topology, context.style_tokens());
     report.record(SurfacePhase::Style);
-    let capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::ALL);
+    let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::ALL);
     let semantic_capability_plan = tree.plan_semantic_publication_capabilities();
     let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles, &capability_plan);
     let (size, bounds, layout_report) = layout_resolved_surface(
@@ -623,9 +565,17 @@ fn plan_structural_surface<'tree, Action>(
         report: layout_report,
     };
     report.record(SurfacePhase::Layout);
-    let hit_test = build_hit_test_facts(&layout);
+
+    let paint_contexts = paint_contexts(&layout, &styles);
+    let hit_contexts = hit_contexts(&layout);
+    tree.plan_surface_publication_contributions(
+        &mut capability_plan,
+        &paint_contexts,
+        &hit_contexts,
+    );
+    let hit_test = resolve_hit_test(&topology, &layout, &capability_plan);
     report.record(SurfacePhase::HitTesting);
-    let paint = resolve_paint(&topology, &capability_plan);
+    let paint = resolve_paint(&topology, &layout, &capability_plan);
     report.record(SurfacePhase::Paint);
     let finalized_semantics = tree.finalize_semantic_publication(semantic_capability_plan)?;
     #[cfg(test)]
@@ -647,8 +597,8 @@ fn plan_structural_surface<'tree, Action>(
         topology: Arc::new(topology),
         styles: Arc::new(styles),
         layout: Arc::new(layout),
-        hit_test: Arc::new(hit_test),
-        paint: Arc::new(paint),
+        hit_test,
+        paint,
         diagnostics: Arc::new(diagnostics),
         publication: placeholder,
     };
@@ -685,10 +635,9 @@ fn compose_publication(cache: &SurfaceCache) -> SurfacePublication {
                 node.id.clone(),
                 node.parent.clone(),
                 node.authored_id.clone(),
-                cache.hit_test.bounds[index],
-                SurfaceWidgetProof {
+                cache.layout.bounds[index],
+                SurfaceWidgetDebug {
                     widget_type_id: node.widget_type_id,
-                    paint: cache.paint[index].clone(),
                     diagnostics: cache.diagnostics[index].clone(),
                 },
                 cache.styles.resolutions[index].computed_style(),
@@ -708,8 +657,7 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
         || cache.styles.report.nodes().len() != expected
         || cache.layout.bounds.len() != expected
         || cache.layout.report.nodes().len() != expected
-        || cache.hit_test.bounds.len() != expected
-        || cache.paint.len() != expected
+        || cache.hit_test.membership().len() != expected
         || cache.diagnostics.len() != expected
     {
         return Err("surface cache fact vectors are not topology-aligned");
@@ -723,6 +671,7 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
             || layout.id() != &topology.id
             || layout.parent() != topology.parent.as_ref()
             || layout.authored_id() != topology.authored_id.as_ref()
+            || &cache.hit_test.membership()[index] != &topology.id
         {
             return Err("surface cache node identity is not topology-aligned");
         }
@@ -879,7 +828,7 @@ mod tests {
         assert_retained_reuse(
             &retained,
             cache.as_ref(),
-            [true, true, true, true, false, true, false],
+            [true, true, true, true, false, true, true],
         );
 
         let retained = staged_cache(cache.as_ref());
@@ -897,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn layout_publication_replaces_layout_hit_and_renderer_products() {
+    fn layout_publication_replaces_layout_hit_paint_and_debug_products() {
         let mut tree = reuse_tree();
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
@@ -916,18 +865,19 @@ mod tests {
             &[
                 super::SurfacePhase::Layout,
                 super::SurfacePhase::HitTesting,
+                super::SurfacePhase::Paint,
                 super::SurfacePhase::Semantics,
             ]
         );
         assert_retained_reuse(
             &retained,
             cache.as_ref(),
-            [true, true, false, false, true, true, false],
+            [true, true, false, false, false, true, false],
         );
     }
 
     #[test]
-    fn style_publication_replaces_style_paint_and_renderer_products() {
+    fn style_publication_replaces_style_paint_and_debug_products() {
         let mut tree = reuse_tree();
         let tokens = StyleTokens::new();
         let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
@@ -1001,9 +951,10 @@ mod tests {
                 vec![
                     super::SurfacePhase::Layout,
                     super::SurfacePhase::HitTesting,
+                    super::SurfacePhase::Paint,
                     super::SurfacePhase::Semantics,
                 ],
-                [0, 0, 1, 1, 0, 1, 0],
+                [0, 0, 1, 1, 1, 1, 0],
             ),
         ];
 
@@ -1101,6 +1052,7 @@ mod tests {
             &[
                 super::SurfacePhase::Layout,
                 super::SurfacePhase::HitTesting,
+                super::SurfacePhase::Paint,
                 super::SurfacePhase::Semantics,
             ]
         );
