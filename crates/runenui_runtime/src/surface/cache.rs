@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use runenui_core::{StyleTokens, WidgetDiagnostic, WidgetPaintProof};
 
-use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize};
+use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
 
 use super::{
     SurfaceBuildContext, SurfaceLayoutReport, SurfacePublication,
@@ -160,25 +162,92 @@ pub(super) fn build_hit_test_facts(layout: &CachedLayoutFacts) -> CachedHitTestF
     }
 }
 
-#[derive(Clone)]
+/// Sole retained renderer-side publication substrate.
+///
+/// Every phase product is immutable once retained. Non-structural planning
+/// stages by cloning these handles and replaces only the products owned by
+/// phases that actually execute. This keeps rollback behavior structural rather
+/// than relying on a deep clone of the complete surface state.
 pub(crate) struct SurfaceCache {
     // Context key.
-    pub(super) context_key: SurfaceContextKey,
+    pub(super) context_key: Arc<SurfaceContextKey>,
     // Topology facts.
-    pub(super) topology: SurfaceTopologySnapshot,
+    pub(super) topology: Arc<SurfaceTopologySnapshot>,
     // Style-phase facts.
-    pub(super) styles: CachedStyleFacts,
-    // Layout-phase facts.
-    pub(super) layout: CachedLayoutFacts,
+    pub(super) styles: Arc<CachedStyleFacts>,
+    // Layout-phase facts. This is the single retained geometry storage owner
+    // used by layout publication and current directional-focus projection.
+    pub(super) layout: Arc<CachedLayoutFacts>,
     // Layout-phase hit-test projection.
-    pub(super) hit_test: CachedHitTestFacts,
+    pub(super) hit_test: Arc<CachedHitTestFacts>,
     // Paint-phase facts.
-    pub(super) paint: Vec<WidgetPaintProof>,
+    pub(super) paint: Arc<Vec<WidgetPaintProof>>,
     // Diagnostic-phase facts.
-    pub(super) diagnostics: Vec<Vec<WidgetDiagnostic>>,
+    pub(super) diagnostics: Arc<Vec<Vec<WidgetDiagnostic>>>,
     // Derived materialization of the aligned phase facts above, never separate
-    // authority. No authored StyleIntent or LayoutStyle is retained here.
+    // authority. Its clone is cheap immutable snapshot sharing.
+    // No authored StyleIntent or LayoutStyle is retained here.
     pub(super) publication: SurfacePublication,
+}
+
+impl SurfaceCache {
+    /// Creates a staged non-structural candidate by sharing every retained
+    /// product. Dirty phase execution must replace the corresponding handle
+    /// explicitly before this candidate can commit.
+    pub(super) fn staged(&self) -> Self {
+        Self {
+            context_key: Arc::clone(&self.context_key),
+            topology: Arc::clone(&self.topology),
+            styles: Arc::clone(&self.styles),
+            layout: Arc::clone(&self.layout),
+            hit_test: Arc::clone(&self.hit_test),
+            paint: Arc::clone(&self.paint),
+            diagnostics: Arc::clone(&self.diagnostics),
+            publication: self.publication.clone(),
+        }
+    }
+
+    /// Projects current directional-focus geometry from the retained layout
+    /// phase. The displayed-input snapshot remains separate until M6B because
+    /// it still owns historical input-generation membership and point routing.
+    pub(crate) fn current_focus_geometry(&self) -> Vec<(MountedNodeId, LogicalRect)> {
+        self.topology
+            .nodes
+            .iter()
+            .zip(&self.layout.bounds)
+            .map(|(node, bounds)| (node.id.clone(), *bounds))
+            .collect()
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn replace_focus_geometry_for_test(
+        &mut self,
+        geometry: &[(MountedNodeId, LogicalRect)],
+    ) {
+        let layout = Arc::make_mut(&mut self.layout);
+        for (id, bounds) in geometry {
+            let position = self
+                .topology
+                .nodes
+                .iter()
+                .position(|node| &node.id == id)
+                .unwrap_or_else(|| unreachable!("test geometry names a published node"));
+            layout.bounds[position] = *bounds;
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn retained_product_reuse(&self, other: &Self) -> [bool; 7] {
+        [
+            Arc::ptr_eq(&self.topology, &other.topology),
+            Arc::ptr_eq(&self.styles, &other.styles),
+            Arc::ptr_eq(&self.layout, &other.layout),
+            Arc::ptr_eq(&self.hit_test, &other.hit_test),
+            Arc::ptr_eq(&self.paint, &other.paint),
+            Arc::ptr_eq(&self.diagnostics, &other.diagnostics),
+            self.publication.shares_storage_with(&other.publication),
+        ]
+    }
 }
 
 pub(super) fn context_key(context: &SurfaceBuildContext<'_>) -> SurfaceContextKey {
