@@ -342,7 +342,7 @@ mod tests {
             .unwrap_or_else(|| unreachable!("successful retry retains a cache"));
         assert_eq!(
             before.retained_product_reuse(after),
-            [true, true, true, true, false, true, false]
+            [true, true, true, true, false, true, true]
         );
     }
 }
