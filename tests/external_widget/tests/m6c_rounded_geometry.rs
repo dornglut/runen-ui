@@ -29,6 +29,6 @@ fn rounded_shape_zero_equal_and_unequal_oversized_radii_share_one_normalization_
         rect(10.0, 8.0),
         Radius::new(length(8.0), length(4.0), length(6.0), length(2.0)),
     );
-    assert!(unequal_oversized.contains(point(0.0, 6.4)));
-    assert!(!unequal_oversized.contains(point(0.0, 6.0)));
+    assert!(unequal_oversized.contains(point(6.5, 0.0)));
+    assert!(!unequal_oversized.contains(point(6.0, 0.0)));
 }
