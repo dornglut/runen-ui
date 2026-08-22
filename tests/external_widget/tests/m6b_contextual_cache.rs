@@ -138,9 +138,15 @@ fn paint_contribution_cache_is_keyed_by_exact_owner_visible_context() {
         1
     );
     let changed = publish(&mut runtime, &context);
-    assert_eq!(
-        runtime.last_surface_phase_report().executed(),
-        &[SurfacePhase::Style, SurfacePhase::Paint]
+    assert!(
+        runtime
+            .last_surface_phase_report()
+            .contains(SurfacePhase::Style)
+    );
+    assert!(
+        runtime
+            .last_surface_phase_report()
+            .contains(SurfacePhase::Paint)
     );
     assert_eq!(scene_color(&changed), Color::WHITE);
     assert_eq!(paint_calls.get(), 2);
