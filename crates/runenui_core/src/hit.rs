@@ -46,7 +46,7 @@ impl HitContribution {
 
     /// Creates a contribution from validated owner-local regions in authored order.
     #[must_use]
-    pub fn new(regions: Vec<HitRegion>) -> Self {
+    pub const fn new(regions: Vec<HitRegion>) -> Self {
         Self { regions }
     }
 
