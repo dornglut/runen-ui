@@ -4,7 +4,7 @@ use runenui_core::{
     Element, ElementId, HitContribution, HitContributionContext, HitRegion, LogicalLength,
     LogicalPoint, LogicalRect, NoHostProtocol, PointerPolicy, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
-    StyleTokens, UiApp, Widget, WidgetMeasure, column,
+    StyleTokens, UiApp, View, Widget, WidgetMeasure, column,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -169,17 +169,20 @@ fn semantic_hidden_and_inert_do_not_lower_hit_policy_but_explicit_omission_and_b
     }));
 
     let snapshot = publication.semantic_publication().snapshot();
+    assert!(
+        snapshot
+            .nodes()
+            .iter()
+            .all(|node| node.name() != Some("semantic-hidden-target"))
+    );
     let semantic = |name: &str| {
         snapshot
             .nodes()
             .iter()
             .find(|node| node.name() == Some(name))
-            .unwrap_or_else(|| unreachable!("policy semantics are published"))
+            .unwrap_or_else(|| unreachable!("visible policy semantics are published"))
     };
-    assert!(semantic("semantic-hidden-target").state().hidden());
     assert!(semantic("semantic-inert-target").state().inert());
-    assert!(!semantic("physical-omitted").state().hidden());
     assert!(!semantic("physical-omitted").state().inert());
-    assert!(!semantic("physical-block").state().hidden());
     assert!(!semantic("physical-block").state().inert());
 }
