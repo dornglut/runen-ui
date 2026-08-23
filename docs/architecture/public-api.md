@@ -34,9 +34,9 @@ Runtime must not depend on testing convenience, concrete native platforms, concr
 
 ## `runenui_testing`
 
-`runenui_testing` is a downstream public convenience crate. `TestHarness<App>` composes ordinary public core/runtime APIs with deterministic logical time, bounded pumping/settling, deterministic surface publication, synthetic public interaction, semantic queries/targets, and read-only observation.
+`runenui_testing` is a downstream public convenience crate. `TestHarness<App>` composes ordinary public core/runtime APIs with deterministic logical time, bounded pumping/settling, deterministic surface publication, read-only observation of the latest ordinary public paint/hit publication products and exact input context, synthetic public interaction, and semantic queries/targets.
 
-It owns no live runtime queue, mounted/semantic store, identity allocation, publication state, trace authority, or private mutation bridge. A test target retains exact public surface/semantic scope; testing must not reconstruct private mounted routing identity or guess a surface from a bare semantic ID.
+It owns no live runtime queue, mounted/semantic store, identity allocation, publication state, trace authority, resource provider, or private mutation bridge. A test target retains exact public surface/semantic scope; testing must not reconstruct private mounted routing identity, fabricate scene/publication lineage, duplicate hit resolution, or guess a surface from a bare semantic ID.
 
 ## Core invariants
 
@@ -62,19 +62,18 @@ Exact semantic action requests are admitted against current published semantic a
 
 Surface publication follows a staged transaction with admission, read-only/staged planning, candidate-dependent final preflight, and commit. Recoverable refusal or terminal failure must not expose a partial new RunenUI-owned publication state.
 
-Renderer-facing paint products, hit/input products, semantics, layout, and diagnostics remain distinct authorities even when committed together. Accepted M6 uses immutable `PaintScene`/`PaintPublication` and `HitTestScene` products; scene requirements derive from canonical paint content, while raster scale, base revision, and damage remain paint-publication metadata. Paint revision identity remains distinct from displayed input generation.
+Renderer-facing paint products, hit/input products, semantics, layout, and diagnostics remain distinct authorities even when committed together. Accepted M6 uses immutable `PaintScene`/`PaintPublication` and `HitTestScene` products; scene requirements derive from canonical paint content, while raster scale, base revision, and damage remain paint-publication metadata. Paint revision identity remains distinct from displayed input generation. Independent consumers can reconstruct complete deterministic scene snapshots from those public products without widget-kind, mounted/layout storage, private runtime, or hidden prior-scene authority.
 
 ## Current limitations
 
 The current public surface is pre-1.0 and may change incompatibly when accepted architecture requires a clean cutover. Important missing production capabilities include:
 
-- M6D independent-consumer and migration closure for the accepted paint/hit protocol;
-- concrete renderer backends;
+- concrete renderer backends and real raster output;
 - resource-provider/lookup, decoding, shaping, and backend realization integration beyond the neutral M6 references;
 - native window/event-loop/platform accessibility adapters and multi-window lifecycle;
 - production text shaping, international layout, editing, clipboard, and native IME integration;
 - production responsive layout/style breadth and a complete standard control library.
 
-Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
+M7 owns the first real reference host/renderer/resource/accessibility production spine over the accepted M6 neutral protocol. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
 
 Do not infer support from a target ADR, design document, type name, or roadmap entry alone. Code/tests establish current behavior; source/Rustdoc establishes the exact public Rust surface.

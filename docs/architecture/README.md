@@ -36,6 +36,6 @@ Durable decisions are recorded separately in [ADRs](../adr/). Permanent observab
 
 ## Current boundary versus target architecture
 
-RunenUI currently provides a deterministic headless framework foundation with accepted M6A retained publication, canonical renderer-neutral M6B paint/hit products, accepted M6C composition/resource-reference/renderer-metadata/capability breadth, independent semantic publication, and public deterministic testing. M6D independent-consumer and migration closure remains successor target authority. See [status](../status.md) for current maturity and the [roadmap](../roadmap.md) for durable sequencing.
+RunenUI currently provides a deterministic headless framework foundation with the complete accepted M6 renderer-neutral paint/hit protocol: retained publication, canonical immutable paint/hit products, composition/resource-reference/renderer-metadata/capability semantics, independent deterministic consumer proof, migration closure, independent semantic publication, and public deterministic testing. M7's reference production spine is the next target authority. See [status](../status.md) for current maturity and the [roadmap](../roadmap.md) for durable sequencing.
 
 Concrete native hosts, accessibility adapters, renderer backends, resource providers/realizers, product state, and engine/ECS integration remain edge or consumer responsibilities. RunenUI core/runtime must not acquire those dependencies merely because future production profiles need adapters for them.

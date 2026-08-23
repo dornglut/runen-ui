@@ -35,7 +35,7 @@ Code and executable tests are the evidence for what the current implementation d
 
 Detailed current architecture is indexed under [docs/architecture](docs/architecture/README.md). Durable decisions live in [ADRs](docs/adr/). Permanent observable/proof contracts live under [conformance](docs/conformance/README.md). High-level dependency sequence lives in the [roadmap](docs/roadmap.md). Current accepted maturity is summarized in [status](docs/status.md).
 
-Accepted future architecture becomes current API only after implementation and acceptance. The M6A retained-publication substrate, M6B canonical renderer-neutral `PaintPublication`/`PaintScene`/`HitTestScene` cutover, and M6C composition/resource-reference/renderer-metadata/capability breadth are accepted current behavior. M6D independent-consumer and migration closure remains target architecture.
+Accepted future architecture becomes current API only after implementation and acceptance. M6 is accepted current behavior through retained publication, canonical renderer-neutral `PaintPublication`/`PaintScene`/`HitTestScene` ownership, composition/resource-reference/renderer-metadata/capability semantics, two independent deterministic consumers, public testing convergence, and proof-era paint/hit migration closure. The M7 reference production spine remains target architecture and is the next owner of real host/renderer/resource/accessibility integration.
 
 Exact public Rust signatures remain authoritative in source and Rustdoc; conceptual public ownership is summarized in the [public API contract](docs/architecture/public-api.md).
 
