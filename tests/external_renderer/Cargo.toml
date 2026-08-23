@@ -13,5 +13,8 @@ rust-version.workspace = true
 runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
 runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }
 
+[dev-dependencies]
+runenui_testing = { path = "../../crates/runenui_testing", version = "0.1.0" }
+
 [lints]
 workspace = true
