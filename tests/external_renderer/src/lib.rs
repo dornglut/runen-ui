@@ -242,7 +242,7 @@ pub struct SceneConsumer {
 impl SceneConsumer {
     /// Creates a consumer with explicit renderer-neutral resource capabilities.
     #[must_use]
-    pub fn new(capabilities: SceneCapabilities) -> Self {
+    pub const fn new(capabilities: SceneCapabilities) -> Self {
         Self {
             capabilities,
             realized: None,
