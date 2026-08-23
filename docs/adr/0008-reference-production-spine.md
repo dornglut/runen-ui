@@ -1,8 +1,8 @@
 # ADR 0008: Reference production spine
 
-> **Category: ADR**
+> **Category:** ADR
 >
-> **Status:** Accepted target architecture on owner acceptance
+> **Status:** Accepted target architecture on exact-head owner acceptance
 >
 > **Decision date:** 2026-08-23
 >
@@ -10,116 +10,102 @@
 >
 > **Reviewed baseline:** `42df29bc68cfec97c13f80f0f59c209db512152c`
 >
-> **Acceptance:** This ADR becomes accepted target architecture only when the exact
-> M7A0 package containing it is explicitly accepted by the repository owner and
-> merged. Acceptance freezes the reference-spine ownership and dependency
-> decisions below; it does not claim that a renderer, native host, resource
-> provider, accessibility adapter, screenshot path, or external host integration
-> is implemented. Observable implementation state remains owned by source/tests,
-> accepted default-branch state, and the M7 conformance matrix.
+> **Acceptance:** this ADR becomes accepted target architecture only when the exact
+> M7A0 package containing it is explicitly accepted by the repository owner,
+> guarded-merged, and accepted-main validated. Acceptance freezes the ownership,
+> dependency, and observable integration decisions below; it does not claim that
+> any M7 renderer, host, resource realization, accessibility adapter, screenshot
+> path, or external-host integration is implemented.
 
 ## Context
 
-M6 completed the renderer-neutral paint/hit protocol at proof maturity. The
-accepted default branch now exposes immutable `PaintPublication`, `PaintScene`,
-`HitTestScene`, exact displayed `SurfaceInputContext`, symbolic `ResourceRef`
-identity, independently typed semantic publication, public semantic-action
-submission, wake/redraw handshakes, and explicit bounded pumping. Two
-independent scene consumers prove that these products can be interpreted without
-widget-kind, mounted-storage, layout-storage, semantic-role, resource-provider,
+M6 completed the renderer-neutral paint/hit protocol at proof maturity. Accepted
+`main` exposes immutable `PaintPublication`, `PaintScene`, `HitTestScene`, exact
+`SurfaceInputContext`, symbolic `ResourceRef` identity, independently typed
+semantic publication/action ingress, wake/redraw handshakes, and explicit bounded
+runtime pumping. Two independent scene consumers prove that the public scene
+protocol does not require widget-kind, mounted/layout, semantic, resource-provider,
 or private-runtime authority.
 
-That is deliberately not yet a production UI path. There is no concrete GPU
-renderer, native window/event-loop host, native accessibility adapter, resource
-payload/realization path, screenshot output, or real-time/engine-owned frame-loop
-consumer. M7 must add one thin real vertical spine without moving those edge
-concerns back into the neutral kernel.
+M7 must now prove those neutral contracts through one real production spine:
+real pixels, a real native window/input path, baseline image/text-resource
+realization, native accessibility, screenshot evidence, instrumentation, and a
+host-owned loop suitable for engine/game embedding.
 
-The accepted source already contains most host-neutral coordination required by
-that spine:
+The current source audit establishes that most host-neutral coordination already
+exists:
 
-- `AppRuntime::pump` remains the sole explicit application/runtime work driver;
-- `WakeTransport` is a narrow thread-safe notification seam and never owns work;
-- `take_redraw_request` / `acknowledge_redraw` expose revision-aware redraw
-  coordination without native window types;
-- `publish_surface` produces the complete aligned public publication;
+- `AppRuntime::pump` is the explicit application/runtime work driver;
+- `WakeTransport` is a narrow thread-safe wake notification seam;
+- `take_redraw_request` / `acknowledge_redraw` expose revision-aware dirty
+  publication coordination;
+- `publish_surface` produces one aligned immutable `SurfacePublication`;
 - pointer, keyboard, committed-text, composition, surface-command, and semantic
-  action ingress already converge through canonical runtime queues;
+  action ingress already enter canonical runtime queues;
 - `SurfacePublication` exposes paint, hit/input, semantics, layout/debug, and
-  diagnostics as distinct immutable siblings;
-- `ResourceRef` is already an opaque externally owned immutable logical-resource
-  identity and is usable as a map key, while core/runtime intentionally expose no
-  provider lookup, payload, decoder, shaper, or backend cache;
+  diagnostics as independently typed siblings;
+- `ResourceRef` is an externally owned immutable process-local logical-resource
+  identity and deliberately exposes no provider key, payload, lookup handle,
+  decoder, shaper, or backend cache;
 - `SemanticPublication` already supports complete snapshots, exact consecutive
-  deltas, and full resynchronization, and `SemanticActionRequest` provides
+  deltas, and full resynchronization, while `SemanticActionRequest` provides
   ordinary surface-scoped action ingress.
 
-M7 therefore needs edge-owned integration, not a new runtime loop, second scene
-model, second semantic tree, or core-owned resource subsystem.
+M7 therefore adds edge-owned integrations. It does not add a second runtime loop,
+scene model, semantic tree, input authority, or core/runtime resource registry.
 
 ## Inherited authority this ADR does not supersede
 
-This ADR composes accepted contracts. It does not redefine:
+This ADR composes rather than redefines accepted contracts:
 
-- ADR 0004 mounted lifetime, reconciliation, lifecycle, or mounted identity;
-- ADR 0005 canonical event routing, focus/input semantics, `SurfaceId`,
-  `SurfaceInputContext`, retained displayed generations, stale/foreign/retired
-  rejection, or no-retargeting behavior;
-- ADR 0006 canonical queue, explicit pump, host-request, clock, wake/redraw,
-  trace, shutdown, or transaction causality;
-- accepted M5 semantic identity, contribution, publication, action, or testing
-  authority;
-- ADR 0007 paint/hit scene ownership, `PaintRevision`/base/damage semantics,
-  resource-reference identity, logical scene geometry, order, opacity,
-  source-over, hit testing, or renderer-neutral consumer rules;
-- M8 production style/layout/international-text ownership;
-- M10 editable-text behavior;
-- M13 complete platform/multi-window/resource/recovery support.
+- ADR 0004 owns mounted lifetime, reconciliation, lifecycle, and mounted identity;
+- ADR 0005 owns canonical event routing, focus/input semantics, `SurfaceId`,
+  exact displayed `SurfaceInputContext`, retained generations, stale/foreign/
+  retired rejection, and no retargeting;
+- ADR 0006 owns queue/pump, host requests, clock, wake/redraw, trace, shutdown,
+  and transaction causality;
+- accepted M5 owns semantic identity, publication, action, and testing contracts;
+- ADR 0007 and M6 conformance own `PaintPublication`/`PaintScene`/`HitTestScene`,
+  `PaintRevision`/base/damage, logical scene geometry/order/color/hit semantics,
+  and `ResourceRef` identity;
+- M8 owns production style/layout/international text;
+- M10 owns complete editable-text interaction;
+- later platform work owns the broad platform/multi-window/recovery matrix.
 
-M7 conformance references inherited M4/M5/M6 observations rather than
-re-stating them under new IDs.
+M7 conformance references inherited rows instead of duplicating them.
 
 ## Decision
 
 ### Adopt a thin reference stack at the edge
 
-M7 adopts the following upstream families for the reference spine:
+A0 evaluated the current compatible upstream releases on 2026-08-23 and adopts
+these families for the M7 reference path:
 
-- **winit 0.30.x** for the standalone reference window/event-loop host;
-- **wgpu 30.x** for the conventional reference GPU renderer;
-- **AccessKit 0.24.x** plus **accesskit_winit 0.33.x** for the native
-  accessibility bridge used by the winit reference application;
-- **image 0.25.x**, with default features disabled and PNG enabled, only in the
-  reference resource owner/fixture for decoding deterministic image fixtures;
-- **ab_glyph 0.2.x**, with only the features needed for ordinary font loading and
-  glyph rasterization, only in the reference resource owner/fixture for the
-  bounded M7 shaped-run proof.
+- **winit 0.30.x** for the standalone native window/event-loop host;
+- **wgpu 30.x** for the conventional cross-platform GPU renderer;
+- **AccessKit 0.24.x** plus **accesskit_winit 0.33.x** for native accessibility;
+- **image 0.25.x**, default formats disabled and PNG enabled, only in the
+  reference resource owner/fixture;
+- **ab_glyph 0.2.x** only for loading the deterministic fixture font and
+  rasterizing already-selected glyphs.
 
-These version lines are implementation baselines, not RunenUI public protocol.
-Dependency updates that preserve this ADR and conformance are maintenance work;
-a change that alters ownership, event-loop semantics, resource identity,
-renderer/publication semantics, or accessibility round-tripping requires renewed
-architecture review.
+The reviewed releases (`winit 0.30.13`, `wgpu 30.0.0`, `accesskit 0.24.1`,
+`accesskit_winit 0.33.2`, `image 0.25.10`, `ab_glyph 0.2.32`) fit the repository's
+Rust 1.93 compatibility floor. Exact patch versions, features, license inventory,
+and transitive dependency state are revalidated by the implementation PR that
+adds them; the version families are not RunenUI protocol.
 
-At the decision date the selected winit, wgpu, AccessKit, and image releases all
-fit below RunenUI's Rust 1.93 compatibility floor and use Apache-2.0 and/or
-MIT-compatible licensing. `ab_glyph` is Apache-2.0 and deliberately narrower
-than a paragraph layout/shaping stack. Every implementation PR must still run the
-repository's dependency, license, MSRV, and feature audits against the exact
-versions it adds.
+M7 deliberately does not adopt a production shaping/layout stack merely to draw
+text. Font discovery, fallback, shaping, bidi, line breaking, wrapping, paragraph
+layout, and production text measurement remain M8 work.
 
-M7 explicitly does **not** adopt `cosmic-text`, `glyphon`, `fontdue` layout, or
-another production shaping/layout stack. M8 owns the reviewed production text
-stack. M7 needs only enough deterministic font/glyph realization to put the
-already-shaped M6 resource path on screen.
+### Keep native/backend dependencies outside neutral authority
 
-### Preserve neutral core/runtime dependency direction
+No winit, wgpu, AccessKit, image-decoder, font-rasterizer, native-window, or
+physical-geometry type becomes `runenui_core` or `runenui_runtime` behavior
+authority.
 
-No winit, wgpu, AccessKit, raw native-window, image-decoder, or font-rasterizer
-type may appear in `runenui_core` or `runenui_runtime` public or private behavior
-authority merely to serve the reference path.
-
-The intended dependency direction is:
+The required dependency shape is:
 
 ```text
 runenui_core <- runenui_runtime
@@ -129,446 +115,373 @@ runenui_core <- runenui_runtime
                ^             ^
                |             |
       reference_winit   external_host fixture
-            |  |
-          winit AccessKit
+            |
+        winit + AccessKit
 ```
 
-The diagram names dependency pressure, not a requirement to create every concept
-as a crate.
+M7 justifies one new reusable production edge crate:
 
-M7 justifies exactly one new reusable production edge crate at A0:
+- **`runenui_render_wgpu`** consumes ordinary public paint publications and an
+  edge resource provider. It owns wgpu instance/adapter/device/queue, target
+  surfaces/textures, pipelines, uploads, realization caches, render-update
+  classification, offscreen readback, and renderer instrumentation. It has no
+  winit or AccessKit dependency.
 
-- **`runenui_render_wgpu`** — an independently consumable renderer package over
-  ordinary `runenui_core`/`runenui_runtime` paint publications. It owns wgpu
-  device/queue/surface/texture/pipeline state, resource realization caches,
-  render/update classification, offscreen readback, and renderer-side
-  instrumentation. It has no winit or AccessKit dependency.
+The standalone winit host and AccessKit glue remain a reference application until
+a second real consumer proves a reusable host/adapter crate boundary. A generic
+`runenui_platform` crate, a crate per concept, and a generic `runenui_resources`
+crate are rejected without independent ownership pressure.
 
-The standalone winit host and AccessKit glue remain in a reference application
-package until a second real consumer demonstrates a reusable host/adapter crate
-boundary. A monolithic `runenui_platform` crate and a crate-per-concept graph are
-rejected.
+A separate downstream external-host fixture consumes `runenui_render_wgpu`
+without winit or AccessKit. That independent consumer is the Cargo-enforced reason
+the renderer cannot own the native event loop.
 
-The external-host proof is a separate downstream fixture that consumes the same
-`runenui_render_wgpu` package without winit. That independent consumer is the
-Cargo-enforced reason renderer and host ownership must remain separate.
+### Renderer consumes ordinary paint publication only
 
-### Renderer consumes only ordinary public paint products
+`runenui_render_wgpu` consumes `PaintPublication` and its complete `PaintScene`.
+It may use public scene requirements/capability checks and caller-owned resource
+payloads. It must not inspect or import concrete widgets/controls, `WidgetTypeId`,
+semantic roles/tree state, mounted/layout storage, or private runtime mutation
+seams.
 
-`runenui_render_wgpu` consumes the exact ordinary `PaintPublication` and its
-complete `PaintScene`. It may use public scene requirements/capability checks and
-renderer-owned resource payloads. It must not import or inspect:
+The renderer tracks only renderer-owned realized state, including the exact
+`(SurfaceId, PaintRevision)` it has successfully realized:
 
-- `WidgetTypeId` or concrete built-in controls;
-- semantic roles/state/tree facts;
-- mounted or layout storage;
-- private runtime modules or mutation seams;
-- a second renderer-specific scene authored by widgets.
-
-The renderer tracks only its own realized renderer state, including the exact
-`(SurfaceId, PaintRevision)` it has successfully realized. It follows M6
-revision/base semantics:
-
-- same revision is already current;
-- an exact realized base may make publication damage incrementally eligible;
+- same revision => already current;
+- exact realized base => incrementally eligible;
 - first observation, skipped revision, another surface, renderer reset, target
-  rebuild, or lost cache requires full reprocessing of the complete publication;
-- damage is never used when the realized base does not match;
-- RunenUI runtime receives no renderer acknowledgement protocol beyond ordinary
-  host redraw acknowledgement already defined by ADR 0006.
+  rebuild, or lost realization state => full reprocessing of the complete current
+  publication;
+- damage is never consumed against a mismatched base.
 
-The first M7 renderer may conservatively redraw the complete target even when
-incremental damage is eligible. M7 requires correct revision/base/damage
-interpretation and observation, not a premature partial-present optimization.
+Dropping renderer-local revision/GPU/resource caches must be recoverable from the
+complete current publication plus the caller's resource provider. Runtime owns no
+renderer acknowledgement protocol and no GPU handle.
 
-GPU device/queue/surface/pipeline handles and command submission are renderer
-state. They never become runtime state.
+M7 does not require partial present. A renderer may conservatively redraw the
+complete target even when damage is incrementally eligible, while still exposing
+the correct classification and damage facts.
 
-### One render core supports window and offscreen targets
+### One render implementation supports window and offscreen targets
 
-The same primitive/clip/resource implementation must render both:
+The same primitive/clip/resource implementation renders both:
 
-1. a wgpu window surface supplied by the standalone reference host; and
-2. a renderer-owned offscreen texture that can be copied to a CPU-visible
-   readback buffer for deterministic screenshot/golden proof and the external
-   host fixture.
+1. a wgpu surface supplied by a native host target; and
+2. a renderer-owned offscreen texture that can be copied to CPU-visible readback.
 
-There is no second software renderer used as expected behavior. CPU reference
-calculations may continue to test logical geometry/color contracts inherited
-from M6, but screenshot output must come from the actual wgpu renderer.
+No software renderer becomes expected authority. Screenshot evidence must come
+from the actual wgpu renderer. A wgpu noop/mock backend is insufficient pixel
+proof.
 
-Reference targets use an sRGB-capable 8-bit format when available. Literal M6
-colors retain their accepted unpremultiplied sRGB8 plus linear-alpha semantics;
-the renderer performs blending in a way consistent with the accepted linearized
-source-over contract. Resource-backed image payload color semantics are frozen
-below rather than delegated to decoder defaults.
+Reference fixtures use controlled target format, scale, sampling, resources, and
+geometry. Exact comparison is used for deliberately exact interior probes;
+boundary/driver-sensitive pixels use a documented tight tolerance. The tolerance
+must be small enough that geometry, order, clipping, opacity, color, and missing
+resource defects cannot pass.
 
-### Resource ownership stays external to core/runtime
+### Resource lookup and realization are edge-owned
 
-M7 introduces no `ResourceRef -> payload` registry in core/runtime.
+M7 adds no core/runtime `ResourceRef -> payload` registry.
 
-`runenui_render_wgpu` defines the minimum **renderer-edge provider interface**
-needed by this renderer. The caller owns an object implementing that interface
-and supplies it when rendering. The interface is keyed by the complete
-`ResourceRef`; consumers never split, serialize, guess, or replace its opaque
-identity.
+`runenui_render_wgpu` defines the minimum renderer-edge provider interface and
+calls a provider owned by its caller. Lookup is keyed by the complete opaque
+`ResourceRef`; consumers do not split, serialize, infer, or replace its identity.
 
-The provider contract has two conceptual resource products:
+The provider exposes two conceptual payloads:
 
-- **image source** — immutable decoded width/height plus tightly defined
-  unpremultiplied RGBA8 sRGB pixels for an image-kind `ResourceRef`;
-- **shaped-run raster source** — immutable resource-local logical bounds plus an
-  alpha8 coverage raster produced for a requested `RasterScale` from the same
-  shaped-run logical resource. Scene foreground remains outside resource identity
-  and comes from `ShapedTextRunPrimitive`.
+- **image source:** immutable non-zero pixel extent plus explicitly normalized
+  unpremultiplied RGBA8 sRGB pixels for an image-kind ref;
+- **shaped-run source:** immutable resource-local logical placement/coverage facts
+  sufficient to produce alpha coverage at a requested `RasterScale` for a
+  shaped-text-run ref. Scene foreground remains ordinary paint state outside
+  resource identity.
 
-Exact Rust names/signatures are implementation details, but the ownership is
-normative:
+Exact Rust signatures remain implementation details, but ownership is fixed:
 
-- the application/reference provider owns logical payload storage and preserves
-  the immutable-content binding for the life of each `ResourceRef`;
-- image decode and test-font/glyph rasterization occur in the provider/reference
-  application, not core/runtime;
-- the wgpu renderer owns texture/atlas/upload/cache realization and may drop and
-  rebuild it at any time without changing logical resource identity;
-- a scale-sensitive shaped-run raster may be regenerated for the same logical
-  `ResourceRef`; renderer cache identity therefore includes realization scale as
-  needed without issuing a new logical reference;
-- missing, wrong-kind, malformed, or unavailable payloads produce deterministic
-  structured render diagnostics/errors and never silently substitute widget
-  semantics or another provider;
-- provider callback/lookup must not be retained as live runtime authority.
+- application/reference provider owns logical payload storage and preserves the
+  immutable binding for each live `ResourceRef`;
+- decoder/font fixture work occurs in the provider, not core/runtime;
+- renderer owns backend upload/texture/atlas/cache realization and may drop it at
+  any time without changing the logical ref;
+- scale-sensitive shaped-run coverage may be regenerated for the same logical ref;
+- missing, wrong-kind, malformed, or unavailable payloads fail deterministically
+  with structured diagnostics rather than silently selecting another provider,
+  widget behavior, or placeholder control;
+- provider lookup never becomes live runtime authority.
 
-A generic `runenui_resources` crate is deliberately rejected until another
-renderer or independent consumer proves that the payload vocabulary itself is a
-shared product boundary.
+The reference provider uses `image` only for controlled PNG decoding with default
+format features disabled, then normalizes output into the explicit RGBA8 sRGB
+payload. Decoder color-space ambiguity does not become protocol semantics.
 
-### Image decoding is a reference-provider concern
+The shaped-run fixture uses one bundled redistributable font and explicit fixture
+glyph selection/placement. `ab_glyph` loads/rasterizes those glyphs; it does not
+perform production shaping, fallback, line breaking, or paragraph layout.
 
-The reference application uses `image` only to decode controlled PNG resources,
-with default image-format features disabled. Decoder output is explicitly
-normalized into the renderer-edge RGBA8 sRGB payload contract; M7 does not rely
-on ambiguous decoder color-space defaults as protocol semantics.
+### winit owns native mechanics, not UI work
 
-Image fit/crop/repeat behavior remains exactly the M6 scene contract: the complete
-normalized image domain maps to the primitive destination. The provider does not
-invent fit policy.
+The standalone reference application owns the winit event loop and window. It:
 
-### Baseline text proves resource realization without stealing M8
+- installs `WakeTransport` using an event-loop proxy/user event;
+- calls `AppRuntime::pump` only from host-owned event-loop execution;
+- translates runtime redraw intent to native redraw intent;
+- supplies validated logical size and `RasterScale` through the existing surface
+  build context;
+- translates native pointer/keyboard/text/composition/focus events into existing
+  host-neutral RunenUI values;
+- drives the reusable renderer;
+- keeps native IDs, native event objects, physical geometry, event-loop objects,
+  and window handles out of core/runtime.
 
-M7's text goal is real pixels from the existing M6 `ShapedTextRun` resource path,
-not production shaping.
+The host never invokes widget callbacks directly and owns no second UI queue.
 
-The reference resource owner uses a deterministic bundled redistributable test
-font and a small fixed authored glyph sequence. `ab_glyph` is used only to load
-that font, address already-selected glyphs, and rasterize glyph coverage. The
-reference provider produces immutable resource-local bounds/coverage for a
-`ResourceRef::ShapedTextRun`; it does not become layout authority.
+### Redraw acknowledgement ends at successful publication, not presentation
 
-M7 does not add:
+M7 preserves ADR 0006 exactly. A `RedrawRequest` names dirty **publication** work,
+not renderer/presenter success.
 
-- font discovery or fallback;
-- script/language shaping;
-- bidi;
-- line breaking/wrapping;
-- paragraph layout;
-- production text measurement;
-- editable text or selection.
+For a taken redraw request, the host follows this boundary:
 
-Those remain M8/M10. A later production text stack may replace the reference
-provider's glyph-production mechanism without changing M6 scene identity or the
-renderer/provider ownership boundary.
+1. reach a host frame opportunity and ensure the renderer target can be addressed;
+2. call `publish_surface` for the dirty RunenUI revision;
+3. if publication fails, do **not** acknowledge the request;
+4. if publication succeeds, acknowledge that consumed `RedrawRequest` promptly;
+5. retain the resulting complete immutable `SurfacePublication` and render/present
+   it through the renderer.
 
-### winit owns native event-loop mechanics, not UI work authority
+A render/present failure after successful publication does not undo or defer the
+runtime redraw acknowledgement. It is renderer/host recovery state. The host
+retains the complete publication and schedules a native/render retry without
+forcing RunenUI to republish unchanged state. If newer runtime invalidation later
+arms another redraw, the host may publish the newer state; skipped renderer
+revisions are handled by the M6 full-resync rule.
 
-The standalone reference application uses winit's application/event-loop model.
-Its responsibility is translation and orchestration only:
+This distinction prevents GPU/window recovery from becoming a second runtime
+publication authority.
 
-- install a `WakeTransport` backed by a winit event-loop proxy/user event;
-- call `AppRuntime::pump` only from the host-owned event loop;
-- take runtime `RedrawRequest`s and translate them to native redraw requests;
-- on redraw, publish the current RunenUI surface, render/present it, then
-  acknowledge the consumed redraw request only after successful publication and
-  render handoff under the accepted redraw contract;
-- translate winit physical size/scale to validated logical surface size and
-  `RasterScale` supplied through the existing `SurfaceBuildContext`;
-- translate pointer/keyboard/text/composition/focus events into existing
-  host-neutral RunenUI event values;
-- keep native window/device IDs, `PhysicalPosition`, `PhysicalSize`, winit keys,
-  and event-loop objects out of core/runtime.
+### Displayed input tracks successful presentation, not publication
 
-The host never dispatches widget callbacks directly and never runs a second UI
-queue.
+The host keeps one edge-owned displayed-surface record containing:
 
-### Displayed-surface state is an explicit host invariant
+- the exact `SurfaceInputContext` from the publication that is actually displayed;
+- the native physical extent and native scale used to present that publication.
 
-Native point input requires both a physical-to-logical mapping and an exact
-RunenUI displayed `SurfaceInputContext`. A resize or scale-factor event can
-change the native mapping before a newly published RunenUI frame is actually
-shown. The host must not combine those facts from different displayed states.
+The record changes only after successful presentation. A successfully published
+but not yet presented frame does not become point-input authority.
 
-The reference host therefore keeps one edge-owned **displayed-surface record**
-containing the successfully presented publication's input context together with
-the physical extent and native scale used to present it.
+A resize or scale-factor change can invalidate native physical-to-logical mapping
+before a replacement frame is displayed. Point-based native ingress is therefore
+admitted only while the displayed record matches the current native coordinate
+mapping. While it does not match, point ingress is withheld and diagnosed until
+a matching publication is successfully presented. Native points are never paired
+with a stale context/new scale, substituted with the current runtime context, or
+retargeted through current geometry.
 
-Point-based native ingress is admitted only while that record matches the current
-native coordinate mapping. After a resize/scale transition invalidates the
-mapping, point ingress is withheld until a new publication has been successfully
-rendered/presented and becomes the new displayed record. Events are never
-retargeted through current runtime geometry, and the host does not forge a
-replacement input context. The implementation must expose a diagnostic for this
-transition rather than silently delivering stale point input.
+If a renderer failure leaves an older frame displayed, that older displayed
+context remains the host's target only while the native mapping still matches;
+ordinary inherited stale/retired admission remains authoritative if runtime
+history has moved beyond it.
 
-Keyboard, committed-text, and composition ingress continue through their existing
-focus-bound host-neutral APIs; they do not gain a fake surface context.
+Keyboard, committed-text, and composition ingress continue through their
+focus-bound neutral APIs and do not gain fabricated surface context.
 
-This rule is the native-host preservation of accepted M4 displayed-generation
-semantics.
+### Native keyboard/text/IME translation is loss-preserving
 
-### Native key/text/IME translation is loss-preserving
+Named winit physical/logical keys map to corresponding RunenUI variants. Unknown
+physical codes use `PhysicalKey::Code`; other logical names use
+`LogicalKey::Named` rather than dropping information. Character key meaning is
+not committed text.
 
-winit physical keys that have named RunenUI equivalents map to those variants;
-other physical codes map losslessly to the owned `PhysicalKey::Code` form.
-Logical character meanings map to `LogicalKey::Character`; other named meanings
-map to the existing named variants or `LogicalKey::Named` without pretending key
-meaning is committed text.
+Committed Unicode text uses `submit_text`. Native preedit/composition lifecycle
+uses the existing start/update/end/cancel API. The host must not double-deliver
+IME text as key meaning and committed text, and focus loss preserves inherited
+composition/focus cleanup.
 
-Committed Unicode text uses `submit_text`. Platform composition/preedit events
-use the existing start/update/end/cancel composition lifetime. The host must not
-double-deliver IME text as both key meaning and committed text, and focus loss
-must preserve accepted cancellation/cleanup behavior.
+If a real native fact cannot be represented without semantic loss, implementation
+stops for an explicit neutral-protocol review rather than storing native objects
+inside runtime state.
 
-M7 does not expand the neutral input vocabulary unless an observed winit/native
-fact cannot be represented without semantic loss. Such a gap is a protocol defect
-requiring explicit review, not permission to stash native event objects in the
-runtime.
+### AccessKit consumes semantic publication only
 
-### AccessKit is a semantic adapter, not semantic authority
-
-The reference application uses `accesskit` plus `accesskit_winit` over ordinary
-`SemanticPublication`.
-
-The adapter owns a per-surface mapping between RunenUI `SemanticNodeId` values
-and AccessKit `NodeId` values. That mapping is adapter state only:
+The reference application uses AccessKit over ordinary `SemanticPublication`.
+The adapter owns a per-surface mapping from live RunenUI `SemanticNodeId` to
+AccessKit `NodeId`. That mapping is rebuildable adapter state:
 
 - RunenUI semantic identity remains authoritative;
-- AccessKit IDs remain stable for retained RunenUI semantic lifetimes while one
-  adapter instance is live;
-- retired AccessKit IDs are not reused in that adapter lifetime;
-- a complete adapter reset may rebuild from a RunenUI full snapshot without
-  changing RunenUI semantic identity.
+- retained RunenUI semantic lifetimes keep stable AccessKit IDs while one adapter
+  instance is live;
+- retired AccessKit IDs are not reused during that adapter lifetime;
+- exact consecutive RunenUI semantic updates may be applied only from the
+  adapter's realized surface/revision; otherwise the adapter rebuilds from the
+  complete semantic snapshot.
 
-The current RunenUI semantic vocabulary maps deliberately:
+Current role mapping is exact and deliberately small:
 
-- `SemanticRole::Generic` -> AccessKit generic/presentational container role;
-- `SemanticRole::Group` -> the nearest AccessKit grouping role;
-- `SemanticRole::Text` -> AccessKit label/text presentation with plain text
-  exposed as value/content rather than inventing an editable-text model;
-- `SemanticRole::Button` -> AccessKit button;
-- RunenUI name, description, value, disabled/inert state, absolute bounds,
-  children, relationships, focus, and supported actions are translated where
-  AccessKit exposes the corresponding neutral fact;
-- any currently published RunenUI fact without a justified AccessKit equivalent
-  produces an adapter diagnostic rather than being silently reinterpreted as a
-  different UI behavior.
+| RunenUI role | AccessKit role |
+|---|---|
+| `SemanticRole::Generic` | `Role::GenericContainer` |
+| `SemanticRole::Group` | `Role::Group` |
+| `SemanticRole::Text` | `Role::Label` |
+| `SemanticRole::Button` | `Role::Button` |
 
-The adapter consumes consecutive `SemanticUpdate`s only when its realized
-surface/revision exactly matches the declared previous revision; otherwise it
-rebuilds from the complete `SemanticSnapshot`.
+For `Role::Label`, plain RunenUI text is exposed through AccessKit value/content
+rather than inventing editable-text semantics. Name, description, value,
+disabled/inert state, bounds, children, focus, and supported actions map only to
+corresponding AccessKit facts. RunenUI relationships map directly where AccessKit
+has the same relation: `LabelledBy -> labelled_by`, `DescribedBy -> described_by`,
+and `Controls -> controls`. A published fact without a justified AccessKit
+equivalent produces an explicit adapter diagnostic rather than behavioral
+reinterpretation.
 
-AccessKit action callbacks never mutate RunenUI reentrantly. They resolve the
-adapter-owned AccessKit ID mapping to the exact RunenUI semantic target, translate
-supported native actions (`Click`, `Focus`, context-menu equivalents) to the
-corresponding current `SemanticAction`, and enqueue a host event/user message.
-The host thread then constructs an ordinary `SemanticActionRequest` and calls
-`AppRuntime::submit_semantic_action`. Unsupported AccessKit actions are diagnosed
-and do not bypass canonical ingress.
+Current semantic actions map as follows:
 
-### External hosts own their frame loop
+| RunenUI action | AccessKit action |
+|---|---|
+| `Activate` | `Action::Click` |
+| `RequestFocus` | `Action::Focus` |
+| `OpenContextMenu` | `Action::ShowContextMenu` |
+| `OpenMenu` | one adapter-owned `Action::CustomAction` entry with a deterministic ID and description `Open menu` |
 
-The reusable renderer API must be usable without winit. A dedicated downstream
-external-host fixture demonstrates an engine/game-style loop that explicitly
-decides when to:
+`OpenMenu` round-trips only when the request is `Action::CustomAction` with the
+published custom-action ID. It is never conflated with Click, Expand, or
+ShowContextMenu. Other native actions are rejected/diagnosed unless a later
+accepted RunenUI semantic action defines matching behavior.
 
-1. submit neutral input/work;
-2. pump the RunenUI runtime;
-3. consume redraw intent;
-4. publish a surface;
-5. render the publication to an offscreen or host-supplied target;
-6. present/consume the resulting frame;
-7. acknowledge redraw.
+### AccessKit callbacks cannot mutate runtime off-thread or reentrantly
 
-No helper may hide a framework-owned infinite loop or require winit to use the
-renderer. The fixture may use deterministic iteration rather than wall-clock
-real-time; ownership of the loop is the required observation.
+The winit adapter is created before the native window is first shown, as required
+by `accesskit_winit`.
 
-### Renderer/host instrumentation is observational
+The reference path uses `Adapter::with_mixed_handlers`:
 
-M7 adds edge instrumentation sufficient to correlate production behavior without
-becoming a second trace authority. Renderer/host observations include at least:
+- a direct activation handler may read only an adapter-owned thread-safe immutable
+  latest full AccessKit tree derived from the latest RunenUI semantic publication;
+  it never reads or mutates `AppRuntime` and may return `None` if no derived tree
+  has been published yet;
+- action requests and deactivation are delivered through the winit event-loop
+  proxy and handled on the host thread;
+- `Adapter::process_event` is called before the application handles each native
+  window event, matching the upstream adapter contract;
+- host-thread action handling resolves only adapter-owned AccessKit IDs, builds an
+  ordinary `SemanticActionRequest`, submits it through `AppRuntime`, and lets the
+  canonical queue/pump/default/trace path execute it.
 
-- `SurfaceId`;
-- current `PaintRevision` and optional base revision;
-- whether the renderer classified the publication as already-current,
-  exact-base/incremental-eligible, or full-resync;
-- logical/physical target size and raster scale;
+The thread-safe AccessKit tree snapshot is a derived adapter cache, not semantic
+authority: it is completely rebuildable from `SemanticPublication` plus the
+adapter's ID mapping and cannot route directly to mounted state.
+
+### Screenshot and instrumentation observe edge work
+
+The renderer exposes immutable observation records sufficient to correlate:
+
+- surface ID;
+- paint revision/base and selected update mode;
 - declared damage;
-- resource lookup/realization/cache-hit/cache-rebuild events by opaque ref/kind
-  without exposing pointer-derived identity;
-- render/readback/present success or failure.
+- logical and physical target extent plus raster scale;
+- resource lookup/realization/cache outcomes;
+- render target/backend/format;
+- render, readback, and present outcomes.
 
-Instrumentation is immutable output/diagnostics. It cannot mutate runtime state,
-forge revisions, or replace the accepted runtime trace.
+These records observe public publications and renderer-owned work. They do not
+allocate RunenUI identities, mutate runtime state, or replace the canonical
+runtime trace.
 
-### Screenshot/golden proof uses the actual renderer
+The offscreen screenshot/golden path uses the same renderer/resource code as the
+window path and copies actual wgpu output to CPU-visible readback. Golden files
+are test evidence only.
 
-The canonical screenshot proof renders controlled fixtures through the same
-`runenui_render_wgpu` implementation into an sRGB offscreen target and reads the
-result back.
+### External host owns the frame loop explicitly
 
-A canonical Linux Vulkan software-adapter job may be used to make CI rendering
-repeatable without requiring physical GPU hardware. This still exercises the
-actual wgpu renderer/backend and produces real pixel output; the noop backend is
-not valid M7 pixel proof.
+A separate downstream fixture with no winit or AccessKit dependency proves
+real-time/game embedding. Its loop remains visibly host-owned:
 
-Goldens use deterministic bundled resources, controlled raster scale, and an
-explicit comparator policy. The first renderer implementation must document its
-chosen tolerance before golden acceptance. The comparator may allow bounded
-backend edge/rounding variation, but it must not permit geometry/order/clip/color
-or missing-resource divergences. Cross-backend pixel identity is not an M7 goal;
-logical scene semantics remain owned by M6 conformance.
+1. accept host/application input/work;
+2. pump `AppRuntime` under an explicit host-selected budget;
+3. consume redraw intent when the host chooses a frame opportunity;
+4. publish the surface;
+5. acknowledge the consumed redraw immediately after successful publication;
+6. render the retained publication using `runenui_render_wgpu` on an offscreen or
+   host-supplied target;
+7. consume/present the renderer result under host policy.
 
-### Recovery uses complete public snapshots
+Renderer failure retries remain host/renderer work over retained publication;
+no helper may hide an infinite framework loop, call `pump` from the renderer, or
+require winit to use the renderer.
 
-Renderer target/surface recreation, dropped GPU realization caches, or lost
-renderer-local revision state never require hidden prior RunenUI scenes. The
-renderer reprocesses the complete current `PaintPublication` and re-resolves
-resources by stable `ResourceRef` values.
+## Frozen implementation sequence
 
-M7 does not claim complete production device-loss/recovery policy across all
-platforms; M13 owns that breadth. It does prove that the public M6 snapshot model
-is sufficient to reconstruct the reference renderer after renderer-local state
-loss.
+A0 freezes four serial slices. Later child issues are created only from accepted
+`main` after their predecessor is accepted and accepted-main validated.
 
-## M7 implementation sequence
-
-The architecture yields four serial slices after M7A0 acceptance and
-accepted-main verification:
-
-1. **M7A — reusable wgpu renderer and edge resource realization**
+1. **M7A — reusable wgpu renderer and resource realization**
    - create `runenui_render_wgpu`;
-   - implement complete current M6 paint semantics;
-   - define the renderer-edge resource provider products;
-   - implement image/shaped-run realization, revision/resync logic,
-     instrumentation, offscreen rendering, readback, and canonical golden proof.
-2. **M7B — standalone winit host and native input/scale/redraw path**
-   - add the reference winit application;
-   - integrate wake/pump/redraw, native scale/resize, displayed-surface point
-     ingress, keyboard/text/IME/focus translation, wgpu window presentation, and
-     real-window smoke proof.
-3. **M7C — AccessKit semantic adapter path**
-   - integrate snapshot/delta mapping, current semantic vocabulary, focus/state,
-     relationships/actions, adapter ID lifetime, and non-reentrant semantic
-     action round-trip through the reference host.
-4. **M7D — external-host proof and milestone closure**
-   - add the winit-free downstream external-host consumer;
-   - rerun integrated M4/M5/M6/M7 proof;
-   - reconcile accepted status/architecture only after implementation acceptance;
-   - close M7 only after accepted-main validation.
+   - implement renderer update classification, current M6 primitives, edge
+     resource provider, deterministic image/shaped-run fixture realization,
+     offscreen readback/goldens, and renderer instrumentation;
+   - remain winit/AccessKit-free.
+2. **M7B — standalone winit host and native input/scale/redraw**
+   - build the real window path over M7A;
+   - implement wake/redraw orchestration using the corrected publication
+     acknowledgement boundary;
+   - implement resize/scale/displayed-context and native input translation;
+   - prove actual window-surface presentation and bounded recoverable surface
+     recreation without claiming broad platform recovery.
+3. **M7C — AccessKit semantic adapter**
+   - implement exact current role/property/action mapping;
+   - stable adapter-owned ID mapping plus delta/full-resync behavior;
+   - mixed-handler activation snapshot and host-thread action round-trip;
+   - no paint/widget/private-runtime dependency.
+4. **M7D — external-host proof and M7 closure**
+   - prove the winit-free host-owned frame loop using the same renderer/runtime
+     contracts;
+   - run integrated M4/M5/M6/M7 proof;
+   - reconcile accepted M7 conformance/status only after implementation is
+     accepted and accepted-main validated.
 
-Child issues are created serially from then-current accepted `main`; M7A is not
-created until M7A0 itself is accepted, merged, and accepted-main validated.
+## Explicit non-goals
 
-## Alternatives rejected
+M7 does not own:
 
-### Build a custom native event loop/window layer now
-
-Rejected. M7 needs to validate RunenUI's neutral contracts against a real mature
-host, not spend the milestone rebuilding platform window/event infrastructure.
-M13 can revisit platform ownership if production evidence demonstrates a missing
-abstraction.
-
-### Use softbuffer/pixels as the reference renderer
-
-Rejected as the primary renderer. They are useful presentation/pixel-buffer
-layers but do not exercise the conventional GPU pipeline, resource realization,
-transforms/clips, and renderer ownership the M7 roadmap intends to prove. wgpu
-provides the stronger reference consumer while still remaining backend-neutral
-from RunenUI's perspective.
-
-### Adopt a production text/shaping renderer in M7
-
-Rejected. `cosmic-text`/glyphon or equivalent would collapse M8's deliberate
-text-stack decision into a milestone whose requirement is only baseline font
-resource realization. The M7 reference font provider is intentionally bounded
-and replaceable.
-
-### Put resource lookup in core/runtime
-
-Rejected. M6 deliberately made resource identity external and opaque. The wgpu
-renderer is the first real consumer that needs payloads, so the provider seam
-belongs at that edge. Moving it into runtime would create provider/cache
-lifecycle authority unrelated to UI behavior and would couple external hosts to
-one storage model.
-
-### Create generic render/resource/host/accessibility crates before use
-
-Rejected. Only `runenui_render_wgpu` currently has a demonstrated independent
-consumer boundary: both the winit reference path and the external-host proof need
-the renderer without sharing host ownership. Other extraction waits for real
-reuse pressure.
-
-### Let the framework own the native/game frame loop
-
-Rejected. The roadmap explicitly requires external host-controlled execution,
-and existing explicit pumping/wake/redraw APIs already support it. A hidden loop
-would weaken embedding and create a second scheduling owner.
+- production international text shaping/layout or font discovery/fallback;
+- production style/layout breadth;
+- editable-text completion or standard controls;
+- broad visual effects/animation;
+- complete Windows/macOS/Linux support/recovery matrix;
+- multi-window completion;
+- backend-specific widget semantics;
+- a resource/provider/cache authority in core/runtime;
+- a framework-owned engine/game main loop;
+- one generic platform facade solely to hide selected upstream libraries.
 
 ## Consequences
 
-Positive consequences:
+The reference spine is intentionally asymmetrical: RunenUI defines neutral
+behavior and edge packages adapt it to real systems. winit, wgpu, AccessKit,
+decoding, and glyph rasterization remain replaceable because no selected upstream
+identity enters core/runtime protocol.
 
-- M7 tests the accepted neutral kernel against real host/render/accessibility
-  ecosystems without contaminating core/runtime with native dependencies;
-- the renderer becomes independently reusable by standalone and engine-style
-  hosts;
-- resource realization gains one concrete, minimal owner without inventing a
-  framework resource registry;
-- baseline font pixels are proven without preempting M8 shaping/layout;
-- native resize/scale input cannot silently violate displayed-generation safety;
-- AccessKit action callbacks converge through ordinary semantic ingress;
-- offscreen rendering makes real pixel proof possible in CI and downstream
-  external hosts.
+The design also keeps two distinct notions explicit:
 
-Costs and risks:
+- **publication consumption** is acknowledged to RunenUI after successful
+  `publish_surface`;
+- **displayed presentation** becomes native point-input authority only after a
+  renderer/presenter succeeds.
 
-- wgpu materially increases compile time and dependency weight in the dedicated
-  renderer crate;
-- native host/accessibility behavior has platform-specific operational details
-  even though the framework contract remains neutral;
-- a canonical software-renderer golden environment requires dedicated CI setup;
-- the M7 reference resource payload interface may later need extraction or
-  revision when M8 production text or a second renderer provides real pressure;
-- withholding point input during a native resize/scale transition is a deliberate
-  safety policy that later production hosts may refine only if they can preserve
-  exact displayed mapping.
+Conflating those would either make GPU recovery control runtime dirtiness or make
+point input target a frame the user has not seen.
 
-Those costs are accepted because they are isolated at real edge boundaries rather
-than imposed on the neutral kernel.
+## A0 acceptance gate
 
-## Non-goals
+M7 implementation remains blocked until this ADR and the M7 conformance matrix:
 
-M7A0 and this ADR do not provide or promise:
+- match accepted source ownership and inherited ADRs;
+- pass the configured matrix schema/ID/status/count audit;
+- pass exact dependency/MSRV/license/version-policy review for the selected
+  upstream families;
+- pass `cargo +stable fmt --all --check` for the repository-audit Rust change;
+- pass `cargo validate` and `git diff --check`;
+- pass canonical exact-head CI;
+- receive complete-diff critical review with no unresolved requested change;
+- receive explicit repository-owner acceptance of that exact reviewed head;
+- are guarded-merged and accepted-main validated.
 
-- complete Windows/macOS/Linux qualification;
-- mobile/web profiles;
-- multi-window/multi-surface lifecycle completion;
-- production text shaping, fallback, bidi, line breaking, or editing;
-- production layout/style/control breadth;
-- visual effects/animation breadth;
-- complete renderer device-loss/recovery policy;
-- one mandatory renderer for future RunenUI consumers;
-- public stable package/API compatibility before the release milestones;
-- a RunenUI-owned application/game main loop.
-
-Those outcomes remain with their accepted roadmap owners.
+M7 implementation issues must not be created before that sequence completes.
