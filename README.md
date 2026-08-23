@@ -14,7 +14,7 @@ The implemented foundation includes:
 - independent semantic identity/publication/action ingress;
 - public deterministic headless application testing through `runenui_testing`.
 
-The current renderer-neutral paint/hit scenes remain proof-level framework infrastructure. M6D closes their independent-consumer and migration proof; concrete native hosts/backends, resource realization, production text/editing, full layout/style breadth, standard controls, and multi-window lifecycle remain later roadmap outcomes.
+The current renderer-neutral paint/hit scenes remain proof-level framework infrastructure. Independent-consumer and migration closure is M6's remaining proof gate; concrete native hosts/backends, resource realization, production text/editing, full layout/style breadth, standard controls, and multi-window lifecycle remain later roadmap outcomes.
 
 See [current status](docs/status.md) for capability maturity and [roadmap](docs/roadmap.md) for durable sequencing.
 
