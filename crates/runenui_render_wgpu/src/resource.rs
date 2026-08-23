@@ -91,7 +91,7 @@ impl ImagePayload {
 /// raster's top-left boundary. One raster pixel spans `1 / raster_scale` logical
 /// units on each axis. Foreground color is not part of this payload; it remains
 /// ordinary scene-owned paint state.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ShapedRunRaster {
     logical_origin: LogicalPoint,
     width: u32,
@@ -179,7 +179,7 @@ impl ResourceRequest {
 }
 
 /// Immutable logical payload returned by a caller-owned resource provider.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ResourcePayload {
     Image(ImagePayload),
     ShapedTextRun(ShapedRunRaster),
