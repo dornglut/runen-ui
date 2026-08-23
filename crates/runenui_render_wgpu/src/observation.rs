@@ -7,7 +7,7 @@ use crate::PublicationUpdateMode;
 ///
 /// This records publication and classification facts only. Backend, resource,
 /// readback, and present observations are added by the concrete renderer path;
-/// this value never mutates runtime state or allocates RunenUI identities.
+/// this value never mutates runtime state or allocates `RunenUI` identities.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PublicationObservation {
     surface_id: SurfaceId,
