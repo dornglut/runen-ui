@@ -8,14 +8,14 @@ use runenui_runtime::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ReferenceUpdateMode {
+pub enum ReferenceUpdateMode {
     FullResync,
     ExactBaseMatch,
     AlreadyCurrent,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct ReferencePaintRecord {
+pub struct ReferencePaintRecord {
     primitive: PaintPrimitive,
     local_to_surface: LogicalTransform,
     clips: Vec<SceneClip>,
@@ -25,33 +25,33 @@ pub(super) struct ReferencePaintRecord {
 
 impl ReferencePaintRecord {
     #[must_use]
-    pub(super) const fn primitive(&self) -> &PaintPrimitive {
+    pub const fn primitive(&self) -> &PaintPrimitive {
         &self.primitive
     }
 
     #[must_use]
-    pub(super) const fn local_to_surface(&self) -> LogicalTransform {
+    pub const fn local_to_surface(&self) -> LogicalTransform {
         self.local_to_surface
     }
 
     #[must_use]
-    pub(super) const fn clips(&self) -> &[SceneClip] {
+    pub const fn clips(&self) -> &[SceneClip] {
         self.clips.as_slice()
     }
 
     #[must_use]
-    pub(super) const fn opacity(&self) -> SceneOpacity {
+    pub const fn opacity(&self) -> SceneOpacity {
         self.opacity
     }
 
     #[must_use]
-    pub(super) const fn layer(&self) -> SceneLayer {
+    pub const fn layer(&self) -> SceneLayer {
         self.layer
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct ReferenceHitRecord {
+pub struct ReferenceHitRecord {
     target: MountedNodeId,
     shape: SceneShape,
     local_to_surface: LogicalTransform,
@@ -62,38 +62,38 @@ pub(super) struct ReferenceHitRecord {
 
 impl ReferenceHitRecord {
     #[must_use]
-    pub(super) const fn target(&self) -> &MountedNodeId {
+    pub const fn target(&self) -> &MountedNodeId {
         &self.target
     }
 
     #[must_use]
-    pub(super) const fn shape(&self) -> SceneShape {
+    pub const fn shape(&self) -> SceneShape {
         self.shape
     }
 
     #[must_use]
-    pub(super) const fn local_to_surface(&self) -> LogicalTransform {
+    pub const fn local_to_surface(&self) -> LogicalTransform {
         self.local_to_surface
     }
 
     #[must_use]
-    pub(super) const fn clips(&self) -> &[SceneClip] {
+    pub const fn clips(&self) -> &[SceneClip] {
         self.clips.as_slice()
     }
 
     #[must_use]
-    pub(super) const fn layer(&self) -> SceneLayer {
+    pub const fn layer(&self) -> SceneLayer {
         self.layer
     }
 
     #[must_use]
-    pub(super) const fn pointer_policy(&self) -> PointerPolicy {
+    pub const fn pointer_policy(&self) -> PointerPolicy {
         self.pointer_policy
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct ReferenceSnapshot {
+pub struct ReferenceSnapshot {
     surface_id: SurfaceId,
     revision: PaintRevision,
     base_revision: Option<PaintRevision>,
@@ -109,99 +109,99 @@ pub(super) struct ReferenceSnapshot {
 
 impl ReferenceSnapshot {
     #[must_use]
-    pub(super) const fn surface_id(&self) -> &SurfaceId {
+    pub const fn surface_id(&self) -> &SurfaceId {
         &self.surface_id
     }
 
     #[must_use]
-    pub(super) const fn revision(&self) -> PaintRevision {
+    pub const fn revision(&self) -> PaintRevision {
         self.revision
     }
 
     #[must_use]
-    pub(super) const fn base_revision(&self) -> Option<PaintRevision> {
+    pub const fn base_revision(&self) -> Option<PaintRevision> {
         self.base_revision
     }
 
     #[must_use]
-    pub(super) const fn logical_size(&self) -> LogicalSize {
+    pub const fn logical_size(&self) -> LogicalSize {
         self.logical_size
     }
 
     #[must_use]
-    pub(super) const fn raster_scale(&self) -> RasterScale {
+    pub const fn raster_scale(&self) -> RasterScale {
         self.raster_scale
     }
 
     #[must_use]
-    pub(super) const fn damage(&self) -> PaintDamage {
+    pub const fn damage(&self) -> PaintDamage {
         self.damage
     }
 
     #[must_use]
-    pub(super) const fn input_context(&self) -> &SurfaceInputContext {
+    pub const fn input_context(&self) -> &SurfaceInputContext {
         &self.input_context
     }
 
     #[must_use]
-    pub(super) const fn required_resource_kinds(&self) -> &[ResourceKind] {
+    pub const fn required_resource_kinds(&self) -> &[ResourceKind] {
         self.required_resource_kinds.as_slice()
     }
 
     #[must_use]
-    pub(super) const fn paint_items(&self) -> &[ReferencePaintRecord] {
+    pub const fn paint_items(&self) -> &[ReferencePaintRecord] {
         self.paint_items.as_slice()
     }
 
     #[must_use]
-    pub(super) const fn hit_regions(&self) -> &[ReferenceHitRecord] {
+    pub const fn hit_regions(&self) -> &[ReferenceHitRecord] {
         self.hit_regions.as_slice()
     }
 
     #[must_use]
-    pub(super) const fn mounted_targets(&self) -> &[MountedNodeId] {
+    pub const fn mounted_targets(&self) -> &[MountedNodeId] {
         self.mounted_targets.as_slice()
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct ReferenceConsumption {
+pub struct ReferenceConsumption {
     mode: ReferenceUpdateMode,
     snapshot: ReferenceSnapshot,
 }
 
 impl ReferenceConsumption {
     #[must_use]
-    pub(super) const fn mode(&self) -> ReferenceUpdateMode {
+    pub const fn mode(&self) -> ReferenceUpdateMode {
         self.mode
     }
 
     #[must_use]
-    pub(super) const fn snapshot(&self) -> &ReferenceSnapshot {
+    pub const fn snapshot(&self) -> &ReferenceSnapshot {
         &self.snapshot
     }
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct ReferenceConsumer {
+pub struct ReferenceConsumer {
     capabilities: SceneCapabilities,
     realized: Option<(SurfaceId, PaintRevision)>,
 }
 
 impl ReferenceConsumer {
     #[must_use]
-    pub(super) const fn new(capabilities: SceneCapabilities) -> Self {
+    pub const fn new(capabilities: SceneCapabilities) -> Self {
         Self {
             capabilities,
             realized: None,
         }
     }
 
-    pub(super) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.realized = None;
     }
 
-    pub(super) fn consume(
+    pub fn consume(
         &mut self,
         publication: &PaintPublication,
         hit_scene: &HitTestScene,
