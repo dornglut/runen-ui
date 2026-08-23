@@ -83,9 +83,7 @@ impl PublicationLineage {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{
-        IntoEffects, LogicalSize, NoHostProtocol, StyleTokens, UiApp, View, text,
-    };
+    use runenui_core::{IntoEffects, LogicalSize, NoHostProtocol, StyleTokens, UiApp, View, text};
     use runenui_runtime::{
         AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SurfaceBuildContext,
     };
@@ -137,10 +135,7 @@ mod tests {
         let third = publication(&mut runtime, &tokens, 3.0);
 
         let mut lineage = PublicationLineage::new();
-        assert_eq!(
-            lineage.classify(&first),
-            PublicationUpdateMode::FullResync
-        );
+        assert_eq!(lineage.classify(&first), PublicationUpdateMode::FullResync);
 
         lineage.record_success(&first);
         assert_eq!(
@@ -168,10 +163,7 @@ mod tests {
 
         lineage.reset();
         assert_eq!(lineage.realized_revision(), None);
-        assert_eq!(
-            lineage.classify(&third),
-            PublicationUpdateMode::FullResync
-        );
+        assert_eq!(lineage.classify(&third), PublicationUpdateMode::FullResync);
     }
 
     #[test]
