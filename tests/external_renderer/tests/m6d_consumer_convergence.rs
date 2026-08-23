@@ -4,9 +4,9 @@ use runenui_core::{
     Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
     LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
-    PointerButton, PointerButtons, PointerDeviceKind, PointerId, PointerPhase, PointerPolicy, Radius,
-    ResourceKind, ResourceRef, SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp, Widget,
-    WidgetMeasure,
+    PointerButton, PointerButtons, PointerDeviceKind, PointerId, PointerPhase, PointerPolicy,
+    Radius, ResourceKind, ResourceRef, SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp,
+    Widget, WidgetMeasure,
 };
 use runenui_external_renderer_conformance::{
     ConsumerSnapshot, SceneConsumer, UpdateMode, sample_literal_paint,
@@ -372,9 +372,10 @@ fn assert_revision_modes(
     downstream: &mut SceneConsumer,
 ) {
     let size = LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO);
-    let scale_two = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size)).with_raster_scale(
-        RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
-    );
+    let scale_two = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
+        .with_raster_scale(
+            RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
+        );
     let second = runtime
         .publish_surface(&scale_two)
         .unwrap_or_else(|_| unreachable!("scale-only publication is admitted"));
@@ -400,9 +401,10 @@ fn assert_revision_modes(
     );
 
     let second_revision = second.paint_publication().revision();
-    let scale_three = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size)).with_raster_scale(
-        RasterScale::new(3.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
-    );
+    let scale_three = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
+        .with_raster_scale(
+            RasterScale::new(3.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
+        );
     let third = runtime
         .publish_surface(&scale_three)
         .unwrap_or_else(|_| unreachable!("third publication is admitted"));
