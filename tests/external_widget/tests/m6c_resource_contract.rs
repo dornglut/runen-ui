@@ -38,8 +38,8 @@ fn origin() -> LogicalPoint {
 fn image_point(image: &ImagePrimitive, u: f32, v: f32) -> LogicalPoint {
     let destination = image.destination();
     LogicalPoint::new(
-        destination.x() + u * destination.width(),
-        destination.y() + v * destination.height(),
+        u.mul_add(destination.width(), destination.x()),
+        v.mul_add(destination.height(), destination.y()),
     )
     .unwrap_or_else(|_| unreachable!("test image mapping remains finite"))
 }
