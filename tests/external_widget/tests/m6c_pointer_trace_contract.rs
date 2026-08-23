@@ -203,7 +203,9 @@ fn singular_top_region_falls_through_to_next_region_and_pointer_trace_names_that
         })
         .unwrap_or_else(|| unreachable!("pointer physical resolution is traced"));
     assert_eq!(
-        resolved.target().map(|target| target.mounted_node_id()),
+        resolved
+            .target()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
         Some(&lower)
     );
     assert!(runtime.trace().records().any(|record| {
