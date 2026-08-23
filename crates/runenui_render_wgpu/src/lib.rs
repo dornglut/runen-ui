@@ -1,4 +1,4 @@
-//! Reusable renderer edge over ordinary public RunenUI paint publications.
+//! Reusable renderer edge over ordinary public `RunenUI` paint publications.
 //!
 //! This crate is intentionally outside `runenui_core` and `runenui_runtime`
 //! authority. Native event-loop and accessibility integration are separate M7
