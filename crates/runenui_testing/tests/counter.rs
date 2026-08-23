@@ -151,10 +151,8 @@ fn harness_point_input_converges_on_the_latest_public_scene_and_context() {
         .unwrap_or_else(|_| unreachable!("exact-context pointer is admitted"))
         .sequence();
     assert_eq!(
-        harness
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .processed_envelopes(),
-        1
+        harness.run_until_idle(settle_budget()).outcome(),
+        SettleOutcome::Idle
     );
     let resolved = harness
         .trace()
