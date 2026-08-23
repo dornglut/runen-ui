@@ -1,0 +1,17 @@
+[package]
+name = "runenui_render_wgpu"
+version.workspace = true
+description = "Reusable wgpu renderer edge for RunenUI paint publications"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+runenui_core = { path = "../runenui_core", version = "0.1.0" }
+runenui_runtime = { path = "../runenui_runtime", version = "0.1.0" }
+
+[lints]
+workspace = true
