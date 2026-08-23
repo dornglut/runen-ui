@@ -273,7 +273,7 @@ impl SceneConsumer {
         self.capabilities.check_requirements(&requirements)?;
 
         let mode = self.realized.as_ref().map_or(UpdateMode::FullResync, |realized| {
-            if realized.surface_id == *publication.surface_id()
+            if &realized.surface_id == publication.surface_id()
                 && publication.base_revision() == Some(realized.revision)
             {
                 UpdateMode::ExactBaseMatch
