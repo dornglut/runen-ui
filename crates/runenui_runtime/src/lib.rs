@@ -197,6 +197,7 @@ mod queue;
 mod redraw;
 mod runtime;
 mod scene;
+mod scene_requirements;
 mod semantic_action;
 mod semantic_compositor;
 mod semantic_diagnostic;
@@ -265,6 +266,9 @@ pub use runtime::{
 pub use scene::{
     HitTestRegion, HitTestScene, PaintPublication, PaintRevision, PaintScene, PaintSceneItem,
     SceneClip,
+};
+pub use scene_requirements::{
+    SceneCapabilities, SceneRequirements, UnsupportedSceneRequirement,
 };
 pub use semantic_action::{SubmitSemanticActionError, SubmitSemanticActionErrorKind};
 pub use semantic_diagnostic::{
