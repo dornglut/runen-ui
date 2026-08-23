@@ -97,12 +97,12 @@ mod tests {
         type Action = ();
         type HostProtocol = NoHostProtocol;
 
-        fn root(_: &Self::State) -> impl View<Self::Action> {
+        fn root((): &Self::State) -> impl View<Self::Action> {
             text("renderer lineage")
         }
 
         fn update(
-            _: &mut Self::State,
+            (): &mut Self::State,
             (): Self::Action,
         ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
         }
