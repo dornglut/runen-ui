@@ -6,10 +6,15 @@
 
 #![forbid(unsafe_code)]
 
+mod backend;
 mod lineage;
 mod observation;
 mod resource;
 
+pub use backend::{
+    AdapterPowerPreference, BackendSelection, OffscreenExtent, OffscreenReadback,
+    OffscreenRenderError, Renderer, RendererDiagnostics, RendererInitError, RendererOptions,
+};
 pub use lineage::{PublicationLineage, PublicationUpdateMode, PublicationUpdatePlan};
 pub use observation::PublicationObservation;
 pub use resource::{
