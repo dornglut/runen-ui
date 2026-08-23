@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 pub(crate) use cache::SurfaceCache;
 pub use cache::{SurfacePhase, SurfacePhaseReport};
-pub use context::SurfaceBuildContext;
+pub use context::{RasterScale, RasterScaleError, SurfaceBuildContext};
 #[cfg(test)]
 use planning::publish_mounted_surface_cached;
 pub(crate) use planning::{SurfacePlanningError, plan_mounted_surface_cached};

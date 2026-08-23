@@ -8,6 +8,8 @@ use runenui_core::{
     SceneLayer, SceneOpacity, SceneShape, SurfaceId, SurfaceInputContext,
 };
 
+use crate::surface::RasterScale;
+
 /// One self-contained conjunctive scene clip in surface-logical coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SceneClip {
@@ -153,16 +155,30 @@ impl PaintRevision {
     }
 }
 
+/// Conservative renderer damage for one changed paint publication.
+///
+/// M6C intentionally permits full-surface damage for every changed renderer
+/// tuple. The exact damaged logical extent is the publication's `logical_size`;
+/// damage never participates in [`PaintScene`] content identity.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PaintDamage {
+    /// Reprocess the complete logical surface extent.
+    FullSurface,
+}
+
 /// Immutable renderer update for one logical surface.
 ///
-/// M6B owns scene content, exact logical extent, and renderer revision identity.
-/// M6C extends this same value with scale/base/damage metadata rather than
-/// introducing another renderer publication path.
+/// Scene content remains history-independent. Revision lineage, exact logical
+/// extent, raster scale, and damage are publication metadata only.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PaintPublication {
     surface_id: SurfaceId,
     revision: PaintRevision,
+    base_revision: Option<PaintRevision>,
     logical_size: LogicalSize,
+    raster_scale: RasterScale,
+    damage: PaintDamage,
     scene: PaintScene,
 }
 
@@ -170,13 +186,18 @@ impl PaintPublication {
     pub(crate) const fn new(
         surface_id: SurfaceId,
         revision: PaintRevision,
+        base_revision: Option<PaintRevision>,
         logical_size: LogicalSize,
+        raster_scale: RasterScale,
         scene: PaintScene,
     ) -> Self {
         Self {
             surface_id,
             revision,
+            base_revision,
             logical_size,
+            raster_scale,
+            damage: PaintDamage::FullSurface,
             scene,
         }
     }
@@ -193,10 +214,29 @@ impl PaintPublication {
         self.revision
     }
 
+    /// Returns the immediately previous accepted paint revision used as this
+    /// update's damage base, or `None` for the first publication.
+    #[must_use]
+    pub const fn base_revision(&self) -> Option<PaintRevision> {
+        self.base_revision
+    }
+
     /// Returns the exact logical renderer target extent.
     #[must_use]
     pub const fn logical_size(&self) -> LogicalSize {
         self.logical_size
+    }
+
+    /// Returns the exact validated renderer raster scale.
+    #[must_use]
+    pub const fn raster_scale(&self) -> RasterScale {
+        self.raster_scale
+    }
+
+    /// Returns deterministic damage relative to [`Self::base_revision`].
+    #[must_use]
+    pub const fn damage(&self) -> PaintDamage {
+        self.damage
     }
 
     /// Returns the complete immutable renderer scene for this revision.
