@@ -356,8 +356,8 @@ fn validate_byte_length(
         .checked_mul(u64::from(height))
         .and_then(|pixels| pixels.checked_mul(channels))
         .ok_or(PayloadValidationError::ByteLengthOverflow)?;
-    let expected = usize::try_from(expected_u64)
-        .map_err(|_| PayloadValidationError::ByteLengthOverflow)?;
+    let expected =
+        usize::try_from(expected_u64).map_err(|_| PayloadValidationError::ByteLengthOverflow)?;
     if actual == expected {
         Ok(())
     } else {
@@ -424,8 +424,8 @@ mod tests {
     fn shaped_run_raster_preserves_requested_scale_and_allows_empty_coverage() {
         let origin = LogicalPoint::new(-1.0, 2.0)
             .unwrap_or_else(|_| unreachable!("fixture origin is finite"));
-        let scale = RasterScale::new(2.0)
-            .unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
+        let scale =
+            RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
         let raster = ShapedRunRaster::new(origin, 2, 1, scale, vec![0, 255])
             .unwrap_or_else(|_| unreachable!("fixture shaped raster is valid"));
         assert_eq!(raster.logical_origin(), origin);
@@ -480,9 +480,10 @@ mod tests {
         let shaped_payload = ShapedRunRaster::new(origin, 0, 0, scale, Vec::<u8>::new())
             .unwrap_or_else(|_| unreachable!("empty shaped payload is valid"));
         let mut wrong_provider = MapProvider::default();
-        wrong_provider
-            .payloads
-            .insert(image.clone(), ResourcePayload::ShapedTextRun(shaped_payload));
+        wrong_provider.payloads.insert(
+            image.clone(),
+            ResourcePayload::ShapedTextRun(shaped_payload),
+        );
 
         assert!(matches!(
             resolve_resource(&wrong_provider, &image, ResourceRequest::Image),
