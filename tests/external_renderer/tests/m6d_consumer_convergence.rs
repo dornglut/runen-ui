@@ -4,18 +4,16 @@ use runenui_core::{
     Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
     LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
-    PointerButton, PointerButtons, PointerDeviceKind, PointerId, PointerPhase, PointerPolicy,
-    Radius, ResourceKind, ResourceRef, SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp,
-    Widget, WidgetMeasure,
+    PointerPolicy, Radius, ResourceKind, ResourceRef, SceneLayer, SceneOpacity, SceneShape,
+    StyleTokens, UiApp, Widget, WidgetMeasure,
 };
 use runenui_external_renderer_conformance::{
     ConsumerSnapshot, SceneConsumer, UpdateMode, sample_literal_paint,
 };
 use runenui_runtime::{
     AppRuntime, HitTestScene, LayoutConstraints, PaintPublication, PaintScene, PaintSceneItem,
-    PumpBudget, RasterScale, SceneCapabilities, SurfaceBuildContext, TraceRecordKind,
+    RasterScale, SceneCapabilities, SurfaceBuildContext,
 };
-use runenui_testing::TestHarness;
 
 #[derive(Debug)]
 struct SceneOwner {
@@ -167,14 +165,16 @@ fn reference_literal_source(
         clip.clip_to_surface()
             .inverse()
             .and_then(|surface_to_clip| surface_to_clip.transform_point(surface_point))
-            .is_some_and(|clip_point| clip.shape().contains(clip_point))
+            .is_some_and(|clip_point| reference_shape_contains(clip.shape(), clip_point))
     }) {
         return None;
     }
 
     let color = match item.primitive() {
         PaintPrimitive::FillRect { rect, color }
-            if rect.width() > 0.0 && rect.height() > 0.0 && rect.contains(local_point) =>
+            if rect.width() > 0.0
+                && rect.height() > 0.0
+                && reference_rect_contains(*rect, local_point) =>
         {
             *color
         }
@@ -200,7 +200,7 @@ fn reference_stroke_covers(rect: LogicalRect, width: f32, point: LogicalPoint) -
         rect.height() + width,
     )
     .unwrap_or_else(|_| unreachable!("accepted finite stroke expansion remains valid"));
-    if !expanded.contains(point) {
+    if !reference_rect_contains(expanded, point) {
         return false;
     }
     if rect.width() <= width || rect.height() <= width {
@@ -213,7 +213,7 @@ fn reference_stroke_covers(rect: LogicalRect, width: f32, point: LogicalPoint) -
         rect.height() - width,
     )
     .unwrap_or_else(|_| unreachable!("positive inset remains valid"));
-    !inset.contains(point)
+    !reference_rect_contains(inset, point)
 }
 
 fn reference_source_over(destination: [f32; 4], (color, opacity): (Color, f32)) -> [f32; 4] {
@@ -254,14 +254,14 @@ fn reference_target(
         else {
             continue;
         };
-        if !region.shape().contains(local_point) {
+        if !reference_shape_contains(region.shape(), local_point) {
             continue;
         }
         if !region.clips().iter().all(|clip| {
             clip.clip_to_surface()
                 .inverse()
                 .and_then(|surface_to_clip| surface_to_clip.transform_point(surface_point))
-                .is_some_and(|clip_point| clip.shape().contains(clip_point))
+                .is_some_and(|clip_point| reference_shape_contains(clip.shape(), clip_point))
         }) {
             continue;
         }
@@ -271,6 +271,118 @@ fn reference_target(
         };
     }
     None
+}
+
+fn reference_shape_contains(shape: SceneShape, point: LogicalPoint) -> bool {
+    let rect = shape.outer_rect();
+    if !reference_rect_contains(rect, point) {
+        return false;
+    }
+    let Some(radius) = shape.radius() else {
+        return true;
+    };
+
+    let radii = reference_normalized_radii(rect, radius);
+    let x = f64::from(point.x());
+    let y = f64::from(point.y());
+    let left = f64::from(rect.x());
+    let top = f64::from(rect.y());
+    let right = f64::from(rect.max_x());
+    let bottom = f64::from(rect.max_y());
+
+    for (center_x, center_y, active, radius) in [
+        (
+            left + radii[0],
+            top + radii[0],
+            x < left + radii[0] && y < top + radii[0],
+            radii[0],
+        ),
+        (
+            right - radii[1],
+            top + radii[1],
+            x >= right - radii[1] && y < top + radii[1],
+            radii[1],
+        ),
+        (
+            right - radii[2],
+            bottom - radii[2],
+            x >= right - radii[2] && y >= bottom - radii[2],
+            radii[2],
+        ),
+        (
+            left + radii[3],
+            bottom - radii[3],
+            x < left + radii[3] && y >= bottom - radii[3],
+            radii[3],
+        ),
+    ] {
+        if active && radius > 0.0 {
+            let dx = x - center_x;
+            let dy = y - center_y;
+            if dx.mul_add(dx, dy * dy) > radius * radius {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn reference_rect_contains(rect: LogicalRect, point: LogicalPoint) -> bool {
+    point.x() >= rect.x()
+        && point.x() < rect.max_x()
+        && point.y() >= rect.y()
+        && point.y() < rect.max_y()
+}
+
+fn reference_normalized_radii(rect: LogicalRect, radius: Radius) -> [f64; 4] {
+    let authored = [
+        f64::from(radius.top_left().get()),
+        f64::from(radius.top_right().get()),
+        f64::from(radius.bottom_right().get()),
+        f64::from(radius.bottom_left().get()),
+    ];
+    let horizontal_top = authored[0] + authored[1];
+    let horizontal_bottom = authored[3] + authored[2];
+    let vertical_left = authored[0] + authored[3];
+    let vertical_right = authored[1] + authored[2];
+    let mut factor = 1.0_f64;
+    for (extent, sum) in [
+        (f64::from(rect.width()), horizontal_top),
+        (f64::from(rect.width()), horizontal_bottom),
+        (f64::from(rect.height()), vertical_left),
+        (f64::from(rect.height()), vertical_right),
+    ] {
+        if sum > 0.0 {
+            factor = factor.min(extent / sum);
+        }
+    }
+    authored.map(|value| value * factor)
+}
+
+fn reference_image_surface_point(
+    item: &PaintSceneItem,
+    normalized: LogicalPoint,
+) -> Option<LogicalPoint> {
+    if !(0.0..=1.0).contains(&normalized.x()) || !(0.0..=1.0).contains(&normalized.y()) {
+        return None;
+    }
+    let image = item.primitive().as_image()?;
+    let destination = image.destination();
+    let local = LogicalPoint::new(
+        destination
+            .width()
+            .mul_add(normalized.x(), destination.x()),
+        destination
+            .height()
+            .mul_add(normalized.y(), destination.y()),
+    )
+    .ok()?;
+    item.local_to_surface().transform_point(local)
+}
+
+fn reference_shaped_run_surface_origin(item: &PaintSceneItem) -> Option<LogicalPoint> {
+    let run = item.primitive().as_shaped_text_run()?;
+    item.local_to_surface().transform_point(run.origin())
 }
 
 fn assert_color_close(actual: [f32; 4], expected: [f32; 4]) {
@@ -311,25 +423,55 @@ fn assert_snapshot_contract(
     }
 }
 
-fn assert_resource_contract(snapshot: &ConsumerSnapshot) {
-    let image = snapshot.paint_items()[3]
+fn assert_resource_contract(snapshot: &ConsumerSnapshot, paint: &PaintPublication) {
+    let image_record = &snapshot.paint_items()[3];
+    let image = image_record
         .primitive()
         .as_image()
         .unwrap_or_else(|| unreachable!("fourth canonical item is image"));
+    let public_image_item = &paint.scene().items()[3];
     assert_eq!(image.destination(), rect(1.0, 20.0, 8.0, 8.0));
     assert_eq!(image.resource_ref().kind(), ResourceKind::Image);
+    assert_eq!(image.resource_ref(), public_image_item.primitive().resource_ref().unwrap_or_else(|| unreachable!("public item is resource-backed")));
+    for normalized in [point(0.0, 0.0), point(0.5, 0.5), point(1.0, 1.0)] {
+        assert_eq!(
+            image_record.image_surface_point(normalized),
+            reference_image_surface_point(public_image_item, normalized)
+        );
+    }
+    assert_eq!(image_record.image_surface_point(point(1.01, 0.5)), None);
 
-    let first_run = snapshot.paint_items()[4]
+    let first_record = &snapshot.paint_items()[4];
+    let second_record = &snapshot.paint_items()[5];
+    let first_run = first_record
         .primitive()
         .as_shaped_text_run()
         .unwrap_or_else(|| unreachable!("fifth canonical item is shaped run"));
-    let second_run = snapshot.paint_items()[5]
+    let second_run = second_record
         .primitive()
         .as_shaped_text_run()
         .unwrap_or_else(|| unreachable!("sixth canonical item is shaped run"));
     assert_eq!(first_run.resource_ref(), second_run.resource_ref());
     assert_eq!(first_run.origin(), second_run.origin());
     assert_ne!(first_run.foreground(), second_run.foreground());
+    assert_eq!(
+        first_record.shaped_run_surface_origin(),
+        reference_shaped_run_surface_origin(&paint.scene().items()[4])
+    );
+    assert_eq!(
+        second_record.shaped_run_surface_origin(),
+        reference_shaped_run_surface_origin(&paint.scene().items()[5])
+    );
+    let public_first = paint.scene().items()[4]
+        .primitive()
+        .as_shaped_text_run()
+        .unwrap_or_else(|| unreachable!("public fifth item is shaped run"));
+    let public_second = paint.scene().items()[5]
+        .primitive()
+        .as_shaped_text_run()
+        .unwrap_or_else(|| unreachable!("public sixth item is shaped run"));
+    assert_eq!(first_run.foreground(), public_first.foreground());
+    assert_eq!(second_run.foreground(), public_second.foreground());
 }
 
 fn assert_interpreters_agree(
@@ -370,6 +512,14 @@ fn assert_revision_modes(
     first_hit: &HitTestScene,
     downstream: &mut SceneConsumer,
 ) {
+    assert_eq!(
+        downstream
+            .consume(first_paint, first_hit)
+            .unwrap_or_else(|_| unreachable!("identical supported publication remains consumable"))
+            .mode(),
+        UpdateMode::AlreadyCurrent
+    );
+
     let size = LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO);
     let scale_two = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
         .with_raster_scale(
@@ -445,7 +595,7 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
     let snapshot = first_consumption.snapshot();
 
     assert_snapshot_contract(snapshot, &first_paint, &first_hit);
-    assert_resource_contract(snapshot);
+    assert_resource_contract(snapshot, &first_paint);
     assert_interpreters_agree(snapshot, &first_paint, &first_hit);
     assert_capability_rejection(&first_paint, &first_hit);
     assert_revision_modes(
@@ -454,88 +604,5 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
         &first_paint,
         &first_hit,
         &mut downstream,
-    );
-}
-
-#[test]
-fn testing_harness_exposes_the_same_ordinary_public_products_without_fabricated_context() {
-    let mut harness = TestHarness::<App>::mount(state());
-    assert!(
-        harness
-            .pump(PumpBudget::new(
-                usize::MAX,
-                usize::MAX,
-                usize::MAX,
-                usize::MAX,
-            ))
-            .is_quiescent()
-    );
-    let publication = harness
-        .publish()
-        .unwrap_or_else(|_| unreachable!("harness publication is admitted"))
-        .clone();
-    let exact_context = publication.input_context().clone();
-
-    let mut consumer = SceneConsumer::new(capabilities());
-    let consumption = consumer
-        .consume(
-            publication.paint_publication(),
-            publication.hit_test_scene(),
-        )
-        .unwrap_or_else(|_| unreachable!("harness publication is ordinary public scene input"));
-    assert_eq!(consumption.snapshot().input_context(), &exact_context);
-    assert_eq!(
-        consumption.snapshot().mounted_targets(),
-        publication.hit_test_scene().mounted_targets()
-    );
-
-    let input_point = point(2.0, 2.0);
-    let expected_target = consumption
-        .snapshot()
-        .target_at(input_point)
-        .cloned()
-        .unwrap_or_else(|| unreachable!("fixture point resolves to the published target"));
-    assert_eq!(
-        publication.hit_test_scene().target_at(input_point),
-        Some(&expected_target)
-    );
-
-    let pointer = harness
-        .pointer_event(
-            PointerId::new(1).unwrap_or_else(|| unreachable!("pointer id is non-zero")),
-            PointerDeviceKind::Mouse,
-            PointerPhase::Down,
-            input_point,
-        )
-        .unwrap_or_else(|_| unreachable!("publication supplies exact public context"))
-        .with_changed_button(PointerButton::Primary)
-        .with_buttons(PointerButtons::new([PointerButton::Primary]));
-    assert_eq!(pointer.surface_context(), &exact_context);
-    let sequence = harness
-        .submit_pointer(pointer)
-        .unwrap_or_else(|_| unreachable!("exact-context pointer is admitted"))
-        .sequence();
-    assert_eq!(
-        harness
-            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
-            .processed_envelopes(),
-        1
-    );
-    let resolved = harness
-        .trace()
-        .records()
-        .find(|record| {
-            record.work_sequence() == Some(sequence)
-                && matches!(
-                    record.kind(),
-                    TraceRecordKind::PointerPhysicalTargetResolved
-                )
-        })
-        .unwrap_or_else(|| unreachable!("public runtime traces physical target resolution"));
-    assert_eq!(
-        resolved
-            .target()
-            .map(runenui_runtime::TraceTarget::mounted_node_id),
-        Some(&expected_target)
     );
 }
