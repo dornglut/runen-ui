@@ -188,6 +188,11 @@ impl Fixture {
                 "SCENE-PUB-01",
                 "M6A",
             ),
+            (
+                "docs/conformance/m7-conformance-matrix.md",
+                "RENDER-01",
+                "M7A",
+            ),
         ] {
             self.write(
                 path,

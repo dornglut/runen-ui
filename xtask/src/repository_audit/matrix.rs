@@ -18,6 +18,7 @@ const M4_DELIVERY_SLICES: &[&str] = &[
 ];
 const M5_DELIVERY_SLICES: &[&str] = &["M5A0", "M5A", "M5B", "M5C", "M5D", "M5E"];
 const M6_DELIVERY_SLICES: &[&str] = &["M6A", "M6B", "M6C", "M6D"];
+const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
@@ -56,7 +57,12 @@ const M6_SPEC: MatrixSpec = MatrixSpec {
     allowed_delivery_slices: M6_DELIVERY_SLICES,
     gate_policy: GatePolicy::Required,
 };
-const MATRIX_SPECS: &[MatrixSpec] = &[M4_SPEC, M5_SPEC, M6_SPEC];
+const M7_SPEC: MatrixSpec = MatrixSpec {
+    path: "docs/conformance/m7-conformance-matrix.md",
+    allowed_delivery_slices: M7_DELIVERY_SLICES,
+    gate_policy: GatePolicy::Required,
+};
+const MATRIX_SPECS: &[MatrixSpec] = &[M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct MatrixMetrics {
@@ -475,7 +481,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        M4_SPEC, M5_SPEC, M6_SPEC, analyze_contents, declared_metric, parse_rows, valid_id,
+        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, analyze_contents, declared_metric, parse_rows, valid_id,
     };
 
     #[test]
@@ -549,6 +555,18 @@ mod tests {
         let mut findings = Vec::new();
         let mut seen = BTreeSet::new();
         let analysis = analyze_contents(M6_SPEC, valid, &mut seen, &mut findings);
+        assert_eq!(analysis.invalid_schemas, 0);
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn m7_gate_policy_requires_required_for_m7_slices() {
+        let valid = "| ID | A | B | C | D | E | F | G |\n\
+|---|---|---|---|---|---|---|---|\n\
+| RENDER-01 | A | B | C | D | M7A | blocked | Required |\n";
+        let mut findings = Vec::new();
+        let mut seen = BTreeSet::new();
+        let analysis = analyze_contents(M7_SPEC, valid, &mut seen, &mut findings);
         assert_eq!(analysis.invalid_schemas, 0);
         assert!(findings.is_empty());
     }
