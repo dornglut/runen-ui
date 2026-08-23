@@ -1,6 +1,6 @@
 use runenui_core::{Color, LogicalPoint, LogicalRect, PaintPrimitive};
 
-use crate::{ConsumerSnapshot, PaintRecord};
+use crate::{ConsumerSnapshot, PaintRecord, rect_contains, shape_contains};
 
 /// Independently evaluates literal fill/stroke coverage and source-over color.
 ///
@@ -25,7 +25,7 @@ fn literal_source(item: &PaintRecord, surface_point: LogicalPoint) -> Option<(Co
         clip.clip_to_surface()
             .inverse()
             .and_then(|surface_to_clip| surface_to_clip.transform_point(surface_point))
-            .is_some_and(|clip_point| clip.shape().contains(clip_point))
+            .is_some_and(|clip_point| shape_contains(clip.shape(), clip_point))
     }) {
         return None;
     }
@@ -43,7 +43,7 @@ fn literal_source(item: &PaintRecord, surface_point: LogicalPoint) -> Option<(Co
 }
 
 fn fill_covers(rect: LogicalRect, point: LogicalPoint) -> bool {
-    rect.width() > 0.0 && rect.height() > 0.0 && rect.contains(point)
+    rect.width() > 0.0 && rect.height() > 0.0 && rect_contains(rect, point)
 }
 
 fn stroke_covers(rect: LogicalRect, width: f32, point: LogicalPoint) -> bool {
@@ -59,7 +59,7 @@ fn stroke_covers(rect: LogicalRect, width: f32, point: LogicalPoint) -> bool {
     ) else {
         return false;
     };
-    if !expanded.contains(point) {
+    if !rect_contains(expanded, point) {
         return false;
     }
     if rect.width() <= width || rect.height() <= width {
@@ -73,7 +73,7 @@ fn stroke_covers(rect: LogicalRect, width: f32, point: LogicalPoint) -> bool {
     ) else {
         return false;
     };
-    !inset.contains(point)
+    !rect_contains(inset, point)
 }
 
 fn source_over(destination: [f32; 4], (color, opacity): (Color, f32)) -> [f32; 4] {
