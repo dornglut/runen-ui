@@ -10,7 +10,7 @@ mod lineage;
 mod observation;
 mod resource;
 
-pub use lineage::{PublicationLineage, PublicationUpdateMode};
+pub use lineage::{PublicationLineage, PublicationUpdateMode, PublicationUpdatePlan};
 pub use observation::PublicationObservation;
 pub use resource::{
     ImagePayload, PayloadValidationError, ResourcePayload, ResourceProvider, ResourceProviderError,
