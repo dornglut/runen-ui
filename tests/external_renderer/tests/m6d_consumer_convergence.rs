@@ -419,6 +419,14 @@ fn assert_snapshot_contract(
         assert_eq!(copied.opacity(), public.opacity());
         assert_eq!(copied.layer(), public.layer());
     }
+    for (copied, public) in snapshot.hit_regions().iter().zip(hit.regions()) {
+        assert_eq!(copied.target(), public.target());
+        assert_eq!(copied.shape(), public.shape());
+        assert_eq!(copied.local_to_surface(), public.local_to_surface());
+        assert_eq!(copied.clips(), public.clips());
+        assert_eq!(copied.layer(), public.layer());
+        assert_eq!(copied.pointer_policy(), public.pointer_policy());
+    }
 }
 
 fn assert_resource_contract(snapshot: &ConsumerSnapshot, paint: &PaintPublication) {
@@ -502,11 +510,19 @@ fn assert_interpreters_agree(
 }
 
 fn assert_capability_rejection(paint: &PaintPublication, hit: &HitTestScene) {
-    let mut unsupported = SceneConsumer::new(SceneCapabilities::default());
-    let Err(error) = unsupported.consume(paint, hit) else {
-        unreachable!("resource-backed fixture must reject empty capabilities");
-    };
-    assert_eq!(error.resource_kind(), ResourceKind::Image);
+    for (capabilities, expected_missing) in [
+        (SceneCapabilities::default(), ResourceKind::Image),
+        (
+            SceneCapabilities::new([ResourceKind::Image]),
+            ResourceKind::ShapedTextRun,
+        ),
+    ] {
+        let mut unsupported = SceneConsumer::new(capabilities);
+        let Err(error) = unsupported.consume(paint, hit) else {
+            unreachable!("resource-backed fixture must reject incomplete capabilities");
+        };
+        assert_eq!(error.resource_kind(), expected_missing);
+    }
 }
 
 fn assert_revision_modes(
