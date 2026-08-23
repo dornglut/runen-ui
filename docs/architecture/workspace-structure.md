@@ -26,7 +26,7 @@ RunenUI/
 | `runenui_runtime` | generational mounted/semantic arenas; reconciliation/lifecycle; canonical queue/scheduler; focus/input state; clocks/tasks/timers/subscriptions/host requests; wake/redraw; trace/replay; layout and staged surface/semantic publication | application domain policy, testing convenience authority, native platform implementations, concrete renderers, ECS/legacy dependencies |
 | `runenui_testing` | public deterministic headless testing over ordinary `runenui_core` + `runenui_runtime` contracts | runtime behavior, private mutation seams, identity/sequence fabrication, parallel expected state, native host behavior |
 | `counter` | application-owned state/action/update and ordinary public-API proof | framework internals or platform/backend ownership |
-| `runenui_external_renderer_conformance` | non-publishable genuine downstream renderer-neutral scene-consumer conformance proof over public core/runtime contracts | production renderer/backend ownership, native host/resource-provider authority, concrete widget/semantic interpretation, or privileged internal access |
+| `runenui_external_renderer_conformance` | non-publishable genuine downstream renderer-neutral scene-consumer conformance proof over public core/runtime contracts | production renderer/backend ownership, testing-convenience dependency, native host/resource-provider authority, concrete widget/semantic interpretation, or privileged internal access |
 | `runenui_external_widget_conformance` | non-publishable genuine downstream custom-widget/public conformance proof | production framework ownership or privileged internal access |
 | `xtask` | deterministic repository validation/audit orchestration | framework runtime behavior |
 
@@ -44,7 +44,7 @@ runenui_core <- runenui_runtime
 xtask  (repository tooling; no framework dependency)
 ```
 
-The external conformance fixture packages may consume `runenui_testing` as a test/dev dependency without making testing convenience a production dependency. Repository validation distinguishes those dependency classes.
+The external-renderer conformance package intentionally depends only on public `runenui_core` and `runenui_runtime` contracts, including for its own tests, so Cargo preserves the independent-consumer boundary. The external-widget conformance package may consume `runenui_testing` as a test/dev dependency without making testing convenience a production dependency. Repository validation distinguishes those dependency classes.
 
 ## Ownership rules
 
