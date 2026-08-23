@@ -27,10 +27,10 @@ No current subsystem is `stable`.
 | Routed interaction | proof | pointer, focus scopes/navigation, keyboard, committed text, composition, automation, semantic commands | native translation and production controls/text remain later |
 | Trace/replay | proof | bounded canonical trace, deterministic export, optional sink, inert offline replay | production devtools/inspection UI remains later |
 | Semantics/accessibility core | proof | independent semantic identity/tree/update/action ingress with deterministic public testing | native accessibility adapter remains later |
-| Testing | usable | public deterministic headless harness over ordinary public runtime contracts | scene/backend/native-host assertions follow those later capabilities |
+| Testing | usable | public deterministic headless harness over ordinary public runtime contracts, including latest public paint/hit publication inspection, exact input-context derivation, runtime convergence, semantics, trace, and replay | concrete backend/native-host assertions follow those later capabilities |
 | Styling | proof | validated typed style/token proof and computed style/provenance | production themes/recipes/state layers/property breadth belong to M8 |
 | Layout/measurement | proof | deterministic measurement/layout proof with gaps/padding/linear child layout and invalidation | production responsive layout breadth belongs to M8 |
-| Renderer-neutral paint/hit scenes | proof | accepted M6A retained-publication substrate, M6B canonical immutable paint/hit products and displayed-generation hit cutover, plus M6C composition/resources/metadata/damage/capabilities | M6D independent-consumer/migration closure remains |
+| Renderer-neutral paint/hit scenes | proof | complete accepted M6 protocol: retained publication, canonical immutable paint/hit products, composition/resources/metadata/damage/capabilities, two independent deterministic consumers, downstream public-contract consumption, testing convergence, and proof-era authority migration closure | M7 first proves a real renderer/host/resource/accessibility production spine; concrete production breadth remains absent |
 | Concrete renderer backend | absent | none | M7 first proves one conventional renderer through the reference production spine; M13 completes supported production profiles |
 | Native window/event-loop host | absent | none | M7 first proves one real host integration; M13 completes supported platform profiles |
 | Native accessibility adapter | absent | none | M7 first proves one real adapter path; M13 completes supported platform profiles |
@@ -43,6 +43,6 @@ No current subsystem is `stable`.
 
 M0–M5 form the accepted headless foundation: repository/tooling policy, typed core values, open widget/component architecture, mounted runtime/layout/style proofs, deterministic effects and routed interaction, trace/replay, semantic publication/action ingress, and public deterministic testing.
 
-M6 has accepted M6A retained-publication, M6B canonical paint/hit scene behavior, and M6C composition/resource/metadata/damage/capability behavior, but remains incomplete until its M6D independent-consumer/migration obligations are accepted. M7 and later remain successor outcomes. Accepted target documents do not promote capability maturity by themselves; maturity changes only when accepted default-branch implementation and required conformance evidence change.
+M6 is accepted complete at `proof` maturity: retained publication, canonical renderer-neutral paint/hit products, composition/resource/metadata/damage/capability semantics, independent-consumer proof, public testing convergence, and migration closure are accepted on the default branch. M7 is the next milestone and owns the first real host/renderer/resource/accessibility production spine. Accepted target documents do not promote capability maturity by themselves; maturity changes only when accepted default-branch implementation and required conformance evidence change.
 
 See the [roadmap](roadmap.md) for durable sequencing and [conformance](conformance/README.md) for permanent observable/proof contracts.
