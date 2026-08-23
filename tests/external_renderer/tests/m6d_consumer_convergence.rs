@@ -2,13 +2,14 @@ use runenui_core::{
     Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
     LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
-    PointerDeviceKind, PointerId, PointerPhase, PointerPolicy, Radius, ResourceKind, ResourceRef,
-    SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp, Widget, WidgetMeasure,
+    PointerButton, PointerButtons, PointerDeviceKind, PointerId, PointerPhase, PointerPolicy, Radius,
+    ResourceKind, ResourceRef, SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp, Widget,
+    WidgetMeasure,
 };
 use runenui_external_renderer_conformance::{SceneConsumer, UpdateMode, sample_literal_paint};
 use runenui_runtime::{
-    AppRuntime, HitTestScene, LayoutConstraints, PaintScene, PaintSceneItem, RasterScale,
-    SceneCapabilities, SurfaceBuildContext,
+    AppRuntime, HitTestScene, LayoutConstraints, PaintScene, PaintSceneItem, PumpBudget, RasterScale,
+    SceneCapabilities, SurfaceBuildContext, TraceRecordKind,
 };
 use runenui_testing::TestHarness;
 
@@ -451,13 +452,53 @@ fn testing_harness_exposes_the_same_ordinary_public_products_without_fabricated_
         publication.hit_test_scene().mounted_targets()
     );
 
+    let input_point = point(2.0, 2.0);
+    let expected_target = consumption
+        .snapshot()
+        .target_at(input_point)
+        .cloned()
+        .unwrap_or_else(|| unreachable!("fixture point resolves to the published target"));
+    assert_eq!(
+        publication.hit_test_scene().target_at(input_point),
+        Some(&expected_target)
+    );
+
     let pointer = harness
         .pointer_event(
             PointerId::new(1).unwrap_or_else(|| unreachable!("pointer id is non-zero")),
             PointerDeviceKind::Mouse,
-            PointerPhase::Move,
-            point(2.0, 2.0),
+            PointerPhase::Down,
+            input_point,
         )
-        .unwrap_or_else(|_| unreachable!("publication supplies exact public context"));
+        .unwrap_or_else(|_| unreachable!("publication supplies exact public context"))
+        .with_changed_button(PointerButton::Primary)
+        .with_buttons(PointerButtons::new([PointerButton::Primary]));
     assert_eq!(pointer.surface_context(), &exact_context);
+    let sequence = harness
+        .submit_pointer(pointer)
+        .unwrap_or_else(|_| unreachable!("exact-context pointer is admitted"))
+        .sequence();
+    assert_eq!(
+        harness
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    let resolved = harness
+        .trace()
+        .records()
+        .find(|record| {
+            record.work_sequence() == Some(sequence)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerPhysicalTargetResolved
+                )
+        })
+        .unwrap_or_else(|| unreachable!("public runtime traces physical target resolution"));
+    assert_eq!(
+        resolved
+            .target()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
+        Some(&expected_target)
+    );
 }
