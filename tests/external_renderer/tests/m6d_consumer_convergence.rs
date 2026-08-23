@@ -400,9 +400,9 @@ fn assert_snapshot_contract(
 ) {
     assert_eq!(snapshot.surface_id(), paint.surface_id());
     assert_eq!(snapshot.revision(), paint.revision());
-    assert_eq!(snapshot.base_revision(), None);
+    assert_eq!(snapshot.base_revision(), paint.base_revision());
     assert_eq!(snapshot.logical_size(), paint.logical_size());
-    assert_eq!(snapshot.raster_scale(), RasterScale::ONE);
+    assert_eq!(snapshot.raster_scale(), paint.raster_scale());
     assert_eq!(snapshot.damage(), paint.damage());
     assert_eq!(snapshot.input_context(), hit.input_context());
     assert_eq!(
@@ -557,6 +557,11 @@ fn assert_revision_modes(
         .consume(second.paint_publication(), second.hit_test_scene())
         .unwrap_or_else(|_| unreachable!("declared capabilities satisfy fixture"));
     assert_eq!(contiguous.mode(), UpdateMode::ExactBaseMatch);
+    assert_snapshot_contract(
+        contiguous.snapshot(),
+        second.paint_publication(),
+        second.hit_test_scene(),
+    );
     let contiguous_snapshot = contiguous.snapshot().clone();
 
     downstream.reset();
@@ -587,6 +592,11 @@ fn assert_revision_modes(
         .consume(third.paint_publication(), third.hit_test_scene())
         .unwrap_or_else(|_| unreachable!("skipped revision still admits full snapshot"));
     assert_eq!(skipped.mode(), UpdateMode::FullResync);
+    assert_snapshot_contract(
+        skipped.snapshot(),
+        third.paint_publication(),
+        third.hit_test_scene(),
+    );
 
     let mut fresh = SceneConsumer::new(capabilities());
     let fresh_third = fresh
