@@ -149,6 +149,22 @@ fn opaque_refs_disambiguate_providers_and_resource_primitives_preserve_exact_log
         .unwrap_or_else(|| unreachable!("first primitive is image"));
     assert_eq!(image.resource_ref(), &image_a);
     assert_eq!(image.destination(), rect());
+
+    let mut realization_cache = HashMap::new();
+    realization_cache.insert(image_a.clone(), "first-realization");
+    assert_eq!(
+        realization_cache.get(image.resource_ref()),
+        Some(&"first-realization")
+    );
+    drop(realization_cache);
+    let mut rebuilt_realization_cache = HashMap::new();
+    rebuilt_realization_cache.insert(image_a.clone(), "rebuilt-realization");
+    assert_eq!(
+        rebuilt_realization_cache.get(image.resource_ref()),
+        Some(&"rebuilt-realization")
+    );
+    assert_eq!(image.resource_ref(), &image_a);
+
     let mapped_origin = image_point(image, 0.0, 0.0);
     let mapped_far = image_point(image, 1.0, 1.0);
     assert_eq!((mapped_origin.x(), mapped_origin.y()), (2.0, 3.0));
