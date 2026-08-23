@@ -140,6 +140,22 @@ impl Consumer {
     }
 }
 
+fn assert_consumer_lineage(
+    initial: &PaintPublication,
+    scaled: &PaintPublication,
+    repeated_scaled: &PaintPublication,
+    recolored: &PaintPublication,
+) {
+    let mut contiguous = Consumer::default();
+    assert_eq!(contiguous.consume(initial), ConsumerPlan::FullSnapshot);
+    assert_eq!(contiguous.consume(scaled), ConsumerPlan::Incremental);
+    assert_eq!(contiguous.consume(repeated_scaled), ConsumerPlan::Reused);
+
+    let mut skipped = Consumer::default();
+    assert_eq!(skipped.consume(initial), ConsumerPlan::FullSnapshot);
+    assert_eq!(skipped.consume(recolored), ConsumerPlan::FullSnapshot);
+}
+
 #[test]
 fn raster_scale_is_finite_positive_and_defaults_to_one() {
     assert_eq!(RasterScale::default(), RasterScale::ONE);
@@ -254,28 +270,11 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     );
     assert_eq!(recolored_paint.damage(), PaintDamage::FullSurface);
 
-    let mut contiguous_consumer = Consumer::default();
-    assert_eq!(
-        contiguous_consumer.consume(initial_paint),
-        ConsumerPlan::FullSnapshot
-    );
-    assert_eq!(
-        contiguous_consumer.consume(scaled_paint),
-        ConsumerPlan::Incremental
-    );
-    assert_eq!(
-        contiguous_consumer.consume(repeated_scaled.paint_publication()),
-        ConsumerPlan::Reused
-    );
-
-    let mut skipped_consumer = Consumer::default();
-    assert_eq!(
-        skipped_consumer.consume(initial_paint),
-        ConsumerPlan::FullSnapshot
-    );
-    assert_eq!(
-        skipped_consumer.consume(recolored_paint),
-        ConsumerPlan::FullSnapshot
+    assert_consumer_lineage(
+        initial_paint,
+        scaled_paint,
+        repeated_scaled.paint_publication(),
+        recolored_paint,
     );
 
     let mut foreign_runtime = AppRuntime::<App>::mount(State {
