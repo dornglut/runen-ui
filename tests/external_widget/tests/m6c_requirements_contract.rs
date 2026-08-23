@@ -41,21 +41,13 @@ impl Widget<()> for RequirementsOwner {
 
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
         PaintContribution::new(vec![
-            PaintContributionItem::shaped_text_run(
-                self.shaped.clone(),
-                origin(),
-                Color::WHITE,
-            )
-            .unwrap_or_else(|_| unreachable!("fixture shaped ref has shaped-run kind")),
+            PaintContributionItem::shaped_text_run(self.shaped.clone(), origin(), Color::WHITE)
+                .unwrap_or_else(|_| unreachable!("fixture shaped ref has shaped-run kind")),
             PaintContributionItem::fill_rect(rect(), Color::BLACK),
             PaintContributionItem::image(self.image.clone(), rect())
                 .unwrap_or_else(|_| unreachable!("fixture image ref has image kind")),
-            PaintContributionItem::shaped_text_run(
-                self.shaped.clone(),
-                origin(),
-                Color::BLACK,
-            )
-            .unwrap_or_else(|_| unreachable!("fixture shaped ref has shaped-run kind")),
+            PaintContributionItem::shaped_text_run(self.shaped.clone(), origin(), Color::BLACK)
+                .unwrap_or_else(|_| unreachable!("fixture shaped ref has shaped-run kind")),
         ])
     }
 }
@@ -108,19 +100,17 @@ fn requirements_are_derived_canonically_and_capabilities_never_rewrite_the_scene
     );
     assert_eq!(publication.paint_scene().requirements(), requirements);
 
-    let unsupported_image = SceneCapabilities::default()
-        .check_requirements(&requirements)
-        .expect_err("consumer without resource support rejects image requirement first");
+    let Err(unsupported_image) = SceneCapabilities::default().check_requirements(&requirements)
+    else {
+        unreachable!("consumer without resource support rejects image requirement first");
+    };
     assert_eq!(unsupported_image.resource_kind(), ResourceKind::Image);
-    assert_eq!(
-        unsupported_image.code(),
-        UnsupportedSceneRequirement::CODE
-    );
+    assert_eq!(unsupported_image.code(), UnsupportedSceneRequirement::CODE);
 
     let image_only = SceneCapabilities::new([ResourceKind::Image]);
-    let unsupported_shaped = image_only
-        .check_requirements(&requirements)
-        .expect_err("image-only consumer rejects shaped-run requirement");
+    let Err(unsupported_shaped) = image_only.check_requirements(&requirements) else {
+        unreachable!("image-only consumer rejects shaped-run requirement");
+    };
     assert_eq!(
         unsupported_shaped.resource_kind(),
         ResourceKind::ShapedTextRun

@@ -87,7 +87,9 @@ impl SceneCapabilities {
     ) -> Result<(), UnsupportedSceneRequirement> {
         for &kind in requirements.resource_kinds() {
             if !self.supports_resource_kind(kind) {
-                return Err(UnsupportedSceneRequirement { resource_kind: kind });
+                return Err(UnsupportedSceneRequirement {
+                    resource_kind: kind,
+                });
             }
         }
         Ok(())

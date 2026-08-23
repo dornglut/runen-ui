@@ -13,7 +13,7 @@ fn origin() -> LogicalPoint {
     LogicalPoint::new(3.0, 4.0).unwrap_or_else(|_| unreachable!("test origin is finite"))
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct OwnerState {
     shaped: ResourceRef,
     foreground: Color,
@@ -97,7 +97,10 @@ impl UiApp for App {
     }
 }
 
-fn publish(runtime: &mut AppRuntime<App>, tokens: &StyleTokens) -> runenui_runtime::SurfacePublication {
+fn publish(
+    runtime: &mut AppRuntime<App>,
+    tokens: &StyleTokens,
+) -> runenui_runtime::SurfacePublication {
     runtime
         .publish_surface(&SurfaceBuildContext::new(
             tokens,
@@ -106,7 +109,9 @@ fn publish(runtime: &mut AppRuntime<App>, tokens: &StyleTokens) -> runenui_runti
         .unwrap_or_else(|_| unreachable!("resource update publication is admitted"))
 }
 
-fn shaped_run(publication: &runenui_runtime::SurfacePublication) -> &runenui_core::ShapedTextRunPrimitive {
+fn shaped_run(
+    publication: &runenui_runtime::SurfacePublication,
+) -> &runenui_core::ShapedTextRunPrimitive {
     publication.paint_scene().items()[0]
         .primitive()
         .as_shaped_text_run()
@@ -139,7 +144,10 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
         1
     );
     let recolored = publish(&mut runtime, &tokens);
-    assert_eq!(runtime.last_surface_phase_report().executed(), &[SurfacePhase::Paint]);
+    assert_eq!(
+        runtime.last_surface_phase_report().executed(),
+        &[SurfacePhase::Paint]
+    );
     assert_ne!(recolored.paint_scene(), &initial_scene);
     assert_eq!(shaped_run(&recolored).resource_ref(), &original_ref);
     assert_eq!(shaped_run(&recolored).foreground(), recolored_foreground);
@@ -155,7 +163,10 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
         1
     );
     let replaced = publish(&mut runtime, &tokens);
-    assert_eq!(runtime.last_surface_phase_report().executed(), &[SurfacePhase::Paint]);
+    assert_eq!(
+        runtime.last_surface_phase_report().executed(),
+        &[SurfacePhase::Paint]
+    );
     assert_eq!(shaped_run(&replaced).resource_ref(), &replacement_ref);
     assert_ne!(shaped_run(&replaced).resource_ref(), &original_ref);
     assert_eq!(shaped_run(&replaced).foreground(), recolored_foreground);

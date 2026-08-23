@@ -267,9 +267,7 @@ pub use scene::{
     HitTestRegion, HitTestScene, PaintPublication, PaintRevision, PaintScene, PaintSceneItem,
     SceneClip,
 };
-pub use scene_requirements::{
-    SceneCapabilities, SceneRequirements, UnsupportedSceneRequirement,
-};
+pub use scene_requirements::{SceneCapabilities, SceneRequirements, UnsupportedSceneRequirement};
 pub use semantic_action::{SubmitSemanticActionError, SubmitSemanticActionErrorKind};
 pub use semantic_diagnostic::{
     SemanticDiagnostic, SemanticDiagnosticReport, SemanticOwnerWithdrawalReason,
