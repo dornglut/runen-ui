@@ -1,6 +1,6 @@
 use runenui_core::{
-    LogicalRect, LogicalSize, LogicalTransform, MountedNodeId, PaintPrimitive, PointerPolicy,
-    ResourceKind, SceneLayer, SceneOpacity, SceneShape, SurfaceId, SurfaceInputContext,
+    LogicalSize, LogicalTransform, MountedNodeId, PaintPrimitive, PointerPolicy, ResourceKind,
+    SceneLayer, SceneOpacity, SceneShape, SurfaceId, SurfaceInputContext,
 };
 use runenui_runtime::{
     HitTestScene, PaintDamage, PaintPublication, PaintRevision, RasterScale, SceneCapabilities,
@@ -24,22 +24,27 @@ pub(super) struct ReferencePaintRecord {
 }
 
 impl ReferencePaintRecord {
+    #[must_use]
     pub(super) const fn primitive(&self) -> &PaintPrimitive {
         &self.primitive
     }
 
+    #[must_use]
     pub(super) const fn local_to_surface(&self) -> LogicalTransform {
         self.local_to_surface
     }
 
+    #[must_use]
     pub(super) const fn clips(&self) -> &[SceneClip] {
         self.clips.as_slice()
     }
 
+    #[must_use]
     pub(super) const fn opacity(&self) -> SceneOpacity {
         self.opacity
     }
 
+    #[must_use]
     pub(super) const fn layer(&self) -> SceneLayer {
         self.layer
     }
@@ -56,26 +61,32 @@ pub(super) struct ReferenceHitRecord {
 }
 
 impl ReferenceHitRecord {
+    #[must_use]
     pub(super) const fn target(&self) -> &MountedNodeId {
         &self.target
     }
 
+    #[must_use]
     pub(super) const fn shape(&self) -> SceneShape {
         self.shape
     }
 
+    #[must_use]
     pub(super) const fn local_to_surface(&self) -> LogicalTransform {
         self.local_to_surface
     }
 
+    #[must_use]
     pub(super) const fn clips(&self) -> &[SceneClip] {
         self.clips.as_slice()
     }
 
+    #[must_use]
     pub(super) const fn layer(&self) -> SceneLayer {
         self.layer
     }
 
+    #[must_use]
     pub(super) const fn pointer_policy(&self) -> PointerPolicy {
         self.pointer_policy
     }
@@ -97,46 +108,57 @@ pub(super) struct ReferenceSnapshot {
 }
 
 impl ReferenceSnapshot {
+    #[must_use]
     pub(super) const fn surface_id(&self) -> &SurfaceId {
         &self.surface_id
     }
 
+    #[must_use]
     pub(super) const fn revision(&self) -> PaintRevision {
         self.revision
     }
 
+    #[must_use]
     pub(super) const fn base_revision(&self) -> Option<PaintRevision> {
         self.base_revision
     }
 
+    #[must_use]
     pub(super) const fn logical_size(&self) -> LogicalSize {
         self.logical_size
     }
 
+    #[must_use]
     pub(super) const fn raster_scale(&self) -> RasterScale {
         self.raster_scale
     }
 
+    #[must_use]
     pub(super) const fn damage(&self) -> PaintDamage {
         self.damage
     }
 
+    #[must_use]
     pub(super) const fn input_context(&self) -> &SurfaceInputContext {
         &self.input_context
     }
 
+    #[must_use]
     pub(super) const fn required_resource_kinds(&self) -> &[ResourceKind] {
         self.required_resource_kinds.as_slice()
     }
 
+    #[must_use]
     pub(super) const fn paint_items(&self) -> &[ReferencePaintRecord] {
         self.paint_items.as_slice()
     }
 
+    #[must_use]
     pub(super) const fn hit_regions(&self) -> &[ReferenceHitRecord] {
         self.hit_regions.as_slice()
     }
 
+    #[must_use]
     pub(super) const fn mounted_targets(&self) -> &[MountedNodeId] {
         self.mounted_targets.as_slice()
     }
@@ -149,10 +171,12 @@ pub(super) struct ReferenceConsumption {
 }
 
 impl ReferenceConsumption {
+    #[must_use]
     pub(super) const fn mode(&self) -> ReferenceUpdateMode {
         self.mode
     }
 
+    #[must_use]
     pub(super) const fn snapshot(&self) -> &ReferenceSnapshot {
         &self.snapshot
     }
@@ -165,6 +189,7 @@ pub(super) struct ReferenceConsumer {
 }
 
 impl ReferenceConsumer {
+    #[must_use]
     pub(super) const fn new(capabilities: SceneCapabilities) -> Self {
         Self {
             capabilities,
