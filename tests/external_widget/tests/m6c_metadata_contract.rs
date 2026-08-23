@@ -25,6 +25,10 @@ fn size(width: f32, height: f32) -> LogicalSize {
         .unwrap_or_else(|_| unreachable!("test surface size is finite and non-negative"))
 }
 
+fn scale_two() -> RasterScale {
+    RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("test raster scale is valid"))
+}
+
 #[derive(Debug)]
 struct MetadataProbe {
     color: Color,
@@ -140,22 +144,6 @@ impl Consumer {
     }
 }
 
-fn assert_consumer_lineage(
-    initial: &PaintPublication,
-    scaled: &PaintPublication,
-    repeated_scaled: &PaintPublication,
-    recolored: &PaintPublication,
-) {
-    let mut contiguous = Consumer::default();
-    assert_eq!(contiguous.consume(initial), ConsumerPlan::FullSnapshot);
-    assert_eq!(contiguous.consume(scaled), ConsumerPlan::Incremental);
-    assert_eq!(contiguous.consume(repeated_scaled), ConsumerPlan::Reused);
-
-    let mut skipped = Consumer::default();
-    assert_eq!(skipped.consume(initial), ConsumerPlan::FullSnapshot);
-    assert_eq!(skipped.consume(recolored), ConsumerPlan::FullSnapshot);
-}
-
 #[test]
 fn raster_scale_is_finite_positive_and_defaults_to_one() {
     assert_eq!(RasterScale::default(), RasterScale::ONE);
@@ -172,13 +160,7 @@ fn raster_scale_is_finite_positive_and_defaults_to_one() {
     assert_eq!(RasterScale::new(0.0), Err(RasterScaleError::NotPositive));
     assert_eq!(RasterScale::new(-0.0), Err(RasterScaleError::NotPositive));
     assert_eq!(RasterScale::new(-1.0), Err(RasterScaleError::NotPositive));
-    assert_eq!(
-        RasterScale::new(2.0)
-            .unwrap_or_else(|_| unreachable!("positive finite scale is valid"))
-            .get()
-            .to_bits(),
-        2.0_f32.to_bits()
-    );
+    assert_eq!(scale_two().get().to_bits(), 2.0_f32.to_bits());
 }
 
 #[test]
@@ -188,8 +170,7 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     let tokens = StyleTokens::new();
     let logical_size = size(20.0, 20.0);
     let larger_size = size(30.0, 20.0);
-    let scale_two =
-        RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("test raster scale is valid"));
+    let scale_two = scale_two();
     let sample = point(5.0, 5.0);
 
     let mut runtime = AppRuntime::<App>::mount(State {
@@ -243,7 +224,6 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     let resized_paint = resized.paint_publication();
     assert_eq!(resized_paint.scene(), scaled_paint.scene());
     assert_eq!(resized_paint.logical_size(), larger_size);
-    assert_eq!(resized_paint.raster_scale(), scale_two);
     assert_eq!(resized_paint.revision().get(), 3);
     assert_eq!(resized_paint.base_revision(), Some(scaled_paint.revision()));
     assert_eq!(resized_paint.damage(), PaintDamage::FullSurface);
@@ -269,12 +249,57 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
         Some(resized_paint.revision())
     );
     assert_eq!(recolored_paint.damage(), PaintDamage::FullSurface);
+}
 
-    assert_consumer_lineage(
-        initial_paint,
-        scaled_paint,
-        repeated_scaled.paint_publication(),
-        recolored_paint,
+#[test]
+fn consumer_uses_damage_only_for_matching_surface_and_base_revision() {
+    let initial_color = Color::rgba(10, 20, 30, 255);
+    let changed_color = Color::rgba(30, 20, 10, 255);
+    let tokens = StyleTokens::new();
+    let logical_size = size(20.0, 20.0);
+    let scale_one_context = SurfaceBuildContext::tight(&tokens, logical_size);
+    let scale_two_context = scale_one_context.with_raster_scale(scale_two());
+
+    let mut runtime = AppRuntime::<App>::mount(State {
+        color: initial_color,
+    });
+    drain_mount(&mut runtime);
+    let initial = publish(&mut runtime, &scale_one_context);
+    let scaled = publish(&mut runtime, &scale_two_context);
+    let repeated_scaled = publish(&mut runtime, &scale_two_context);
+    runtime
+        .submit_action(Action::Recolor(changed_color))
+        .unwrap_or_else(|_| unreachable!("recolor action is admitted"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    let recolored = publish(&mut runtime, &scale_two_context);
+
+    let mut contiguous = Consumer::default();
+    assert_eq!(
+        contiguous.consume(initial.paint_publication()),
+        ConsumerPlan::FullSnapshot
+    );
+    assert_eq!(
+        contiguous.consume(scaled.paint_publication()),
+        ConsumerPlan::Incremental
+    );
+    assert_eq!(
+        contiguous.consume(repeated_scaled.paint_publication()),
+        ConsumerPlan::Reused
+    );
+
+    let mut skipped = Consumer::default();
+    assert_eq!(
+        skipped.consume(initial.paint_publication()),
+        ConsumerPlan::FullSnapshot
+    );
+    assert_eq!(
+        skipped.consume(recolored.paint_publication()),
+        ConsumerPlan::FullSnapshot
     );
 
     let mut foreign_runtime = AppRuntime::<App>::mount(State {
@@ -285,19 +310,20 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     let foreign_scaled = publish(&mut foreign_runtime, &scale_two_context);
     assert_eq!(
         foreign_scaled.paint_publication().base_revision(),
-        Some(initial_paint.revision())
+        Some(initial.paint_publication().revision())
     );
     assert_ne!(
         foreign_scaled.paint_publication().surface_id(),
-        initial_paint.surface_id()
+        initial.paint_publication().surface_id()
     );
-    let mut surface_sensitive_consumer = Consumer::default();
+
+    let mut surface_sensitive = Consumer::default();
     assert_eq!(
-        surface_sensitive_consumer.consume(initial_paint),
+        surface_sensitive.consume(initial.paint_publication()),
         ConsumerPlan::FullSnapshot
     );
     assert_eq!(
-        surface_sensitive_consumer.consume(foreign_scaled.paint_publication()),
+        surface_sensitive.consume(foreign_scaled.paint_publication()),
         ConsumerPlan::FullSnapshot
     );
 }
