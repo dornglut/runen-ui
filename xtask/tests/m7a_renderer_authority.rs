@@ -120,8 +120,7 @@ fn neutral_allow_list_rejects_behavior_authority_by_default() {
         "TraceRecord",
     ] {
         assert!(
-            !FrameworkCrate::Core.allows(identifier)
-                && !FrameworkCrate::Runtime.allows(identifier),
+            !FrameworkCrate::Core.allows(identifier) && !FrameworkCrate::Runtime.allows(identifier),
             "behavior authority `{identifier}` must not enter the renderer allow-list"
         );
     }
@@ -201,9 +200,10 @@ fn canonical_dependency_name_failures(manifest: &str) -> Vec<String> {
                 package.name()
             ));
         }
-        if manifest.lines().any(|line| {
-            line.contains("package") && line.contains(package.name())
-        }) {
+        if manifest
+            .lines()
+            .any(|line| line.contains("package") && line.contains(package.name()))
+        {
             failures.push(format!(
                 "{RENDERER_MANIFEST} must not rename framework package `{}` through a Cargo dependency alias",
                 package.name()
@@ -323,10 +323,7 @@ fn import_syntax_identifier(identifier: &str) -> bool {
     matches!(identifier, "pub" | "crate" | "self" | "super" | "use")
 }
 
-fn qualified_framework_identifiers<'a>(
-    code: &'a str,
-    framework: FrameworkCrate,
-) -> Vec<&'a str> {
+fn qualified_framework_identifiers<'a>(code: &'a str, framework: FrameworkCrate) -> Vec<&'a str> {
     let marker = format!("{}::", framework.name());
     let mut identifiers = Vec::new();
     let mut remaining = code;
