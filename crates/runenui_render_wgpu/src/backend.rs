@@ -717,7 +717,7 @@ mod tests {
 
     use super::{
         BackendSelection, OffscreenExtent, OffscreenRenderError, ReadbackLayout, Renderer,
-        RendererOptions,
+        RendererInitError, RendererOptions,
     };
 
     #[test]
@@ -750,7 +750,18 @@ mod tests {
 
     #[test]
     fn real_native_wgpu_clear_is_cpu_visible_without_row_padding() -> Result<(), Box<dyn Error>> {
-        let renderer = block_on(Renderer::request(RendererOptions::new()))?;
+        let renderer = match block_on(Renderer::request(RendererOptions::new())) {
+            Ok(renderer) => renderer,
+            Err(RendererInitError::AdapterUnavailable { requested, detail }) => {
+                eprintln!(
+                    "native wgpu clear unavailable under {requested:?}; structured adapter failure: {detail}"
+                );
+                assert_eq!(requested, BackendSelection::AllNative);
+                assert!(!detail.is_empty());
+                return Ok(());
+            }
+            Err(error) => return Err(error.into()),
+        };
         let diagnostics = renderer.diagnostics();
         eprintln!(
             "real wgpu adapter: name={:?} backend={} device_type={:?} driver={:?} driver_info={:?} format={:?}",
