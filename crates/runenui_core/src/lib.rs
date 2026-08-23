@@ -223,6 +223,7 @@ mod layout;
 mod paint;
 mod pointer;
 pub mod prelude;
+mod resource;
 mod runtime_protocol;
 mod scene_geometry;
 mod semantic;
@@ -262,7 +263,7 @@ pub use focus::{
     FocusScopePolicy, Focusability, InputModality,
 };
 pub use geometry::{LogicalRect, LogicalRectError, LogicalSize};
-pub use hit::{HitContribution, HitContributionContext, HitRegion};
+pub use hit::{HitContribution, HitContributionContext, HitRegion, PointerPolicy};
 pub use input::{
     CommittedTextError, CommittedTextEvent, CompositionCancel, CompositionCancelReason,
     CompositionEnd, CompositionEvent, CompositionGeneration, CompositionRange,
@@ -270,7 +271,8 @@ pub use input::{
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
 };
 pub use paint::{
-    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
+    ImagePrimitive, PaintContribution, PaintContributionContext, PaintContributionItem,
+    PaintPrimitive, ShapedTextRunPrimitive,
 };
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///
@@ -298,11 +300,15 @@ pub use pointer::{
     PointerCaptureEvent, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId,
     PointerPhase,
 };
+pub use resource::{ResourceKind, ResourceKindMismatch, ResourceRef};
 pub use runtime_protocol::{
     MonotonicInstant, MonotonicTimeError, MountedNodeId, SemanticNodeId, SurfaceId,
     SurfaceInputContext, WorkSequence,
 };
-pub use scene_geometry::{LogicalTransform, LogicalTransformError};
+pub use scene_geometry::{
+    ContributionClip, LogicalTransform, LogicalTransformError, SceneLayer, SceneOpacity,
+    SceneOpacityError, SceneShape,
+};
 pub use semantic::{
     SemanticAction, SemanticBounds, SemanticContribution, SemanticContributionContext,
     SemanticContributionError, SemanticContributionValidation, SemanticItem, SemanticKey,

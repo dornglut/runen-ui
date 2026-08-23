@@ -226,8 +226,11 @@ impl SurfacePublicationState {
         let hit_test_scene = HitTestScene::new(input_context, planned.hit_test_content().clone());
 
         let paint_size = planned.publication().frame().size();
+        let raster_scale = context.raster_scale();
         let paint_changed = self.current_paint.as_ref().is_none_or(|current| {
-            current.scene() != planned.paint_scene() || current.logical_size() != paint_size
+            current.scene() != planned.paint_scene()
+                || current.logical_size() != paint_size
+                || current.raster_scale() != raster_scale
         });
         let (paint_publication, allocated_paint_revision) = if paint_changed {
             let value =
@@ -237,11 +240,14 @@ impl SurfacePublicationState {
                     ))?;
             let revision = PaintRevision::new(value)
                 .unwrap_or_else(|| unreachable!("paint revision starts at one and never wraps"));
+            let base_revision = self.current_paint.as_ref().map(PaintPublication::revision);
             (
                 PaintPublication::new(
                     self.surface_id.clone(),
                     revision,
+                    base_revision,
                     paint_size,
+                    raster_scale,
                     planned.paint_scene().clone(),
                 ),
                 Some(value),

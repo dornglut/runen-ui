@@ -197,6 +197,7 @@ mod queue;
 mod redraw;
 mod runtime;
 mod scene;
+mod scene_requirements;
 mod semantic_action;
 mod semantic_compositor;
 mod semantic_diagnostic;
@@ -263,8 +264,10 @@ pub use runtime::{
     SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
 };
 pub use scene::{
-    HitTestRegion, HitTestScene, PaintPublication, PaintRevision, PaintScene, PaintSceneItem,
+    HitTestRegion, HitTestScene, PaintDamage, PaintPublication, PaintRevision, PaintScene,
+    PaintSceneItem, SceneClip,
 };
+pub use scene_requirements::{SceneCapabilities, SceneRequirements, UnsupportedSceneRequirement};
 pub use semantic_action::{SubmitSemanticActionError, SubmitSemanticActionErrorKind};
 pub use semantic_diagnostic::{
     SemanticDiagnostic, SemanticDiagnosticReport, SemanticOwnerWithdrawalReason,
@@ -275,8 +278,8 @@ pub use semantic_publication::{
 };
 pub use style_debug::{SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report};
 pub use surface::{
-    LayoutOverflow, SurfaceBuildContext, SurfaceFrame, SurfaceLayoutNode, SurfaceLayoutReport,
-    SurfaceNode, SurfacePhase, SurfacePhaseReport,
+    LayoutOverflow, RasterScale, RasterScaleError, SurfaceBuildContext, SurfaceFrame,
+    SurfaceLayoutNode, SurfaceLayoutReport, SurfaceNode, SurfacePhase, SurfacePhaseReport,
 };
 pub use surface_command::{
     SubmitSurfaceCommandError, SubmitSurfaceCommandErrorKind, UnacceptedSurfaceCommand,
