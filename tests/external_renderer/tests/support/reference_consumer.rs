@@ -215,7 +215,8 @@ impl ReferenceConsumer {
 
         let mode = match self.realized.as_ref() {
             Some((surface_id, revision))
-                if surface_id == publication.surface_id() && *revision == publication.revision() =>
+                if surface_id == publication.surface_id()
+                    && *revision == publication.revision() =>
             {
                 ReferenceUpdateMode::AlreadyCurrent
             }
