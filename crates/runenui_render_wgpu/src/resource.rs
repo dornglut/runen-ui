@@ -285,6 +285,10 @@ pub enum ResourceResolveError {
         expected: ResourceKind,
         actual: ResourceKind,
     },
+    ShapedRunScaleMismatch {
+        expected: RasterScale,
+        actual: RasterScale,
+    },
     Provider(ResourceProviderError),
 }
 
@@ -299,6 +303,12 @@ impl fmt::Display for ResourceResolveError {
                 formatter,
                 "resource payload kind mismatch: expected {expected:?}, got {actual:?}"
             ),
+            Self::ShapedRunScaleMismatch { expected, actual } => write!(
+                formatter,
+                "shaped-run raster scale mismatch: expected {}, got {}",
+                expected.get(),
+                actual.get()
+            ),
             Self::Provider(error) => error.fmt(formatter),
         }
     }
@@ -308,17 +318,20 @@ impl Error for ResourceResolveError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Provider(error) => Some(error),
-            Self::ReferenceKindMismatch { .. } | Self::PayloadKindMismatch { .. } => None,
+            Self::ReferenceKindMismatch { .. }
+            | Self::PayloadKindMismatch { .. }
+            | Self::ShapedRunScaleMismatch { .. } => None,
         }
     }
 }
 
-/// Resolves one resource while enforcing complete-ref and kind consistency.
+/// Resolves one resource while enforcing complete-ref, kind, and requested-scale consistency.
 ///
 /// # Errors
 ///
 /// Returns deterministic contract failures for reference/request mismatch,
-/// provider failure, or provider payload kind mismatch.
+/// provider failure, provider payload kind mismatch, or shaped coverage realized
+/// at a scale other than the exact requested [`RasterScale`].
 pub fn resolve_resource(
     provider: &impl ResourceProvider,
     resource: &ResourceRef,
@@ -343,6 +356,21 @@ pub fn resolve_resource(
             actual: actual_payload,
         });
     }
+
+    if let (
+        ResourceRequest::ShapedTextRun {
+            raster_scale: expected_scale,
+        },
+        ResourcePayload::ShapedTextRun(raster),
+    ) = (request, &payload)
+        && raster.raster_scale() != expected_scale
+    {
+        return Err(ResourceResolveError::ShapedRunScaleMismatch {
+            expected: expected_scale,
+            actual: raster.raster_scale(),
+        });
+    }
+
     Ok(payload)
 }
 
@@ -492,5 +520,35 @@ mod tests {
                 actual: ResourceKind::ShapedTextRun,
             })
         ));
+    }
+
+    #[test]
+    fn resolver_rejects_shaped_coverage_for_another_scale() {
+        let shaped = ResourceRef::new(ResourceKind::ShapedTextRun);
+        let origin = LogicalPoint::new(0.0, 0.0)
+            .unwrap_or_else(|_| unreachable!("fixture origin is finite"));
+        let requested = RasterScale::ONE;
+        let actual =
+            RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
+        let payload = ShapedRunRaster::new(origin, 1, 1, actual, vec![255])
+            .unwrap_or_else(|_| unreachable!("fixture shaped payload is valid"));
+        let mut provider = MapProvider::default();
+        provider
+            .payloads
+            .insert(shaped.clone(), ResourcePayload::ShapedTextRun(payload));
+
+        assert_eq!(
+            resolve_resource(
+                &provider,
+                &shaped,
+                ResourceRequest::ShapedTextRun {
+                    raster_scale: requested,
+                },
+            ),
+            Err(ResourceResolveError::ShapedRunScaleMismatch {
+                expected: requested,
+                actual,
+            })
+        );
     }
 }
