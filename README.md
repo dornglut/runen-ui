@@ -14,7 +14,7 @@ The implemented foundation includes:
 - independent semantic identity/publication/action ingress;
 - public deterministic headless application testing through `runenui_testing`.
 
-The current renderer-facing products are proof infrastructure. Production renderer-neutral paint/hit scenes, concrete native hosts/backends, production text/editing, full layout/style breadth, standard controls, and multi-window lifecycle remain later roadmap outcomes.
+The current renderer-neutral paint/hit scenes remain proof-level framework infrastructure. M6D closes their independent-consumer and migration proof; concrete native hosts/backends, resource realization, production text/editing, full layout/style breadth, standard controls, and multi-window lifecycle remain later roadmap outcomes.
 
 See [current status](docs/status.md) for capability maturity and [roadmap](docs/roadmap.md) for durable sequencing.
 
@@ -26,12 +26,14 @@ runenui_core <- runenui_runtime
        └──────┬──────┘
               ├── runenui_testing
               ├── counter example
+              ├── external-renderer conformance
               └── external-widget conformance
 ```
 
 - `runenui_core` owns host-neutral public values and protocols.
 - `runenui_runtime` owns live framework authority.
 - `runenui_testing` is a downstream public testing convenience layer.
+- `tests/external_renderer` is an unpublished downstream conformance consumer over ordinary public core/runtime scene contracts.
 - `xtask` owns repository validation tooling and has no framework dependency.
 
 See [workspace structure](docs/architecture/workspace-structure.md) for the enforced ownership/dependency contract.
