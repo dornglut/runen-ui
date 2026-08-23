@@ -795,12 +795,9 @@ mod tests {
         assert_eq!(readback.extent(), extent);
         assert_eq!(readback.format(), wgpu::TextureFormat::Rgba8UnormSrgb);
         assert_eq!(readback.rgba8_srgb().len(), 3 * 2 * 4);
-        assert!(
-            readback
-                .rgba8_srgb()
-                .chunks_exact(4)
-                .all(|pixel| pixel == [0, 255, 0, 255])
-        );
+        let (pixels, remainder) = readback.rgba8_srgb().as_chunks::<4>();
+        assert!(remainder.is_empty());
+        assert!(pixels.iter().all(|pixel| pixel == &[0, 255, 0, 255]));
         Ok(())
     }
 
