@@ -272,15 +272,18 @@ impl SceneConsumer {
         let requirements = publication.scene().requirements();
         self.capabilities.check_requirements(&requirements)?;
 
-        let mode = self.realized.as_ref().map_or(UpdateMode::FullResync, |realized| {
-            if &realized.surface_id == publication.surface_id()
-                && publication.base_revision() == Some(realized.revision)
-            {
-                UpdateMode::ExactBaseMatch
-            } else {
-                UpdateMode::FullResync
-            }
-        });
+        let mode = self
+            .realized
+            .as_ref()
+            .map_or(UpdateMode::FullResync, |realized| {
+                if &realized.surface_id == publication.surface_id()
+                    && publication.base_revision() == Some(realized.revision)
+                {
+                    UpdateMode::ExactBaseMatch
+                } else {
+                    UpdateMode::FullResync
+                }
+            });
 
         let snapshot = ConsumerSnapshot {
             surface_id: publication.surface_id().clone(),
