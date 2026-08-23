@@ -403,8 +403,14 @@ fn assert_modes_agree(actual: UpdateMode, reference: ReferenceUpdateMode) {
         matches!(
             (actual, reference),
             (UpdateMode::FullResync, ReferenceUpdateMode::FullResync)
-                | (UpdateMode::ExactBaseMatch, ReferenceUpdateMode::ExactBaseMatch)
-                | (UpdateMode::AlreadyCurrent, ReferenceUpdateMode::AlreadyCurrent)
+                | (
+                    UpdateMode::ExactBaseMatch,
+                    ReferenceUpdateMode::ExactBaseMatch
+                )
+                | (
+                    UpdateMode::AlreadyCurrent,
+                    ReferenceUpdateMode::AlreadyCurrent
+                )
         ),
         "consumer revision modes diverged: {actual:?} != {reference:?}"
     );
@@ -599,7 +605,12 @@ fn assert_revision_modes(
         .consume(first_paint, first_hit)
         .unwrap_or_else(|_| unreachable!("reference consumer supports identical publication"));
     assert_modes_agree(same.mode(), reference_same.mode());
-    assert_snapshot_contract(same.snapshot(), reference_same.snapshot(), first_paint, first_hit);
+    assert_snapshot_contract(
+        same.snapshot(),
+        reference_same.snapshot(),
+        first_paint,
+        first_hit,
+    );
 
     let size = LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO);
     let scale_two = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
