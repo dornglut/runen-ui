@@ -25,7 +25,7 @@ pub enum ResourceKind {
 ///
 /// Every call to [`Self::new`] issues a fresh process-local identity. Resource
 /// owners retain and clone that value for as long as the same logical content is
-/// live; replacing logical content requires issuing a new reference. RunenUI
+/// live; replacing logical content requires issuing a new reference. `RunenUI`
 /// intentionally exposes no provider/domain key, payload, lookup handle, cache
 /// handle, or backend identifier that consumers could split or reinterpret.
 #[derive(Clone)]
@@ -138,7 +138,7 @@ mod tests {
         assert_eq!(image.kind(), ResourceKind::Image);
 
         let mut payload_fixture = HashMap::new();
-        payload_fixture.insert(image.clone(), "first");
+        payload_fixture.insert(image, "first");
         assert_eq!(payload_fixture.get(&cloned), Some(&"first"));
         assert_eq!(payload_fixture.get(&replacement), None);
     }
