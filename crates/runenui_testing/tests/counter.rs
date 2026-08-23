@@ -107,15 +107,11 @@ fn harness_point_input_converges_on_the_latest_public_scene_and_context() {
     )
     .unwrap_or_else(|_| unreachable!("published button center is finite"));
 
-    assert!(!publication.paint_scene().is_empty());
-    assert_eq!(
-        harness
-            .publication()
-            .unwrap_or_else(|| unreachable!("harness retains the accepted publication"))
-            .paint_publication()
-            .revision(),
-        publication.paint_publication().revision()
-    );
+    let retained = harness
+        .publication()
+        .unwrap_or_else(|| unreachable!("harness retains the accepted publication"));
+    assert_eq!(retained.paint_publication(), publication.paint_publication());
+    assert_eq!(retained.hit_test_scene(), publication.hit_test_scene());
     assert_eq!(
         harness
             .input_context()
