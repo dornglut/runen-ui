@@ -128,7 +128,7 @@ impl ImagePrimitive {
 /// `origin` maps resource-local logical `(0, 0)` into the owner's local logical
 /// coordinates. Glyph geometry remains resource-owned; `foreground` is ordinary
 /// scene-owned literal color and is intentionally outside resource identity.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ShapedTextRunPrimitive {
     resource: ResourceRef,
     origin: LogicalPoint,
@@ -468,14 +468,18 @@ mod tests {
             Some(origin)
         );
 
-        let wrong_image = PaintContributionItem::image(shaped_ref, rect)
-            .expect_err("shaped-run refs cannot become image primitives");
+        let Err(wrong_image) = PaintContributionItem::image(shaped_ref, rect) else {
+            unreachable!("shaped-run refs cannot become image primitives");
+        };
         assert_eq!(
             wrong_image,
             ResourceKindMismatch::new(ResourceKind::Image, ResourceKind::ShapedTextRun)
         );
-        let wrong_run = PaintContributionItem::shaped_text_run(image_ref, origin, Color::BLACK)
-            .expect_err("image refs cannot become shaped-run primitives");
+        let Err(wrong_run) =
+            PaintContributionItem::shaped_text_run(image_ref, origin, Color::BLACK)
+        else {
+            unreachable!("image refs cannot become shaped-run primitives");
+        };
         assert_eq!(
             wrong_run,
             ResourceKindMismatch::new(ResourceKind::ShapedTextRun, ResourceKind::Image)
