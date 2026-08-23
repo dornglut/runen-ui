@@ -152,10 +152,10 @@ fn paint_scene_composes_self_contained_values_exact_order_and_conjunctive_clips(
             .map(|item| item.primitive().color())
             .collect::<Vec<_>>(),
         vec![
-            Color::rgba(0, 0, 255, 255),
-            Color::rgba(255, 0, 0, 255),
-            Color::rgba(0, 255, 0, 255),
-            Color::WHITE,
+            Some(Color::rgba(0, 0, 255, 255)),
+            Some(Color::rgba(255, 0, 0, 255)),
+            Some(Color::rgba(0, 255, 0, 255)),
+            Some(Color::WHITE),
         ]
     );
     assert_eq!(
