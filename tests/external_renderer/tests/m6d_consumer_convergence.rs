@@ -357,9 +357,8 @@ fn assert_interpreters_agree(
 
 fn assert_capability_rejection(paint: &PaintPublication, hit: &HitTestScene) {
     let mut unsupported = SceneConsumer::new(SceneCapabilities::default());
-    let error = match unsupported.consume(paint, hit) {
-        Err(error) => error,
-        Ok(_) => unreachable!("resource-backed fixture must reject empty capabilities"),
+    let Err(error) = unsupported.consume(paint, hit) else {
+        unreachable!("resource-backed fixture must reject empty capabilities");
     };
     assert_eq!(error.resource_kind(), ResourceKind::Image);
 }
