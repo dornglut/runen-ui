@@ -1,5 +1,5 @@
 use runenui_core::SurfaceId;
-use runenui_runtime::{PaintPublication, PaintRevision};
+use runenui_runtime::{PaintDamage, PaintPublication, PaintRevision};
 
 /// How one supplied publication relates to the renderer's last successful realization.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -12,6 +12,39 @@ pub enum PublicationUpdateMode {
     AlreadyCurrent,
 }
 
+/// Renderer-owned plan for consuming one complete paint publication.
+///
+/// Relative damage is exposed only for [`PublicationUpdateMode::ExactBaseMatch`].
+/// A full resync must reconstruct from the complete publication without consuming
+/// base-relative damage, while an already-current publication requires no update.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PublicationUpdatePlan {
+    mode: PublicationUpdateMode,
+    incremental_damage: Option<PaintDamage>,
+}
+
+impl PublicationUpdatePlan {
+    #[must_use]
+    const fn new(mode: PublicationUpdateMode, incremental_damage: Option<PaintDamage>) -> Self {
+        Self {
+            mode,
+            incremental_damage,
+        }
+    }
+
+    /// Returns how the publication relates to successfully realized renderer state.
+    #[must_use]
+    pub const fn mode(self) -> PublicationUpdateMode {
+        self.mode
+    }
+
+    /// Returns base-relative damage only when the exact realized predecessor matches.
+    #[must_use]
+    pub const fn incremental_damage(self) -> Option<PaintDamage> {
+        self.incremental_damage
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RealizedPublication {
     surface_id: SurfaceId,
@@ -20,9 +53,9 @@ struct RealizedPublication {
 
 /// Renderer-owned successful-realization lineage.
 ///
-/// Classification never mutates state. Call [`Self::record_success`] only after
-/// the renderer has successfully realized the supplied publication. Failed work
-/// therefore cannot accidentally become predecessor authority.
+/// Classification and planning never mutate state. Call [`Self::record_success`]
+/// only after the renderer has successfully realized the supplied publication.
+/// Failed work therefore cannot accidentally become predecessor authority.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PublicationLineage {
     realized: Option<RealizedPublication>,
@@ -53,6 +86,15 @@ impl PublicationLineage {
         } else {
             PublicationUpdateMode::FullResync
         }
+    }
+
+    /// Plans one renderer update while gating base-relative damage behind an exact predecessor.
+    #[must_use]
+    pub fn plan(&self, publication: &PaintPublication) -> PublicationUpdatePlan {
+        let mode = self.classify(publication);
+        let incremental_damage =
+            (mode == PublicationUpdateMode::ExactBaseMatch).then_some(publication.damage());
+        PublicationUpdatePlan::new(mode, incremental_damage)
     }
 
     /// Records one publication as successfully realized by the renderer.
@@ -167,6 +209,41 @@ mod tests {
     }
 
     #[test]
+    fn update_plan_exposes_damage_only_for_exact_predecessor() {
+        let tokens = StyleTokens::new();
+        let mut runtime = AppRuntime::<App>::mount(());
+        let first = publication(&mut runtime, &tokens, 1.0);
+        let second = publication(&mut runtime, &tokens, 2.0);
+        let third = publication(&mut runtime, &tokens, 3.0);
+
+        let mut lineage = PublicationLineage::new();
+        let first_plan = lineage.plan(&first);
+        assert_eq!(first_plan.mode(), PublicationUpdateMode::FullResync);
+        assert_eq!(first_plan.incremental_damage(), None);
+
+        lineage.record_success(&first);
+        let current_plan = lineage.plan(&first);
+        assert_eq!(current_plan.mode(), PublicationUpdateMode::AlreadyCurrent);
+        assert_eq!(current_plan.incremental_damage(), None);
+
+        let contiguous_plan = lineage.plan(&second);
+        assert_eq!(
+            contiguous_plan.mode(),
+            PublicationUpdateMode::ExactBaseMatch
+        );
+        assert_eq!(contiguous_plan.incremental_damage(), Some(second.damage()));
+
+        let skipped_plan = lineage.plan(&third);
+        assert_eq!(skipped_plan.mode(), PublicationUpdateMode::FullResync);
+        assert_eq!(skipped_plan.incremental_damage(), None);
+
+        lineage.reset();
+        let reset_plan = lineage.plan(&third);
+        assert_eq!(reset_plan.mode(), PublicationUpdateMode::FullResync);
+        assert_eq!(reset_plan.incremental_damage(), None);
+    }
+
+    #[test]
     fn foreign_surface_never_matches_realized_lineage() {
         let tokens = StyleTokens::new();
         let mut first_runtime = AppRuntime::<App>::mount(());
@@ -182,5 +259,8 @@ mod tests {
             lineage.classify(&foreign),
             PublicationUpdateMode::FullResync
         );
+        let foreign_plan = lineage.plan(&foreign);
+        assert_eq!(foreign_plan.mode(), PublicationUpdateMode::FullResync);
+        assert_eq!(foreign_plan.incremental_damage(), None);
     }
 }
