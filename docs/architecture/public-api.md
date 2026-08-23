@@ -26,7 +26,7 @@ Core must not own persistent mounted/semantic storage, live queue/scheduler stat
 - bounded canonical trace, deterministic export, and inert replay projections;
 - measurement/layout execution and staged surface publication;
 - canonical renderer-neutral transformed/clipped/ordered paint-scene composition plus `RasterScale` and `PaintPublication` revision/base/damage/alignment authority;
-- canonical displayed `HitTestScene` composition, mounted-target/membership injection, retained displayed-generation lookup, and point/resolved-target authority;
+- canonical transformed/clipped/ordered displayed `HitTestScene` composition, mounted-target/membership injection, retained displayed-generation lookup, and point/resolved-target authority;
 - scene requirements derived from canonical paint content and neutral consumer capability checks without resource lookup or backend-specific rewriting;
 - independent semantic publication/update/diagnostics and exact semantic-action admission/resolution.
 
