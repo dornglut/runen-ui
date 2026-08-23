@@ -616,6 +616,22 @@ fn assert_state_loss_resync(
     );
 }
 
+fn assert_already_current(
+    downstream: &mut SceneConsumer,
+    reference: &mut ReferenceConsumer,
+    paint: &PaintPublication,
+    hit: &HitTestScene,
+) {
+    let same = downstream
+        .consume(paint, hit)
+        .unwrap_or_else(|_| unreachable!("identical supported publication remains consumable"));
+    let reference_same = reference
+        .consume(paint, hit)
+        .unwrap_or_else(|_| unreachable!("reference consumer supports identical publication"));
+    assert_modes_agree(same.mode(), reference_same.mode());
+    assert_snapshot_contract(same.snapshot(), reference_same.snapshot(), paint, hit);
+}
+
 fn assert_revision_modes(
     runtime: &mut AppRuntime<App>,
     tokens: &StyleTokens,
@@ -624,19 +640,7 @@ fn assert_revision_modes(
     downstream: &mut SceneConsumer,
     reference: &mut ReferenceConsumer,
 ) {
-    let same = downstream
-        .consume(first_paint, first_hit)
-        .unwrap_or_else(|_| unreachable!("identical supported publication remains consumable"));
-    let reference_same = reference
-        .consume(first_paint, first_hit)
-        .unwrap_or_else(|_| unreachable!("reference consumer supports identical publication"));
-    assert_modes_agree(same.mode(), reference_same.mode());
-    assert_snapshot_contract(
-        same.snapshot(),
-        reference_same.snapshot(),
-        first_paint,
-        first_hit,
-    );
+    assert_already_current(downstream, reference, first_paint, first_hit);
 
     let size = LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO);
     let scale_two = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
