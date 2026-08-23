@@ -369,9 +369,7 @@ fn reference_image_surface_point(
     let image = item.primitive().as_image()?;
     let destination = image.destination();
     let local = LogicalPoint::new(
-        destination
-            .width()
-            .mul_add(normalized.x(), destination.x()),
+        destination.width().mul_add(normalized.x(), destination.x()),
         destination
             .height()
             .mul_add(normalized.y(), destination.y()),
@@ -432,7 +430,13 @@ fn assert_resource_contract(snapshot: &ConsumerSnapshot, paint: &PaintPublicatio
     let public_image_item = &paint.scene().items()[3];
     assert_eq!(image.destination(), rect(1.0, 20.0, 8.0, 8.0));
     assert_eq!(image.resource_ref().kind(), ResourceKind::Image);
-    assert_eq!(image.resource_ref(), public_image_item.primitive().resource_ref().unwrap_or_else(|| unreachable!("public item is resource-backed")));
+    assert_eq!(
+        image.resource_ref(),
+        public_image_item
+            .primitive()
+            .resource_ref()
+            .unwrap_or_else(|| unreachable!("public item is resource-backed"))
+    );
     for normalized in [point(0.0, 0.0), point(0.5, 0.5), point(1.0, 1.0)] {
         assert_eq!(
             image_record.image_surface_point(normalized),
