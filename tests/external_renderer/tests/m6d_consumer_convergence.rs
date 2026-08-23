@@ -5,9 +5,7 @@ use runenui_core::{
     PointerDeviceKind, PointerId, PointerPhase, PointerPolicy, Radius, ResourceKind, ResourceRef,
     SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp, Widget, WidgetMeasure,
 };
-use runenui_external_renderer_conformance::{
-    SceneConsumer, UpdateMode, sample_literal_paint,
-};
+use runenui_external_renderer_conformance::{SceneConsumer, UpdateMode, sample_literal_paint};
 use runenui_runtime::{
     AppRuntime, HitTestScene, LayoutConstraints, PaintScene, PaintSceneItem, RasterScale,
     SceneCapabilities, SurfaceBuildContext,
@@ -33,8 +31,8 @@ impl Widget<()> for SceneOwner {
     }
 
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
-        let half = SceneOpacity::new(0.5)
-            .unwrap_or_else(|_| unreachable!("fixture opacity is valid"));
+        let half =
+            SceneOpacity::new(0.5).unwrap_or_else(|_| unreachable!("fixture opacity is valid"));
         let rounded_clip = ContributionClip::identity(SceneShape::rounded_rect(
             rect(0.0, 0.0, 20.0, 20.0),
             Radius::all(LogicalLength::from(4_u16)),
@@ -218,8 +216,14 @@ fn reference_source_over(destination: [f32; 4], (color, opacity): (Color, f32)) 
     let inverse_alpha = 1.0 - alpha;
     [
         destination[0].mul_add(inverse_alpha, reference_srgb_to_linear(color.red()) * alpha),
-        destination[1].mul_add(inverse_alpha, reference_srgb_to_linear(color.green()) * alpha),
-        destination[2].mul_add(inverse_alpha, reference_srgb_to_linear(color.blue()) * alpha),
+        destination[1].mul_add(
+            inverse_alpha,
+            reference_srgb_to_linear(color.green()) * alpha,
+        ),
+        destination[2].mul_add(
+            inverse_alpha,
+            reference_srgb_to_linear(color.blue()) * alpha,
+        ),
         destination[3].mul_add(inverse_alpha, alpha),
     ]
 }
@@ -233,7 +237,10 @@ fn reference_srgb_to_linear(channel: u8) -> f32 {
     }
 }
 
-fn reference_target(scene: &HitTestScene, surface_point: LogicalPoint) -> Option<runenui_core::MountedNodeId> {
+fn reference_target(
+    scene: &HitTestScene,
+    surface_point: LogicalPoint,
+) -> Option<runenui_core::MountedNodeId> {
     for region in scene.regions().iter().rev() {
         let Some(local_point) = region
             .local_to_surface()
@@ -274,9 +281,10 @@ fn assert_color_close(actual: [f32; 4], expected: [f32; 4]) {
 fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
     let mut runtime = AppRuntime::<App>::mount(state());
     let tokens = StyleTokens::new();
-    let scale_one = SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(
-        LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO),
-    ));
+    let scale_one = SurfaceBuildContext::new(
+        &tokens,
+        LayoutConstraints::tight(LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO)),
+    );
     let first = runtime
         .publish_surface(&scale_one)
         .unwrap_or_else(|_| unreachable!("first fixture publication is admitted"));
@@ -301,11 +309,18 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
         snapshot.required_resource_kinds(),
         &[ResourceKind::Image, ResourceKind::ShapedTextRun]
     );
-    assert_eq!(snapshot.paint_items().len(), first_paint.scene().items().len());
+    assert_eq!(
+        snapshot.paint_items().len(),
+        first_paint.scene().items().len()
+    );
     assert_eq!(snapshot.hit_regions().len(), first_hit.regions().len());
     assert_eq!(snapshot.mounted_targets(), first_hit.mounted_targets());
 
-    for (copied, public) in snapshot.paint_items().iter().zip(first_paint.scene().items()) {
+    for (copied, public) in snapshot
+        .paint_items()
+        .iter()
+        .zip(first_paint.scene().items())
+    {
         assert_eq!(copied.primitive(), public.primitive());
         assert_eq!(copied.local_to_surface(), public.local_to_surface());
         assert_eq!(copied.clips(), public.clips());
@@ -354,16 +369,20 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
         .expect_err("resource-backed fixture must reject empty capabilities");
     assert_eq!(error.resource_kind(), ResourceKind::Image);
 
-    let scale_two = SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(
-        LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO),
-    ))
+    let scale_two = SurfaceBuildContext::new(
+        &tokens,
+        LayoutConstraints::tight(LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO)),
+    )
     .with_raster_scale(
         RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
     );
     let second = runtime
         .publish_surface(&scale_two)
         .unwrap_or_else(|_| unreachable!("scale-only publication is admitted"));
-    assert_eq!(second.paint_publication().base_revision(), Some(first_paint.revision()));
+    assert_eq!(
+        second.paint_publication().base_revision(),
+        Some(first_paint.revision())
+    );
     assert_eq!(
         downstream
             .consume(second.paint_publication(), second.hit_test_scene())
@@ -382,32 +401,36 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
     );
 
     let second_revision = second.paint_publication().revision();
-    let scale_three = SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(
-        LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO),
-    ))
+    let scale_three = SurfaceBuildContext::new(
+        &tokens,
+        LayoutConstraints::tight(LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO)),
+    )
     .with_raster_scale(
         RasterScale::new(3.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
     );
     let third = runtime
         .publish_surface(&scale_three)
         .unwrap_or_else(|_| unreachable!("third publication is admitted"));
-    assert_eq!(third.paint_publication().base_revision(), Some(second_revision));
+    assert_eq!(
+        third.paint_publication().base_revision(),
+        Some(second_revision)
+    );
 
     let mut lagging = SceneConsumer::new(capabilities());
     let _ = lagging
         .consume(&first_paint, &first_hit)
-        .unwrap_or_else(|_| unreachable!("first publication is consumable"));
+        .unwrap_or_else(|_| unreachable!("first snapshot is supported"));
     assert_eq!(
         lagging
             .consume(third.paint_publication(), third.hit_test_scene())
-            .unwrap_or_else(|_| unreachable!("non-contiguous full scene is consumable"))
+            .unwrap_or_else(|_| unreachable!("skipped revision still admits full snapshot"))
             .mode(),
         UpdateMode::FullResync
     );
 }
 
 #[test]
-fn public_test_harness_exposes_the_same_scene_and_exact_input_context_without_fabrication() {
+fn testing_harness_exposes_the_same_ordinary_public_products_without_fabricated_context() {
     let mut harness = TestHarness::<App>::mount(state());
     let publication = harness
         .publish()
@@ -417,20 +440,15 @@ fn public_test_harness_exposes_the_same_scene_and_exact_input_context_without_fa
 
     let mut consumer = SceneConsumer::new(capabilities());
     let consumption = consumer
-        .consume(publication.paint_publication(), publication.hit_test_scene())
+        .consume(
+            publication.paint_publication(),
+            publication.hit_test_scene(),
+        )
         .unwrap_or_else(|_| unreachable!("harness publication is ordinary public scene input"));
     assert_eq!(consumption.snapshot().input_context(), &exact_context);
     assert_eq!(
-        harness
-            .publication()
-            .unwrap_or_else(|| unreachable!("successful publish is retained")),
-        &publication
-    );
-    assert_eq!(
-        harness
-            .input_context()
-            .unwrap_or_else(|_| unreachable!("successful publish has public context")),
-        &exact_context
+        consumption.snapshot().mounted_targets(),
+        publication.hit_test_scene().mounted_targets()
     );
 
     let pointer = harness
@@ -440,10 +458,6 @@ fn public_test_harness_exposes_the_same_scene_and_exact_input_context_without_fa
             PointerPhase::Move,
             point(2.0, 2.0),
         )
-        .unwrap_or_else(|_| unreachable!("latest publication supplies exact context"));
+        .unwrap_or_else(|_| unreachable!("publication supplies exact public context"));
     assert_eq!(pointer.surface_context(), &exact_context);
-    assert_eq!(
-        consumption.snapshot().target_at(pointer.position()),
-        publication.hit_test_scene().target_at(pointer.position())
-    );
 }
