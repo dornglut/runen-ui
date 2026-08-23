@@ -1,11 +1,9 @@
-#![allow(refining_impl_trait)]
-
 use runenui_core::{
     Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
-    LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, NoHostProtocol,
-    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
-    PointerPolicy, Radius, ResourceKind, ResourceRef, SceneLayer, SceneOpacity, SceneShape,
-    StyleTokens, UiApp, Widget, WidgetMeasure,
+    IntoEffects, LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform,
+    NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem,
+    PaintPrimitive, PointerPolicy, Radius, ResourceKind, ResourceRef, SceneLayer, SceneOpacity,
+    SceneShape, StyleTokens, UiApp, View, Widget, WidgetMeasure,
 };
 use runenui_external_renderer_conformance::{
     ConsumerSnapshot, SceneConsumer, UpdateMode, sample_literal_paint,
@@ -114,7 +112,7 @@ impl UiApp for App {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(state: &Self::State) -> Element<Self::Action> {
+    fn root(state: &Self::State) -> impl View<Self::Action> {
         Element::new(SceneOwner {
             image: state.image.clone(),
             shaped: state.shaped.clone(),
@@ -122,7 +120,11 @@ impl UiApp for App {
         .key("scene-owner")
     }
 
-    fn update(_: &mut Self::State, (): Self::Action) {}
+    fn update(
+        _: &mut Self::State,
+        (): Self::Action,
+    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    }
 }
 
 fn state() -> State {
@@ -328,10 +330,9 @@ fn reference_shape_contains(shape: SceneShape, point: LogicalPoint) -> bool {
 }
 
 fn reference_rect_contains(rect: LogicalRect, point: LogicalPoint) -> bool {
-    point.x() >= rect.x()
-        && point.x() < rect.max_x()
-        && point.y() >= rect.y()
-        && point.y() < rect.max_y()
+    let within_x = point.x() >= rect.x() && point.x() < rect.max_x();
+    let within_y = point.y() >= rect.y() && point.y() < rect.max_y();
+    within_x && within_y
 }
 
 fn reference_normalized_radii(rect: LogicalRect, radius: Radius) -> [f64; 4] {
@@ -552,22 +553,18 @@ fn assert_revision_modes(
         second.paint_publication().base_revision(),
         Some(first_paint.revision())
     );
-    assert_eq!(
-        downstream
-            .consume(second.paint_publication(), second.hit_test_scene())
-            .unwrap_or_else(|_| unreachable!("declared capabilities satisfy fixture"))
-            .mode(),
-        UpdateMode::ExactBaseMatch
-    );
+    let contiguous = downstream
+        .consume(second.paint_publication(), second.hit_test_scene())
+        .unwrap_or_else(|_| unreachable!("declared capabilities satisfy fixture"));
+    assert_eq!(contiguous.mode(), UpdateMode::ExactBaseMatch);
+    let contiguous_snapshot = contiguous.snapshot().clone();
 
     downstream.reset();
-    assert_eq!(
-        downstream
-            .consume(second.paint_publication(), second.hit_test_scene())
-            .unwrap_or_else(|_| unreachable!("full resync consumes complete current scene"))
-            .mode(),
-        UpdateMode::FullResync
-    );
+    let state_loss = downstream
+        .consume(second.paint_publication(), second.hit_test_scene())
+        .unwrap_or_else(|_| unreachable!("full resync consumes complete current scene"));
+    assert_eq!(state_loss.mode(), UpdateMode::FullResync);
+    assert_eq!(state_loss.snapshot(), &contiguous_snapshot);
 
     let second_revision = second.paint_publication().revision();
     let scale_three = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
@@ -586,13 +583,17 @@ fn assert_revision_modes(
     let _ = lagging
         .consume(first_paint, first_hit)
         .unwrap_or_else(|_| unreachable!("first snapshot is supported"));
-    assert_eq!(
-        lagging
-            .consume(third.paint_publication(), third.hit_test_scene())
-            .unwrap_or_else(|_| unreachable!("skipped revision still admits full snapshot"))
-            .mode(),
-        UpdateMode::FullResync
-    );
+    let skipped = lagging
+        .consume(third.paint_publication(), third.hit_test_scene())
+        .unwrap_or_else(|_| unreachable!("skipped revision still admits full snapshot"));
+    assert_eq!(skipped.mode(), UpdateMode::FullResync);
+
+    let mut fresh = SceneConsumer::new(capabilities());
+    let fresh_third = fresh
+        .consume(third.paint_publication(), third.hit_test_scene())
+        .unwrap_or_else(|_| unreachable!("fresh consumer admits complete current snapshot"));
+    assert_eq!(fresh_third.mode(), UpdateMode::FullResync);
+    assert_eq!(skipped.snapshot(), fresh_third.snapshot());
 }
 
 #[test]
