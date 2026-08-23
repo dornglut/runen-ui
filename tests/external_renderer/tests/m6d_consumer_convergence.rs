@@ -1,3 +1,5 @@
+#![allow(refining_impl_trait)]
+
 use runenui_core::{
     Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
     LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, NoHostProtocol,
@@ -6,10 +8,12 @@ use runenui_core::{
     ResourceKind, ResourceRef, SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp, Widget,
     WidgetMeasure,
 };
-use runenui_external_renderer_conformance::{SceneConsumer, UpdateMode, sample_literal_paint};
+use runenui_external_renderer_conformance::{
+    ConsumerSnapshot, SceneConsumer, UpdateMode, sample_literal_paint,
+};
 use runenui_runtime::{
-    AppRuntime, HitTestScene, LayoutConstraints, PaintScene, PaintSceneItem, PumpBudget, RasterScale,
-    SceneCapabilities, SurfaceBuildContext, TraceRecordKind,
+    AppRuntime, HitTestScene, LayoutConstraints, PaintPublication, PaintScene, PaintSceneItem,
+    PumpBudget, RasterScale, SceneCapabilities, SurfaceBuildContext, TraceRecordKind,
 };
 use runenui_testing::TestHarness;
 
@@ -278,63 +282,43 @@ fn assert_color_close(actual: [f32; 4], expected: [f32; 4]) {
     }
 }
 
-#[test]
-fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
-    let mut runtime = AppRuntime::<App>::mount(state());
-    let tokens = StyleTokens::new();
-    let scale_one = SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::tight(LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO)),
-    );
-    let first = runtime
-        .publish_surface(&scale_one)
-        .unwrap_or_else(|_| unreachable!("first fixture publication is admitted"));
-    let first_paint = first.paint_publication().clone();
-    let first_hit = first.hit_test_scene().clone();
-
-    let mut downstream = SceneConsumer::new(capabilities());
-    let first_consumption = downstream
-        .consume(&first_paint, &first_hit)
-        .unwrap_or_else(|_| unreachable!("declared capabilities satisfy fixture"));
-    assert_eq!(first_consumption.mode(), UpdateMode::FullResync);
-    let snapshot = first_consumption.snapshot();
-
-    assert_eq!(snapshot.surface_id(), first_paint.surface_id());
-    assert_eq!(snapshot.revision(), first_paint.revision());
+fn assert_snapshot_contract(
+    snapshot: &ConsumerSnapshot,
+    paint: &PaintPublication,
+    hit: &HitTestScene,
+) {
+    assert_eq!(snapshot.surface_id(), paint.surface_id());
+    assert_eq!(snapshot.revision(), paint.revision());
     assert_eq!(snapshot.base_revision(), None);
-    assert_eq!(snapshot.logical_size(), first_paint.logical_size());
+    assert_eq!(snapshot.logical_size(), paint.logical_size());
     assert_eq!(snapshot.raster_scale(), RasterScale::ONE);
-    assert_eq!(snapshot.damage(), first_paint.damage());
-    assert_eq!(snapshot.input_context(), first_hit.input_context());
+    assert_eq!(snapshot.damage(), paint.damage());
+    assert_eq!(snapshot.input_context(), hit.input_context());
     assert_eq!(
         snapshot.required_resource_kinds(),
         &[ResourceKind::Image, ResourceKind::ShapedTextRun]
     );
-    assert_eq!(
-        snapshot.paint_items().len(),
-        first_paint.scene().items().len()
-    );
-    assert_eq!(snapshot.hit_regions().len(), first_hit.regions().len());
-    assert_eq!(snapshot.mounted_targets(), first_hit.mounted_targets());
+    assert_eq!(snapshot.paint_items().len(), paint.scene().items().len());
+    assert_eq!(snapshot.hit_regions().len(), hit.regions().len());
+    assert_eq!(snapshot.mounted_targets(), hit.mounted_targets());
 
-    for (copied, public) in snapshot
-        .paint_items()
-        .iter()
-        .zip(first_paint.scene().items())
-    {
+    for (copied, public) in snapshot.paint_items().iter().zip(paint.scene().items()) {
         assert_eq!(copied.primitive(), public.primitive());
         assert_eq!(copied.local_to_surface(), public.local_to_surface());
         assert_eq!(copied.clips(), public.clips());
         assert_eq!(copied.opacity(), public.opacity());
         assert_eq!(copied.layer(), public.layer());
     }
+}
 
+fn assert_resource_contract(snapshot: &ConsumerSnapshot) {
     let image = snapshot.paint_items()[3]
         .primitive()
         .as_image()
         .unwrap_or_else(|| unreachable!("fourth canonical item is image"));
     assert_eq!(image.destination(), rect(1.0, 20.0, 8.0, 8.0));
     assert_eq!(image.resource_ref().kind(), ResourceKind::Image);
+
     let first_run = snapshot.paint_items()[4]
         .primitive()
         .as_shaped_text_run()
@@ -346,7 +330,13 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
     assert_eq!(first_run.resource_ref(), second_run.resource_ref());
     assert_eq!(first_run.origin(), second_run.origin());
     assert_ne!(first_run.foreground(), second_run.foreground());
+}
 
+fn assert_interpreters_agree(
+    snapshot: &ConsumerSnapshot,
+    paint: &PaintPublication,
+    hit: &HitTestScene,
+) {
     for sample in [
         point(1.0, 1.0),
         point(5.5, 5.5),
@@ -356,25 +346,33 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
     ] {
         assert_color_close(
             sample_literal_paint(snapshot, sample),
-            reference_sample(first_paint.scene(), sample),
+            reference_sample(paint.scene(), sample),
         );
         let copied_target = snapshot.target_at(sample).cloned();
-        let reference = reference_target(&first_hit, sample);
+        let reference = reference_target(hit, sample);
         assert_eq!(copied_target, reference);
-        assert_eq!(copied_target.as_ref(), first_hit.target_at(sample));
+        assert_eq!(copied_target.as_ref(), hit.target_at(sample));
     }
+}
 
+fn assert_capability_rejection(paint: &PaintPublication, hit: &HitTestScene) {
     let mut unsupported = SceneConsumer::new(SceneCapabilities::default());
-    let error = unsupported
-        .consume(&first_paint, &first_hit)
-        .expect_err("resource-backed fixture must reject empty capabilities");
+    let error = match unsupported.consume(paint, hit) {
+        Err(error) => error,
+        Ok(_) => unreachable!("resource-backed fixture must reject empty capabilities"),
+    };
     assert_eq!(error.resource_kind(), ResourceKind::Image);
+}
 
-    let scale_two = SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::tight(LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO)),
-    )
-    .with_raster_scale(
+fn assert_revision_modes(
+    runtime: &mut AppRuntime<App>,
+    tokens: &StyleTokens,
+    first_paint: &PaintPublication,
+    first_hit: &HitTestScene,
+    downstream: &mut SceneConsumer,
+) {
+    let size = LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO);
+    let scale_two = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size)).with_raster_scale(
         RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
     );
     let second = runtime
@@ -402,11 +400,7 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
     );
 
     let second_revision = second.paint_publication().revision();
-    let scale_three = SurfaceBuildContext::new(
-        &tokens,
-        LayoutConstraints::tight(LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO)),
-    )
-    .with_raster_scale(
+    let scale_three = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size)).with_raster_scale(
         RasterScale::new(3.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
     );
     let third = runtime
@@ -419,7 +413,7 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
 
     let mut lagging = SceneConsumer::new(capabilities());
     let _ = lagging
-        .consume(&first_paint, &first_hit)
+        .consume(first_paint, first_hit)
         .unwrap_or_else(|_| unreachable!("first snapshot is supported"));
     assert_eq!(
         lagging
@@ -427,6 +421,38 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
             .unwrap_or_else(|_| unreachable!("skipped revision still admits full snapshot"))
             .mode(),
         UpdateMode::FullResync
+    );
+}
+
+#[test]
+fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
+    let mut runtime = AppRuntime::<App>::mount(state());
+    let tokens = StyleTokens::new();
+    let size = LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO);
+    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(size));
+    let first = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("first fixture publication is admitted"));
+    let first_paint = first.paint_publication().clone();
+    let first_hit = first.hit_test_scene().clone();
+
+    let mut downstream = SceneConsumer::new(capabilities());
+    let first_consumption = downstream
+        .consume(&first_paint, &first_hit)
+        .unwrap_or_else(|_| unreachable!("declared capabilities satisfy fixture"));
+    assert_eq!(first_consumption.mode(), UpdateMode::FullResync);
+    let snapshot = first_consumption.snapshot();
+
+    assert_snapshot_contract(snapshot, &first_paint, &first_hit);
+    assert_resource_contract(snapshot);
+    assert_interpreters_agree(snapshot, &first_paint, &first_hit);
+    assert_capability_rejection(&first_paint, &first_hit);
+    assert_revision_modes(
+        &mut runtime,
+        &tokens,
+        &first_paint,
+        &first_hit,
+        &mut downstream,
     );
 }
 
