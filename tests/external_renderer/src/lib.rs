@@ -5,6 +5,10 @@
 
 #![forbid(unsafe_code)]
 
+mod literal_paint;
+
+pub use literal_paint::sample_literal_paint;
+
 use runenui_core::{
     LogicalPoint, LogicalSize, LogicalTransform, MountedNodeId, PaintPrimitive, PointerPolicy,
     ResourceKind, SceneLayer, SceneOpacity, SceneShape, SurfaceId, SurfaceInputContext,
