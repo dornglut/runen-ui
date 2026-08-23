@@ -83,9 +83,7 @@ impl PaintRecord {
         let image = self.primitive.as_image()?;
         let destination = image.destination();
         let local = LogicalPoint::new(
-            destination
-                .width()
-                .mul_add(normalized.x(), destination.x()),
+            destination.width().mul_add(normalized.x(), destination.x()),
             destination
                 .height()
                 .mul_add(normalized.y(), destination.y()),
