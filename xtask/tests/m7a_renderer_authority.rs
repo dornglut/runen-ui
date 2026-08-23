@@ -343,7 +343,7 @@ fn framework_use_start(line: &str) -> bool {
     if parts.next() != Some("use") {
         return false;
     }
-    matches!(parts.next(), Some("runenui_core") | Some("runenui_runtime"))
+    matches!(parts.next(), Some("runenui_core" | "runenui_runtime"))
 }
 
 fn framework_crate_in(statement: &str) -> Option<FrameworkCrate> {
