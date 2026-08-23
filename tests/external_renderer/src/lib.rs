@@ -70,6 +70,36 @@ impl PaintRecord {
     pub const fn layer(&self) -> SceneLayer {
         self.layer
     }
+
+    /// Maps one normalized image-domain point into surface-logical coordinates.
+    ///
+    /// The complete closed normalized coordinate square is accepted so callers can
+    /// inspect exact destination edges even though rectangle coverage itself is half-open.
+    #[must_use]
+    pub fn image_surface_point(&self, normalized: LogicalPoint) -> Option<LogicalPoint> {
+        if !(0.0..=1.0).contains(&normalized.x()) || !(0.0..=1.0).contains(&normalized.y()) {
+            return None;
+        }
+        let image = self.primitive.as_image()?;
+        let destination = image.destination();
+        let local = LogicalPoint::new(
+            destination
+                .width()
+                .mul_add(normalized.x(), destination.x()),
+            destination
+                .height()
+                .mul_add(normalized.y(), destination.y()),
+        )
+        .ok()?;
+        self.local_to_surface.transform_point(local)
+    }
+
+    /// Maps the shaped resource-local origin `(0, 0)` into surface-logical coordinates.
+    #[must_use]
+    pub fn shaped_run_surface_origin(&self) -> Option<LogicalPoint> {
+        let run = self.primitive.as_shaped_text_run()?;
+        self.local_to_surface.transform_point(run.origin())
+    }
 }
 
 /// One hit region copied into consumer-owned deterministic state.
