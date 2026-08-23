@@ -330,8 +330,7 @@ fn reference_shape_contains(shape: SceneShape, point: LogicalPoint) -> bool {
 }
 
 fn reference_rect_contains(rect: LogicalRect, point: LogicalPoint) -> bool {
-    (rect.x()..rect.max_x()).contains(&point.x())
-        && (rect.y()..rect.max_y()).contains(&point.y())
+    (rect.x()..rect.max_x()).contains(&point.x()) && (rect.y()..rect.max_y()).contains(&point.y())
 }
 
 fn reference_normalized_radii(rect: LogicalRect, radius: Radius) -> [f64; 4] {
