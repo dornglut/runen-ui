@@ -238,6 +238,17 @@ const RETIRED_M5_AUTHORITIES: &[RetiredAuthoritySpec] = &[
     },
 ];
 
+const RETIRED_M6_AUTHORITIES: &[RetiredAuthoritySpec] = &[
+    RetiredAuthoritySpec {
+        symbol: "WidgetPaintProof",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+    RetiredAuthoritySpec {
+        symbol: "HitTestSnapshot",
+        scope: RetiredAuthorityScope::AnyDeclaration,
+    },
+];
+
 const RETIRED_M5_CODE_PATTERNS: &[&str] = &["SemanticAction::LogicalScroll"];
 const SEMANTIC_ALIAS_TARGETS: &[&str] = &[
     "SemanticAction",
@@ -261,16 +272,19 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<SourceMe
         production_metrics.push((metrics, contents));
     }
 
+    let mut test_metrics = Vec::new();
     for relative in &test_files {
         let contents = read_rust_file(root, relative)?;
         let metrics = module_metrics(relative, &contents);
         add_test_diagnostics(&metrics, findings);
+        test_metrics.push((metrics, contents));
     }
 
     audit_authority_definitions(&production_metrics, findings);
     audit_surface_publication_entrypoint(&production_metrics, findings);
     audit_retired_authorities(&production_metrics, findings);
     audit_retired_m5_authorities(&production_metrics, findings);
+    audit_retired_m6_authorities(&production_metrics, &test_metrics, findings);
 
     Ok(SourceMetrics {
         production_modules: production_files.len(),
@@ -540,6 +554,56 @@ fn audit_retired_m5_authorities(
                         Some(format!("{path}:{line}")),
                         format!(
                             "retired M5 semantic/testing authority `{}` must not be externally re-exported",
+                            retired.symbol
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn audit_retired_m6_authorities(
+    production: &[(ModuleMetrics, String)],
+    tests: &[(ModuleMetrics, String)],
+    findings: &mut Vec<Finding>,
+) {
+    for (metrics, contents) in production.iter().chain(tests) {
+        let path = path_text(&metrics.relative);
+        for (line_index, line) in contents.lines().enumerate() {
+            let Some((symbol, externally_public)) = declaration_symbol(line) else {
+                continue;
+            };
+            let Some(retired) = RETIRED_M6_AUTHORITIES
+                .iter()
+                .find(|retired| retired.symbol == symbol)
+            else {
+                continue;
+            };
+            let forbidden = match retired.scope {
+                RetiredAuthorityScope::AnyDeclaration => true,
+                RetiredAuthorityScope::ExternallyPublicDeclaration => externally_public,
+                RetiredAuthorityScope::PublicReexportOnly => false,
+            };
+            if forbidden {
+                findings.push(Finding::fatal(
+                    "source.retired_m6_authority",
+                    Some(format!("{path}:{}", line_index + 1)),
+                    format!(
+                        "retired M6 proof-era paint/hit authority `{symbol}` must remain removed rather than reappear in framework or downstream source"
+                    ),
+                ));
+            }
+        }
+
+        for (line, statement) in public_reexport_statements(contents) {
+            for retired in RETIRED_M6_AUTHORITIES {
+                if statement_identifiers(&statement).any(|token| token == retired.symbol) {
+                    findings.push(Finding::fatal(
+                        "source.retired_m6_authority",
+                        Some(format!("{path}:{line}")),
+                        format!(
+                            "retired M6 proof-era paint/hit authority `{}` must not be externally re-exported",
                             retired.symbol
                         ),
                     ));
@@ -859,9 +923,9 @@ mod tests {
 
     use super::{
         SURFACE_PUBLICATION_ENTRYPOINT_PATH, audit_retired_authorities,
-        audit_retired_m5_authorities, audit_surface_publication_entrypoint, declaration_symbol,
-        defines_struct, module_metrics, normalized_identifier,
-        rust_code_without_line_comments_or_strings,
+        audit_retired_m5_authorities, audit_retired_m6_authorities,
+        audit_surface_publication_entrypoint, declaration_symbol, defines_struct, module_metrics,
+        normalized_identifier, rust_code_without_line_comments_or_strings,
     };
 
     fn production_source(path: &str, contents: &str) -> (super::ModuleMetrics, String) {
@@ -939,6 +1003,25 @@ mod tests {
         assert_eq!(findings.len(), 4);
         assert!(findings.iter().all(|finding| {
             finding.code == "source.retired_m5_authority"
+                && finding.severity == super::super::Severity::Fatal
+        }));
+    }
+
+    #[test]
+    fn retired_m6_authority_audit_rejects_framework_and_downstream_reintroduction() {
+        let production = vec![production_source(
+            "crates/example/src/lib.rs",
+            "pub struct WidgetPaintProof;\n",
+        )];
+        let downstream = vec![production_source(
+            "tests/external_renderer/src/lib.rs",
+            "struct HitTestSnapshot;\npub use legacy::WidgetPaintProof;\n",
+        )];
+        let mut findings = Vec::new();
+        audit_retired_m6_authorities(&production, &downstream, &mut findings);
+        assert_eq!(findings.len(), 3);
+        assert!(findings.iter().all(|finding| {
+            finding.code == "source.retired_m6_authority"
                 && finding.severity == super::super::Severity::Fatal
         }));
     }

@@ -9,6 +9,7 @@ members = [
     "examples/counter",
 
     "tests/external_widget",
+    "tests/external_renderer",
 
     "xtask",
 ]
