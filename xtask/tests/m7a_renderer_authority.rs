@@ -135,12 +135,12 @@ fn neutral_allow_list_rejects_behavior_authority_by_default() {
 
 #[test]
 fn framework_use_audit_rejects_aliases_wildcards_and_non_neutral_imports() {
-    let source = r#"
+    let source = r"
 use runenui_core::{Color, Element};
 use runenui_runtime::*;
 use runenui_runtime::PaintPublication as Publication;
 let _ = runenui_core::UiApp;
-"#;
+";
     let mut failures = Vec::new();
     audit_framework_authority(Path::new("fixture.rs"), source, &mut failures);
 
@@ -148,6 +148,33 @@ let _ = runenui_core::UiApp;
     assert!(failures.iter().any(|failure| failure.contains("wildcard")));
     assert!(failures.iter().any(|failure| failure.contains("alias")));
     assert!(failures.iter().any(|failure| failure.contains("`UiApp`")));
+}
+
+#[test]
+fn framework_use_audit_rejects_whole_crate_and_extern_crate_aliases() {
+    let source = r"
+use runenui_core as core_api;
+use runenui_runtime as runtime_api;
+extern crate runenui_core as legacy_core;
+";
+    let mut failures = Vec::new();
+    audit_framework_authority(Path::new("fixture.rs"), source, &mut failures);
+
+    assert!(
+        failures
+            .iter()
+            .any(|failure| failure.contains("runenui_core") && failure.contains("alias"))
+    );
+    assert!(
+        failures
+            .iter()
+            .any(|failure| failure.contains("runenui_runtime") && failure.contains("alias"))
+    );
+    assert!(
+        failures
+            .iter()
+            .any(|failure| failure.contains("extern crate") && failure.contains("runenui_core"))
+    );
 }
 
 #[test]
@@ -251,6 +278,14 @@ fn audit_framework_authority(relative: &Path, contents: &str, failures: &mut Vec
 
     for (line_index, line) in contents.lines().enumerate() {
         let code = rust_code_without_line_comments_or_strings(line);
+        if let Some(framework) = extern_crate_framework(&code) {
+            failures.push(format!(
+                "{}:{} uses `extern crate {}`; renderer framework access must use explicit audited imports",
+                relative.display(),
+                line_index + 1,
+                framework.name()
+            ));
+        }
         for framework in [FrameworkCrate::Core, FrameworkCrate::Runtime] {
             for identifier in qualified_framework_identifiers(&code, framework) {
                 if !framework.allows(identifier) {
@@ -304,8 +339,14 @@ fn framework_use_start(line: &str) -> bool {
         .or_else(|| line.strip_prefix("pub(self) "))
         .or_else(|| line.strip_prefix("pub "))
         .unwrap_or(line);
-    declaration.starts_with("use runenui_core::")
-        || declaration.starts_with("use runenui_runtime::")
+    let mut parts = identifiers(declaration);
+    if parts.next() != Some("use") {
+        return false;
+    }
+    matches!(
+        parts.next(),
+        Some("runenui_core") | Some("runenui_runtime")
+    )
 }
 
 fn framework_crate_in(statement: &str) -> Option<FrameworkCrate> {
@@ -319,11 +360,23 @@ fn framework_crate_in(statement: &str) -> Option<FrameworkCrate> {
     }
 }
 
+fn extern_crate_framework(line: &str) -> Option<FrameworkCrate> {
+    let mut parts = identifiers(line);
+    if parts.next() != Some("extern") || parts.next() != Some("crate") {
+        return None;
+    }
+    match parts.next() {
+        Some("runenui_core") => Some(FrameworkCrate::Core),
+        Some("runenui_runtime") => Some(FrameworkCrate::Runtime),
+        _ => None,
+    }
+}
+
 fn import_syntax_identifier(identifier: &str) -> bool {
     matches!(identifier, "pub" | "crate" | "self" | "super" | "use")
 }
 
-fn qualified_framework_identifiers<'a>(code: &'a str, framework: FrameworkCrate) -> Vec<&'a str> {
+fn qualified_framework_identifiers(code: &str, framework: FrameworkCrate) -> Vec<&str> {
     let marker = format!("{}::", framework.name());
     let mut identifiers = Vec::new();
     let mut remaining = code;
