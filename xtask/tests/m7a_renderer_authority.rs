@@ -56,7 +56,9 @@ fn renderer_production_source_has_no_forbidden_behavior_authority() -> Result<()
     files.sort();
 
     if files.is_empty() {
-        return Err(format!("renderer source audit found no Rust files under {RENDERER_SOURCE}"));
+        return Err(format!(
+            "renderer source audit found no Rust files under {RENDERER_SOURCE}"
+        ));
     }
 
     let mut failures = Vec::new();
@@ -159,10 +161,12 @@ mod tests {
 
 fn workspace_root() -> Result<PathBuf, String> {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir
-        .parent()
-        .map(Path::to_path_buf)
-        .ok_or_else(|| format!("xtask manifest directory has no workspace parent: {}", manifest_dir.display()))
+    manifest_dir.parent().map(Path::to_path_buf).ok_or_else(|| {
+        format!(
+            "xtask manifest directory has no workspace parent: {}",
+            manifest_dir.display()
+        )
+    })
 }
 
 fn collect_rust_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
