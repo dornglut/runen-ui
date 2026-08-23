@@ -2,8 +2,7 @@
 mod reference_consumer;
 
 use reference_consumer::{
-    ReferenceConsumer, ReferenceHitRecord, ReferencePaintRecord, ReferenceSnapshot,
-    ReferenceUpdateMode,
+    ReferenceConsumer, ReferencePaintRecord, ReferenceSnapshot, ReferenceUpdateMode,
 };
 use runenui_core::{
     Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
@@ -590,6 +589,33 @@ fn assert_capability_rejection(paint: &PaintPublication, hit: &HitTestScene) {
     }
 }
 
+fn assert_state_loss_resync(
+    downstream: &mut SceneConsumer,
+    reference: &mut ReferenceConsumer,
+    paint: &PaintPublication,
+    hit: &HitTestScene,
+    expected_downstream: &ConsumerSnapshot,
+    expected_reference: &ReferenceSnapshot,
+) {
+    downstream.reset();
+    reference.reset();
+    let state_loss = downstream
+        .consume(paint, hit)
+        .unwrap_or_else(|_| unreachable!("full resync consumes complete current scene"));
+    let reference_state_loss = reference
+        .consume(paint, hit)
+        .unwrap_or_else(|_| unreachable!("reference full resync consumes current scene"));
+    assert_modes_agree(state_loss.mode(), reference_state_loss.mode());
+    assert_eq!(state_loss.snapshot(), expected_downstream);
+    assert_eq!(reference_state_loss.snapshot(), expected_reference);
+    assert_snapshot_contract(
+        state_loss.snapshot(),
+        reference_state_loss.snapshot(),
+        paint,
+        hit,
+    );
+}
+
 fn assert_revision_modes(
     runtime: &mut AppRuntime<App>,
     tokens: &StyleTokens,
@@ -639,26 +665,13 @@ fn assert_revision_modes(
     );
     let contiguous_snapshot = contiguous.snapshot().clone();
     let reference_contiguous_snapshot = reference_contiguous.snapshot().clone();
-
-    downstream.reset();
-    reference.reset();
-    let state_loss = downstream
-        .consume(second.paint_publication(), second.hit_test_scene())
-        .unwrap_or_else(|_| unreachable!("full resync consumes complete current scene"));
-    let reference_state_loss = reference
-        .consume(second.paint_publication(), second.hit_test_scene())
-        .unwrap_or_else(|_| unreachable!("reference full resync consumes current scene"));
-    assert_modes_agree(state_loss.mode(), reference_state_loss.mode());
-    assert_eq!(state_loss.snapshot(), &contiguous_snapshot);
-    assert_eq!(
-        reference_state_loss.snapshot(),
-        &reference_contiguous_snapshot
-    );
-    assert_snapshot_contract(
-        state_loss.snapshot(),
-        reference_state_loss.snapshot(),
+    assert_state_loss_resync(
+        downstream,
+        reference,
         second.paint_publication(),
         second.hit_test_scene(),
+        &contiguous_snapshot,
+        &reference_contiguous_snapshot,
     );
 
     let second_revision = second.paint_publication().revision();
