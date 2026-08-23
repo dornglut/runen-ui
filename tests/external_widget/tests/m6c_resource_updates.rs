@@ -128,6 +128,13 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
         foreground: initial_foreground,
     });
     let tokens = StyleTokens::new();
+    let initial_pump = runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert!(initial_pump.is_quiescent());
 
     let initial = publish(&mut runtime, &tokens);
     let initial_scene = initial.paint_scene().clone();
