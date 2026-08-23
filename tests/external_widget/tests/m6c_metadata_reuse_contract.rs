@@ -46,7 +46,11 @@ impl Widget<Action> for SemanticOnlyProbe {
         PaintContribution::single(PaintContributionItem::fill_rect(rect(), Color::BLACK))
     }
 
-    fn semantics(&self, state: &Self::State, _: SemanticContributionContext) -> SemanticContribution {
+    fn semantics(
+        &self,
+        state: &Self::State,
+        _: SemanticContributionContext,
+    ) -> SemanticContribution {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::Text).with_name(*state),
         )
@@ -142,12 +146,14 @@ fn semantic_only_publication_changes_semantics_without_allocating_a_paint_revisi
 
     let initial = publish(&mut runtime, &context);
     let initial_paint = initial.paint_publication().clone();
-    assert!(initial
-        .semantic_publication()
-        .snapshot()
-        .nodes()
-        .iter()
-        .any(|node| node.name() == Some("before")));
+    assert!(
+        initial
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .any(|node| node.name() == Some("before"))
+    );
 
     runtime
         .submit_action(Action::Rename("after"))
@@ -164,12 +170,14 @@ fn semantic_only_publication_changes_semantics_without_allocating_a_paint_revisi
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Semantics]
     );
-    assert!(changed
-        .semantic_publication()
-        .snapshot()
-        .nodes()
-        .iter()
-        .any(|node| node.name() == Some("after")));
+    assert!(
+        changed
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .iter()
+            .any(|node| node.name() == Some("after"))
+    );
     assert_eq!(changed.paint_publication(), &initial_paint);
     assert_eq!(
         changed.paint_publication().revision(),
@@ -189,7 +197,10 @@ fn consumer_without_prior_runenui_state_reprocesses_the_complete_current_snapsho
 
     let initial = publish(&mut runtime, &base_context);
     let scaled = publish(&mut runtime, &scaled_context);
-    assert_eq!(scaled.paint_publication().scene(), initial.paint_publication().scene());
+    assert_eq!(
+        scaled.paint_publication().scene(),
+        initial.paint_publication().scene()
+    );
     assert_eq!(
         scaled.paint_publication().base_revision(),
         Some(initial.paint_publication().revision())
@@ -208,6 +219,12 @@ fn consumer_without_prior_runenui_state_reprocesses_the_complete_current_snapsho
         ConsumerPlan::FullSnapshot
     );
     assert_eq!(scaled.paint_publication().raster_scale(), scale_two);
-    assert_eq!(scaled.paint_publication().logical_size(), initial.paint_publication().logical_size());
-    assert_eq!(scaled.paint_publication().scene(), initial.paint_publication().scene());
+    assert_eq!(
+        scaled.paint_publication().logical_size(),
+        initial.paint_publication().logical_size()
+    );
+    assert_eq!(
+        scaled.paint_publication().scene(),
+        initial.paint_publication().scene()
+    );
 }
