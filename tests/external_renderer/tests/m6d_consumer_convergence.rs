@@ -461,6 +461,16 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
 #[test]
 fn testing_harness_exposes_the_same_ordinary_public_products_without_fabricated_context() {
     let mut harness = TestHarness::<App>::mount(state());
+    assert!(
+        harness
+            .pump(PumpBudget::new(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ))
+            .is_quiescent()
+    );
     let publication = harness
         .publish()
         .unwrap_or_else(|_| unreachable!("harness publication is admitted"))
