@@ -1,7 +1,10 @@
 use core::num::NonZeroUsize;
 
-use runenui_core::{SemanticAction, SemanticRole};
-use runenui_runtime::{PumpBudget, SemanticUpdateResult};
+use runenui_core::{
+    ElementId, PointerButton, PointerButtons, PointerDeviceKind, PointerId, PointerPhase,
+    SemanticAction, SemanticRole,
+};
+use runenui_runtime::{LogicalPoint, PumpBudget, SemanticUpdateResult, TraceRecordKind};
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
 
 #[path = "../../../examples/counter/src/app.rs"]
@@ -79,4 +82,96 @@ fn real_counter_uses_public_semantic_query_action_publication_and_replay() {
 
     assert!(!harness.trace_jsonl().is_empty());
     assert!(harness.trace_replay().is_ok());
+}
+
+#[test]
+fn harness_point_input_converges_on_the_latest_public_scene_and_context() {
+    let mut harness = TestHarness::<CounterApp>::mount(Counter::new());
+    let publication = harness
+        .publish()
+        .unwrap_or_else(|_| unreachable!("counter publication is admitted"))
+        .clone();
+
+    let authored = ElementId::new("counter.increment")
+        .unwrap_or_else(|_| unreachable!("fixture element id is valid"));
+    let button = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("counter increment button is published"));
+    let bounds = button.bounds();
+    let input_point = LogicalPoint::new(
+        bounds.x() + bounds.width() / 2.0,
+        bounds.y() + bounds.height() / 2.0,
+    )
+    .unwrap_or_else(|_| unreachable!("published button center is finite"));
+
+    assert!(!publication.paint_scene().is_empty());
+    assert_eq!(
+        harness
+            .publication()
+            .unwrap_or_else(|| unreachable!("harness retains the accepted publication"))
+            .paint_publication()
+            .revision(),
+        publication.paint_publication().revision()
+    );
+    assert_eq!(
+        harness
+            .input_context()
+            .unwrap_or_else(|_| unreachable!("publication exposes exact input context")),
+        publication.input_context()
+    );
+
+    let expected_target = publication
+        .hit_test_scene()
+        .target_at(input_point)
+        .cloned()
+        .unwrap_or_else(|| unreachable!("button center resolves through the public hit scene"));
+    assert_eq!(&expected_target, button.id());
+    assert!(
+        publication
+            .hit_test_scene()
+            .contains_mounted_target(&expected_target)
+    );
+
+    let pointer = harness
+        .pointer_event(
+            PointerId::new(1).unwrap_or_else(|| unreachable!("pointer id is non-zero")),
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            input_point,
+        )
+        .unwrap_or_else(|_| unreachable!("harness derives input from the latest public context"))
+        .with_changed_button(PointerButton::Primary)
+        .with_buttons(PointerButtons::new([PointerButton::Primary]));
+    assert_eq!(pointer.surface_context(), publication.input_context());
+
+    let sequence = harness
+        .submit_pointer(pointer)
+        .unwrap_or_else(|_| unreachable!("exact-context pointer is admitted"))
+        .sequence();
+    assert_eq!(
+        harness
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    let resolved = harness
+        .trace()
+        .records()
+        .find(|record| {
+            record.work_sequence() == Some(sequence)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerPhysicalTargetResolved
+                )
+        })
+        .unwrap_or_else(|| unreachable!("runtime traces public-scene physical target resolution"));
+    assert_eq!(
+        resolved
+            .target()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
+        Some(&expected_target)
+    );
 }
