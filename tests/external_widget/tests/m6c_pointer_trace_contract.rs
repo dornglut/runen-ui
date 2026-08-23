@@ -64,9 +64,8 @@ impl Widget<()> for UpperRegion {
     fn hit_test(&self, (): &Self::State, _: HitContributionContext) -> HitContribution {
         let region = match self.0 {
             UpperMode::Singular => {
-                let singular_overlay =
-                    LogicalTransform::try_new(0.0, 0.0, 0.0, 1.0, 0.0, -20.0)
-                        .unwrap_or_else(|_| unreachable!("test singular transform is finite"));
+                let singular_overlay = LogicalTransform::try_new(0.0, 0.0, 0.0, 1.0, 0.0, -20.0)
+                    .unwrap_or_else(|_| unreachable!("test singular transform is finite"));
                 HitRegion::rect(rect()).with_transform(singular_overlay)
             }
             UpperMode::Block => {
@@ -135,10 +134,7 @@ fn authored_target(publication: &SurfacePublication, authored: &str) -> MountedN
         .frame()
         .nodes()
         .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == authored)
-        })
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == authored))
         .unwrap_or_else(|| unreachable!("authored fixture node is published"))
         .id()
         .clone()
@@ -181,16 +177,18 @@ fn singular_top_region_falls_through_to_next_region_and_pointer_trace_names_that
         .frame()
         .nodes()
         .iter()
-        .find(|node| {
-            node.authored_id()
-                .is_some_and(|id| id.as_str() == "upper")
-        })
+        .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "upper"))
         .unwrap_or_else(|| unreachable!("upper fixture node is published"));
 
-    assert!(upper.diagnostics().iter().any(|diagnostic| {
-        diagnostic.code() == "runenui.scene.hit-transform-non-invertible"
-    }));
-    assert_eq!(publication.hit_test_scene().target_at(point()), Some(&lower));
+    assert!(
+        upper.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code() == "runenui.scene.hit-transform-non-invertible"
+        })
+    );
+    assert_eq!(
+        publication.hit_test_scene().target_at(point()),
+        Some(&lower)
+    );
 
     let sequence = submit_down(&mut runtime, &publication);
     let resolved = runtime
@@ -198,7 +196,10 @@ fn singular_top_region_falls_through_to_next_region_and_pointer_trace_names_that
         .records()
         .find(|record| {
             record.work_sequence() == Some(sequence)
-                && matches!(record.kind(), TraceRecordKind::PointerPhysicalTargetResolved)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerPhysicalTargetResolved
+                )
         })
         .unwrap_or_else(|| unreachable!("pointer physical resolution is traced"));
     assert_eq!(
@@ -240,7 +241,10 @@ fn block_region_occludes_lower_target_and_pointer_trace_proves_no_route() {
         .records()
         .find(|record| {
             record.work_sequence() == Some(sequence)
-                && matches!(record.kind(), TraceRecordKind::PointerPhysicalTargetResolved)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerPhysicalTargetResolved
+                )
         })
         .unwrap_or_else(|| unreachable!("blocked physical resolution is traced"));
     assert!(resolved.target().is_none());
@@ -250,6 +254,9 @@ fn block_region_occludes_lower_target_and_pointer_trace_proves_no_route() {
     }));
     assert!(runtime.trace().records().any(|record| {
         record.work_sequence() == Some(sequence)
-            && matches!(record.kind(), TraceRecordKind::PointerInteractionCommitted { .. })
+            && matches!(
+                record.kind(),
+                TraceRecordKind::PointerInteractionCommitted { .. }
+            )
     }));
 }
