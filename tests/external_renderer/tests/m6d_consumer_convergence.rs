@@ -1,16 +1,23 @@
+#[path = "support/reference_consumer.rs"]
+mod reference_consumer;
+
+use reference_consumer::{
+    ReferenceConsumer, ReferenceHitRecord, ReferencePaintRecord, ReferenceSnapshot,
+    ReferenceUpdateMode,
+};
 use runenui_core::{
     Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
     IntoEffects, LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform,
-    NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem,
-    PaintPrimitive, PointerPolicy, Radius, ResourceKind, ResourceRef, SceneLayer, SceneOpacity,
-    SceneShape, StyleTokens, UiApp, View, Widget, WidgetMeasure,
+    MountedNodeId, NoHostProtocol, PaintContribution, PaintContributionContext,
+    PaintContributionItem, PaintPrimitive, PointerPolicy, Radius, ResourceKind, ResourceRef,
+    SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp, View, Widget, WidgetMeasure,
 };
 use runenui_external_renderer_conformance::{
     ConsumerSnapshot, SceneConsumer, UpdateMode, sample_literal_paint,
 };
 use runenui_runtime::{
-    AppRuntime, HitTestScene, LayoutConstraints, PaintPublication, PaintScene, PaintSceneItem,
-    RasterScale, SceneCapabilities, SurfaceBuildContext,
+    AppRuntime, HitTestScene, LayoutConstraints, PaintPublication, RasterScale, SceneCapabilities,
+    SurfaceBuildContext,
 };
 
 #[derive(Debug)]
@@ -147,16 +154,16 @@ fn capabilities() -> SceneCapabilities {
     SceneCapabilities::new([ResourceKind::Image, ResourceKind::ShapedTextRun])
 }
 
-fn reference_sample(scene: &PaintScene, surface_point: LogicalPoint) -> [f32; 4] {
-    scene
-        .items()
+fn reference_sample(snapshot: &ReferenceSnapshot, surface_point: LogicalPoint) -> [f32; 4] {
+    snapshot
+        .paint_items()
         .iter()
         .filter_map(|item| reference_literal_source(item, surface_point))
         .fold([0.0; 4], reference_source_over)
 }
 
 fn reference_literal_source(
-    item: &PaintSceneItem,
+    item: &ReferencePaintRecord,
     surface_point: LogicalPoint,
 ) -> Option<(Color, f32)> {
     let local_point = item
@@ -245,10 +252,10 @@ fn reference_srgb_to_linear(channel: u8) -> f32 {
 }
 
 fn reference_target(
-    scene: &HitTestScene,
+    snapshot: &ReferenceSnapshot,
     surface_point: LogicalPoint,
-) -> Option<runenui_core::MountedNodeId> {
-    for region in scene.regions().iter().rev() {
+) -> Option<MountedNodeId> {
+    for region in snapshot.hit_regions().iter().rev() {
         let Some(local_point) = region
             .local_to_surface()
             .inverse()
@@ -359,7 +366,7 @@ fn reference_normalized_radii(rect: LogicalRect, radius: Radius) -> [f64; 4] {
 }
 
 fn reference_image_surface_point(
-    item: &PaintSceneItem,
+    item: &ReferencePaintRecord,
     normalized: LogicalPoint,
 ) -> Option<LogicalPoint> {
     if !(0.0..=1.0).contains(&normalized.x()) || !(0.0..=1.0).contains(&normalized.y()) {
@@ -377,7 +384,7 @@ fn reference_image_surface_point(
     item.local_to_surface().transform_point(local)
 }
 
-fn reference_shaped_run_surface_origin(item: &PaintSceneItem) -> Option<LogicalPoint> {
+fn reference_shaped_run_surface_origin(item: &ReferencePaintRecord) -> Option<LogicalPoint> {
     let run = item.primitive().as_shaped_text_run()?;
     item.local_to_surface().transform_point(run.origin())
 }
@@ -391,69 +398,124 @@ fn assert_color_close(actual: [f32; 4], expected: [f32; 4]) {
     }
 }
 
+fn assert_modes_agree(actual: UpdateMode, reference: ReferenceUpdateMode) {
+    assert!(
+        matches!(
+            (actual, reference),
+            (UpdateMode::FullResync, ReferenceUpdateMode::FullResync)
+                | (UpdateMode::ExactBaseMatch, ReferenceUpdateMode::ExactBaseMatch)
+                | (UpdateMode::AlreadyCurrent, ReferenceUpdateMode::AlreadyCurrent)
+        ),
+        "consumer revision modes diverged: {actual:?} != {reference:?}"
+    );
+}
+
 fn assert_snapshot_contract(
     snapshot: &ConsumerSnapshot,
+    reference: &ReferenceSnapshot,
     paint: &PaintPublication,
     hit: &HitTestScene,
 ) {
-    assert_eq!(snapshot.surface_id(), paint.surface_id());
-    assert_eq!(snapshot.revision(), paint.revision());
-    assert_eq!(snapshot.base_revision(), paint.base_revision());
-    assert_eq!(snapshot.logical_size(), paint.logical_size());
-    assert_eq!(snapshot.raster_scale(), paint.raster_scale());
-    assert_eq!(snapshot.damage(), paint.damage());
-    assert_eq!(snapshot.input_context(), hit.input_context());
+    assert_eq!(snapshot.surface_id(), reference.surface_id());
+    assert_eq!(reference.surface_id(), paint.surface_id());
+    assert_eq!(snapshot.revision(), reference.revision());
+    assert_eq!(reference.revision(), paint.revision());
+    assert_eq!(snapshot.base_revision(), reference.base_revision());
+    assert_eq!(reference.base_revision(), paint.base_revision());
+    assert_eq!(snapshot.logical_size(), reference.logical_size());
+    assert_eq!(reference.logical_size(), paint.logical_size());
+    assert_eq!(snapshot.raster_scale(), reference.raster_scale());
+    assert_eq!(reference.raster_scale(), paint.raster_scale());
+    assert_eq!(snapshot.damage(), reference.damage());
+    assert_eq!(reference.damage(), paint.damage());
+    assert_eq!(snapshot.input_context(), reference.input_context());
+    assert_eq!(reference.input_context(), hit.input_context());
+
+    let requirements = paint.scene().requirements();
+    assert_eq!(
+        snapshot.required_resource_kinds(),
+        reference.required_resource_kinds()
+    );
+    assert_eq!(
+        reference.required_resource_kinds(),
+        requirements.resource_kinds()
+    );
+    assert_eq!(snapshot.paint_items().len(), reference.paint_items().len());
+    assert_eq!(reference.paint_items().len(), paint.scene().items().len());
+    assert_eq!(snapshot.hit_regions().len(), reference.hit_regions().len());
+    assert_eq!(reference.hit_regions().len(), hit.regions().len());
+    assert_eq!(snapshot.mounted_targets(), reference.mounted_targets());
+    assert_eq!(reference.mounted_targets(), hit.mounted_targets());
+
+    for ((copied, reference), public) in snapshot
+        .paint_items()
+        .iter()
+        .zip(reference.paint_items())
+        .zip(paint.scene().items())
+    {
+        assert_eq!(copied.primitive(), reference.primitive());
+        assert_eq!(reference.primitive(), public.primitive());
+        assert_eq!(copied.local_to_surface(), reference.local_to_surface());
+        assert_eq!(reference.local_to_surface(), public.local_to_surface());
+        assert_eq!(copied.clips(), reference.clips());
+        assert_eq!(reference.clips(), public.clips());
+        assert_eq!(copied.opacity(), reference.opacity());
+        assert_eq!(reference.opacity(), public.opacity());
+        assert_eq!(copied.layer(), reference.layer());
+        assert_eq!(reference.layer(), public.layer());
+    }
+    for ((copied, reference), public) in snapshot
+        .hit_regions()
+        .iter()
+        .zip(reference.hit_regions())
+        .zip(hit.regions())
+    {
+        assert_eq!(copied.target(), reference.target());
+        assert_eq!(reference.target(), public.target());
+        assert_eq!(copied.shape(), reference.shape());
+        assert_eq!(reference.shape(), public.shape());
+        assert_eq!(copied.local_to_surface(), reference.local_to_surface());
+        assert_eq!(reference.local_to_surface(), public.local_to_surface());
+        assert_eq!(copied.clips(), reference.clips());
+        assert_eq!(reference.clips(), public.clips());
+        assert_eq!(copied.layer(), reference.layer());
+        assert_eq!(reference.layer(), public.layer());
+        assert_eq!(copied.pointer_policy(), reference.pointer_policy());
+        assert_eq!(reference.pointer_policy(), public.pointer_policy());
+    }
+}
+
+fn assert_resource_contract(snapshot: &ConsumerSnapshot, reference: &ReferenceSnapshot) {
     assert_eq!(
         snapshot.required_resource_kinds(),
         &[ResourceKind::Image, ResourceKind::ShapedTextRun]
     );
-    assert_eq!(snapshot.paint_items().len(), paint.scene().items().len());
-    assert_eq!(snapshot.hit_regions().len(), hit.regions().len());
-    assert_eq!(snapshot.mounted_targets(), hit.mounted_targets());
 
-    for (copied, public) in snapshot.paint_items().iter().zip(paint.scene().items()) {
-        assert_eq!(copied.primitive(), public.primitive());
-        assert_eq!(copied.local_to_surface(), public.local_to_surface());
-        assert_eq!(copied.clips(), public.clips());
-        assert_eq!(copied.opacity(), public.opacity());
-        assert_eq!(copied.layer(), public.layer());
-    }
-    for (copied, public) in snapshot.hit_regions().iter().zip(hit.regions()) {
-        assert_eq!(copied.target(), public.target());
-        assert_eq!(copied.shape(), public.shape());
-        assert_eq!(copied.local_to_surface(), public.local_to_surface());
-        assert_eq!(copied.clips(), public.clips());
-        assert_eq!(copied.layer(), public.layer());
-        assert_eq!(copied.pointer_policy(), public.pointer_policy());
-    }
-}
-
-fn assert_resource_contract(snapshot: &ConsumerSnapshot, paint: &PaintPublication) {
     let image_record = &snapshot.paint_items()[3];
+    let reference_image_record = &reference.paint_items()[3];
     let image = image_record
         .primitive()
         .as_image()
         .unwrap_or_else(|| unreachable!("fourth canonical item is image"));
-    let public_image_item = &paint.scene().items()[3];
     assert_eq!(image.destination(), rect(1.0, 20.0, 8.0, 8.0));
     assert_eq!(image.resource_ref().kind(), ResourceKind::Image);
-    assert_eq!(
-        image.resource_ref(),
-        public_image_item
-            .primitive()
-            .resource_ref()
-            .unwrap_or_else(|| unreachable!("public item is resource-backed"))
-    );
+    assert_eq!(image_record.primitive(), reference_image_record.primitive());
     for normalized in [point(0.0, 0.0), point(0.5, 0.5), point(1.0, 1.0)] {
         assert_eq!(
             image_record.image_surface_point(normalized),
-            reference_image_surface_point(public_image_item, normalized)
+            reference_image_surface_point(reference_image_record, normalized)
         );
     }
     assert_eq!(image_record.image_surface_point(point(1.01, 0.5)), None);
+    assert_eq!(
+        reference_image_surface_point(reference_image_record, point(1.01, 0.5)),
+        None
+    );
 
     let first_record = &snapshot.paint_items()[4];
     let second_record = &snapshot.paint_items()[5];
+    let reference_first = &reference.paint_items()[4];
+    let reference_second = &reference.paint_items()[5];
     let first_run = first_record
         .primitive()
         .as_shaped_text_run()
@@ -465,29 +527,21 @@ fn assert_resource_contract(snapshot: &ConsumerSnapshot, paint: &PaintPublicatio
     assert_eq!(first_run.resource_ref(), second_run.resource_ref());
     assert_eq!(first_run.origin(), second_run.origin());
     assert_ne!(first_run.foreground(), second_run.foreground());
+    assert_eq!(first_record.primitive(), reference_first.primitive());
+    assert_eq!(second_record.primitive(), reference_second.primitive());
     assert_eq!(
         first_record.shaped_run_surface_origin(),
-        reference_shaped_run_surface_origin(&paint.scene().items()[4])
+        reference_shaped_run_surface_origin(reference_first)
     );
     assert_eq!(
         second_record.shaped_run_surface_origin(),
-        reference_shaped_run_surface_origin(&paint.scene().items()[5])
+        reference_shaped_run_surface_origin(reference_second)
     );
-    let public_first = paint.scene().items()[4]
-        .primitive()
-        .as_shaped_text_run()
-        .unwrap_or_else(|| unreachable!("public fifth item is shaped run"));
-    let public_second = paint.scene().items()[5]
-        .primitive()
-        .as_shaped_text_run()
-        .unwrap_or_else(|| unreachable!("public sixth item is shaped run"));
-    assert_eq!(first_run.foreground(), public_first.foreground());
-    assert_eq!(second_run.foreground(), public_second.foreground());
 }
 
 fn assert_interpreters_agree(
     snapshot: &ConsumerSnapshot,
-    paint: &PaintPublication,
+    reference: &ReferenceSnapshot,
     hit: &HitTestScene,
 ) {
     for sample in [
@@ -499,11 +553,11 @@ fn assert_interpreters_agree(
     ] {
         assert_color_close(
             sample_literal_paint(snapshot, sample),
-            reference_sample(paint.scene(), sample),
+            reference_sample(reference, sample),
         );
         let copied_target = snapshot.target_at(sample).cloned();
-        let reference = reference_target(hit, sample);
-        assert_eq!(copied_target, reference);
+        let reference_target = reference_target(reference, sample);
+        assert_eq!(copied_target, reference_target);
         assert_eq!(copied_target.as_ref(), hit.target_at(sample));
     }
 }
@@ -516,11 +570,17 @@ fn assert_capability_rejection(paint: &PaintPublication, hit: &HitTestScene) {
             ResourceKind::ShapedTextRun,
         ),
     ] {
-        let mut unsupported = SceneConsumer::new(capabilities);
-        let Err(error) = unsupported.consume(paint, hit) else {
+        let mut downstream = SceneConsumer::new(capabilities.clone());
+        let Err(error) = downstream.consume(paint, hit) else {
             unreachable!("resource-backed fixture must reject incomplete capabilities");
         };
         assert_eq!(error.resource_kind(), expected_missing);
+
+        let mut reference = ReferenceConsumer::new(capabilities);
+        let Err(reference_error) = reference.consume(paint, hit) else {
+            unreachable!("reference consumer must reject incomplete capabilities");
+        };
+        assert_eq!(reference_error, expected_missing);
     }
 }
 
@@ -530,14 +590,16 @@ fn assert_revision_modes(
     first_paint: &PaintPublication,
     first_hit: &HitTestScene,
     downstream: &mut SceneConsumer,
+    reference: &mut ReferenceConsumer,
 ) {
-    assert_eq!(
-        downstream
-            .consume(first_paint, first_hit)
-            .unwrap_or_else(|_| unreachable!("identical supported publication remains consumable"))
-            .mode(),
-        UpdateMode::AlreadyCurrent
-    );
+    let same = downstream
+        .consume(first_paint, first_hit)
+        .unwrap_or_else(|_| unreachable!("identical supported publication remains consumable"));
+    let reference_same = reference
+        .consume(first_paint, first_hit)
+        .unwrap_or_else(|_| unreachable!("reference consumer supports identical publication"));
+    assert_modes_agree(same.mode(), reference_same.mode());
+    assert_snapshot_contract(same.snapshot(), reference_same.snapshot(), first_paint, first_hit);
 
     let size = LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO);
     let scale_two = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
@@ -554,20 +616,39 @@ fn assert_revision_modes(
     let contiguous = downstream
         .consume(second.paint_publication(), second.hit_test_scene())
         .unwrap_or_else(|_| unreachable!("declared capabilities satisfy fixture"));
-    assert_eq!(contiguous.mode(), UpdateMode::ExactBaseMatch);
+    let reference_contiguous = reference
+        .consume(second.paint_publication(), second.hit_test_scene())
+        .unwrap_or_else(|_| unreachable!("reference capabilities satisfy fixture"));
+    assert_modes_agree(contiguous.mode(), reference_contiguous.mode());
     assert_snapshot_contract(
         contiguous.snapshot(),
+        reference_contiguous.snapshot(),
         second.paint_publication(),
         second.hit_test_scene(),
     );
     let contiguous_snapshot = contiguous.snapshot().clone();
+    let reference_contiguous_snapshot = reference_contiguous.snapshot().clone();
 
     downstream.reset();
+    reference.reset();
     let state_loss = downstream
         .consume(second.paint_publication(), second.hit_test_scene())
         .unwrap_or_else(|_| unreachable!("full resync consumes complete current scene"));
-    assert_eq!(state_loss.mode(), UpdateMode::FullResync);
+    let reference_state_loss = reference
+        .consume(second.paint_publication(), second.hit_test_scene())
+        .unwrap_or_else(|_| unreachable!("reference full resync consumes current scene"));
+    assert_modes_agree(state_loss.mode(), reference_state_loss.mode());
     assert_eq!(state_loss.snapshot(), &contiguous_snapshot);
+    assert_eq!(
+        reference_state_loss.snapshot(),
+        &reference_contiguous_snapshot
+    );
+    assert_snapshot_contract(
+        state_loss.snapshot(),
+        reference_state_loss.snapshot(),
+        second.paint_publication(),
+        second.hit_test_scene(),
+    );
 
     let second_revision = second.paint_publication().revision();
     let scale_three = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
@@ -583,25 +664,47 @@ fn assert_revision_modes(
     );
 
     let mut lagging = SceneConsumer::new(capabilities());
+    let mut reference_lagging = ReferenceConsumer::new(capabilities());
     let _ = lagging
         .consume(first_paint, first_hit)
         .unwrap_or_else(|_| unreachable!("first snapshot is supported"));
+    let _ = reference_lagging
+        .consume(first_paint, first_hit)
+        .unwrap_or_else(|_| unreachable!("reference first snapshot is supported"));
     let skipped = lagging
         .consume(third.paint_publication(), third.hit_test_scene())
         .unwrap_or_else(|_| unreachable!("skipped revision still admits full snapshot"));
-    assert_eq!(skipped.mode(), UpdateMode::FullResync);
+    let reference_skipped = reference_lagging
+        .consume(third.paint_publication(), third.hit_test_scene())
+        .unwrap_or_else(|_| unreachable!("reference skipped revision admits full snapshot"));
+    assert_modes_agree(skipped.mode(), reference_skipped.mode());
     assert_snapshot_contract(
         skipped.snapshot(),
+        reference_skipped.snapshot(),
         third.paint_publication(),
         third.hit_test_scene(),
     );
 
     let mut fresh = SceneConsumer::new(capabilities());
+    let mut reference_fresh = ReferenceConsumer::new(capabilities());
     let fresh_third = fresh
         .consume(third.paint_publication(), third.hit_test_scene())
         .unwrap_or_else(|_| unreachable!("fresh consumer admits complete current snapshot"));
-    assert_eq!(fresh_third.mode(), UpdateMode::FullResync);
+    let reference_fresh_third = reference_fresh
+        .consume(third.paint_publication(), third.hit_test_scene())
+        .unwrap_or_else(|_| unreachable!("fresh reference consumer admits current snapshot"));
+    assert_modes_agree(fresh_third.mode(), reference_fresh_third.mode());
     assert_eq!(skipped.snapshot(), fresh_third.snapshot());
+    assert_eq!(
+        reference_skipped.snapshot(),
+        reference_fresh_third.snapshot()
+    );
+    assert_snapshot_contract(
+        fresh_third.snapshot(),
+        reference_fresh_third.snapshot(),
+        third.paint_publication(),
+        third.hit_test_scene(),
+    );
 }
 
 #[test]
@@ -617,15 +720,20 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
     let first_hit = first.hit_test_scene().clone();
 
     let mut downstream = SceneConsumer::new(capabilities());
+    let mut reference = ReferenceConsumer::new(capabilities());
     let first_consumption = downstream
         .consume(&first_paint, &first_hit)
         .unwrap_or_else(|_| unreachable!("declared capabilities satisfy fixture"));
-    assert_eq!(first_consumption.mode(), UpdateMode::FullResync);
-    let snapshot = first_consumption.snapshot();
+    let reference_first = reference
+        .consume(&first_paint, &first_hit)
+        .unwrap_or_else(|_| unreachable!("reference capabilities satisfy fixture"));
+    assert_modes_agree(first_consumption.mode(), reference_first.mode());
 
-    assert_snapshot_contract(snapshot, &first_paint, &first_hit);
-    assert_resource_contract(snapshot, &first_paint);
-    assert_interpreters_agree(snapshot, &first_paint, &first_hit);
+    let snapshot = first_consumption.snapshot();
+    let reference_snapshot = reference_first.snapshot();
+    assert_snapshot_contract(snapshot, reference_snapshot, &first_paint, &first_hit);
+    assert_resource_contract(snapshot, reference_snapshot);
+    assert_interpreters_agree(snapshot, reference_snapshot, &first_hit);
     assert_capability_rejection(&first_paint, &first_hit);
     assert_revision_modes(
         &mut runtime,
@@ -633,5 +741,6 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
         &first_paint,
         &first_hit,
         &mut downstream,
+        &mut reference,
     );
 }
