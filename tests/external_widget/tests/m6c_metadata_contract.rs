@@ -1,10 +1,10 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, Element, HitContribution, HitContributionContext, HitRegion, LogicalLength, LogicalPoint,
-    LogicalRect, LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionItem, StyleTokens, UiApp, Widget, WidgetInvalidation, WidgetMeasure,
-    WidgetUpdateContext,
+    Color, Element, HitContribution, HitContributionContext, HitRegion, LogicalLength,
+    LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
+    PaintContributionContext, PaintContributionItem, StyleTokens, UiApp, Widget,
+    WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_runtime::{
     AppRuntime, PaintDamage, PaintPublication, PaintRevision, PumpBudget, RasterScale,
@@ -144,10 +144,7 @@ impl Consumer {
 fn raster_scale_is_finite_positive_and_defaults_to_one() {
     assert_eq!(RasterScale::default(), RasterScale::ONE);
     assert_eq!(RasterScale::ONE.get().to_bits(), 1.0_f32.to_bits());
-    assert_eq!(
-        RasterScale::new(f32::NAN),
-        Err(RasterScaleError::NotFinite)
-    );
+    assert_eq!(RasterScale::new(f32::NAN), Err(RasterScaleError::NotFinite));
     assert_eq!(
         RasterScale::new(f32::INFINITY),
         Err(RasterScaleError::NotFinite)
@@ -175,8 +172,8 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     let tokens = StyleTokens::new();
     let logical_size = size(20.0, 20.0);
     let larger_size = size(30.0, 20.0);
-    let scale_two = RasterScale::new(2.0)
-        .unwrap_or_else(|_| unreachable!("test raster scale is valid"));
+    let scale_two =
+        RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("test raster scale is valid"));
     let sample = point(5.0, 5.0);
 
     let mut runtime = AppRuntime::<App>::mount(State {
@@ -224,7 +221,8 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     assert!(runtime.last_surface_phase_report().executed().is_empty());
     assert_eq!(repeated_scaled.paint_publication(), scaled_paint);
 
-    let larger_context = SurfaceBuildContext::tight(&tokens, larger_size).with_raster_scale(scale_two);
+    let larger_context =
+        SurfaceBuildContext::tight(&tokens, larger_size).with_raster_scale(scale_two);
     let resized = publish(&mut runtime, &larger_context);
     let resized_paint = resized.paint_publication();
     assert_eq!(resized_paint.scene(), scaled_paint.scene());
