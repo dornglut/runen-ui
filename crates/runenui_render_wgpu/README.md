@@ -11,16 +11,19 @@ alpha and validated item opacity. A transform whose canonical
 `LogicalTransform::inverse()` is unavailable contributes no paint coverage rather
 than falling back to the source rectangle. For an invertible transform, finite
 f32 scene components are widened only inside the renderer to f64 for affine edge
-construction and raster scaling; the resulting convex polygon is clipped to the
-finite target before conversion to the GPU f32 vertex ABI and triangulation. This
-preserves a visible target intersection even when an irrelevant remote forward
-`LogicalPoint` mapping would overflow f32, without replacing transformed geometry
-with an axis-aligned bounding box. Stroke, image, shaped-text, unknown primitive,
-and all clip semantics remain unsupported. Canonical
-`SceneRequirements`/`SceneCapabilities` continue to check resource kinds only;
-the narrower implementation-subset validation and its detailed reasons remain
-renderer-internal. The public render error reports an unsupported scene without
-making temporary implementation progress part of the lasting API.
+construction and raster scaling. The resulting convex polygon is clipped to the
+exact continuous raster canvas defined by `logical_size * RasterScale` before
+conversion to the GPU f32 vertex ABI and triangulation. The integer texture
+extent is the ceil-rounded storage/readback extent only; fractional-scale padding
+never becomes logical paint coverage. This preserves a visible canvas
+intersection even when an irrelevant remote forward `LogicalPoint` mapping would
+overflow f32, without replacing transformed geometry with an axis-aligned
+bounding box. Stroke, image, shaped-text, unknown primitive, and all clip
+semantics remain unsupported. Canonical `SceneRequirements`/`SceneCapabilities`
+continue to check resource kinds only; the narrower implementation-subset
+validation and its detailed reasons remain renderer-internal. The public render
+error reports an unsupported scene without making temporary implementation
+progress part of the lasting API.
 
 An offscreen target retains its texture, extent, format, and successful
 publication lineage as one realization. `AlreadyCurrent` and `ExactBaseMatch`
@@ -93,11 +96,14 @@ path.
 The real-GPU scale proof renders identical 64x48 logical two-rectangle geometry
 at scales 1.0 and 2.0, producing 64x48 and 128x96 targets with corresponding
 background, rectangle-only, and overlap probes. Scale changes target
-realization, never logical geometry. PNG round-trip proof uses the 2.0 output.
-An independent test-only scalar oracle checks selected translucent interior
-pixels without traversing scenes or rasterizing geometry. Opaque, clear, and
-zero-opacity probes remain exact; translucent probes allow at most one byte per
-channel for f64 oracle versus GPU f32 blend and UNORM-storage rounding.
+realization, never logical geometry. An adapter-independent fractional-scale
+regression additionally proves that the production affine path clips at the
+exact continuous raster canvas while the texture independently rounds up for
+storage. PNG round-trip proof uses the 2.0 output. An independent test-only scalar
+oracle checks selected translucent interior pixels without traversing scenes or
+rasterizing geometry. Opaque, clear, and zero-opacity probes remain exact;
+translucent probes allow at most one byte per channel for f64 oracle versus GPU
+f32 blend and UNORM-storage rounding.
 
 The affine proof uses an invertible non-axis-aligned shear/translation and a
 singular transform in the same ordinary publication. Exact interior probes show
@@ -106,8 +112,12 @@ axis-aligned bounding box but outside the parallelogram stays transparent. Probe
 at the untransformed source rectangle and the singular rectangle also stay
 transparent, proving neither transform path falls back to source geometry. A
 separate extreme-affine regression proves that an invertible transform retains
-its visible target intersection when an ordinary forward f32 `LogicalPoint`
-mapping of a remote corner is unrepresentable.
+its visible canvas intersection when an ordinary forward f32 `LogicalPoint`
+mapping of a remote corner is unrepresentable. Adapter-independent tests exercise
+the same production polygon construction/clipping helper, so adapterless hosts
+still validate non-axis-aligned geometry, singular noncoverage, extreme-coordinate
+retention, and fractional-scale canvas bounds; they do not substitute for the
+real-GPU pixel corpus.
 
 The authored rectangles in the existing PNG proof remain opaque. Translucent
 target readback contains accumulated composited RGB, while ordinary PNG alpha is
