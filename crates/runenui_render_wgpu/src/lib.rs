@@ -14,9 +14,10 @@ mod scene_subset;
 
 pub use backend::{
     AdapterPowerPreference, BackendSelection, OffscreenExtent, OffscreenPublicationReadback,
-    OffscreenReadback, OffscreenRenderError, Renderer, RendererDiagnostics, RendererInitError,
+    OffscreenReadback, OffscreenRenderError, RendererDiagnostics, RendererInitError,
     RendererOptions,
 };
+pub use backend::clipped::Renderer;
 pub use lineage::{PublicationUpdateMode, PublicationUpdatePlan};
 pub use observation::PublicationObservation;
 pub use resource::{

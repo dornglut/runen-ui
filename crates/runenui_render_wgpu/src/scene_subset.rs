@@ -3,7 +3,7 @@ use core::{error::Error, fmt};
 use runenui_core::{
     Color, LogicalRect, LogicalTransform, PaintPrimitive, ResourceKind, SceneOpacity,
 };
-use runenui_runtime::{PaintPublication, SceneCapabilities};
+use runenui_runtime::{PaintPublication, PaintSceneItem, SceneCapabilities};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UnsupportedSceneSemantic {
@@ -53,6 +53,55 @@ pub struct SupportedFillRect {
     pub(crate) local_to_surface: LogicalTransform,
 }
 
+pub(crate) fn publication_resource_error(
+    publication: &PaintPublication,
+) -> Option<SceneValidationError> {
+    let requirements = publication.scene().requirements();
+    SceneCapabilities::default()
+        .check_requirements(&requirements)
+        .err()
+        .map(|error| SceneValidationError::UnsupportedResourceKind {
+            resource_kind: error.resource_kind(),
+        })
+}
+
+pub(crate) fn validate_fill_rect_item(
+    item_index: usize,
+    item: &PaintSceneItem,
+) -> Result<SupportedFillRect, SceneValidationError> {
+    let (rect, color) = match item.primitive() {
+        PaintPrimitive::FillRect { rect, color } => (*rect, *color),
+        PaintPrimitive::StrokeRect { .. } => {
+            return Err(unsupported(
+                item_index,
+                UnsupportedSceneSemantic::StrokeRect,
+            ));
+        }
+        PaintPrimitive::Image(_) => {
+            return Err(unsupported(item_index, UnsupportedSceneSemantic::Image));
+        }
+        PaintPrimitive::ShapedTextRun(_) => {
+            return Err(unsupported(
+                item_index,
+                UnsupportedSceneSemantic::ShapedTextRun,
+            ));
+        }
+        _ => {
+            return Err(unsupported(
+                item_index,
+                UnsupportedSceneSemantic::UnknownPrimitive,
+            ));
+        }
+    };
+
+    Ok(SupportedFillRect {
+        rect,
+        color,
+        opacity: item.opacity(),
+        local_to_surface: item.local_to_surface(),
+    })
+}
+
 /// Validates the complete publication before any target or GPU work begins.
 ///
 /// `SceneCapabilities` remains the canonical resource-kind check. The following
@@ -61,13 +110,7 @@ pub struct SupportedFillRect {
 pub fn validate_scene_subset(
     publication: &PaintPublication,
 ) -> Result<Vec<SupportedFillRect>, SceneValidationError> {
-    let requirements = publication.scene().requirements();
-    let unsupported_resource_kind = SceneCapabilities::default()
-        .check_requirements(&requirements)
-        .err()
-        .map(|error| SceneValidationError::UnsupportedResourceKind {
-            resource_kind: error.resource_kind(),
-        });
+    let unsupported_resource_kind = publication_resource_error(publication);
 
     let fill_rects = publication
         .scene()
@@ -75,43 +118,14 @@ pub fn validate_scene_subset(
         .iter()
         .enumerate()
         .map(|(item_index, item)| {
-            let (rect, color) = match item.primitive() {
-                PaintPrimitive::FillRect { rect, color } => (*rect, *color),
-                PaintPrimitive::StrokeRect { .. } => {
-                    return Err(unsupported(
-                        item_index,
-                        UnsupportedSceneSemantic::StrokeRect,
-                    ));
-                }
-                PaintPrimitive::Image(_) => {
-                    return Err(unsupported(item_index, UnsupportedSceneSemantic::Image));
-                }
-                PaintPrimitive::ShapedTextRun(_) => {
-                    return Err(unsupported(
-                        item_index,
-                        UnsupportedSceneSemantic::ShapedTextRun,
-                    ));
-                }
-                _ => {
-                    return Err(unsupported(
-                        item_index,
-                        UnsupportedSceneSemantic::UnknownPrimitive,
-                    ));
-                }
-            };
-
+            let fill = validate_fill_rect_item(item_index, item)?;
             if !item.clips().is_empty() {
                 return Err(unsupported(
                     item_index,
                     UnsupportedSceneSemantic::NonEmptyClips,
                 ));
             }
-            Ok(SupportedFillRect {
-                rect,
-                color,
-                opacity: item.opacity(),
-                local_to_surface: item.local_to_surface(),
-            })
+            Ok(fill)
         })
         .collect::<Result<Vec<_>, _>>()?;
 

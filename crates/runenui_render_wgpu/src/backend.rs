@@ -127,7 +127,7 @@ impl RendererOptions {
         self
     }
 
-    /// Controls whether wgpu must select a fallback adapter.
+    /// Controls whether adapter selection requires a fallback adapter.
     #[must_use]
     pub const fn with_force_fallback_adapter(mut self, force: bool) -> Self {
         self.force_fallback_adapter = force;
@@ -2872,3 +2872,9 @@ mod tests {
         }
     }
 }
+
+#[allow(
+    clippy::items_after_test_module,
+    reason = "the clip facade module is appended so the previously validated backend implementation remains byte-for-byte unchanged"
+)]
+pub(crate) mod clipped;
