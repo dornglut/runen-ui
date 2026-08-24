@@ -2444,12 +2444,7 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         let publication = publication(
             vec![PaintContributionItem::fill_rect(
-                rect(
-                    0.0,
-                    0.0,
-                    f32::from(SURFACE_WIDTH),
-                    f32::from(SURFACE_HEIGHT),
-                ),
+                rect(60.0, 44.0, 10.0, 10.0),
                 Color::WHITE,
             )],
             1.3,
@@ -2459,12 +2454,16 @@ mod tests {
         assert_eq!(extent, OffscreenExtent::new(84, 63)?);
         assert!(canvas_extent.width() < f64::from(extent.width()));
         assert!(canvas_extent.height() < f64::from(extent.height()));
+        let scale = f64::from(publication.raster_scale().get());
+        assert!(70.0 * scale > canvas_extent.width());
+        assert!(54.0 * scale > canvas_extent.height());
 
         let polygon = super::transformed_fill_polygon(
             &fill_rects[0],
             canvas_extent,
             publication.raster_scale(),
         );
+        assert!(polygon.len() >= 3);
         let max_x = polygon
             .iter()
             .map(|point| point[0])
