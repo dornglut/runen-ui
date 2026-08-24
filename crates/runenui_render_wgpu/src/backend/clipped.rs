@@ -485,7 +485,7 @@ impl ClipUniform {
 
     fn bytes(&self) -> [u8; 64] {
         let mut bytes = [0_u8; 64];
-        for (destination, value) in bytes.chunks_exact_mut(4).zip(self.values) {
+        for (destination, value) in bytes.as_chunks_mut::<4>().0.iter_mut().zip(self.values) {
             destination.copy_from_slice(&value.to_ne_bytes());
         }
         bytes
@@ -587,7 +587,7 @@ fn create_clipped_fill_pipeline(
     })
 }
 
-fn mask_stencil_face() -> wgpu::StencilFaceState {
+const fn mask_stencil_face() -> wgpu::StencilFaceState {
     wgpu::StencilFaceState {
         compare: wgpu::CompareFunction::Always,
         fail_op: wgpu::StencilOperation::Keep,
@@ -608,7 +608,7 @@ fn mask_stencil_state() -> wgpu::DepthStencilState {
     )
 }
 
-fn clipped_fill_stencil_face() -> wgpu::StencilFaceState {
+const fn clipped_fill_stencil_face() -> wgpu::StencilFaceState {
     wgpu::StencilFaceState {
         compare: wgpu::CompareFunction::Equal,
         fail_op: wgpu::StencilOperation::Keep,
@@ -877,7 +877,7 @@ mod tests {
         WidgetMeasure, WidgetUpdateContext,
     };
     use runenui_runtime::{
-        AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SurfaceBuildContext,
+        AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SceneClip, SurfaceBuildContext,
     };
 
     use super::{ClipUniform, Renderer, prepare_clip_uniforms, validate_clipped_scene_subset};
@@ -964,6 +964,56 @@ mod tests {
         readback.rgba8_srgb()[index..index + 4]
             .try_into()
             .unwrap_or_else(|_| unreachable!("pixel index is in the fixture target"))
+    }
+
+    #[derive(Clone, Copy, Debug, Default)]
+    struct ClipProofProbes {
+        inside_both: Option<(u32, u32)>,
+        first_only: Option<(u32, u32)>,
+        second_only: Option<(u32, u32)>,
+        rounded_corner_cut: Option<(u32, u32)>,
+        transformed_inside: Option<(u32, u32)>,
+    }
+
+    fn find_clip_proof_probes(
+        first_clip: SceneClip,
+        second_clip: SceneClip,
+        inverse_second: LogicalTransform,
+        scale: f32,
+    ) -> Result<ClipProofProbes, Box<dyn Error>> {
+        let mut probes = ClipProofProbes::default();
+        for y in 0_u16..63 {
+            for x in 0_u16..84 {
+                let point =
+                    LogicalPoint::new((f32::from(x) + 0.5) / scale, (f32::from(y) + 0.5) / scale)?;
+                let first = first_clip.contains_surface_point(point);
+                let second = second_clip.contains_surface_point(point);
+                let probe = (u32::from(x), u32::from(y));
+                match (first, second) {
+                    (true, true) => {
+                        probes.inside_both.get_or_insert(probe);
+                        if !second_clip.shape().contains(point) {
+                            probes.transformed_inside.get_or_insert(probe);
+                        }
+                    }
+                    (true, false) => {
+                        probes.first_only.get_or_insert(probe);
+                    }
+                    (false, true) => {
+                        probes.second_only.get_or_insert(probe);
+                    }
+                    (false, false) => {}
+                }
+                if first
+                    && inverse_second.transform_point(point).is_some_and(|local| {
+                        second_clip.shape().outer_rect().contains(local) && !second
+                    })
+                {
+                    probes.rounded_corner_cut.get_or_insert(probe);
+                }
+            }
+        }
+        Ok(probes)
     }
 
     #[test]
@@ -1063,8 +1113,7 @@ mod tests {
     }
 
     #[test]
-    fn clipped_validator_reuses_primitive_authority_while_base_validator_stays_fail_closed()
-    -> Result<(), Box<dyn Error>> {
+    fn clipped_validator_reuses_primitive_authority_while_base_validator_stays_fail_closed() {
         let clipped = PaintContributionItem::fill_rect(rect(1.0, 1.0, 10.0, 10.0), Color::WHITE)
             .with_clip(ContributionClip::identity(SceneShape::rect(rect(
                 2.0, 2.0, 4.0, 4.0,
@@ -1078,7 +1127,6 @@ mod tests {
                 semantic: crate::scene_subset::UnsupportedSceneSemantic::NonEmptyClips,
             })
         ));
-        Ok(())
     }
 
     #[test]
@@ -1124,48 +1172,19 @@ mod tests {
             crate::OffscreenExtent::new(84, 63)?
         );
         let scale = publication.raster_scale().get();
+        let probes = find_clip_proof_probes(clips[0], clips[1], inverse_second, scale)?;
 
-        let mut inside_both = None;
-        let mut first_only = None;
-        let mut second_only = None;
-        let mut rounded_corner_cut = None;
-        let mut transformed_inside = None;
-        for y in 0_u16..63 {
-            for x in 0_u16..84 {
-                let point =
-                    LogicalPoint::new((f32::from(x) + 0.5) / scale, (f32::from(y) + 0.5) / scale)?;
-                let first = clips[0].contains_surface_point(point);
-                let second = clips[1].contains_surface_point(point);
-                let probe = (u32::from(x), u32::from(y));
-                if first && second {
-                    inside_both.get_or_insert(probe);
-                    if !clips[1].shape().contains(point) {
-                        transformed_inside.get_or_insert(probe);
-                    }
-                } else if first {
-                    first_only.get_or_insert(probe);
-                } else if second {
-                    second_only.get_or_insert(probe);
-                }
-                if first {
-                    if let Some(local) = inverse_second.transform_point(point) {
-                        if clips[1].shape().outer_rect().contains(local) && !second {
-                            rounded_corner_cut.get_or_insert(probe);
-                        }
-                    }
-                }
-            }
-        }
-
-        let inside = inside_both.unwrap_or_else(|| unreachable!("fixture has an intersection"));
+        let inside = probes
+            .inside_both
+            .unwrap_or_else(|| unreachable!("fixture has an intersection"));
         assert_eq!(
             pixel(output.readback(), inside.0, inside.1),
             [0xC3, 0x4A, 0x42, 0xFF]
         );
         for (label, probe) in [
-            ("first clip alone", first_only),
-            ("second clip alone", second_only),
-            ("rounded outer-rect corner", rounded_corner_cut),
+            ("first clip alone", probes.first_only),
+            ("second clip alone", probes.second_only),
+            ("rounded outer-rect corner", probes.rounded_corner_cut),
         ] {
             let probe = probe.unwrap_or_else(|| unreachable!("fixture contains {label} probe"));
             assert_eq!(
@@ -1174,7 +1193,7 @@ mod tests {
                 "{label} must be excluded by conjunctive clip coverage"
             );
         }
-        let transformed = transformed_inside.unwrap_or_else(|| {
+        let transformed = probes.transformed_inside.unwrap_or_else(|| {
             unreachable!("fixture proves transformed rather than local placement")
         });
         assert_eq!(
