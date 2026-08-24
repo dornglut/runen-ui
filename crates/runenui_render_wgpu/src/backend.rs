@@ -982,7 +982,7 @@ impl Renderer {
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu_clear_color(color)),
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
                 },
             });
@@ -2413,12 +2413,14 @@ mod tests {
         );
         let fill_rects = super::validate_scene_subset(&publication)?;
         let (canvas_extent, _) = super::publication_extents(&publication)?;
-        assert!(super::transformed_fill_polygon(
-            &fill_rects[0],
-            canvas_extent,
-            publication.raster_scale(),
-        )
-        .is_empty());
+        assert!(
+            super::transformed_fill_polygon(
+                &fill_rects[0],
+                canvas_extent,
+                publication.raster_scale(),
+            )
+            .is_empty()
+        );
         let extreme_polygon = super::transformed_fill_polygon(
             &fill_rects[1],
             canvas_extent,
