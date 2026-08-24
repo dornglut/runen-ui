@@ -221,7 +221,7 @@ impl fmt::Display for RendererInitError {
                 detail,
             } => write!(
                 formatter,
-                "adapter {adapter_name:?} could not create a renderer device: {detail}"
+                "adapter {adapter_name:?} could not create the renderer device: {detail}"
             ),
         }
     }
@@ -346,6 +346,27 @@ impl OffscreenExtent {
     /// Returns the physical pixel height.
     #[must_use]
     pub const fn height(self) -> u32 {
+        self.height
+    }
+}
+
+/// Exact continuous raster-space canvas bounds before integer texture rounding.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct RasterCanvasExtent {
+    width: f64,
+    height: f64,
+}
+
+impl RasterCanvasExtent {
+    const fn new(width: f64, height: f64) -> Self {
+        Self { width, height }
+    }
+
+    const fn width(self) -> f64 {
+        self.width
+    }
+
+    const fn height(self) -> f64 {
         self.height
     }
 }
@@ -766,7 +787,7 @@ impl Renderer {
         publication: &PaintPublication,
     ) -> Result<OffscreenPublicationReadback, OffscreenRenderError> {
         let fill_rects = validate_scene_subset(publication).map_err(scene_validation_error)?;
-        let extent = publication_extent(publication)?;
+        let (canvas_extent, extent) = publication_extents(publication)?;
         self.validate_extent(extent)?;
         let layout = ReadbackLayout::new(extent)?;
         self.validate_readback_buffer(layout)?;
@@ -813,6 +834,7 @@ impl Renderer {
                 &mut encoder,
                 &target.view,
                 extent,
+                canvas_extent,
                 publication.raster_scale(),
                 &fill_rects,
             );
@@ -1067,10 +1089,11 @@ fn encode_scene_to_target(
     encoder: &mut wgpu::CommandEncoder,
     view: &wgpu::TextureView,
     extent: OffscreenExtent,
+    canvas_extent: RasterCanvasExtent,
     raster_scale: RasterScale,
     fill_rects: &[SupportedFillRect],
 ) {
-    let vertex_bytes = fill_rect_vertex_bytes(fill_rects, extent, raster_scale);
+    let vertex_bytes = fill_rect_vertex_bytes(fill_rects, extent, canvas_extent, raster_scale);
     let vertex_count = u32::try_from(vertex_bytes.len() / 24).unwrap_or(u32::MAX);
     let vertex_buffer = (!vertex_bytes.is_empty()).then(|| {
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1182,22 +1205,26 @@ fn scene_validation_error(error: SceneValidationError) -> OffscreenRenderError {
     }
 }
 
-fn publication_extent(
+fn publication_extents(
     publication: &PaintPublication,
-) -> Result<OffscreenExtent, OffscreenRenderError> {
+) -> Result<(RasterCanvasExtent, OffscreenExtent), OffscreenRenderError> {
     let logical_size = publication.logical_size();
-    let scale = publication.raster_scale();
-    let width = scaled_dimension(logical_size.width(), scale)?;
-    let height = scaled_dimension(logical_size.height(), scale)?;
-    OffscreenExtent::new(width, height)
+    let scale = f64::from(publication.raster_scale().get());
+    let canvas_extent = RasterCanvasExtent::new(
+        f64::from(logical_size.width()) * scale,
+        f64::from(logical_size.height()) * scale,
+    );
+    let width = texture_dimension(canvas_extent.width())?;
+    let height = texture_dimension(canvas_extent.height())?;
+    Ok((canvas_extent, OffscreenExtent::new(width, height)?))
 }
 
-fn scaled_dimension(logical: f32, scale: RasterScale) -> Result<u32, OffscreenRenderError> {
-    let physical = (f64::from(logical) * f64::from(scale.get())).ceil();
-    if !physical.is_finite() || physical > f64::from(u32::MAX) {
+const fn texture_dimension(physical_canvas_dimension: f64) -> Result<u32, OffscreenRenderError> {
+    let rounded = physical_canvas_dimension.ceil();
+    if !rounded.is_finite() || rounded > f64::from(u32::MAX) {
         Err(OffscreenRenderError::PhysicalExtentOverflow)
     } else {
-        Ok(physical_to_u32(physical))
+        Ok(physical_to_u32(rounded))
     }
 }
 
@@ -1239,11 +1266,12 @@ fn encode_target_copy(
 fn fill_rect_vertex_bytes(
     fill_rects: &[SupportedFillRect],
     extent: OffscreenExtent,
+    canvas_extent: RasterCanvasExtent,
     raster_scale: RasterScale,
 ) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(fill_rects.len().saturating_mul(18 * 24));
     for fill in fill_rects {
-        let polygon = transformed_fill_polygon(fill, extent, raster_scale);
+        let polygon = transformed_fill_polygon(fill, canvas_extent, raster_scale);
         if polygon.len() < 3 {
             continue;
         }
@@ -1274,17 +1302,18 @@ fn fill_rect_vertex_bytes(
     bytes
 }
 
-/// Produces one target-bounded convex polygon for an invertible affine `FillRect`.
+/// Produces one exact-canvas-bounded convex polygon for an invertible affine `FillRect`.
 ///
 /// The public scene contract defines coverage through the transform's inverse. A
 /// singular transform is therefore empty. For an invertible transform, finite
 /// f32 scene components are widened only for renderer-local edge construction so
 /// a remote forward corner cannot overflow and incorrectly discard a visible
-/// target intersection. Clipping occurs before conversion to the GPU f32 vertex
-/// ABI; the wider coordinates never become `RunenUI` protocol values.
+/// canvas intersection. Clipping uses the exact continuous logical canvas after
+/// raster scaling, before integer texture rounding and before conversion to the
+/// GPU f32 vertex ABI; the wider coordinates never become `RunenUI` protocol values.
 fn transformed_fill_polygon(
     fill: &SupportedFillRect,
-    extent: OffscreenExtent,
+    canvas_extent: RasterCanvasExtent,
     raster_scale: RasterScale,
 ) -> Vec<[f64; 2]> {
     if fill.local_to_surface.inverse().is_none() {
@@ -1309,25 +1338,28 @@ fn transformed_fill_polygon(
         })
         .collect::<Vec<_>>();
 
-    clip_polygon_to_target(polygon, extent)
+    clip_polygon_to_canvas(polygon, canvas_extent)
 }
 
 #[derive(Clone, Copy, Debug)]
-enum TargetEdge {
+enum CanvasEdge {
     Left,
     Right,
     Top,
     Bottom,
 }
 
-fn clip_polygon_to_target(mut polygon: Vec<[f64; 2]>, extent: OffscreenExtent) -> Vec<[f64; 2]> {
+fn clip_polygon_to_canvas(
+    mut polygon: Vec<[f64; 2]>,
+    canvas_extent: RasterCanvasExtent,
+) -> Vec<[f64; 2]> {
     for edge in [
-        TargetEdge::Left,
-        TargetEdge::Right,
-        TargetEdge::Top,
-        TargetEdge::Bottom,
+        CanvasEdge::Left,
+        CanvasEdge::Right,
+        CanvasEdge::Top,
+        CanvasEdge::Bottom,
     ] {
-        polygon = clip_polygon_against_edge(&polygon, edge, extent);
+        polygon = clip_polygon_against_edge(&polygon, edge, canvas_extent);
         if polygon.is_empty() {
             break;
         }
@@ -1337,25 +1369,35 @@ fn clip_polygon_to_target(mut polygon: Vec<[f64; 2]>, extent: OffscreenExtent) -
 
 fn clip_polygon_against_edge(
     polygon: &[[f64; 2]],
-    edge: TargetEdge,
-    extent: OffscreenExtent,
+    edge: CanvasEdge,
+    canvas_extent: RasterCanvasExtent,
 ) -> Vec<[f64; 2]> {
     let Some(&last) = polygon.last() else {
         return Vec::new();
     };
     let mut output = Vec::with_capacity(polygon.len().saturating_add(1));
     let mut previous = last;
-    let mut previous_inside = target_edge_contains(edge, previous, extent);
+    let mut previous_inside = canvas_edge_contains(edge, previous, canvas_extent);
 
     for &current in polygon {
-        let current_inside = target_edge_contains(edge, current, extent);
+        let current_inside = canvas_edge_contains(edge, current, canvas_extent);
         match (previous_inside, current_inside) {
             (true, true) => output.push(current),
             (true, false) => {
-                output.push(target_edge_intersection(edge, previous, current, extent));
+                output.push(canvas_edge_intersection(
+                    edge,
+                    previous,
+                    current,
+                    canvas_extent,
+                ));
             }
             (false, true) => {
-                output.push(target_edge_intersection(edge, previous, current, extent));
+                output.push(canvas_edge_intersection(
+                    edge,
+                    previous,
+                    current,
+                    canvas_extent,
+                ));
                 output.push(current);
             }
             (false, false) => {}
@@ -1366,26 +1408,30 @@ fn clip_polygon_against_edge(
     output
 }
 
-fn target_edge_contains(edge: TargetEdge, point: [f64; 2], extent: OffscreenExtent) -> bool {
+fn canvas_edge_contains(
+    edge: CanvasEdge,
+    point: [f64; 2],
+    canvas_extent: RasterCanvasExtent,
+) -> bool {
     match edge {
-        TargetEdge::Left => point[0] >= 0.0,
-        TargetEdge::Right => point[0] <= f64::from(extent.width()),
-        TargetEdge::Top => point[1] >= 0.0,
-        TargetEdge::Bottom => point[1] <= f64::from(extent.height()),
+        CanvasEdge::Left => point[0] >= 0.0,
+        CanvasEdge::Right => point[0] <= canvas_extent.width(),
+        CanvasEdge::Top => point[1] >= 0.0,
+        CanvasEdge::Bottom => point[1] <= canvas_extent.height(),
     }
 }
 
-fn target_edge_intersection(
-    edge: TargetEdge,
+fn canvas_edge_intersection(
+    edge: CanvasEdge,
     from: [f64; 2],
     to: [f64; 2],
-    extent: OffscreenExtent,
+    canvas_extent: RasterCanvasExtent,
 ) -> [f64; 2] {
     match edge {
-        TargetEdge::Left => vertical_edge_intersection(0.0, from, to),
-        TargetEdge::Right => vertical_edge_intersection(f64::from(extent.width()), from, to),
-        TargetEdge::Top => horizontal_edge_intersection(0.0, from, to),
-        TargetEdge::Bottom => horizontal_edge_intersection(f64::from(extent.height()), from, to),
+        CanvasEdge::Left => vertical_edge_intersection(0.0, from, to),
+        CanvasEdge::Right => vertical_edge_intersection(canvas_extent.width(), from, to),
+        CanvasEdge::Top => horizontal_edge_intersection(0.0, from, to),
+        CanvasEdge::Bottom => horizontal_edge_intersection(canvas_extent.height(), from, to),
     }
 }
 
@@ -1428,7 +1474,7 @@ fn push_vertex(bytes: &mut Vec<u8>, position: [f32; 2], color: [f32; 4]) {
 
 #[allow(
     clippy::cast_possible_truncation,
-    reason = "target clipping bounds normalized coordinates to the finite [-1, 1] GPU range"
+    reason = "canvas clipping bounds normalized coordinates to the finite [-1, 1] GPU range"
 )]
 const fn normalized_position(value: f64) -> f32 {
     value.clamp(-1.0, 1.0) as f32
@@ -1831,7 +1877,7 @@ mod tests {
         format: wgpu::TextureFormat,
     ) -> Result<(OffscreenExtent, Vec<u8>), Box<dyn Error>> {
         let fill_rects = super::validate_scene_subset(publication)?;
-        let extent = super::publication_extent(publication)?;
+        let (canvas_extent, extent) = super::publication_extents(publication)?;
         let layout = ReadbackLayout::new(extent)?;
         renderer.ensure_fill_rect_pipeline(format)?;
         let (texture, view) = renderer.create_texture_target(extent, format);
@@ -1850,6 +1896,7 @@ mod tests {
             &mut encoder,
             &view,
             extent,
+            canvas_extent,
             publication.raster_scale(),
             &fill_rects,
         );
@@ -2314,6 +2361,122 @@ mod tests {
         assert_eq!(fill_rects[0].color, color);
         assert_eq!(fill_rects[0].opacity, opacity);
         assert_eq!(fill_rects[0].local_to_surface, transform);
+        Ok(())
+    }
+
+    #[test]
+    fn affine_polygon_path_preserves_exact_non_axis_aligned_geometry_without_gpu()
+    -> Result<(), Box<dyn Error>> {
+        let affine = LogicalTransform::try_new(1.0, 0.0, 0.5, 1.0, 10.0, 8.0)?;
+        let publication = publication(
+            vec![
+                PaintContributionItem::fill_rect(rect(0.0, 0.0, 10.0, 10.0), Color::WHITE)
+                    .with_transform(affine),
+            ],
+            1.0,
+        );
+        let fill_rects = super::validate_scene_subset(&publication)?;
+        let (canvas_extent, extent) = super::publication_extents(&publication)?;
+        assert_eq!(extent, OffscreenExtent::new(64, 48)?);
+        assert_eq!(
+            super::transformed_fill_polygon(
+                &fill_rects[0],
+                canvas_extent,
+                publication.raster_scale(),
+            ),
+            vec![[10.0, 8.0], [15.0, 18.0], [25.0, 18.0], [20.0, 8.0]],
+            "the production affine path must retain the authored parallelogram rather than its AABB"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn singular_and_extreme_affine_polygon_paths_are_deterministic_without_gpu()
+    -> Result<(), Box<dyn Error>> {
+        let singular = LogicalTransform::try_new(1.0, 0.0, 0.0, 0.0, 0.0, 0.0)?;
+        let extreme = LogicalTransform::try_new(1.0e38, 0.0, -1.0e38, 1.0, 10.0, 0.0)?;
+        let right_top = LogicalPoint::new(10.0, 0.0)?;
+        assert!(singular.inverse().is_none());
+        assert!(extreme.inverse().is_some());
+        assert!(
+            extreme.transform_point(right_top).is_none(),
+            "the fixture must exercise forward f32 point overflow while remaining canonically invertible"
+        );
+        let publication = publication(
+            vec![
+                PaintContributionItem::fill_rect(rect(30.0, 10.0, 10.0, 10.0), Color::WHITE)
+                    .with_transform(singular),
+                PaintContributionItem::fill_rect(rect(0.0, 0.0, 10.0, 10.0), Color::WHITE)
+                    .with_transform(extreme),
+            ],
+            1.0,
+        );
+        let fill_rects = super::validate_scene_subset(&publication)?;
+        let (canvas_extent, _) = super::publication_extents(&publication)?;
+        assert!(super::transformed_fill_polygon(
+            &fill_rects[0],
+            canvas_extent,
+            publication.raster_scale(),
+        )
+        .is_empty());
+        let extreme_polygon = super::transformed_fill_polygon(
+            &fill_rects[1],
+            canvas_extent,
+            publication.raster_scale(),
+        );
+        assert!(
+            extreme_polygon.len() >= 3,
+            "a visible extreme affine intersection must not be discarded because a remote forward point overflows f32"
+        );
+        assert!(extreme_polygon.iter().all(|[x, y]| {
+            x.is_finite()
+                && y.is_finite()
+                && *x >= 0.0
+                && *x <= canvas_extent.width()
+                && *y >= 0.0
+                && *y <= canvas_extent.height()
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn fractional_raster_scale_clips_to_exact_canvas_not_rounded_texture_extent()
+    -> Result<(), Box<dyn Error>> {
+        let publication = publication(
+            vec![PaintContributionItem::fill_rect(
+                rect(
+                    0.0,
+                    0.0,
+                    f32::from(SURFACE_WIDTH),
+                    f32::from(SURFACE_HEIGHT),
+                ),
+                Color::WHITE,
+            )],
+            1.3,
+        );
+        let fill_rects = super::validate_scene_subset(&publication)?;
+        let (canvas_extent, extent) = super::publication_extents(&publication)?;
+        assert_eq!(extent, OffscreenExtent::new(84, 63)?);
+        assert!(canvas_extent.width() < f64::from(extent.width()));
+        assert!(canvas_extent.height() < f64::from(extent.height()));
+
+        let polygon = super::transformed_fill_polygon(
+            &fill_rects[0],
+            canvas_extent,
+            publication.raster_scale(),
+        );
+        let max_x = polygon
+            .iter()
+            .map(|point| point[0])
+            .fold(f64::NEG_INFINITY, f64::max);
+        let max_y = polygon
+            .iter()
+            .map(|point| point[1])
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert_eq!(max_x, canvas_extent.width());
+        assert_eq!(max_y, canvas_extent.height());
+        assert_ne!(max_x, f64::from(extent.width()));
+        assert_ne!(max_y, f64::from(extent.height()));
         Ok(())
     }
 
