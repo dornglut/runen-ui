@@ -1274,14 +1274,14 @@ fn fill_rect_vertex_bytes(
     bytes
 }
 
-/// Produces one target-bounded convex polygon for an invertible affine FillRect.
+/// Produces one target-bounded convex polygon for an invertible affine `FillRect`.
 ///
 /// The public scene contract defines coverage through the transform's inverse. A
 /// singular transform is therefore empty. For an invertible transform, finite
 /// f32 scene components are widened only for renderer-local edge construction so
 /// a remote forward corner cannot overflow and incorrectly discard a visible
 /// target intersection. Clipping occurs before conversion to the GPU f32 vertex
-/// ABI; the wider coordinates never become RunenUI protocol values.
+/// ABI; the wider coordinates never become `RunenUI` protocol values.
 fn transformed_fill_polygon(
     fill: &SupportedFillRect,
     extent: OffscreenExtent,
@@ -1430,7 +1430,7 @@ fn push_vertex(bytes: &mut Vec<u8>, position: [f32; 2], color: [f32; 4]) {
     clippy::cast_possible_truncation,
     reason = "target clipping bounds normalized coordinates to the finite [-1, 1] GPU range"
 )]
-fn normalized_position(value: f64) -> f32 {
+const fn normalized_position(value: f64) -> f32 {
     value.clamp(-1.0, 1.0) as f32
 }
 
