@@ -221,7 +221,7 @@ impl fmt::Display for RendererInitError {
                 detail,
             } => write!(
                 formatter,
-                "adapter {adapter_name:?} could not create the renderer device: {detail}"
+                "adapter {adapter_name:?} could not create a renderer device: {detail}"
             ),
         }
     }
@@ -1219,7 +1219,7 @@ fn publication_extents(
     Ok((canvas_extent, OffscreenExtent::new(width, height)?))
 }
 
-const fn texture_dimension(physical_canvas_dimension: f64) -> Result<u32, OffscreenRenderError> {
+fn texture_dimension(physical_canvas_dimension: f64) -> Result<u32, OffscreenRenderError> {
     let rounded = physical_canvas_dimension.ceil();
     if !rounded.is_finite() || rounded > f64::from(u32::MAX) {
         Err(OffscreenRenderError::PhysicalExtentOverflow)
