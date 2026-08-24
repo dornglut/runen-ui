@@ -13,6 +13,10 @@ use crate::{
 
 const DEVICE_LABEL: &str = "runenui_render_wgpu device";
 const OFFSCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+const SUPPORTED_SURFACE_FORMATS: [wgpu::TextureFormat; 2] = [
+    wgpu::TextureFormat::Rgba8UnormSrgb,
+    wgpu::TextureFormat::Bgra8UnormSrgb,
+];
 const READBACK_TIMEOUT: Duration = Duration::from_secs(30);
 const FILL_RECT_SHADER: &str = r"
 struct VertexOutput {
@@ -160,7 +164,14 @@ pub enum RendererInitError {
     /// wgpu could not select an adapter under the explicit policy.
     AdapterUnavailable {
         requested: BackendSelection,
+        compatible_surface_required: bool,
         detail: Arc<str>,
+    },
+    /// wgpu could not create a surface from the caller-owned target.
+    SurfaceCreation { detail: Arc<str> },
+    /// The compatible surface exposes no sRGB format implemented by this renderer.
+    SurfaceFormatUnavailable {
+        advertised_formats: Arc<[wgpu::TextureFormat]>,
     },
     /// A noop or browser-only adapter reached the native reference path.
     DisallowedAdapterBackend { backend: wgpu::Backend },
@@ -181,9 +192,23 @@ impl fmt::Display for RendererInitError {
                 formatter,
                 "requested renderer backend {requested:?} is unavailable; compiled backends: {compiled:?}"
             ),
-            Self::AdapterUnavailable { requested, detail } => write!(
+            Self::AdapterUnavailable {
+                requested,
+                compatible_surface_required,
+                detail,
+            } => write!(
                 formatter,
-                "no adapter satisfied renderer backend {requested:?}: {detail}"
+                "no adapter satisfied renderer backend {requested:?} with compatible_surface_required={compatible_surface_required}: {detail}"
+            ),
+            Self::SurfaceCreation { detail } => {
+                write!(
+                    formatter,
+                    "renderer could not create the native surface: {detail}"
+                )
+            }
+            Self::SurfaceFormatUnavailable { advertised_formats } => write!(
+                formatter,
+                "native surface formats {advertised_formats:?} contain neither Rgba8UnormSrgb nor Bgra8UnormSrgb"
             ),
             Self::DisallowedAdapterBackend { backend } => {
                 write!(
@@ -217,6 +242,7 @@ pub struct RendererDiagnostics {
     device_features: wgpu::Features,
     device_limits: wgpu::Limits,
     offscreen_format: wgpu::TextureFormat,
+    surface_format: Option<wgpu::TextureFormat>,
 }
 
 impl RendererDiagnostics {
@@ -278,6 +304,15 @@ impl RendererDiagnostics {
     #[must_use]
     pub const fn offscreen_format(&self) -> wgpu::TextureFormat {
         self.offscreen_format
+    }
+
+    /// Returns the selected presentable sRGB format for a renderer-owned surface.
+    ///
+    /// Headless and display-handle-only construction return `None` because those
+    /// paths did not establish actual surface compatibility.
+    #[must_use]
+    pub const fn surface_format(&self) -> Option<wgpu::TextureFormat> {
+        self.surface_format
     }
 }
 
@@ -494,13 +529,15 @@ impl OffscreenReadback {
 /// Disposable renderer-owned native wgpu state.
 #[derive(Debug)]
 pub struct Renderer {
-    // Retained as renderer-owned state for later host-supplied surface targets.
-    _instance: wgpu::Instance,
-    _adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    fill_rect_pipelines: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
     offscreen_target: Option<OffscreenTarget>,
+    fill_rect_pipelines: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
+    // Declared before the device/adapter/instance so it is dropped first. The
+    // static lifetime is earned by moving an owned handle source into wgpu.
+    surface: Option<wgpu::Surface<'static>>,
+    queue: wgpu::Queue,
+    device: wgpu::Device,
+    _adapter: wgpu::Adapter,
+    _instance: wgpu::Instance,
     next_target_generation: u64,
     diagnostics: RendererDiagnostics,
 }
@@ -528,11 +565,11 @@ impl Renderer {
     ///
     /// Returns structured backend, adapter, or device diagnostics when construction fails.
     pub async fn request(options: RendererOptions) -> Result<Self, RendererInitError> {
-        Self::request_with_instance_descriptor(
+        let (instance, compiled_backends) = Self::create_instance(
             options,
             wgpu::InstanceDescriptor::new_without_display_handle(),
-        )
-        .await
+        )?;
+        Self::request_with_instance(options, compiled_backends, instance, None).await
     }
 
     /// Selects a native adapter using a caller-owned display connection.
@@ -547,17 +584,46 @@ impl Renderer {
         options: RendererOptions,
         display: Box<dyn WgpuHasDisplayHandle>,
     ) -> Result<Self, RendererInitError> {
-        Self::request_with_instance_descriptor(
+        let (instance, compiled_backends) = Self::create_instance(
             options,
             wgpu::InstanceDescriptor::new_with_display_handle(display),
-        )
-        .await
+        )?;
+        Self::request_with_instance(options, compiled_backends, instance, None).await
     }
 
-    async fn request_with_instance_descriptor(
+    /// Creates and retains a native surface before selecting a compatible adapter.
+    ///
+    /// The target must own its handle source for the renderer's full lifetime.
+    /// wgpu stores that source inside the resulting `Surface<'static>`, so a later
+    /// winit host can pass an `Arc<Window>` while retaining its own clone for native
+    /// mechanics. This method creates no event loop, configures no swapchain, and
+    /// performs no presentation. On macOS, wgpu requires surface creation to occur
+    /// on the main thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns structured surface-creation, compatible-adapter, target-format, or
+    /// device diagnostics when construction fails.
+    pub async fn request_with_surface_target(
+        options: RendererOptions,
+        target: impl wgpu::DisplayAndWindowHandle + 'static,
+    ) -> Result<Self, RendererInitError> {
+        let (instance, compiled_backends) = Self::create_instance(
+            options,
+            wgpu::InstanceDescriptor::new_without_display_handle(),
+        )?;
+        let surface = instance.create_surface(target).map_err(|error| {
+            RendererInitError::SurfaceCreation {
+                detail: error.to_string().into(),
+            }
+        })?;
+        Self::request_with_instance(options, compiled_backends, instance, Some(surface)).await
+    }
+
+    fn create_instance(
         options: RendererOptions,
         mut instance_descriptor: wgpu::InstanceDescriptor,
-    ) -> Result<Self, RendererInitError> {
+    ) -> Result<(wgpu::Instance, wgpu::Backends), RendererInitError> {
         let compiled_backends = wgpu::Instance::enabled_backend_features();
         let requested_backends = options.backend_selection().wgpu_backends();
         if !compiled_backends.intersects(requested_backends) {
@@ -568,17 +634,27 @@ impl Renderer {
         }
 
         instance_descriptor.backends = requested_backends;
-        let instance = wgpu::Instance::new(instance_descriptor);
+        Ok((wgpu::Instance::new(instance_descriptor), compiled_backends))
+    }
+
+    async fn request_with_instance(
+        options: RendererOptions,
+        compiled_backends: wgpu::Backends,
+        instance: wgpu::Instance,
+        surface: Option<wgpu::Surface<'static>>,
+    ) -> Result<Self, RendererInitError> {
+        let compatible_surface_required = surface.is_some();
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: options.power_preference().wgpu_preference(),
                 force_fallback_adapter: options.force_fallback_adapter(),
-                compatible_surface: None,
+                compatible_surface: surface.as_ref(),
                 apply_limit_buckets: false,
             })
             .await
             .map_err(|error| RendererInitError::AdapterUnavailable {
                 requested: options.backend_selection(),
+                compatible_surface_required,
                 detail: error.to_string().into(),
             })?;
         let adapter_info = adapter.get_info();
@@ -590,6 +666,11 @@ impl Renderer {
                 backend: adapter_info.backend,
             });
         }
+
+        let surface_format = surface
+            .as_ref()
+            .map(|surface| select_surface_format(&surface.get_capabilities(&adapter).formats))
+            .transpose()?;
 
         let adapter_features = adapter.features();
         let adapter_limits = adapter.limits();
@@ -623,14 +704,20 @@ impl Renderer {
             device_features: device.features(),
             device_limits: device.limits(),
             offscreen_format: OFFSCREEN_FORMAT,
+            surface_format,
         };
+        let mut fill_rect_pipelines = HashMap::new();
+        if let Some(format) = surface_format {
+            fill_rect_pipelines.insert(format, create_fill_rect_pipeline(&device, format));
+        }
         Ok(Self {
-            _instance: instance,
-            _adapter: adapter,
-            device,
-            queue,
-            fill_rect_pipelines: HashMap::new(),
             offscreen_target: None,
+            fill_rect_pipelines,
+            surface,
+            queue,
+            device,
+            _adapter: adapter,
+            _instance: instance,
             next_target_generation: 0,
             diagnostics,
         })
@@ -640,6 +727,12 @@ impl Renderer {
     #[must_use]
     pub const fn diagnostics(&self) -> &RendererDiagnostics {
         &self.diagnostics
+    }
+
+    /// Returns whether construction retained an actual native surface target.
+    #[must_use]
+    pub const fn has_surface(&self) -> bool {
+        self.surface.is_some()
     }
 
     /// Drops the retained offscreen target and every publication realization tied to it.
@@ -948,6 +1041,18 @@ impl Renderer {
             Ok(())
         }
     }
+}
+
+fn select_surface_format(
+    advertised_formats: &[wgpu::TextureFormat],
+) -> Result<wgpu::TextureFormat, RendererInitError> {
+    advertised_formats
+        .iter()
+        .copied()
+        .find(|format| SUPPORTED_SURFACE_FORMATS.contains(format))
+        .ok_or_else(|| RendererInitError::SurfaceFormatUnavailable {
+            advertised_formats: advertised_formats.into(),
+        })
 }
 
 /// Shared target drawing implementation. Target format/pipeline realization is
@@ -1284,7 +1389,7 @@ mod tests {
 
     use super::{
         BackendSelection, OffscreenExtent, OffscreenRenderError, ReadbackLayout, Renderer,
-        RendererInitError, RendererOptions,
+        RendererInitError, RendererOptions, select_surface_format,
     };
     use crate::{
         PublicationUpdateMode,
@@ -1487,11 +1592,16 @@ mod tests {
     fn renderer_or_adapterless() -> Result<Option<Renderer>, Box<dyn Error>> {
         match block_on(Renderer::request(RendererOptions::new())) {
             Ok(renderer) => Ok(Some(renderer)),
-            Err(RendererInitError::AdapterUnavailable { requested, detail }) => {
+            Err(RendererInitError::AdapterUnavailable {
+                requested,
+                compatible_surface_required,
+                detail,
+            }) => {
                 eprintln!(
                     "native wgpu proof unavailable under {requested:?}; structured adapter failure: {detail}"
                 );
                 assert_eq!(requested, BackendSelection::AllNative);
+                assert!(!compatible_surface_required);
                 assert!(!detail.is_empty());
                 Ok(None)
             }
@@ -1508,6 +1618,43 @@ mod tests {
         assert!(native.contains(wgpu::Backends::VULKAN));
         assert!(native.contains(wgpu::Backends::DX12));
         assert!(native.contains(wgpu::Backends::GL));
+    }
+
+    #[test]
+    fn surface_format_policy_honors_supported_advertised_order_and_rejects_other_formats() {
+        assert_eq!(
+            select_surface_format(&[
+                wgpu::TextureFormat::Bgra8UnormSrgb,
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+            ]),
+            Ok(wgpu::TextureFormat::Bgra8UnormSrgb),
+            "the first renderer-supported format honors wgpu's surface preference order"
+        );
+        assert_eq!(
+            select_surface_format(&[wgpu::TextureFormat::Rgba8UnormSrgb]),
+            Ok(wgpu::TextureFormat::Rgba8UnormSrgb),
+            "the controlled RGBA8 sRGB format remains supported"
+        );
+        assert_eq!(
+            select_surface_format(&[
+                wgpu::TextureFormat::Rgba8Unorm,
+                wgpu::TextureFormat::Rgba16Float,
+            ]),
+            Err(RendererInitError::SurfaceFormatUnavailable {
+                advertised_formats: Arc::from([
+                    wgpu::TextureFormat::Rgba8Unorm,
+                    wgpu::TextureFormat::Rgba16Float,
+                ]),
+            }),
+            "a non-sRGB surface cannot silently change the renderer color contract"
+        );
+        assert_eq!(
+            select_surface_format(&[]),
+            Err(RendererInitError::SurfaceFormatUnavailable {
+                advertised_formats: Arc::from([]),
+            }),
+            "an adapter-incompatible empty capability list fails structurally"
+        );
     }
 
     #[test]
@@ -1533,6 +1680,8 @@ mod tests {
             return Ok(());
         };
         let diagnostics = renderer.diagnostics();
+        assert!(!renderer.has_surface());
+        assert_eq!(diagnostics.surface_format(), None);
         eprintln!(
             "real wgpu adapter: name={:?} backend={} device_type={:?} driver={:?} driver_info={:?} format={:?}",
             diagnostics.adapter_info().name,

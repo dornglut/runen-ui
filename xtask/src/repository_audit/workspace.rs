@@ -14,7 +14,8 @@ const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";
 const TESTING_PACKAGE: &str = "runenui_testing";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
-const RENDER_WGPU_FORBIDDEN_DEPENDENCIES: &[&str] = &["winit", "accesskit", "accesskit_winit"];
+const RENDER_WGPU_FORBIDDEN_DEPENDENCIES: &[&str] =
+    &["winit", "accesskit", "accesskit_winit", "raw-window-handle"];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct WorkspaceMetrics {
@@ -614,6 +615,7 @@ mod tests {
                 CORE_PACKAGE.to_owned(),
                 RUNTIME_PACKAGE.to_owned(),
                 "winit".to_owned(),
+                "raw-window-handle".to_owned(),
             ]),
             &BTreeSet::from(["accesskit".to_owned()]),
             &mut forbidden_findings,
@@ -623,7 +625,7 @@ mod tests {
                 .iter()
                 .filter(|finding| finding.code == "workspace.renderer_forbidden_host_dependency")
                 .count(),
-            2
+            3
         );
     }
 

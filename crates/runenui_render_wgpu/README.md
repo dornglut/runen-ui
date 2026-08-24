@@ -31,6 +31,20 @@ golden.
 `WgpuHasDisplayHandle` abstraction without a winit or event-loop dependency.
 `wgpu-types` is a direct exact-version dependency only because wgpu 30 does not
 re-export that trait; `raw-window-handle` is not a direct dependency.
+Display-handle construction alone remains headless: it does not claim that the
+selected adapter can present to a particular native target.
+
+`Renderer::request_with_surface_target` accepts an owned
+`wgpu::DisplayAndWindowHandle + 'static`. wgpu converts it to its safe
+`SurfaceTarget::DisplayAndWindow` form and retains that handle source inside the
+resulting `Surface<'static>`; the renderer then retains the `Surface`, `Instance`,
+compatible `Adapter`, `Device`, and `Queue`. Adapter selection on this path uses
+`compatible_surface: Some(&surface)`. A later winit host can therefore pass an
+owned/`Arc` window and retain its own clone for event-loop mechanics without
+putting winit in this crate. Surface creation must follow wgpu's platform rule
+(notably the macOS main-thread requirement). This M7A seam deliberately does not
+configure, acquire, render to, or present a swapchain, so it records no successful
+surface publication lineage.
 
 Device creation deliberately requests `Features::empty()` and
 `Limits::downlevel_defaults().using_resolution(adapter.limits())`, disables
@@ -44,6 +58,14 @@ FillRect pipelines are renderer-owned and cached by target `TextureFormat`.
 The shared scene encoder supports both `Rgba8UnormSrgb` and
 `Bgra8UnormSrgb` with a format-matching pipeline and rejects other formats. The
 controlled offscreen readback target remains `Rgba8UnormSrgb`.
+Native-surface construction queries exact adapter-specific `SurfaceCapabilities`
+and honors wgpu's advertised preference order while accepting only
+`Rgba8UnormSrgb` or `Bgra8UnormSrgb`. Any other/empty advertised format set fails
+structurally rather than changing the accepted sRGB color contract. Resize,
+present mode, alpha mode, frame latency, configuration, acquisition, and
+presentation remain host/present lifecycle work for M7B. Future surface drawing
+is required to call the same target-neutral scene encoder used by the offscreen
+path.
 
 The real-GPU scale proof renders identical 64x48 logical two-rectangle geometry
 at scales 1.0 and 2.0, producing 64x48 and 128x96 targets with corresponding
