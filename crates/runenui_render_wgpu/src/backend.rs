@@ -1320,10 +1320,7 @@ enum TargetEdge {
     Bottom,
 }
 
-fn clip_polygon_to_target(
-    mut polygon: Vec<[f64; 2]>,
-    extent: OffscreenExtent,
-) -> Vec<[f64; 2]> {
+fn clip_polygon_to_target(mut polygon: Vec<[f64; 2]>, extent: OffscreenExtent) -> Vec<[f64; 2]> {
     for edge in [
         TargetEdge::Left,
         TargetEdge::Right,
@@ -1388,9 +1385,7 @@ fn target_edge_intersection(
         TargetEdge::Left => vertical_edge_intersection(0.0, from, to),
         TargetEdge::Right => vertical_edge_intersection(f64::from(extent.width()), from, to),
         TargetEdge::Top => horizontal_edge_intersection(0.0, from, to),
-        TargetEdge::Bottom => {
-            horizontal_edge_intersection(f64::from(extent.height()), from, to)
-        }
+        TargetEdge::Bottom => horizontal_edge_intersection(f64::from(extent.height()), from, to),
     }
 }
 
