@@ -5,7 +5,6 @@ use runenui_core::{
 };
 use runenui_runtime::{PaintPublication, SceneCapabilities};
 
-/// Exact paint semantics implemented by the current `FillRect` renderer checkpoint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UnsupportedSceneSemantic {
     StrokeRect,
@@ -18,37 +17,36 @@ pub enum UnsupportedSceneSemantic {
     NonOpaqueFillColor,
 }
 
-/// Deterministic renderer-owned rejection of scene content this checkpoint cannot honor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SceneSubsetError {
-    /// The canonical resource-kind capability check rejected one requirement.
-    UnsupportedResourceKind { resource_kind: ResourceKind },
-    /// One ordered scene item uses paint state outside the implemented subset.
+pub enum SceneValidationError {
+    UnsupportedResourceKind {
+        resource_kind: ResourceKind,
+    },
     UnsupportedItem {
         item_index: usize,
         semantic: UnsupportedSceneSemantic,
     },
 }
 
-impl fmt::Display for SceneSubsetError {
+impl fmt::Display for SceneValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnsupportedResourceKind { resource_kind } => write!(
                 formatter,
-                "FillRect renderer checkpoint does not support resource kind {resource_kind:?}"
+                "renderer does not support scene resource kind {resource_kind:?}"
             ),
             Self::UnsupportedItem {
                 item_index,
                 semantic,
             } => write!(
                 formatter,
-                "FillRect renderer checkpoint rejects scene item {item_index}: {semantic:?}"
+                "renderer rejects unsupported scene item {item_index}: {semantic:?}"
             ),
         }
     }
 }
 
-impl Error for SceneSubsetError {}
+impl Error for SceneValidationError {}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SupportedFillRect {
@@ -63,12 +61,12 @@ pub struct SupportedFillRect {
 /// implementation checkpoint, not runtime scene capability authority.
 pub fn validate_scene_subset(
     publication: &PaintPublication,
-) -> Result<Vec<SupportedFillRect>, SceneSubsetError> {
+) -> Result<Vec<SupportedFillRect>, SceneValidationError> {
     let requirements = publication.scene().requirements();
     let unsupported_resource_kind = SceneCapabilities::default()
         .check_requirements(&requirements)
         .err()
-        .map(|error| SceneSubsetError::UnsupportedResourceKind {
+        .map(|error| SceneValidationError::UnsupportedResourceKind {
             resource_kind: error.resource_kind(),
         });
 
@@ -138,8 +136,11 @@ pub fn validate_scene_subset(
     Ok(fill_rects)
 }
 
-const fn unsupported(item_index: usize, semantic: UnsupportedSceneSemantic) -> SceneSubsetError {
-    SceneSubsetError::UnsupportedItem {
+const fn unsupported(
+    item_index: usize,
+    semantic: UnsupportedSceneSemantic,
+) -> SceneValidationError {
+    SceneValidationError::UnsupportedItem {
         item_index,
         semantic,
     }

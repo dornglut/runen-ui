@@ -790,6 +790,7 @@ dependencies = [
  "runenui_core",
  "runenui_runtime",
  "wgpu",
+ "wgpu-types",
 ]
 
 [[package]]

@@ -32,6 +32,10 @@ impl PublicationUpdatePlan {
         }
     }
 
+    pub(crate) const fn full_resync() -> Self {
+        Self::new(PublicationUpdateMode::FullResync, None)
+    }
+
     /// Returns how the publication relates to successfully realized renderer state.
     #[must_use]
     pub const fn mode(self) -> PublicationUpdateMode {
@@ -103,23 +107,6 @@ impl PublicationLineage {
             surface_id: publication.surface_id().clone(),
             revision: publication.revision(),
         });
-    }
-
-    /// Drops all renderer-owned lineage, forcing the next publication to full-resync.
-    pub fn reset(&mut self) {
-        self.realized = None;
-    }
-
-    /// Returns the last successfully realized surface, if any.
-    #[must_use]
-    pub fn realized_surface(&self) -> Option<&SurfaceId> {
-        self.realized.as_ref().map(|realized| &realized.surface_id)
-    }
-
-    /// Returns the last successfully realized paint revision, if any.
-    #[must_use]
-    pub fn realized_revision(&self) -> Option<PaintRevision> {
-        self.realized.as_ref().map(|realized| realized.revision)
     }
 }
 
@@ -200,12 +187,6 @@ mod tests {
             lineage.classify(&third),
             PublicationUpdateMode::AlreadyCurrent
         );
-        assert_eq!(lineage.realized_revision(), Some(third.revision()));
-        assert_eq!(lineage.realized_surface(), Some(third.surface_id()));
-
-        lineage.reset();
-        assert_eq!(lineage.realized_revision(), None);
-        assert_eq!(lineage.classify(&third), PublicationUpdateMode::FullResync);
     }
 
     #[test]
@@ -236,11 +217,6 @@ mod tests {
         let skipped_plan = lineage.plan(&third);
         assert_eq!(skipped_plan.mode(), PublicationUpdateMode::FullResync);
         assert_eq!(skipped_plan.incremental_damage(), None);
-
-        lineage.reset();
-        let reset_plan = lineage.plan(&third);
-        assert_eq!(reset_plan.mode(), PublicationUpdateMode::FullResync);
-        assert_eq!(reset_plan.incremental_damage(), None);
     }
 
     #[test]

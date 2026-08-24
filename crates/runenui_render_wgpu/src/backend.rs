@@ -1,13 +1,14 @@
 use core::{error::Error, fmt};
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use runenui_core::Color;
 use runenui_runtime::{PaintPublication, RasterScale};
 use wgpu::util::DeviceExt;
 
 use crate::{
-    PublicationLineage, PublicationUpdatePlan, SceneSubsetError,
-    scene_subset::{SupportedFillRect, validate_scene_subset},
+    PublicationUpdateMode, PublicationUpdatePlan, WgpuHasDisplayHandle,
+    lineage::PublicationLineage,
+    scene_subset::{SceneValidationError, SupportedFillRect, validate_scene_subset},
 };
 
 const DEVICE_LABEL: &str = "runenui_render_wgpu device";
@@ -209,6 +210,10 @@ pub struct RendererDiagnostics {
     options: RendererOptions,
     compiled_backends: wgpu::Backends,
     adapter_info: wgpu::AdapterInfo,
+    adapter_features: wgpu::Features,
+    adapter_limits: wgpu::Limits,
+    requested_device_features: wgpu::Features,
+    requested_device_limits: wgpu::Limits,
     device_features: wgpu::Features,
     device_limits: wgpu::Limits,
     offscreen_format: wgpu::TextureFormat,
@@ -233,13 +238,37 @@ impl RendererDiagnostics {
         &self.adapter_info
     }
 
-    /// Returns the exact feature set enabled on the renderer-owned device.
+    /// Returns all features exposed by the selected adapter before device policy is applied.
+    #[must_use]
+    pub const fn adapter_features(&self) -> wgpu::Features {
+        self.adapter_features
+    }
+
+    /// Returns all limits exposed by the selected adapter before device policy is applied.
+    #[must_use]
+    pub const fn adapter_limits(&self) -> &wgpu::Limits {
+        &self.adapter_limits
+    }
+
+    /// Returns the deliberately requested device feature policy.
+    #[must_use]
+    pub const fn requested_device_features(&self) -> wgpu::Features {
+        self.requested_device_features
+    }
+
+    /// Returns the deliberately requested device limit policy.
+    #[must_use]
+    pub const fn requested_device_limits(&self) -> &wgpu::Limits {
+        &self.requested_device_limits
+    }
+
+    /// Returns the actual feature set enabled on the renderer-owned device.
     #[must_use]
     pub const fn device_features(&self) -> wgpu::Features {
         self.device_features
     }
 
-    /// Returns the exact limits requested for the renderer-owned device.
+    /// Returns the actual limits exposed by the renderer-owned device.
     #[must_use]
     pub const fn device_limits(&self) -> &wgpu::Limits {
         &self.device_limits
@@ -315,7 +344,14 @@ pub enum OffscreenRenderError {
         detail: Arc<str>,
     },
     PhysicalExtentOverflow,
-    UnsupportedScene(SceneSubsetError),
+    UnsupportedScene {
+        item_index: Option<usize>,
+        detail: Arc<str>,
+    },
+    UnsupportedTargetFormat {
+        format: wgpu::TextureFormat,
+    },
+    TargetGenerationExhausted,
 }
 
 impl fmt::Display for OffscreenRenderError {
@@ -373,17 +409,26 @@ impl fmt::Display for OffscreenRenderError {
             Self::PhysicalExtentOverflow => formatter.write_str(
                 "publication logical extent and raster scale exceed the renderer physical extent range",
             ),
-            Self::UnsupportedScene(error) => error.fmt(formatter),
+            Self::UnsupportedScene { item_index, detail } => match item_index {
+                Some(item_index) => write!(
+                    formatter,
+                    "renderer rejected scene item {item_index}: {detail}"
+                ),
+                None => write!(formatter, "renderer rejected scene: {detail}"),
+            },
+            Self::UnsupportedTargetFormat { format } => {
+                write!(formatter, "renderer target format {format:?} is unsupported")
+            }
+            Self::TargetGenerationExhausted => {
+                formatter.write_str("renderer exhausted its offscreen target generation space")
+            }
         }
     }
 }
 
 impl Error for OffscreenRenderError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::UnsupportedScene(error) => Some(error),
-            _ => None,
-        }
+        None
     }
 }
 
@@ -399,6 +444,7 @@ pub struct OffscreenReadback {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OffscreenPublicationReadback {
     update_plan: PublicationUpdatePlan,
+    target_generation: u64,
     readback: OffscreenReadback,
 }
 
@@ -407,6 +453,15 @@ impl OffscreenPublicationReadback {
     #[must_use]
     pub const fn update_plan(&self) -> PublicationUpdatePlan {
         self.update_plan
+    }
+
+    /// Returns the renderer-local generation of the retained target realization.
+    ///
+    /// Equal generations identify the same still-live offscreen target only
+    /// within this renderer instance.
+    #[must_use]
+    pub const fn target_generation(&self) -> u64 {
+        self.target_generation
     }
 
     /// Returns actual tightly packed GPU-derived target pixels.
@@ -444,9 +499,26 @@ pub struct Renderer {
     _adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    fill_rect_pipeline: wgpu::RenderPipeline,
-    publication_lineage: PublicationLineage,
+    fill_rect_pipelines: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
+    offscreen_target: Option<OffscreenTarget>,
+    next_target_generation: u64,
     diagnostics: RendererDiagnostics,
+}
+
+#[derive(Debug)]
+struct OffscreenTarget {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    extent: OffscreenExtent,
+    format: wgpu::TextureFormat,
+    generation: u64,
+    lineage: PublicationLineage,
+}
+
+impl OffscreenTarget {
+    fn matches(&self, extent: OffscreenExtent, format: wgpu::TextureFormat) -> bool {
+        self.extent == extent && self.format == format
+    }
 }
 
 impl Renderer {
@@ -456,6 +528,36 @@ impl Renderer {
     ///
     /// Returns structured backend, adapter, or device diagnostics when construction fails.
     pub async fn request(options: RendererOptions) -> Result<Self, RendererInitError> {
+        Self::request_with_instance_descriptor(
+            options,
+            wgpu::InstanceDescriptor::new_without_display_handle(),
+        )
+        .await
+    }
+
+    /// Selects a native adapter using a caller-owned display connection.
+    ///
+    /// The handle is retained by wgpu's instance descriptor. This path is
+    /// independent of winit and does not create a surface or own an event loop.
+    ///
+    /// # Errors
+    ///
+    /// Returns structured backend, adapter, or device diagnostics when construction fails.
+    pub async fn request_with_display_handle(
+        options: RendererOptions,
+        display: Box<dyn WgpuHasDisplayHandle>,
+    ) -> Result<Self, RendererInitError> {
+        Self::request_with_instance_descriptor(
+            options,
+            wgpu::InstanceDescriptor::new_with_display_handle(display),
+        )
+        .await
+    }
+
+    async fn request_with_instance_descriptor(
+        options: RendererOptions,
+        mut instance_descriptor: wgpu::InstanceDescriptor,
+    ) -> Result<Self, RendererInitError> {
         let compiled_backends = wgpu::Instance::enabled_backend_features();
         let requested_backends = options.backend_selection().wgpu_backends();
         if !compiled_backends.intersects(requested_backends) {
@@ -465,7 +567,6 @@ impl Renderer {
             });
         }
 
-        let mut instance_descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
         instance_descriptor.backends = requested_backends;
         let instance = wgpu::Instance::new(instance_descriptor);
         let adapter = instance
@@ -490,9 +591,18 @@ impl Renderer {
             });
         }
 
+        let adapter_features = adapter.features();
+        let adapter_limits = adapter.limits();
+        let requested_device_features = wgpu::Features::empty();
+        let requested_device_limits =
+            wgpu::Limits::downlevel_defaults().using_resolution(adapter_limits.clone());
         let device_descriptor = wgpu::DeviceDescriptor {
             label: Some(DEVICE_LABEL),
-            ..Default::default()
+            required_features: requested_device_features,
+            required_limits: requested_device_limits.clone(),
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
+            memory_hints: wgpu::MemoryHints::Performance,
+            trace: wgpu::Trace::Off,
         };
         let (device, queue) =
             adapter
@@ -506,19 +616,22 @@ impl Renderer {
             options,
             compiled_backends,
             adapter_info,
+            adapter_features,
+            adapter_limits,
+            requested_device_features,
+            requested_device_limits,
             device_features: device.features(),
             device_limits: device.limits(),
             offscreen_format: OFFSCREEN_FORMAT,
         };
-        let fill_rect_pipeline = create_fill_rect_pipeline(&device);
-
         Ok(Self {
             _instance: instance,
             _adapter: adapter,
             device,
             queue,
-            fill_rect_pipeline,
-            publication_lineage: PublicationLineage::new(),
+            fill_rect_pipelines: HashMap::new(),
+            offscreen_target: None,
+            next_target_generation: 0,
             diagnostics,
         })
     }
@@ -529,61 +642,108 @@ impl Renderer {
         &self.diagnostics
     }
 
-    /// Returns renderer-owned lineage committed only by completed target operations.
+    /// Drops the retained offscreen target and every publication realization tied to it.
+    ///
+    /// The next offscreen publication necessarily creates a fresh target and full-resyncs.
     #[must_use]
-    pub const fn publication_lineage(&self) -> &PublicationLineage {
-        &self.publication_lineage
+    pub fn discard_offscreen_target(&mut self) -> bool {
+        self.offscreen_target.take().is_some()
     }
 
     /// Renders the exact supported scene subset to an offscreen target and reads actual GPU bytes.
     ///
-    /// The target is initialized to transparent black independently of authored
-    /// scene paint. Validation completes before target creation or GPU submission.
-    /// Successful lineage is recorded only after submission, polling, mapping,
-    /// padding removal, and readback all succeed.
+    /// The retained target is initialized to transparent black independently of
+    /// authored scene paint. Validation completes before target creation or GPU
+    /// submission. Successful lineage is recorded only after submission, polling,
+    /// mapping, padding removal, and readback all succeed. Target creation or
+    /// rebuild forces a full resync; an already-current result is possible only
+    /// while the exact target realization remains retained.
     ///
     /// # Errors
     ///
-    /// Returns a deterministic subset, extent, device, or readback failure. Every
-    /// error leaves the previously realized publication lineage unchanged.
+    /// Returns a deterministic scene, extent, target-format, device, or readback
+    /// failure. Pre-submission failures retain the previous target realization;
+    /// post-submission failures drop it conservatively so mutated GPU state cannot
+    /// retain stale lineage.
     pub fn render_offscreen_publication(
         &mut self,
         publication: &PaintPublication,
     ) -> Result<OffscreenPublicationReadback, OffscreenRenderError> {
-        let update_plan = self.publication_lineage.plan(publication);
-        let fill_rects =
-            validate_scene_subset(publication).map_err(OffscreenRenderError::UnsupportedScene)?;
+        let fill_rects = validate_scene_subset(publication).map_err(scene_validation_error)?;
         let extent = publication_extent(publication)?;
         self.validate_extent(extent)?;
         let layout = ReadbackLayout::new(extent)?;
         self.validate_readback_buffer(layout)?;
+        self.ensure_fill_rect_pipeline(OFFSCREEN_FORMAT)?;
 
-        let (texture, view) = self.create_offscreen_target(extent);
+        let retained_target_matches = self
+            .offscreen_target
+            .as_ref()
+            .is_some_and(|target| target.matches(extent, OFFSCREEN_FORMAT));
+        let update_plan = if retained_target_matches {
+            self.offscreen_target
+                .as_ref()
+                .map_or_else(PublicationUpdatePlan::full_resync, |target| {
+                    target.lineage.plan(publication)
+                })
+        } else {
+            PublicationUpdatePlan::full_resync()
+        };
+
+        if !retained_target_matches {
+            let target = self.create_offscreen_target(extent)?;
+            self.offscreen_target = Some(target);
+        }
+
         let readback = self.create_readback_buffer(layout);
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("runenui offscreen publication encoder"),
             });
-        self.encode_scene_to_target(
-            &mut encoder,
-            &view,
-            extent,
-            publication.raster_scale(),
-            &fill_rects,
-        );
-        encode_target_copy(&mut encoder, &texture, &readback, extent, layout);
+        let target = self
+            .offscreen_target
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("matching or newly created target is retained"));
+        let target_generation = target.generation;
+        if update_plan.mode() != PublicationUpdateMode::AlreadyCurrent {
+            let pipeline = self
+                .fill_rect_pipelines
+                .get(&target.format)
+                .unwrap_or_else(|| unreachable!("target pipeline was realized before encoding"));
+            encode_scene_to_target(
+                &self.device,
+                pipeline,
+                &mut encoder,
+                &target.view,
+                extent,
+                publication.raster_scale(),
+                &fill_rects,
+            );
+        }
+        encode_target_copy(&mut encoder, &target.texture, &readback, extent, layout);
         let submission = self.queue.submit([encoder.finish()]);
-        let rgba8_srgb = self.map_readback(&readback, layout, submission)?;
+        let rgba8_srgb = match self.map_readback(&readback, layout, submission) {
+            Ok(pixels) => pixels,
+            Err(error) => {
+                self.offscreen_target = None;
+                return Err(error);
+            }
+        };
         let readback = OffscreenReadback {
             extent,
             format: OFFSCREEN_FORMAT,
             rgba8_srgb,
         };
 
-        self.publication_lineage.record_success(publication);
+        self.offscreen_target
+            .as_mut()
+            .unwrap_or_else(|| unreachable!("successful readback retains its target"))
+            .lineage
+            .record_success(publication);
         Ok(OffscreenPublicationReadback {
             update_plan,
+            target_generation,
             readback,
         })
     }
@@ -606,7 +766,7 @@ impl Renderer {
         self.validate_extent(extent)?;
         let layout = ReadbackLayout::new(extent)?;
         self.validate_readback_buffer(layout)?;
-        let (texture, view) = self.create_offscreen_target(extent);
+        let (texture, view) = self.create_texture_target(extent, OFFSCREEN_FORMAT);
         let readback = self.create_readback_buffer(layout);
         let commands =
             self.encode_clear_and_copy(&texture, &view, &readback, extent, layout, color);
@@ -621,8 +781,29 @@ impl Renderer {
     }
 
     fn create_offscreen_target(
+        &mut self,
+        extent: OffscreenExtent,
+    ) -> Result<OffscreenTarget, OffscreenRenderError> {
+        let generation = self
+            .next_target_generation
+            .checked_add(1)
+            .ok_or(OffscreenRenderError::TargetGenerationExhausted)?;
+        let (texture, view) = self.create_texture_target(extent, OFFSCREEN_FORMAT);
+        self.next_target_generation = generation;
+        Ok(OffscreenTarget {
+            texture,
+            view,
+            extent,
+            format: OFFSCREEN_FORMAT,
+            generation,
+            lineage: PublicationLineage::new(),
+        })
+    }
+
+    fn create_texture_target(
         &self,
         extent: OffscreenExtent,
+        format: wgpu::TextureFormat,
     ) -> (wgpu::Texture, wgpu::TextureView) {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("runenui offscreen target"),
@@ -630,7 +811,7 @@ impl Renderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: OFFSCREEN_FORMAT,
+            format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
@@ -647,50 +828,20 @@ impl Renderer {
         })
     }
 
-    /// Shared target drawing implementation. Target-specific completion and
-    /// publication lineage remain the caller's responsibility.
-    fn encode_scene_to_target(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
-        extent: OffscreenExtent,
-        raster_scale: RasterScale,
-        fill_rects: &[SupportedFillRect],
-    ) {
-        let vertex_bytes = fill_rect_vertex_bytes(fill_rects, extent, raster_scale);
-        let vertex_buffer = (!vertex_bytes.is_empty()).then(|| {
-            self.device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("runenui FillRect vertices"),
-                    contents: &vertex_bytes,
-                    usage: wgpu::BufferUsages::VERTEX,
-                })
-        });
-        let color_attachment = Some(wgpu::RenderPassColorAttachment {
-            view,
-            depth_slice: None,
-            resolve_target: None,
-            ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                store: wgpu::StoreOp::Store,
-            },
-        });
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("runenui scene render pass"),
-            color_attachments: &[color_attachment],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        if let Some(vertex_buffer) = vertex_buffer.as_ref() {
-            render_pass.set_pipeline(&self.fill_rect_pipeline);
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            let vertex_count = u32::try_from(fill_rects.len())
-                .unwrap_or(u32::MAX)
-                .saturating_mul(6);
-            render_pass.draw(0..vertex_count, 0..1);
+    fn ensure_fill_rect_pipeline(
+        &mut self,
+        format: wgpu::TextureFormat,
+    ) -> Result<(), OffscreenRenderError> {
+        if !matches!(
+            format,
+            wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
+        ) {
+            return Err(OffscreenRenderError::UnsupportedTargetFormat { format });
         }
+        self.fill_rect_pipelines
+            .entry(format)
+            .or_insert_with(|| create_fill_rect_pipeline(&self.device, format));
+        Ok(())
     }
 
     fn encode_clear_and_copy(
@@ -799,6 +950,53 @@ impl Renderer {
     }
 }
 
+/// Shared target drawing implementation. Target format/pipeline realization is
+/// supplied by the renderer; target-specific completion and publication lineage
+/// remain the caller's responsibility.
+fn encode_scene_to_target(
+    device: &wgpu::Device,
+    pipeline: &wgpu::RenderPipeline,
+    encoder: &mut wgpu::CommandEncoder,
+    view: &wgpu::TextureView,
+    extent: OffscreenExtent,
+    raster_scale: RasterScale,
+    fill_rects: &[SupportedFillRect],
+) {
+    let vertex_bytes = fill_rect_vertex_bytes(fill_rects, extent, raster_scale);
+    let vertex_buffer = (!vertex_bytes.is_empty()).then(|| {
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("runenui FillRect vertices"),
+            contents: &vertex_bytes,
+            usage: wgpu::BufferUsages::VERTEX,
+        })
+    });
+    let color_attachment = Some(wgpu::RenderPassColorAttachment {
+        view,
+        depth_slice: None,
+        resolve_target: None,
+        ops: wgpu::Operations {
+            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+            store: wgpu::StoreOp::Store,
+        },
+    });
+    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("runenui scene render pass"),
+        color_attachments: &[color_attachment],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
+    if let Some(vertex_buffer) = vertex_buffer.as_ref() {
+        render_pass.set_pipeline(pipeline);
+        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+        let vertex_count = u32::try_from(fill_rects.len())
+            .unwrap_or(u32::MAX)
+            .saturating_mul(6);
+        render_pass.draw(0..vertex_count, 0..1);
+    }
+}
+
 const FILL_RECT_ATTRIBUTES: [wgpu::VertexAttribute; 2] = [
     wgpu::VertexAttribute {
         format: wgpu::VertexFormat::Float32x2,
@@ -812,7 +1010,10 @@ const FILL_RECT_ATTRIBUTES: [wgpu::VertexAttribute; 2] = [
     },
 ];
 
-fn create_fill_rect_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
+fn create_fill_rect_pipeline(
+    device: &wgpu::Device,
+    target_format: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("runenui FillRect shader"),
         source: wgpu::ShaderSource::Wgsl(FILL_RECT_SHADER.into()),
@@ -847,7 +1048,7 @@ fn create_fill_rect_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
             entry_point: Some("fs_main"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             targets: &[Some(wgpu::ColorTargetState {
-                format: OFFSCREEN_FORMAT,
+                format: target_format,
                 blend: None,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
@@ -855,6 +1056,24 @@ fn create_fill_rect_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
         multiview_mask: None,
         cache: None,
     })
+}
+
+fn scene_validation_error(error: SceneValidationError) -> OffscreenRenderError {
+    match error {
+        SceneValidationError::UnsupportedResourceKind { resource_kind } => {
+            OffscreenRenderError::UnsupportedScene {
+                item_index: None,
+                detail: format!("unsupported resource kind {resource_kind:?}").into(),
+            }
+        }
+        SceneValidationError::UnsupportedItem {
+            item_index,
+            semantic,
+        } => OffscreenRenderError::UnsupportedScene {
+            item_index: Some(item_index),
+            detail: format!("unsupported paint semantics: {semantic:?}").into(),
+        },
+    }
 }
 
 fn publication_extent(
@@ -1054,18 +1273,23 @@ mod tests {
     use runenui_core::{
         Color, ContributionClip, Element, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
         LogicalTransform, NoHostProtocol, PaintContribution, PaintContributionContext,
-        PaintContributionItem, Radius, ResourceKind, ResourceRef, SceneOpacity, SceneShape,
-        StyleTokens, UiApp, Widget, WidgetMeasure,
+        PaintContributionItem, PaintPrimitive, Radius, ResourceKind, ResourceRef, SceneOpacity,
+        SceneShape, StyleTokens, UiApp, Widget, WidgetInvalidation, WidgetMeasure,
+        WidgetUpdateContext,
     };
     use runenui_runtime::{
-        AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SurfaceBuildContext,
+        AppRuntime, LayoutConstraints, PaintPublication, PumpBudget, RasterScale,
+        SurfaceBuildContext,
     };
 
     use super::{
         BackendSelection, OffscreenExtent, OffscreenRenderError, ReadbackLayout, Renderer,
         RendererInitError, RendererOptions,
     };
-    use crate::{PublicationUpdateMode, SceneSubsetError, UnsupportedSceneSemantic};
+    use crate::{
+        PublicationUpdateMode,
+        scene_subset::{SceneValidationError, UnsupportedSceneSemantic},
+    };
 
     const SURFACE_WIDTH: u16 = 64;
     const SURFACE_HEIGHT: u16 = 48;
@@ -1075,20 +1299,31 @@ mod tests {
         items: Vec<PaintContributionItem>,
     }
 
-    impl Widget<()> for SceneFixture {
-        type State = ();
+    impl Widget<Vec<PaintContributionItem>> for SceneFixture {
+        type State = Vec<PaintContributionItem>;
 
-        fn create_state(&self) -> Self::State {}
+        fn create_state(&self) -> Self::State {
+            self.items.clone()
+        }
 
-        fn measure(&self, (): &Self::State) -> WidgetMeasure {
+        fn update(
+            &self,
+            state: &mut Self::State,
+            context: &mut WidgetUpdateContext<Vec<PaintContributionItem>>,
+        ) {
+            *state = self.items.clone();
+            context.invalidate(WidgetInvalidation::PAINT);
+        }
+
+        fn measure(&self, _: &Self::State) -> WidgetMeasure {
             WidgetMeasure::Fixed {
                 width: LogicalLength::from(SURFACE_WIDTH),
                 height: LogicalLength::from(SURFACE_HEIGHT),
             }
         }
 
-        fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
-            PaintContribution::new(self.items.clone())
+        fn paint(&self, items: &Self::State, _: PaintContributionContext) -> PaintContribution {
+            PaintContribution::new(items.clone())
         }
     }
 
@@ -1096,7 +1331,7 @@ mod tests {
 
     impl UiApp for FixtureApp {
         type State = Vec<PaintContributionItem>;
-        type Action = ();
+        type Action = Vec<PaintContributionItem>;
         type HostProtocol = NoHostProtocol;
 
         fn root(items: &Self::State) -> Element<Self::Action> {
@@ -1105,7 +1340,9 @@ mod tests {
             })
         }
 
-        fn update(_: &mut Self::State, (): Self::Action) {}
+        fn update(items: &mut Self::State, replacement: Self::Action) {
+            *items = replacement;
+        }
     }
 
     fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
@@ -1114,20 +1351,83 @@ mod tests {
     }
 
     fn publication(items: Vec<PaintContributionItem>, scale: f32) -> PaintPublication {
+        publication_sequence(items, &[scale])
+            .pop()
+            .unwrap_or_else(|| unreachable!("one fixture publication was requested"))
+    }
+
+    fn publication_sequence(
+        items: Vec<PaintContributionItem>,
+        scales: &[f32],
+    ) -> Vec<PaintPublication> {
         let mut runtime = AppRuntime::<FixtureApp>::mount(items);
         let tokens = StyleTokens::new();
         let logical_size =
             LogicalSize::try_new(f32::from(SURFACE_WIDTH), f32::from(SURFACE_HEIGHT))
                 .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));
-        let raster_scale = RasterScale::new(scale)
+        scales
+            .iter()
+            .map(|scale| {
+                let raster_scale = RasterScale::new(*scale)
+                    .unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
+                let context =
+                    SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(logical_size))
+                        .with_raster_scale(raster_scale);
+                runtime
+                    .publish_surface(&context)
+                    .unwrap_or_else(|_| unreachable!("fixture publication is admitted"))
+                    .paint_publication()
+                    .clone()
+            })
+            .collect()
+    }
+
+    fn publication_update_and_scale(
+        initial_items: Vec<PaintContributionItem>,
+        updated_items: Vec<PaintContributionItem>,
+        initial_scale: f32,
+        rebuilt_scale: f32,
+    ) -> (PaintPublication, PaintPublication, PaintPublication) {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(initial_items);
+        let tokens = StyleTokens::new();
+        let logical_size =
+            LogicalSize::try_new(f32::from(SURFACE_WIDTH), f32::from(SURFACE_HEIGHT))
+                .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));
+        let raster_scale = RasterScale::new(initial_scale)
             .unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
         let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(logical_size))
             .with_raster_scale(raster_scale);
-        runtime
+        let first = runtime
             .publish_surface(&context)
-            .unwrap_or_else(|_| unreachable!("fixture publication is admitted"))
+            .unwrap_or_else(|_| unreachable!("initial fixture publication is admitted"))
             .paint_publication()
-            .clone()
+            .clone();
+        runtime
+            .submit_action(updated_items)
+            .unwrap_or_else(|_| unreachable!("fixture update is admitted"));
+        let report = runtime.pump(PumpBudget::new(
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+            usize::MAX,
+        ));
+        assert!(report.is_quiescent());
+        let second = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|_| unreachable!("updated fixture publication is admitted"))
+            .paint_publication()
+            .clone();
+        let rebuilt_raster_scale = RasterScale::new(rebuilt_scale)
+            .unwrap_or_else(|_| unreachable!("rebuilt fixture raster scale is valid"));
+        let rebuilt_context =
+            SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(logical_size))
+                .with_raster_scale(rebuilt_raster_scale);
+        let rebuilt = runtime
+            .publish_surface(&rebuilt_context)
+            .unwrap_or_else(|_| unreachable!("rebuilt fixture publication is admitted"))
+            .paint_publication()
+            .clone();
+        (first, second, rebuilt)
     }
 
     fn pixel(readback: &super::OffscreenReadback, x: u32, y: u32) -> [u8; 4] {
@@ -1135,6 +1435,53 @@ mod tests {
         readback.rgba8_srgb()[index..index + 4]
             .try_into()
             .unwrap_or_else(|_| unreachable!("pixel index is in the fixture target"))
+    }
+
+    fn assert_order_probes(readback: &super::OffscreenReadback, scale: u32) {
+        let scaled = |logical: u32| logical * scale;
+        assert_eq!(pixel(readback, scaled(2), scaled(2)), [0, 0, 0, 0]);
+        assert_eq!(
+            pixel(readback, scaled(10), scaled(8)),
+            [0xC3, 0x4A, 0x42, 0xFF]
+        );
+        assert_eq!(
+            pixel(readback, scaled(35), scaled(20)),
+            [0x37, 0x86, 0xC8, 0xFF]
+        );
+        assert_eq!(
+            pixel(readback, scaled(22), scaled(14)),
+            [0x37, 0x86, 0xC8, 0xFF],
+            "the later FillRect must win in the overlap"
+        );
+    }
+
+    fn prove_png_round_trip(readback: &super::OffscreenReadback) -> Result<(), Box<dyn Error>> {
+        let mut png = Vec::new();
+        PngEncoder::new(&mut png).write_image(
+            readback.rgba8_srgb(),
+            readback.extent().width(),
+            readback.extent().height(),
+            image::ExtendedColorType::Rgba8,
+        )?;
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+        let decoded =
+            image::load_from_memory_with_format(&png, image::ImageFormat::Png)?.into_rgba8();
+        assert_eq!(decoded.as_raw(), readback.rgba8_srgb());
+        let artifact_directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/runenui-render-wgpu-proof");
+        fs::create_dir_all(&artifact_directory)?;
+        let artifact = artifact_directory.join("fill-rect-order.png");
+        fs::write(&artifact, &png)?;
+        eprintln!(
+            "PNG ENCODING PROOF: encoded and exact-decoded {} GPU bytes to {} PNG bytes; artifact={}",
+            readback.rgba8_srgb().len(),
+            png.len(),
+            artifact.display(),
+        );
+        eprintln!(
+            "GOLDEN COMPARISON PROOF: not claimed by this checkpoint; no expected golden was read or overwritten"
+        );
+        Ok(())
     }
 
     fn renderer_or_adapterless() -> Result<Option<Renderer>, Box<dyn Error>> {
@@ -1225,6 +1572,186 @@ mod tests {
     }
 
     #[test]
+    fn device_policy_is_explicit_and_distinguishes_adapter_request_and_device()
+    -> Result<(), Box<dyn Error>> {
+        let Some(renderer) = renderer_or_adapterless()? else {
+            return Ok(());
+        };
+        let diagnostics = renderer.diagnostics();
+        let expected_limits = wgpu::Limits::downlevel_defaults()
+            .using_resolution(diagnostics.adapter_limits().clone());
+
+        assert_eq!(
+            diagnostics.requested_device_features(),
+            wgpu::Features::empty()
+        );
+        assert_eq!(diagnostics.requested_device_limits(), &expected_limits);
+        assert_eq!(diagnostics.device_features(), wgpu::Features::empty());
+        assert_eq!(diagnostics.device_limits(), &expected_limits);
+        assert!(
+            diagnostics
+                .adapter_features()
+                .contains(diagnostics.requested_device_features())
+        );
+        assert!(
+            diagnostics.adapter_limits().max_texture_dimension_2d
+                >= diagnostics
+                    .requested_device_limits()
+                    .max_texture_dimension_2d
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fill_rect_pipeline_cache_is_target_format_aware() -> Result<(), Box<dyn Error>> {
+        let Some(mut renderer) = renderer_or_adapterless()? else {
+            return Ok(());
+        };
+        renderer.ensure_fill_rect_pipeline(wgpu::TextureFormat::Rgba8UnormSrgb)?;
+        renderer.ensure_fill_rect_pipeline(wgpu::TextureFormat::Bgra8UnormSrgb)?;
+        renderer.ensure_fill_rect_pipeline(wgpu::TextureFormat::Bgra8UnormSrgb)?;
+
+        assert_eq!(renderer.fill_rect_pipelines.len(), 2);
+        assert!(
+            renderer
+                .fill_rect_pipelines
+                .contains_key(&wgpu::TextureFormat::Rgba8UnormSrgb)
+        );
+        assert!(
+            renderer
+                .fill_rect_pipelines
+                .contains_key(&wgpu::TextureFormat::Bgra8UnormSrgb)
+        );
+        assert!(matches!(
+            renderer.ensure_fill_rect_pipeline(wgpu::TextureFormat::Rgba16Float),
+            Err(OffscreenRenderError::UnsupportedTargetFormat {
+                format: wgpu::TextureFormat::Rgba16Float,
+            })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn shared_scene_encoder_renders_bgra_srgb_target_with_matching_pipeline()
+    -> Result<(), Box<dyn Error>> {
+        let Some(mut renderer) = renderer_or_adapterless()? else {
+            return Ok(());
+        };
+        let publication = publication(
+            vec![PaintContributionItem::fill_rect(
+                rect(8.0, 6.0, 20.0, 12.0),
+                Color::rgb(0xC3, 0x4A, 0x42),
+            )],
+            1.0,
+        );
+        let fill_rects = super::validate_scene_subset(&publication)?;
+        let extent = super::publication_extent(&publication)?;
+        let layout = ReadbackLayout::new(extent)?;
+        let format = wgpu::TextureFormat::Bgra8UnormSrgb;
+        renderer.ensure_fill_rect_pipeline(format)?;
+        let (texture, view) = renderer.create_texture_target(extent, format);
+        let readback = renderer.create_readback_buffer(layout);
+        let mut encoder = renderer
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("runenui BGRA target format proof encoder"),
+            });
+        super::encode_scene_to_target(
+            &renderer.device,
+            renderer
+                .fill_rect_pipelines
+                .get(&format)
+                .unwrap_or_else(|| unreachable!("BGRA pipeline is cached")),
+            &mut encoder,
+            &view,
+            extent,
+            publication.raster_scale(),
+            &fill_rects,
+        );
+        super::encode_target_copy(&mut encoder, &texture, &readback, extent, layout);
+        let submission = renderer.queue.submit([encoder.finish()]);
+        let bgra8_srgb = renderer.map_readback(&readback, layout, submission)?;
+        let pixel = |x: usize, y: usize| {
+            let index = (y * extent.width() as usize + x) * 4;
+            &bgra8_srgb[index..index + 4]
+        };
+        assert_eq!(pixel(2, 2), &[0, 0, 0, 0]);
+        assert_eq!(pixel(10, 8), &[0x42, 0x4A, 0xC3, 0xFF]);
+        Ok(())
+    }
+
+    #[test]
+    fn retained_target_lifetime_gates_publication_update_modes() -> Result<(), Box<dyn Error>> {
+        let Some(mut renderer) = renderer_or_adapterless()? else {
+            return Ok(());
+        };
+        let (first, successor, rebuilt) = publication_update_and_scale(
+            vec![PaintContributionItem::fill_rect(
+                rect(4.0, 4.0, 12.0, 8.0),
+                Color::rgb(0x74, 0xB2, 0x5A),
+            )],
+            vec![PaintContributionItem::fill_rect(
+                rect(4.0, 4.0, 12.0, 8.0),
+                Color::rgb(0x58, 0x8C, 0xD1),
+            )],
+            1.0,
+            2.0,
+        );
+        assert_eq!(successor.base_revision(), Some(first.revision()));
+        assert_eq!(rebuilt.base_revision(), Some(successor.revision()));
+
+        let first_output = renderer.render_offscreen_publication(&first)?;
+        assert_eq!(
+            first_output.update_plan().mode(),
+            PublicationUpdateMode::FullResync
+        );
+        let first_generation = first_output.target_generation();
+
+        let retained_current = renderer.render_offscreen_publication(&first)?;
+        assert_eq!(
+            retained_current.update_plan().mode(),
+            PublicationUpdateMode::AlreadyCurrent
+        );
+        assert_eq!(retained_current.target_generation(), first_generation);
+
+        let exact_successor = renderer.render_offscreen_publication(&successor)?;
+        assert_eq!(
+            exact_successor.update_plan().mode(),
+            PublicationUpdateMode::ExactBaseMatch
+        );
+        assert_eq!(exact_successor.target_generation(), first_generation);
+
+        assert!(renderer.discard_offscreen_target());
+        assert!(!renderer.discard_offscreen_target());
+        let fresh_target = renderer.render_offscreen_publication(&successor)?;
+        assert_eq!(
+            fresh_target.update_plan().mode(),
+            PublicationUpdateMode::FullResync
+        );
+        assert_ne!(fresh_target.target_generation(), first_generation);
+
+        let fresh_generation = fresh_target.target_generation();
+        let rebuilt_target = renderer.render_offscreen_publication(&rebuilt)?;
+        assert_eq!(
+            rebuilt_target.update_plan().mode(),
+            PublicationUpdateMode::FullResync,
+            "a changed physical extent rebuilds the target and cannot consume exact-base damage"
+        );
+        assert_ne!(rebuilt_target.target_generation(), fresh_generation);
+
+        let rebuilt_current = renderer.render_offscreen_publication(&rebuilt)?;
+        assert_eq!(
+            rebuilt_current.update_plan().mode(),
+            PublicationUpdateMode::AlreadyCurrent
+        );
+        assert_eq!(
+            rebuilt_current.target_generation(),
+            rebuilt_target.target_generation()
+        );
+        Ok(())
+    }
+
+    #[test]
     fn partial_renderer_rejects_every_unsupported_scene_semantic() {
         let stroke = PaintContributionItem::stroke_rect(
             rect(1.0, 1.0, 2.0, 2.0),
@@ -1262,49 +1789,49 @@ mod tests {
         let cases = [
             (
                 stroke,
-                SceneSubsetError::UnsupportedItem {
+                SceneValidationError::UnsupportedItem {
                     item_index: 0,
                     semantic: UnsupportedSceneSemantic::StrokeRect,
                 },
             ),
             (
                 image,
-                SceneSubsetError::UnsupportedItem {
+                SceneValidationError::UnsupportedItem {
                     item_index: 0,
                     semantic: UnsupportedSceneSemantic::Image,
                 },
             ),
             (
                 shaped_text,
-                SceneSubsetError::UnsupportedItem {
+                SceneValidationError::UnsupportedItem {
                     item_index: 0,
                     semantic: UnsupportedSceneSemantic::ShapedTextRun,
                 },
             ),
             (
                 translated,
-                SceneSubsetError::UnsupportedItem {
+                SceneValidationError::UnsupportedItem {
                     item_index: 0,
                     semantic: UnsupportedSceneSemantic::NonIdentityTransform,
                 },
             ),
             (
                 clipped,
-                SceneSubsetError::UnsupportedItem {
+                SceneValidationError::UnsupportedItem {
                     item_index: 0,
                     semantic: UnsupportedSceneSemantic::NonEmptyClips,
                 },
             ),
             (
                 translucent_item,
-                SceneSubsetError::UnsupportedItem {
+                SceneValidationError::UnsupportedItem {
                     item_index: 0,
                     semantic: UnsupportedSceneSemantic::NonUnitItemOpacity,
                 },
             ),
             (
                 translucent_color,
-                SceneSubsetError::UnsupportedItem {
+                SceneValidationError::UnsupportedItem {
                     item_index: 0,
                     semantic: UnsupportedSceneSemantic::NonOpaqueFillColor,
                 },
@@ -1328,79 +1855,64 @@ mod tests {
         };
         let color_a = Color::rgb(0xC3, 0x4A, 0x42);
         let color_b = Color::rgb(0x37, 0x86, 0xC8);
-        let publication = publication(
-            vec![
-                PaintContributionItem::fill_rect(rect(8.0, 6.0, 20.0, 12.0), color_a),
-                PaintContributionItem::fill_rect(rect(20.0, 12.0, 24.0, 18.0), color_b),
-            ],
-            2.0,
+        let logical_items = vec![
+            PaintContributionItem::fill_rect(rect(8.0, 6.0, 20.0, 12.0), color_a),
+            PaintContributionItem::fill_rect(rect(20.0, 12.0, 24.0, 18.0), color_b),
+        ];
+        let publication_1x = publication(logical_items.clone(), 1.0);
+        let publication_2x = publication(logical_items, 2.0);
+        let logical_geometry = |publication: &PaintPublication| {
+            publication
+                .scene()
+                .items()
+                .iter()
+                .map(|item| match item.primitive() {
+                    PaintPrimitive::FillRect { rect, .. } => *rect,
+                    _ => unreachable!("the proof corpus contains only FillRects"),
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            logical_geometry(&publication_1x),
+            logical_geometry(&publication_2x),
+            "RasterScale must not mutate logical scene geometry"
         );
 
-        let output = renderer.render_offscreen_publication(&publication)?;
+        let output_1x = renderer.render_offscreen_publication(&publication_1x)?;
+        assert_eq!(
+            output_1x.update_plan().mode(),
+            PublicationUpdateMode::FullResync
+        );
+        assert_eq!(output_1x.readback().extent(), OffscreenExtent::new(64, 48)?);
+        assert_order_probes(output_1x.readback(), 1);
+
+        let output = renderer.render_offscreen_publication(&publication_2x)?;
         assert_eq!(
             output.update_plan().mode(),
             PublicationUpdateMode::FullResync
+        );
+        assert_ne!(
+            output.target_generation(),
+            output_1x.target_generation(),
+            "the changed physical extent must rebuild the target"
         );
         let readback = output.readback();
         assert_eq!(readback.extent(), OffscreenExtent::new(128, 96)?);
         assert_eq!(readback.format(), wgpu::TextureFormat::Rgba8UnormSrgb);
 
-        let scaled = |logical: u32| logical * 2;
-        assert_eq!(scaled(8), 16);
-        assert_eq!(scaled(6), 12);
-        assert_eq!(scaled(20), 40);
-        assert_eq!(scaled(12), 24);
-        assert_eq!(pixel(readback, scaled(2), scaled(2)), [0, 0, 0, 0]);
-        assert_eq!(
-            pixel(readback, scaled(10), scaled(8)),
-            [0xC3, 0x4A, 0x42, 0xFF]
-        );
-        assert_eq!(
-            pixel(readback, scaled(35), scaled(20)),
-            [0x37, 0x86, 0xC8, 0xFF]
-        );
-        assert_eq!(
-            pixel(readback, scaled(22), scaled(14)),
-            [0x37, 0x86, 0xC8, 0xFF],
-            "the later FillRect must win in the overlap"
-        );
+        assert_order_probes(readback, 2);
         eprintln!(
-            "REAL GPU PIXEL PROOF: extent=128x96 scale=2 background/A-only/B-only/overlap exact; adapter={:?} backend={}",
+            "REAL GPU PIXEL PROOF: same logical geometry at scale=1 extent=64x48 and scale=2 extent=128x96; corresponding background/A-only/B-only/overlap probes exact; adapter={:?} backend={}",
             renderer.diagnostics().adapter_info().name,
             renderer.diagnostics().adapter_info().backend,
         );
 
-        let mut png = Vec::new();
-        PngEncoder::new(&mut png).write_image(
-            readback.rgba8_srgb(),
-            readback.extent().width(),
-            readback.extent().height(),
-            image::ExtendedColorType::Rgba8,
-        )?;
-        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
-        let decoded =
-            image::load_from_memory_with_format(&png, image::ImageFormat::Png)?.into_rgba8();
-        assert_eq!(decoded.as_raw(), readback.rgba8_srgb());
-        let artifact_directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/runenui-render-wgpu-proof");
-        fs::create_dir_all(&artifact_directory)?;
-        let artifact = artifact_directory.join("fill-rect-order.png");
-        fs::write(&artifact, &png)?;
-        eprintln!(
-            "PNG ENCODING PROOF: encoded and exact-decoded {} GPU bytes to {} PNG bytes; artifact={}",
-            readback.rgba8_srgb().len(),
-            png.len(),
-            artifact.display(),
-        );
-        eprintln!(
-            "GOLDEN COMPARISON PROOF: not claimed by this checkpoint; no expected golden was read or overwritten"
-        );
-        Ok(())
+        prove_png_round_trip(readback)
     }
 
     #[test]
-    fn failed_scene_validation_retains_successful_publication_lineage() -> Result<(), Box<dyn Error>>
-    {
+    fn failed_scene_validation_does_not_advance_retained_target_realization()
+    -> Result<(), Box<dyn Error>> {
         let Some(mut renderer) = renderer_or_adapterless()? else {
             return Ok(());
         };
@@ -1411,9 +1923,12 @@ mod tests {
             )],
             1.0,
         );
-        renderer.render_offscreen_publication(&accepted)?;
-        let realized_surface = renderer.publication_lineage().realized_surface().cloned();
-        let realized_revision = renderer.publication_lineage().realized_revision();
+        let first = renderer.render_offscreen_publication(&accepted)?;
+        assert_eq!(
+            first.update_plan().mode(),
+            PublicationUpdateMode::FullResync
+        );
+        let retained_generation = first.target_generation();
 
         let rejected = publication(
             vec![PaintContributionItem::stroke_rect(
@@ -1423,23 +1938,26 @@ mod tests {
             )],
             1.0,
         );
+        let Err(error) = renderer.render_offscreen_publication(&rejected) else {
+            return Err(std::io::Error::other(
+                "unsupported scene rendered instead of failing before target mutation",
+            )
+            .into());
+        };
         assert!(matches!(
-            renderer.render_offscreen_publication(&rejected),
-            Err(OffscreenRenderError::UnsupportedScene(
-                SceneSubsetError::UnsupportedItem {
-                    semantic: UnsupportedSceneSemantic::StrokeRect,
-                    ..
-                }
-            ))
+            &error,
+            OffscreenRenderError::UnsupportedScene {
+                item_index: Some(0),
+                detail,
+            } if detail.contains("StrokeRect")
         ));
+
+        let retained = renderer.render_offscreen_publication(&accepted)?;
         assert_eq!(
-            renderer.publication_lineage().realized_surface(),
-            realized_surface.as_ref()
+            retained.update_plan().mode(),
+            PublicationUpdateMode::AlreadyCurrent
         );
-        assert_eq!(
-            renderer.publication_lineage().realized_revision(),
-            realized_revision
-        );
+        assert_eq!(retained.target_generation(), retained_generation);
         Ok(())
     }
 

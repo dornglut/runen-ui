@@ -17,11 +17,11 @@ pub use backend::{
     OffscreenReadback, OffscreenRenderError, Renderer, RendererDiagnostics, RendererInitError,
     RendererOptions,
 };
-pub use lineage::{PublicationLineage, PublicationUpdateMode, PublicationUpdatePlan};
+pub use lineage::{PublicationUpdateMode, PublicationUpdatePlan};
 pub use observation::PublicationObservation;
 pub use resource::{
     ImagePayload, PayloadValidationError, ResourcePayload, ResourceProvider, ResourceProviderError,
     ResourceProviderErrorKind, ResourceRequest, ResourceResolveError, ShapedRunRaster,
     resolve_resource,
 };
-pub use scene_subset::{SceneSubsetError, UnsupportedSceneSemantic};
+pub use wgpu_types::WgpuHasDisplayHandle;
