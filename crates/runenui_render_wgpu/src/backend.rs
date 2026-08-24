@@ -1,7 +1,7 @@
 use core::{error::Error, fmt};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use runenui_core::Color;
+use runenui_core::{Color, LogicalPoint};
 use runenui_runtime::{PaintPublication, RasterScale};
 use wgpu::util::DeviceExt;
 
@@ -1071,6 +1071,7 @@ fn encode_scene_to_target(
     fill_rects: &[SupportedFillRect],
 ) {
     let vertex_bytes = fill_rect_vertex_bytes(fill_rects, extent, raster_scale);
+    let vertex_count = u32::try_from(vertex_bytes.len() / 24).unwrap_or(u32::MAX);
     let vertex_buffer = (!vertex_bytes.is_empty()).then(|| {
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("runenui FillRect vertices"),
@@ -1098,9 +1099,6 @@ fn encode_scene_to_target(
     if let Some(vertex_buffer) = vertex_buffer.as_ref() {
         render_pass.set_pipeline(pipeline);
         render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-        let vertex_count = u32::try_from(fill_rects.len())
-            .unwrap_or(u32::MAX)
-            .saturating_mul(6);
         render_pass.draw(0..vertex_count, 0..1);
     }
 }
@@ -1245,19 +1243,11 @@ fn fill_rect_vertex_bytes(
 ) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(fill_rects.len().saturating_mul(6 * 24));
     for fill in fill_rects {
-        let scale_x = f64::from(extent.width());
-        let scale_y = f64::from(extent.height());
-        let logical_to_physical = |value: f32, dimension: f64| {
-            (f64::from(value) * f64::from(raster_scale.get())).clamp(0.0, dimension)
+        let Some(corners) = transformed_fill_corners(fill) else {
+            continue;
         };
-        let left = logical_to_physical(fill.rect.x(), scale_x);
-        let top = logical_to_physical(fill.rect.y(), scale_y);
-        let right = logical_to_physical(fill.rect.max_x(), scale_x);
-        let bottom = logical_to_physical(fill.rect.max_y(), scale_y);
-        let left = normalized_position((left / scale_x).mul_add(2.0, -1.0));
-        let right = normalized_position((right / scale_x).mul_add(2.0, -1.0));
-        let top = normalized_position((top / scale_y).mul_add(-2.0, 1.0));
-        let bottom = normalized_position((bottom / scale_y).mul_add(-2.0, 1.0));
+        let [left_top, left_bottom, right_top, right_bottom] =
+            corners.map(|point| logical_point_to_ndc(point, extent, raster_scale));
         let source_rgb_linear = [
             srgb8_to_linear_f32(fill.color.red()),
             srgb8_to_linear_f32(fill.color.green()),
@@ -1272,18 +1262,47 @@ fn fill_rect_vertex_bytes(
             source_rgb_linear[2],
             effective_alpha,
         ];
-        for [x, y] in [
-            [left, top],
-            [left, bottom],
-            [right, top],
-            [right, top],
-            [left, bottom],
-            [right, bottom],
+        for position in [
+            left_top,
+            left_bottom,
+            right_top,
+            right_top,
+            left_bottom,
+            right_bottom,
         ] {
-            push_vertex(&mut bytes, [x, y], straight_source_color);
+            push_vertex(&mut bytes, position, straight_source_color);
         }
     }
     bytes
+}
+
+fn transformed_fill_corners(fill: &SupportedFillRect) -> Option<[LogicalPoint; 4]> {
+    fill.local_to_surface.inverse()?;
+    let left_top = fill.rect.origin();
+    let left_bottom = LogicalPoint::new(fill.rect.x(), fill.rect.max_y()).ok()?;
+    let right_top = LogicalPoint::new(fill.rect.max_x(), fill.rect.y()).ok()?;
+    let right_bottom = LogicalPoint::new(fill.rect.max_x(), fill.rect.max_y()).ok()?;
+    Some([
+        fill.local_to_surface.transform_point(left_top)?,
+        fill.local_to_surface.transform_point(left_bottom)?,
+        fill.local_to_surface.transform_point(right_top)?,
+        fill.local_to_surface.transform_point(right_bottom)?,
+    ])
+}
+
+fn logical_point_to_ndc(
+    point: LogicalPoint,
+    extent: OffscreenExtent,
+    raster_scale: RasterScale,
+) -> [f32; 2] {
+    let physical_x = f64::from(point.x()) * f64::from(raster_scale.get());
+    let physical_y = f64::from(point.y()) * f64::from(raster_scale.get());
+    let width = f64::from(extent.width());
+    let height = f64::from(extent.height());
+    [
+        normalized_position((physical_x / width).mul_add(2.0, -1.0)),
+        normalized_position((physical_y / height).mul_add(-2.0, 1.0)),
+    ]
 }
 
 fn push_vertex(bytes: &mut Vec<u8>, position: [f32; 2], color: [f32; 4]) {
@@ -1294,10 +1313,10 @@ fn push_vertex(bytes: &mut Vec<u8>, position: [f32; 2], color: [f32; 4]) {
 
 #[allow(
     clippy::cast_possible_truncation,
-    reason = "the value is clamped and normalized to [-1, 1] before conversion to shader f32"
+    reason = "finite logical coordinates are preserved outside clip space and bounded to the finite f32 range before shader conversion"
 )]
-const fn normalized_position(value: f64) -> f32 {
-    value as f32
+fn normalized_position(value: f64) -> f32 {
+    value.clamp(f64::from(f32::MIN), f64::from(f32::MAX)) as f32
 }
 
 fn srgb8_to_linear_f32(value: u8) -> f32 {
@@ -2097,7 +2116,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_renderer_rejects_every_unsupported_scene_semantic() {
+    fn partial_renderer_rejects_every_still_unsupported_scene_semantic() {
         let stroke = PaintContributionItem::stroke_rect(
             rect(1.0, 1.0, 2.0, 2.0),
             Color::WHITE,
@@ -2114,11 +2133,6 @@ mod tests {
             Color::WHITE,
         )
         .unwrap_or_else(|_| unreachable!("fixture resource kind matches"));
-        let translated = PaintContributionItem::fill_rect(rect(1.0, 1.0, 2.0, 2.0), Color::WHITE)
-            .with_transform(
-                LogicalTransform::translation(1.0, 0.0)
-                    .unwrap_or_else(|_| unreachable!("fixture transform is finite")),
-            );
         let clipped = PaintContributionItem::fill_rect(rect(1.0, 1.0, 2.0, 2.0), Color::WHITE)
             .with_clip(ContributionClip::new(
                 SceneShape::rounded_rect(rect(0.0, 0.0, 3.0, 3.0), Radius::ZERO),
@@ -2147,13 +2161,6 @@ mod tests {
                 },
             ),
             (
-                translated,
-                SceneValidationError::UnsupportedItem {
-                    item_index: 0,
-                    semantic: UnsupportedSceneSemantic::NonIdentityTransform,
-                },
-            ),
-            (
                 clipped,
                 SceneValidationError::UnsupportedItem {
                     item_index: 0,
@@ -2173,12 +2180,15 @@ mod tests {
     }
 
     #[test]
-    fn fill_rect_subset_preserves_literal_alpha_and_item_opacity() -> Result<(), Box<dyn Error>> {
+    fn fill_rect_subset_preserves_transform_literal_alpha_and_item_opacity()
+    -> Result<(), Box<dyn Error>> {
         let color = Color::rgba(0xC3, 0x4A, 0x42, 0x80);
         let opacity = scene_opacity(0.5);
+        let transform = LogicalTransform::try_new(1.0, 0.25, 0.5, 1.0, 3.0, 4.0)?;
         let publication = publication(
             vec![
                 PaintContributionItem::fill_rect(rect(1.0, 1.0, 2.0, 2.0), color)
+                    .with_transform(transform)
                     .with_opacity(opacity),
             ],
             1.0,
@@ -2188,6 +2198,62 @@ mod tests {
         assert_eq!(fill_rects.len(), 1);
         assert_eq!(fill_rects[0].color, color);
         assert_eq!(fill_rects[0].opacity, opacity);
+        assert_eq!(fill_rects[0].local_to_surface, transform);
+        Ok(())
+    }
+
+    #[test]
+    fn real_gpu_affine_fill_rect_and_singular_transform_have_exact_nonfallback_coverage()
+    -> Result<(), Box<dyn Error>> {
+        let Some(mut renderer) = renderer_or_adapterless()? else {
+            return Ok(());
+        };
+        let affine_color = Color::rgb(0xC3, 0x4A, 0x42);
+        let singular_color = Color::rgb(0x37, 0x86, 0xC8);
+        let affine = LogicalTransform::try_new(1.0, 0.0, 0.5, 1.0, 10.0, 8.0)?;
+        let singular = LogicalTransform::try_new(1.0, 0.0, 0.0, 0.0, 0.0, 0.0)?;
+        assert!(affine.inverse().is_some());
+        assert!(singular.inverse().is_none());
+
+        let publication = publication(
+            vec![
+                PaintContributionItem::fill_rect(rect(0.0, 0.0, 10.0, 10.0), affine_color)
+                    .with_transform(affine),
+                PaintContributionItem::fill_rect(rect(30.0, 10.0, 10.0, 10.0), singular_color)
+                    .with_transform(singular),
+            ],
+            1.0,
+        );
+        let output = renderer.render_offscreen_publication(&publication)?;
+        assert_eq!(
+            output.update_plan().mode(),
+            PublicationUpdateMode::FullResync
+        );
+        assert_eq!(
+            pixel(output.readback(), 17, 13),
+            [0xC3, 0x4A, 0x42, 0xFF],
+            "an interior point of the transformed parallelogram must be covered"
+        );
+        assert_eq!(
+            pixel(output.readback(), 11, 17),
+            [0, 0, 0, 0],
+            "the axis-aligned bounding box must not replace affine geometry"
+        );
+        assert_eq!(
+            pixel(output.readback(), 2, 2),
+            [0, 0, 0, 0],
+            "the renderer must not fall back to the untransformed source rectangle"
+        );
+        assert_eq!(
+            pixel(output.readback(), 35, 15),
+            [0, 0, 0, 0],
+            "a singular transform must contribute no coverage rather than falling back"
+        );
+        eprintln!(
+            "REAL GPU AFFINE PROOF: non-axis-aligned FillRect interior is exact; bounding-box, untransformed fallback, and singular fallback probes remain transparent; adapter={:?} backend={}",
+            renderer.diagnostics().adapter_info().name,
+            renderer.diagnostics().adapter_info().backend,
+        );
         Ok(())
     }
 

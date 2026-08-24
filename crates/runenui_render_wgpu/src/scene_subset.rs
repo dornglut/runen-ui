@@ -11,7 +11,6 @@ pub enum UnsupportedSceneSemantic {
     Image,
     ShapedTextRun,
     UnknownPrimitive,
-    NonIdentityTransform,
     NonEmptyClips,
 }
 
@@ -51,6 +50,7 @@ pub struct SupportedFillRect {
     pub(crate) rect: LogicalRect,
     pub(crate) color: Color,
     pub(crate) opacity: SceneOpacity,
+    pub(crate) local_to_surface: LogicalTransform,
 }
 
 /// Validates the complete publication before any target or GPU work begins.
@@ -100,12 +100,6 @@ pub fn validate_scene_subset(
                 }
             };
 
-            if item.local_to_surface() != LogicalTransform::IDENTITY {
-                return Err(unsupported(
-                    item_index,
-                    UnsupportedSceneSemantic::NonIdentityTransform,
-                ));
-            }
             if !item.clips().is_empty() {
                 return Err(unsupported(
                     item_index,
@@ -116,6 +110,7 @@ pub fn validate_scene_subset(
                 rect,
                 color,
                 opacity: item.opacity(),
+                local_to_surface: item.local_to_surface(),
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
