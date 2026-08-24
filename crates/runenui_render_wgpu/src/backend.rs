@@ -593,12 +593,13 @@ impl Renderer {
 
     /// Creates and retains a native surface before selecting a compatible adapter.
     ///
-    /// The target must own its handle source for the renderer's full lifetime.
-    /// wgpu stores that source inside the resulting `Surface<'static>`, so a later
-    /// winit host can pass an `Arc<Window>` while retaining its own clone for native
-    /// mechanics. This method creates no event loop, configures no swapchain, and
-    /// performs no presentation. On macOS, wgpu requires surface creation to occur
-    /// on the main thread.
+    /// The display connection is retained by wgpu's instance descriptor. The
+    /// window must own its handle source for the renderer's full lifetime; wgpu
+    /// stores that source inside the resulting `Surface<'static>`. This lets a
+    /// future host retain its event loop and its own clone of an owned window while
+    /// the renderer owns the instance and surface. This method creates no event
+    /// loop, configures no swapchain, and performs no presentation. On macOS, wgpu
+    /// requires surface creation to occur on the main thread.
     ///
     /// # Errors
     ///
@@ -606,12 +607,14 @@ impl Renderer {
     /// device diagnostics when construction fails.
     pub async fn request_with_surface_target(
         options: RendererOptions,
-        target: impl wgpu::DisplayAndWindowHandle + 'static,
+        display: Box<dyn WgpuHasDisplayHandle>,
+        window: impl wgpu::WindowHandle + 'static,
     ) -> Result<Self, RendererInitError> {
         let (instance, compiled_backends) = Self::create_instance(
             options,
-            wgpu::InstanceDescriptor::new_without_display_handle(),
+            wgpu::InstanceDescriptor::new_with_display_handle(display),
         )?;
+        let target = wgpu::SurfaceTarget::from_window_without_display(window);
         let surface = instance.create_surface(target).map_err(|error| {
             RendererInitError::SurfaceCreation {
                 detail: error.to_string().into(),

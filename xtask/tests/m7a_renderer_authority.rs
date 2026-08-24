@@ -8,6 +8,7 @@ use std::{
 
 const RENDERER_MANIFEST: &str = "crates/runenui_render_wgpu/Cargo.toml";
 const RENDERER_SOURCE: &str = "crates/runenui_render_wgpu/src";
+const RENDERER_BACKEND_SOURCE: &str = "crates/runenui_render_wgpu/src/backend.rs";
 
 const ALLOWED_CORE_IDENTIFIERS: &[&str] = &[
     "Color",
@@ -103,6 +104,43 @@ fn renderer_production_source_uses_only_neutral_framework_authority() -> Result<
             failures.join("\n")
         ))
     }
+}
+
+#[test]
+fn native_surface_construction_separates_display_and_window_ownership() -> Result<(), String> {
+    let root = workspace_root()?;
+    let contents = fs::read_to_string(root.join(RENDERER_BACKEND_SOURCE))
+        .map_err(|error| format!("failed to read {RENDERER_BACKEND_SOURCE}: {error}"))?;
+    let method_start = contents
+        .find("pub async fn request_with_surface_target")
+        .ok_or_else(|| "renderer surface constructor is missing".to_owned())?;
+    let method_end = contents[method_start..]
+        .find("\n    fn create_instance")
+        .map(|offset| method_start + offset)
+        .ok_or_else(|| "renderer surface constructor boundary is missing".to_owned())?;
+    let method = &contents[method_start..method_end];
+
+    for required in [
+        "display: Box<dyn WgpuHasDisplayHandle>",
+        "window: impl wgpu::WindowHandle + 'static",
+        "InstanceDescriptor::new_with_display_handle(display)",
+        "SurfaceTarget::from_window_without_display(window)",
+    ] {
+        assert!(
+            method.contains(required),
+            "surface constructor must retain exact wgpu 30 ownership seam `{required}`"
+        );
+    }
+    assert!(
+        !method.contains("InstanceDescriptor::new_without_display_handle"),
+        "surface construction must provide its display when creating the instance"
+    );
+    assert!(
+        !contents.contains("DisplayAndWindowHandle"),
+        "the obsolete combined display/window constructor authority must not return"
+    );
+
+    Ok(())
 }
 
 #[test]

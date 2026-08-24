@@ -34,17 +34,22 @@ re-export that trait; `raw-window-handle` is not a direct dependency.
 Display-handle construction alone remains headless: it does not claim that the
 selected adapter can present to a particular native target.
 
-`Renderer::request_with_surface_target` accepts an owned
-`wgpu::DisplayAndWindowHandle + 'static`. wgpu converts it to its safe
-`SurfaceTarget::DisplayAndWindow` form and retains that handle source inside the
-resulting `Surface<'static>`; the renderer then retains the `Surface`, `Instance`,
-compatible `Adapter`, `Device`, and `Queue`. Adapter selection on this path uses
-`compatible_surface: Some(&surface)`. A later winit host can therefore pass an
-owned/`Arc` window and retain its own clone for event-loop mechanics without
-putting winit in this crate. Surface creation must follow wgpu's platform rule
-(notably the macOS main-thread requirement). This M7A seam deliberately does not
-configure, acquire, render to, or present a swapchain, so it records no successful
-surface publication lineage.
+`Renderer::request_with_surface_target` accepts a boxed
+`WgpuHasDisplayHandle` plus an owned `wgpu::WindowHandle + 'static`. It constructs
+the `Instance` with `InstanceDescriptor::new_with_display_handle`, then constructs
+the safe window-only target with `SurfaceTarget::from_window_without_display`.
+wgpu 30 requires the instance display when presentation through GLES is intended,
+especially on Wayland; passing it at instance creation also ensures that the
+window-only target uses the same display connection. wgpu retains the window
+handle source inside the resulting `Surface<'static>`; the renderer then retains
+the `Surface`, `Instance`, compatible `Adapter`, `Device`, and `Queue`. Adapter
+selection on this path uses `compatible_surface: Some(&surface)`. Structurally, a
+later winit host can produce an owned display handle from its event loop, pass an
+owned/`Arc` window while retaining its own clone, and keep event-loop ownership
+outside this crate. This crate does not provide a concrete winit compile proof.
+Surface creation must follow wgpu's platform rule (notably the macOS main-thread
+requirement). This M7A seam deliberately does not configure, acquire, render to,
+or present a swapchain, so it records no successful surface publication lineage.
 
 Device creation deliberately requests `Features::empty()` and
 `Limits::downlevel_defaults().using_resolution(adapter.limits())`, disables
