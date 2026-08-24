@@ -988,11 +988,11 @@ mod tests {
         for _ in 0..300 {
             many = many.with_clip(clip);
         }
-        let publication = publication(vec![many], 1.25);
-        let fills = validate_clipped_scene_subset(&publication)?;
+        let many_publication = publication(vec![many], 1.25);
+        let fills = validate_clipped_scene_subset(&many_publication)?;
         assert_eq!(fills.len(), 1);
         assert_eq!(fills[0].clips.len(), 300);
-        let uniforms = prepare_clip_uniforms(&fills[0].clips, publication.raster_scale())
+        let uniforms = prepare_clip_uniforms(&fills[0].clips, many_publication.raster_scale())
             .unwrap_or_else(|| unreachable!("all repeated clips are invertible"));
         assert_eq!(uniforms.len(), 300);
         assert_eq!(uniforms[0], uniforms[299]);
