@@ -5,8 +5,9 @@
 It consumes ordinary public `runenui_core` and `runenui_runtime` paint/publication contracts. The package owns renderer-side publication lineage, resource-provider interaction, backend realization, rendering, readback, and renderer observations. Native event-loop and accessibility integration remain outside this crate.
 
 The current implementation fails closed: before target creation or GPU
-submission it accepts only opaque `FillRect` items with identity
-`local_to_surface`, no clips, and unit item opacity. Canonical
+submission it accepts only `FillRect` items with identity `local_to_surface`
+and no clips. FillRects preserve literal color alpha and validated item opacity;
+all other primitive and composition semantics remain unsupported. Canonical
 `SceneRequirements`/`SceneCapabilities` continue to check resource kinds only;
 the narrower implementation-subset validation and its detailed reasons remain
 renderer-internal. The public render error reports an unsupported scene without
@@ -63,6 +64,14 @@ FillRect pipelines are renderer-owned and cached by target `TextureFormat`.
 The shared scene encoder supports both `Rgba8UnormSrgb` and
 `Bgra8UnormSrgb` with a format-matching pipeline and rejects other formats. The
 controlled offscreen readback target remains `Rgba8UnormSrgb`.
+Literal unpremultiplied sRGB8 RGB is decoded exactly once to straight linear RGB;
+source alpha is `(color alpha / 255) * item opacity`. The shader outputs that
+straight linear source, and wgpu's non-premultiplied `BlendState::ALPHA_BLENDING`
+performs ordered source-over before the sRGB target applies its storage transfer.
+The equations are `C_out = C_src * A_src + C_dst * (1 - A_src)` and
+`A_out = A_src + A_dst * (1 - A_src)` in linear space.
+The accumulated target therefore contains composited RGB: translucent paint over
+transparent black does not retain the original straight source RGB bytes.
 Native-surface construction queries exact adapter-specific `SurfaceCapabilities`
 and honors wgpu's advertised preference order while accepting only
 `Rgba8UnormSrgb` or `Bgra8UnormSrgb`. Any other/empty advertised format set fails
@@ -76,5 +85,15 @@ The real-GPU scale proof renders identical 64x48 logical two-rectangle geometry
 at scales 1.0 and 2.0, producing 64x48 and 128x96 targets with corresponding
 background, rectangle-only, and overlap probes. Scale changes target
 realization, never logical geometry. PNG round-trip proof uses the 2.0 output.
+An independent test-only scalar oracle checks selected translucent interior
+pixels without traversing scenes or rasterizing geometry. Opaque, clear, and
+zero-opacity probes remain exact; translucent probes allow at most one byte per
+channel for f64 oracle versus GPU f32 blend and UNORM-storage rounding.
+
+The authored rectangles in the existing PNG proof remain opaque. Translucent
+target readback contains accumulated composited RGB, while ordinary PNG alpha is
+unassociated; no translucent PNG visual or golden-comparison claim is made
+without test tooling that explicitly decodes target sRGB, unpremultiplies in
+linear space when alpha is nonzero, and re-encodes straight RGB to sRGB.
 
 The package must not become UI behavior authority. In particular it must not depend on concrete widgets, semantic-tree behavior, mounted/layout storage, private runtime mutation seams, winit, or AccessKit. Logical resource lookup remains caller-owned and keyed by the complete opaque `ResourceRef`; renderer caches are disposable realization state.

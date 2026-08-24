@@ -13,8 +13,6 @@ pub enum UnsupportedSceneSemantic {
     UnknownPrimitive,
     NonIdentityTransform,
     NonEmptyClips,
-    NonUnitItemOpacity,
-    NonOpaqueFillColor,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,6 +50,7 @@ impl Error for SceneValidationError {}
 pub struct SupportedFillRect {
     pub(crate) rect: LogicalRect,
     pub(crate) color: Color,
+    pub(crate) opacity: SceneOpacity,
 }
 
 /// Validates the complete publication before any target or GPU work begins.
@@ -113,20 +112,11 @@ pub fn validate_scene_subset(
                     UnsupportedSceneSemantic::NonEmptyClips,
                 ));
             }
-            if item.opacity() != SceneOpacity::OPAQUE {
-                return Err(unsupported(
-                    item_index,
-                    UnsupportedSceneSemantic::NonUnitItemOpacity,
-                ));
-            }
-            if color.alpha() != u8::MAX {
-                return Err(unsupported(
-                    item_index,
-                    UnsupportedSceneSemantic::NonOpaqueFillColor,
-                ));
-            }
-
-            Ok(SupportedFillRect { rect, color })
+            Ok(SupportedFillRect {
+                rect,
+                color,
+                opacity: item.opacity(),
+            })
         })
         .collect::<Result<Vec<_>, _>>()?;
 

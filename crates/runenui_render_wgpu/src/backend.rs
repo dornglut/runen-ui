@@ -21,23 +21,23 @@ const READBACK_TIMEOUT: Duration = Duration::from_secs(30);
 const FILL_RECT_SHADER: &str = r"
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-    @location(0) color: vec4<f32>,
+    @location(0) straight_color: vec4<f32>,
 }
 
 @vertex
 fn vs_main(
     @location(0) position: vec2<f32>,
-    @location(1) color: vec4<f32>,
+    @location(1) straight_color: vec4<f32>,
 ) -> VertexOutput {
     var output: VertexOutput;
     output.position = vec4<f32>(position, 0.0, 1.0);
-    output.color = color;
+    output.straight_color = straight_color;
     return output;
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    return input.color;
+    return input.straight_color;
 }
 ";
 
@@ -1157,7 +1157,7 @@ fn create_fill_rect_pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: target_format,
-                blend: None,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -1258,11 +1258,19 @@ fn fill_rect_vertex_bytes(
         let right = normalized_position((right / scale_x).mul_add(2.0, -1.0));
         let top = normalized_position((top / scale_y).mul_add(-2.0, 1.0));
         let bottom = normalized_position((bottom / scale_y).mul_add(-2.0, 1.0));
-        let color = [
+        let source_rgb_linear = [
             srgb8_to_linear_f32(fill.color.red()),
             srgb8_to_linear_f32(fill.color.green()),
             srgb8_to_linear_f32(fill.color.blue()),
-            1.0,
+        ];
+        let color_alpha = f32::from(fill.color.alpha()) / 255.0;
+        let effective_alpha = color_alpha * fill.opacity.get();
+        // Keep RGB straight: ALPHA_BLENDING applies source alpha in the pipeline.
+        let straight_source_color = [
+            source_rgb_linear[0],
+            source_rgb_linear[1],
+            source_rgb_linear[2],
+            effective_alpha,
         ];
         for [x, y] in [
             [left, top],
@@ -1272,7 +1280,7 @@ fn fill_rect_vertex_bytes(
             [left, bottom],
             [right, bottom],
         ] {
-            push_vertex(&mut bytes, [x, y], color);
+            push_vertex(&mut bytes, [x, y], straight_source_color);
         }
     }
     bytes
@@ -1458,10 +1466,141 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("fixture rectangle is valid"))
     }
 
+    fn scene_opacity(value: f32) -> SceneOpacity {
+        SceneOpacity::new(value).unwrap_or_else(|_| unreachable!("fixture opacity is valid"))
+    }
+
+    #[derive(Clone, Copy, Debug, Default)]
+    struct ScalarTargetPixel {
+        rgb: [f64; 3],
+        alpha: f64,
+    }
+
+    /// Independent per-probe color oracle. It neither traverses scene data nor
+    /// reproduces geometry; callers name the exact source layers at one pixel.
+    fn scalar_source_over(layers: &[(Color, SceneOpacity)]) -> [u8; 4] {
+        let accumulated = layers.iter().fold(
+            ScalarTargetPixel::default(),
+            |destination, (color, opacity)| {
+                let source_rgb = [
+                    oracle_srgb8_to_linear(color.red()),
+                    oracle_srgb8_to_linear(color.green()),
+                    oracle_srgb8_to_linear(color.blue()),
+                ];
+                let source_alpha = (f64::from(color.alpha()) / 255.0) * f64::from(opacity.get());
+                let destination_factor = 1.0 - source_alpha;
+                ScalarTargetPixel {
+                    rgb: std::array::from_fn(|channel| {
+                        destination.rgb[channel]
+                            .mul_add(destination_factor, source_rgb[channel] * source_alpha)
+                    }),
+                    alpha: destination.alpha.mul_add(destination_factor, source_alpha),
+                }
+            },
+        );
+        [
+            oracle_linear_to_unorm8(accumulated.rgb[0]),
+            oracle_linear_to_unorm8(accumulated.rgb[1]),
+            oracle_linear_to_unorm8(accumulated.rgb[2]),
+            oracle_alpha_to_unorm8(accumulated.alpha),
+        ]
+    }
+
+    fn oracle_srgb8_to_linear(value: u8) -> f64 {
+        let encoded = f64::from(value) / 255.0;
+        if encoded <= 0.040_45 {
+            encoded / 12.92
+        } else {
+            ((encoded + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the scalar oracle clamps and rounds a finite normalized channel before conversion"
+    )]
+    fn oracle_linear_to_unorm8(value: f64) -> u8 {
+        let linear = value.clamp(0.0, 1.0);
+        let encoded = if linear <= 0.003_130_8 {
+            linear * 12.92
+        } else {
+            1.055_f64.mul_add(linear.powf(1.0 / 2.4), -0.055)
+        };
+        (encoded * 255.0).round() as u8
+    }
+
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the scalar oracle clamps and rounds a finite normalized alpha before conversion"
+    )]
+    fn oracle_alpha_to_unorm8(value: f64) -> u8 {
+        (value.clamp(0.0, 1.0) * 255.0).round() as u8
+    }
+
+    fn assert_pixel_within(label: &str, actual: [u8; 4], expected: [u8; 4], tolerance: u8) {
+        let differences: [u8; 4] =
+            std::array::from_fn(|channel| actual[channel].abs_diff(expected[channel]));
+        assert!(
+            differences
+                .into_iter()
+                .all(|difference| difference <= tolerance),
+            "{label}: actual={actual:?} expected={expected:?} differences={differences:?} tolerance={tolerance}"
+        );
+    }
+
     fn publication(items: Vec<PaintContributionItem>, scale: f32) -> PaintPublication {
         publication_sequence(items, &[scale])
             .pop()
             .unwrap_or_else(|| unreachable!("one fixture publication was requested"))
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct BasicAlphaCase {
+        opaque: Color,
+        literal_alpha: Color,
+        opacity_color: Color,
+        alpha_and_opacity: Color,
+        opaque_background: Color,
+        translucent_foreground: Color,
+        zero_background: Color,
+        zero_foreground: Color,
+        opaque_regression: Color,
+        half_opacity: SceneOpacity,
+    }
+
+    fn basic_alpha_case() -> (PaintPublication, BasicAlphaCase) {
+        let case = BasicAlphaCase {
+            opaque: Color::rgb(0xC3, 0x4A, 0x42),
+            literal_alpha: Color::rgba(0xC3, 0x4A, 0x42, 0x80),
+            opacity_color: Color::rgb(0x37, 0x86, 0xC8),
+            alpha_and_opacity: Color::rgba(0x9B, 0x6D, 0xD2, 0x80),
+            opaque_background: Color::rgb(0x25, 0x4D, 0x78),
+            translucent_foreground: Color::rgba(0xD8, 0x8A, 0x3D, 0x90),
+            zero_background: Color::rgb(0x41, 0x73, 0x5B),
+            zero_foreground: Color::rgba(0xE0, 0x52, 0x9D, 0xC8),
+            opaque_regression: Color::rgb(0x74, 0x9B, 0x38),
+            half_opacity: scene_opacity(0.5),
+        };
+        let items = vec![
+            PaintContributionItem::fill_rect(rect(4.0, 4.0, 6.0, 6.0), case.opaque),
+            PaintContributionItem::fill_rect(rect(12.0, 4.0, 6.0, 6.0), case.literal_alpha),
+            PaintContributionItem::fill_rect(rect(20.0, 4.0, 6.0, 6.0), case.opacity_color)
+                .with_opacity(case.half_opacity),
+            PaintContributionItem::fill_rect(rect(28.0, 4.0, 6.0, 6.0), case.alpha_and_opacity)
+                .with_opacity(case.half_opacity),
+            PaintContributionItem::fill_rect(rect(36.0, 4.0, 6.0, 6.0), case.opaque_background),
+            PaintContributionItem::fill_rect(
+                rect(36.0, 4.0, 6.0, 6.0),
+                case.translucent_foreground,
+            ),
+            PaintContributionItem::fill_rect(rect(44.0, 4.0, 6.0, 6.0), case.zero_background),
+            PaintContributionItem::fill_rect(rect(44.0, 4.0, 6.0, 6.0), case.zero_foreground)
+                .with_opacity(SceneOpacity::TRANSPARENT),
+            PaintContributionItem::fill_rect(rect(52.0, 4.0, 6.0, 6.0), case.opaque_regression),
+        ];
+        (publication(items, 1.0), case)
     }
 
     fn publication_sequence(
@@ -1543,6 +1682,47 @@ mod tests {
         readback.rgba8_srgb()[index..index + 4]
             .try_into()
             .unwrap_or_else(|_| unreachable!("pixel index is in the fixture target"))
+    }
+
+    fn raw_pixel(bytes: &[u8], extent: OffscreenExtent, x: u32, y: u32) -> [u8; 4] {
+        let index = (y as usize * extent.width() as usize + x as usize) * 4;
+        bytes[index..index + 4]
+            .try_into()
+            .unwrap_or_else(|_| unreachable!("pixel index is in the fixture target"))
+    }
+
+    fn render_raw_target(
+        renderer: &mut Renderer,
+        publication: &PaintPublication,
+        format: wgpu::TextureFormat,
+    ) -> Result<(OffscreenExtent, Vec<u8>), Box<dyn Error>> {
+        let fill_rects = super::validate_scene_subset(publication)?;
+        let extent = super::publication_extent(publication)?;
+        let layout = ReadbackLayout::new(extent)?;
+        renderer.ensure_fill_rect_pipeline(format)?;
+        let (texture, view) = renderer.create_texture_target(extent, format);
+        let readback = renderer.create_readback_buffer(layout);
+        let mut encoder = renderer
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("runenui test raw target encoder"),
+            });
+        super::encode_scene_to_target(
+            &renderer.device,
+            renderer
+                .fill_rect_pipelines
+                .get(&format)
+                .unwrap_or_else(|| unreachable!("target-format pipeline is cached")),
+            &mut encoder,
+            &view,
+            extent,
+            publication.raster_scale(),
+            &fill_rects,
+        );
+        super::encode_target_copy(&mut encoder, &texture, &readback, extent, layout);
+        let submission = renderer.queue.submit([encoder.finish()]);
+        let bytes = renderer.map_readback(&readback, layout, submission)?;
+        Ok((extent, bytes))
     }
 
     fn assert_order_probes(readback: &super::OffscreenReadback, scale: u32) {
@@ -1784,51 +1964,64 @@ mod tests {
     }
 
     #[test]
-    fn shared_scene_encoder_renders_bgra_srgb_target_with_matching_pipeline()
+    fn shared_scene_encoder_blends_identically_for_rgba_and_bgra_srgb_targets()
     -> Result<(), Box<dyn Error>> {
         let Some(mut renderer) = renderer_or_adapterless()? else {
             return Ok(());
         };
+        let background = Color::rgb(0x25, 0x4D, 0x78);
+        let foreground = Color::rgba(0xD8, 0x8A, 0x3D, 0x90);
         let publication = publication(
-            vec![PaintContributionItem::fill_rect(
-                rect(8.0, 6.0, 20.0, 12.0),
-                Color::rgb(0xC3, 0x4A, 0x42),
-            )],
+            vec![
+                PaintContributionItem::fill_rect(
+                    rect(8.0, 6.0, 20.0, 12.0),
+                    Color::rgb(0xC3, 0x4A, 0x42),
+                ),
+                PaintContributionItem::fill_rect(rect(36.0, 6.0, 12.0, 12.0), background),
+                PaintContributionItem::fill_rect(rect(36.0, 6.0, 12.0, 12.0), foreground),
+            ],
             1.0,
         );
-        let fill_rects = super::validate_scene_subset(&publication)?;
-        let extent = super::publication_extent(&publication)?;
-        let layout = ReadbackLayout::new(extent)?;
-        let format = wgpu::TextureFormat::Bgra8UnormSrgb;
-        renderer.ensure_fill_rect_pipeline(format)?;
-        let (texture, view) = renderer.create_texture_target(extent, format);
-        let readback = renderer.create_readback_buffer(layout);
-        let mut encoder = renderer
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("runenui BGRA target format proof encoder"),
-            });
-        super::encode_scene_to_target(
-            &renderer.device,
-            renderer
-                .fill_rect_pipelines
-                .get(&format)
-                .unwrap_or_else(|| unreachable!("BGRA pipeline is cached")),
-            &mut encoder,
-            &view,
-            extent,
-            publication.raster_scale(),
-            &fill_rects,
+        let expected_rgba = scalar_source_over(&[
+            (background, SceneOpacity::OPAQUE),
+            (foreground, SceneOpacity::OPAQUE),
+        ]);
+
+        let rgba = renderer.render_offscreen_publication(&publication)?;
+        let actual_rgba = pixel(rgba.readback(), 40, 10);
+        assert_pixel_within(
+            "RGBA translucent-over-opaque",
+            actual_rgba,
+            expected_rgba,
+            1,
         );
-        super::encode_target_copy(&mut encoder, &texture, &readback, extent, layout);
-        let submission = renderer.queue.submit([encoder.finish()]);
-        let bgra8_srgb = renderer.map_readback(&readback, layout, submission)?;
-        let pixel = |x: usize, y: usize| {
-            let index = (y * extent.width() as usize + x) * 4;
-            &bgra8_srgb[index..index + 4]
-        };
-        assert_eq!(pixel(2, 2), &[0, 0, 0, 0]);
-        assert_eq!(pixel(10, 8), &[0x42, 0x4A, 0xC3, 0xFF]);
+
+        let (extent, bgra8_srgb) = render_raw_target(
+            &mut renderer,
+            &publication,
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+        )?;
+        assert_eq!(raw_pixel(&bgra8_srgb, extent, 2, 2), [0, 0, 0, 0]);
+        assert_eq!(
+            raw_pixel(&bgra8_srgb, extent, 10, 8),
+            [0x42, 0x4A, 0xC3, 0xFF]
+        );
+        let expected_bgra = [
+            expected_rgba[2],
+            expected_rgba[1],
+            expected_rgba[0],
+            expected_rgba[3],
+        ];
+        let actual_bgra = raw_pixel(&bgra8_srgb, extent, 40, 10);
+        assert_pixel_within(
+            "BGRA translucent-over-opaque",
+            actual_bgra,
+            expected_bgra,
+            1,
+        );
+        eprintln!(
+            "REAL GPU FORMAT/ALPHA PROOF: RGBA expected={expected_rgba:?} actual={actual_rgba:?}; BGRA-storage expected={expected_bgra:?} actual={actual_bgra:?}; tolerance=1 byte"
+        );
         Ok(())
     }
 
@@ -1931,13 +2124,6 @@ mod tests {
                 SceneShape::rounded_rect(rect(0.0, 0.0, 3.0, 3.0), Radius::ZERO),
                 LogicalTransform::IDENTITY,
             ));
-        let translucent_item =
-            PaintContributionItem::fill_rect(rect(1.0, 1.0, 2.0, 2.0), Color::WHITE).with_opacity(
-                SceneOpacity::new(0.5).unwrap_or_else(|_| unreachable!("fixture opacity is valid")),
-            );
-        let translucent_color =
-            PaintContributionItem::fill_rect(rect(1.0, 1.0, 2.0, 2.0), Color::rgba(1, 2, 3, 128));
-
         let cases = [
             (
                 stroke,
@@ -1974,20 +2160,6 @@ mod tests {
                     semantic: UnsupportedSceneSemantic::NonEmptyClips,
                 },
             ),
-            (
-                translucent_item,
-                SceneValidationError::UnsupportedItem {
-                    item_index: 0,
-                    semantic: UnsupportedSceneSemantic::NonUnitItemOpacity,
-                },
-            ),
-            (
-                translucent_color,
-                SceneValidationError::UnsupportedItem {
-                    item_index: 0,
-                    semantic: UnsupportedSceneSemantic::NonOpaqueFillColor,
-                },
-            ),
         ];
 
         for (item, expected) in cases {
@@ -1998,6 +2170,25 @@ mod tests {
                 "unsupported content must be rejected before it can be partially rendered"
             );
         }
+    }
+
+    #[test]
+    fn fill_rect_subset_preserves_literal_alpha_and_item_opacity() -> Result<(), Box<dyn Error>> {
+        let color = Color::rgba(0xC3, 0x4A, 0x42, 0x80);
+        let opacity = scene_opacity(0.5);
+        let publication = publication(
+            vec![
+                PaintContributionItem::fill_rect(rect(1.0, 1.0, 2.0, 2.0), color)
+                    .with_opacity(opacity),
+            ],
+            1.0,
+        );
+
+        let fill_rects = super::validate_scene_subset(&publication)?;
+        assert_eq!(fill_rects.len(), 1);
+        assert_eq!(fill_rects[0].color, color);
+        assert_eq!(fill_rects[0].opacity, opacity);
+        Ok(())
     }
 
     #[test]
@@ -2060,6 +2251,161 @@ mod tests {
         );
 
         prove_png_round_trip(readback)
+    }
+
+    #[test]
+    fn real_gpu_fill_rect_linear_source_over_alpha_corpus() -> Result<(), Box<dyn Error>> {
+        let Some(mut renderer) = renderer_or_adapterless()? else {
+            return Ok(());
+        };
+        let (cases, case) = basic_alpha_case();
+        let case_output = renderer.render_offscreen_publication(&cases)?;
+        assert_eq!(
+            case_output.update_plan().mode(),
+            PublicationUpdateMode::FullResync
+        );
+
+        let expected_untouched = scalar_source_over(&[]);
+        let expected_opaque = scalar_source_over(&[(case.opaque, SceneOpacity::OPAQUE)]);
+        let expected_literal_alpha =
+            scalar_source_over(&[(case.literal_alpha, SceneOpacity::OPAQUE)]);
+        let expected_item_opacity = scalar_source_over(&[(case.opacity_color, case.half_opacity)]);
+        let expected_alpha_and_opacity =
+            scalar_source_over(&[(case.alpha_and_opacity, case.half_opacity)]);
+        let expected_over_opaque = scalar_source_over(&[
+            (case.opaque_background, SceneOpacity::OPAQUE),
+            (case.translucent_foreground, SceneOpacity::OPAQUE),
+        ]);
+        let expected_zero_opacity = scalar_source_over(&[
+            (case.zero_background, SceneOpacity::OPAQUE),
+            (case.zero_foreground, SceneOpacity::TRANSPARENT),
+        ]);
+        let expected_opaque_regression =
+            scalar_source_over(&[(case.opaque_regression, SceneOpacity::OPAQUE)]);
+        let case_probes = [
+            (
+                "A untouched target",
+                pixel(case_output.readback(), 1, 1),
+                expected_untouched,
+            ),
+            (
+                "B opaque FillRect",
+                pixel(case_output.readback(), 5, 5),
+                expected_opaque,
+            ),
+            (
+                "C literal alpha over transparent",
+                pixel(case_output.readback(), 13, 5),
+                expected_literal_alpha,
+            ),
+            (
+                "D item opacity over transparent",
+                pixel(case_output.readback(), 21, 5),
+                expected_item_opacity,
+            ),
+            (
+                "E literal alpha times item opacity",
+                pixel(case_output.readback(), 29, 5),
+                expected_alpha_and_opacity,
+            ),
+            (
+                "F translucent over opaque",
+                pixel(case_output.readback(), 37, 5),
+                expected_over_opaque,
+            ),
+            (
+                "I zero item opacity",
+                pixel(case_output.readback(), 45, 5),
+                expected_zero_opacity,
+            ),
+            (
+                "J opaque alpha and opacity",
+                pixel(case_output.readback(), 53, 5),
+                expected_opaque_regression,
+            ),
+        ];
+        for (label, actual, expected) in case_probes {
+            assert_pixel_within(label, actual, expected, 1);
+            eprintln!("{label}: scalar_expected={expected:?} gpu_actual={actual:?}");
+        }
+        assert_eq!(expected_untouched, [0, 0, 0, 0]);
+        assert_eq!(expected_opaque, [0xC3, 0x4A, 0x42, 0xFF]);
+        assert_eq!(expected_literal_alpha[3], 0x80);
+        assert_eq!(expected_item_opacity[3], 0x80);
+        assert_eq!(expected_alpha_and_opacity[3], 0x40);
+        assert_eq!(expected_zero_opacity, [0x41, 0x73, 0x5B, 0xFF]);
+        assert_eq!(expected_opaque_regression, [0x74, 0x9B, 0x38, 0xFF]);
+        assert_eq!(pixel(case_output.readback(), 1, 1), expected_untouched);
+        assert_eq!(pixel(case_output.readback(), 5, 5), expected_opaque);
+        assert_eq!(pixel(case_output.readback(), 45, 5), expected_zero_opacity);
+        assert_eq!(
+            pixel(case_output.readback(), 53, 5),
+            expected_opaque_regression
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn real_gpu_two_translucent_fill_rects_preserve_and_reverse_order() -> Result<(), Box<dyn Error>>
+    {
+        let Some(mut renderer) = renderer_or_adapterless()? else {
+            return Ok(());
+        };
+        let first_color = Color::rgba(0xC3, 0x4A, 0x42, 0xA0);
+        let second_color = Color::rgba(0x37, 0x86, 0xC8, 0xB0);
+        let first_opacity = scene_opacity(0.75);
+        let second_opacity = scene_opacity(0.625);
+        let first_item = PaintContributionItem::fill_rect(rect(8.0, 18.0, 20.0, 14.0), first_color)
+            .with_opacity(first_opacity);
+        let second_item =
+            PaintContributionItem::fill_rect(rect(20.0, 24.0, 24.0, 16.0), second_color)
+                .with_opacity(second_opacity);
+        let first_then_second = publication(vec![first_item.clone(), second_item.clone()], 1.0);
+        let second_then_first = publication(vec![second_item, first_item], 1.0);
+        let forward = renderer.render_offscreen_publication(&first_then_second)?;
+        let reversed = renderer.render_offscreen_publication(&second_then_first)?;
+        assert_eq!(
+            forward.update_plan().mode(),
+            PublicationUpdateMode::FullResync
+        );
+        assert_eq!(
+            reversed.update_plan().mode(),
+            PublicationUpdateMode::FullResync
+        );
+
+        let expected_first_only = scalar_source_over(&[(first_color, first_opacity)]);
+        let expected_second_only = scalar_source_over(&[(second_color, second_opacity)]);
+        let expected_forward =
+            scalar_source_over(&[(first_color, first_opacity), (second_color, second_opacity)]);
+        let expected_reversed =
+            scalar_source_over(&[(second_color, second_opacity), (first_color, first_opacity)]);
+        let actual_first_only = pixel(forward.readback(), 10, 20);
+        let actual_second_only = pixel(forward.readback(), 36, 34);
+        let actual_forward = pixel(forward.readback(), 22, 26);
+        let actual_reversed = pixel(reversed.readback(), 22, 26);
+        assert_pixel_within("G first-only", actual_first_only, expected_first_only, 1);
+        assert_pixel_within("G second-only", actual_second_only, expected_second_only, 1);
+        assert_pixel_within(
+            "G translucent first then second",
+            actual_forward,
+            expected_forward,
+            1,
+        );
+        assert_pixel_within(
+            "H translucent second then first",
+            actual_reversed,
+            expected_reversed,
+            1,
+        );
+        assert_ne!(expected_forward, expected_reversed);
+        assert_ne!(actual_forward, actual_reversed);
+        eprintln!(
+            "REAL GPU ALPHA ORDER PROOF: first-only expected={expected_first_only:?} actual={actual_first_only:?}; second-only expected={expected_second_only:?} actual={actual_second_only:?}; first-then-second expected={expected_forward:?} actual={actual_forward:?}; second-then-first expected={expected_reversed:?} actual={actual_reversed:?}; tolerance=1 byte; adapter={:?} backend={}",
+            renderer.diagnostics().adapter_info().name,
+            renderer.diagnostics().adapter_info().backend,
+        );
+        Ok(())
     }
 
     #[test]
