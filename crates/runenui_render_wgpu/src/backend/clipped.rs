@@ -1,14 +1,16 @@
+mod stroke_mask;
+
 use std::collections::HashMap;
 
-use runenui_core::{Color, SceneShape};
+use runenui_core::{Color, PaintPrimitive, SceneShape};
 use runenui_runtime::{PaintPublication, RasterScale, SceneClip};
 use wgpu::util::DeviceExt;
 
 use crate::{
     PublicationUpdateMode, PublicationUpdatePlan, WgpuHasDisplayHandle,
     scene_subset::{
-        SceneValidationError, SupportedFillRect, publication_resource_error,
-        validate_fill_rect_item,
+        SceneValidationError, SupportedLiteralRect, publication_resource_error,
+        validate_literal_rect_item,
     },
 };
 
@@ -117,6 +119,7 @@ fn fs_main(input: VertexOutput) {
 struct ClipTargetPipelines {
     clipped_fill: wgpu::RenderPipeline,
     mask: ClipMaskPipeline,
+    stroke_mask: stroke_mask::StrokeMaskPipeline,
 }
 
 #[derive(Debug)]
@@ -181,11 +184,11 @@ impl ClipMaskPipeline {
     }
 }
 
-/// Canonical renderer facade with explicit M6 clip realization.
+/// Canonical renderer facade with explicit M6 clip and centered-stroke realization.
 ///
 /// The wrapped backend remains the single owner of the instance, adapter,
 /// device, queue, native surface, retained color target, publication lineage,
-/// and readback machinery. Clip-specific pipelines and the ephemeral stencil
+/// and readback machinery. Mask-specific pipelines and the ephemeral stencil
 /// attachment are renderer-local realization only.
 #[derive(Debug)]
 pub struct Renderer {
@@ -262,14 +265,14 @@ impl Renderer {
 
     /// Renders the exact currently supported scene subset and reads actual GPU bytes.
     ///
-    /// A publication containing no clips delegates to the already-validated base
-    /// path. Once any item has explicit clips, the complete publication is drawn
-    /// in stable item order. Each clipped item clears an ephemeral `Stencil8`
-    /// mask to the single allowed value, then every authored clip can only clear
-    /// samples from that mask. The final fill is admitted where the mask remains
-    /// allowed. This realizes arbitrary-length conjunctive clips without encoding
-    /// clip count into the eight-bit stencil value. A singular clip transform
-    /// fails closed before any item draw.
+    /// A publication containing only unclipped `FillRect` items delegates to the
+    /// already-validated base path. Explicit clips and centered `StrokeRect`
+    /// items use the stencil path while preserving the same color geometry,
+    /// affine transform, source-over, target, lineage, and readback authority.
+    /// A non-collapsed stroke draws its accepted expanded rectangle while the
+    /// exact accepted inset is cleared from the stencil mask; a collapsed inset
+    /// therefore naturally becomes the complete expanded rectangle. Zero-width,
+    /// zero-area, or checked derived-rectangle overflow contributes no coverage.
     ///
     /// # Errors
     ///
@@ -279,16 +282,14 @@ impl Renderer {
         &mut self,
         publication: &PaintPublication,
     ) -> Result<super::OffscreenPublicationReadback, super::OffscreenRenderError> {
-        if publication
-            .scene()
-            .items()
-            .iter()
-            .all(|item| item.clips().is_empty())
-        {
+        if publication.scene().items().iter().all(|item| {
+            item.clips().is_empty()
+                && matches!(item.primitive(), PaintPrimitive::FillRect { .. })
+        }) {
             return self.base.render_offscreen_publication(publication);
         }
 
-        let fill_rects =
+        let literal_rects =
             validate_clipped_scene_subset(publication).map_err(super::scene_validation_error)?;
         let (canvas_extent, extent) = super::publication_extents(publication)?;
         self.base.validate_extent(extent)?;
@@ -324,7 +325,7 @@ impl Renderer {
             self.base
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("runenui clipped offscreen publication encoder"),
+                    label: Some("runenui literal-rect offscreen publication encoder"),
                 });
         let target = self
             .base
@@ -343,7 +344,7 @@ impl Renderer {
             let clip_pipelines = self
                 .clip_pipelines
                 .get(&target.format)
-                .unwrap_or_else(|| unreachable!("clip target pipelines are cached"));
+                .unwrap_or_else(|| unreachable!("literal mask pipelines are cached"));
             encode_clipped_scene_to_target(
                 &self.base.device,
                 ordinary_pipeline,
@@ -354,7 +355,7 @@ impl Renderer {
                 extent,
                 canvas_extent,
                 publication.raster_scale(),
-                &fill_rects,
+                &literal_rects,
             );
         }
 
@@ -415,37 +416,35 @@ impl Renderer {
             .or_insert_with(|| ClipTargetPipelines {
                 clipped_fill: create_clipped_fill_pipeline(device, format),
                 mask: ClipMaskPipeline::new(device),
+                stroke_mask: stroke_mask::StrokeMaskPipeline::new(device),
             });
         Ok(())
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct ClippedFillRect {
-    fill: SupportedFillRect,
+struct LiteralRectItem {
+    literal: SupportedLiteralRect,
     clips: Vec<SceneClip>,
 }
 
 fn validate_clipped_scene_subset(
     publication: &PaintPublication,
-) -> Result<Vec<ClippedFillRect>, SceneValidationError> {
+) -> Result<Vec<LiteralRectItem>, SceneValidationError> {
     let unsupported_resource_kind = publication_resource_error(publication);
-    let fill_rects = publication
-        .scene()
-        .items()
-        .iter()
-        .enumerate()
-        .map(|(item_index, item)| {
-            validate_fill_rect_item(item_index, item).map(|fill| ClippedFillRect {
-                fill,
+    let mut literal_rects = Vec::with_capacity(publication.scene().items().len());
+    for (item_index, item) in publication.scene().items().iter().enumerate() {
+        if let Some(literal) = validate_literal_rect_item(item_index, item)? {
+            literal_rects.push(LiteralRectItem {
+                literal,
                 clips: item.clips().to_vec(),
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+            });
+        }
+    }
     if let Some(error) = unsupported_resource_kind {
         return Err(error);
     }
-    Ok(fill_rects)
+    Ok(literal_rects)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -634,7 +633,7 @@ fn create_stencil_target(
     extent: super::OffscreenExtent,
 ) -> (wgpu::Texture, wgpu::TextureView) {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("runenui clip stencil target"),
+        label: Some("runenui literal-mask stencil target"),
         size: super::texture_extent(extent),
         mip_level_count: 1,
         sample_count: 1,
@@ -649,7 +648,7 @@ fn create_stencil_target(
 
 #[allow(
     clippy::too_many_arguments,
-    reason = "the clip-aware low-level encoder keeps the validated target, exact canvas, raster scale, and explicit ordinary/clip pipelines visible at the realization boundary"
+    reason = "the literal-rectangle low-level encoder keeps the validated target, exact canvas, raster scale, and explicit ordinary/mask pipelines visible at the realization boundary"
 )]
 fn encode_clipped_scene_to_target(
     device: &wgpu::Device,
@@ -661,12 +660,12 @@ fn encode_clipped_scene_to_target(
     extent: super::OffscreenExtent,
     canvas_extent: super::RasterCanvasExtent,
     raster_scale: RasterScale,
-    fill_rects: &[ClippedFillRect],
+    literal_rects: &[LiteralRectItem],
 ) {
     clear_color_target(encoder, color_view);
-    for fill in fill_rects {
+    for item in literal_rects {
         let vertex_bytes = super::fill_rect_vertex_bytes(
-            std::slice::from_ref(&fill.fill),
+            std::slice::from_ref(&item.literal.fill),
             extent,
             canvas_extent,
             raster_scale,
@@ -676,12 +675,12 @@ fn encode_clipped_scene_to_target(
         }
         let vertex_count = u32::try_from(vertex_bytes.len() / 24).unwrap_or(u32::MAX);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("runenui ordered FillRect vertices"),
+            label: Some("runenui ordered literal-rect vertices"),
             contents: &vertex_bytes,
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        if fill.clips.is_empty() {
+        if item.literal.stroke_inset.is_none() && item.clips.is_empty() {
             draw_unclipped_fill(
                 encoder,
                 color_view,
@@ -692,11 +691,31 @@ fn encode_clipped_scene_to_target(
             continue;
         }
 
-        let Some(uniforms) = prepare_clip_uniforms(&fill.clips, raster_scale) else {
+        let Some(clip_uniforms) = prepare_clip_uniforms(&item.clips, raster_scale) else {
             continue;
         };
+        let stroke_uniform = if item.literal.stroke_inset.is_some() {
+            let Some(uniform) =
+                stroke_mask::StrokeMaskUniform::from_literal(&item.literal, raster_scale)
+            else {
+                continue;
+            };
+            Some(uniform)
+        } else {
+            None
+        };
+
         clear_stencil_mask(encoder, stencil_view);
-        for uniform in &uniforms {
+        if let Some(uniform) = stroke_uniform {
+            stroke_mask::apply_stroke_mask(
+                device,
+                encoder,
+                stencil_view,
+                &clip_pipelines.stroke_mask,
+                uniform,
+            );
+        }
+        for uniform in &clip_uniforms {
             apply_clip_mask(device, encoder, stencil_view, &clip_pipelines.mask, uniform);
         }
         draw_clipped_fill(
@@ -721,7 +740,7 @@ fn clear_color_target(encoder: &mut wgpu::CommandEncoder, color_view: &wgpu::Tex
         },
     });
     let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("runenui clipped scene clear pass"),
+        label: Some("runenui literal-rect scene clear pass"),
         color_attachments: &[color_attachment],
         depth_stencil_attachment: None,
         timestamp_writes: None,
@@ -740,7 +759,7 @@ fn clear_stencil_mask(encoder: &mut wgpu::CommandEncoder, stencil_view: &wgpu::T
         }),
     };
     let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("runenui clip stencil reset pass"),
+        label: Some("runenui literal stencil reset pass"),
         color_attachments: &[],
         depth_stencil_attachment: Some(stencil_attachment),
         timestamp_writes: None,
@@ -808,7 +827,7 @@ fn draw_unclipped_fill(
         },
     });
     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("runenui ordered unclipped FillRect pass"),
+        label: Some("runenui ordered unclipped literal-rect pass"),
         color_attachments: &[color_attachment],
         depth_stencil_attachment: None,
         timestamp_writes: None,
@@ -846,7 +865,7 @@ fn draw_clipped_fill(
         }),
     };
     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("runenui ordered clipped FillRect pass"),
+        label: Some("runenui ordered masked literal-rect pass"),
         color_attachments: &[color_attachment],
         depth_stencil_attachment: Some(stencil_attachment),
         timestamp_writes: None,
