@@ -12,12 +12,12 @@ mod observation;
 mod resource;
 mod scene_subset;
 
+pub use backend::clipped::Renderer;
 pub use backend::{
     AdapterPowerPreference, BackendSelection, OffscreenExtent, OffscreenPublicationReadback,
     OffscreenReadback, OffscreenRenderError, RendererDiagnostics, RendererInitError,
     RendererOptions,
 };
-pub use backend::clipped::Renderer;
 pub use lineage::{PublicationUpdateMode, PublicationUpdatePlan};
 pub use observation::PublicationObservation;
 pub use resource::{

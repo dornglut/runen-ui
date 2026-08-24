@@ -199,7 +199,9 @@ impl Renderer {
     /// # Errors
     ///
     /// Returns structured backend, adapter, or device diagnostics when construction fails.
-    pub async fn request(options: super::RendererOptions) -> Result<Self, super::RendererInitError> {
+    pub async fn request(
+        options: super::RendererOptions,
+    ) -> Result<Self, super::RendererInitError> {
         super::Renderer::request(options).await.map(Self::from_base)
     }
 
@@ -286,13 +288,14 @@ impl Renderer {
             return self.base.render_offscreen_publication(publication);
         }
 
-        let fill_rects = validate_clipped_scene_subset(publication)
-            .map_err(super::scene_validation_error)?;
+        let fill_rects =
+            validate_clipped_scene_subset(publication).map_err(super::scene_validation_error)?;
         let (canvas_extent, extent) = super::publication_extents(publication)?;
         self.base.validate_extent(extent)?;
         let layout = super::ReadbackLayout::new(extent)?;
         self.base.validate_readback_buffer(layout)?;
-        self.base.ensure_fill_rect_pipeline(super::OFFSCREEN_FORMAT)?;
+        self.base
+            .ensure_fill_rect_pipeline(super::OFFSCREEN_FORMAT)?;
         self.ensure_clip_pipelines(super::OFFSCREEN_FORMAT)?;
 
         let retained_target_matches = self
@@ -317,12 +320,12 @@ impl Renderer {
         }
 
         let readback = self.base.create_readback_buffer(layout);
-        let mut encoder = self
-            .base
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("runenui clipped offscreen publication encoder"),
-            });
+        let mut encoder =
+            self.base
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("runenui clipped offscreen publication encoder"),
+                });
         let target = self
             .base
             .offscreen_target
@@ -489,7 +492,10 @@ impl ClipUniform {
     }
 }
 
-fn prepare_clip_uniforms(clips: &[SceneClip], raster_scale: RasterScale) -> Option<Vec<ClipUniform>> {
+fn prepare_clip_uniforms(
+    clips: &[SceneClip],
+    raster_scale: RasterScale,
+) -> Option<Vec<ClipUniform>> {
     clips
         .iter()
         .copied()
@@ -691,13 +697,7 @@ fn encode_clipped_scene_to_target(
         };
         clear_stencil_mask(encoder, stencil_view);
         for uniform in &uniforms {
-            apply_clip_mask(
-                device,
-                encoder,
-                stencil_view,
-                &clip_pipelines.mask,
-                uniform,
-            );
+            apply_clip_mask(device, encoder, stencil_view, &clip_pipelines.mask, uniform);
         }
         draw_clipped_fill(
             encoder,
@@ -873,16 +873,14 @@ mod tests {
     use runenui_core::{
         Color, ContributionClip, Element, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
         LogicalTransform, NoHostProtocol, PaintContribution, PaintContributionContext,
-        PaintContributionItem, Radius, SceneShape, StyleTokens, UiApp, Widget,
-        WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
+        PaintContributionItem, Radius, SceneShape, StyleTokens, UiApp, Widget, WidgetInvalidation,
+        WidgetMeasure, WidgetUpdateContext,
     };
     use runenui_runtime::{
         AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SurfaceBuildContext,
     };
 
-    use super::{
-        ClipUniform, Renderer, prepare_clip_uniforms, validate_clipped_scene_subset,
-    };
+    use super::{ClipUniform, Renderer, prepare_clip_uniforms, validate_clipped_scene_subset};
     use crate::{BackendSelection, RendererInitError, RendererOptions};
 
     const SURFACE_WIDTH: u16 = 64;
@@ -986,10 +984,7 @@ mod tests {
         );
         let transform = LogicalTransform::try_new(1.0, 0.1, 0.25, 1.0, 5.0, 3.0)?;
         let clip = ContributionClip::new(rounded, transform);
-        let mut many = PaintContributionItem::fill_rect(
-            rect(0.0, 0.0, 64.0, 48.0),
-            Color::WHITE,
-        );
+        let mut many = PaintContributionItem::fill_rect(rect(0.0, 0.0, 64.0, 48.0), Color::WHITE);
         for _ in 0..300 {
             many = many.with_clip(clip);
         }
@@ -1004,14 +999,13 @@ mod tests {
 
         let singular = LogicalTransform::try_new(1.0, 0.0, 0.0, 0.0, 2.0, 1.0)?;
         let singular_publication = publication(
-            vec![PaintContributionItem::fill_rect(
-                rect(0.0, 0.0, 64.0, 48.0),
-                Color::WHITE,
-            )
-            .with_clip(ContributionClip::new(
-                SceneShape::rect(rect(0.0, 0.0, 64.0, 48.0)),
-                singular,
-            ))],
+            vec![
+                PaintContributionItem::fill_rect(rect(0.0, 0.0, 64.0, 48.0), Color::WHITE)
+                    .with_clip(ContributionClip::new(
+                        SceneShape::rect(rect(0.0, 0.0, 64.0, 48.0)),
+                        singular,
+                    )),
+            ],
             1.0,
         );
         let singular_fills = validate_clipped_scene_subset(&singular_publication)?;
@@ -1043,11 +1037,10 @@ mod tests {
         );
         let transform = LogicalTransform::try_new(1.0, 0.25, -0.2, 1.0, 6.0, 4.0)?;
         let publication = publication(
-            vec![PaintContributionItem::fill_rect(
-                rect(0.0, 0.0, 64.0, 48.0),
-                Color::WHITE,
-            )
-            .with_clip(ContributionClip::new(shape, transform))],
+            vec![
+                PaintContributionItem::fill_rect(rect(0.0, 0.0, 64.0, 48.0), Color::WHITE)
+                    .with_clip(ContributionClip::new(shape, transform)),
+            ],
             2.0,
         );
         let scene_clip = publication.scene().items()[0].clips()[0];
@@ -1072,13 +1065,10 @@ mod tests {
     #[test]
     fn clipped_validator_reuses_primitive_authority_while_base_validator_stays_fail_closed()
     -> Result<(), Box<dyn Error>> {
-        let clipped = PaintContributionItem::fill_rect(
-            rect(1.0, 1.0, 10.0, 10.0),
-            Color::WHITE,
-        )
-        .with_clip(ContributionClip::identity(SceneShape::rect(rect(
-            2.0, 2.0, 4.0, 4.0,
-        ))));
+        let clipped = PaintContributionItem::fill_rect(rect(1.0, 1.0, 10.0, 10.0), Color::WHITE)
+            .with_clip(ContributionClip::identity(SceneShape::rect(rect(
+                2.0, 2.0, 4.0, 4.0,
+            ))));
         let publication = publication(vec![clipped], 1.0);
         assert!(validate_clipped_scene_subset(&publication).is_ok());
         assert!(matches!(
@@ -1100,9 +1090,7 @@ mod tests {
         let background = Color::rgb(0x25, 0x4D, 0x78);
         let clipped_color = Color::rgb(0xC3, 0x4A, 0x42);
         let singular_color = Color::rgb(0x37, 0x86, 0xC8);
-        let first_clip = ContributionClip::identity(SceneShape::rect(rect(
-            18.0, 12.0, 28.0, 28.0,
-        )));
+        let first_clip = ContributionClip::identity(SceneShape::rect(rect(18.0, 12.0, 28.0, 28.0)));
         let rounded_shape = SceneShape::rounded_rect(
             rect(8.0, 8.0, 28.0, 22.0),
             Radius::all(LogicalLength::new(7.0)?),
@@ -1112,24 +1100,15 @@ mod tests {
         let singular_transform = LogicalTransform::try_new(1.0, 0.0, 0.0, 0.0, 0.0, 0.0)?;
         let publication = publication(
             vec![
-                PaintContributionItem::fill_rect(
-                    rect(0.0, 0.0, 64.0, 48.0),
-                    background,
-                ),
-                PaintContributionItem::fill_rect(
-                    rect(0.0, 0.0, 64.0, 48.0),
-                    clipped_color,
-                )
-                .with_clip(first_clip)
-                .with_clip(second_clip),
-                PaintContributionItem::fill_rect(
-                    rect(0.0, 0.0, 64.0, 48.0),
-                    singular_color,
-                )
-                .with_clip(ContributionClip::new(
-                    SceneShape::rect(rect(0.0, 0.0, 64.0, 48.0)),
-                    singular_transform,
-                )),
+                PaintContributionItem::fill_rect(rect(0.0, 0.0, 64.0, 48.0), background),
+                PaintContributionItem::fill_rect(rect(0.0, 0.0, 64.0, 48.0), clipped_color)
+                    .with_clip(first_clip)
+                    .with_clip(second_clip),
+                PaintContributionItem::fill_rect(rect(0.0, 0.0, 64.0, 48.0), singular_color)
+                    .with_clip(ContributionClip::new(
+                        SceneShape::rect(rect(0.0, 0.0, 64.0, 48.0)),
+                        singular_transform,
+                    )),
             ],
             1.3,
         );
@@ -1153,10 +1132,8 @@ mod tests {
         let mut transformed_inside = None;
         for y in 0_u16..63 {
             for x in 0_u16..84 {
-                let point = LogicalPoint::new(
-                    (f32::from(x) + 0.5) / scale,
-                    (f32::from(y) + 0.5) / scale,
-                )?;
+                let point =
+                    LogicalPoint::new((f32::from(x) + 0.5) / scale, (f32::from(y) + 0.5) / scale)?;
                 let first = clips[0].contains_surface_point(point);
                 let second = clips[1].contains_surface_point(point);
                 let probe = (u32::from(x), u32::from(y));
@@ -1197,8 +1174,9 @@ mod tests {
                 "{label} must be excluded by conjunctive clip coverage"
             );
         }
-        let transformed = transformed_inside
-            .unwrap_or_else(|| unreachable!("fixture proves transformed rather than local placement"));
+        let transformed = transformed_inside.unwrap_or_else(|| {
+            unreachable!("fixture proves transformed rather than local placement")
+        });
         assert_eq!(
             pixel(output.readback(), transformed.0, transformed.1),
             [0xC3, 0x4A, 0x42, 0xFF],
