@@ -7,17 +7,20 @@ It consumes ordinary public `runenui_core` and `runenui_runtime` paint/publicati
 The current implementation fails closed: before target creation or GPU
 submission it accepts only `FillRect` items with finite affine
 `local_to_surface` transforms and no clips. FillRects preserve literal color
-alpha and validated item opacity. Invertible transforms map all four rectangle
-corners into surface-logical space before raster scaling; GPU clip space handles
-target clipping without replacing transformed geometry with an axis-aligned
-bounding box. A transform whose canonical `LogicalTransform::inverse()` is
-unavailable contributes no paint coverage rather than falling back to the source
-rectangle. Stroke, image, shaped-text, unknown primitive, and all clip semantics
-remain unsupported. Canonical `SceneRequirements`/`SceneCapabilities` continue
-to check resource kinds only; the narrower implementation-subset validation and
-its detailed reasons remain renderer-internal. The public render error reports
-an unsupported scene without making temporary implementation progress part of
-the lasting API.
+alpha and validated item opacity. A transform whose canonical
+`LogicalTransform::inverse()` is unavailable contributes no paint coverage rather
+than falling back to the source rectangle. For an invertible transform, finite
+f32 scene components are widened only inside the renderer to f64 for affine edge
+construction and raster scaling; the resulting convex polygon is clipped to the
+finite target before conversion to the GPU f32 vertex ABI and triangulation. This
+preserves a visible target intersection even when an irrelevant remote forward
+`LogicalPoint` mapping would overflow f32, without replacing transformed geometry
+with an axis-aligned bounding box. Stroke, image, shaped-text, unknown primitive,
+and all clip semantics remain unsupported. Canonical
+`SceneRequirements`/`SceneCapabilities` continue to check resource kinds only;
+the narrower implementation-subset validation and its detailed reasons remain
+renderer-internal. The public render error reports an unsupported scene without
+making temporary implementation progress part of the lasting API.
 
 An offscreen target retains its texture, extent, format, and successful
 publication lineage as one realization. `AlreadyCurrent` and `ExactBaseMatch`
@@ -101,7 +104,10 @@ singular transform in the same ordinary publication. Exact interior probes show
 the transformed parallelogram is rasterized as authored, while a point inside its
 axis-aligned bounding box but outside the parallelogram stays transparent. Probes
 at the untransformed source rectangle and the singular rectangle also stay
-transparent, proving neither transform path falls back to source geometry.
+transparent, proving neither transform path falls back to source geometry. A
+separate extreme-affine regression proves that an invertible transform retains
+its visible target intersection when an ordinary forward f32 `LogicalPoint`
+mapping of a remote corner is unrepresentable.
 
 The authored rectangles in the existing PNG proof remain opaque. Translucent
 target readback contains accumulated composited RGB, while ordinary PNG alpha is
