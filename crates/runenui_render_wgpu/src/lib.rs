@@ -6,10 +6,18 @@
 
 #![forbid(unsafe_code)]
 
+#[allow(
+    clippy::redundant_pub_crate,
+    reason = "the private backend module uses pub(crate) only for explicit crate-root sibling seams without widening the public API"
+)]
 mod backend;
 mod lineage;
 mod observation;
 mod resource;
+#[allow(
+    clippy::redundant_pub_crate,
+    reason = "the private scene-subset module exposes explicit crate-internal sibling seams without widening the public API"
+)]
 mod scene_subset;
 
 pub use backend::clipped::Renderer;
