@@ -10,10 +10,12 @@ mod backend;
 mod lineage;
 mod observation;
 mod resource;
+mod scene_subset;
 
 pub use backend::{
-    AdapterPowerPreference, BackendSelection, OffscreenExtent, OffscreenReadback,
-    OffscreenRenderError, Renderer, RendererDiagnostics, RendererInitError, RendererOptions,
+    AdapterPowerPreference, BackendSelection, OffscreenExtent, OffscreenPublicationReadback,
+    OffscreenReadback, OffscreenRenderError, Renderer, RendererDiagnostics, RendererInitError,
+    RendererOptions,
 };
 pub use lineage::{PublicationLineage, PublicationUpdateMode, PublicationUpdatePlan};
 pub use observation::PublicationObservation;
@@ -22,3 +24,4 @@ pub use resource::{
     ResourceProviderErrorKind, ResourceRequest, ResourceResolveError, ShapedRunRaster,
     resolve_resource,
 };
+pub use scene_subset::{SceneSubsetError, UnsupportedSceneSemantic};
