@@ -1,7 +1,7 @@
 use core::{error::Error, fmt};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use runenui_core::{Color, LogicalPoint};
+use runenui_core::Color;
 use runenui_runtime::{PaintPublication, RasterScale};
 use wgpu::util::DeviceExt;
 
@@ -1241,13 +1241,16 @@ fn fill_rect_vertex_bytes(
     extent: OffscreenExtent,
     raster_scale: RasterScale,
 ) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(fill_rects.len().saturating_mul(6 * 24));
+    let mut bytes = Vec::with_capacity(fill_rects.len().saturating_mul(18 * 24));
     for fill in fill_rects {
-        let Some(corners) = transformed_fill_corners(fill) else {
+        let polygon = transformed_fill_polygon(fill, extent, raster_scale);
+        if polygon.len() < 3 {
             continue;
-        };
-        let [left_top, left_bottom, right_top, right_bottom] =
-            corners.map(|point| logical_point_to_ndc(point, extent, raster_scale));
+        }
+        let positions = polygon
+            .into_iter()
+            .map(|point| physical_point_to_ndc(point, extent))
+            .collect::<Vec<_>>();
         let source_rgb_linear = [
             srgb8_to_linear_f32(fill.color.red()),
             srgb8_to_linear_f32(fill.color.green()),
@@ -1262,46 +1265,163 @@ fn fill_rect_vertex_bytes(
             source_rgb_linear[2],
             effective_alpha,
         ];
-        for position in [
-            left_top,
-            left_bottom,
-            right_top,
-            right_top,
-            left_bottom,
-            right_bottom,
-        ] {
-            push_vertex(&mut bytes, position, straight_source_color);
+        for index in 1..positions.len() - 1 {
+            for position in [positions[0], positions[index], positions[index + 1]] {
+                push_vertex(&mut bytes, position, straight_source_color);
+            }
         }
     }
     bytes
 }
 
-fn transformed_fill_corners(fill: &SupportedFillRect) -> Option<[LogicalPoint; 4]> {
-    fill.local_to_surface.inverse()?;
-    let left_top = fill.rect.origin();
-    let left_bottom = LogicalPoint::new(fill.rect.x(), fill.rect.max_y()).ok()?;
-    let right_top = LogicalPoint::new(fill.rect.max_x(), fill.rect.y()).ok()?;
-    let right_bottom = LogicalPoint::new(fill.rect.max_x(), fill.rect.max_y()).ok()?;
-    Some([
-        fill.local_to_surface.transform_point(left_top)?,
-        fill.local_to_surface.transform_point(left_bottom)?,
-        fill.local_to_surface.transform_point(right_top)?,
-        fill.local_to_surface.transform_point(right_bottom)?,
-    ])
-}
-
-fn logical_point_to_ndc(
-    point: LogicalPoint,
+/// Produces one target-bounded convex polygon for an invertible affine FillRect.
+///
+/// The public scene contract defines coverage through the transform's inverse. A
+/// singular transform is therefore empty. For an invertible transform, finite
+/// f32 scene components are widened only for renderer-local edge construction so
+/// a remote forward corner cannot overflow and incorrectly discard a visible
+/// target intersection. Clipping occurs before conversion to the GPU f32 vertex
+/// ABI; the wider coordinates never become RunenUI protocol values.
+fn transformed_fill_polygon(
+    fill: &SupportedFillRect,
     extent: OffscreenExtent,
     raster_scale: RasterScale,
-) -> [f32; 2] {
-    let physical_x = f64::from(point.x()) * f64::from(raster_scale.get());
-    let physical_y = f64::from(point.y()) * f64::from(raster_scale.get());
+) -> Vec<[f64; 2]> {
+    if fill.local_to_surface.inverse().is_none() {
+        return Vec::new();
+    }
+
+    let [m11, m12, m21, m22, tx, ty] = fill.local_to_surface.components().map(f64::from);
+    let scale = f64::from(raster_scale.get());
+    let local_corners = [
+        [f64::from(fill.rect.x()), f64::from(fill.rect.y())],
+        [f64::from(fill.rect.x()), f64::from(fill.rect.max_y())],
+        [f64::from(fill.rect.max_x()), f64::from(fill.rect.max_y())],
+        [f64::from(fill.rect.max_x()), f64::from(fill.rect.y())],
+    ];
+    let polygon = local_corners
+        .into_iter()
+        .map(|[x, y]| {
+            [
+                m11.mul_add(x, m21.mul_add(y, tx)) * scale,
+                m12.mul_add(x, m22.mul_add(y, ty)) * scale,
+            ]
+        })
+        .collect::<Vec<_>>();
+
+    clip_polygon_to_target(polygon, extent)
+}
+
+#[derive(Clone, Copy, Debug)]
+enum TargetEdge {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+fn clip_polygon_to_target(
+    mut polygon: Vec<[f64; 2]>,
+    extent: OffscreenExtent,
+) -> Vec<[f64; 2]> {
+    for edge in [
+        TargetEdge::Left,
+        TargetEdge::Right,
+        TargetEdge::Top,
+        TargetEdge::Bottom,
+    ] {
+        polygon = clip_polygon_against_edge(&polygon, edge, extent);
+        if polygon.is_empty() {
+            break;
+        }
+    }
+    polygon
+}
+
+fn clip_polygon_against_edge(
+    polygon: &[[f64; 2]],
+    edge: TargetEdge,
+    extent: OffscreenExtent,
+) -> Vec<[f64; 2]> {
+    let Some(&last) = polygon.last() else {
+        return Vec::new();
+    };
+    let mut output = Vec::with_capacity(polygon.len().saturating_add(1));
+    let mut previous = last;
+    let mut previous_inside = target_edge_contains(edge, previous, extent);
+
+    for &current in polygon {
+        let current_inside = target_edge_contains(edge, current, extent);
+        match (previous_inside, current_inside) {
+            (true, true) => output.push(current),
+            (true, false) => {
+                output.push(target_edge_intersection(edge, previous, current, extent));
+            }
+            (false, true) => {
+                output.push(target_edge_intersection(edge, previous, current, extent));
+                output.push(current);
+            }
+            (false, false) => {}
+        }
+        previous = current;
+        previous_inside = current_inside;
+    }
+    output
+}
+
+fn target_edge_contains(edge: TargetEdge, point: [f64; 2], extent: OffscreenExtent) -> bool {
+    match edge {
+        TargetEdge::Left => point[0] >= 0.0,
+        TargetEdge::Right => point[0] <= f64::from(extent.width()),
+        TargetEdge::Top => point[1] >= 0.0,
+        TargetEdge::Bottom => point[1] <= f64::from(extent.height()),
+    }
+}
+
+fn target_edge_intersection(
+    edge: TargetEdge,
+    from: [f64; 2],
+    to: [f64; 2],
+    extent: OffscreenExtent,
+) -> [f64; 2] {
+    match edge {
+        TargetEdge::Left => vertical_edge_intersection(0.0, from, to),
+        TargetEdge::Right => vertical_edge_intersection(f64::from(extent.width()), from, to),
+        TargetEdge::Top => horizontal_edge_intersection(0.0, from, to),
+        TargetEdge::Bottom => {
+            horizontal_edge_intersection(f64::from(extent.height()), from, to)
+        }
+    }
+}
+
+fn vertical_edge_intersection(x: f64, from: [f64; 2], to: [f64; 2]) -> [f64; 2] {
+    let denominator = to[0] - from[0];
+    let t = if denominator == 0.0 {
+        0.0
+    } else {
+        ((x - from[0]) / denominator).clamp(0.0, 1.0)
+    };
+    [x, (to[1] - from[1]).mul_add(t, from[1])]
+}
+
+fn horizontal_edge_intersection(y: f64, from: [f64; 2], to: [f64; 2]) -> [f64; 2] {
+    let denominator = to[1] - from[1];
+    let t = if denominator == 0.0 {
+        0.0
+    } else {
+        ((y - from[1]) / denominator).clamp(0.0, 1.0)
+    };
+    [(to[0] - from[0]).mul_add(t, from[0]), y]
+}
+
+fn physical_point_to_ndc(point: [f64; 2], extent: OffscreenExtent) -> [f32; 2] {
     let width = f64::from(extent.width());
     let height = f64::from(extent.height());
+    let x = point[0].clamp(0.0, width);
+    let y = point[1].clamp(0.0, height);
     [
-        normalized_position((physical_x / width).mul_add(2.0, -1.0)),
-        normalized_position((physical_y / height).mul_add(-2.0, 1.0)),
+        normalized_position((x / width).mul_add(2.0, -1.0)),
+        normalized_position((y / height).mul_add(-2.0, 1.0)),
     ]
 }
 
@@ -1313,10 +1433,10 @@ fn push_vertex(bytes: &mut Vec<u8>, position: [f32; 2], color: [f32; 4]) {
 
 #[allow(
     clippy::cast_possible_truncation,
-    reason = "finite logical coordinates are preserved outside clip space and bounded to the finite f32 range before shader conversion"
+    reason = "target clipping bounds normalized coordinates to the finite [-1, 1] GPU range"
 )]
 fn normalized_position(value: f64) -> f32 {
-    value.clamp(f64::from(f32::MIN), f64::from(f32::MAX)) as f32
+    value.clamp(-1.0, 1.0) as f32
 }
 
 fn srgb8_to_linear_f32(value: u8) -> f32 {
@@ -2251,6 +2371,42 @@ mod tests {
         );
         eprintln!(
             "REAL GPU AFFINE PROOF: non-axis-aligned FillRect interior is exact; bounding-box, untransformed fallback, and singular fallback probes remain transparent; adapter={:?} backend={}",
+            renderer.diagnostics().adapter_info().name,
+            renderer.diagnostics().adapter_info().backend,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn invertible_extreme_affine_is_clipped_without_forward_point_fallback()
+    -> Result<(), Box<dyn Error>> {
+        let Some(mut renderer) = renderer_or_adapterless()? else {
+            return Ok(());
+        };
+        let color = Color::rgb(0x74, 0x9B, 0x38);
+        let transform = LogicalTransform::try_new(1.0e38, 0.0, -1.0e38, 1.0, 10.0, 0.0)?;
+        let right_top = LogicalPoint::new(10.0, 0.0)?;
+        assert!(transform.inverse().is_some());
+        assert!(
+            transform.transform_point(right_top).is_none(),
+            "the fixture must exercise forward f32 point overflow while remaining canonically invertible"
+        );
+
+        let publication = publication(
+            vec![
+                PaintContributionItem::fill_rect(rect(0.0, 0.0, 10.0, 10.0), color)
+                    .with_transform(transform),
+            ],
+            1.0,
+        );
+        let output = renderer.render_offscreen_publication(&publication)?;
+        assert_eq!(
+            pixel(output.readback(), 20, 5),
+            [0x74, 0x9B, 0x38, 0xFF],
+            "an invertible affine with a remote overflowing corner must retain its visible target intersection"
+        );
+        eprintln!(
+            "REAL GPU EXTREME AFFINE PROOF: canonical inverse exists, one ordinary forward LogicalPoint mapping overflows, and the visible surface intersection remains exact; adapter={:?} backend={}",
             renderer.diagnostics().adapter_info().name,
             renderer.diagnostics().adapter_info().backend,
         );
