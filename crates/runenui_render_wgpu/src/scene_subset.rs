@@ -65,7 +65,7 @@ pub(crate) fn publication_resource_error(
         })
 }
 
-pub(crate) fn validate_fill_rect_item(
+pub(crate) const fn validate_fill_rect_item(
     item_index: usize,
     item: &PaintSceneItem,
 ) -> Result<SupportedFillRect, SceneValidationError> {
