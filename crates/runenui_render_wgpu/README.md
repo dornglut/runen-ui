@@ -5,13 +5,19 @@
 It consumes ordinary public `runenui_core` and `runenui_runtime` paint/publication contracts. The package owns renderer-side publication lineage, resource-provider interaction, backend realization, rendering, readback, and renderer observations. Native event-loop and accessibility integration remain outside this crate.
 
 The current implementation fails closed: before target creation or GPU
-submission it accepts only `FillRect` items with identity `local_to_surface`
-and no clips. FillRects preserve literal color alpha and validated item opacity;
-all other primitive and composition semantics remain unsupported. Canonical
-`SceneRequirements`/`SceneCapabilities` continue to check resource kinds only;
-the narrower implementation-subset validation and its detailed reasons remain
-renderer-internal. The public render error reports an unsupported scene without
-making temporary implementation progress part of the lasting API.
+submission it accepts only `FillRect` items with finite affine
+`local_to_surface` transforms and no clips. FillRects preserve literal color
+alpha and validated item opacity. Invertible transforms map all four rectangle
+corners into surface-logical space before raster scaling; GPU clip space handles
+target clipping without replacing transformed geometry with an axis-aligned
+bounding box. A transform whose canonical `LogicalTransform::inverse()` is
+unavailable contributes no paint coverage rather than falling back to the source
+rectangle. Stroke, image, shaped-text, unknown primitive, and all clip semantics
+remain unsupported. Canonical `SceneRequirements`/`SceneCapabilities` continue
+to check resource kinds only; the narrower implementation-subset validation and
+its detailed reasons remain renderer-internal. The public render error reports
+an unsupported scene without making temporary implementation progress part of
+the lasting API.
 
 An offscreen target retains its texture, extent, format, and successful
 publication lineage as one realization. `AlreadyCurrent` and `ExactBaseMatch`
@@ -89,6 +95,13 @@ An independent test-only scalar oracle checks selected translucent interior
 pixels without traversing scenes or rasterizing geometry. Opaque, clear, and
 zero-opacity probes remain exact; translucent probes allow at most one byte per
 channel for f64 oracle versus GPU f32 blend and UNORM-storage rounding.
+
+The affine proof uses an invertible non-axis-aligned shear/translation and a
+singular transform in the same ordinary publication. Exact interior probes show
+the transformed parallelogram is rasterized as authored, while a point inside its
+axis-aligned bounding box but outside the parallelogram stays transparent. Probes
+at the untransformed source rectangle and the singular rectangle also stay
+transparent, proving neither transform path falls back to source geometry.
 
 The authored rectangles in the existing PNG proof remain opaque. Translucent
 target readback contains accumulated composited RGB, while ordinary PNG alpha is
