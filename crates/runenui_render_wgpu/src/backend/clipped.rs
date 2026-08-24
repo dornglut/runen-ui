@@ -877,7 +877,8 @@ mod tests {
         WidgetMeasure, WidgetUpdateContext,
     };
     use runenui_runtime::{
-        AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SceneClip, SurfaceBuildContext,
+        AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SceneClip,
+        SurfaceBuildContext,
     };
 
     use super::{ClipUniform, Renderer, prepare_clip_uniforms, validate_clipped_scene_subset};
