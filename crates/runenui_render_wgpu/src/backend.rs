@@ -1083,6 +1083,10 @@ fn select_surface_format(
 /// Shared target drawing implementation. Target format/pipeline realization is
 /// supplied by the renderer; target-specific completion and publication lineage
 /// remain the caller's responsibility.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the low-level wgpu encoding boundary keeps device, pipeline, encoder, target view, integer texture extent, exact continuous canvas extent, raster scale, and validated scene input explicit"
+)]
 fn encode_scene_to_target(
     device: &wgpu::Device,
     pipeline: &wgpu::RenderPipeline,
@@ -2442,6 +2446,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::float_cmp,
+        reason = "the production clipper writes the exact continuous canvas boundary into the polygon; this proof intentionally distinguishes that exact value from the ceil-rounded texture extent"
+    )]
     fn fractional_raster_scale_clips_to_exact_canvas_not_rounded_texture_extent()
     -> Result<(), Box<dyn Error>> {
         let publication = publication(
