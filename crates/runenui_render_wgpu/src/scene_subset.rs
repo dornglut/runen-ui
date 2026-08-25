@@ -133,14 +133,13 @@ const fn supported_stroke_rect(
     }
 
     let half = width / 2.0;
-    let expanded = match LogicalRect::try_new(
+    let Ok(expanded) = LogicalRect::try_new(
         rect.x() - half,
         rect.y() - half,
         rect.width() + width,
         rect.height() + width,
-    ) {
-        Ok(expanded) => expanded,
-        Err(_) => return None,
+    ) else {
+        return None;
     };
 
     let stroke_inset = if rect.width() <= width || rect.height() <= width {
