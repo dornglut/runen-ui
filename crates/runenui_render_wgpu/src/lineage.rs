@@ -203,7 +203,10 @@ mod tests {
 
         let mut lineage = PublicationLineage::new();
         lineage.record_success(&first);
-        assert_eq!(lineage.classify(&first), PublicationUpdateMode::AlreadyCurrent);
+        assert_eq!(
+            lineage.classify(&first),
+            PublicationUpdateMode::AlreadyCurrent
+        );
         assert_eq!(
             lineage.classify(&successor),
             PublicationUpdateMode::ExactBaseMatch

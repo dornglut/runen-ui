@@ -166,9 +166,7 @@ impl ResourceRenderer {
     #[must_use]
     pub fn discard_resource_cache(&mut self) -> bool {
         let discarded = self.images.discard_cache();
-        if discarded
-            && let Some(target) = self.literal.base.offscreen_target.as_mut()
-        {
+        if discarded && let Some(target) = self.literal.base.offscreen_target.as_mut() {
             target.lineage.reset();
         }
         discarded

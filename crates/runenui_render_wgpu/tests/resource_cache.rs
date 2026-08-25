@@ -84,11 +84,8 @@ fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
 fn publication(items: Vec<PaintContributionItem>) -> PaintPublication {
     let mut runtime = AppRuntime::<FixtureApp>::mount(items);
     let tokens = StyleTokens::new();
-    let logical_size = LogicalSize::try_new(
-        f32::from(SURFACE_WIDTH),
-        f32::from(SURFACE_HEIGHT),
-    )
-    .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));
+    let logical_size = LogicalSize::try_new(f32::from(SURFACE_WIDTH), f32::from(SURFACE_HEIGHT))
+        .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));
     let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(logical_size))
         .with_raster_scale(RasterScale::ONE);
     runtime
@@ -148,8 +145,7 @@ impl ResourceProvider for SwitchableImageProvider {
 }
 
 #[test]
-fn resource_cache_loss_forces_full_resync_and_reloads_before_repaint()
-    -> Result<(), Box<dyn Error>>
+fn resource_cache_loss_forces_full_resync_and_reloads_before_repaint() -> Result<(), Box<dyn Error>>
 {
     let Some(mut renderer) = renderer_or_adapterless()? else {
         return Ok(());
@@ -182,7 +178,11 @@ fn resource_cache_loss_forces_full_resync_and_reloads_before_repaint()
         PublicationUpdateMode::AlreadyCurrent
     );
     assert_eq!(current.target_generation(), generation);
-    assert_eq!(provider.loads(), 1, "already-current rendering reuses the cache");
+    assert_eq!(
+        provider.loads(),
+        1,
+        "already-current rendering reuses the cache"
+    );
 
     assert!(renderer.discard_resource_cache());
     provider.set_available(false);
