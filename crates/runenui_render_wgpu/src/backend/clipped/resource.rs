@@ -57,7 +57,7 @@ impl core::fmt::Display for PublicationRenderError {
             Self::Backend(error) => error.fmt(formatter),
             Self::Resource { item_index, error } => write!(
                 formatter,
-                "renderer failed to resolve image resource for scene item {item_index}: {error}"
+                "renderer failed to resolve resource for scene item {item_index}: {error}"
             ),
             Self::ImageExtentExceedsDeviceLimit {
                 item_index,
@@ -100,6 +100,18 @@ impl core::error::Error for PublicationRenderError {
 impl From<OffscreenRenderError> for PublicationRenderError {
     fn from(error: OffscreenRenderError) -> Self {
         Self::Backend(error)
+    }
+}
+
+impl PublicationRenderError {
+    const fn item_index(&self) -> Option<usize> {
+        match self {
+            Self::Resource { item_index, .. }
+            | Self::ImageExtentExceedsDeviceLimit { item_index, .. }
+            | Self::ImageRowBytesOverflow { item_index, .. }
+            | Self::ShapedRunExtentExceedsDeviceLimit { item_index, .. } => Some(*item_index),
+            Self::Backend(_) => None,
+        }
     }
 }
 
@@ -172,6 +184,12 @@ impl ResourceRenderer {
         self.literal.diagnostics()
     }
 
+    /// Returns the immutable observation for the most recent publication attempt.
+    #[must_use]
+    pub const fn last_observation(&self) -> Option<&crate::PublicationObservation> {
+        self.literal.last_observation()
+    }
+
     /// Returns whether construction retained an actual native surface target.
     #[must_use]
     pub const fn has_surface(&self) -> bool {
@@ -231,8 +249,7 @@ impl ResourceRenderer {
                 .render_offscreen_publication(publication)
                 .map_err(PublicationRenderError::Backend);
             if result.is_ok() {
-                self.images.discard_cache();
-                self.shaped_runs.discard_cache();
+                let _ = self.discard_resource_cache();
             }
             return result;
         }
@@ -261,6 +278,19 @@ impl ResourceRenderer {
             PublicationUpdatePlan::full_resync()
         };
 
+        let mut observation = crate::PublicationObservation::new(publication, update_plan.mode());
+        observation.set_target_facts(
+            extent,
+            self.literal
+                .base
+                .offscreen_target
+                .as_ref()
+                .filter(|target| target.matches(extent, OFFSCREEN_FORMAT))
+                .map(|target| target.generation),
+            self.diagnostics(),
+        );
+        self.literal.base.record_observation(observation);
+
         let has_literals = scene
             .iter()
             .any(|item| matches!(item, ResourceSceneItem::Literal(_)));
@@ -273,24 +303,47 @@ impl ResourceRenderer {
         let needs_stencil = scene.iter().any(ResourceSceneItem::needs_stencil);
         let live_images = live_image_resources(&scene);
         let live_shaped_runs = live_shaped_run_resources(&scene, publication.raster_scale());
-        let mut resource_observations = resource_observations_for_scene(
+        let initial_resource_observations = resource_observations_for_scene(
             &scene,
             publication.raster_scale(),
             &self.images,
             &self.shaped_runs,
             None,
+            None,
         );
+        if let Some(observation) = self.literal.base.last_observation.as_mut() {
+            observation.set_resource_observations(initial_resource_observations);
+        }
 
         if update_plan.mode() != PublicationUpdateMode::AlreadyCurrent {
             let (resolved_images, resolved_shaped_runs) =
-                self.preflight_resources(&scene, publication.raster_scale(), provider)?;
-            resource_observations = resource_observations_for_scene(
+                match self.preflight_resources(&scene, publication.raster_scale(), provider) {
+                    Ok(resolved) => resolved,
+                    Err(error) => {
+                        if let Some(observation) = self.literal.base.last_observation.as_mut() {
+                            observation.set_resource_observations(resource_observations_for_scene(
+                                &scene,
+                                publication.raster_scale(),
+                                &self.images,
+                                &self.shaped_runs,
+                                None,
+                                error.item_index(),
+                            ));
+                        }
+                        return Err(error);
+                    }
+                };
+            let resource_observations = resource_observations_for_scene(
                 &scene,
                 publication.raster_scale(),
                 &self.images,
                 &self.shaped_runs,
                 Some(&resolved_shaped_runs),
+                None,
             );
+            if let Some(observation) = self.literal.base.last_observation.as_mut() {
+                observation.set_resource_observations(resource_observations);
+            }
             if has_literals {
                 self.literal
                     .base
@@ -339,6 +392,10 @@ impl ResourceRenderer {
             .as_ref()
             .unwrap_or_else(|| unreachable!("matching or newly created target is retained"));
         let target_generation = target.generation;
+        let diagnostics = self.diagnostics().clone();
+        if let Some(observation) = self.literal.base.last_observation.as_mut() {
+            observation.set_target_facts(extent, Some(target_generation), &diagnostics);
+        }
 
         let stencil_target = (update_plan.mode() != PublicationUpdateMode::AlreadyCurrent
             && needs_stencil)
@@ -376,6 +433,9 @@ impl ResourceRenderer {
 
         encode_target_copy(&mut encoder, &target.texture, &readback, extent, layout);
         let submission = self.literal.base.queue.submit([encoder.finish()]);
+        if let Some(observation) = self.literal.base.last_observation.as_mut() {
+            observation.mark_render_succeeded();
+        }
         let rgba8_srgb = match self
             .literal
             .base
@@ -383,6 +443,9 @@ impl ResourceRenderer {
         {
             Ok(pixels) => pixels,
             Err(error) => {
+                if let Some(observation) = self.literal.base.last_observation.as_mut() {
+                    observation.mark_readback_failed();
+                }
                 self.literal.base.offscreen_target = None;
                 return Err(PublicationRenderError::Backend(error));
             }
@@ -402,18 +465,22 @@ impl ResourceRenderer {
             .record_success(publication);
         self.images.retain(&live_images);
         self.shaped_runs.retain(&live_shaped_runs);
+        if let Some(observation) = self.literal.base.last_observation.as_mut() {
+            observation.mark_readback_succeeded();
+        }
+        let observation = self
+            .literal
+            .base
+            .last_observation
+            .clone()
+            .unwrap_or_else(|| {
+                unreachable!("publication observation was recorded before rendering")
+            });
         Ok(OffscreenPublicationReadback {
             update_plan,
             target_generation,
             readback,
-            observation: crate::observation::PublicationObservation::completed(
-                publication,
-                update_plan.mode(),
-                extent,
-                target_generation,
-                self.diagnostics(),
-                resource_observations,
-            ),
+            observation,
         })
     }
 
@@ -668,6 +735,7 @@ fn resource_observations_for_scene(
     images: &image::ImageRenderer,
     shaped_runs: &shaped::ShapedRunRenderer,
     resolved_shaped_runs: Option<&[shaped::ResolvedShapedRun]>,
+    failed_item_index: Option<usize>,
 ) -> Vec<ResourceObservation> {
     let empty_shaped = resolved_shaped_runs
         .unwrap_or_default()
@@ -682,7 +750,9 @@ fn resource_observations_for_scene(
                 item.image.item_index,
                 item.image.resource.clone(),
                 crate::ResourceRequest::Image,
-                if images.contains(&item.image.resource) {
+                if failed_item_index == Some(item.image.item_index) {
+                    ResourceCacheOutcome::Failed
+                } else if images.contains(&item.image.resource) {
                     ResourceCacheOutcome::Reused
                 } else {
                     ResourceCacheOutcome::Realized
@@ -693,8 +763,9 @@ fn resource_observations_for_scene(
                     item.shaped_run.resource.clone(),
                     raster_scale.get().to_bits(),
                 );
-                let cache_outcome = if shaped_runs.contains(&item.shaped_run.resource, raster_scale)
-                {
+                let cache_outcome = if failed_item_index == Some(item.shaped_run.item_index) {
+                    ResourceCacheOutcome::Failed
+                } else if shaped_runs.contains(&item.shaped_run.resource, raster_scale) {
                     ResourceCacheOutcome::Reused
                 } else if empty_shaped.contains(&key) {
                     ResourceCacheOutcome::EmptyCoverage

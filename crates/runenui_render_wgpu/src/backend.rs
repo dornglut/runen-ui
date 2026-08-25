@@ -560,6 +560,7 @@ impl OffscreenReadback {
 #[derive(Debug)]
 pub struct Renderer {
     offscreen_target: Option<OffscreenTarget>,
+    last_observation: Option<PublicationObservation>,
     fill_rect_pipelines: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
     // Declared before the device/adapter/instance so it is dropped first. The
     // static lifetime is earned by moving an owned handle source into wgpu.
@@ -745,6 +746,7 @@ impl Renderer {
         }
         Ok(Self {
             offscreen_target: None,
+            last_observation: None,
             fill_rect_pipelines,
             surface,
             queue,
@@ -760,6 +762,20 @@ impl Renderer {
     #[must_use]
     pub const fn diagnostics(&self) -> &RendererDiagnostics {
         &self.diagnostics
+    }
+
+    /// Returns the immutable observation for the most recent publication attempt.
+    ///
+    /// A failed attempt remains observable with stage results marked as not
+    /// attempted or failed; this is renderer-owned state and does not form a
+    /// second runtime trace.
+    #[must_use]
+    pub const fn last_observation(&self) -> Option<&PublicationObservation> {
+        self.last_observation.as_ref()
+    }
+
+    pub(super) fn record_observation(&mut self, observation: PublicationObservation) {
+        self.last_observation = Some(observation);
     }
 
     /// Returns whether construction retained an actual native surface target.
@@ -791,11 +807,24 @@ impl Renderer {
     /// failure. Pre-submission failures retain the previous target realization;
     /// post-submission failures drop it conservatively so mutated GPU state cannot
     /// retain stale lineage.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the base renderer transaction keeps observation staging, target realization, ordered encoding, submission, readback, and lineage commit auditable in one sequence"
+    )]
     pub fn render_offscreen_publication(
         &mut self,
         publication: &PaintPublication,
     ) -> Result<OffscreenPublicationReadback, OffscreenRenderError> {
-        let fill_rects = validate_scene_subset(publication).map_err(scene_validation_error)?;
+        let fill_rects = match validate_scene_subset(publication) {
+            Ok(fill_rects) => fill_rects,
+            Err(error) => {
+                self.record_observation(PublicationObservation::new(
+                    publication,
+                    PublicationUpdateMode::FullResync,
+                ));
+                return Err(scene_validation_error(error));
+            }
+        };
         let (canvas_extent, extent) = publication_extents(publication)?;
         self.validate_extent(extent)?;
         let layout = ReadbackLayout::new(extent)?;
@@ -816,6 +845,17 @@ impl Renderer {
             PublicationUpdatePlan::full_resync()
         };
 
+        let mut observation = PublicationObservation::new(publication, update_plan.mode());
+        observation.set_target_facts(
+            extent,
+            self.offscreen_target
+                .as_ref()
+                .filter(|target| target.matches(extent, OFFSCREEN_FORMAT))
+                .map(|target| target.generation),
+            &self.diagnostics,
+        );
+        self.record_observation(observation);
+
         if !retained_target_matches {
             let target = self.create_offscreen_target(extent)?;
             self.offscreen_target = Some(target);
@@ -832,6 +872,9 @@ impl Renderer {
             .as_ref()
             .unwrap_or_else(|| unreachable!("matching or newly created target is retained"));
         let target_generation = target.generation;
+        if let Some(observation) = self.last_observation.as_mut() {
+            observation.set_target_facts(extent, Some(target_generation), &self.diagnostics);
+        }
         if update_plan.mode() != PublicationUpdateMode::AlreadyCurrent {
             let pipeline = self
                 .fill_rect_pipelines
@@ -850,9 +893,15 @@ impl Renderer {
         }
         encode_target_copy(&mut encoder, &target.texture, &readback, extent, layout);
         let submission = self.queue.submit([encoder.finish()]);
+        if let Some(observation) = self.last_observation.as_mut() {
+            observation.mark_render_succeeded();
+        }
         let rgba8_srgb = match self.map_readback(&readback, layout, submission) {
             Ok(pixels) => pixels,
             Err(error) => {
+                if let Some(observation) = self.last_observation.as_mut() {
+                    observation.mark_readback_failed();
+                }
                 self.offscreen_target = None;
                 return Err(error);
             }
@@ -868,18 +917,17 @@ impl Renderer {
             .unwrap_or_else(|| unreachable!("successful readback retains its target"))
             .lineage
             .record_success(publication);
+        if let Some(observation) = self.last_observation.as_mut() {
+            observation.mark_readback_succeeded();
+        }
+        let observation = self.last_observation.clone().unwrap_or_else(|| {
+            unreachable!("publication observation was recorded before rendering")
+        });
         Ok(OffscreenPublicationReadback {
             update_plan,
             target_generation,
             readback,
-            observation: PublicationObservation::completed(
-                publication,
-                update_plan.mode(),
-                extent,
-                target_generation,
-                &self.diagnostics,
-                Vec::new(),
-            ),
+            observation,
         })
     }
 
@@ -1604,7 +1652,7 @@ mod tests {
         RendererInitError, RendererOptions, select_surface_format,
     };
     use crate::{
-        PublicationUpdateMode,
+        PublicationStageResult, PublicationUpdateMode,
         scene_subset::{SceneValidationError, UnsupportedSceneSemantic},
     };
 
@@ -2855,6 +2903,18 @@ mod tests {
                 detail,
             } if detail.contains("StrokeRect")
         ));
+        let observation = renderer
+            .last_observation()
+            .ok_or_else(|| std::io::Error::other("failed scene validation was not observed"))?;
+        assert_eq!(
+            observation.render_result(),
+            PublicationStageResult::NotAttempted
+        );
+        assert_eq!(
+            observation.readback_result(),
+            PublicationStageResult::NotAttempted
+        );
+        assert_eq!(observation.target_generation(), None);
 
         let retained = renderer.render_offscreen_publication(&accepted)?;
         assert_eq!(

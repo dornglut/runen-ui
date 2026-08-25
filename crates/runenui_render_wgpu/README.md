@@ -40,8 +40,16 @@ lineage is committed only after actual GPU submission and CPU readback complete.
 The renderer returns raw GPU-derived RGBA8 sRGB bytes and an immutable
 `PublicationObservation` containing publication/update/damage facts, logical and
 physical extent, scale, backend/format, resource lookup/cache outcomes, and
-render/readback/present facts. PNG encoding and golden comparison belong to
-proof tooling. The M7A corpus checks a checked-in PNG with the same real-wgpu
+stage results for render, readback, and present. `ResourceRenderer::last_observation`
+also exposes the most recent failed publication attempt: preflight failures mark
+the affected resource as `Failed` and leave render/readback as
+`NotAttempted`; a post-submit map failure marks render as `Succeeded` and
+readback as `Failed`. Offscreen rendering has no present stage. A deterministic
+real-adapter readback failure cannot be injected without production test hooks
+or fake backend behavior, so M7A proves the ordinary preflight and validation
+failure boundaries and keeps the post-submit failure mapping explicit without
+polluting production state for tests. PNG encoding and golden comparison belong
+to proof tooling. The M7A corpus checks a checked-in PNG with the same real-wgpu
 resource path; the comparator is exact and does not substitute a software or
 noop renderer.
 
@@ -104,6 +112,9 @@ path.
 Image payloads are caller-owned, non-zero, unpremultiplied RGBA8 sRGB sources.
 The complete image maps to its declared logical destination. The renderer owns
 only the disposable sampled-texture realization and never decodes PNG data.
+The checked-in `provider_image.png` corpus is decoded by the test provider with
+`image`'s PNG-only, defaults-disabled path, explicitly normalized to straight
+RGBA8 bytes, and then passed through the same public `ImagePayload` seam.
 
 Shaped text is also caller-owned: `ResourceProvider` receives the complete
 `ResourceRef` and the publication's exact `RasterScale`, then returns a

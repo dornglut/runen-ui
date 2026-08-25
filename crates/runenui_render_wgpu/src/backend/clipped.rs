@@ -13,6 +13,7 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     PublicationUpdateMode, PublicationUpdatePlan, WgpuHasDisplayHandle,
+    observation::PublicationObservation,
     scene_subset::{
         SceneValidationError, SupportedLiteralRect, publication_resource_error,
         validate_literal_rect_item,
@@ -256,6 +257,12 @@ impl Renderer {
         self.base.diagnostics()
     }
 
+    /// Returns the immutable observation for the most recent publication attempt.
+    #[must_use]
+    pub const fn last_observation(&self) -> Option<&PublicationObservation> {
+        self.base.last_observation()
+    }
+
     /// Returns whether construction retained an actual native surface target.
     #[must_use]
     pub const fn has_surface(&self) -> bool {
@@ -323,6 +330,18 @@ impl Renderer {
             PublicationUpdatePlan::full_resync()
         };
 
+        let mut observation = PublicationObservation::new(publication, update_plan.mode());
+        observation.set_target_facts(
+            extent,
+            self.base
+                .offscreen_target
+                .as_ref()
+                .filter(|target| target.matches(extent, super::OFFSCREEN_FORMAT))
+                .map(|target| target.generation),
+            self.base.diagnostics(),
+        );
+        self.base.record_observation(observation);
+
         if !retained_target_matches {
             let target = self.base.create_offscreen_target(extent)?;
             self.base.offscreen_target = Some(target);
@@ -341,6 +360,10 @@ impl Renderer {
             .as_ref()
             .unwrap_or_else(|| unreachable!("matching or newly created target is retained"));
         let target_generation = target.generation;
+        let diagnostics = self.base.diagnostics().clone();
+        if let Some(observation) = self.base.last_observation.as_mut() {
+            observation.set_target_facts(extent, Some(target_generation), &diagnostics);
+        }
         let stencil_target = (update_plan.mode() != PublicationUpdateMode::AlreadyCurrent)
             .then(|| create_stencil_target(&self.base.device, extent));
         if let Some((_, stencil_view)) = stencil_target.as_ref() {
@@ -369,9 +392,15 @@ impl Renderer {
 
         super::encode_target_copy(&mut encoder, &target.texture, &readback, extent, layout);
         let submission = self.base.queue.submit([encoder.finish()]);
+        if let Some(observation) = self.base.last_observation.as_mut() {
+            observation.mark_render_succeeded();
+        }
         let rgba8_srgb = match self.base.map_readback(&readback, layout, submission) {
             Ok(pixels) => pixels,
             Err(error) => {
+                if let Some(observation) = self.base.last_observation.as_mut() {
+                    observation.mark_readback_failed();
+                }
                 self.base.offscreen_target = None;
                 return Err(error);
             }
@@ -388,18 +417,17 @@ impl Renderer {
             .unwrap_or_else(|| unreachable!("successful readback retains its target"))
             .lineage
             .record_success(publication);
+        if let Some(observation) = self.base.last_observation.as_mut() {
+            observation.mark_readback_succeeded();
+        }
+        let observation = self.base.last_observation.clone().unwrap_or_else(|| {
+            unreachable!("publication observation was recorded before rendering")
+        });
         Ok(super::OffscreenPublicationReadback {
             update_plan,
             target_generation,
             readback,
-            observation: crate::observation::PublicationObservation::completed(
-                publication,
-                update_plan.mode(),
-                extent,
-                target_generation,
-                self.base.diagnostics(),
-                Vec::new(),
-            ),
+            observation,
         })
     }
 

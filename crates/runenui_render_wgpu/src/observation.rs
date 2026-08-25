@@ -17,6 +17,19 @@ pub enum ResourceCacheOutcome {
     Realized,
     /// The provider returned valid empty coverage, so no GPU texture was required.
     EmptyCoverage,
+    /// The provider or payload failed before a renderer realization was created.
+    Failed,
+}
+
+/// Truthful result of one renderer publication stage.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PublicationStageResult {
+    /// The stage was not reached by the attempted publication.
+    NotAttempted,
+    /// The stage completed successfully.
+    Succeeded,
+    /// The stage was reached and failed.
+    Failed,
 }
 
 /// Immutable correlation record for one resource-backed scene item.
@@ -84,9 +97,9 @@ pub struct PublicationObservation {
     adapter_name: Option<Arc<str>>,
     backend: Option<wgpu::Backend>,
     resource_observations: Vec<ResourceObservation>,
-    render_succeeded: bool,
-    readback_succeeded: bool,
-    presented: bool,
+    render_result: PublicationStageResult,
+    readback_result: PublicationStageResult,
+    present_result: PublicationStageResult,
 }
 
 impl PublicationObservation {
@@ -109,30 +122,39 @@ impl PublicationObservation {
             adapter_name: None,
             backend: None,
             resource_observations: Vec::new(),
-            render_succeeded: false,
-            readback_succeeded: false,
-            presented: false,
+            render_result: PublicationStageResult::NotAttempted,
+            readback_result: PublicationStageResult::NotAttempted,
+            present_result: PublicationStageResult::NotAttempted,
         }
     }
 
-    pub(crate) fn completed(
-        publication: &PaintPublication,
-        update_mode: PublicationUpdateMode,
+    pub(crate) fn set_target_facts(
+        &mut self,
         extent: OffscreenExtent,
-        target_generation: u64,
+        target_generation: Option<u64>,
         diagnostics: &RendererDiagnostics,
-        resource_observations: Vec<ResourceObservation>,
-    ) -> Self {
-        let mut observation = Self::new(publication, update_mode);
-        observation.physical_extent = Some(extent);
-        observation.target_generation = Some(target_generation);
-        observation.target_format = Some(diagnostics.offscreen_format());
-        observation.adapter_name = Some(diagnostics.adapter_info().name.clone().into());
-        observation.backend = Some(diagnostics.adapter_info().backend);
-        observation.resource_observations = resource_observations;
-        observation.render_succeeded = true;
-        observation.readback_succeeded = true;
-        observation
+    ) {
+        self.physical_extent = Some(extent);
+        self.target_generation = target_generation;
+        self.target_format = Some(diagnostics.offscreen_format());
+        self.adapter_name = Some(diagnostics.adapter_info().name.clone().into());
+        self.backend = Some(diagnostics.adapter_info().backend);
+    }
+
+    pub(crate) fn set_resource_observations(&mut self, observations: Vec<ResourceObservation>) {
+        self.resource_observations = observations;
+    }
+
+    pub(crate) const fn mark_render_succeeded(&mut self) {
+        self.render_result = PublicationStageResult::Succeeded;
+    }
+
+    pub(crate) const fn mark_readback_succeeded(&mut self) {
+        self.readback_result = PublicationStageResult::Succeeded;
+    }
+
+    pub(crate) const fn mark_readback_failed(&mut self) {
+        self.readback_result = PublicationStageResult::Failed;
     }
 
     #[must_use]
@@ -206,19 +228,37 @@ impl PublicationObservation {
     }
 
     #[must_use]
-    pub const fn render_succeeded(&self) -> bool {
-        self.render_succeeded
+    pub const fn render_result(&self) -> PublicationStageResult {
+        self.render_result
     }
 
     #[must_use]
-    pub const fn readback_succeeded(&self) -> bool {
-        self.readback_succeeded
+    pub const fn readback_result(&self) -> PublicationStageResult {
+        self.readback_result
     }
 
     /// Offscreen rendering does not present a native surface; a future window
     /// path will set this fact only after the real present succeeds.
     #[must_use]
+    pub const fn present_result(&self) -> PublicationStageResult {
+        self.present_result
+    }
+
+    /// Compatibility convenience for callers that only need the successful stage fact.
+    #[must_use]
+    pub const fn render_succeeded(&self) -> bool {
+        matches!(self.render_result, PublicationStageResult::Succeeded)
+    }
+
+    /// Compatibility convenience for callers that only need the successful stage fact.
+    #[must_use]
+    pub const fn readback_succeeded(&self) -> bool {
+        matches!(self.readback_result, PublicationStageResult::Succeeded)
+    }
+
+    /// Returns whether an offscreen publication was presented to a native surface.
+    #[must_use]
     pub const fn presented(&self) -> bool {
-        self.presented
+        matches!(self.present_result, PublicationStageResult::Succeeded)
     }
 }

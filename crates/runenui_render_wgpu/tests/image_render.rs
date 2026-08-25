@@ -9,14 +9,15 @@ use std::{
 };
 
 use runenui_core::{
-    Color, ContributionClip, Element, LogicalLength, LogicalRect, LogicalSize, LogicalTransform,
-    NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem, Radius,
-    ResourceKind, ResourceRef, SceneOpacity, SceneShape, StyleTokens, UiApp, Widget, WidgetMeasure,
-    WidgetUpdateContext,
+    Color, ContributionClip, Element, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
+    LogicalTransform, NoHostProtocol, PaintContribution, PaintContributionContext,
+    PaintContributionItem, Radius, ResourceKind, ResourceRef, SceneOpacity, SceneShape,
+    StyleTokens, UiApp, Widget, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_render_wgpu::{
-    BackendSelection, ImagePayload, Renderer, RendererInitError, RendererOptions, ResourcePayload,
-    ResourceProvider, ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
+    BackendSelection, ImagePayload, PublicationRenderError, Renderer, RendererInitError,
+    RendererOptions, ResourcePayload, ResourceProvider, ResourceProviderError,
+    ResourceProviderErrorKind, ResourceRequest, ResourceResolveError, ShapedRunRaster,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SurfaceBuildContext,
@@ -31,6 +32,7 @@ const IMAGE_PIXELS: [u8; 16] = [
     0x00, 0x00, 0xFF, 0xFF, // bottom-left blue
     0xFF, 0xFF, 0xFF, 0xFF, // bottom-right white
 ];
+const PNG_FIXTURE: &[u8] = include_bytes!("fixtures/provider_image.png");
 
 #[derive(Clone, Debug)]
 struct SceneFixture {
@@ -140,6 +142,82 @@ impl ResourceProvider for CountingImageProvider {
     }
 }
 
+struct PngImageProvider {
+    resource: ResourceRef,
+    loads: Cell<usize>,
+}
+
+impl PngImageProvider {
+    const fn new(resource: ResourceRef) -> Self {
+        Self {
+            resource,
+            loads: Cell::new(0),
+        }
+    }
+
+    const fn loads(&self) -> usize {
+        self.loads.get()
+    }
+}
+
+impl ResourceProvider for PngImageProvider {
+    fn load(
+        &self,
+        resource: &ResourceRef,
+        request: ResourceRequest,
+    ) -> Result<ResourcePayload, ResourceProviderError> {
+        self.loads.set(self.loads.get() + 1);
+        if resource != &self.resource || request != ResourceRequest::Image {
+            return Err(ResourceProviderError::new(
+                ResourceProviderErrorKind::Malformed,
+                "unexpected resource request in PNG fixture provider",
+            ));
+        }
+        let decoded = image::load_from_memory(PNG_FIXTURE).map_err(|error| {
+            ResourceProviderError::new(
+                ResourceProviderErrorKind::Malformed,
+                format!("PNG fixture decode failed: {error}"),
+            )
+        })?;
+        // The fixture is authored as sRGB. `to_rgba8` is the image crate's
+        // straight/unpremultiplied RGBA8 normalization path; the renderer
+        // payload keeps those bytes unchanged and performs no decoding.
+        let rgba8 = decoded.to_rgba8();
+        ImagePayload::new(rgba8.width(), rgba8.height(), rgba8.into_raw())
+            .map(ResourcePayload::Image)
+            .map_err(|error| {
+                ResourceProviderError::new(
+                    ResourceProviderErrorKind::Malformed,
+                    format!("PNG fixture normalization failed: {error}"),
+                )
+            })
+    }
+}
+
+struct WrongPayloadProvider {
+    resource: ResourceRef,
+}
+
+impl ResourceProvider for WrongPayloadProvider {
+    fn load(
+        &self,
+        resource: &ResourceRef,
+        request: ResourceRequest,
+    ) -> Result<ResourcePayload, ResourceProviderError> {
+        assert_eq!(resource, &self.resource);
+        assert_eq!(request, ResourceRequest::Image);
+        let raster = ShapedRunRaster::new(
+            LogicalPoint::new(0.0, 0.0).unwrap_or_else(|_| unreachable!()),
+            0,
+            0,
+            RasterScale::ONE,
+            Vec::new(),
+        )
+        .unwrap_or_else(|_| unreachable!("empty shaped payload is valid"));
+        Ok(ResourcePayload::ShapedTextRun(raster))
+    }
+}
+
 #[test]
 fn real_gpu_image_semantics_match_scene_contract() -> Result<(), Box<dyn Error>> {
     let Some(mut renderer) = renderer_or_adapterless()? else {
@@ -224,6 +302,84 @@ fn real_gpu_image_semantics_match_scene_contract() -> Result<(), Box<dyn Error>>
         "REAL GPU IMAGE PROOF: non-uniform normalized domain, affine placement, transformed rounded clipping, item opacity, mixed literal/image ordering, scale=2, same-ref realization dedupe, and already-current cache reuse succeeded; adapter={:?} backend={}",
         renderer.diagnostics().adapter_info().name,
         renderer.diagnostics().adapter_info().backend,
+    );
+    Ok(())
+}
+
+#[test]
+fn png_provider_normalizes_complete_domain_and_reuses_image_cache() -> Result<(), Box<dyn Error>> {
+    let Some(mut renderer) = renderer_or_adapterless()? else {
+        return Ok(());
+    };
+    let image_ref = ResourceRef::new(ResourceKind::Image);
+    let provider = PngImageProvider::new(image_ref.clone());
+    let publication = publication(vec![PaintContributionItem::image(
+        image_ref,
+        rect(2.0, 2.0, 8.0, 8.0),
+    )?]);
+
+    let first = renderer.render_offscreen_publication(&publication, &provider)?;
+    assert_eq!(provider.loads(), 1);
+    assert_eq!(pixel(first.readback(), 5, 5), [0xFF, 0x00, 0x00, 0xFF]);
+    assert_eq!(pixel(first.readback(), 18, 5), [0x00, 0xFF, 0x00, 0xFF]);
+    assert_eq!(pixel(first.readback(), 5, 18), [0x00, 0x00, 0xFF, 0xFF]);
+    assert_eq!(pixel(first.readback(), 18, 18), [0xFF, 0xFF, 0xFF, 0xFF]);
+    assert_eq!(
+        first.observation().resource_observations()[0].cache_outcome(),
+        runenui_render_wgpu::ResourceCacheOutcome::Realized
+    );
+
+    let current = renderer.render_offscreen_publication(&publication, &provider)?;
+    assert_eq!(provider.loads(), 1);
+    assert_eq!(
+        current.observation().resource_observations()[0].cache_outcome(),
+        runenui_render_wgpu::ResourceCacheOutcome::Reused
+    );
+    assert_eq!(
+        current.readback().rgba8_srgb(),
+        first.readback().rgba8_srgb()
+    );
+    eprintln!(
+        "REAL GPU PNG RESOURCE PROOF: image crate PNG decode, explicit straight RGBA8 normalization, complete orientation, destination mapping, renderer-owned upload, and cache reuse succeeded; adapter={:?} backend={}",
+        renderer.diagnostics().adapter_info().name,
+        renderer.diagnostics().adapter_info().backend,
+    );
+    Ok(())
+}
+
+#[test]
+fn image_provider_wrong_payload_is_deterministic_and_not_an_image_decode_fallback()
+-> Result<(), Box<dyn Error>> {
+    let Some(mut renderer) = renderer_or_adapterless()? else {
+        return Ok(());
+    };
+    let image_ref = ResourceRef::new(ResourceKind::Image);
+    let provider = WrongPayloadProvider {
+        resource: image_ref.clone(),
+    };
+    let publication = publication(vec![PaintContributionItem::image(
+        image_ref,
+        rect(0.0, 0.0, 4.0, 4.0),
+    )?]);
+    let Err(error) = renderer.render_offscreen_publication(&publication, &provider) else {
+        return Err(std::io::Error::other(
+            "wrong provider payload rendered instead of failing before upload",
+        )
+        .into());
+    };
+    assert!(matches!(
+        error,
+        PublicationRenderError::Resource {
+            item_index: 0,
+            error: ResourceResolveError::PayloadKindMismatch { .. },
+        }
+    ));
+    let observation = renderer
+        .last_observation()
+        .ok_or_else(|| std::io::Error::other("failed publication did not remain observable"))?;
+    assert_eq!(
+        observation.resource_observations()[0].cache_outcome(),
+        runenui_render_wgpu::ResourceCacheOutcome::Failed
     );
     Ok(())
 }

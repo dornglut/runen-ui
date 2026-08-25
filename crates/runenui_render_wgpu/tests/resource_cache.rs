@@ -9,7 +9,7 @@ use std::{
 };
 
 use runenui_core::{
-    Element, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
+    Color, Element, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
     PaintContributionContext, PaintContributionItem, ResourceKind, ResourceRef, StyleTokens, UiApp,
     Widget, WidgetMeasure, WidgetUpdateContext,
 };
@@ -161,9 +161,9 @@ fn resource_cache_loss_forces_full_resync_and_reloads_before_repaint() -> Result
             f32::from(SURFACE_HEIGHT),
         ),
     )?;
-    let publication = publication(vec![image]);
+    let image_publication = publication(vec![image]);
 
-    let first = renderer.render_offscreen_publication(&publication, &provider)?;
+    let first = renderer.render_offscreen_publication(&image_publication, &provider)?;
     assert_eq!(
         first.update_plan().mode(),
         PublicationUpdateMode::FullResync
@@ -172,7 +172,7 @@ fn resource_cache_loss_forces_full_resync_and_reloads_before_repaint() -> Result
     assert_eq!(provider.loads(), 1);
     assert_eq!(pixel(first.readback(), 4, 4), IMAGE_RGBA);
 
-    let current = renderer.render_offscreen_publication(&publication, &provider)?;
+    let current = renderer.render_offscreen_publication(&image_publication, &provider)?;
     assert_eq!(
         current.update_plan().mode(),
         PublicationUpdateMode::AlreadyCurrent
@@ -186,7 +186,7 @@ fn resource_cache_loss_forces_full_resync_and_reloads_before_repaint() -> Result
 
     assert!(renderer.discard_resource_cache());
     provider.set_available(false);
-    let failed = renderer.render_offscreen_publication(&publication, &provider);
+    let failed = renderer.render_offscreen_publication(&image_publication, &provider);
     assert!(matches!(
         failed,
         Err(PublicationRenderError::Resource {
@@ -201,7 +201,7 @@ fn resource_cache_loss_forces_full_resync_and_reloads_before_repaint() -> Result
     );
 
     provider.set_available(true);
-    let rebuilt = renderer.render_offscreen_publication(&publication, &provider)?;
+    let rebuilt = renderer.render_offscreen_publication(&image_publication, &provider)?;
     assert_eq!(
         rebuilt.update_plan().mode(),
         PublicationUpdateMode::FullResync
@@ -214,12 +214,31 @@ fn resource_cache_loss_forces_full_resync_and_reloads_before_repaint() -> Result
     assert_eq!(provider.loads(), 3);
     assert_eq!(pixel(rebuilt.readback(), 4, 4), IMAGE_RGBA);
 
-    let rebuilt_current = renderer.render_offscreen_publication(&publication, &provider)?;
+    let rebuilt_current = renderer.render_offscreen_publication(&image_publication, &provider)?;
     assert_eq!(
         rebuilt_current.update_plan().mode(),
         PublicationUpdateMode::AlreadyCurrent
     );
     assert_eq!(provider.loads(), 3);
+
+    let literal = publication(vec![PaintContributionItem::fill_rect(
+        rect(
+            0.0,
+            0.0,
+            f32::from(SURFACE_WIDTH),
+            f32::from(SURFACE_HEIGHT),
+        ),
+        Color::BLACK,
+    )]);
+    renderer.render_offscreen_publication(&literal, &provider)?;
+    let reconstructed_after_literal =
+        renderer.render_offscreen_publication(&image_publication, &provider)?;
+    assert_eq!(
+        reconstructed_after_literal.update_plan().mode(),
+        PublicationUpdateMode::FullResync,
+        "dropping resource realizations while rendering a literal publication resets lineage"
+    );
+    assert_eq!(provider.loads(), 4);
 
     eprintln!(
         "REAL GPU RESOURCE CACHE PROOF: cache reuse, cache-loss full resync, provider preflight failure, retained-target preservation, and provider-backed reconstruction succeeded; adapter={:?} backend={}",
