@@ -213,8 +213,8 @@ mod tests {
     };
     use runenui_runtime::{AppRuntime, LayoutConstraints, PaintPublication, SurfaceBuildContext};
 
-    use super::StrokeMaskUniform;
     use super::super::{Renderer, validate_clipped_scene_subset};
+    use super::StrokeMaskUniform;
     use crate::{BackendSelection, RendererInitError, RendererOptions};
 
     const SURFACE_WIDTH: u16 = 64;
@@ -309,7 +309,10 @@ mod tests {
         );
         let normal_literals = validate_clipped_scene_subset(&normal)?;
         assert_eq!(normal_literals.len(), 1);
-        assert_eq!(normal_literals[0].literal.fill.rect, rect(8.0, 8.0, 24.0, 16.0));
+        assert_eq!(
+            normal_literals[0].literal.fill.rect,
+            rect(8.0, 8.0, 24.0, 16.0)
+        );
         assert_eq!(
             normal_literals[0].literal.stroke_inset,
             Some(rect(12.0, 12.0, 16.0, 8.0))
@@ -362,18 +365,22 @@ mod tests {
     fn stroke_mask_uniform_uses_canonical_inverse_scale_and_inset() -> Result<(), Box<dyn Error>> {
         let transform = LogicalTransform::try_new(1.0, 0.2, -0.15, 1.0, 6.0, 4.0)?;
         let publication = publication(
-            vec![PaintContributionItem::stroke_rect(
-                rect(10.0, 10.0, 20.0, 12.0),
-                Color::WHITE,
-                length(4.0),
-            )
-            .with_transform(transform)],
+            vec![
+                PaintContributionItem::stroke_rect(
+                    rect(10.0, 10.0, 20.0, 12.0),
+                    Color::WHITE,
+                    length(4.0),
+                )
+                .with_transform(transform),
+            ],
             1.3,
         );
         let literals = validate_clipped_scene_subset(&publication)?;
         let literal = &literals[0].literal;
         let uniform = StrokeMaskUniform::from_literal(literal, publication.raster_scale())
-            .unwrap_or_else(|| unreachable!("fixture stroke has an inset and invertible transform"));
+            .unwrap_or_else(|| {
+                unreachable!("fixture stroke has an inset and invertible transform")
+            });
         let inverse = literal
             .fill
             .local_to_surface
@@ -385,12 +392,14 @@ mod tests {
 
         let singular = LogicalTransform::try_new(1.0, 0.0, 0.0, 0.0, 2.0, 1.0)?;
         let singular_publication = publication(
-            vec![PaintContributionItem::stroke_rect(
-                rect(10.0, 10.0, 20.0, 12.0),
-                Color::WHITE,
-                length(4.0),
-            )
-            .with_transform(singular)],
+            vec![
+                PaintContributionItem::stroke_rect(
+                    rect(10.0, 10.0, 20.0, 12.0),
+                    Color::WHITE,
+                    length(4.0),
+                )
+                .with_transform(singular),
+            ],
             1.3,
         );
         let singular_literals = validate_clipped_scene_subset(&singular_publication)?;
@@ -439,7 +448,9 @@ mod tests {
                     continue;
                 };
                 let in_expanded = stroke.fill.rect.contains(local);
-                let in_inset = stroke.stroke_inset.is_some_and(|inset| inset.contains(local));
+                let in_inset = stroke
+                    .stroke_inset
+                    .is_some_and(|inset| inset.contains(local));
                 let ring = in_expanded && !in_inset;
                 let clips = stroke_item
                     .clips()
@@ -485,7 +496,8 @@ mod tests {
         let collapsed_color = Color::rgb(0x47, 0x9A, 0x63);
         let zero_width_color = Color::rgb(0x3A, 0x6D, 0xD8);
         let stroke_transform = LogicalTransform::try_new(1.0, 0.0, 0.0, 1.0, 6.0, 4.0)?;
-        let stroke_clip = ContributionClip::identity(SceneShape::rect(rect(16.0, 12.0, 20.0, 16.0)));
+        let stroke_clip =
+            ContributionClip::identity(SceneShape::rect(rect(16.0, 12.0, 20.0, 16.0)));
         let collapsed_rect = rect(44.0, 10.0, 8.0, 6.0);
         let publication = publication(
             vec![
@@ -497,11 +509,7 @@ mod tests {
                 )
                 .with_transform(stroke_transform)
                 .with_clip(stroke_clip),
-                PaintContributionItem::stroke_rect(
-                    collapsed_rect,
-                    collapsed_color,
-                    length(8.0),
-                ),
+                PaintContributionItem::stroke_rect(collapsed_rect, collapsed_color, length(8.0)),
                 PaintContributionItem::stroke_rect(
                     collapsed_rect,
                     zero_width_color,
