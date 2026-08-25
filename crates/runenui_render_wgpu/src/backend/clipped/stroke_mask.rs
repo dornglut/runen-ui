@@ -364,7 +364,7 @@ mod tests {
     )]
     fn stroke_mask_uniform_uses_canonical_inverse_scale_and_inset() -> Result<(), Box<dyn Error>> {
         let transform = LogicalTransform::try_new(1.0, 0.2, -0.15, 1.0, 6.0, 4.0)?;
-        let publication = publication(
+        let affine_publication = publication(
             vec![
                 PaintContributionItem::stroke_rect(
                     rect(10.0, 10.0, 20.0, 12.0),
@@ -375,9 +375,9 @@ mod tests {
             ],
             1.3,
         );
-        let literals = validate_clipped_scene_subset(&publication)?;
+        let literals = validate_clipped_scene_subset(&affine_publication)?;
         let literal = &literals[0].literal;
-        let uniform = StrokeMaskUniform::from_literal(literal, publication.raster_scale())
+        let uniform = StrokeMaskUniform::from_literal(literal, affine_publication.raster_scale())
             .unwrap_or_else(|| {
                 unreachable!("fixture stroke has an inset and invertible transform")
             });
