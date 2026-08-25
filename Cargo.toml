@@ -17,7 +17,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 repository = "https://github.com/dornglut/runen-ui"
-license = "MIT"
+license = "GPL-3.0-only"
 publish = false
 edition = "2024"
 rust-version = "1.93.0"

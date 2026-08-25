@@ -10,9 +10,32 @@ use std::{
     process::{Command, ExitCode},
 };
 
-const EXPECTED_LICENSE_EXPRESSION: &str = "license = \"MIT\"";
-const EXPECTED_MIT_NOTICE: &str = "Copyright (c) 2026 Crystonix";
+const EXPECTED_LICENSE_EXPRESSION: &str = "license = \"GPL-3.0-only\"";
+const EXPECTED_GPL_MARKERS: &[&str] = &[
+    "GNU GENERAL PUBLIC LICENSE",
+    "Version 3, 29 June 2007",
+    "END OF TERMS AND CONDITIONS",
+];
+const EXPECTED_POLICY_MARKERS: &[&str] = &[
+    "GPL-3.0-only",
+    "separate commercial agreement",
+    "copyright holder(s) with sufficient rights",
+    "previously released under MIT",
+    "Third-party dependencies",
+    "external pull requests contributing tracked repository content",
+    "Issue reports, design discussion, reviews, and reproducible cases",
+];
+const EXPECTED_WORKSPACE_PACKAGE_MANIFESTS: &[&str] = &[
+    "crates/runenui_core/Cargo.toml",
+    "crates/runenui_runtime/Cargo.toml",
+    "crates/runenui_testing/Cargo.toml",
+    "examples/counter/Cargo.toml",
+    "tests/external_widget/Cargo.toml",
+    "tests/external_renderer/Cargo.toml",
+    "xtask/Cargo.toml",
+];
 const VALIDATE_STEPS: &[(&str, &[&str])] = &[
+    ("stable", &["metadata", "--locked", "--no-deps"]),
     ("stable", &["fmt", "--all", "--check"]),
     (
         "stable",
@@ -70,6 +93,11 @@ fn validate() -> ExitCode {
             eprintln!("{error}");
             return ExitCode::FAILURE;
         }
+    }
+
+    if let Err(error) = validate_current_licensing(&root) {
+        eprintln!("{error}");
+        return ExitCode::FAILURE;
     }
 
     if let Err(error) = check_repository_links(&root) {
@@ -296,24 +324,42 @@ fn local_link_path(target: &str) -> Option<&str> {
 }
 
 fn validate_repository_metadata(root: &Path) -> Result<(), String> {
-    let mit_path = root.join("LICENSE");
-    let mit = fs::read_to_string(&mit_path)
-        .map_err(|error| format!("failed to read {}: {error}", mit_path.display()))?;
-    let notices = mit
-        .lines()
-        .filter(|line| line.starts_with("Copyright"))
-        .collect::<Vec<_>>();
+    if root.join("LICENSING.md").is_file() {
+        validate_current_licensing(root)
+    } else {
+        Ok(())
+    }
+}
 
-    if notices != [EXPECTED_MIT_NOTICE] {
-        return Err(format!(
-            "LICENSE must contain only the RunenUI notice: {EXPECTED_MIT_NOTICE}"
-        ));
+fn validate_current_licensing(root: &Path) -> Result<(), String> {
+    let license_path = root.join("LICENSE");
+    let license = fs::read_to_string(&license_path)
+        .map_err(|error| format!("failed to read {}: {error}", license_path.display()))?;
+
+    if license.contains("MIT License")
+        || license.contains("Permission is hereby granted, free of charge")
+        || license.contains("THE SOFTWARE IS PROVIDED \"AS IS\"")
+    {
+        return Err("LICENSE contains the stale MIT representation".into());
     }
 
-    if !mit.contains("Permission is hereby granted, free of charge")
-        || !mit.contains("THE SOFTWARE IS PROVIDED \"AS IS\"")
-    {
-        return Err("LICENSE does not contain the standard MIT grant and disclaimer".into());
+    for marker in EXPECTED_GPL_MARKERS {
+        if !license.contains(marker) {
+            return Err(format!(
+                "LICENSE does not contain the canonical GPLv3 marker: {marker}"
+            ));
+        }
+    }
+
+    let licensing_path = root.join("LICENSING.md");
+    let licensing = fs::read_to_string(&licensing_path)
+        .map_err(|error| format!("failed to read {}: {error}", licensing_path.display()))?;
+    for marker in EXPECTED_POLICY_MARKERS {
+        if !licensing.contains(marker) {
+            return Err(format!(
+                "LICENSING.md does not contain the required policy statement: {marker}"
+            ));
+        }
     }
 
     let manifest_path = root.join("Cargo.toml");
@@ -328,6 +374,21 @@ fn validate_repository_metadata(root: &Path) -> Result<(), String> {
 
     if !manifest.contains("publish = false") {
         return Err("workspace package publication must remain disabled".into());
+    }
+
+    for relative in EXPECTED_WORKSPACE_PACKAGE_MANIFESTS {
+        let package_manifest_path = root.join(relative);
+        let package_manifest = fs::read_to_string(&package_manifest_path).map_err(|error| {
+            format!(
+                "failed to read workspace package manifest {}: {error}",
+                package_manifest_path.display()
+            )
+        })?;
+        if !package_manifest.contains("license.workspace = true") {
+            return Err(format!(
+                "workspace package manifest {relative} must retain license.workspace = true"
+            ));
+        }
     }
 
     Ok(())
@@ -349,7 +410,7 @@ mod tests {
     };
 
     use super::{
-        local_link_path, markdown_targets, validate_markdown_links, validate_repository_metadata,
+        local_link_path, markdown_targets, validate_current_licensing, validate_markdown_links,
         workspace_root,
     };
 
@@ -499,7 +560,28 @@ mod tests {
     }
 
     #[test]
-    fn repository_metadata_matches_owner_approved_license() -> Result<(), String> {
-        validate_repository_metadata(&workspace_root()?)
+    fn repository_metadata_matches_owner_approved_gpl_license() -> Result<(), String> {
+        validate_current_licensing(&workspace_root()?)
+    }
+
+    #[test]
+    fn repository_metadata_rejects_stale_mit_representation() -> Result<(), String> {
+        let directory = TestDirectory::new("stale-mit-license")?;
+        directory.write(
+            "LICENSE",
+            "MIT License\n\nPermission is hereby granted, free of charge\n",
+        )?;
+        directory.write("LICENSING.md", "GPL-3.0-only\n")?;
+        directory.write(
+            "Cargo.toml",
+            "[workspace.package]\nlicense = \"GPL-3.0-only\"\npublish = false\n",
+        )?;
+
+        let error = validate_current_licensing(directory.path());
+        assert!(error.is_err());
+        if let Err(error) = error {
+            assert!(error.contains("stale MIT"));
+        }
+        Ok(())
     }
 }
