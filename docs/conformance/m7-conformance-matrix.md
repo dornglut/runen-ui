@@ -19,8 +19,8 @@ M6 owns paint/hit publication, revision/damage, and `ResourceRef` identity.
 20 total unique rows
 0 owner-accepted
 0 implementation-complete
-0 proof-complete
-20 blocked
+8 proof-complete
+12 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -36,14 +36,14 @@ cannot satisfy M7.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| RENDER-01 | `runenui_render_wgpu` consumes ordinary paint publication without winit/AccessKit, widget/semantic/mounted/layout/private-runtime knowledge; wgpu state stays renderer-owned. | Dependency audit and winit-free consumer | Forbidden dependency/source audit | Renderer construction diagnostics | M7A | blocked | Required |
-| RENDER-02 | Real wgpu pixels preserve all current M6 primitive, order, transform, clip, opacity, color/blend, placement and scale semantics. | Offscreen/window render corpus | Semantic/widget/layout reinterpretation and silent fallback corpus | Frame and pixel/probe records | M7A | blocked | Required |
-| RENDER-03 | Realized surface/revision classification is exact; mismatched base never uses damage; complete publication reconstructs state after renderer/cache loss. | Revision/reset corpus | Mismatched-base and hidden-history corpus | Update-mode/revision/base/damage records | M7A | blocked | Required |
-| RESOURCE-01 | Caller-owned lookup uses complete `ResourceRef`; logical binding stays immutable; renderer caches are disposable; resource failures are deterministic. | Provider/cache-loss corpus | Registry/split-key/rebinding/fallback audit | Resource realization diagnostics | M7A | blocked | Required |
-| RESOURCE-02 | Image payload is explicit non-zero unpremultiplied RGBA8 sRGB; complete image maps exactly to M6 destination; PNG decoding is provider-owned. | PNG/image corpus | Decoder-fit/color-policy and runtime-decode audit | Decode/upload diagnostics and pixels | M7A | blocked | Required |
-| RESOURCE-03 | Shaped-run payload supplies resource-local coverage at requested scale; foreground stays scene-owned; same ref may re-realize at another scale; M7 fixture performs no production shaping/layout. | Bundled-font/scale corpus | Shaping/fallback/layout and identity-conflation audit | Raster/cache diagnostics and pixels | M7A | blocked | Required |
-| GOLDEN-01 | Actual wgpu offscreen output is read back and compared under a documented tight policy using the same render/resource path as window output; no software/noop expected renderer. | Golden/readback corpus | Alternate expected-renderer and overbroad-tolerance audit | Comparator/backend diagnostics | M7A | blocked | Required |
-| OBS-01 | Renderer observation exposes publication/update/damage/extent/scale/resource/render/readback/present facts without runtime mutation or second trace authority. | Observation correlation tests | Mutation/identity/semantic capture audit | Renderer observation records | M7A | blocked | Required |
+| RENDER-01 | `runenui_render_wgpu` consumes ordinary paint publication without winit/AccessKit, widget/semantic/mounted/layout/private-runtime knowledge; wgpu state stays renderer-owned. | Dependency audit and winit-free consumer | Forbidden dependency/source audit | Renderer construction diagnostics | M7A | proof-complete | Required |
+| RENDER-02 | Real wgpu pixels preserve all current M6 primitive, order, transform, clip, opacity, color/blend, placement and scale semantics. | Offscreen/window render corpus | Semantic/widget/layout reinterpretation and silent fallback corpus | Frame and pixel/probe records | M7A | proof-complete | Required |
+| RENDER-03 | Realized surface/revision classification is exact; mismatched base never uses damage; complete publication reconstructs state after renderer/cache loss. | Revision/reset corpus | Mismatched-base and hidden-history corpus | Update-mode/revision/base/damage records | M7A | proof-complete | Required |
+| RESOURCE-01 | Caller-owned lookup uses complete `ResourceRef`; logical binding stays immutable; renderer caches are disposable; resource failures are deterministic. | Provider/cache-loss corpus | Registry/split-key/rebinding/fallback audit | Resource realization diagnostics | M7A | proof-complete | Required |
+| RESOURCE-02 | Image payload is explicit non-zero unpremultiplied RGBA8 sRGB; complete image maps exactly to M6 destination; PNG decoding is provider-owned. | PNG/image corpus | Decoder-fit/color-policy and runtime-decode audit | Decode/upload diagnostics and pixels | M7A | proof-complete | Required |
+| RESOURCE-03 | Shaped-run payload supplies resource-local coverage at requested scale; foreground stays scene-owned; same ref may re-realize at another scale; M7 fixture performs no production shaping/layout. | Bundled-font/scale corpus | Shaping/fallback/layout and identity-conflation audit | Raster/cache diagnostics and pixels | M7A | proof-complete | Required |
+| GOLDEN-01 | Actual wgpu offscreen output is read back and compared under a documented tight policy using the same render/resource path as window output; no software/noop expected renderer. | Golden/readback corpus | Alternate expected-renderer and overbroad-tolerance audit | Comparator/backend diagnostics | M7A | proof-complete | Required |
+| OBS-01 | Renderer observation exposes publication/update/damage/extent/scale/resource/render/readback/present facts without runtime mutation or second trace authority. | Observation correlation tests | Mutation/identity/semantic capture audit | Renderer observation records | M7A | proof-complete | Required |
 
 ## M7B — winit host and native input
 
