@@ -435,7 +435,7 @@ mod tests {
             .inverse()
             .unwrap_or_else(|| unreachable!("fixture stroke transform is invertible"));
         let scale = publication.raster_scale().get();
-        let (_, extent) = super::super::publication_extents(publication)?;
+        let (_, extent) = crate::backend::publication_extents(publication)?;
         let physical_width = u16::try_from(extent.width())?;
         let physical_height = u16::try_from(extent.height())?;
         let collapsed_source = rect(44.0, 10.0, 8.0, 6.0);
