@@ -101,6 +101,11 @@ impl PublicationLineage {
         PublicationUpdatePlan::new(mode, incremental_damage)
     }
 
+    /// Forgets successful realization authority after renderer-local state loss.
+    pub(crate) fn reset(&mut self) {
+        self.realized = None;
+    }
+
     /// Records one publication as successfully realized by the renderer.
     pub fn record_success(&mut self, publication: &PaintPublication) {
         self.realized = Some(RealizedPublication {
@@ -187,6 +192,30 @@ mod tests {
             lineage.classify(&third),
             PublicationUpdateMode::AlreadyCurrent
         );
+    }
+
+    #[test]
+    fn reset_forces_full_resync_without_exposing_stale_damage() {
+        let tokens = StyleTokens::new();
+        let mut runtime = AppRuntime::<App>::mount(());
+        let first = publication(&mut runtime, &tokens, 1.0);
+        let successor = publication(&mut runtime, &tokens, 2.0);
+
+        let mut lineage = PublicationLineage::new();
+        lineage.record_success(&first);
+        assert_eq!(lineage.classify(&first), PublicationUpdateMode::AlreadyCurrent);
+        assert_eq!(
+            lineage.classify(&successor),
+            PublicationUpdateMode::ExactBaseMatch
+        );
+
+        lineage.reset();
+        let current_plan = lineage.plan(&first);
+        assert_eq!(current_plan.mode(), PublicationUpdateMode::FullResync);
+        assert_eq!(current_plan.incremental_damage(), None);
+        let successor_plan = lineage.plan(&successor);
+        assert_eq!(successor_plan.mode(), PublicationUpdateMode::FullResync);
+        assert_eq!(successor_plan.incremental_damage(), None);
     }
 
     #[test]

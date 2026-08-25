@@ -160,9 +160,18 @@ impl ResourceRenderer {
     }
 
     /// Drops renderer-owned uploaded resource realizations without changing logical refs.
+    ///
+    /// A real cache loss also invalidates successful publication lineage so the
+    /// next complete publication is reconstructed with a full resync.
     #[must_use]
     pub fn discard_resource_cache(&mut self) -> bool {
-        self.images.discard_cache()
+        let discarded = self.images.discard_cache();
+        if discarded
+            && let Some(target) = self.literal.base.offscreen_target.as_mut()
+        {
+            target.lineage.reset();
+        }
+        discarded
     }
 
     /// Renders one complete provider-backed publication and reads actual GPU bytes.
