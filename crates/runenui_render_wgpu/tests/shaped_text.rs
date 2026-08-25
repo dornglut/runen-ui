@@ -272,7 +272,9 @@ fn shaped_text_realization_is_scale_qualified_and_foreground_is_scene_owned()
         first
             .readback()
             .rgba8_srgb()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|pixel| pixel[3] != 0)
     );
     let observation = first.observation();
@@ -382,8 +384,10 @@ fn empty_shaped_coverage_is_valid_and_never_creates_zero_texture() -> Result<(),
         output
             .readback()
             .rgba8_srgb()
-            .chunks_exact(4)
-            .all(|pixel| pixel == [0, 0, 0, 0])
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| pixel == &[0, 0, 0, 0])
     );
     Ok(())
 }
@@ -413,7 +417,9 @@ fn shaped_text_preserves_origin_transform_clips_and_order() -> Result<(), Box<dy
         output
             .readback()
             .rgba8_srgb()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|pixel| pixel[2] > 0)
     );
     assert_eq!(provider.loads(), 1);
@@ -431,8 +437,10 @@ fn shaped_text_preserves_origin_transform_clips_and_order() -> Result<(), Box<dy
         singular_output
             .readback()
             .rgba8_srgb()
-            .chunks_exact(4)
-            .all(|pixel| pixel == [0, 0, 0, 255])
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| pixel == &[0, 0, 0, 255])
     );
     Ok(())
 }
