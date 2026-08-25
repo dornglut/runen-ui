@@ -332,8 +332,8 @@ impl Error for ResourceResolveError {
 /// Returns deterministic contract failures for reference/request mismatch,
 /// provider failure, provider payload kind mismatch, or shaped coverage realized
 /// at a scale other than the exact requested [`RasterScale`].
-pub fn resolve_resource(
-    provider: &impl ResourceProvider,
+pub fn resolve_resource<P: ResourceProvider + ?Sized>(
+    provider: &P,
     resource: &ResourceRef,
     request: ResourceRequest,
 ) -> Result<ResourcePayload, ResourceResolveError> {

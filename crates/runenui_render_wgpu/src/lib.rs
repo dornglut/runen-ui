@@ -20,7 +20,7 @@ mod resource;
 )]
 mod scene_subset;
 
-pub use backend::clipped::Renderer;
+pub use backend::clipped::{PublicationRenderError, ResourceRenderer as Renderer};
 pub use backend::{
     AdapterPowerPreference, BackendSelection, OffscreenExtent, OffscreenPublicationReadback,
     OffscreenReadback, OffscreenRenderError, RendererDiagnostics, RendererInitError,
