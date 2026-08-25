@@ -43,7 +43,7 @@ impl Widget<Vec<PaintContributionItem>> for SceneFixture {
         state: &mut Self::State,
         _: &mut WidgetUpdateContext<Vec<PaintContributionItem>>,
     ) {
-        *state = self.items.clone();
+        state.clone_from(&self.items);
     }
 
     fn measure(&self, _: &Self::State) -> WidgetMeasure {
@@ -112,7 +112,7 @@ impl SwitchableImageProvider {
         })
     }
 
-    fn loads(&self) -> usize {
+    const fn loads(&self) -> usize {
         self.loads.get()
     }
 
