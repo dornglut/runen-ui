@@ -283,8 +283,7 @@ impl Renderer {
         publication: &PaintPublication,
     ) -> Result<super::OffscreenPublicationReadback, super::OffscreenRenderError> {
         if publication.scene().items().iter().all(|item| {
-            item.clips().is_empty()
-                && matches!(item.primitive(), PaintPrimitive::FillRect { .. })
+            item.clips().is_empty() && matches!(item.primitive(), PaintPrimitive::FillRect { .. })
         }) {
             return self.base.render_offscreen_publication(publication);
         }
