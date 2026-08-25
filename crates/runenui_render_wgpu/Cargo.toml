@@ -16,6 +16,7 @@ wgpu = { version = "=30.0.0", default-features = false, features = ["std", "park
 wgpu-types = { version = "=30.0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
+ab_glyph = "=0.2.32"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 
 [lints]

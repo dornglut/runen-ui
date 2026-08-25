@@ -27,7 +27,7 @@ pub use backend::{
     RendererOptions,
 };
 pub use lineage::{PublicationUpdateMode, PublicationUpdatePlan};
-pub use observation::PublicationObservation;
+pub use observation::{PublicationObservation, ResourceCacheOutcome, ResourceObservation};
 pub use resource::{
     ImagePayload, PayloadValidationError, ResourcePayload, ResourceProvider, ResourceProviderError,
     ResourceProviderErrorKind, ResourceRequest, ResourceResolveError, ShapedRunRaster,

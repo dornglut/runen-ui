@@ -8,6 +8,7 @@ use wgpu::util::DeviceExt;
 use crate::{
     PublicationUpdateMode, PublicationUpdatePlan, WgpuHasDisplayHandle,
     lineage::PublicationLineage,
+    observation::PublicationObservation,
     scene_subset::{SceneValidationError, SupportedFillRect, validate_scene_subset},
 };
 
@@ -497,11 +498,12 @@ pub struct OffscreenReadback {
 }
 
 /// Successful actual-GPU publication rendering and readback facts.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct OffscreenPublicationReadback {
     update_plan: PublicationUpdatePlan,
     target_generation: u64,
     readback: OffscreenReadback,
+    observation: PublicationObservation,
 }
 
 impl OffscreenPublicationReadback {
@@ -524,6 +526,13 @@ impl OffscreenPublicationReadback {
     #[must_use]
     pub const fn readback(&self) -> &OffscreenReadback {
         &self.readback
+    }
+
+    /// Returns the immutable publication, backend, resource, render, readback,
+    /// and present correlation record captured for this successful frame.
+    #[must_use]
+    pub const fn observation(&self) -> &PublicationObservation {
+        &self.observation
     }
 }
 
@@ -863,6 +872,14 @@ impl Renderer {
             update_plan,
             target_generation,
             readback,
+            observation: PublicationObservation::completed(
+                publication,
+                update_plan.mode(),
+                extent,
+                target_generation,
+                &self.diagnostics,
+                Vec::new(),
+            ),
         })
     }
 

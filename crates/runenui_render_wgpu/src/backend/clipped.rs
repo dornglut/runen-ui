@@ -1,5 +1,6 @@
 mod image;
 mod resource;
+mod shaped;
 mod stroke_mask;
 
 pub use resource::{PublicationRenderError, ResourceRenderer};
@@ -282,6 +283,10 @@ impl Renderer {
     ///
     /// Returns a deterministic scene, extent, target-format, device, or readback
     /// failure. Validation still completes before retained-target mutation.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the established literal transaction keeps validation, target realization, ordered encoding, submission, readback, and lineage commit visible as one auditable sequence"
+    )]
     pub fn render_offscreen_publication(
         &mut self,
         publication: &PaintPublication,
@@ -387,6 +392,14 @@ impl Renderer {
             update_plan,
             target_generation,
             readback,
+            observation: crate::observation::PublicationObservation::completed(
+                publication,
+                update_plan.mode(),
+                extent,
+                target_generation,
+                self.base.diagnostics(),
+                Vec::new(),
+            ),
         })
     }
 

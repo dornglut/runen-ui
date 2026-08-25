@@ -7,6 +7,7 @@ use wgpu::util::DeviceExt;
 use crate::{
     PublicationUpdateMode, PublicationUpdatePlan, ResourceProvider, ResourceResolveError,
     WgpuHasDisplayHandle,
+    observation::{ResourceCacheOutcome, ResourceObservation},
     scene_subset::{SceneValidationError, validate_literal_rect_item},
 };
 
@@ -19,7 +20,7 @@ use super::super::{
 use super::{
     ClipTargetPipelines, LiteralRectItem, Renderer, apply_clip_mask, clear_color_target,
     clear_stencil_mask, create_stencil_target, draw_clipped_fill, draw_unclipped_fill, image,
-    prepare_clip_uniforms, stroke_mask,
+    prepare_clip_uniforms, shaped, stroke_mask,
 };
 
 /// Structured failure while realizing one provider-backed paint publication.
@@ -41,6 +42,13 @@ pub enum PublicationRenderError {
     },
     /// The tightly packed RGBA8 row byte count cannot be represented by wgpu's upload layout.
     ImageRowBytesOverflow { item_index: usize, width: u32 },
+    /// An otherwise valid shaped-run coverage exceeds this renderer device's texture limit.
+    ShapedRunExtentExceedsDeviceLimit {
+        item_index: usize,
+        width: u32,
+        height: u32,
+        max_texture_dimension_2d: u32,
+    },
 }
 
 impl core::fmt::Display for PublicationRenderError {
@@ -64,6 +72,15 @@ impl core::fmt::Display for PublicationRenderError {
                 formatter,
                 "renderer image resource for scene item {item_index} has width {width}, whose tightly packed RGBA8 row byte count overflows u32"
             ),
+            Self::ShapedRunExtentExceedsDeviceLimit {
+                item_index,
+                width,
+                height,
+                max_texture_dimension_2d,
+            } => write!(
+                formatter,
+                "renderer shaped-run resource for scene item {item_index} has coverage extent {width}x{height}, exceeding device 2D texture limit {max_texture_dimension_2d}"
+            ),
         }
     }
 }
@@ -73,7 +90,9 @@ impl core::error::Error for PublicationRenderError {
         match self {
             Self::Backend(error) => Some(error),
             Self::Resource { error, .. } => Some(error),
-            Self::ImageExtentExceedsDeviceLimit { .. } | Self::ImageRowBytesOverflow { .. } => None,
+            Self::ImageExtentExceedsDeviceLimit { .. }
+            | Self::ImageRowBytesOverflow { .. }
+            | Self::ShapedRunExtentExceedsDeviceLimit { .. } => None,
         }
     }
 }
@@ -94,6 +113,7 @@ impl From<OffscreenRenderError> for PublicationRenderError {
 pub struct ResourceRenderer {
     literal: Renderer,
     images: image::ImageRenderer,
+    shaped_runs: shaped::ShapedRunRenderer,
 }
 
 impl ResourceRenderer {
@@ -138,7 +158,12 @@ impl ResourceRenderer {
 
     fn from_literal(literal: Renderer) -> Self {
         let images = image::ImageRenderer::new(&literal.base.device);
-        Self { literal, images }
+        let shaped_runs = shaped::ShapedRunRenderer::new(&literal.base.device);
+        Self {
+            literal,
+            images,
+            shaped_runs,
+        }
     }
 
     /// Returns immutable instance, adapter, device, and target diagnostics.
@@ -165,7 +190,9 @@ impl ResourceRenderer {
     /// next complete publication is reconstructed with a full resync.
     #[must_use]
     pub fn discard_resource_cache(&mut self) -> bool {
-        let discarded = self.images.discard_cache();
+        let images_discarded = self.images.discard_cache();
+        let shaped_runs_discarded = self.shaped_runs.discard_cache();
+        let discarded = images_discarded || shaped_runs_discarded;
         if discarded && let Some(target) = self.literal.base.offscreen_target.as_mut() {
             target.lineage.reset();
         }
@@ -174,10 +201,10 @@ impl ResourceRenderer {
 
     /// Renders one complete provider-backed publication and reads actual GPU bytes.
     ///
-    /// Publications without images delegate to the already-proven literal renderer.
-    /// Image-bearing publications preserve exact scene order across fills, centered
-    /// strokes, and images; image payload resolution completes before retained-target
-    /// mutation, and `ShapedTextRun` remains fail-closed until its own bounded slice.
+    /// Publications without provider-backed resources delegate to the already-proven
+    /// literal renderer. Resource-bearing publications preserve exact scene order across
+    /// fills, centered strokes, images, and shaped runs; payload resolution completes
+    /// before retained-target mutation.
     ///
     /// # Errors
     ///
@@ -193,18 +220,19 @@ impl ResourceRenderer {
         publication: &PaintPublication,
         provider: &P,
     ) -> Result<OffscreenPublicationReadback, PublicationRenderError> {
-        if !publication
-            .scene()
-            .items()
-            .iter()
-            .any(|item| matches!(item.primitive(), PaintPrimitive::Image(_)))
-        {
+        if !publication.scene().items().iter().any(|item| {
+            matches!(
+                item.primitive(),
+                PaintPrimitive::Image(_) | PaintPrimitive::ShapedTextRun(_)
+            )
+        }) {
             let result = self
                 .literal
                 .render_offscreen_publication(publication)
                 .map_err(PublicationRenderError::Backend);
             if result.is_ok() {
                 self.images.discard_cache();
+                self.shaped_runs.discard_cache();
             }
             return result;
         }
@@ -236,11 +264,33 @@ impl ResourceRenderer {
         let has_literals = scene
             .iter()
             .any(|item| matches!(item, ResourceSceneItem::Literal(_)));
+        let has_images = scene
+            .iter()
+            .any(|item| matches!(item, ResourceSceneItem::Image(_)));
+        let has_shaped_runs = scene
+            .iter()
+            .any(|item| matches!(item, ResourceSceneItem::ShapedTextRun(_)));
         let needs_stencil = scene.iter().any(ResourceSceneItem::needs_stencil);
         let live_images = live_image_resources(&scene);
+        let live_shaped_runs = live_shaped_run_resources(&scene, publication.raster_scale());
+        let mut resource_observations = resource_observations_for_scene(
+            &scene,
+            publication.raster_scale(),
+            &self.images,
+            &self.shaped_runs,
+            None,
+        );
 
         if update_plan.mode() != PublicationUpdateMode::AlreadyCurrent {
-            let resolved = self.preflight_images(&scene, provider)?;
+            let (resolved_images, resolved_shaped_runs) =
+                self.preflight_resources(&scene, publication.raster_scale(), provider)?;
+            resource_observations = resource_observations_for_scene(
+                &scene,
+                publication.raster_scale(),
+                &self.images,
+                &self.shaped_runs,
+                Some(&resolved_shaped_runs),
+            );
             if has_literals {
                 self.literal
                     .base
@@ -249,12 +299,23 @@ impl ResourceRenderer {
             if needs_stencil {
                 self.literal.ensure_clip_pipelines(OFFSCREEN_FORMAT)?;
             }
-            self.images
-                .ensure_pipelines(&self.literal.base.device, OFFSCREEN_FORMAT)?;
+            if has_images {
+                self.images
+                    .ensure_pipelines(&self.literal.base.device, OFFSCREEN_FORMAT)?;
+            }
+            if has_shaped_runs {
+                self.shaped_runs
+                    .ensure_pipelines(&self.literal.base.device, OFFSCREEN_FORMAT)?;
+            }
             self.images.realize(
                 &self.literal.base.device,
                 &self.literal.base.queue,
-                resolved,
+                resolved_images,
+            );
+            self.shaped_runs.realize(
+                &self.literal.base.device,
+                &self.literal.base.queue,
+                resolved_shaped_runs,
             );
 
             if !retained_target_matches {
@@ -309,6 +370,7 @@ impl ResourceRenderer {
                 canvas_extent,
                 publication.raster_scale(),
                 &scene,
+                &self.shaped_runs,
             );
         }
 
@@ -339,11 +401,32 @@ impl ResourceRenderer {
             .lineage
             .record_success(publication);
         self.images.retain(&live_images);
+        self.shaped_runs.retain(&live_shaped_runs);
         Ok(OffscreenPublicationReadback {
             update_plan,
             target_generation,
             readback,
+            observation: crate::observation::PublicationObservation::completed(
+                publication,
+                update_plan.mode(),
+                extent,
+                target_generation,
+                self.diagnostics(),
+                resource_observations,
+            ),
         })
+    }
+
+    fn preflight_resources<P: ResourceProvider + ?Sized>(
+        &self,
+        scene: &[ResourceSceneItem],
+        raster_scale: RasterScale,
+        provider: &P,
+    ) -> Result<(Vec<image::ResolvedImage>, Vec<shaped::ResolvedShapedRun>), PublicationRenderError>
+    {
+        let images = self.preflight_images(scene, provider)?;
+        let shaped_runs = self.preflight_shaped_runs(scene, raster_scale, provider)?;
+        Ok((images, shaped_runs))
     }
 
     fn preflight_images<P: ResourceProvider + ?Sized>(
@@ -398,6 +481,64 @@ impl ResourceRenderer {
         Ok(resolved)
     }
 
+    fn preflight_shaped_runs<P: ResourceProvider + ?Sized>(
+        &self,
+        scene: &[ResourceSceneItem],
+        raster_scale: RasterScale,
+        provider: &P,
+    ) -> Result<Vec<shaped::ResolvedShapedRun>, PublicationRenderError> {
+        let max_texture_dimension_2d = self
+            .literal
+            .diagnostics()
+            .device_limits()
+            .max_texture_dimension_2d;
+        let mut seen = HashSet::new();
+        let mut resolved = Vec::new();
+        for item in scene {
+            let ResourceSceneItem::ShapedTextRun(item) = item else {
+                continue;
+            };
+            let cache_key = (
+                item.shaped_run.resource.clone(),
+                raster_scale.get().to_bits(),
+            );
+            if self
+                .shaped_runs
+                .contains(&item.shaped_run.resource, raster_scale)
+                || !seen.insert(cache_key)
+            {
+                continue;
+            }
+            match shaped::resolve_shaped_run(
+                provider,
+                &item.shaped_run,
+                raster_scale,
+                max_texture_dimension_2d,
+            ) {
+                Ok(shaped_run) => resolved.push(shaped_run),
+                Err(shaped::ShapedRunResolveFailure::Resource(error)) => {
+                    return Err(PublicationRenderError::Resource {
+                        item_index: item.shaped_run.item_index,
+                        error,
+                    });
+                }
+                Err(shaped::ShapedRunResolveFailure::ExtentExceedsDeviceLimit {
+                    width,
+                    height,
+                    max_texture_dimension_2d,
+                }) => {
+                    return Err(PublicationRenderError::ShapedRunExtentExceedsDeviceLimit {
+                        item_index: item.shaped_run.item_index,
+                        width,
+                        height,
+                        max_texture_dimension_2d,
+                    });
+                }
+            }
+        }
+        Ok(resolved)
+    }
+
     /// Executes one real wgpu render-pass clear and returns actual GPU bytes from GPU readback.
     ///
     /// # Errors
@@ -416,6 +557,7 @@ impl ResourceRenderer {
 enum ResourceSceneItem {
     Literal(LiteralRectItem),
     Image(ImageSceneItem),
+    ShapedTextRun(ShapedTextRunSceneItem),
 }
 
 impl ResourceSceneItem {
@@ -423,6 +565,7 @@ impl ResourceSceneItem {
         match self {
             Self::Literal(item) => item.literal.stroke_inset.is_some() || !item.clips.is_empty(),
             Self::Image(item) => !item.clips.is_empty(),
+            Self::ShapedTextRun(item) => !item.clips.is_empty(),
         }
     }
 }
@@ -433,11 +576,17 @@ struct ImageSceneItem {
     clips: Vec<SceneClip>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct ShapedTextRunSceneItem {
+    shaped_run: shaped::SupportedShapedRun,
+    clips: Vec<SceneClip>,
+}
+
 fn validate_resource_scene_subset(
     publication: &PaintPublication,
 ) -> Result<Vec<ResourceSceneItem>, SceneValidationError> {
     let requirements = publication.scene().requirements();
-    let capabilities = SceneCapabilities::new([ResourceKind::Image]);
+    let capabilities = SceneCapabilities::new([ResourceKind::Image, ResourceKind::ShapedTextRun]);
     let unsupported_resource_kind =
         capabilities
             .check_requirements(&requirements)
@@ -453,6 +602,20 @@ fn validate_resource_scene_subset(
                     item_index,
                     resource: image_primitive.resource_ref().clone(),
                     destination: image_primitive.destination(),
+                    opacity: item.opacity(),
+                    local_to_surface: item.local_to_surface(),
+                },
+                clips: item.clips().to_vec(),
+            }));
+            continue;
+        }
+        if let PaintPrimitive::ShapedTextRun(shaped_run) = item.primitive() {
+            items.push(ResourceSceneItem::ShapedTextRun(ShapedTextRunSceneItem {
+                shaped_run: shaped::SupportedShapedRun {
+                    item_index,
+                    resource: shaped_run.resource_ref().clone(),
+                    origin: shaped_run.origin(),
+                    foreground: shaped_run.foreground(),
                     opacity: item.opacity(),
                     local_to_surface: item.local_to_surface(),
                 },
@@ -478,6 +641,73 @@ fn live_image_resources(scene: &[ResourceSceneItem]) -> HashSet<ResourceRef> {
         .iter()
         .filter_map(|item| match item {
             ResourceSceneItem::Image(item) => Some(item.image.resource.clone()),
+            ResourceSceneItem::Literal(_) | ResourceSceneItem::ShapedTextRun(_) => None,
+        })
+        .collect()
+}
+
+fn live_shaped_run_resources(
+    scene: &[ResourceSceneItem],
+    raster_scale: RasterScale,
+) -> HashSet<(ResourceRef, u32)> {
+    scene
+        .iter()
+        .filter_map(|item| match item {
+            ResourceSceneItem::ShapedTextRun(item) => Some((
+                item.shaped_run.resource.clone(),
+                raster_scale.get().to_bits(),
+            )),
+            ResourceSceneItem::Literal(_) | ResourceSceneItem::Image(_) => None,
+        })
+        .collect()
+}
+
+fn resource_observations_for_scene(
+    scene: &[ResourceSceneItem],
+    raster_scale: RasterScale,
+    images: &image::ImageRenderer,
+    shaped_runs: &shaped::ShapedRunRenderer,
+    resolved_shaped_runs: Option<&[shaped::ResolvedShapedRun]>,
+) -> Vec<ResourceObservation> {
+    let empty_shaped = resolved_shaped_runs
+        .unwrap_or_default()
+        .iter()
+        .filter(|resolved| resolved.is_empty())
+        .map(shaped::ResolvedShapedRun::resource_key)
+        .collect::<HashSet<_>>();
+    scene
+        .iter()
+        .filter_map(|item| match item {
+            ResourceSceneItem::Image(item) => Some(ResourceObservation::new(
+                item.image.item_index,
+                item.image.resource.clone(),
+                crate::ResourceRequest::Image,
+                if images.contains(&item.image.resource) {
+                    ResourceCacheOutcome::Reused
+                } else {
+                    ResourceCacheOutcome::Realized
+                },
+            )),
+            ResourceSceneItem::ShapedTextRun(item) => {
+                let key = (
+                    item.shaped_run.resource.clone(),
+                    raster_scale.get().to_bits(),
+                );
+                let cache_outcome = if shaped_runs.contains(&item.shaped_run.resource, raster_scale)
+                {
+                    ResourceCacheOutcome::Reused
+                } else if empty_shaped.contains(&key) {
+                    ResourceCacheOutcome::EmptyCoverage
+                } else {
+                    ResourceCacheOutcome::Realized
+                };
+                Some(ResourceObservation::new(
+                    item.shaped_run.item_index,
+                    item.shaped_run.resource.clone(),
+                    crate::ResourceRequest::ShapedTextRun { raster_scale },
+                    cache_outcome,
+                ))
+            }
             ResourceSceneItem::Literal(_) => None,
         })
         .collect()
@@ -500,6 +730,7 @@ fn encode_resource_scene_to_target(
     canvas_extent: RasterCanvasExtent,
     raster_scale: RasterScale,
     scene: &[ResourceSceneItem],
+    shaped_renderer: &shaped::ShapedRunRenderer,
 ) {
     clear_color_target(encoder, color_view);
     for item in scene {
@@ -520,6 +751,19 @@ fn encode_resource_scene_to_target(
                 device,
                 clip_pipelines,
                 image_renderer,
+                encoder,
+                color_view,
+                stencil_view,
+                target_format,
+                extent,
+                canvas_extent,
+                raster_scale,
+                item,
+            ),
+            ResourceSceneItem::ShapedTextRun(item) => encode_resource_shaped_run_item(
+                device,
+                clip_pipelines,
+                shaped_renderer,
                 encoder,
                 color_view,
                 stencil_view,
@@ -675,6 +919,78 @@ fn encode_resource_image_item(
         color_view,
         Some(stencil_view),
         &item.image.resource,
+        &vertex_buffer,
+        vertex_count,
+    );
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "mixed-scene shaped-run dispatch keeps exact geometry, scale-qualified cache identity, target format, optional stencil realization, and the sampled coverage pipeline explicit"
+)]
+fn encode_resource_shaped_run_item(
+    device: &wgpu::Device,
+    clip_pipelines: Option<&ClipTargetPipelines>,
+    shaped_renderer: &shaped::ShapedRunRenderer,
+    encoder: &mut wgpu::CommandEncoder,
+    color_view: &wgpu::TextureView,
+    stencil_view: Option<&wgpu::TextureView>,
+    target_format: wgpu::TextureFormat,
+    extent: OffscreenExtent,
+    canvas_extent: RasterCanvasExtent,
+    raster_scale: RasterScale,
+    item: &ShapedTextRunSceneItem,
+) {
+    let raster = shaped_renderer.raster(&item.shaped_run.resource, raster_scale);
+    let vertex_bytes = shaped::vertex_bytes(
+        &item.shaped_run,
+        raster,
+        extent,
+        canvas_extent,
+        raster_scale,
+    );
+    if vertex_bytes.is_empty() {
+        return;
+    }
+    let vertex_count = u32::try_from(vertex_bytes.len() / 36).unwrap_or(u32::MAX);
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("runenui ordered mixed-scene shaped-run vertices"),
+        contents: &vertex_bytes,
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+
+    if item.clips.is_empty() {
+        shaped_renderer.draw(
+            target_format,
+            encoder,
+            color_view,
+            None,
+            &item.shaped_run.resource,
+            raster_scale,
+            &vertex_buffer,
+            vertex_count,
+        );
+        return;
+    }
+
+    let Some(clip_uniforms) = prepare_clip_uniforms(&item.clips, raster_scale) else {
+        return;
+    };
+    let stencil_view =
+        stencil_view.unwrap_or_else(|| unreachable!("clipped shaped-run requires stencil target"));
+    let clip_pipelines = clip_pipelines
+        .unwrap_or_else(|| unreachable!("clipped shaped-run requires mask pipelines"));
+    clear_stencil_mask(encoder, stencil_view);
+    for uniform in &clip_uniforms {
+        apply_clip_mask(device, encoder, stencil_view, &clip_pipelines.mask, uniform);
+    }
+    shaped_renderer.draw(
+        target_format,
+        encoder,
+        color_view,
+        Some(stencil_view),
+        &item.shaped_run.resource,
+        raster_scale,
         &vertex_buffer,
         vertex_count,
     );

@@ -5,8 +5,10 @@
 It consumes ordinary public `runenui_core` and `runenui_runtime` paint/publication contracts. The package owns renderer-side publication lineage, resource-provider interaction, backend realization, rendering, readback, and renderer observations. Native event-loop and accessibility integration remain outside this crate.
 
 The current implementation fails closed: before target creation or GPU
-submission it accepts only `FillRect` items with finite affine
-`local_to_surface` transforms and no clips. FillRects preserve literal color
+submission it accepts the bounded M7A literal, image, and shaped-run subset.
+All accepted items use finite affine `local_to_surface` transforms; literal,
+image, and shaped-run items may also carry the existing conjunctive clip
+semantics. FillRects preserve literal color
 alpha and validated item opacity. A transform whose canonical
 `LogicalTransform::inverse()` is unavailable contributes no paint coverage rather
 than falling back to the source rectangle. For an invertible transform, finite
@@ -18,8 +20,8 @@ extent is the ceil-rounded storage/readback extent only; fractional-scale paddin
 never becomes logical paint coverage. This preserves a visible canvas
 intersection even when an irrelevant remote forward `LogicalPoint` mapping would
 overflow f32, without replacing transformed geometry with an axis-aligned
-bounding box. Stroke, image, shaped-text, unknown primitive, and all clip
-semantics remain unsupported. Canonical `SceneRequirements`/`SceneCapabilities`
+bounding box. Unknown primitives remain unsupported. Canonical
+`SceneRequirements`/`SceneCapabilities`
 continue to check resource kinds only; the narrower implementation-subset
 validation and its detailed reasons remain renderer-internal. The public render
 error reports an unsupported scene without making temporary implementation
@@ -35,9 +37,13 @@ not mutate it. `discard_offscreen_target` makes this lifetime boundary explicit.
 Offscreen publication targets initialize to transparent black. Initialization
 is target policy, not authored `PaintPublication` paint. Successful target
 lineage is committed only after actual GPU submission and CPU readback complete.
-The renderer returns raw GPU-derived RGBA8 sRGB bytes; PNG encoding and any
-golden-file policy belong to proof tooling. Normal tests write no expected
-golden.
+The renderer returns raw GPU-derived RGBA8 sRGB bytes and an immutable
+`PublicationObservation` containing publication/update/damage facts, logical and
+physical extent, scale, backend/format, resource lookup/cache outcomes, and
+render/readback/present facts. PNG encoding and golden comparison belong to
+proof tooling. The M7A corpus checks a checked-in PNG with the same real-wgpu
+resource path; the comparator is exact and does not substitute a software or
+noop renderer.
 
 `Renderer::request` is the headless constructor.
 `Renderer::request_with_display_handle` accepts wgpu's owned, thread-safe
@@ -92,6 +98,26 @@ present mode, alpha mode, frame latency, configuration, acquisition, and
 presentation remain host/present lifecycle work for M7B. Future surface drawing
 is required to call the same target-neutral scene encoder used by the offscreen
 path.
+
+### M7A resources
+
+Image payloads are caller-owned, non-zero, unpremultiplied RGBA8 sRGB sources.
+The complete image maps to its declared logical destination. The renderer owns
+only the disposable sampled-texture realization and never decodes PNG data.
+
+Shaped text is also caller-owned: `ResourceProvider` receives the complete
+`ResourceRef` and the publication's exact `RasterScale`, then returns a
+`ShapedRunRaster` containing resource-local logical origin, alpha8 coverage, and
+the exact realized scale. The renderer samples that coverage with a nearest
+sampler and applies scene-owned foreground color and opacity through the same
+linear source-over target path as literal paint. Cache identity is
+`(ResourceRef, exact RasterScale)`; foreground color is deliberately excluded.
+Valid zero-width or zero-height coverage is retained as an empty realization and
+never creates a zero-sized GPU texture. Missing, wrong-kind, malformed,
+scale-mismatched, unavailable, or device-limit payloads fail before target
+mutation. The fixture in `tests/fixtures` uses the bundled redistributable
+Cantarell font with `ab_glyph` only in tests; it performs no production shaping,
+fallback, line breaking, or layout.
 
 The real-GPU scale proof renders identical 64x48 logical two-rectangle geometry
 at scales 1.0 and 2.0, producing 64x48 and 128x96 targets with corresponding
