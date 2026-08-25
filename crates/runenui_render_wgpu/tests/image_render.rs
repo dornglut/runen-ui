@@ -161,9 +161,8 @@ fn real_gpu_image_semantics_match_scene_contract() -> Result<(), Box<dyn Error>>
         PaintContributionItem::image(image_ref.clone(), rect(2.0, 2.0, 8.0, 8.0))?
             .with_transform(image_transform)
             .with_clip(clip);
-    let translucent_image =
-        PaintContributionItem::image(image_ref, rect(16.0, 4.0, 8.0, 8.0))?
-            .with_opacity(SceneOpacity::new(0.5)?);
+    let translucent_image = PaintContributionItem::image(image_ref, rect(16.0, 4.0, 8.0, 8.0))?
+        .with_opacity(SceneOpacity::new(0.5)?);
     let overlay = Color::rgb(0xE0, 0xA0, 0x20);
     let publication = publication(vec![
         PaintContributionItem::fill_rect(
