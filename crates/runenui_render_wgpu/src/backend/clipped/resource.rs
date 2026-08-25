@@ -10,16 +10,16 @@ use crate::{
     scene_subset::{SceneValidationError, validate_literal_rect_item},
 };
 
-use super::{
-    ClipTargetPipelines, LiteralRectItem, Renderer, apply_clip_mask, clear_color_target,
-    clear_stencil_mask, create_stencil_target, draw_clipped_fill, draw_unclipped_fill, image,
-    prepare_clip_uniforms, stroke_mask,
-};
 use super::super::{
     OFFSCREEN_FORMAT, OffscreenExtent, OffscreenPublicationReadback, OffscreenReadback,
     OffscreenRenderError, RasterCanvasExtent, ReadbackLayout, RendererDiagnostics,
     RendererInitError, RendererOptions, encode_target_copy, publication_extents,
     scene_validation_error,
+};
+use super::{
+    ClipTargetPipelines, LiteralRectItem, Renderer, apply_clip_mask, clear_color_target,
+    clear_stencil_mask, create_stencil_target, draw_clipped_fill, draw_unclipped_fill, image,
+    prepare_clip_uniforms, stroke_mask,
 };
 
 /// Structured failure while realizing one provider-backed paint publication.
@@ -235,7 +235,9 @@ impl ResourceRenderer {
         if update_plan.mode() != PublicationUpdateMode::AlreadyCurrent {
             let resolved = self.preflight_images(&scene, provider)?;
             if has_literals {
-                self.literal.base.ensure_fill_rect_pipeline(OFFSCREEN_FORMAT)?;
+                self.literal
+                    .base
+                    .ensure_fill_rect_pipeline(OFFSCREEN_FORMAT)?;
             }
             if needs_stencil {
                 self.literal.ensure_clip_pipelines(OFFSCREEN_FORMAT)?;
@@ -389,7 +391,7 @@ impl ResourceRenderer {
         Ok(resolved)
     }
 
-    /// Executes one real wgpu render-pass clear and returns actual texture bytes from GPU readback.
+    /// Executes one real wgpu render-pass clear and returns actual GPU bytes from GPU readback.
     ///
     /// # Errors
     ///
@@ -429,12 +431,13 @@ fn validate_resource_scene_subset(
 ) -> Result<Vec<ResourceSceneItem>, SceneValidationError> {
     let requirements = publication.scene().requirements();
     let capabilities = SceneCapabilities::new([ResourceKind::Image]);
-    let unsupported_resource_kind = capabilities
-        .check_requirements(&requirements)
-        .err()
-        .map(|error| SceneValidationError::UnsupportedResourceKind {
-            resource_kind: error.resource_kind(),
-        });
+    let unsupported_resource_kind =
+        capabilities
+            .check_requirements(&requirements)
+            .err()
+            .map(|error| SceneValidationError::UnsupportedResourceKind {
+                resource_kind: error.resource_kind(),
+            });
     let mut items = Vec::with_capacity(publication.scene().items().len());
     for (item_index, item) in publication.scene().items().iter().enumerate() {
         if let PaintPrimitive::Image(image_primitive) = item.primitive() {
