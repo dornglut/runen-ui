@@ -80,7 +80,7 @@ pub(super) struct ResolvedImage {
 }
 
 impl ResolvedImage {
-    pub(super) fn resource(&self) -> &ResourceRef {
+    pub(super) const fn resource(&self) -> &ResourceRef {
         &self.resource
     }
 }
@@ -123,7 +123,7 @@ impl ImageRenderer {
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                     count: None,
                 },
             ],
@@ -417,7 +417,7 @@ pub(super) fn vertex_bytes(
     clippy::cast_possible_truncation,
     reason = "exact-canvas clipping plus canonical inverse reconstruction bounds normalized image coordinates to the finite unit resource domain before the f32 GPU ABI"
 )]
-fn narrow_uv(value: f64) -> f32 {
+const fn narrow_uv(value: f64) -> f32 {
     value.clamp(0.0, 1.0) as f32
 }
 
@@ -505,7 +505,9 @@ mod tests {
 
     fn uv_vertices(bytes: &[u8]) -> Vec<[f32; 2]> {
         bytes
-            .chunks_exact(20)
+            .as_chunks::<20>()
+            .0
+            .iter()
             .map(|vertex| {
                 let u = f32::from_ne_bytes(
                     vertex[8..12]

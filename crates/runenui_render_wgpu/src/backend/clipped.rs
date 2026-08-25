@@ -1439,6 +1439,10 @@ impl ResourceRenderer {
     /// Returns deterministic scene, resource, image-limit, target, device, or
     /// readback failures. A missing/unavailable/malformed provider result never
     /// mutates the retained target.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the provider-backed render transaction intentionally keeps complete validation and resource preflight before target mutation, then ordered realization/submission/readback, and only then lineage/cache commit in one auditable sequence"
+    )]
     pub fn render_offscreen_publication<P: ResourceProvider + ?Sized>(
         &mut self,
         publication: &PaintPublication,
@@ -1672,7 +1676,7 @@ enum ResourceSceneItem {
 }
 
 impl ResourceSceneItem {
-    fn needs_stencil(&self) -> bool {
+    const fn needs_stencil(&self) -> bool {
         match self {
             Self::Literal(item) => item.literal.stroke_inset.is_some() || !item.clips.is_empty(),
             Self::Image(item) => !item.clips.is_empty(),
