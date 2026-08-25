@@ -94,12 +94,9 @@ pub(crate) const fn validate_literal_rect_item(
             fill: supported_fill_rect(item, *rect, *color),
             stroke_inset: None,
         })),
-        PaintPrimitive::StrokeRect { rect, color, width } => Ok(supported_stroke_rect(
-            item,
-            *rect,
-            *color,
-            width.get(),
-        )),
+        PaintPrimitive::StrokeRect { rect, color, width } => {
+            Ok(supported_stroke_rect(item, *rect, *color, width.get()))
+        }
         PaintPrimitive::Image(_) => Err(unsupported(item_index, UnsupportedSceneSemantic::Image)),
         PaintPrimitive::ShapedTextRun(_) => Err(unsupported(
             item_index,
