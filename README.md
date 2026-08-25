@@ -65,3 +65,7 @@ Focused tests and conformance proofs remain required for the active change. See 
 - [Release policy](docs/release-policy.md)
 
 Live work, blockers, pull-request state, exact heads, and CI evidence belong in GitHub rather than durable documentation.
+
+## License
+
+RunenUI is currently publicly licensed under [`GPL-3.0-only`](LICENSE). A separate commercial-license model may be available from copyright holder(s) with sufficient rights; see [`LICENSING.md`](LICENSING.md). Until reviewed inbound terms preserve commercial relicensing authority, external PRs contributing tracked repository content are not accepted. Issue reports, design discussion, reviews, and reproducible cases may still be accepted.
