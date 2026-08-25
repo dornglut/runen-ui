@@ -159,23 +159,17 @@ impl ImageRenderer {
             target_format,
             wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
         ) {
-            return Err(super::super::OffscreenRenderError::UnsupportedTargetFormat {
-                format: target_format,
-            });
+            return Err(
+                super::super::OffscreenRenderError::UnsupportedTargetFormat {
+                    format: target_format,
+                },
+            );
         }
         if !self.pipelines.contains_key(&target_format) {
-            let ordinary = create_image_pipeline(
-                device,
-                target_format,
-                &self.bind_group_layout,
-                false,
-            );
-            let clipped = create_image_pipeline(
-                device,
-                target_format,
-                &self.bind_group_layout,
-                true,
-            );
+            let ordinary =
+                create_image_pipeline(device, target_format, &self.bind_group_layout, false);
+            let clipped =
+                create_image_pipeline(device, target_format, &self.bind_group_layout, true);
             self.pipelines
                 .insert(target_format, ImageTargetPipelines { ordinary, clipped });
         }
@@ -489,9 +483,7 @@ fn create_image_pipeline(
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{
-        LogicalRect, LogicalTransform, ResourceKind, ResourceRef, SceneOpacity,
-    };
+    use runenui_core::{LogicalRect, LogicalTransform, ResourceKind, ResourceRef, SceneOpacity};
     use runenui_runtime::RasterScale;
 
     use super::{SupportedImage, vertex_bytes};
@@ -531,7 +523,8 @@ mod tests {
     }
 
     #[test]
-    fn exact_canvas_clipping_reconstructs_normalized_image_domain() -> Result<(), Box<dyn std::error::Error>> {
+    fn exact_canvas_clipping_reconstructs_normalized_image_domain()
+    -> Result<(), Box<dyn std::error::Error>> {
         let transform = LogicalTransform::try_new(1.0, 0.0, 0.0, 1.0, -10.0, 0.0)?;
         let image = image(rect(0.0, 0.0, 20.0, 10.0), transform);
         let extent = super::super::super::OffscreenExtent::new(64, 48)?;

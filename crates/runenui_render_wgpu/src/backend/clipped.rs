@@ -1499,12 +1499,16 @@ impl ResourceRenderer {
                     .ensure_fill_rect_pipeline(super::OFFSCREEN_FORMAT)?;
             }
             if needs_stencil {
-                self.literal.ensure_clip_pipelines(super::OFFSCREEN_FORMAT)?;
+                self.literal
+                    .ensure_clip_pipelines(super::OFFSCREEN_FORMAT)?;
             }
             self.images
                 .ensure_pipelines(&self.literal.base.device, super::OFFSCREEN_FORMAT)?;
-            self.images
-                .realize(&self.literal.base.device, &self.literal.base.queue, resolved);
+            self.images.realize(
+                &self.literal.base.device,
+                &self.literal.base.queue,
+                resolved,
+            );
 
             if !retained_target_matches {
                 let target = self.literal.base.create_offscreen_target(extent)?;
@@ -1513,11 +1517,13 @@ impl ResourceRenderer {
         }
 
         let readback = self.literal.base.create_readback_buffer(layout);
-        let mut encoder = self.literal.base.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
-                label: Some("runenui provider-backed offscreen publication encoder"),
-            },
-        );
+        let mut encoder =
+            self.literal
+                .base
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("runenui provider-backed offscreen publication encoder"),
+                });
         let target = self
             .literal
             .base
@@ -1561,7 +1567,11 @@ impl ResourceRenderer {
 
         super::encode_target_copy(&mut encoder, &target.texture, &readback, extent, layout);
         let submission = self.literal.base.queue.submit([encoder.finish()]);
-        let rgba8_srgb = match self.literal.base.map_readback(&readback, layout, submission) {
+        let rgba8_srgb = match self
+            .literal
+            .base
+            .map_readback(&readback, layout, submission)
+        {
             Ok(pixels) => pixels,
             Err(error) => {
                 self.literal.base.offscreen_target = None;
@@ -1681,12 +1691,13 @@ fn validate_resource_scene_subset(
 ) -> Result<Vec<ResourceSceneItem>, SceneValidationError> {
     let requirements = publication.scene().requirements();
     let capabilities = SceneCapabilities::new([ResourceKind::Image]);
-    let unsupported_resource_kind = capabilities
-        .check_requirements(&requirements)
-        .err()
-        .map(|error| SceneValidationError::UnsupportedResourceKind {
-            resource_kind: error.resource_kind(),
-        });
+    let unsupported_resource_kind =
+        capabilities
+            .check_requirements(&requirements)
+            .err()
+            .map(|error| SceneValidationError::UnsupportedResourceKind {
+                resource_kind: error.resource_kind(),
+            });
     let mut items = Vec::with_capacity(publication.scene().items().len());
     for (item_index, item) in publication.scene().items().iter().enumerate() {
         if let PaintPrimitive::Image(image_primitive) = item.primitive() {
@@ -1823,7 +1834,8 @@ fn encode_resource_literal_item(
         return;
     };
     let stroke_uniform = if item.literal.stroke_inset.is_some() {
-        let Some(uniform) = stroke_mask::StrokeMaskUniform::from_literal(&item.literal, raster_scale)
+        let Some(uniform) =
+            stroke_mask::StrokeMaskUniform::from_literal(&item.literal, raster_scale)
         else {
             return;
         };
