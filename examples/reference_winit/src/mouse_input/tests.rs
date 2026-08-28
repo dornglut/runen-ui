@@ -144,7 +144,10 @@ fn primary_first_chord_retains_stream_through_partial_release_move_and_wheel() {
             .unwrap_or_else(|_| unreachable!("secondary press is admitted")),
     );
     assert_eq!(secondary_down.pointer_id(), pointer_id);
-    assert_eq!(secondary_down.changed_button(), Some(PointerButton::Secondary));
+    assert_eq!(
+        secondary_down.changed_button(),
+        Some(PointerButton::Secondary)
+    );
     assert!(secondary_down.buttons().contains(PointerButton::Primary));
     assert!(secondary_down.buttons().contains(PointerButton::Secondary));
 
@@ -198,7 +201,10 @@ fn primary_first_chord_retains_stream_through_partial_release_move_and_wheel() {
             .unwrap_or_else(|_| unreachable!("final secondary release is admitted")),
     );
     assert_eq!(secondary_up.pointer_id(), pointer_id);
-    assert_eq!(secondary_up.changed_button(), Some(PointerButton::Secondary));
+    assert_eq!(
+        secondary_up.changed_button(),
+        Some(PointerButton::Secondary)
+    );
     assert!(secondary_up.buttons().is_empty());
     assert_eq!(mouse.active_device_id(), None);
 
@@ -251,7 +257,10 @@ fn secondary_first_chord_retains_stream_until_final_primary_release() {
             .unwrap_or_else(|_| unreachable!("partial secondary release is admitted")),
     );
     assert_eq!(secondary_up.pointer_id(), pointer_id);
-    assert_eq!(secondary_up.changed_button(), Some(PointerButton::Secondary));
+    assert_eq!(
+        secondary_up.changed_button(),
+        Some(PointerButton::Secondary)
+    );
     assert!(secondary_up.buttons().contains(PointerButton::Primary));
     assert!(!secondary_up.buttons().contains(PointerButton::Secondary));
     assert_eq!(mouse.active_device_id(), Some(device_id));
