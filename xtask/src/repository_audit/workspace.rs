@@ -11,6 +11,7 @@ const WORKSPACE_STRUCTURE_PATH: &str = "docs/architecture/workspace-structure.md
 const CORE_PACKAGE: &str = "runenui_core";
 const RUNTIME_PACKAGE: &str = "runenui_runtime";
 const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";
+const WINIT_PACKAGE: &str = "runenui_winit";
 const TESTING_PACKAGE: &str = "runenui_testing";
 const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
@@ -166,10 +167,14 @@ fn validate_dependency_direction(
     let allowed = match member.package.as_str() {
         CORE_PACKAGE | XTASK_PACKAGE => BTreeSet::new(),
         RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
-        REFERENCE_WINIT_PACKAGE => {
-            BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE])
-        }
-        RENDER_WGPU_PACKAGE | TESTING_PACKAGE | "counter" | EXTERNAL_WIDGET_PACKAGE => {
+        WINIT_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE]),
+        REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
+            CORE_PACKAGE,
+            RUNTIME_PACKAGE,
+            RENDER_WGPU_PACKAGE,
+            WINIT_PACKAGE,
+        ]),
+        RENDER_WGPU_PACKAGE | TESTING_PACKAGE | EXTERNAL_WIDGET_PACKAGE => {
             BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
         }
         package if member.relative.starts_with("crates") => {

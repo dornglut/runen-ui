@@ -474,11 +474,7 @@ impl CounterHost {
         }
     }
 
-    fn submit_pointer_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        event: PointerEvent,
-    ) -> bool {
+    fn submit_pointer_event(&mut self, event_loop: &ActiveEventLoop, event: PointerEvent) -> bool {
         self.pump_runtime_once();
         if let Err(error) = self.runtime.submit_pointer(event) {
             self.fail(event_loop, &format!("native pointer input failed: {error}"));
@@ -497,7 +493,10 @@ impl CounterHost {
             Ok(_) => true,
             Err(error) if error.kind() == SubmitKeyboardErrorKind::NoFocusedTarget => true,
             Err(error) => {
-                self.fail(event_loop, &format!("native keyboard input failed: {error}"));
+                self.fail(
+                    event_loop,
+                    &format!("native keyboard input failed: {error}"),
+                );
                 false
             }
         }
@@ -528,10 +527,9 @@ impl CounterHost {
     }
 
     fn cancel_keyboard_authority(&mut self, event_loop: &ActiveEventLoop) -> bool {
-        let events = self.keyboard.cancel_all(
-            self.modifiers,
-            KeyboardCompositionState::Inactive,
-        );
+        let events = self
+            .keyboard
+            .cancel_all(self.modifiers, KeyboardCompositionState::Inactive);
         for event in events {
             if !self.submit_keyboard_event(event_loop, event) {
                 return false;
@@ -703,9 +701,7 @@ impl CounterHost {
 
     fn handle_mapping_change(&mut self, event_loop: &ActiveEventLoop) {
         let changed = self.refresh_mapping();
-        if changed
-            && !self.invalidate_mouse_point_authority(event_loop, "native mapping changed")
-        {
+        if changed && !self.invalidate_mouse_point_authority(event_loop, "native mapping changed") {
             return;
         }
         if changed && let Err(error) = self.configure_renderer(false) {
@@ -802,11 +798,12 @@ impl CounterHost {
     ) {
         if let AccessibilityEvent::ActionRequested(request) = event {
             match self.semantic_adapter.action_request(&request) {
-                Ok(semantic_request) => match self.runtime.submit_semantic_action(semantic_request) {
+                Ok(semantic_request) => match self.runtime.submit_semantic_action(semantic_request)
+                {
                     Ok(_) => self.pump_runtime_once(),
-                    Err(error) => eprintln!(
-                        "Counter accessibility action rejected by runtime: {error:?}"
-                    ),
+                    Err(error) => {
+                        eprintln!("Counter accessibility action rejected by runtime: {error:?}")
+                    }
                 },
                 Err(diagnostic) => {
                     eprintln!("Counter accessibility action withheld: {diagnostic:?}");
@@ -890,7 +887,8 @@ impl ApplicationHandler<HostEvent> for CounterHost {
                 position,
             } => self.handle_cursor_moved(event_loop, device_id, position),
             WindowEvent::CursorLeft { .. } => {
-                let _ = self.invalidate_mouse_point_authority(event_loop, "native cursor left window");
+                let _ =
+                    self.invalidate_mouse_point_authority(event_loop, "native cursor left window");
             }
             WindowEvent::MouseInput {
                 device_id,
@@ -910,7 +908,8 @@ impl ApplicationHandler<HostEvent> for CounterHost {
                 if !self.cancel_keyboard_authority(event_loop) {
                     return;
                 }
-                let _ = self.invalidate_mouse_point_authority(event_loop, "native window lost focus");
+                let _ =
+                    self.invalidate_mouse_point_authority(event_loop, "native window lost focus");
                 self.modifiers = KeyModifiers::NONE;
             }
             WindowEvent::Focused(true) => {
