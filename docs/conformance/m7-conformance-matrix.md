@@ -2,16 +2,15 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M7A and M7B owner-accepted on accepted main; remaining M7 rows remain blocked
+> **Status:** M7A, M7B, and M7C owner-accepted on accepted main; M7D remains blocked
 >
 > **Milestone:** M7
 >
 > **Reviewed baseline:** `42df29bc68cfec97c13f80f0f59c209db512152c`
 >
-> M7A and M7B are normative for their fourteen owner-accepted rows after
-> exact-head owner acceptance, guarded merge, and accepted-main validation. M7C/D
-> remain blocked until their own accepted implementation and proof obligations
-> land.
+> M7A, M7B, and M7C are normative for their eighteen owner-accepted rows after
+> exact-head owner acceptance, guarded merge, and accepted-main validation. M7D
+> remains blocked until its own accepted implementation and proof obligations land.
 
 [ADR 0008](../adr/0008-reference-production-spine.md) owns M7 architecture.
 M4 owns neutral input and wake/redraw; M5 owns semantic publication/action;
@@ -19,10 +18,10 @@ M6 owns paint/hit publication, revision/damage, and `ResourceRef` identity.
 
 ```text
 20 total unique rows
-14 owner-accepted
+18 owner-accepted
 0 implementation-complete
 0 proof-complete
-6 blocked
+2 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -62,10 +61,10 @@ cannot satisfy M7.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| A11Y-01 | Adapter consumes ordinary semantic publication, keeps stable adapter-owned IDs, uses exact consecutive delta only from matching surface/revision, otherwise full-resyncs. | Snapshot/delta/reset corpus | Mounted-ID/reuse/private-lookup/fabricated-revision audit | Adapter revision/ID records | M7C | blocked | Required |
-| A11Y-02 | Roles map exactly: Generic to GenericContainer, Group to Group, Text to Label, Button to Button; matching properties/relations map truthfully and unsupported facts diagnose rather than reinterpret. A Text/Label node exposes plain semantic text as AccessKit `value`; the same content is not duplicated into AccessKit `label` merely because RunenUI also publishes it as the node name. | Semantic-to-AccessKit comparison corpus including built-in Text duplicate-name/text case | Widget/paint-derived role, duplicate static-text announcement, and silent reinterpretation audit | Mapping diagnostics/tree snapshots | M7C | blocked | Required |
-| A11Y-03 | Actions map Activate to Click, RequestFocus to Focus, OpenContextMenu to ShowContextMenu, OpenMenu to the published adapter-owned CustomAction; only its matching custom-action data is accepted. | Current-action and unsupported-action corpus | OpenMenu conflation, wrong custom ID, direct-widget/private-ingress audit | Action translation and canonical semantic trace | M7C | blocked | Required |
-| A11Y-04 | Adapter is installed before first window show; mixed activation reads only immutable adapter-derived tree state; action/deactivation use event-loop proxy; `process_event` precedes app handling; runtime mutation happens only on host thread through ordinary semantic ingress. | Activation/callback/ordering corpus | Off-thread/reentrant runtime, parallel semantic authority, wrong install/event order audit | Host/adapter callback and work trace | M7C | blocked | Required |
+| A11Y-01 | Adapter consumes ordinary semantic publication, keeps stable adapter-owned IDs, uses exact consecutive delta only from matching surface/revision, otherwise full-resyncs. | Snapshot/delta/reset corpus | Mounted-ID/reuse/private-lookup/fabricated-revision audit | Adapter revision/ID records | M7C | owner-accepted | Required |
+| A11Y-02 | Roles map exactly: Generic to GenericContainer, Group to Group, Text to Label, Button to Button; matching properties/relations map truthfully and unsupported facts diagnose rather than reinterpret. A Text/Label node exposes plain semantic text as AccessKit `value`; the same content is not duplicated into AccessKit `label` merely because RunenUI also publishes it as the node name. | Semantic-to-AccessKit comparison corpus including built-in Text duplicate-name/text case | Widget/paint-derived role, duplicate static-text announcement, and silent reinterpretation audit | Mapping diagnostics/tree snapshots | M7C | owner-accepted | Required |
+| A11Y-03 | Actions map Activate to Click, RequestFocus to Focus, OpenContextMenu to ShowContextMenu, OpenMenu to the published adapter-owned CustomAction; only its matching custom-action data is accepted. | Current-action and unsupported-action corpus | OpenMenu conflation, wrong custom ID, direct-widget/private-ingress audit | Action translation and canonical semantic trace | M7C | owner-accepted | Required |
+| A11Y-04 | Adapter is installed before first window show; mixed activation reads only immutable adapter-derived tree state; action/deactivation use event-loop proxy; `process_event` precedes app handling; runtime mutation happens only on host thread through ordinary semantic ingress. | Activation/callback/ordering corpus | Off-thread/reentrant runtime, parallel semantic authority, wrong install/event order audit | Host/adapter callback and work trace | M7C | owner-accepted | Required |
 
 ## M7D — external host and closure
 
