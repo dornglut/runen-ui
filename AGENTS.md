@@ -63,7 +63,6 @@ Run focused tests and proof obligations while implementing, then the canonical r
 
 ```text
 cargo validate
-git diff --check
 ```
 
 `cargo validate` is the repository-owned read-only baseline used by CI. A successful result from an earlier head is stale after the head moves. Report source inspection, local execution, user-reported evidence, and hosted CI distinctly; never claim a command or runtime behavior that was not observed.
