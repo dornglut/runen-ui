@@ -15,47 +15,7 @@ jobs:
           persist-credentials: true
           ref: ${{ github.event.pull_request.head.sha }}
       - run: rustup toolchain install stable --profile minimal --component rustfmt
-      - name: Apply guarded repository-audit and proof updates
-        shell: python
-        run: |
-          from pathlib import Path
-
-          audit = Path("xtask/src/repository_audit/workspace.rs")
-          text = audit.read_text()
-          constants = 'const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";\nconst TESTING_PACKAGE: &str = "runenui_testing";'
-          assert text.count(constants) == 1, "unexpected package-constant authority shape"
-          text = text.replace(
-              constants,
-              'const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";\nconst WINIT_PACKAGE: &str = "runenui_winit";\nconst TESTING_PACKAGE: &str = "runenui_testing";',
-          )
-
-          start_marker = '        REFERENCE_WINIT_PACKAGE => {'
-          end_marker = '        package if member.relative.starts_with("crates") => {'
-          assert text.count(start_marker) == 1, "unexpected reference-host dependency rule shape"
-          assert text.count(end_marker) == 1, "unexpected production-package fallback shape"
-          start = text.index(start_marker)
-          end = text.index(end_marker, start)
-          current = text[start:end]
-          assert 'RENDER_WGPU_PACKAGE | TESTING_PACKAGE | "counter" | EXTERNAL_WIDGET_PACKAGE' in current
-          replacement = '''        WINIT_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE]),
-          REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
-              CORE_PACKAGE,
-              RUNTIME_PACKAGE,
-              RENDER_WGPU_PACKAGE,
-              WINIT_PACKAGE,
-          ]),
-          RENDER_WGPU_PACKAGE | TESTING_PACKAGE | EXTERNAL_WIDGET_PACKAGE => {
-              BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
-          }
-'''
-          text = text[:start] + replacement + text[end:]
-          audit.write_text(text)
-
-          counter_main = Path("examples/counter/src/main.rs")
-          text = counter_main.read_text()
-          old = 'assert!(!surface.contains("paint="));'
-          assert text.count(old) == 2, "expected exactly two proof-era no-paint assertions"
-          counter_main.write_text(text.replace(old, 'assert!(surface.contains("paint="));'))
+      - run: python .github/tmp-counter-normalize.py
       - run: cargo +stable fmt --all
       - name: Commit normalized source when changed
         shell: bash
