@@ -237,31 +237,40 @@ impl MouseInputState {
             ));
         }
         self.validate_active_device(device_id)?;
-        self.pressed_buttons.remove(&device_button);
 
         let Some(point) = point else {
+            self.pressed_buttons.remove(&device_button);
             self.suppress_pressed_buttons_for_device(device_id);
             return Ok(MouseButtonOutcome::Suppressed(
                 MouseIngressDiagnostic::MissingActiveStream(button),
             ));
         };
-        let Some(stream) = self.active_stream.take() else {
+        let Some(stream) = self.active_stream.as_ref() else {
+            self.pressed_buttons.remove(&device_button);
             self.suppress_pressed_buttons_for_device(device_id);
             return Ok(MouseButtonOutcome::Suppressed(
                 MouseIngressDiagnostic::MissingActiveStream(button),
             ));
         };
+        let pointer_id = stream.pointer_id;
+        let stream_device_id = stream.device_id;
 
+        self.pressed_buttons.remove(&device_button);
         let buttons = self.effective_buttons(device_id);
-        self.suppress_pressed_buttons_for_device(device_id);
+        if buttons.is_empty() {
+            self.active_stream = None;
+        } else {
+            self.update_active_stream(&point);
+        }
+
         let event = PointerEvent::new(
-            stream.pointer_id,
+            pointer_id,
             PointerDeviceKind::Mouse,
             PointerPhase::Up,
             point.position,
             point.input_context,
         )
-        .with_device_id(stream.device_id)
+        .with_device_id(stream_device_id)
         .with_buttons(buttons)
         .with_changed_button(translate_mouse_button(button))
         .with_modifiers(point.modifiers);
@@ -386,146 +395,4 @@ pub const fn translate_mouse_button(button: MouseButton) -> PointerButton {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
-        logical_movement_delta,
-    };
-    use crate::DemoApp;
-    use runenui_core::{
-        InputDeviceId, KeyModifiers, LogicalDelta, LogicalPoint, PointerButton, PointerPhase,
-        StyleTokens,
-    };
-    use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
-    use winit::event::{ElementState, MouseButton};
-
-    fn point(x: f32, y: f32) -> LogicalPoint {
-        LogicalPoint::new(x, y)
-            .unwrap_or_else(|_| unreachable!("fixture logical point coordinates are finite"))
-    }
-
-    fn device(value: u64) -> InputDeviceId {
-        InputDeviceId::new(value)
-            .unwrap_or_else(|| unreachable!("fixture input device identity is non-zero"))
-    }
-
-    fn translated_point(position: LogicalPoint, modifiers: KeyModifiers) -> TranslatedPointerPoint {
-        let mut runtime = AppRuntime::<DemoApp>::mount(());
-        runtime.pump(PumpBudget::new(
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-            usize::MAX,
-        ));
-        let style_tokens = StyleTokens::new();
-        let logical_size = LogicalSize::try_new(200.0, 120.0)
-            .unwrap_or_else(|_| unreachable!("fixture logical size is valid"));
-        let context = SurfaceBuildContext::tight(&style_tokens, logical_size);
-        let publication = runtime
-            .publish_surface(&context)
-            .unwrap_or_else(|error| unreachable!("fixture publication is valid: {error:?}"));
-        TranslatedPointerPoint {
-            position,
-            input_context: publication.input_context().clone(),
-            modifiers,
-        }
-    }
-
-    fn submitted(outcome: MouseButtonOutcome) -> runenui_core::PointerEvent {
-        match outcome {
-            MouseButtonOutcome::Submit(event) => event,
-            MouseButtonOutcome::Suppressed(diagnostic) => {
-                unreachable!("fixture transition must submit: {diagnostic:?}")
-            }
-        }
-    }
-
-    #[test]
-    fn movement_delta_is_zero_without_a_previous_admitted_point() {
-        assert_eq!(
-            logical_movement_delta(None, point(12.0, 8.0)),
-            Ok(LogicalDelta::ZERO)
-        );
-    }
-
-    #[test]
-    fn movement_delta_uses_previous_admitted_logical_point() {
-        let delta = logical_movement_delta(Some(point(10.0, 20.0)), point(14.0, 15.0))
-            .unwrap_or_else(|_| unreachable!("fixture movement delta is representable"));
-        assert!((delta.x() - 4.0).abs() < f32::EPSILON);
-        assert!((delta.y() + 5.0).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn movement_delta_rejects_non_representable_difference() {
-        assert_eq!(
-            logical_movement_delta(Some(point(f32::MAX, 0.0)), point(f32::MIN, 0.0)),
-            Err(MouseIngressDiagnostic::MovementDeltaOutOfRange)
-        );
-    }
-
-    #[test]
-    fn wheel_allocates_and_reuses_mouse_stream_with_exact_neutral_state() {
-        let mut mouse = MouseInputState::default();
-        let device_id = device(7);
-        let modifiers = KeyModifiers::SHIFT.with_alt();
-        let initial = translated_point(point(20.0, 30.0), modifiers);
-        let moved = mouse
-            .cursor_moved(device_id, initial.clone())
-            .unwrap_or_else(|_| unreachable!("fixture mouse move is admitted"));
-        let pointer_id = moved.pointer_id();
-        let _down = submitted(
-            mouse
-                .button_input(
-                    device_id,
-                    ElementState::Pressed,
-                    MouseButton::Left,
-                    Some(initial.clone()),
-                )
-                .unwrap_or_else(|_| unreachable!("fixture button press is admitted")),
-        );
-        let scroll_delta = LogicalDelta::new(-2.5, 6.0)
-            .unwrap_or_else(|_| unreachable!("fixture scroll delta is finite"));
-
-        let wheel = mouse
-            .wheel(device_id, initial.clone(), scroll_delta)
-            .unwrap_or_else(|_| unreachable!("fixture wheel input is admitted"));
-
-        assert_eq!(wheel.pointer_id(), pointer_id);
-        assert_eq!(wheel.device_id(), Some(device_id));
-        assert_eq!(wheel.phase(), PointerPhase::Wheel);
-        assert_eq!(wheel.position(), initial.position);
-        assert_eq!(wheel.surface_context(), &initial.input_context);
-        assert_eq!(wheel.movement_delta(), LogicalDelta::ZERO);
-        assert_eq!(wheel.scroll_delta(), scroll_delta);
-        assert!(wheel.buttons().contains(PointerButton::Primary));
-        assert_eq!(wheel.modifiers(), modifiers);
-    }
-
-    #[test]
-    fn wheel_rejects_device_change_without_mutating_active_stream() {
-        let mut mouse = MouseInputState::default();
-        let first_device = device(8);
-        let second_device = device(9);
-        let point = translated_point(point(5.0, 7.0), KeyModifiers::NONE);
-        let moved = mouse
-            .cursor_moved(first_device, point.clone())
-            .unwrap_or_else(|_| unreachable!("fixture first device opens a stream"));
-        let pointer_id = moved.pointer_id();
-        let delta = LogicalDelta::new(0.0, 4.0)
-            .unwrap_or_else(|_| unreachable!("fixture scroll delta is finite"));
-
-        assert!(matches!(
-            mouse.wheel(second_device, point, delta),
-            Err(MouseIngressDiagnostic::DeviceMismatch { active, incoming })
-                if active == first_device && incoming == second_device
-        ));
-        assert_eq!(mouse.active_device_id(), Some(first_device));
-
-        let cancel = mouse
-            .cancel_for_device_change(KeyModifiers::NONE)
-            .unwrap_or_else(|| unreachable!("active stream can be cancelled"));
-        assert_eq!(cancel.pointer_id(), pointer_id);
-        assert_eq!(cancel.device_id(), Some(first_device));
-    }
-}
+mod tests;
