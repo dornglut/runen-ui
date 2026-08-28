@@ -434,3 +434,91 @@ fn validation_order_rejects_surface_before_stream_and_stream_before_generation()
         ),
     );
 }
+
+#[test]
+fn malformed_missing_context_up_rejects_before_integrity_settlement() {
+    let mut harness = harness();
+    let pointer_id =
+        PointerId::new(85).unwrap_or_else(|| unreachable!("the pointer id is non-zero"));
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(
+            pointer_id.get(),
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            &harness.context,
+            harness.inside,
+        ),
+    );
+    assert_eq!(registration_count(&harness.runtime, pointer_id.get()), 1);
+    harness.observations.borrow_mut().clear();
+
+    let missing = harness.runtime.__surface_context_for_test(
+        0,
+        1,
+        harness.context.coordinate_revision(),
+        harness.context.hit_test_generation() + 100,
+    );
+    let start = harness.runtime.trace().len();
+    let malformed = PointerEvent::new(
+        pointer_id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Up,
+        harness.inside,
+        missing,
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
+    submit_and_pump(&mut harness.runtime, malformed);
+
+    assert!(harness.observations.borrow().is_empty());
+    assert_rejection_since(
+        &harness.runtime,
+        start,
+        pointer_id.get(),
+        PointerPhase::Up,
+        TracePointerRejection::ButtonTransitionMismatch,
+    );
+    let rejected = harness
+        .runtime
+        .trace()
+        .records()
+        .skip(start)
+        .collect::<Vec<_>>();
+    assert!(!rejected.iter().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerIngressRejected {
+            pointer_id: actual,
+            phase: PointerPhase::Up,
+            outcome: TracePointerRejection::MissingGeneration,
+        } if actual == &pointer_id
+    )));
+    assert!(!rejected.iter().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerStreamClosed { pointer_id: actual } if actual == &pointer_id
+    )));
+
+    let valid = PointerEvent::new(
+        pointer_id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Up,
+        harness.inside,
+        harness.context.clone(),
+    )
+    .with_changed_button(PointerButton::Primary);
+    submit_and_pump(&mut harness.runtime, valid);
+
+    assert_eq!(
+        harness
+            .runtime
+            .trace()
+            .kinds()
+            .filter(|kind| matches!(
+                kind,
+                TraceRecordKind::PointerStreamClosed { pointer_id: actual }
+                    if actual == &pointer_id
+            ))
+            .count(),
+        1
+    );
+}

@@ -86,10 +86,10 @@ impl MandatoryTracePlan {
         Self::exact(10)
     }
 
-    /// Maximum default/interaction/notification/output/close facts committed
-    /// after pointer callbacks.
+    /// Maximum default/interaction/cleanup/notification/output/close facts
+    /// committed after pointer callbacks.
     pub(crate) fn pointer_commit(boundary_notifications: usize) -> Option<Self> {
-        Self::exact(9).checked_add(Self::exact(boundary_notifications))
+        Self::exact(10).checked_add(Self::exact(boundary_notifications))
     }
 
     pub(crate) const fn surface_command_acceptance() -> Self {

@@ -79,11 +79,27 @@ struct PointerCaptureTrace {
     surface_snapshot: Option<TraceSurfaceSnapshotKind>,
 }
 
+struct PointerIntegrityCleanupPlan {
+    pressed_owner: Option<MountedNodeId>,
+    capture_owner: Option<MountedNodeId>,
+}
+
+impl PointerIntegrityCleanupPlan {
+    fn from_primary_release(stream: &PointerStreamState) -> Option<Self> {
+        let plan = Self {
+            pressed_owner: stream.pressed_owner().cloned(),
+            capture_owner: stream.capture_owner().cloned(),
+        };
+        (plan.pressed_owner.is_some() || plan.capture_owner.is_some()).then_some(plan)
+    }
+}
+
 struct PointerCommitPlan {
     pointer_id: PointerId,
     stream: PointerStreamState,
     kind: StreamCommitKind,
     focus: Option<MountedNodeId>,
+    integrity_cleanup: Option<PointerIntegrityCleanupPlan>,
     capture_plan: PointerCapturePlan,
     capture_trace: PointerCaptureTrace,
     physical_target: Option<MountedNodeId>,

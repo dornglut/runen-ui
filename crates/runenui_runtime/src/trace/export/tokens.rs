@@ -313,6 +313,7 @@ pub(super) const fn pointer_rejection(value: TracePointerRejection) -> &'static 
         TracePointerRejection::CoordinateRevisionMismatch => "coordinate_revision_mismatch",
         TracePointerRejection::NoTarget => "no_target",
         TracePointerRejection::DuplicateStream => "duplicate_stream",
+        TracePointerRejection::ButtonTransitionMismatch => "button_transition_mismatch",
         TracePointerRejection::MissingStream => "missing_stream",
         TracePointerRejection::RegistryFull => "registry_full",
         TracePointerRejection::RegistrationSequenceExhausted => "registration_sequence_exhausted",

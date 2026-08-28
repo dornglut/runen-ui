@@ -135,22 +135,28 @@ only through a seam that performs the same namespace, surface, coordinate-space,
 snapshot-generation, and mounted-target validation.
 
 Pointer ingress validates in this order: runtime namespace, logical surface,
-active `PointerId` ownership, supplied snapshot generation, and then the
-mounted/hit target where the family requires one. Foreign-runtime and
-foreign-surface input is rejected without mutating any local pointer state.
+active `PointerId` ownership/device consistency, button-transition validity,
+supplied snapshot generation, and then the mounted/hit target where the family
+requires one. Foreign-runtime and foreign-surface input is rejected without
+mutating any local pointer state.
 
-Displayed-generation targeting remains authoritative for terminal events, but
-context rejection cannot strand a locally owned active pointer:
+Displayed-generation targeting remains authoritative for pointer routing, but
+context rejection cannot strand locally owned release integrity:
 
-- a same-runtime, same-surface `PointerUp` for an active pointer whose supplied
-  generation is retired or missing records the context diagnosis, does not route
-  or re-hit-test, never activates, and becomes integrity-only cancellation;
-- that cancellation clears pressed ownership and capture, closes the pointer
-  stream, emits applicable capture-lost/cancellation-derived notifications, and
-  traces both the original rejection and causally linked cleanup;
+- a same-runtime, same-surface `PointerUp` for an active pointer first validates
+  the exact button transition; a mismatch is rejected without pointer, pressed,
+  or capture mutation even when the supplied generation is retired or missing;
+- an accepted partial `PointerUp` whose generation is retired or missing records
+  the context diagnosis, does not route or re-hit-test, never activates, commits
+  the post-release button set, and keeps the pointer stream alive;
+- a partial non-primary unavailable-context release preserves an active primary
+  pressed owner and capture; a partial primary release clears primary pressed
+  ownership/capture and emits the applicable capture-loss facts/notification;
+- an accepted final unavailable-context release performs the existing
+  integrity-only terminal cleanup and closes the pointer stream;
 - a same-runtime, same-surface `PointerCancel` requires no retained snapshot
   after active pointer ownership validates; an unavailable snapshot remains a
-  diagnostic but cannot block the same cleanup;
+  diagnostic but cannot block terminal cleanup;
 - pointer move/down/wheel with an unavailable snapshot remain pure rejection
   with no retargeting or interaction mutation.
 
@@ -167,8 +173,8 @@ The public runtime vocabulary uses separate non-exhaustive families rather than
 one device-specific catch-all event:
 
 - **Pointer:** required `PointerId`, optional opaque `InputDeviceId`, device kind,
-  phase, logical position, movement/scroll delta, active buttons, changed button,
-  modifiers, and surface-input context.
+  phase, logical position, movement/scroll delta, complete post-event active
+  buttons, changed button, modifiers, and surface-input context.
 - **Keyboard:** physical and logical key identity, phase, modifiers, repeat,
   location where available, composition state, and source context.
 - **Text commit:** committed Unicode text directed to the focused text-capable
@@ -187,9 +193,43 @@ Pressure, tilt, twist, click count, and other device facts are added only when a
 real control or host consumer requires them.
 
 `PointerId` identifies one active pointer stream and is stable from entry
-through release/cancellation. `InputDeviceId` identifies an optional host device
-within one runtime session. Neither is authored identity, serialized durable
-identity, or a substitute for `MountedNodeId`.
+through final button release or cancellation. `InputDeviceId` identifies an
+optional host device within one runtime session. Neither is authored identity,
+serialized durable identity, or a substitute for `MountedNodeId`.
+
+### Pointer button transitions and stream lifetime
+
+`PointerEvent::buttons` is the complete active-button snapshot after the event's
+transition. `changed_button` names the button changed by `Down` or `Up`.
+
+For an existing pointer stream, accepted transitions are exact:
+
+- `Down` requires `changed_button = Some(button)`, the retained set must not
+  already contain `button`, and the supplied set must equal the retained set
+  plus `button`;
+- `Up` requires `changed_button = Some(button)`, the retained set must contain
+  `button`, and the supplied set must equal the retained set minus `button`;
+- `Move` and `Wheel` require `changed_button = None` and must preserve the exact
+  retained button set;
+- `Cancel` is terminal integrity cleanup and is exempt from button-transition
+  proof.
+
+A newly established hover-capable stream from `Move` or `Wheel` may retain the
+host's initial complete button snapshot because a pointer may enter RunenUI while
+buttons are already physically held. A newly established stream from `Down`
+requires its changed button to be present in the supplied active set; other
+already-held buttons may also be present.
+
+An inconsistent existing-stream transition is rejected as structured
+`ButtonTransitionMismatch` processing before displayed-generation resolution,
+routing, retargeting, default behavior, pointer-state mutation, or capture
+mutation. No compatibility normalization repairs malformed button facts.
+
+`Cancel` always closes the stream. `Up` closes it only when the accepted
+post-release button set is empty. An `Up` with remaining active buttons is a
+partial release: it routes normally when geometry is available, commits the new
+button set, and preserves the same `PointerId` and registration sequence for
+subsequent move/down/up/wheel events.
 
 ### Normative event policy
 
@@ -497,8 +537,10 @@ PointerId -> live MountedNodeId
 
 Capture requests are staged during propagation. The last valid request wins and
 is applied at transaction commit. Transfer releases the old owner before
-granting the new owner. Explicit release, pointer up, pointer cancellation,
-shutdown, and owner removal/replacement release capture deterministically.
+granting the new owner. Explicit release, primary pointer up, final stream
+release, pointer cancellation, shutdown, and owner removal/replacement release
+capture deterministically. A non-primary partial `PointerUp` does not by itself
+release capture retained by an active primary pressed interaction.
 
 While capture is active, subsequent pointer events route to the capture owner.
 The runtime still computes the physical hit path for hover and release-inside
@@ -555,7 +597,9 @@ An actionable widget's default primary-pointer behavior is:
 5. if default is not prevented, the same mounted lifetime remains live,
    enabled/actionable, and physically inside, the runtime queues semantic
    `Activate`;
-6. pressed state and capture clear whether activation succeeds or is cancelled.
+6. primary pressed state and capture clear whether activation succeeds or is
+   cancelled; the pointer stream itself remains live when other buttons remain
+   active and closes only on final release or cancellation.
 
 Release outside, cancellation, removal/replacement, disablement, or transition to
 non-actionable state never activates.
@@ -603,7 +647,7 @@ The required proof matrix is normative and lives in
 [`../conformance/m4-conformance-matrix.md`](../conformance/m4-conformance-matrix.md).
 It covers downstream widgets, Counter, every required input modality, command
 families, routing/default controls, focus/capture/composition lifetimes,
-stationary-pointer geometry changes, retired/missing terminal pointer cleanup,
+stationary-pointer geometry changes, retired/missing pointer-release integrity,
 foreign-state isolation, exact unconsumed route-only defaults, and trace order.
 
 ## Consequences

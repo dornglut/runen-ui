@@ -84,6 +84,10 @@ impl PointerStreamState {
         self.buttons = buttons;
     }
 
+    pub(in crate::runtime) fn set_buttons(&mut self, buttons: PointerButtons) {
+        self.buttons = buttons;
+    }
+
     pub(in crate::runtime) fn set_pressed_owner(&mut self, owner: Option<MountedNodeId>) {
         self.pressed_owner = owner;
         self.pressed_inside = self.pressed_owner.is_some();

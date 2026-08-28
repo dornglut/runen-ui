@@ -17,8 +17,8 @@ M4 is complete through M4D3. The accepted M4D3 feature head
 run `31398930987` / #765 and the final cold review, then was guarded-squash-
 merged in [PR #43](https://github.com/dornglut/runen-ui/pull/43) as
 `596f0d823b9833d71a038cc4aebe834c7b94e4a6`. All 16 feature changed-file blob
-identities are byte-identical between the reviewed head and accepted squash. The
-final M4 authority reconciliation records every M4 Required row as
+identities are byte-identical between the reviewed head and accepted squash. At
+that final M4 authority reconciliation, every then-existing M4 Required row was
 `owner-accepted`. The two inherited M5 semantic/accessibility gates are also
 `owner-accepted` through M5C: final reviewed M5C head
 `504899b79059eb94ad4474d67bba1e27eb30b374` passed exact-head CI #1170 /
@@ -28,9 +28,9 @@ exact tree `dfa7cb71166a3f333b560508a7e82fbeb45df000`, and accepted-main push CI
 #1171 / `31903354382` passed at that exact squash:
 
 ```text
-237 total unique rows
-237 owner-accepted
-0 proof-complete
+238 total unique rows
+232 owner-accepted
+6 proof-complete
 0 blocked
 0 duplicate IDs
 0 invalid statuses
@@ -124,27 +124,28 @@ rows, and `cargo validate` must pass at the exact reviewed head.
 | ID | Required observation | Positive proof owner | Negative proof owner | Trace proof owner | Delivery slice | Status | M4 gate |
 |---|---|---|---|---|---|---|---|
 | PTR-01 | Pointer payloads carry stable `PointerId`, optional `InputDeviceId`, device kind, logical position/deltas/buttons/modifiers, phase, and surface context. | Public pointer protocol/downstream proof | Construction, lifetime, and platform-type exclusion proof | M4C3 pointer-normalization trace | M4C3 | owner-accepted | Required |
-| PTR-02 | Validation order is namespace, logical surface, active pointer ownership, retained generation, then mounted/hit target. | Multi-invalid-dimension integration | Later checks cannot retarget or mutate earlier rejection | M4C3 validation-order trace | M4C3 | owner-accepted | Required |
+| PTR-02 | Validation order is namespace, logical surface, active pointer ownership/device consistency, exact button-transition validity, retained generation, then mounted/hit target. | Multi-invalid-dimension integration plus malformed unavailable-context release ordering | Later checks cannot retarget or mutate earlier rejection | M4C3 validation-order and `button_transition_mismatch` trace | M4C3 | proof-complete | Required |
 | PTR-03 | Pointer down routes C/T/B and an eligible unprevented primary default may request focus and establish pressed ownership/capture. | Runtime + downstream pointer proof | Prevented, disabled, non-actionable, foreign/stale proof | M4C3 pointer-down trace | M4C3 | owner-accepted | Required |
 | PTR-04 | Pointer move routes C/T/B, is non-cancelable, and updates physical path and pressed-inside state. | Runtime + downstream pointer proof | No semantic activation or default suppression proof | M4C3 pointer-move trace | M4C3 | owner-accepted | Required |
-| PTR-05 | Pointer up routes C/T/B to the live capture/pressed owner and a valid primary release may enqueue `Activate`. | Runtime + Counter release proof | Prevented/release-outside/lifetime/eligibility-loss proof | M4C3 pointer-up-to-command trace | M4C3 | owner-accepted | Required |
+| PTR-05 | Pointer up routes C/T/B to the live capture/pressed owner; a valid primary release may enqueue `Activate`, clears the primary pressed/capture interaction after default evaluation, and closes the stream only when the accepted post-release button set is empty. | Runtime + Counter release proof; `pointer_chords` partial/final release cases | Prevented/release-outside/lifetime/eligibility-loss plus partial-stream-retention proof | M4C3 pointer-up-to-command and partial/final stream trace | M4C3 | proof-complete | Required |
 | PTR-06 | Pointer cancel routes to the live capture/pressed owner where available and always closes the stream and clears integrity state. | Runtime cancellation integration | Prevention cannot suppress cleanup | M4C3 cancellation trace | M4C3 | owner-accepted | Required |
 | PTR-07 | Wheel routes C/T/B; unprevented default emits exactly one logical-scroll command and prevented default emits none. | Downstream wheel conformance | Duplicate command, prevented emission, and direct scrolling proof | M4C3 wheel-to-command trace | M4C3 | owner-accepted | Required |
 | PTR-08 | Logical-scroll payload and unconsumed route-only behavior perform no production scrolling mutation in M4. | Downstream logical-scroll proof | No hidden scroll-offset mutation proof | M4C3 logical-scroll trace | M4C3 | owner-accepted | Required |
 | PTR-09 | Captured routing target and physical hit target/path remain separate and observable. | Downstream capture/hit proof | Conflation and stale-path proof | M4C3 routed/physical target trace | M4C3 | owner-accepted | Required |
 | PTR-10 | Multiple pointer streams isolate identity, pressed state, hover contribution, capture, and terminal cleanup. | Multi-pointer runtime integration | Cross-pointer leak proof | M4C3 per-pointer trace | M4C3 | owner-accepted | Required |
-| PTR-11 | Same-runtime/surface active pointer up with retired context is not routed or re-hit-tested, never activates, and performs integrity-only cleanup. | Runtime + Counter terminal-context proof | No route/activate plus pressed/capture/stream closure proof | Diagnosis-to-cleanup causal trace | M4C3 | owner-accepted | Required |
-| PTR-12 | Missing-context active pointer up follows the same no-route/no-activate integrity-only cleanup contract. | Runtime terminal-context proof | No retarget and exact cleanup proof | Diagnosis-to-cleanup causal trace | M4C3 | owner-accepted | Required |
+| PTR-11 | Same-runtime/surface active pointer up with retired context validates the exact button release first, is never routed/re-hit-tested and never activates; partial release commits retained buttons plus required primary integrity cleanup without closing, while final release performs terminal cleanup and closes. | `pointer_chords` retired partial-release cases + existing Counter terminal-context proof | Malformed transition, no route/activate, non-primary primary-state preservation, and final-closure proof | Retired diagnosis-to-partial-settlement/final-cleanup causal trace | M4C3 | proof-complete | Required |
+| PTR-12 | Missing-context active pointer up follows the same transition-first, no-route/no-activate partial/final integrity settlement contract as retired context. | `pointer_chords` missing partial-release case + terminal-context proof | `malformed_missing_context_up_rejects_before_integrity_settlement`; no retarget/premature closure proof | Missing diagnosis-to-partial-settlement/final-cleanup causal trace | M4C3 | proof-complete | Required |
 | PTR-13 | Same-runtime/surface active pointer cancel cleans up without a retained snapshot; unavailable geometry is diagnostic only. | Runtime cancellation proof | No cleanup blockage proof | M4C3 cancellation diagnosis trace | M4C3 | owner-accepted | Required |
 | PTR-14 | Foreign-runtime pointer cancel cannot mutate a local stream. | Runtime isolation proof | Resembling `PointerId` proof | M4C3 foreign rejection trace | M4C3 | owner-accepted | Required |
 | PTR-15 | Foreign-surface pointer cancel cannot mutate a local stream. | Runtime isolation proof | Resembling `PointerId` proof | M4C3 foreign rejection trace | M4C3 | owner-accepted | Required |
 | PTR-16 | Move, down, and wheel with unavailable context are pure rejection with no route, retarget, or interaction mutation. | Runtime unavailable-context proof | State snapshot equality proof | M4C3 rejection trace | M4C3 | owner-accepted | Required |
 | PTR-17 | Primary activation requires down, pressed ownership/capture, same exact live target, and eligible physical release inside. | Counter + runtime activation proof | Outside/cancel/remove/replace/disable/non-actionable proof | M4C3 release-inside causal trace | M4C3 | owner-accepted | Required |
 | PTR-18 | Removal, replacement, disablement, cancellation, explicit interaction cancellation, and shutdown clear incompatible pointer state before later input. | Runtime lifecycle-pointer integration | No post-lifetime targeting proof | M4C3 lifecycle-cleanup trace | M4C3 | owner-accepted | Required |
+| PTR-19 | Existing-stream `Down`/`Up` button facts are exact one-button set deltas, `Move`/`Wheel` preserve the retained set with no changed button, `Cancel` is transition-exempt, malformed transitions reject before geometry/routing/mutation, and partial releases preserve one `PointerId`/registration sequence until final release or cancellation. | `pointer_chords` primary-first, secondary-first, initial-preheld, cancel-exemption, and partial/final lifetime cases | `button_transition_contract_rejects_inexact_changes`, malformed live-stream rejection, and malformed unavailable-context release proof | `button_transition_mismatch` rejection export/replay plus partial no-close and final-close trace proof | M4C3 | proof-complete | Required |
 | CAP-01 | Capture is owned per active `PointerId` by one exact live `MountedNodeId`. | Runtime/downstream capture proof | Stale, foreign, and slot-reuse owner proof | M4C3 capture-owner trace | M4C3 | owner-accepted | Required |
 | CAP-02 | Staged capture requests use last valid request wins; invalid requests do not erase an earlier valid request. | Downstream capture-request proof | Invalid/stale/foreign/capability-incompatible proof | M4C3 staged-request trace | M4C3 | owner-accepted | Required |
 | CAP-03 | Capture transfer emits loss for the old owner before gain for the new owner. | Runtime transition-order proof | Removed-owner suppression proof | M4C3 loss-before-gain trace | M4C3 | owner-accepted | Required |
-| CAP-04 | Explicit release, up, cancel, owner removal/replacement, and shutdown release capture deterministically. | Runtime lifecycle capture proof | Idempotence and late-event proof | M4C3 capture-release trace | M4C3 | owner-accepted | Required |
+| CAP-04 | Explicit release, primary up, final stream release, cancel, owner removal/replacement, and shutdown release capture deterministically; a non-primary partial up does not clear capture retained by an active primary interaction. | Runtime lifecycle capture proof + `pointer_chords` primary/non-primary partial-release cases | Idempotence, late-event, and non-primary partial-release preservation proof | M4C3 capture-release/loss and partial-retention trace | M4C3 | proof-complete | Required |
 | CAP-05 | Capture loss/gain is target-only, non-bubbling, non-cancelable, and precedes initiating application actions. | Runtime + downstream notification proof | Propagation/prevention and stale-delivery proof | M4C3 notification-order trace | M4C3 | owner-accepted | Required |
 | BOUNDARY-01 | Pointer ingress expands leave inner-to-outer, enter outer-to-inner, then the ordinary event without overtaking older work. | Runtime boundary-bundle proof | Order and FIFO-overtaking proof | M4C3 bundle trace | M4C3 | owner-accepted | Required |
 | BOUNDARY-02 | Enter/leave notifications are target-only, non-bubbling, and non-cancelable. | Downstream notification proof | Propagation/default-control proof | M4C3 boundary trace | M4C3 | owner-accepted | Required |

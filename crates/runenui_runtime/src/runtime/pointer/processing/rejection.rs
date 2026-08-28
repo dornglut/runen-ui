@@ -1,7 +1,7 @@
 use runenui_core::{
-    CommandOrigin, HostProtocol, InputDeviceId, MonotonicInstant, PointerCaptureEvent,
-    PointerCaptureKind, PointerDeviceKind, PointerId, PointerPhase, SurfaceInputContext, UiEvent,
-    WorkSequence,
+    CommandOrigin, HostProtocol, InputDeviceId, MonotonicInstant, PointerButton,
+    PointerCaptureEvent, PointerCaptureKind, PointerDeviceKind, PointerId, PointerPhase,
+    SurfaceInputContext, UiEvent, WorkSequence,
 };
 
 use super::{PointerStreamState, PointerWork};
@@ -26,11 +26,12 @@ struct RejectedPointerCleanupTrace {
     pressed_owner: Option<MountedNodeId>,
     capture_owner: Option<MountedNodeId>,
     physical_path: Vec<MountedNodeId>,
+    physical_path_cleared: bool,
     surface_context: Option<SurfaceInputContext>,
 }
 
 impl RejectedPointerCleanupTrace {
-    fn from_stream(pointer_id: PointerId, stream: &PointerStreamState) -> Self {
+    fn terminal_from_stream(pointer_id: PointerId, stream: &PointerStreamState) -> Self {
         Self {
             pointer_id,
             device_id: stream.device_id(),
@@ -38,6 +39,20 @@ impl RejectedPointerCleanupTrace {
             pressed_owner: stream.pressed_owner().cloned(),
             capture_owner: stream.capture_owner().cloned(),
             physical_path: stream.physical_path().to_vec(),
+            physical_path_cleared: !stream.physical_path().is_empty(),
+            surface_context: stream.surface_context().cloned(),
+        }
+    }
+
+    fn primary_release_from_stream(pointer_id: PointerId, stream: &PointerStreamState) -> Self {
+        Self {
+            pointer_id,
+            device_id: stream.device_id(),
+            device_kind: stream.device_kind(),
+            pressed_owner: stream.pressed_owner().cloned(),
+            capture_owner: stream.capture_owner().cloned(),
+            physical_path: stream.physical_path().to_vec(),
+            physical_path_cleared: false,
             surface_context: stream.surface_context().cloned(),
         }
     }
@@ -74,7 +89,197 @@ impl RejectedPointerFacts {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
-    pub(super) fn close_unavailable_terminal_pointer(
+    pub(super) fn settle_unavailable_pointer_up(
+        &mut self,
+        work: &PointerWork,
+        error: super::SurfaceSnapshotError,
+        stream: PointerStreamState,
+    ) -> ProcessApplicationActionOutcome {
+        debug_assert_eq!(work.event.phase(), PointerPhase::Up);
+        if work.event.buttons().is_empty() {
+            self.close_unavailable_terminal_pointer(work, error)
+        } else {
+            self.settle_unavailable_partial_pointer_up(work, error, stream)
+        }
+    }
+
+    fn settle_unavailable_partial_pointer_up(
+        &mut self,
+        work: &PointerWork,
+        error: super::SurfaceSnapshotError,
+        mut stream: PointerStreamState,
+    ) -> ProcessApplicationActionOutcome {
+        if !self.trace.can_replace_reservation(
+            work.trace_reservation,
+            MandatoryTracePlan::pointer_processing(),
+        ) {
+            self.trace.release_reservation(work.trace_reservation);
+            let cancelled = self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
+            return ProcessApplicationActionOutcome::Terminal {
+                reason: RuntimeTerminalReason::TraceSequenceExhausted,
+                cancelled,
+            };
+        }
+        let pointer_id = work.event.pointer_id();
+        let rejected = self.trace.record_reserved(
+            work.trace_reservation,
+            TraceRecordKind::PointerIngressRejected {
+                pointer_id,
+                phase: PointerPhase::Up,
+                outcome: map_surface_error(error),
+            },
+            work.sequence,
+            work.causal_parent,
+        );
+        let primary_release = work.event.changed_button() == Some(PointerButton::Primary);
+        let cleanup_trace = primary_release
+            .then(|| RejectedPointerCleanupTrace::primary_release_from_stream(pointer_id, &stream));
+        stream.set_buttons(work.event.buttons().clone());
+        if primary_release {
+            stream.set_pressed_owner(None);
+            stream.set_capture_owner(None);
+        }
+        if let Some(cleanup) = cleanup_trace.as_ref()
+            && let Some(owner) = cleanup
+                .capture_owner
+                .as_ref()
+                .filter(|owner| self.tree.target_status(owner) == TargetStatus::Live)
+                .cloned()
+        {
+            return self.settle_unavailable_partial_pointer_up_with_live_capture(
+                work, rejected, stream, cleanup, &owner,
+            );
+        }
+        if self.pointer_registry.replace(pointer_id, stream).is_err() {
+            let cancelled = self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            return ProcessApplicationActionOutcome::Terminal {
+                reason: RuntimeTerminalReason::Poisoned,
+                cancelled,
+            };
+        }
+        let mut parent = rejected;
+        if let Some(cleanup) = cleanup_trace.as_ref() {
+            parent =
+                self.record_rejected_pointer_cleanup(cleanup, work.sequence, parent, work.instant);
+            if cleanup.capture_owner.is_some() {
+                parent = self.record_rejected_capture_loss(
+                    cleanup,
+                    &[],
+                    TraceDeliveryOutcome::Suppressed,
+                    work.sequence,
+                    parent,
+                    work.instant,
+                );
+            }
+        }
+        self.trace.record(
+            TraceRecordKind::PointerInteractionCommitted { pointer_id },
+            Some(work.sequence),
+            parent,
+            None,
+            None,
+            None,
+        );
+        ProcessApplicationActionOutcome::Completed
+    }
+
+    fn settle_unavailable_partial_pointer_up_with_live_capture(
+        &mut self,
+        work: &PointerWork,
+        rejected: Option<TraceSequence>,
+        stream: PointerStreamState,
+        cleanup_trace: &RejectedPointerCleanupTrace,
+        owner: &MountedNodeId,
+    ) -> ProcessApplicationActionOutcome {
+        let pointer_id = work.event.pointer_id();
+        let facts = Self::rejected_capture_ingress_facts(work, owner, rejected);
+        let Some(transaction) = self.begin_pointer_routed_transaction(
+            facts,
+            false,
+            &[],
+            core::slice::from_ref(owner),
+            1,
+            MandatoryTracePlan::pointer_commit(0)
+                .unwrap_or_else(|| unreachable!("zero boundary notifications fit")),
+            false,
+        ) else {
+            let cancelled = self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            return ProcessApplicationActionOutcome::Terminal {
+                reason: RuntimeTerminalReason::Poisoned,
+                cancelled,
+            };
+        };
+        let cleanup_trace = cleanup_trace.clone();
+        let physical_path = cleanup_trace.physical_path.clone();
+        let physical_target = physical_path.last().cloned();
+        let capture_event = PointerCaptureEvent::__runtime_new(
+            pointer_id,
+            PointerCaptureKind::Lost,
+            owner.clone(),
+            None,
+            work.event.surface_context().clone(),
+        );
+        let failure_facts = transaction.failure_facts();
+        let callback_owner = owner.clone();
+        let instant = work.instant;
+        let result =
+            self.commit_routed_transaction_with(transaction, move |runtime, transaction| {
+                runtime
+                    .pointer_registry
+                    .replace(pointer_id, stream)
+                    .map_err(|_| ())?;
+                transaction.parent = runtime.record_rejected_pointer_cleanup(
+                    &cleanup_trace,
+                    transaction.sequence,
+                    rejected,
+                    instant,
+                );
+                transaction.parent = runtime.trace.record(
+                    TraceRecordKind::PointerInteractionCommitted { pointer_id },
+                    Some(transaction.sequence),
+                    transaction.parent,
+                    None,
+                    None,
+                    None,
+                );
+                let event = UiEvent::PointerCapture(capture_event);
+                let dispatch = PointerDispatchFacts::new(
+                    pointer_id,
+                    physical_target.as_ref(),
+                    &physical_path,
+                    None,
+                    false,
+                );
+                runtime
+                    .invoke_target_only_pointer_callback(
+                        transaction,
+                        &event,
+                        dispatch,
+                        &callback_owner,
+                    )
+                    .map_err(|_| ())?;
+                transaction.pointer_capture_requests.clear();
+                transaction.parent = runtime.record_rejected_capture_loss(
+                    &cleanup_trace,
+                    &physical_path,
+                    TraceDeliveryOutcome::Delivered,
+                    transaction.sequence,
+                    transaction.parent,
+                    instant,
+                );
+                Ok(())
+            });
+        if result.is_err() {
+            self.poison_routed_event(
+                &failure_facts,
+                crate::TraceRoutedIntegrityFailure::CommitInvariantFailure,
+                Some(owner),
+            );
+        }
+        self.pointer_runtime_outcome()
+    }
+
+    fn close_unavailable_terminal_pointer(
         &mut self,
         work: &PointerWork,
         error: super::SurfaceSnapshotError,
@@ -115,7 +320,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 work, rejected, &stream, &owner,
             );
         }
-        let cleanup_trace = RejectedPointerCleanupTrace::from_stream(pointer_id, &stream);
+        let cleanup_trace = RejectedPointerCleanupTrace::terminal_from_stream(pointer_id, &stream);
         self.pointer_registry
             .close(pointer_id)
             .unwrap_or_else(|| unreachable!("terminal cleanup follows active-stream validation"));
@@ -173,7 +378,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 cancelled,
             };
         };
-        let cleanup_trace = RejectedPointerCleanupTrace::from_stream(pointer_id, stream);
+        let cleanup_trace = RejectedPointerCleanupTrace::terminal_from_stream(pointer_id, stream);
         let physical_path = cleanup_trace.physical_path.clone();
         let physical_target = physical_path.last().cloned();
         let capture_event = PointerCaptureEvent::__runtime_new(
@@ -275,11 +480,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface,
             pointer,
             physical_path,
-            TracePointerCleanup::new(
-                pressed_owner,
-                capture_owner,
-                !cleanup.physical_path.is_empty(),
-            ),
+            TracePointerCleanup::new(pressed_owner, capture_owner, cleanup.physical_path_cleared),
         );
         self.trace.record_draft(
             TraceRecordDraft::pointer_fact(
