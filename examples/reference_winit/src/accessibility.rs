@@ -265,6 +265,12 @@ impl SurfaceProjection {
         }
     }
 
+    fn retire_synthetic_root(&mut self) {
+        if let Some(root) = self.synthetic_root.take() {
+            self.retired_accesskit.insert(root);
+        }
+    }
+
     fn root_id(&mut self, snapshot: &SemanticSnapshot) -> NodeId {
         if snapshot.roots().len() == 1 {
             self.semantic_to_accesskit
@@ -285,8 +291,8 @@ impl SurfaceProjection {
             .current_surface
             .as_ref()
             .is_some_and(|surface| surface != snapshot.surface_id());
-        if surface_changed && let Some(root) = self.synthetic_root.take() {
-            self.retired_accesskit.insert(root);
+        if surface_changed || snapshot.roots().len() == 1 {
+            self.retire_synthetic_root();
         }
         self.retire_missing(snapshot);
         for node in snapshot.nodes() {
@@ -325,6 +331,9 @@ impl SurfaceProjection {
                 self.retired_accesskit.insert(accesskit);
                 self.retired_semantic.insert(semantic.clone());
             }
+        }
+        if snapshot.roots().len() == 1 {
+            self.retire_synthetic_root();
         }
         let root = self.root_id(snapshot);
         let mut changed = Vec::new();
@@ -989,6 +998,29 @@ mod tests {
         let second_root = adapter.projection.synthetic_root.unwrap();
         assert_ne!(first_root, second_root);
         assert!(adapter.projection.retired_accesskit.contains(&first_root));
+    }
+
+    #[test]
+    fn synthetic_root_retires_when_same_surface_becomes_single_root() {
+        let mut runtime = AppRuntime::<FixtureApp>::mount(2);
+        let first_publication = publication(&mut runtime);
+        let surface = first_publication.snapshot().surface_id().clone();
+        let mut adapter = SemanticAdapter::new();
+        let first = adapter.update(&first_publication);
+        assert_eq!(first.mode, UpdateMode::InitialFull);
+        let first_root = adapter.projection.synthetic_root.unwrap();
+
+        let _ = runtime.submit_action(FixtureAction);
+        runtime.pump(runenui_runtime::PumpBudget::new(64, 64, 64, 64));
+        let second_publication = publication(&mut runtime);
+        assert_eq!(second_publication.snapshot().surface_id(), &surface);
+        assert_eq!(second_publication.snapshot().roots().len(), 1);
+        let second = adapter.update(&second_publication);
+        assert_eq!(second.mode, UpdateMode::Delta);
+        assert_eq!(adapter.projection.synthetic_root, None);
+        assert!(adapter.projection.retired_accesskit.contains(&first_root));
+        let current_root = second_publication.snapshot().roots()[0].clone();
+        assert_ne!(adapter.active_id(&surface, &current_root), Some(first_root));
     }
 
     #[test]
