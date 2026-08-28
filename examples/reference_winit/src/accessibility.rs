@@ -92,10 +92,18 @@ impl ActivationHandler for ActivationSnapshot {
     }
 }
 
-#[derive(Default)]
 pub struct SemanticAdapter {
-    projections: HashMap<SurfaceId, SurfaceProjection>,
+    projection: SurfaceProjection,
     latest_tree: Arc<RwLock<Option<TreeUpdate>>>,
+}
+
+impl Default for SemanticAdapter {
+    fn default() -> Self {
+        Self {
+            projection: SurfaceProjection::new(),
+            latest_tree: Arc::new(RwLock::new(None)),
+        }
+    }
 }
 
 impl SemanticAdapter {
@@ -112,13 +120,8 @@ impl SemanticAdapter {
     }
 
     pub fn update(&mut self, publication: &SemanticPublication) -> AccessibilityUpdate {
-        let surface = publication.snapshot().surface_id().clone();
-        let projection = self
-            .projections
-            .entry(surface)
-            .or_insert_with(SurfaceProjection::new);
-        let (mode, tree_update, diagnostics) = projection.update(publication);
-        let full_tree = projection.full_tree_update();
+        let (mode, tree_update, diagnostics) = self.projection.update(publication);
+        let full_tree = self.projection.full_tree_update();
         if let Ok(mut latest) = self.latest_tree.write() {
             *latest = Some(full_tree);
         }
@@ -133,19 +136,18 @@ impl SemanticAdapter {
         &self,
         request: &ActionRequest,
     ) -> Result<runenui_core::SemanticActionRequest, AdapterDiagnostic> {
-        let projection = self
-            .projections
-            .values()
-            .find(|projection| projection.tree_id == request.target_tree)
-            .ok_or(AdapterDiagnostic::WrongTreeId)?;
-        projection.action_request(request)
+        if request.target_tree != self.projection.tree_id {
+            return Err(AdapterDiagnostic::WrongTreeId);
+        }
+        self.projection.action_request(request)
     }
 
     #[cfg(test)]
     fn active_id(&self, surface: &SurfaceId, semantic: &SemanticNodeId) -> Option<NodeId> {
-        self.projections
-            .get(surface)
-            .and_then(|projection| projection.semantic_to_accesskit.get(semantic).copied())
+        if self.projection.current_surface.as_ref() != Some(surface) {
+            return None;
+        }
+        self.projection.semantic_to_accesskit.get(semantic).copied()
     }
 }
 
@@ -908,6 +910,43 @@ mod tests {
             Err(AdapterDiagnostic::RetiredNodeId)
         );
         assert_eq!(adapter.active_id(&surface, &button), Some(first_id));
+    }
+
+    #[test]
+    fn surface_transition_full_resyncs_and_retires_old_action_ids() {
+        let mut first_runtime = AppRuntime::<FixtureApp>::mount(0);
+        let first_publication = publication(&mut first_runtime);
+        let first_surface = first_publication.snapshot().surface_id().clone();
+        let first_semantic = first_publication.snapshot().roots()[0].clone();
+        let mut adapter = SemanticAdapter::new();
+        let first = adapter.update(&first_publication);
+        let first_node_id = adapter.active_id(&first_surface, &first_semantic).unwrap();
+        let stale_request = ActionRequest {
+            action: Action::Click,
+            target_tree: first.tree_update.tree_id,
+            target_node: first_node_id,
+            data: None,
+        };
+        assert_eq!(
+            adapter.action_request(&stale_request).unwrap().surface_id(),
+            &first_surface
+        );
+
+        let mut second_runtime = AppRuntime::<FixtureApp>::mount(0);
+        let second_publication = publication(&mut second_runtime);
+        let second_surface = second_publication.snapshot().surface_id().clone();
+        assert_ne!(first_surface, second_surface);
+        let second_semantic = second_publication.snapshot().roots()[0].clone();
+        let second = adapter.update(&second_publication);
+        assert_eq!(second.mode, UpdateMode::FullResync);
+        assert_eq!(second.tree_update.tree_id, TreeId::ROOT);
+        assert_eq!(adapter.active_id(&first_surface, &first_semantic), None);
+        assert_eq!(
+            adapter.action_request(&stale_request),
+            Err(AdapterDiagnostic::RetiredNodeId)
+        );
+        let second_node_id = adapter.active_id(&second_surface, &second_semantic).unwrap();
+        assert_ne!(first_node_id, second_node_id);
     }
 
     #[test]
