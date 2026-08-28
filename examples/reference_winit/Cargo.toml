@@ -1,0 +1,19 @@
+[package]
+name = "reference_winit"
+version.workspace = true
+description = "Standalone winit reference host for the RunenUI production spine"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
+runenui_render_wgpu = { path = "../../crates/runenui_render_wgpu", version = "0.1.0" }
+runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }
+winit = { version = "=0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "x11"] }
+
+[lints]
+workspace = true

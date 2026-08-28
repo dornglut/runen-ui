@@ -8,6 +8,7 @@ members = [
     "crates/runenui_testing",
 
     "examples/counter",
+    "examples/reference_winit",
 
     "tests/external_widget",
     "tests/external_renderer",

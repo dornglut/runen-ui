@@ -12,6 +12,7 @@ const CORE_PACKAGE: &str = "runenui_core";
 const RUNTIME_PACKAGE: &str = "runenui_runtime";
 const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";
 const TESTING_PACKAGE: &str = "runenui_testing";
+const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
 const RENDER_WGPU_FORBIDDEN_DEPENDENCIES: &[&str] =
@@ -165,6 +166,9 @@ fn validate_dependency_direction(
     let allowed = match member.package.as_str() {
         CORE_PACKAGE | XTASK_PACKAGE => BTreeSet::new(),
         RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
+        REFERENCE_WINIT_PACKAGE => {
+            BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE])
+        }
         RENDER_WGPU_PACKAGE | TESTING_PACKAGE | "counter" | EXTERNAL_WIDGET_PACKAGE => {
             BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
         }
@@ -239,6 +243,16 @@ fn validate_dependency_direction(
                 ));
             }
         }
+    }
+
+    if member.package == REFERENCE_WINIT_PACKAGE
+        && !workspace_dependencies.contains(RENDER_WGPU_PACKAGE)
+    {
+        findings.push(Finding::fatal(
+            "workspace.reference_host_renderer_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            "reference_winit must consume runenui_render_wgpu as the standalone M7 native host",
+        ));
     }
 }
 
@@ -449,10 +463,10 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        CORE_PACKAGE, EXTERNAL_WIDGET_PACKAGE, RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE,
-        TESTING_PACKAGE, WorkspaceMember, documented_package_names, parse_dependency_names,
-        parse_package_name, parse_workspace_members, validate_dependency_direction,
-        validate_renderer_external_dependencies,
+        CORE_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE, RENDER_WGPU_PACKAGE,
+        RUNTIME_PACKAGE, TESTING_PACKAGE, WorkspaceMember, documented_package_names,
+        parse_dependency_names, parse_package_name, parse_workspace_members,
+        validate_dependency_direction, validate_renderer_external_dependencies,
     };
 
     fn member(
@@ -626,6 +640,89 @@ mod tests {
                 .filter(|finding| finding.code == "workspace.renderer_forbidden_host_dependency")
                 .count(),
             3
+        );
+    }
+
+    #[test]
+    fn reference_winit_may_consume_renderer_but_generic_examples_may_not() {
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
+        let runtime = member(
+            "crates/runenui_runtime",
+            RUNTIME_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let renderer = member(
+            "crates/runenui_render_wgpu",
+            RENDER_WGPU_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let reference = member(
+            "examples/reference_winit",
+            REFERENCE_WINIT_PACKAGE,
+            BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                RENDER_WGPU_PACKAGE.to_owned(),
+            ]),
+            BTreeSet::new(),
+        );
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (renderer.package.as_str(), &renderer),
+            (reference.package.as_str(), &reference),
+        ]);
+        let mut findings = Vec::new();
+        validate_dependency_direction(&reference, &members, &mut findings);
+        assert!(findings.is_empty());
+
+        let missing_renderer = member(
+            "examples/reference_winit",
+            REFERENCE_WINIT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let missing_members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (renderer.package.as_str(), &renderer),
+            (missing_renderer.package.as_str(), &missing_renderer),
+        ]);
+        let mut missing_findings = Vec::new();
+        validate_dependency_direction(&missing_renderer, &missing_members, &mut missing_findings);
+        assert!(missing_findings.iter().any(|finding| {
+            finding.code == "workspace.reference_host_renderer_dependency_missing"
+        }));
+
+        let generic = member(
+            "examples/other",
+            "other",
+            BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                RENDER_WGPU_PACKAGE.to_owned(),
+            ]),
+            BTreeSet::new(),
+        );
+        let generic_members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (renderer.package.as_str(), &renderer),
+            (generic.package.as_str(), &generic),
+        ]);
+        let mut generic_findings = Vec::new();
+        validate_dependency_direction(&generic, &generic_members, &mut generic_findings);
+        assert!(
+            generic_findings
+                .iter()
+                .any(|finding| finding.code == "workspace.forbidden_dependency_direction")
         );
     }
 
