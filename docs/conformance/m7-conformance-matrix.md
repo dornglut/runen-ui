@@ -2,15 +2,16 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M7A owner-accepted on accepted main; remaining M7 rows remain blocked
+> **Status:** M7A and M7B owner-accepted on accepted main; remaining M7 rows remain blocked
 >
 > **Milestone:** M7
 >
 > **Reviewed baseline:** `42df29bc68cfec97c13f80f0f59c209db512152c`
 >
-> M7A is normative for its eight owner-accepted rows after exact-head owner
-> acceptance, guarded merge, and accepted-main validation. M7B/C/D remain
-> blocked until their own accepted implementation and proof obligations land.
+> M7A and M7B are normative for their fourteen owner-accepted rows after
+> exact-head owner acceptance, guarded merge, and accepted-main validation. M7C/D
+> remain blocked until their own accepted implementation and proof obligations
+> land.
 
 [ADR 0008](../adr/0008-reference-production-spine.md) owns M7 architecture.
 M4 owns neutral input and wake/redraw; M5 owns semantic publication/action;
@@ -18,10 +19,10 @@ M6 owns paint/hit publication, revision/damage, and `ResourceRef` identity.
 
 ```text
 20 total unique rows
-8 owner-accepted
+14 owner-accepted
 0 implementation-complete
 0 proof-complete
-12 blocked
+6 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -50,12 +51,12 @@ cannot satisfy M7.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| HOST-01 | Real winit host owns window/event loop and translates native events to existing neutral values; native types do not enter core/runtime. | Real-window and translation corpus | Native-type/private-bridge/direct-widget audit | Host translation diagnostics | M7B | blocked | Required |
-| HOST-02 | Wake uses `WakeTransport`; host pumps explicitly. A taken redraw is acknowledged only after successful `publish_surface`. Render/present then uses the retained publication; renderer failure retries at the edge and does not defer that acknowledgement or force unchanged republish. | Wake/redraw/publication/render-failure corpus | Premature ack, GPU-gated ack, unchanged-republish recovery, hidden-loop audit | Runtime redraw trace plus host stage records | M7B | blocked | Required |
-| HOST-03 | Native size/scale becomes validated logical size and `RasterScale`; renderer target changes while scene geometry remains logical and revision/damage remain runtime-issued. | Resize/scale corpus | DPI leak, physical scene mutation, forged revision/damage audit | Size/scale/publication records | M7B | blocked | Required |
-| HOST-04 | Point input uses only the successfully presented publication's exact input context with matching native extent/scale; mismatch withholds input until a matching frame is presented. | Before/during/after transition corpus | Context substitution, stale/new mapping mix, unpublished-frame target audit | Displayed-mapping and inherited surface trace | M7B | blocked | Required |
-| HOST-05 | Keyboard, physical/logical key, modifiers, repeat/location, committed text, IME/composition and focus translate loss-preservingly without double delivery or native bypass. | Keyboard/text/IME corpus | Native-object leak, dropped representable key, forged composition, direct-widget audit | Host and inherited input trace | M7B | blocked | Required |
-| HOST-06 | Real wgpu output is presented in the winit window with bounded create/show/redraw/resize/close and recoverable target recreation; wgpu authority remains edge-owned. | Native window/present smoke | Debug-frame substitution, runtime wgpu state, hidden scene path audit | Surface/present/recreate records | M7B | blocked | Required |
+| HOST-01 | Real winit host owns window/event loop and translates native events to existing neutral values; native types do not enter core/runtime. | Real-window and translation corpus | Native-type/private-bridge/direct-widget audit | Host translation diagnostics | M7B | owner-accepted | Required |
+| HOST-02 | Wake uses `WakeTransport`; host pumps explicitly. A taken redraw is acknowledged only after successful `publish_surface`. Render/present then uses the retained publication; renderer failure retries at the edge and does not defer that acknowledgement or force unchanged republish. | Wake/redraw/publication/render-failure corpus | Premature ack, GPU-gated ack, unchanged-republish recovery, hidden-loop audit | Runtime redraw trace plus host stage records | M7B | owner-accepted | Required |
+| HOST-03 | Native size/scale becomes validated logical size and `RasterScale`; renderer target changes while scene geometry remains logical and revision/damage remain runtime-issued. | Resize/scale corpus | DPI leak, physical scene mutation, forged revision/damage audit | Size/scale/publication records | M7B | owner-accepted | Required |
+| HOST-04 | Point input uses only the successfully presented publication's exact input context with matching native extent/scale; mismatch withholds input until a matching frame is presented. | Before/during/after transition corpus | Context substitution, stale/new mapping mix, unpublished-frame target audit | Displayed-mapping and inherited surface trace | M7B | owner-accepted | Required |
+| HOST-05 | Keyboard, physical/logical key, modifiers, repeat/location, committed text, IME/composition and focus translate loss-preservingly without double delivery or native bypass. | Keyboard/text/IME corpus | Native-object leak, dropped representable key, forged composition, direct-widget audit | Host and inherited input trace | M7B | owner-accepted | Required |
+| HOST-06 | Real wgpu output is presented in the winit window with bounded create/show/redraw/resize/close and recoverable target recreation; wgpu authority remains edge-owned. | Native window/present smoke | Debug-frame substitution, runtime wgpu state, hidden scene path audit | Surface/present/recreate records | M7B | owner-accepted | Required |
 
 ## M7C — AccessKit
 
