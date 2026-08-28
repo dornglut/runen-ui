@@ -1,20 +1,29 @@
 [package]
 name = "counter"
 version.workspace = true
-description = "Headless Counter proof for the current RunenUI application and publication model"
+description = "Native and deterministic headless Counter showcase for the RunenUI application model"
 readme = "README.md"
 repository.workspace = true
 license.workspace = true
 publish.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+default-run = "counter-native"
 
 [dependencies]
+accesskit_winit = { version = "=0.33.2", default-features = false, features = ["rwh_06"] }
 runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
+runenui_render_wgpu = { path = "../../crates/runenui_render_wgpu", version = "0.1.0" }
 runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }
+runenui_winit = { path = "../../crates/runenui_winit", version = "0.1.0" }
+winit = { version = "=0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "x11"] }
 
 [dev-dependencies]
 runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0", features = ["internal-test-seams"] }
+
+[[bin]]
+name = "counter-native"
+path = "src/bin/native.rs"
 
 [lints]
 workspace = true

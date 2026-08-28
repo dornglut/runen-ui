@@ -1,0 +1,20 @@
+name: Temporary M7 Counter lockfile generation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo generate-lockfile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: counter-lockfile
+          path: Cargo.lock
+          if-no-files-found: error
