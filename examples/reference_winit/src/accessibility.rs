@@ -281,6 +281,13 @@ impl SurfaceProjection {
     }
 
     fn full_resync(&mut self, snapshot: &SemanticSnapshot) -> (TreeUpdate, Vec<AdapterDiagnostic>) {
+        let surface_changed = self
+            .current_surface
+            .as_ref()
+            .is_some_and(|surface| surface != snapshot.surface_id());
+        if surface_changed && let Some(root) = self.synthetic_root.take() {
+            self.retired_accesskit.insert(root);
+        }
         self.retire_missing(snapshot);
         for node in snapshot.nodes() {
             self.ensure_node_id(node.id());
@@ -644,10 +651,11 @@ mod tests {
     use super::*;
     use runenui_core::{
         __runtime::RuntimeNamespace, Element, LogicalSize, NoHostProtocol, SemanticAction,
-        SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
-        SemanticReference, SemanticRelationship, SemanticRelationshipKind, SemanticRole,
-        SemanticState, SemanticText, SemanticValue, StyleTokens, UiApp, View, Widget,
-        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation,
+        SemanticContribution, SemanticContributionContext, SemanticItem, SemanticKey,
+        SemanticNodeContribution, SemanticReference, SemanticRelationship,
+        SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
+        StyleTokens, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
+        WidgetActivationOutput, WidgetInvalidation,
     };
     use runenui_runtime::{AppRuntime, SurfaceBuildContext};
 
@@ -678,6 +686,18 @@ mod tests {
             (): &Self::State,
             _: SemanticContributionContext,
         ) -> SemanticContribution {
+            if self.phase == 2 {
+                return SemanticContribution::new(vec![
+                    SemanticItem::node(SemanticNodeContribution::new(
+                        SemanticKey::from_static("first").unwrap(),
+                        SemanticRole::Group,
+                    )),
+                    SemanticItem::node(SemanticNodeContribution::new(
+                        SemanticKey::from_static("second").unwrap(),
+                        SemanticRole::Group,
+                    )),
+                ]);
+            }
             let text = SemanticNodeContribution::new(
                 SemanticKey::from_static("text").unwrap(),
                 SemanticRole::Text,
@@ -947,6 +967,28 @@ mod tests {
         );
         let second_node_id = adapter.active_id(&second_surface, &second_semantic).unwrap();
         assert_ne!(first_node_id, second_node_id);
+    }
+
+    #[test]
+    fn surface_transition_retires_synthetic_root_identity() {
+        let mut first_runtime = AppRuntime::<FixtureApp>::mount(2);
+        let first_publication = publication(&mut first_runtime);
+        let mut adapter = SemanticAdapter::new();
+        let first = adapter.update(&first_publication);
+        assert_eq!(first.mode, UpdateMode::InitialFull);
+        let first_root = adapter.projection.synthetic_root.unwrap();
+
+        let mut second_runtime = AppRuntime::<FixtureApp>::mount(2);
+        let second_publication = publication(&mut second_runtime);
+        assert_ne!(
+            first_publication.snapshot().surface_id(),
+            second_publication.snapshot().surface_id()
+        );
+        let second = adapter.update(&second_publication);
+        assert_eq!(second.mode, UpdateMode::FullResync);
+        let second_root = adapter.projection.synthetic_root.unwrap();
+        assert_ne!(first_root, second_root);
+        assert!(adapter.projection.retired_accesskit.contains(&first_root));
     }
 
     #[test]
