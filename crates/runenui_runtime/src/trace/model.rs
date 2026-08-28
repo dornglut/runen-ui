@@ -475,6 +475,7 @@ pub enum TracePointerRejection {
     CoordinateRevisionMismatch,
     NoTarget,
     DuplicateStream,
+    ButtonTransitionMismatch,
     MissingStream,
     RegistryFull,
     RegistrationSequenceExhausted,

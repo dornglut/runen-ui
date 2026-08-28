@@ -253,7 +253,7 @@ fn pointer_event(
     if matches!(phase, PointerPhase::Down | PointerPhase::Up) {
         event = event.with_changed_button(PointerButton::Primary);
     }
-    if phase == PointerPhase::Down {
+    if matches!(phase, PointerPhase::Down | PointerPhase::Move) {
         event = event.with_buttons(PointerButtons::new([PointerButton::Primary]));
     }
     event

@@ -11,7 +11,7 @@ use runenui_core::{
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus,
     RuntimeTerminalReason, SubmitPointerErrorKind, SurfaceBuildContext, TraceConfig,
-    TracePointerRejection, TraceRecordKind,
+    TracePointerRejection, TraceRecord, TraceRecordKind,
 };
 
 #[derive(Clone)]
@@ -170,6 +170,24 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
     ));
 }
 
+fn assert_causal_ancestor(
+    records: &[&TraceRecord],
+    descendant: &TraceRecord,
+    ancestor: &TraceRecord,
+) {
+    let mut parent = descendant.causal_parent();
+    while parent != Some(ancestor.sequence()) {
+        let sequence = parent
+            .unwrap_or_else(|| unreachable!("descendant must retain the expected causal ancestor"));
+        parent = records
+            .iter()
+            .copied()
+            .find(|record| record.sequence() == sequence)
+            .unwrap_or_else(|| unreachable!("every retained causal parent is present"))
+            .causal_parent();
+    }
+}
+
 #[test]
 fn queue_full_rejection_recovers_event_and_consumes_no_sequence_or_trace() {
     let mut harness = harness(RuntimeConfig::default().with_queue_capacity(1));
@@ -323,6 +341,169 @@ fn pointer_registry_saturation_rejects_before_callback_or_state_commit() {
             if pointer_id.get() == 107
     )));
     assert_eq!(harness.runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn repeated_button_down_uses_the_single_transition_mismatch_outcome() {
+    let mut harness = harness(RuntimeConfig::default());
+    harness
+        .runtime
+        .submit_pointer(pointer_event(&harness, 109, PointerPhase::Down, true))
+        .unwrap_or_else(|_| unreachable!("initial primary down is accepted"));
+    pump_all(&mut harness.runtime);
+    assert_eq!(harness.callbacks.get(), 1);
+    let start = harness.runtime.trace().len();
+
+    harness
+        .runtime
+        .submit_pointer(pointer_event(&harness, 109, PointerPhase::Down, true))
+        .unwrap_or_else(|_| unreachable!("repeated down is accepted before processing"));
+    pump_all(&mut harness.runtime);
+
+    assert_eq!(harness.callbacks.get(), 1);
+    let records = harness
+        .runtime
+        .trace()
+        .records()
+        .skip(start)
+        .collect::<Vec<_>>();
+    assert!(records.iter().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerIngressRejected {
+            pointer_id,
+            phase: PointerPhase::Down,
+            outcome: TracePointerRejection::ButtonTransitionMismatch,
+        } if pointer_id.get() == 109
+    )));
+    assert!(!records.iter().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerIngressRejected {
+            pointer_id,
+            phase: PointerPhase::Down,
+            outcome: TracePointerRejection::DuplicateStream,
+        } if pointer_id.get() == 109
+    )));
+    assert!(!records.iter().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id.get() == 109
+    )));
+    assert_eq!(
+        harness
+            .runtime
+            .trace()
+            .kinds()
+            .filter(|kind| matches!(
+                kind,
+                TraceRecordKind::PointerStreamRegistered { pointer_id, .. }
+                    if pointer_id.get() == 109
+            ))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn primary_partial_release_records_exact_cleanup_before_capture_loss() {
+    let mut harness = harness(RuntimeConfig::default());
+    harness
+        .runtime
+        .submit_pointer(pointer_event(&harness, 110, PointerPhase::Down, true))
+        .unwrap_or_else(|_| unreachable!("initial primary down is accepted"));
+    pump_all(&mut harness.runtime);
+
+    let pointer_id = PointerId::new(110).unwrap_or_else(|| unreachable!("pointer id is non-zero"));
+    let secondary_down = PointerEvent::new(
+        pointer_id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        harness.point,
+        harness.context.clone(),
+    )
+    .with_buttons(PointerButtons::new([
+        PointerButton::Primary,
+        PointerButton::Secondary,
+    ]))
+    .with_changed_button(PointerButton::Secondary);
+    harness
+        .runtime
+        .submit_pointer(secondary_down)
+        .unwrap_or_else(|_| unreachable!("secondary chord down is accepted"));
+    pump_all(&mut harness.runtime);
+
+    let primary_up = PointerEvent::new(
+        pointer_id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Up,
+        harness.point,
+        harness.context.clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Secondary]))
+    .with_changed_button(PointerButton::Primary);
+    let accepted = harness
+        .runtime
+        .submit_pointer(primary_up)
+        .unwrap_or_else(|_| unreachable!("primary partial release is accepted"));
+    let sequence = accepted.sequence();
+    pump_all(&mut harness.runtime);
+
+    let records = harness.runtime.trace().records().collect::<Vec<_>>();
+    let cleanup_record = records
+        .iter()
+        .copied()
+        .find(|record| {
+            record.work_sequence() == Some(sequence)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerIntegrityCleanupCommitted
+                )
+        })
+        .unwrap_or_else(|| unreachable!("primary release records exact pointer cleanup"));
+    let pointer = cleanup_record
+        .context()
+        .pointer()
+        .unwrap_or_else(|| unreachable!("cleanup retains pointer context"));
+    assert_eq!(pointer.pointer_id(), &pointer_id);
+    assert_eq!(pointer.phase(), Some(PointerPhase::Up));
+    let cleanup = cleanup_record
+        .context()
+        .pointer_cleanup()
+        .unwrap_or_else(|| unreachable!("cleanup record retains exact owner transitions"));
+    let pressed = cleanup
+        .pressed_owner()
+        .unwrap_or_else(|| unreachable!("primary release clears pressed ownership"));
+    let capture = cleanup
+        .capture_owner()
+        .unwrap_or_else(|| unreachable!("primary release clears capture ownership"));
+    assert!(pressed.previous().is_some());
+    assert_eq!(pressed.current(), None);
+    assert_eq!(capture.current(), None);
+    assert_eq!(
+        pressed
+            .previous()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
+        capture
+            .previous()
+            .map(runenui_runtime::TraceTarget::mounted_node_id)
+    );
+
+    let capture_loss = records
+        .iter()
+        .copied()
+        .find(|record| {
+            record.work_sequence() == Some(sequence)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerCaptureNotificationResolved {
+                        kind: runenui_core::PointerCaptureKind::Lost,
+                    }
+                )
+        })
+        .unwrap_or_else(|| unreachable!("primary release records capture loss"));
+    assert_causal_ancestor(&records, capture_loss, cleanup_record);
+    assert!(!records.iter().any(|record| {
+        record.work_sequence() == Some(sequence)
+            && matches!(record.kind(), TraceRecordKind::PointerStreamClosed { .. })
+    }));
 }
 
 #[test]

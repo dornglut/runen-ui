@@ -1,6 +1,8 @@
-use runenui_core::{HostProtocol, PointerPhase};
+use runenui_core::{HostProtocol, PointerButton, PointerButtons, PointerEvent, PointerPhase};
 
-use super::{PointerBoundaryPlan, PointerGeometry, PointerWork, StreamPreparation};
+use super::{
+    PointerBoundaryPlan, PointerGeometry, PointerStreamState, PointerWork, StreamPreparation,
+};
 use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceContext, TraceEventContext, TraceEventFamily,
     TracePointerContext, TracePointerPath, TraceRecordKind, TraceSequence, TraceSurfaceContext,
@@ -21,14 +23,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .surface_publication
             .validate_surface_identity(work.event.surface_context())
             .map_err(|error| {
-                self.reject_pointer(super::rejection::RejectedPointerFacts::new(
-                    work.sequence,
-                    work.causal_parent,
-                    work.trace_reservation,
-                    pointer_id,
-                    phase,
-                    super::rejection::map_surface_error(error),
-                ))
+                self.reject_pointer_preparation(work, super::rejection::map_surface_error(error))
             })?;
         let existing = match self.pointer_registry.validate(
             pointer_id,
@@ -39,47 +34,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Ok(stream) => Some(stream.clone()),
             Err(super::PointerStreamError::Missing) => None,
             Err(error) => {
-                return Err(
-                    self.reject_pointer(super::rejection::RejectedPointerFacts::new(
-                        work.sequence,
-                        work.causal_parent,
-                        work.trace_reservation,
-                        pointer_id,
-                        phase,
-                        super::rejection::map_stream_error(error),
-                    )),
-                );
+                return Err(self
+                    .reject_pointer_preparation(work, super::rejection::map_stream_error(error)));
             }
         };
-        if matches!(phase, PointerPhase::Down)
-            && existing.as_ref().is_some_and(|stream| {
-                work.event
-                    .changed_button()
-                    .is_none_or(|button| stream.buttons().contains(button))
-            })
-        {
-            return Err(
-                self.reject_pointer(super::rejection::RejectedPointerFacts::new(
-                    work.sequence,
-                    work.causal_parent,
-                    work.trace_reservation,
-                    pointer_id,
-                    phase,
-                    crate::trace::TracePointerRejection::DuplicateStream,
-                )),
-            );
-        }
         if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) && existing.is_none() {
-            return Err(
-                self.reject_pointer(super::rejection::RejectedPointerFacts::new(
-                    work.sequence,
-                    work.causal_parent,
-                    work.trace_reservation,
-                    pointer_id,
-                    phase,
-                    crate::trace::TracePointerRejection::MissingStream,
-                )),
-            );
+            return Err(self.reject_pointer_preparation(
+                work,
+                crate::trace::TracePointerRejection::MissingStream,
+            ));
+        }
+        if !pointer_button_transition_is_valid(&work.event, existing.as_ref()) {
+            return Err(self.reject_pointer_preparation(
+                work,
+                crate::trace::TracePointerRejection::ButtonTransitionMismatch,
+            ));
         }
         let is_new = existing.is_none();
         let stream = match existing {
@@ -95,17 +64,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     work.event.buttons().clone(),
                 )
                 .map_err(|error| {
-                    self.reject_pointer(super::rejection::RejectedPointerFacts::new(
-                        work.sequence,
-                        work.causal_parent,
-                        work.trace_reservation,
-                        pointer_id,
-                        phase,
+                    self.reject_pointer_preparation(
+                        work,
                         super::rejection::map_registration_error(error),
-                    ))
+                    )
                 })?,
         };
         Ok(StreamPreparation { is_new, stream })
+    }
+
+    fn reject_pointer_preparation(
+        &mut self,
+        work: &PointerWork,
+        outcome: crate::trace::TracePointerRejection,
+    ) -> ProcessApplicationActionOutcome {
+        self.reject_pointer(super::rejection::RejectedPointerFacts::new(
+            work.sequence,
+            work.causal_parent,
+            work.trace_reservation,
+            work.event.pointer_id(),
+            work.event.phase(),
+            outcome,
+        ))
     }
 
     pub(super) fn resolve_pointer_geometry(
@@ -136,7 +116,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 error @ (super::SurfaceSnapshotError::RetiredSurfaceContext
                 | super::SurfaceSnapshotError::MissingSurfaceGeneration),
             ) if matches!(work.event.phase(), PointerPhase::Up) => {
-                return Err(self.close_unavailable_terminal_pointer(work, error));
+                return Err(self.settle_unavailable_pointer_up(work, error, stream.clone()));
             }
             Err(error) => {
                 return Err(
@@ -378,5 +358,173 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         parent = self.record_physical_pointer_observation(work, geometry, parent);
         parent = self.record_pointer_boundary_plan(work, geometry, boundary_plan, parent);
         Ok(parent)
+    }
+}
+
+fn pointer_button_transition_is_valid(
+    event: &PointerEvent,
+    existing: Option<&PointerStreamState>,
+) -> bool {
+    button_transition_is_valid(
+        event.phase(),
+        event.changed_button(),
+        event.buttons(),
+        existing.map(PointerStreamState::buttons),
+    )
+}
+
+fn button_transition_is_valid(
+    phase: PointerPhase,
+    changed_button: Option<PointerButton>,
+    buttons: &PointerButtons,
+    previous_buttons: Option<&PointerButtons>,
+) -> bool {
+    match phase {
+        PointerPhase::Down => {
+            let Some(changed) = changed_button else {
+                return false;
+            };
+            if !buttons.contains(changed) {
+                return false;
+            }
+            let Some(previous) = previous_buttons else {
+                return true;
+            };
+            if previous.contains(changed) {
+                return false;
+            }
+            let expected = PointerButtons::new(previous.iter().chain(core::iter::once(changed)));
+            &expected == buttons
+        }
+        PointerPhase::Up => {
+            let Some(previous) = previous_buttons else {
+                return false;
+            };
+            let Some(changed) = changed_button else {
+                return false;
+            };
+            if !previous.contains(changed) || buttons.contains(changed) {
+                return false;
+            }
+            let expected = PointerButtons::new(previous.iter().filter(|button| *button != changed));
+            &expected == buttons
+        }
+        PointerPhase::Move | PointerPhase::Wheel => {
+            changed_button.is_none() && previous_buttons.is_none_or(|previous| previous == buttons)
+        }
+        PointerPhase::Cancel => true,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::button_transition_is_valid;
+    use runenui_core::{PointerButton, PointerButtons, PointerPhase};
+
+    fn buttons(values: impl IntoIterator<Item = PointerButton>) -> PointerButtons {
+        PointerButtons::new(values)
+    }
+
+    #[test]
+    fn button_transition_contract_accepts_exact_chord_changes() {
+        let empty = PointerButtons::default();
+        let primary = buttons([PointerButton::Primary]);
+        let secondary = buttons([PointerButton::Secondary]);
+        let chord = buttons([PointerButton::Primary, PointerButton::Secondary]);
+
+        assert!(button_transition_is_valid(
+            PointerPhase::Down,
+            Some(PointerButton::Primary),
+            &primary,
+            None,
+        ));
+        assert!(button_transition_is_valid(
+            PointerPhase::Down,
+            Some(PointerButton::Secondary),
+            &chord,
+            Some(&primary),
+        ));
+        assert!(button_transition_is_valid(
+            PointerPhase::Move,
+            None,
+            &chord,
+            Some(&chord),
+        ));
+        assert!(button_transition_is_valid(
+            PointerPhase::Wheel,
+            None,
+            &chord,
+            Some(&chord),
+        ));
+        assert!(button_transition_is_valid(
+            PointerPhase::Up,
+            Some(PointerButton::Primary),
+            &secondary,
+            Some(&chord),
+        ));
+        assert!(button_transition_is_valid(
+            PointerPhase::Up,
+            Some(PointerButton::Secondary),
+            &empty,
+            Some(&secondary),
+        ));
+    }
+
+    #[test]
+    fn button_transition_contract_rejects_inexact_changes() {
+        let empty = PointerButtons::default();
+        let primary = buttons([PointerButton::Primary]);
+        let secondary = buttons([PointerButton::Secondary]);
+        let chord = buttons([PointerButton::Primary, PointerButton::Secondary]);
+
+        assert!(!button_transition_is_valid(
+            PointerPhase::Down,
+            None,
+            &primary,
+            Some(&empty),
+        ));
+        assert!(!button_transition_is_valid(
+            PointerPhase::Down,
+            Some(PointerButton::Primary),
+            &primary,
+            Some(&primary),
+        ));
+        assert!(!button_transition_is_valid(
+            PointerPhase::Down,
+            Some(PointerButton::Secondary),
+            &primary,
+            Some(&primary),
+        ));
+        assert!(!button_transition_is_valid(
+            PointerPhase::Move,
+            None,
+            &chord,
+            Some(&primary),
+        ));
+        assert!(!button_transition_is_valid(
+            PointerPhase::Wheel,
+            Some(PointerButton::Primary),
+            &primary,
+            Some(&primary),
+        ));
+        assert!(!button_transition_is_valid(
+            PointerPhase::Up,
+            Some(PointerButton::Primary),
+            &chord,
+            Some(&chord),
+        ));
+        assert!(!button_transition_is_valid(
+            PointerPhase::Up,
+            Some(PointerButton::Primary),
+            &empty,
+            Some(&chord),
+        ));
+        assert!(!button_transition_is_valid(
+            PointerPhase::Up,
+            Some(PointerButton::Secondary),
+            &secondary,
+            Some(&primary),
+        ));
     }
 }

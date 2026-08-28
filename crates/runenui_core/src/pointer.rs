@@ -266,7 +266,7 @@ macro_rules! session_identity {
 
 session_identity!(
     PointerId,
-    "Opaque host-session identity for one pointer stream from entry through release or cancellation."
+    "Opaque host-session identity for one pointer stream from entry through final button release or cancellation."
 );
 session_identity!(
     InputDeviceId,
@@ -398,12 +398,14 @@ impl PointerEvent {
         self
     }
 
+    /// Replaces the complete active-button snapshot carried by this event.
     #[must_use]
     pub fn with_buttons(mut self, buttons: PointerButtons) -> Self {
         self.buttons = buttons;
         self
     }
 
+    /// Sets the button whose state changed for a down or up event.
     #[must_use]
     pub const fn with_changed_button(mut self, button: PointerButton) -> Self {
         self.changed_button = Some(button);
@@ -451,11 +453,13 @@ impl PointerEvent {
         self.scroll_delta
     }
 
+    /// Returns the complete active-button snapshot after this event's transition.
     #[must_use]
     pub const fn buttons(&self) -> &PointerButtons {
         &self.buttons
     }
 
+    /// Returns the button whose state changed for a down or up event, when any.
     #[must_use]
     pub const fn changed_button(&self) -> Option<PointerButton> {
         self.changed_button

@@ -6,15 +6,15 @@ use runenui_core::{
 use super::{
     PointerBoundaryNotification, PointerBoundaryPlan, PointerCaptureNotification,
     PointerCapturePlan, PointerCaptureTrace, PointerCommitPlan, PointerGeometry,
-    PointerStreamState, PointerWork, PreparedPointer, StreamCommitKind,
-    pointer_default_is_cancelable,
+    PointerIntegrityCleanupPlan, PointerStreamState, PointerWork, PreparedPointer,
+    StreamCommitKind, pointer_default_is_cancelable,
 };
 use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceContext, TraceDeliveryOutcome, TraceEventContext,
     TraceEventFamily, TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection,
-    TracePointerContext, TracePointerPath, TraceRecordKind, TraceRouteSnapshot,
-    TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceContext, TraceTargetTransition,
-    WorkSequence,
+    TracePointerCleanup, TracePointerContext, TracePointerPath, TraceRecordKind,
+    TraceRouteSnapshot, TraceRoutedIntegrityFailure, TraceSequence, TraceSurfaceContext,
+    TraceTargetTransition, WorkSequence,
     mounted::TargetStatus,
     runtime::{
         CollectedRoutedOutput, MandatoryTracePlan, PointerDispatchFacts,
@@ -75,7 +75,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             routed_target,
             parent,
         } = prepared;
-        let kind = Self::stream_commit_kind(work.event.phase(), is_new);
+        let kind = Self::stream_commit_kind(&work.event, is_new);
         let boundary_targets = boundary_plan.delivered_targets();
         let deferred_capture_targets = previous_capture_owner
             .iter()
@@ -155,6 +155,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         mut transaction: RoutedTransaction<Action>,
         mut pending: PendingPointerCommit,
     ) -> ProcessApplicationActionOutcome {
+        let integrity_cleanup = (pending.work.event.phase() == PointerPhase::Up
+            && pending.work.event.changed_button() == Some(PointerButton::Primary))
+        .then(|| PointerIntegrityCleanupPlan::from_primary_release(&pending.stream))
+        .flatten();
         self.apply_pointer_capture_requests(
             &pending.work,
             &pending.geometry,
@@ -239,6 +243,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 stream: pending.stream,
                 kind: pending.kind,
                 focus,
+                integrity_cleanup,
                 capture_plan,
                 capture_trace,
                 physical_target: pending.geometry.physical_target,
@@ -398,8 +403,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.pointer_runtime_outcome()
     }
 
-    const fn stream_commit_kind(phase: PointerPhase, is_new: bool) -> StreamCommitKind {
-        if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) {
+    const fn stream_commit_kind(
+        event: &runenui_core::PointerEvent,
+        is_new: bool,
+    ) -> StreamCommitKind {
+        if matches!(event.phase(), PointerPhase::Cancel)
+            || (matches!(event.phase(), PointerPhase::Up) && event.buttons().is_empty())
+        {
             StreamCommitKind::Close
         } else if is_new {
             StreamCommitKind::Register
@@ -446,8 +456,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Ok(None)
             }
             PointerPhase::Up => {
+                let primary_release = event.changed_button() == Some(PointerButton::Primary);
                 if !transaction.default_prevented
-                    && event.changed_button() == Some(PointerButton::Primary)
+                    && primary_release
                     && let Some(owner) = stream.pressed_owner().cloned()
                     && physical_path.iter().any(|target| target == &owner)
                     && self
@@ -456,6 +467,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         .is_ok_and(|activation| activation.enabled() && activation.is_actionable())
                 {
                     Self::push_pointer_default(transaction, owner, SemanticCommand::Activate)?;
+                }
+                if primary_release {
+                    stream.set_pressed_owner(None);
+                    stream.set_capture_owner(None);
                 }
                 Ok(None)
             }
@@ -632,6 +647,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             stream,
             kind,
             focus,
+            integrity_cleanup,
             capture_plan,
             capture_trace,
             physical_target,
@@ -665,6 +681,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 self.pointer_registry.close(pointer_id).ok_or(())?;
             }
         }
+        if let Some(cleanup) = integrity_cleanup.as_ref() {
+            self.record_pointer_integrity_cleanup(
+                transaction,
+                pointer_id,
+                cleanup,
+                &capture_trace,
+                &physical_path,
+            );
+        }
         self.record_pointer_commit_facts(transaction, pointer_id, kind);
         if let Some(focus) = focus
             && self.validate_focus(&focus)
@@ -684,6 +709,54 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &capture_plan,
             &capture_trace,
         )
+    }
+
+    fn record_pointer_integrity_cleanup(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        pointer_id: PointerId,
+        cleanup: &PointerIntegrityCleanupPlan,
+        trace: &PointerCaptureTrace,
+        physical_path: &[MountedNodeId],
+    ) {
+        if !self.trace.is_enabled() {
+            return;
+        }
+        let physical_path = TracePointerPath::new(
+            physical_path
+                .iter()
+                .map(|node| self.tree.trace_target(node))
+                .collect(),
+        );
+        let pressed_owner = cleanup
+            .pressed_owner
+            .as_ref()
+            .map(|owner| TraceTargetTransition::new(Some(self.tree.trace_target(owner)), None));
+        let capture_owner = cleanup
+            .capture_owner
+            .as_ref()
+            .map(|owner| TraceTargetTransition::new(Some(self.tree.trace_target(owner)), None));
+        let pointer =
+            TracePointerContext::event(pointer_id, trace.device_id, trace.device_kind, trace.phase);
+        let surface = Some(trace.surface_snapshot.map_or_else(
+            || TraceSurfaceContext::requested(&trace.surface_context),
+            |snapshot| TraceSurfaceContext::accepted(&trace.surface_context, snapshot),
+        ));
+        let context = TraceContext::pointer_integrity_cleanup(
+            surface,
+            pointer,
+            physical_path,
+            TracePointerCleanup::new(pressed_owner, capture_owner, false),
+        );
+        transaction.parent = self.trace.record_draft(
+            TraceRecordDraft::pointer_fact(
+                TraceRecordKind::PointerIntegrityCleanupCommitted,
+                transaction.instant,
+                context,
+            )
+            .with_work_sequence(Some(transaction.sequence))
+            .with_causal_parent(transaction.parent),
+        );
     }
 
     fn record_pointer_commit_facts(
