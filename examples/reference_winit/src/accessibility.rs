@@ -974,7 +974,9 @@ mod tests {
             adapter.action_request(&stale_request),
             Err(AdapterDiagnostic::RetiredNodeId)
         );
-        let second_node_id = adapter.active_id(&second_surface, &second_semantic).unwrap();
+        let second_node_id = adapter
+            .active_id(&second_surface, &second_semantic)
+            .unwrap();
         assert_ne!(first_node_id, second_node_id);
     }
 
