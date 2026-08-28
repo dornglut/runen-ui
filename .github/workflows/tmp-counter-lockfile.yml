@@ -1,4 +1,4 @@
-name: Temporary M7 Counter lockfile generation
+name: Temporary M7 Counter source normalization
 
 on:
   pull_request:
@@ -7,27 +7,62 @@ permissions:
   contents: write
 
 jobs:
-  lockfile:
+  normalize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: true
           ref: ${{ github.event.pull_request.head.sha }}
-      - run: rustup toolchain install stable --profile minimal
-      - run: cargo +stable generate-lockfile
-      - name: Commit generated lockfile when changed
+      - run: rustup toolchain install stable --profile minimal --component rustfmt
+      - name: Apply guarded repository-audit and proof updates
+        shell: python
+        run: |
+          from pathlib import Path
+
+          audit = Path("xtask/src/repository_audit/workspace.rs")
+          text = audit.read_text()
+          old = 'const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";\nconst TESTING_PACKAGE: &str = "runenui_testing";'
+          new = 'const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";\nconst WINIT_PACKAGE: &str = "runenui_winit";\nconst TESTING_PACKAGE: &str = "runenui_testing";'
+          assert text.count(old) == 1, "unexpected package-constant authority shape"
+          text = text.replace(old, new)
+          old = '''        REFERENCE_WINIT_PACKAGE => {
+              BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE])
+          }
+          RENDER_WGPU_PACKAGE | TESTING_PACKAGE | "counter" | EXTERNAL_WIDGET_PACKAGE => {
+              BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
+          }'''
+          new = '''        WINIT_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE]),
+          REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
+              CORE_PACKAGE,
+              RUNTIME_PACKAGE,
+              RENDER_WGPU_PACKAGE,
+              WINIT_PACKAGE,
+          ]),
+          RENDER_WGPU_PACKAGE | TESTING_PACKAGE | EXTERNAL_WIDGET_PACKAGE => {
+              BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
+          }'''
+          assert text.count(old) == 1, "unexpected dependency-direction authority shape"
+          audit.write_text(text.replace(old, new))
+
+          counter_main = Path("examples/counter/src/main.rs")
+          text = counter_main.read_text()
+          old = 'assert!(!surface.contains("paint="));'
+          assert text.count(old) == 2, "expected exactly two proof-era no-paint assertions"
+          counter_main.write_text(text.replace(old, 'assert!(surface.contains("paint="));'))
+      - run: cargo +stable fmt --all
+      - name: Commit normalized source when changed
         shell: bash
         env:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- Cargo.lock; then
-            echo "Cargo.lock already matches the staged manifests"
+          if git diff --quiet; then
+            echo "Source already normalized"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock
-          git commit -m "chore: regenerate lockfile for M7 Counter"
+          git add xtask/src/repository_audit/workspace.rs examples/counter/src/main.rs crates/runenui_winit examples/counter/src/bin/native.rs examples/counter/src/ui.rs
+          git commit -m "M7: normalize native Counter source"
           git push origin "HEAD:${HEAD_BRANCH}"
