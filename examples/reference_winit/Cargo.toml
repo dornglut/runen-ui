@@ -10,6 +10,8 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+accesskit = { version = "=0.24.1", default-features = false }
+accesskit_winit = { version = "=0.33.2", default-features = false, features = ["rwh_06"] }
 runenui_core = { path = "../../crates/runenui_core", version = "0.1.0" }
 runenui_render_wgpu = { path = "../../crates/runenui_render_wgpu", version = "0.1.0" }
 runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }

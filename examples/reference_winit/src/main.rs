@@ -7,6 +7,7 @@ use std::{
     thread,
 };
 
+mod accessibility;
 mod device_identity;
 mod keyboard_input;
 mod mouse_input;
@@ -14,6 +15,7 @@ mod proof_trace;
 mod text_input;
 mod wheel_input;
 
+use accessibility::{AccessibilityEvent, SemanticAdapter};
 use device_identity::{DeviceIdentityError, DeviceIdentityMap};
 use keyboard_input::{
     KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition,
@@ -24,8 +26,10 @@ use mouse_input::{
 use runenui_core::{
     Color, CommandOrigin, CommittedTextEvent, Element, InputDeviceId, IntoEffects, KeyModifiers,
     KeyboardEvent, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PointerEvent, SemanticCommand, StyleTokens,
-    SurfaceInputContext, UiApp, View, Widget, WidgetActivation, WidgetMeasure, WidgetTextInput,
+    PaintContributionContext, PaintContributionItem, PointerEvent, SemanticAction, SemanticCommand,
+    SemanticContribution, SemanticKey, SemanticNodeContribution, SemanticRole, SemanticText,
+    StyleTokens, SurfaceInputContext, UiApp, View, Widget, WidgetActivation, WidgetMeasure,
+    WidgetTextInput,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -65,9 +69,16 @@ macro_rules! proof {
     };
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 enum HostEvent {
     Wake,
+    Accessibility(AccessibilityEvent),
+}
+
+impl From<accesskit_winit::Event> for HostEvent {
+    fn from(event: accesskit_winit::Event) -> Self {
+        Self::Accessibility(AccessibilityEvent::from(event))
+    }
 }
 
 #[derive(Debug)]
@@ -101,6 +112,29 @@ impl Widget<()> for DemoSurface {
             rect,
             Color::rgb(28, 32, 40),
         ))
+    }
+
+    fn semantics(
+        &self,
+        _state: &Self::State,
+        _context: runenui_core::SemanticContributionContext,
+    ) -> SemanticContribution {
+        let status_key = SemanticKey::from_static("status")
+            .unwrap_or_else(|_| unreachable!("the static semantic key is valid"));
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::Button)
+                .with_name("RunenUI accessibility action")
+                .with_description("Activate this control through the native accessibility tree")
+                .with_action(SemanticAction::Activate)
+                .with_action(SemanticAction::RequestFocus)
+                .with_action(SemanticAction::OpenMenu)
+                .with_action(SemanticAction::OpenContextMenu)
+                .with_child(
+                    SemanticNodeContribution::new(status_key, SemanticRole::Text)
+                        .with_name("Native AccessKit path ready")
+                        .with_text(SemanticText::plain("Native AccessKit path ready")),
+                ),
+        )
     }
 }
 
@@ -314,7 +348,10 @@ struct ReferenceHost {
     runtime: AppRuntime<DemoApp>,
     trace_sink: Option<runenui_runtime::TraceSinkReceiver>,
     style_tokens: StyleTokens,
+    event_loop_proxy: EventLoopProxy<HostEvent>,
     window: Option<Arc<Window>>,
+    accessibility: Option<accesskit_winit::Adapter>,
+    semantic_adapter: SemanticAdapter,
     renderer: Option<Renderer>,
     mapping: Option<NativeMapping>,
     pending_redraw: Option<RedrawRequest>,
@@ -339,14 +376,18 @@ impl ReferenceHost {
     #[must_use]
     fn new(proxy: EventLoopProxy<HostEvent>) -> Self {
         let (runtime, trace_sink) = proof_trace::mount::<DemoApp>((), proof_enabled());
+        let wake_proxy = proxy.clone();
         runtime.set_wake_transport(move || {
-            let _ = proxy.send_event(HostEvent::Wake);
+            let _ = wake_proxy.send_event(HostEvent::Wake);
         });
         let host = Self {
             runtime,
             trace_sink,
             style_tokens: StyleTokens::new(),
+            event_loop_proxy: proxy,
             window: None,
+            accessibility: None,
+            semantic_adapter: SemanticAdapter::new(),
             renderer: None,
             mapping: None,
             pending_redraw: None,
@@ -434,7 +475,16 @@ impl ReferenceHost {
         let window = event_loop
             .create_window(attributes)
             .map_err(|error| format!("native window creation failed: {error}"))?;
+        let activation_handler = self.semantic_adapter.activation_handler();
+        let accessibility = accesskit_winit::Adapter::with_mixed_handlers(
+            event_loop,
+            &window,
+            activation_handler,
+            self.event_loop_proxy.clone(),
+        );
+        proof!("stage=accessibility_adapter_installed_before_show");
         self.window = Some(Arc::new(window));
+        self.accessibility = Some(accessibility);
         self.applied_ime_allowed = None;
         proof!("stage=window_created");
         Ok(())
@@ -612,6 +662,23 @@ impl ReferenceHost {
             .runtime
             .publish_surface(&context)
             .map_err(|error| format!("surface publication failed: {error:?}"))?;
+        let accessibility_update = self
+            .semantic_adapter
+            .update(publication.semantic_publication());
+        for diagnostic in &accessibility_update.diagnostics {
+            eprintln!("reference_winit accessibility diagnostic: {diagnostic:?}");
+        }
+        proof!(
+            "stage=accessibility_update mode={:?} tree_id={:?} nodes={} diagnostics={}",
+            accessibility_update.mode,
+            accessibility_update.tree_update.tree_id,
+            accessibility_update.tree_update.nodes.len(),
+            accessibility_update.diagnostics.len()
+        );
+        if let Some(accessibility) = self.accessibility.as_mut() {
+            let tree_update = accessibility_update.tree_update;
+            accessibility.update_if_active(|| tree_update);
+        }
         proof!(
             "stage=surface_published input_context={:?} physical={}x{} native_scale={}",
             publication.input_context(),
@@ -1338,6 +1405,59 @@ impl ReferenceHost {
     }
 }
 
+impl ReferenceHost {
+    fn handle_accessibility_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        event: AccessibilityEvent,
+    ) {
+        match event {
+            AccessibilityEvent::InitialTreeRequested => {
+                proof!("stage=accessibility_initial_tree_requested");
+            }
+            AccessibilityEvent::AccessibilityDeactivated => {
+                proof!("stage=accessibility_deactivated");
+            }
+            AccessibilityEvent::ActionRequested(request) => {
+                proof!(
+                    "stage=accessibility_action_received action={:?} tree_id={:?} node={:?}",
+                    request.action,
+                    request.target_tree,
+                    request.target_node
+                );
+                match self.semantic_adapter.action_request(&request) {
+                    Ok(semantic_request) => {
+                        proof!(
+                            "stage=accessibility_action_translated action={:?}",
+                            semantic_request.action()
+                        );
+                        match self.runtime.submit_semantic_action(semantic_request) {
+                            Ok(_) => {
+                                proof!("stage=accessibility_action_submitted");
+                                self.pump_runtime_once();
+                            }
+                            Err(error) => {
+                                eprintln!(
+                                    "reference_winit accessibility action rejected by runtime: {error:?}"
+                                );
+                                proof!("stage=accessibility_action_runtime_rejected");
+                            }
+                        }
+                    }
+                    Err(diagnostic) => {
+                        eprintln!("reference_winit accessibility action withheld: {diagnostic:?}");
+                        proof!("stage=accessibility_action_rejected");
+                    }
+                }
+            }
+        }
+        self.drain_runtime_trace();
+        if let Err(error) = self.publish_if_needed() {
+            self.fail(event_loop, &error);
+        }
+    }
+}
+
 impl ApplicationHandler<HostEvent> for ReferenceHost {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         proof!("stage=host_resumed");
@@ -1378,6 +1498,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
                 proof!("stage=wake_received");
                 self.drive_runtime(event_loop);
             }
+            HostEvent::Accessibility(event) => self.handle_accessibility_event(event_loop, event),
         }
         self.request_pending_redraw();
     }
@@ -1394,6 +1515,12 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             .is_none_or(|window| window.id() != window_id)
         {
             return;
+        }
+        if let (Some(window), Some(accessibility)) =
+            (self.window.as_ref(), self.accessibility.as_mut())
+        {
+            accessibility.process_event(window, &event);
+            proof!("stage=accessibility_event_processed");
         }
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
