@@ -1,12 +1,13 @@
 use std::collections::HashSet;
 
-use runenui_core::{Color, PaintPrimitive, ResourceKind, ResourceRef};
+use runenui_core::{Color, LogicalSize, PaintPrimitive, ResourceKind, ResourceRef};
 use runenui_runtime::{PaintPublication, RasterScale, SceneCapabilities, SceneClip};
 use wgpu::util::DeviceExt;
 
 use crate::{
     PublicationUpdateMode, PublicationUpdatePlan, ResourceProvider, ResourceResolveError,
     WgpuHasDisplayHandle,
+    lineage::PublicationLineage,
     observation::{ResourceCacheOutcome, ResourceObservation},
     scene_subset::{SceneValidationError, validate_literal_rect_item},
 };
@@ -49,6 +50,24 @@ pub enum PublicationRenderError {
         height: u32,
         max_texture_dimension_2d: u32,
     },
+    /// This renderer was not constructed with a native surface target.
+    SurfaceUnavailable,
+    /// A retained native surface exists but has not been configured with a non-zero extent.
+    SurfaceNotConfigured,
+    /// Renderer-local surface target generations cannot advance without wrapping.
+    SurfaceTargetGenerationExhausted,
+    /// The presentation engine could not provide a frame before its timeout boundary.
+    SurfaceTimeout,
+    /// The native surface is currently occluded and should be retried later.
+    SurfaceOccluded,
+    /// The native surface configuration is outdated and must be configured again.
+    SurfaceOutdated,
+    /// The native surface was lost and the host must recreate the renderer/surface target.
+    SurfaceLost,
+    /// The acquired surface texture is usable but no longer matches the native surface optimally.
+    SurfaceSuboptimal,
+    /// Surface acquisition encountered a validation failure.
+    SurfaceValidation,
 }
 
 impl core::fmt::Display for PublicationRenderError {
@@ -81,6 +100,29 @@ impl core::fmt::Display for PublicationRenderError {
                 formatter,
                 "renderer shaped-run resource for scene item {item_index} has coverage extent {width}x{height}, exceeding device 2D texture limit {max_texture_dimension_2d}"
             ),
+            Self::SurfaceUnavailable => {
+                formatter.write_str("renderer has no retained native surface target")
+            }
+            Self::SurfaceNotConfigured => {
+                formatter.write_str("renderer native surface is not configured")
+            }
+            Self::SurfaceTargetGenerationExhausted => {
+                formatter.write_str("renderer exhausted its native surface target generation space")
+            }
+            Self::SurfaceTimeout => formatter.write_str("native surface acquisition timed out"),
+            Self::SurfaceOccluded => formatter.write_str("native surface is currently occluded"),
+            Self::SurfaceOutdated => {
+                formatter.write_str("native surface configuration is outdated")
+            }
+            Self::SurfaceLost => formatter.write_str(
+                "native surface was lost and must be recreated from the host-owned window target",
+            ),
+            Self::SurfaceSuboptimal => formatter.write_str(
+                "native surface texture is suboptimal and requires surface reconfiguration",
+            ),
+            Self::SurfaceValidation => {
+                formatter.write_str("native surface acquisition failed validation")
+            }
         }
     }
 }
@@ -92,7 +134,16 @@ impl core::error::Error for PublicationRenderError {
             Self::Resource { error, .. } => Some(error),
             Self::ImageExtentExceedsDeviceLimit { .. }
             | Self::ImageRowBytesOverflow { .. }
-            | Self::ShapedRunExtentExceedsDeviceLimit { .. } => None,
+            | Self::ShapedRunExtentExceedsDeviceLimit { .. }
+            | Self::SurfaceUnavailable
+            | Self::SurfaceNotConfigured
+            | Self::SurfaceTargetGenerationExhausted
+            | Self::SurfaceTimeout
+            | Self::SurfaceOccluded
+            | Self::SurfaceOutdated
+            | Self::SurfaceLost
+            | Self::SurfaceSuboptimal
+            | Self::SurfaceValidation => None,
         }
     }
 }
@@ -110,7 +161,16 @@ impl PublicationRenderError {
             | Self::ImageExtentExceedsDeviceLimit { item_index, .. }
             | Self::ImageRowBytesOverflow { item_index, .. }
             | Self::ShapedRunExtentExceedsDeviceLimit { item_index, .. } => Some(*item_index),
-            Self::Backend(_) => None,
+            Self::Backend(_)
+            | Self::SurfaceUnavailable
+            | Self::SurfaceNotConfigured
+            | Self::SurfaceTargetGenerationExhausted
+            | Self::SurfaceTimeout
+            | Self::SurfaceOccluded
+            | Self::SurfaceOutdated
+            | Self::SurfaceLost
+            | Self::SurfaceSuboptimal
+            | Self::SurfaceValidation => None,
         }
     }
 }
@@ -126,6 +186,9 @@ pub struct ResourceRenderer {
     literal: Renderer,
     images: image::ImageRenderer,
     shaped_runs: shaped::ShapedRunRenderer,
+    surface_extent: Option<OffscreenExtent>,
+    surface_target_generation: u64,
+    surface_lineage: PublicationLineage,
 }
 
 impl ResourceRenderer {
@@ -175,6 +238,9 @@ impl ResourceRenderer {
             literal,
             images,
             shaped_runs,
+            surface_extent: None,
+            surface_target_generation: 0,
+            surface_lineage: PublicationLineage::new(),
         }
     }
 
@@ -196,6 +262,67 @@ impl ResourceRenderer {
         self.literal.has_surface()
     }
 
+    /// Returns the exact configured native surface extent, when configured.
+    #[must_use]
+    pub const fn configured_surface_extent(&self) -> Option<OffscreenExtent> {
+        self.surface_extent
+    }
+
+    /// Returns the renderer-local generation of the current native surface configuration.
+    #[must_use]
+    pub const fn surface_target_generation(&self) -> u64 {
+        self.surface_target_generation
+    }
+
+    /// Configures the retained native surface for one non-zero physical extent.
+    ///
+    /// Reconfiguration creates a new renderer-local target generation and forgets
+    /// successful surface-publication lineage. Resource uploads remain disposable
+    /// renderer state and may be reused across target recreation.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured error when no native surface exists, the extent is
+    /// invalid for the selected device, or the renderer cannot allocate another
+    /// target generation.
+    pub fn configure_surface(
+        &mut self,
+        width: u32,
+        height: u32,
+    ) -> Result<OffscreenExtent, PublicationRenderError> {
+        let extent = OffscreenExtent::new(width, height)?;
+        self.literal.base.validate_extent(extent)?;
+        let format = self
+            .diagnostics()
+            .surface_format()
+            .ok_or(PublicationRenderError::SurfaceUnavailable)?;
+        let next_generation = self
+            .surface_target_generation
+            .checked_add(1)
+            .ok_or(PublicationRenderError::SurfaceTargetGenerationExhausted)?;
+        let configuration = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            color_space: wgpu::SurfaceColorSpace::Auto,
+            width: extent.width(),
+            height: extent.height(),
+            present_mode: wgpu::PresentMode::Fifo,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            view_formats: Vec::new(),
+        };
+        self.literal
+            .base
+            .surface
+            .as_ref()
+            .ok_or(PublicationRenderError::SurfaceUnavailable)?
+            .configure(&self.literal.base.device, &configuration);
+        self.surface_extent = Some(extent);
+        self.surface_target_generation = next_generation;
+        self.surface_lineage.reset();
+        Ok(extent)
+    }
+
     /// Drops the retained offscreen target and every publication realization tied to it.
     #[must_use]
     pub fn discard_offscreen_target(&mut self) -> bool {
@@ -205,14 +332,17 @@ impl ResourceRenderer {
     /// Drops renderer-owned uploaded resource realizations without changing logical refs.
     ///
     /// A real cache loss also invalidates successful publication lineage so the
-    /// next complete publication is reconstructed with a full resync.
+    /// next complete publication is reconstructed with a full resync on every target.
     #[must_use]
     pub fn discard_resource_cache(&mut self) -> bool {
         let images_discarded = self.images.discard_cache();
         let shaped_runs_discarded = self.shaped_runs.discard_cache();
         let discarded = images_discarded || shaped_runs_discarded;
-        if discarded && let Some(target) = self.literal.base.offscreen_target.as_mut() {
-            target.lineage.reset();
+        if discarded {
+            if let Some(target) = self.literal.base.offscreen_target.as_mut() {
+                target.lineage.reset();
+            }
+            self.surface_lineage.reset();
         }
         discarded
     }
@@ -484,6 +614,230 @@ impl ResourceRenderer {
         })
     }
 
+    /// Renders one complete provider-backed publication directly into the configured
+    /// native surface and schedules that exact texture for presentation.
+    ///
+    /// The configured surface extent is the exact native physical target authority.
+    /// Publication logical size and raster scale define only the continuous raster-space
+    /// canvas; they are never multiplied back into an integer native extent. This avoids
+    /// introducing a second, float-rounded version of the host-owned physical mapping.
+    /// Surface and offscreen targets keep independent successful-publication lineage.
+    /// A swapchain image is always rendered completely because an `AlreadyCurrent`
+    /// classification describes logical renderer state, not the contents of the newly
+    /// acquired native image. Resource preflight still completes before acquisition.
+    /// After GPU submission, `before_present` is invoked exactly once immediately before
+    /// native presentation so the caller can perform host-specific pre-present work
+    /// without exposing native host types to the renderer. Successful surface lineage
+    /// advances only after `Queue::present` is called.
+    ///
+    /// # Errors
+    ///
+    /// Returns deterministic publication/resource/backend failures plus structured
+    /// native-surface recovery states. Timeout and occlusion may be retried later;
+    /// outdated/suboptimal targets should be reconfigured; a lost surface requires
+    /// recreating the renderer from the host-owned window target. `before_present` is
+    /// not invoked for failures that occur before successful GPU submission.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the native surface transaction keeps validation/resource preflight, target acquisition, the shared mixed-scene encoder, submission, the caller-owned pre-present boundary, present, and successful-lineage commit in one auditable sequence"
+    )]
+    pub fn render_surface_publication<P: ResourceProvider + ?Sized>(
+        &mut self,
+        publication: &PaintPublication,
+        provider: &P,
+        before_present: impl FnOnce(),
+    ) -> Result<crate::PublicationObservation, PublicationRenderError> {
+        let scene = validate_resource_scene_subset(publication).map_err(scene_validation_error)?;
+        let extent = self
+            .surface_extent
+            .ok_or(PublicationRenderError::SurfaceNotConfigured)?;
+        self.literal.base.validate_extent(extent)?;
+        let canvas_extent =
+            surface_canvas_extent(publication.logical_size(), publication.raster_scale());
+        let target_format = self
+            .diagnostics()
+            .surface_format()
+            .ok_or(PublicationRenderError::SurfaceUnavailable)?;
+        let update_mode = self.surface_lineage.classify(publication);
+        let mut observation = crate::PublicationObservation::new(publication, update_mode);
+        observation.set_target_facts_with_format(
+            extent,
+            Some(self.surface_target_generation),
+            target_format,
+            self.diagnostics(),
+        );
+        self.literal.base.record_observation(observation);
+
+        let has_literals = scene
+            .iter()
+            .any(|item| matches!(item, ResourceSceneItem::Literal(_)));
+        let has_images = scene
+            .iter()
+            .any(|item| matches!(item, ResourceSceneItem::Image(_)));
+        let has_shaped_runs = scene
+            .iter()
+            .any(|item| matches!(item, ResourceSceneItem::ShapedTextRun(_)));
+        let needs_stencil = scene.iter().any(ResourceSceneItem::needs_stencil);
+        let live_images = live_image_resources(&scene);
+        let live_shaped_runs = live_shaped_run_resources(&scene, publication.raster_scale());
+        let initial_resource_observations = resource_observations_for_scene(
+            &scene,
+            publication.raster_scale(),
+            &self.images,
+            &self.shaped_runs,
+            None,
+            None,
+        );
+        if let Some(observation) = self.literal.base.last_observation.as_mut() {
+            observation.set_resource_observations(initial_resource_observations);
+        }
+
+        if update_mode != PublicationUpdateMode::AlreadyCurrent {
+            let (resolved_images, resolved_shaped_runs) =
+                match self.preflight_resources(&scene, publication.raster_scale(), provider) {
+                    Ok(resolved) => resolved,
+                    Err(error) => {
+                        if let Some(observation) = self.literal.base.last_observation.as_mut() {
+                            observation.set_resource_observations(resource_observations_for_scene(
+                                &scene,
+                                publication.raster_scale(),
+                                &self.images,
+                                &self.shaped_runs,
+                                None,
+                                error.item_index(),
+                            ));
+                        }
+                        return Err(error);
+                    }
+                };
+            let resource_observations = resource_observations_for_scene(
+                &scene,
+                publication.raster_scale(),
+                &self.images,
+                &self.shaped_runs,
+                Some(&resolved_shaped_runs),
+                None,
+            );
+            if let Some(observation) = self.literal.base.last_observation.as_mut() {
+                observation.set_resource_observations(resource_observations);
+            }
+            if has_literals {
+                self.literal.base.ensure_fill_rect_pipeline(target_format)?;
+            }
+            if needs_stencil {
+                self.literal.ensure_clip_pipelines(target_format)?;
+            }
+            if has_images {
+                self.images
+                    .ensure_pipelines(&self.literal.base.device, target_format)?;
+            }
+            if has_shaped_runs {
+                self.shaped_runs
+                    .ensure_pipelines(&self.literal.base.device, target_format)?;
+            }
+            self.images.realize(
+                &self.literal.base.device,
+                &self.literal.base.queue,
+                resolved_images,
+            );
+            self.shaped_runs.realize(
+                &self.literal.base.device,
+                &self.literal.base.queue,
+                resolved_shaped_runs,
+            );
+        }
+
+        let current = self
+            .literal
+            .base
+            .surface
+            .as_ref()
+            .ok_or(PublicationRenderError::SurfaceUnavailable)?
+            .get_current_texture();
+        let surface_texture = match current {
+            wgpu::CurrentSurfaceTexture::Success(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
+                drop(texture);
+                return Err(PublicationRenderError::SurfaceSuboptimal);
+            }
+            wgpu::CurrentSurfaceTexture::Timeout => {
+                return Err(PublicationRenderError::SurfaceTimeout);
+            }
+            wgpu::CurrentSurfaceTexture::Occluded => {
+                return Err(PublicationRenderError::SurfaceOccluded);
+            }
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                return Err(PublicationRenderError::SurfaceOutdated);
+            }
+            wgpu::CurrentSurfaceTexture::Lost => {
+                self.surface_extent = None;
+                self.surface_lineage.reset();
+                return Err(PublicationRenderError::SurfaceLost);
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(PublicationRenderError::SurfaceValidation);
+            }
+        };
+        let color_view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let stencil_target =
+            needs_stencil.then(|| create_stencil_target(&self.literal.base.device, extent));
+        let ordinary_pipeline = has_literals.then(|| {
+            self.literal
+                .base
+                .fill_rect_pipelines
+                .get(&target_format)
+                .unwrap_or_else(|| unreachable!("native literal target pipeline is cached"))
+        });
+        let clip_pipelines = needs_stencil.then(|| {
+            self.literal
+                .clip_pipelines
+                .get(&target_format)
+                .unwrap_or_else(|| unreachable!("native literal mask pipelines are cached"))
+        });
+        let mut encoder =
+            self.literal
+                .base
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("runenui provider-backed native surface publication encoder"),
+                });
+        encode_resource_scene_to_target(
+            &self.literal.base.device,
+            ordinary_pipeline,
+            clip_pipelines,
+            &self.images,
+            &mut encoder,
+            &color_view,
+            stencil_target.as_ref().map(|(_, view)| view),
+            target_format,
+            extent,
+            canvas_extent,
+            publication.raster_scale(),
+            &scene,
+            &self.shaped_runs,
+        );
+        self.literal.base.queue.submit([encoder.finish()]);
+        if let Some(observation) = self.literal.base.last_observation.as_mut() {
+            observation.mark_render_succeeded();
+        }
+        before_present();
+        self.literal.base.queue.present(surface_texture);
+        self.surface_lineage.record_success(publication);
+        self.images.retain(&live_images);
+        self.shaped_runs.retain(&live_shaped_runs);
+        if let Some(observation) = self.literal.base.last_observation.as_mut() {
+            observation.mark_present_succeeded();
+        }
+        Ok(self
+            .literal
+            .base
+            .last_observation
+            .clone()
+            .unwrap_or_else(|| unreachable!("surface publication observation was recorded")))
+    }
+
     fn preflight_resources<P: ResourceProvider + ?Sized>(
         &self,
         scene: &[ResourceSceneItem],
@@ -727,6 +1081,17 @@ fn live_shaped_run_resources(
             ResourceSceneItem::Literal(_) | ResourceSceneItem::Image(_) => None,
         })
         .collect()
+}
+
+fn surface_canvas_extent(
+    logical_size: LogicalSize,
+    raster_scale: RasterScale,
+) -> RasterCanvasExtent {
+    let scale = f64::from(raster_scale.get());
+    RasterCanvasExtent::new(
+        f64::from(logical_size.width()) * scale,
+        f64::from(logical_size.height()) * scale,
+    )
 }
 
 fn resource_observations_for_scene(
@@ -1065,4 +1430,29 @@ fn encode_resource_shaped_run_item(
         &vertex_buffer,
         vertex_count,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use runenui_core::LogicalSize;
+    use runenui_runtime::RasterScale;
+
+    use super::{OffscreenExtent, surface_canvas_extent};
+
+    #[test]
+    fn native_surface_extent_is_not_reconstructed_from_fractional_scale() {
+        let logical_size = LogicalSize::try_new(0.8, 0.8)
+            .unwrap_or_else(|_| unreachable!("fixture logical size is valid"));
+        let raster_scale = RasterScale::new(1.25)
+            .unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
+        let configured = OffscreenExtent::new(1, 1)
+            .unwrap_or_else(|_| unreachable!("fixture target extent is valid"));
+
+        let canvas_extent = surface_canvas_extent(logical_size, raster_scale);
+
+        assert!(canvas_extent.width() > 1.0);
+        assert!(canvas_extent.width() < 1.000_001);
+        assert_eq!(configured.width(), 1);
+        assert_eq!(configured.height(), 1);
+    }
 }

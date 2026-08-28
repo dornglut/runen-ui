@@ -134,9 +134,24 @@ impl PublicationObservation {
         target_generation: Option<u64>,
         diagnostics: &RendererDiagnostics,
     ) {
+        self.set_target_facts_with_format(
+            extent,
+            target_generation,
+            diagnostics.offscreen_format(),
+            diagnostics,
+        );
+    }
+
+    pub(crate) fn set_target_facts_with_format(
+        &mut self,
+        extent: OffscreenExtent,
+        target_generation: Option<u64>,
+        target_format: wgpu::TextureFormat,
+        diagnostics: &RendererDiagnostics,
+    ) {
         self.physical_extent = Some(extent);
         self.target_generation = target_generation;
-        self.target_format = Some(diagnostics.offscreen_format());
+        self.target_format = Some(target_format);
         self.adapter_name = Some(diagnostics.adapter_info().name.clone().into());
         self.backend = Some(diagnostics.adapter_info().backend);
     }
@@ -155,6 +170,10 @@ impl PublicationObservation {
 
     pub(crate) const fn mark_readback_failed(&mut self) {
         self.readback_result = PublicationStageResult::Failed;
+    }
+
+    pub(crate) const fn mark_present_succeeded(&mut self) {
+        self.present_result = PublicationStageResult::Succeeded;
     }
 
     #[must_use]
@@ -237,8 +256,8 @@ impl PublicationObservation {
         self.readback_result
     }
 
-    /// Offscreen rendering does not present a native surface; a future window
-    /// path will set this fact only after the real present succeeds.
+    /// Returns the result of native presentation for this publication attempt.
+    /// Offscreen rendering leaves this stage [`PublicationStageResult::NotAttempted`].
     #[must_use]
     pub const fn present_result(&self) -> PublicationStageResult {
         self.present_result
@@ -256,7 +275,7 @@ impl PublicationObservation {
         matches!(self.readback_result, PublicationStageResult::Succeeded)
     }
 
-    /// Returns whether an offscreen publication was presented to a native surface.
+    /// Returns whether the publication was successfully presented to a native surface.
     #[must_use]
     pub const fn presented(&self) -> bool {
         matches!(self.present_result, PublicationStageResult::Succeeded)
