@@ -170,7 +170,7 @@ fn primary_first_chord_retains_stream_through_partial_release_move_and_wheel() {
 
     let moved_point = TranslatedPointerPoint {
         position: point(24.0, 35.0),
-        ..initial.clone()
+        ..initial
     };
     let moved = mouse
         .cursor_moved(device_id, moved_point.clone())
