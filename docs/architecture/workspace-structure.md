@@ -12,6 +12,7 @@ RunenUI/
 │   ├── runenui_core/
 │   ├── runenui_runtime/
 │   ├── runenui_render_wgpu/
+│   ├── runenui_winit/
 │   └── runenui_testing/
 ├── examples/
 │   ├── counter/
@@ -27,9 +28,10 @@ RunenUI/
 | `runenui_core` | host-neutral application/effect protocols; validated authored values/identity/style/geometry; transient views/elements; state-aware widget/lifecycle/event/semantic vocabulary; opaque runtime-issued protocol value types | persistent mounted/semantic storage, live scheduling, native hosts, concrete renderers, application product state, ECS/legacy dependencies |
 | `runenui_runtime` | generational mounted/semantic arenas; reconciliation/lifecycle; canonical queue/scheduler; focus/input state; clocks/tasks/timers/subscriptions/host requests; wake/redraw; trace/replay; layout and staged surface/semantic publication | application domain policy, testing convenience authority, native platform implementations, concrete renderers, ECS/legacy dependencies |
 | `runenui_render_wgpu` | reusable renderer edge over ordinary public paint publications; caller-owned resource-provider contract; renderer-owned successful-publication lineage, realization/cache/backend work, readback, and renderer observations | native event loop, accessibility, widget/semantic/mounted/layout authority, runtime mutation, application resource registry, winit/AccessKit ownership |
+| `runenui_winit` | reusable winit input/device translation and AccessKit semantic projection/action translation proven by the reference host and native Counter | window/event-loop ownership, runtime pumping, redraw/publication policy, displayed-frame authority, renderer/presentation lifecycle, application behavior |
 | `runenui_testing` | public deterministic headless testing over ordinary `runenui_core` + `runenui_runtime` contracts | runtime behavior, private mutation seams, identity/sequence fabrication, parallel expected state, native host behavior |
-| `counter` | application-owned state/action/update and ordinary public-API proof | framework internals or platform/backend ownership |
-| `reference_winit` | standalone M7 native reference application: winit window/event-loop mechanics, native-to-neutral host translation, displayed native mapping, runtime wake/redraw driving, and consumption of the reusable wgpu renderer | framework/runtime behavior, widget semantics, renderer internals, a generic platform abstraction, or reusable accessibility-adapter authority |
+| `counter` | application-owned state/action/update/UI plus the bounded native M7 application host composition and deterministic headless proof | framework internals, reusable native translation authority, renderer internals, generic host/facade ownership |
+| `reference_winit` | specialized M7 native conformance application: winit window/event-loop mechanics, displayed native mapping, runtime wake/redraw driving, renderer presentation/recovery, and proof logging | framework/runtime behavior, widget semantics, renderer internals, reusable native translation/accessibility authority, generic platform abstraction |
 | `runenui_external_renderer_conformance` | non-publishable genuine downstream renderer-neutral scene-consumer conformance proof over public core/runtime contracts | production renderer/backend ownership, testing-convenience dependency, native host/resource-provider authority, concrete widget/semantic interpretation, or privileged internal access |
 | `runenui_external_widget_conformance` | non-publishable genuine downstream custom-widget/public conformance proof | production framework ownership or privileged internal access |
 | `xtask` | deterministic repository validation/audit orchestration | framework runtime behavior |
@@ -40,18 +42,22 @@ Current production dependency direction is acyclic:
 runenui_core <- runenui_runtime
        ^             ^
        └──────┬──────┘
-              ├── runenui_render_wgpu <- reference_winit
+              ├── runenui_render_wgpu ──┬── reference_winit
+              │                         └── counter
+              ├── runenui_winit ────────┬── reference_winit
+              │                         └── counter
               ├── runenui_testing
-              ├── counter
               ├── external renderer conformance
               └── external widget conformance
 
 xtask  (repository tooling; no framework dependency)
 ```
 
-`runenui_render_wgpu` depends only on ordinary public core/runtime contracts inside the workspace. Its backend/resource state remains downstream and disposable; native host and accessibility dependencies are intentionally outside the package boundary. The external-renderer conformance package remains a separate proof-only consumer and is not the production renderer.
+`runenui_render_wgpu` depends only on ordinary public core/runtime contracts inside the workspace. Its backend/resource state remains downstream and disposable; native host and accessibility dependencies are intentionally outside the renderer package boundary. The external-renderer conformance package remains a separate proof-only consumer and is not the production renderer.
 
-`reference_winit` is the accepted M7 application boundary that consumes ordinary public core/runtime contracts plus `runenui_render_wgpu`, while owning winit and native host mechanics itself. This explicit exception does not make renderer consumption a default rule for examples: ordinary examples remain limited to core/runtime unless a later accepted architecture assigns them another boundary. `runenui_render_wgpu` therefore remains winit-free and does not absorb the event loop.
+`runenui_winit` is the targeted adapter boundary justified by the second real winit consumer in M7. It consumes ordinary public core/runtime contracts plus winit/AccessKit types and owns only loss-preserving native translation/projection mechanics. It deliberately has no renderer dependency and no run-loop API. Moving a substantial accepted adapter into one Cargo-owned source prevents Counter from copying the specialized reference application while leaving application-specific host policy visible for M7D pressure.
+
+`reference_winit` remains the specialized conformance host; Counter is the bounded application showcase. Both consume `runenui_render_wgpu` and `runenui_winit`, but each owns its own winit event loop, runtime pumping, redraw/publication acknowledgement, displayed-frame mapping, renderer recovery, and presentation policy. This does not establish a generic RunenUI host facade.
 
 The external-renderer conformance package intentionally depends only on public `runenui_core` and `runenui_runtime` contracts, including for its own tests, so Cargo preserves the independent-consumer boundary. The external-widget conformance package may consume `runenui_testing` as a test/dev dependency without making testing convenience a production dependency. Repository validation distinguishes those dependency classes.
 
@@ -61,7 +67,9 @@ The external-renderer conformance package intentionally depends only on public `
 
 `runenui_render_wgpu` may retain only renderer-owned realization state derived from ordinary immutable paint publications plus caller-owned resource payloads. It must not inspect concrete widget/control types, semantic-tree facts, mounted/layout storage, or private runtime mutation seams, and it must not become resource-provider or application-state authority.
 
-`reference_winit` may translate native host facts, drive public runtime APIs from its event-loop thread, retain immutable publications for renderer retry, and retain the exact successfully displayed native mapping needed for point ingress. It must not create a second UI queue, mutate runtime off-thread, reinterpret widget semantics, move winit into the renderer, or become a generic reusable host/platform crate without a second real consumer.
+`runenui_winit` may retain only native device/key/pointer lifetime translation state and rebuildable AccessKit projection identity/cache derived from public semantic publication. It must not create a second UI queue, pump or mutate the runtime, own a window/event loop, retain renderer state, acknowledge redraw, decide displayed-frame authority, or become application policy.
+
+Native applications may translate native host facts through `runenui_winit`, drive public runtime APIs from their event-loop thread, retain immutable publications for renderer retry, and retain the exact successfully displayed native mapping needed for point ingress. They must not create a second UI queue, mutate runtime off-thread, reinterpret widget semantics, move winit into the renderer, or hide host-loop ownership behind a speculative generic facade.
 
 `runenui_testing` may compose public contracts but must not recreate live authority. In particular it may retain immutable public publications for inspection, create scoped semantic test targets only from exact public snapshot membership, delegate semantic actions only through public runtime ingress, advance a public manual clock, perform explicit bounded pumping, and inspect public products. It must not fabricate runtime IDs/sequences, mutate mounted state, use private runtime bridges, or maintain a second expected runtime model.
 
@@ -80,4 +88,4 @@ A new crate requires at least one demonstrated property:
 
 A named concept, target diagram, or large source file is not enough. Do not create empty target crates, genericize identity, or relocate values solely to satisfy an imagined package graph.
 
-Future layout/style, text, controls, semantics/accessibility-adapter, host, platform, facade, or devtool crates require those same demonstrated boundaries when their owning milestones become real. The [roadmap](../roadmap.md) owns sequencing; exact current public ownership is summarized in the [public API contract](public-api.md).
+Future layout/style, text, controls, host, platform, facade, or devtool crates require those same demonstrated boundaries when their owning milestones become real. The [roadmap](../roadmap.md) owns sequencing; exact current public ownership is summarized in the [public API contract](public-api.md).
