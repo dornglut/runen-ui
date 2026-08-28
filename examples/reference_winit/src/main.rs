@@ -22,9 +22,9 @@ use mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
 };
 use runenui_core::{
-    Color, CommittedTextEvent, Element, InputDeviceId, IntoEffects, KeyModifiers, KeyboardEvent,
-    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PointerEvent, StyleTokens,
+    Color, CommandOrigin, CommittedTextEvent, Element, InputDeviceId, IntoEffects, KeyModifiers,
+    KeyboardEvent, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
+    PaintContributionContext, PaintContributionItem, PointerEvent, SemanticCommand, StyleTokens,
     SurfaceInputContext, UiApp, View, Widget, WidgetActivation, WidgetMeasure, WidgetTextInput,
 };
 use runenui_render_wgpu::{
@@ -332,6 +332,7 @@ struct ReferenceHost {
     last_text_ingress_diagnostic: Option<TextIngressDiagnostic>,
     mapping_publication_needed: bool,
     presentation_suppressed: bool,
+    initial_focus_requested: bool,
 }
 
 impl ReferenceHost {
@@ -363,6 +364,7 @@ impl ReferenceHost {
             last_text_ingress_diagnostic: None,
             mapping_publication_needed: false,
             presentation_suppressed: false,
+            initial_focus_requested: false,
         };
         host.drain_runtime_trace();
         host
@@ -553,6 +555,37 @@ impl ReferenceHost {
         let _ = self.runtime.pump(HOST_PUMP_BUDGET);
         self.drain_runtime_trace();
         self.sync_runtime_text_input();
+    }
+
+    fn establish_initial_runtime_focus(&mut self, event_loop: &ActiveEventLoop) -> bool {
+        if self.initial_focus_requested || self.runtime.focus().focused_node().is_some() {
+            return true;
+        }
+
+        let Some(target) = self
+            .runtime
+            .index()
+            .nodes()
+            .first()
+            .map(|node| node.id().clone())
+        else {
+            return true;
+        };
+        if let Err(error) = self.runtime.submit_command(
+            target,
+            SemanticCommand::RequestFocus,
+            CommandOrigin::programmatic(),
+        ) {
+            self.fail(
+                event_loop,
+                &format!("initial runtime focus request failed: {error:?}"),
+            );
+            return false;
+        }
+        self.initial_focus_requested = true;
+        proof!("stage=initial_runtime_focus_requested");
+        self.pump_runtime_once();
+        true
     }
 
     fn publish_if_needed(&mut self) -> Result<bool, String> {
@@ -1313,6 +1346,9 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             return;
         }
         self.presentation_suppressed = false;
+        if !self.establish_initial_runtime_focus(event_loop) {
+            return;
+        }
         self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
