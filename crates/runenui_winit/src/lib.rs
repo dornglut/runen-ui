@@ -9,3 +9,23 @@ pub mod accessibility;
 pub mod device_identity;
 pub mod keyboard_input;
 pub mod mouse_input;
+
+#[cfg(test)]
+struct DemoApp;
+
+#[cfg(test)]
+impl runenui_core::UiApp for DemoApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = runenui_core::NoHostProtocol;
+
+    fn root(_state: &Self::State) -> impl runenui_core::View<Self::Action> {
+        runenui_core::text("winit adapter test fixture")
+    }
+
+    fn update(
+        _state: &mut Self::State,
+        _action: Self::Action,
+    ) -> impl runenui_core::IntoEffects<Self::Action, Self::HostProtocol> {
+    }
+}
