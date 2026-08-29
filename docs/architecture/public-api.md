@@ -99,7 +99,7 @@ Renderer-facing paint products, hit/input products, semantics, layout, and diagn
 
 The current public surface is pre-1.0 and may change incompatibly when accepted architecture requires a clean cutover. Important missing production capabilities include:
 
-- broader production host/application and supported platform-profile breadth beyond the accepted proof-level native and external-host paths;
+- broader production host/application ergonomics beyond the accepted proof-level native and external-host paths;
 - broader resource/font/shaping integration beyond the bounded accepted M7 resource realization proof;
 - multi-window lifecycle and supported platform-profile breadth;
 - production text shaping, international layout, editing, clipboard, and complete editable-text integration;
