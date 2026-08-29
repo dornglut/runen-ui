@@ -514,6 +514,19 @@ impl CounterHost {
         self.submit_pointer_event(event_loop, event)
     }
 
+    fn handle_native_point_authority_loss(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        reason: &str,
+    ) -> bool {
+        if !self.invalidate_mouse_point_authority(event_loop, reason) {
+            return false;
+        }
+        self.drive_runtime(event_loop);
+        self.request_pending_redraw();
+        true
+    }
+
     fn cancel_mouse_for_device_change(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -886,8 +899,8 @@ impl ApplicationHandler<HostEvent> for CounterHost {
                 position,
             } => self.handle_cursor_moved(event_loop, device_id, position),
             WindowEvent::CursorLeft { .. } => {
-                let _ =
-                    self.invalidate_mouse_point_authority(event_loop, "native cursor left window");
+                let _ = self
+                    .handle_native_point_authority_loss(event_loop, "native cursor left window");
             }
             WindowEvent::MouseInput {
                 device_id,
@@ -907,8 +920,10 @@ impl ApplicationHandler<HostEvent> for CounterHost {
                 if !self.cancel_keyboard_authority(event_loop) {
                     return;
                 }
-                let _ =
-                    self.invalidate_mouse_point_authority(event_loop, "native window lost focus");
+                if !self.handle_native_point_authority_loss(event_loop, "native window lost focus")
+                {
+                    return;
+                }
                 self.modifiers = KeyModifiers::NONE;
             }
             WindowEvent::Focused(true) => {
