@@ -12,59 +12,52 @@
 >
 > **Acceptance:** this ADR becomes accepted target architecture only when the exact
 > M8A0 package containing it is explicitly accepted by the repository owner,
-> squash-merged, and accepted-main validated. Acceptance freezes the decisions below;
+> squash-merged, and accepted-main validated. Acceptance freezes target decisions;
 > it does not claim any M8 production implementation or dependency adoption.
 
 ## Context
 
-M7 closed the reference production spine at proof maturity. Accepted `main` has one
-runtime-owned staged publication authority, renderer-neutral paint/hit products,
-opaque `ResourceRef` identity, a real wgpu renderer/resource edge, native winit and
-AccessKit adapters, and a winit-free external-host proof.
+M7 closed the reference production spine at proof maturity. M8 must replace three
+coupled proof-level limitations without moving live authority out of
+`runenui_runtime`:
 
-M8 must replace three coupled proof-level limitations:
+- style lacks production themes, recipes, state layers, preference policy, and
+  property breadth;
+- layout remains a small linear proof engine;
+- text measurement is not bound to one production shaped artifact that supplies both
+  final layout metrics and the exact glyph resources later rendered.
 
-- style resolution is typed and inspectable but lacks production themes, recipes,
-  state layers, preference policy, and property breadth;
-- layout is runtime-owned and deterministic but remains a small linear proof engine;
-- text measurement is proof-level and is not bound to one production shaped artifact
-  that later supplies the exact glyph resources rendered by the real renderer.
+Production text must not be measured by one system and independently reshaped during
+paint. The same logical shaping/line-breaking result must supply layout metrics and
+the exact shaped resources later realized by the renderer.
 
-The text gap is architectural. Production text must not be measured by one system and
-independently reshaped during paint. The same logical shaping/line-breaking result
-must supply layout metrics and the exact shaped resources later realized by the
-renderer.
+## Relationship to accepted authority
 
-M7's `ShapedRunRaster` scale-specific alpha coverage is accepted proof behavior, not
-the M8 production target. For ordinary supported outline glyphs, M8 targets an
-SDF/MSDF-family wgpu realization rather than preserving alpha-raster text as a
-parallel production path.
+This ADR preserves these accepted ownership decisions:
 
-## Inherited authority
-
-This ADR composes rather than redefines accepted contracts:
-
-- M3 and ADR 0002 own mounted-runtime layout authority, mounted invalidation, and
-  the rule that an adopted layout algorithm cannot become a second UI tree;
-- M4 owns canonical interaction and scheduling;
-- M5 owns semantic identity/publication/action and deterministic public testing;
-- M6 owns immutable renderer-neutral paint/hit publication, revision/damage, and
-  opaque `ResourceRef` identity;
-- M7 owns renderer/resource-provider, raster-scale, host, accessibility, retained
+- M3 / ADR 0002: mounted topology, layout orchestration, invalidation, and final
+  logical geometry remain runtime-owned; an adopted algorithm cannot become a second
+  UI tree;
+- M4: canonical interaction and scheduling;
+- M5: semantic identity/publication/action and deterministic public testing;
+- M6: immutable renderer-neutral paint/hit publication, revision/damage, and opaque
+  `ResourceRef` identity;
+- M7: renderer/resource-provider, raster-scale, host, accessibility, retained
   publication retry, and external-host boundaries;
-- M9 owns broad visual composition/animation;
-- M10 owns complete editable-text behavior;
-- M11 owns the standard control library;
-- M13 owns broad platform and multi-window profiles.
+- M9/M10/M11/M13: broad composition/animation, editable text, standard controls, and
+  broad platform/multi-window profiles remain later owners.
 
-M8 may make clean pre-1.0 cutovers required by these decisions. It must not retain a
-parallel proof-era style/layout/text authority for compatibility convenience.
+**On acceptance, this ADR deliberately supersedes one ADR 0008 target detail for the
+M8 production outline-text path:** the shaped-run provider requirement that logical
+text resources resolve to scale-specific alpha coverage. M7's current
+`ShapedRunRaster` implementation remains truthful proof-era behavior until the M8B
+cutover is accepted. M8 replaces that payload with logical already-shaped
+glyph/font/outline facts and SDF/MSDF renderer realization. All other M7 resource
+ownership and complete-`ResourceRef` rules remain inherited.
 
 ## Decision
 
-### Treat style, layout, and text as one staged dependency graph
-
-The production dependency loop is:
+### One staged style/layout/text dependency graph
 
 ```text
 style environment + authored state
@@ -75,364 +68,254 @@ style environment + authored state
     -> paint / hit / semantics
 ```
 
-Invalidation flows back through the same graph. `runenui_runtime` remains the live
-owner of when stages execute, which mounted nodes are dirty, which derived caches are
-compatible, and which aligned products commit in one surface publication.
+Invalidation flows back through the same graph. Runtime remains the live owner of
+stage execution, dirty mounted nodes, cache compatibility, and aligned publication.
+No dependency or renderer owns a parallel mounted tree, dirty graph, publication
+lifecycle, semantic tree, or scheduler.
 
-No style engine, layout library, text library, renderer, or host may own an
-independent mounted tree, publication lifecycle, dirty graph, semantic tree, or UI
-scheduler.
+### RunenUI owns production style semantics
 
-### Keep the production style model RunenUI-owned
-
-`runenui_core` continues to own host-neutral typed authored and resolved style
-vocabulary. M8 broadens this vocabulary rather than adopting a CSS parser/cascade as
-framework authority.
-
-The model includes:
+`runenui_core` keeps host-neutral typed authored/resolved style vocabulary. M8 adds:
 
 - typed literals and token references;
-- a theme environment containing token values and preference-sensitive defaults;
-- typed recipes with explicit variants;
-- runtime-owned interaction-state layers derived from canonical mounted interaction
-  state rather than duplicated application state;
+- theme environment and preference-sensitive defaults;
+- typed recipes and explicit variants;
+- transient interaction-state layers derived from canonical mounted interaction
+  state;
 - authored per-node overrides;
 - an explicit bounded set of inheritable properties, principally foreground and
-  typography, rather than implicit inheritance of geometry properties;
-- high-contrast and reduced-motion preference inputs;
-- exact per-property provenance and structured diagnostics.
+  typography;
+- high-contrast and reduced-motion inputs;
+- exact per-property provenance and diagnostics.
 
-Resolution precedence is deterministic and inspectable. From lower to higher
-priority:
+Resolution precedence, low to high, is:
 
-1. framework property defaults;
+1. framework defaults;
 2. theme recipe base;
-3. selected recipe variants in stable authored order;
-4. applicable interaction-state recipe layers in one documented framework order;
+3. selected variants in stable authored order;
+4. interaction-state recipe layers in one documented framework order;
 5. authored token/literal overrides;
-6. mandatory user-preference policy overrides for governed properties.
+6. mandatory preference policy overrides for governed properties.
 
-Missing or invalid references diagnose explicitly. Theme selection can change token
-values, but token identity never becomes runtime or renderer authority.
+Properties are classified by downstream effect so paint-only changes do not force
+text/layout work while metric/layout changes invalidate every dependent product.
 
-Resolved properties are classified by downstream effect. At minimum runtime can
-distinguish style-only, text-metric, layout, paint, hit, semantics, and
-preference-sensitive changes so, for example, foreground color does not force
-reshaping while font size or line height does.
+### Taffy provides algorithms inside runtime
 
-### Adopt Taffy algorithms inside runtime, not `TaffyTree`
+M8 adopts Taffy `0.14.x` for Block, Flexbox, and Grid through its low-level/custom-
+tree interfaces over exact runtime-owned topology and resolved RunenUI style.
+`TaffyTree` must not become a second retained UI tree.
 
-M8 adopts the compatible Taffy `0.14.x` family for CSS Block, Flexbox, and Grid
-algorithms. Integration uses Taffy's low-level/custom-tree interfaces over exact
-runtime-owned mounted topology and resolved RunenUI style. It must not install
-`TaffyTree` as a second retained UI tree.
+Taffy state is derived/disposable. Runtime keeps mounted identity, child order,
+dirty propagation, measurement dispatch, final logical geometry, cache
+compatibility, and publication commit. Public RunenUI APIs expose no Taffy types.
 
-Taffy scratch/layout/cache state is derived and disposable. Runtime remains owner of
-mounted identity, child order, dirty propagation, measurement dispatch, final
-RunenUI logical geometry, surface-cache compatibility, and publication commit.
+A separate `runenui_layout` crate is not justified by M8A0; ADR 0002 remains the
+layout ownership authority.
 
-Public RunenUI APIs expose no Taffy types. Runtime lowers RunenUI-owned style/layout
-facts into Taffy algorithm inputs and converts results back into RunenUI-owned
-logical geometry. The implementation should disable the ready-made retained-tree
-feature and enable only accepted algorithm features.
+### `runenui_text` is the renderer-neutral text boundary
 
-A separate `runenui_layout` crate is not justified by M8A0: there is no independent
-ownership or consumer boundary beyond runtime-owned layout authority.
-
-### Introduce a renderer-neutral `runenui_text` crate
-
-Production text has real independent package pressure. M8 therefore introduces
-`runenui_text` with this ownership:
+M8 introduces `runenui_text` because production text has independent dependency,
+resource, computation, reuse, and conformance pressure. It:
 
 - depends on `runenui_core` and the reviewed text/font stack;
 - owns font collection/discovery/fallback configuration and immutable font data;
-- owns shaping, Unicode/bidi analysis, line breaking, paragraph layout, line/run
-  metrics, and deterministic text fixtures;
+- owns shaping, Unicode/bidi analysis, line breaking, paragraph layout, metrics,
+  and deterministic text fixtures;
 - owns immutable logical shaped-text resource bindings;
-- exposes RunenUI-owned renderer-neutral request/result/resource contracts;
-- exposes enough immutable font/glyph/outline data for an authorized renderer-edge
-  resolver to realize the exact already-shaped resource;
-- owns no mounted identity, runtime queue, publication lifecycle, SDF/MSDF atlas,
-  GPU texture, renderer quality policy, host, semantic identity/action authority,
-  application state, or editing model.
+- exposes RunenUI-owned request/result/resource contracts and the immutable
+  glyph/font/outline facts needed to realize exact already-shaped resources;
+- owns no mounted/runtime/publication authority, SDF/MSDF atlas, GPU state, host,
+  semantics, application state, or editing model.
 
 `runenui_runtime` may depend on `runenui_text`; `runenui_text` must not depend on
 runtime or `runenui_render_wgpu`.
 
-This crate is justified by independent dependency weight, computation/resource
-ownership, reuse by runtime measurement and renderer-edge realization, and a
-separate deterministic proof surface.
+### Parley provides shaping and paragraph text layout
 
-### Adopt Parley for shaping and paragraph text layout
+M8 adopts Parley `0.11.x` with its Fontique/HarfRust/Skrifa/ICU stack for font
+selection/fallback, shaping, font data, Unicode analysis, bidi, segmentation, and
+line breaking.
 
-M8 adopts Parley `0.11.x`, including its Fontique, HarfRust, Skrifa, and ICU stack,
-for font discovery/fallback, shaping, font data, Unicode analysis, bidi,
-segmentation, and line breaking.
+No Parley types enter RunenUI's public style/text protocol. Parley's optional
+AccessKit integration is not used, and its editing/cursor/selection facilities do
+not become M10 behavior.
 
-RunenUI exposes no Parley types as its public style/text protocol. Parley's optional
-AccessKit integration is not used because M5/M7 already own semantic/accessibility
-authority. Upstream editing/cursor/selection facilities do not become M10 behavior.
+Deterministic construction must support bundled-font-only operation. Production
+profiles may additionally use system-font discovery. Font-source policy, identity,
+and revision remain explicit and cache-visible.
 
-Deterministic callers must be able to construct bundled-font-only text systems that
-do not depend on host font enumeration. Production profiles may additionally enable
-system-font discovery. Font-source policy, identity, and revision remain explicit
-and inspectable.
+Exact patch versions/features, dependency convergence, MSRV, and licenses are
+revalidated by the implementation PR that first adds the dependencies.
 
-The production configuration must enable the international/complex-script behavior
-required by M8 rather than falling back to scalar-count or character-break
-approximations.
+### Measurement and paint share one logical text artifact
 
-Exact patch versions, feature sets, dependency convergence, MSRV compatibility, and
-license inventory are revalidated by the implementation PR that first adds the
-libraries.
+A text request contains RunenUI-owned text/style facts and text-specific logical
+constraints. One immutable result supplies:
 
-### Use one immutable logical text artifact for measurement and paint
+- final paragraph size and required line/baseline metrics;
+- text/line/run/cluster ranges needed for inspection and later semantic/editing
+  integration;
+- exact shaped `ResourceRef`s and owner-local run origins;
+- logical glyph identities/positions and exact immutable font/variation bindings;
+- enough style association to keep foreground and other paint-only state outside
+  shaped identity.
 
-A production text request contains RunenUI-owned text/style facts and text-specific
-logical constraints. `runenui_text` returns one immutable text-layout artifact whose
-observable contract includes:
+Metrics and resources come from the same shaping/line-breaking result. Runtime passes
+that exact artifact from measurement into paint; widgets do not independently remint
+or reshape text during paint.
 
-- final logical paragraph size;
-- first/last and per-line baseline/line metrics required by layout and inspection;
-- text/line/run/cluster ranges needed for deterministic inspection and later
-  semantic/editing integration without granting editing authority;
-- one or more exact shaped-text `ResourceRef` values with owner-local run origins;
-- logical glyph identities/positions and exact immutable font/variation binding
-  behind those refs;
-- enough run/style association to keep foreground and other paint-only state outside
-  shaped-resource identity where inherited M6/M7 contracts require it.
+Paint-only changes such as foreground color preserve shaped identity when glyph
+geometry is unchanged. Width-only changes may re-linebreak without reshaping when
+the text stack permits it; the resulting artifact/resource grouping may change when
+line placement changes without implying a second shaping authority.
 
-Metrics and resource refs come from the same shaping/line-breaking result. Runtime
-retains and passes the exact artifact/resource facts from measurement into paint;
-widgets must not independently remint or reshape the same text during paint.
+### Generic constraints remain runtime-owned
 
-A paragraph may yield multiple shaped paint runs across font fallback or
-metric-affecting spans. Paint-only changes such as foreground color do not change the
-logical shaped resource when glyph geometry is unchanged. Font family, size, weight,
-variation, language, OpenType feature, text, or constraint changes that alter glyph
-geometry or line breaking produce a new compatible artifact/resource binding.
+`LayoutConstraints` stays in runtime. `runenui_text` owns only a smaller neutral
+text-specific constraint projection. Runtime lowers Taffy's known/available-space
+facts into text requests.
 
-### Keep general layout constraints in runtime
+There is no open-ended framework "measure until stable" loop. Taffy's bounded
+algorithm drives explicit leaf measurements and runtime commits one aligned final
+layout/publication candidate.
 
-The existing `LayoutConstraints` vocabulary remains runtime-owned. M8 does not move
-it to core merely to satisfy text dependency direction.
+### SDF/MSDF is the primary production outline-text realization
 
-`runenui_text` defines only the renderer-neutral text-specific constraint projection
-it needs, such as known/available inline extent and bounded block policy. Runtime
-lowers Taffy's known-dimension/available-space facts into those requests.
+For supported outline glyphs, `runenui_render_wgpu` owns:
 
-For unchanged text/style/font state, width changes may re-run line breaking and
-alignment without reshaping when the adopted stack permits it. There is no
-open-ended framework "measure until stable" loop: Taffy's bounded algorithm drives
-leaf measurement with explicit available-space facts, and runtime commits one final
-aligned layout/publication candidate.
-
-### Make SDF/MSDF the primary production wgpu text realization
-
-For supported outline fonts/glyphs, `runenui_render_wgpu` owns renderer realization:
-
-- SDF/MSDF-family field generation from exact already-shaped outline glyphs;
+- SDF/MSDF-family field generation from exact already-shaped outlines;
 - atlas/page allocation, packing, cache/eviction, GPU textures, and device lifetime;
-- field resolution/range/quality policy and scale/zoom realization tiers;
+- field resolution/range/quality and scale/zoom realization tiers;
 - shader reconstruction, antialiasing, foreground application, and renderer-owned
   text effects.
 
 The logical shaped resource is not an alpha bitmap and is not tied to one
-`RasterScale`. One logical shaped `ResourceRef` may have multiple disposable
-renderer realizations across devices, atlas pages, quality tiers, or raster scales
-without changing shaping, line breaking, logical metrics, or resource identity.
+`RasterScale`. One logical `ResourceRef` may have multiple disposable renderer
+realizations across devices, atlas pages, quality tiers, and raster scales without
+changing shaping, line breaking, logical metrics, or identity.
 
-The renderer may choose SDF, MSDF, or MTSDF-style field representations when they
-preserve the accepted visual/identity contract. Small-size quality is proved by real
-pixel/golden corpora; the renderer may adjust field resolution/range or field
-variant, but supported outline glyphs must not silently use a separate alpha-raster
-production path.
+The renderer may select SDF, MSDF, or MTSDF-style field representation when it
+preserves the accepted output/identity contract. Small-size quality is proved with
+real pixel/golden evidence. Supported outline glyphs must not silently fall back to
+a separate alpha-raster production path.
 
-M8A0 deliberately does **not** freeze an SDF/MSDF generator dependency. M8B performs
-a bounded adopt-versus-build evaluation using the same glyph corpus and renderer
-benchmarks. At minimum it compares a custom implementation over the exact font
-outlines, a maintained pure-Rust implementation if suitable, the established
-msdfgen algorithm as a reference while accounting for FFI/build cost, and a GPU
-approach if evidence justifies it. The selected generator remains behind a narrow
-renderer-owned seam so it can change without changing public text or scene
-contracts.
+M8A0 does **not** freeze an SDF/MSDF generator dependency. M8B performs a bounded
+adopt-versus-build evaluation on one shared corpus/benchmark, including custom,
+maintained pure-Rust, established reference-algorithm/FFI, and GPU approaches where
+applicable. The selected implementation stays behind a narrow renderer-owned seam.
 
-### Preserve the renderer-neutral resource boundary
+### Resource identity remains opaque and provider-owned at the edge
 
-`ResourceRef` remains the complete opaque logical identity. Neither text nor
-renderer derives provider identity from debug text, resource kind, font name,
-mounted identity, or backend handles.
+`ResourceRef` remains the complete opaque logical identity. Text and renderer must
+not derive provider identity from debug text, kind, font name, mounted identity, or
+backend handles.
 
-`ResourceKind::ShapedTextRun` may remain the neutral scene kind if it continues to
-mean an immutable logical shaped glyph resource. M7's renderer-edge
-`ShapedRunRaster` scale-specific alpha payload is proof-era behavior and is cleanly
-replaced for the production outline-glyph path; M8 must not retain alpha and
-SDF/MSDF as parallel authoritative text realization contracts.
+`ResourceKind::ShapedTextRun` may remain if it continues to mean one immutable
+logical shaped glyph resource. A caller-owned provider still resolves the complete
+ref. The M8 production shaped-text payload contains exact immutable already-shaped
+glyph/font/outline facts rather than scale-specific coverage. `ResourceKind` does
+not select a provider.
 
-A caller-owned renderer resource provider still resolves the complete `ResourceRef`.
-For production shaped text its payload exposes exact immutable already-shaped
-glyph/font/outline facts, not scale-specific coverage. The precise API shape belongs
-to M8B implementation review, but it must preserve caller-owned provider composition
-and must not use `ResourceKind` as a provider selector.
+The text resource owner preserves each immutable binding while any live
+`ResourceRef` may be retained by measurement/cache/publication, including renderer
+retry after publication acknowledgement. If lifetime-safe pruning needs an opaque
+weak companion to `ResourceRef`, it may expose only liveness—not payload, keys,
+serialization identity, or lookup authority.
 
-The text resource owner preserves an immutable shaped-content binding for every live
-shaped-text `ResourceRef`, including refs held only by a retained publication being
-retried after renderer failure. Resource eviction is lifetime-safe. M8 may introduce
-an opaque weak-lifetime companion to `ResourceRef` solely to detect that no strong
-logical reference remains; it must expose no payload, split key, serialization
-identity, or lookup authority.
+### Non-outline/color glyph formats are explicit
 
-### Treat color and non-outline glyph formats explicitly
+The primary M8 path covers supported outline glyphs. COLR/SVG/bitmap/intrinsic-color
+glyphs must not silently flatten into foreground SDF/MSDF or alpha semantics. Until
+a separately accepted resource/paint representation handles them truthfully, they
+remain explicit unsupported breadth with structured diagnostics.
 
-The primary M8 production path is SDF/MSDF realization of supported outline glyphs.
-COLR, SVG, bitmap, and intrinsic color-emoji behavior must not silently flatten into
-foreground-colored distance-field or alpha semantics.
+### Caching and diagnostics expose dependencies without new authority
 
-If these glyphs cannot be represented truthfully by the accepted M8 resource/paint
-contract, they remain explicit unsupported breadth with structured diagnostics until
-a separately accepted contract revision introduces an honest representation.
+Runtime cache compatibility accounts for every fact that can change style/text/
+layout results: topology, authored contributions, resolved metric-affecting style,
+available dimensions, text/span facts, font-source/text-system revision, and relevant
+preference/theme revision.
 
-### Make caching, invalidation, and realization inspectable
+Text diagnostics expose cache/re-linebreak/reshape/fallback/resource decisions.
+Renderer diagnostics expose field generation, atlas reuse/eviction, quality tier,
+upload, and draw realization. Neither becomes a second runtime trace authority.
 
-Runtime cache compatibility includes every fact capable of changing production
-style/text/layout results, including:
+### Deterministic headless and real-wgpu proof remain required
 
-- mounted topology and authored measurement/layout/style contribution;
-- resolved metric-affecting/inherited style inputs;
-- exact known/available dimensions;
-- text content and metric-affecting span facts;
-- text-system/font-source identity and revision;
-- preference/theme revisions affecting metric or layout properties.
+Deterministic tests use controlled bundled fonts, explicit locale/language/
+preference inputs, fixed logical constraints, and ordinary public runtime/text
+contracts. Expected geometry/text facts do not come from a private expected runtime
+or alternate layout engine.
 
-Paint-only changes remain paint-only when safe. Text diagnostics expose cache
-hit/miss, re-linebreak, reshape, fallback, and shaped-resource decisions. Renderer
-diagnostics separately expose SDF/MSDF generation, atlas hit/miss/eviction, quality
-tier, upload, and draw realization without becoming a second runtime trace
-authority.
+Real renderer closure uses the accepted M7 wgpu offscreen/readback path with bundled
+outline fonts and SDF/MSDF-specific pixel/golden evidence.
 
-### Preserve deterministic headless and real-renderer proof
+### Clean cutover and serial delivery
 
-M8 production contracts remain testable without a native window or system-font
-nondeterminism. Deterministic tests use controlled bundled fonts, explicit
-locale/language/preference inputs, fixed logical constraints, and ordinary public
-runtime/text contracts.
+M8 replaces the proof scalar-count text measurement, linear-only layout authority,
+and M7 scale-specific alpha shaped-run renderer payload rather than preserving them
+as parallel production paths.
 
-Expected geometry/text facts come from accepted public products and frozen fixtures,
-not a private expected runtime, alternate layout engine, or software renderer
-pretending to be wgpu. Real text-renderer closure uses the accepted M7 wgpu
-offscreen/readback path with deterministic bundled outline fonts and SDF/MSDF pixel
-and golden evidence.
+1. **M8A — style environment/resolution:** production typed style, themes, recipes,
+   variants, interaction state, preferences, provenance, invalidation classes.
+2. **M8B — logical text + SDF/MSDF realization:** introduce `runenui_text`, adopt
+   Parley, establish logical text artifacts/resource lifetime, run the bounded field-
+   generator evaluation, implement the accepted wgpu atlas/shader path, and remove
+   alpha-shaped-run production authority.
+3. **M8C — runtime layout:** integrate Taffy low-level/custom-tree algorithms and
+   production sizing/block/flex/grid/positioning/intrinsic measurement with exact
+   text available-space feedback.
+4. **M8D — integrated closure:** overflow/scroll extents, incremental cache/
+   invalidation proof, responsive/text-heavy corpora, semantic alignment, real-wgpu
+   proof, authority cleanup, and final reconciliation.
 
-### Perform clean proof-to-production cutovers
-
-M8 replaces rather than layers over the proof-only scalar-count text measurement,
-linear-only layout authority, and M7 scale-specific alpha shaped-run renderer payload
-when their successors are accepted.
-
-The serial implementation sequence is:
-
-1. **M8A — production style environment/resolution:** broaden typed style,
-   themes/recipes/variants/state/preferences/provenance and invalidation
-   classification.
-2. **M8B — production logical text plus SDF/MSDF realization:** introduce
-   `runenui_text`; adopt Parley; establish coherent text artifacts, resource
-   lifetime, and logical outline-glyph payloads; complete the bounded generator
-   evaluation; implement the accepted wgpu SDF/MSDF atlas/shader path; remove the
-   proof alpha-shaped-run production authority.
-3. **M8C — production runtime layout:** integrate Taffy low-level/custom-tree
-   algorithms over mounted topology, production sizing/block/flex/grid/positioning,
-   intrinsic measurement, and exact text available-space feedback.
-4. **M8D — overflow/incremental/integrated closure:** finish clipping/scroll extents,
-   incremental invalidation/cache proof, responsive/text-heavy corpora, semantic
-   alignment, real wgpu proof, authority cleanup, and final M8 reconciliation.
-
-No successor implementation issue is activated from the M8A0 branch. A0 must first
-be owner-accepted, squash-merged, and accepted-main validated.
+No successor implementation issue is activated before M8A0 is owner-accepted,
+squash-merged, and accepted-main validated.
 
 ## Consequences
 
 Benefits:
 
-- mature standardized layout and Unicode text algorithms are adopted without
-  transferring RunenUI's mounted/runtime authority;
-- measurement and rendered glyph identity cannot silently diverge;
-- ordinary outline text follows RunenUI's SDF-oriented renderer direction rather
-  than becoming a permanent alpha-raster exception;
-- text dependency weight is isolated behind a real package boundary;
-- SDF/MSDF generator and atlas technology can evolve behind stable renderer-neutral
-  text artifacts;
-- deterministic headless and real-wgpu proof remain compatible;
-- paint-only state changes can avoid unnecessary reshaping/layout.
+- standardized hard algorithms are adopted without transferring RunenUI authority;
+- measured and rendered text cannot silently diverge;
+- outline text remains consistent with RunenUI's SDF-oriented renderer direction;
+- text dependency weight has one justified crate boundary;
+- field-generator/atlas technology can evolve behind stable neutral contracts;
+- paint-only changes can avoid unnecessary text/layout work.
 
-Costs and risks:
+Costs/risks:
 
-- M8 requires clean-cut public API changes around style and measurement;
-- `runenui_text` must solve exact resource lifetime and font-source revisioning, not
-  merely wrap Parley;
-- Taffy integration must translate RunenUI properties without retaining a second
-  tree;
-- SDF/MSDF quality at small sizes, atlas churn, field-generation cost, and device
-  cache behavior require explicit benchmarks and golden proof;
-- generator implementations are less settled than Taffy/Parley, so generator choice
-  remains a bounded M8B implementation gate;
-- intrinsic color-font rendering remains explicit later breadth.
+- clean pre-1.0 style/measurement/resource API changes are required;
+- text resource lifetime and font-source revisioning must be explicit;
+- Taffy integration must not retain a second tree;
+- small-size SDF/MSDF quality, atlas churn, generation cost, and device caches need
+  explicit benchmarks/goldens;
+- generator choice remains an M8B implementation gate;
+- color-font rendering remains explicit later breadth.
 
 ## Rejected alternatives
 
-### Extend the handwritten general layout engine
-
-Rejected. Production block/flex/grid behavior and measurement feedback add large
-correctness/conformance cost without creating RunenUI-specific value.
-
-### Use `TaffyTree` as the framework tree
-
-Rejected. It would duplicate mounted topology/identity/cache ownership. Only
-low-level/custom-tree algorithm integration is accepted.
-
-### Move `LayoutConstraints` to core for text
-
-Rejected. Generic constraints remain runtime layout policy. Text needs only a smaller
-renderer-neutral projection.
-
-### Use Cosmic Text as the complete M8 text subsystem
-
-Rejected for M8. Its combined shaping/rendering/editing surface overlaps accepted
-renderer ownership and future M10 editing authority more than Parley's composable
-text-layout stack.
-
-### Shape or line-break in the wgpu renderer
-
-Rejected. Renderer output depends on layout that already consumed these metrics;
-renderer-owned shaping would create a second text-layout authority.
-
-### Preserve alpha-raster glyph coverage as production text
-
-Rejected. Scale-specific alpha coverage would make text a permanent raster
-exception, bind logical resources to renderer realization, and undermine the target
-SDF/MSDF architecture.
-
-### Freeze a specific SDF/MSDF generator in A0
-
-Rejected. The architecture boundary is clear, but generator choices differ in
-maturity, FFI/build cost, quality, and CPU/GPU trade-offs. M8B must decide from a
-bounded shared corpus/benchmark without changing public text contracts.
-
-### Let each text widget measure and shape independently
-
-Rejected. That permits metric/pixel divergence, duplicated caches, inconsistent font
-fallback, and resource lifetime defects.
+- **Extend the handwritten general layout engine:** high correctness/conformance
+  cost with little RunenUI-specific value.
+- **Use `TaffyTree`:** duplicates retained topology/identity/cache authority.
+- **Move `LayoutConstraints` to core:** text only needs a smaller neutral projection.
+- **Use Cosmic Text as the complete text subsystem:** overlaps renderer and future
+  M10 editing authority more than the chosen composable shaping/layout stack.
+- **Shape/line-break in wgpu:** creates a second authority after layout already used
+  those metrics.
+- **Keep alpha-raster text as production:** binds logical text to scale-specific
+  renderer realization and defeats the SDF/MSDF target.
+- **Freeze one field generator in A0:** generator maturity/build/CPU-GPU trade-offs
+  require implementation evidence, not architectural guessing.
+- **Let widgets measure/shape independently:** allows metric/pixel divergence,
+  duplicate caches, inconsistent fallback, and lifetime defects.
 
 ## Acceptance proof
 
-M8A0 acceptance requires:
-
-- the accompanying M8 conformance matrix has unique IDs, valid statuses, and no
-  duplicate inherited M3-M7 obligations;
-- exact accepted current source and relevant unchanged authority are reviewed against
-  this target;
-- current upstream Taffy, Parley, and SDF/MSDF candidates are reviewed for release
-  family, MSRV, license, features, build/dependency cost, maintenance, and authority;
-- no Cargo dependency or production Rust implementation lands in A0;
-- canonical `cargo validate` and exact-head hosted CI pass;
-- the complete diff is cold-reviewed with no unresolved review debt;
-- owner acceptance, squash merge, and accepted-main validation occur before M8A.
+M8A0 acceptance requires the accompanying M8 matrix to have unique valid rows, the
+accepted baseline and relevant unchanged authority to be cold-reviewed, current
+Taffy/Parley/SDF-MSDF candidates to be checked for release/MSRV/license/support and
+build implications, no production dependency or Rust implementation in A0,
+canonical `cargo validate`, exact-head hosted CI, no unresolved review debt, explicit
+owner acceptance, squash merge, and accepted-main validation before M8A.
