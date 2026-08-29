@@ -108,6 +108,13 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
             findings,
         );
         if package == EXTERNAL_HOST_PACKAGE {
+            if manifest.contains("internal-test-seams") {
+                findings.push(Finding::fatal(
+                    "workspace.external_host_internal_seam_dependency",
+                    Some(path_text(&manifest_relative)),
+                    "external-host conformance must not enable or mention `internal-test-seams` in its manifest",
+                ));
+            }
             validate_external_host_dependencies(
                 &relative,
                 &dependencies,
