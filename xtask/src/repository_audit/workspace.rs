@@ -11,12 +11,14 @@ const WORKSPACE_STRUCTURE_PATH: &str = "docs/architecture/workspace-structure.md
 const CORE_PACKAGE: &str = "runenui_core";
 const RUNTIME_PACKAGE: &str = "runenui_runtime";
 const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";
+const WINIT_PACKAGE: &str = "runenui_winit";
 const TESTING_PACKAGE: &str = "runenui_testing";
 const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
 const RENDER_WGPU_FORBIDDEN_DEPENDENCIES: &[&str] =
     &["winit", "accesskit", "accesskit_winit", "raw-window-handle"];
+const WINIT_FORBIDDEN_DEPENDENCIES: &[&str] = &["wgpu"];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct WorkspaceMetrics {
@@ -88,14 +90,13 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
         }
 
         let (dependencies, dev_dependencies) = parse_dependency_names(&manifest);
-        if package == RENDER_WGPU_PACKAGE {
-            validate_renderer_external_dependencies(
-                &relative,
-                &dependencies,
-                &dev_dependencies,
-                findings,
-            );
-        }
+        validate_external_dependency_boundaries(
+            &relative,
+            &package,
+            &dependencies,
+            &dev_dependencies,
+            findings,
+        );
         members.push(WorkspaceMember {
             relative,
             package,
@@ -155,6 +156,21 @@ fn workspace_dependency_set<'a>(
         .collect()
 }
 
+fn validate_external_dependency_boundaries(
+    relative: &Path,
+    package: &str,
+    dependencies: &BTreeSet<String>,
+    dev_dependencies: &BTreeSet<String>,
+    findings: &mut Vec<Finding>,
+) {
+    if package == RENDER_WGPU_PACKAGE {
+        validate_renderer_external_dependencies(relative, dependencies, dev_dependencies, findings);
+    }
+    if package == WINIT_PACKAGE {
+        validate_winit_external_dependencies(relative, dependencies, dev_dependencies, findings);
+    }
+}
+
 fn validate_dependency_direction(
     member: &WorkspaceMember,
     members: &BTreeMap<&str, &WorkspaceMember>,
@@ -166,10 +182,14 @@ fn validate_dependency_direction(
     let allowed = match member.package.as_str() {
         CORE_PACKAGE | XTASK_PACKAGE => BTreeSet::new(),
         RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
-        REFERENCE_WINIT_PACKAGE => {
-            BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE])
-        }
-        RENDER_WGPU_PACKAGE | TESTING_PACKAGE | "counter" | EXTERNAL_WIDGET_PACKAGE => {
+        WINIT_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE]),
+        REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
+            CORE_PACKAGE,
+            RUNTIME_PACKAGE,
+            RENDER_WGPU_PACKAGE,
+            WINIT_PACKAGE,
+        ]),
+        RENDER_WGPU_PACKAGE | TESTING_PACKAGE | EXTERNAL_WIDGET_PACKAGE => {
             BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
         }
         package if member.relative.starts_with("crates") => {
@@ -209,6 +229,14 @@ fn validate_dependency_direction(
         ));
     }
 
+    validate_required_workspace_dependencies(member, &workspace_dependencies, findings);
+}
+
+fn validate_required_workspace_dependencies(
+    member: &WorkspaceMember,
+    workspace_dependencies: &BTreeSet<&str>,
+    findings: &mut Vec<Finding>,
+) {
     if member.package == RUNTIME_PACKAGE && !workspace_dependencies.contains(CORE_PACKAGE) {
         findings.push(Finding::fatal(
             "workspace.runtime_core_dependency_missing",
@@ -217,32 +245,55 @@ fn validate_dependency_direction(
         ));
     }
 
-    if member.package == RENDER_WGPU_PACKAGE {
-        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
-            if !workspace_dependencies.contains(dependency) {
-                findings.push(Finding::fatal(
-                    "workspace.renderer_public_dependency_missing",
-                    Some(path_text(&member.relative.join("Cargo.toml"))),
-                    format!(
-                        "runenui_render_wgpu must depend on public workspace package `{dependency}`"
-                    ),
-                ));
+    for (package, code, label) in [
+        (
+            RENDER_WGPU_PACKAGE,
+            "workspace.renderer_public_dependency_missing",
+            "runenui_render_wgpu",
+        ),
+        (
+            TESTING_PACKAGE,
+            "workspace.testing_public_dependency_missing",
+            "runenui_testing",
+        ),
+        (
+            WINIT_PACKAGE,
+            "workspace.winit_public_dependency_missing",
+            "runenui_winit",
+        ),
+    ] {
+        if member.package == package {
+            for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
+                if !workspace_dependencies.contains(dependency) {
+                    findings.push(Finding::fatal(
+                        code,
+                        Some(path_text(&member.relative.join("Cargo.toml"))),
+                        format!("{label} must depend on public workspace package `{dependency}`"),
+                    ));
+                }
             }
         }
     }
 
-    if member.package == TESTING_PACKAGE {
-        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
-            if !workspace_dependencies.contains(dependency) {
-                findings.push(Finding::fatal(
-                    "workspace.testing_public_dependency_missing",
-                    Some(path_text(&member.relative.join("Cargo.toml"))),
-                    format!(
-                        "runenui_testing must depend on public workspace package `{dependency}`"
-                    ),
-                ));
-            }
-        }
+    if matches!(member.package.as_str(), REFERENCE_WINIT_PACKAGE | "counter")
+        && !workspace_dependencies.contains(WINIT_PACKAGE)
+    {
+        findings.push(Finding::fatal(
+            "workspace.native_consumer_winit_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            format!(
+                "{} must consume runenui_winit as an accepted M7 native consumer",
+                member.package
+            ),
+        ));
+    }
+
+    if member.package == "counter" && !workspace_dependencies.contains(RENDER_WGPU_PACKAGE) {
+        findings.push(Finding::fatal(
+            "workspace.counter_renderer_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            "counter must consume runenui_render_wgpu as the M7 native application showcase",
+        ));
     }
 
     if member.package == REFERENCE_WINIT_PACKAGE
@@ -270,6 +321,23 @@ fn validate_renderer_external_dependencies(
                 format!(
                     "runenui_render_wgpu must not depend on native host/accessibility package `{forbidden}`"
                 ),
+            ));
+        }
+    }
+}
+
+fn validate_winit_external_dependencies(
+    relative: &Path,
+    dependencies: &BTreeSet<String>,
+    dev_dependencies: &BTreeSet<String>,
+    findings: &mut Vec<Finding>,
+) {
+    for forbidden in WINIT_FORBIDDEN_DEPENDENCIES {
+        if dependencies.contains(*forbidden) || dev_dependencies.contains(*forbidden) {
+            findings.push(Finding::fatal(
+                "workspace.winit_forbidden_renderer_dependency",
+                Some(path_text(&relative.join("Cargo.toml"))),
+                format!("runenui_winit must not depend on renderer/backend package `{forbidden}`"),
             ));
         }
     }
@@ -464,9 +532,10 @@ mod tests {
 
     use super::{
         CORE_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE, RENDER_WGPU_PACKAGE,
-        RUNTIME_PACKAGE, TESTING_PACKAGE, WorkspaceMember, documented_package_names,
+        RUNTIME_PACKAGE, TESTING_PACKAGE, WINIT_PACKAGE, WorkspaceMember, documented_package_names,
         parse_dependency_names, parse_package_name, parse_workspace_members,
         validate_dependency_direction, validate_renderer_external_dependencies,
+        validate_winit_external_dependencies,
     };
 
     fn member(
@@ -644,6 +713,78 @@ mod tests {
     }
 
     #[test]
+    fn winit_adapter_requires_public_core_runtime_and_rejects_renderer_backend() {
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
+        let runtime = member(
+            "crates/runenui_runtime",
+            RUNTIME_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let winit = member(
+            "crates/runenui_winit",
+            WINIT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (winit.package.as_str(), &winit),
+        ]);
+        let mut findings = Vec::new();
+        validate_dependency_direction(&winit, &members, &mut findings);
+        validate_winit_external_dependencies(
+            &winit.relative,
+            &winit.dependencies,
+            &winit.dev_dependencies,
+            &mut findings,
+        );
+        assert!(findings.is_empty());
+        let missing_runtime = member(
+            "crates/runenui_winit",
+            WINIT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let missing_members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (missing_runtime.package.as_str(), &missing_runtime),
+        ]);
+        let mut missing_findings = Vec::new();
+        validate_dependency_direction(&missing_runtime, &missing_members, &mut missing_findings);
+        assert!(
+            missing_findings
+                .iter()
+                .any(|finding| finding.code == "workspace.winit_public_dependency_missing")
+        );
+        let mut forbidden_findings = Vec::new();
+        validate_winit_external_dependencies(
+            &winit.relative,
+            &BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                "wgpu".to_owned(),
+            ]),
+            &BTreeSet::new(),
+            &mut forbidden_findings,
+        );
+        assert_eq!(
+            forbidden_findings
+                .iter()
+                .filter(|finding| finding.code == "workspace.winit_forbidden_renderer_dependency")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn reference_winit_may_consume_renderer_but_generic_examples_may_not() {
         let core = member(
             "crates/runenui_core",
@@ -663,6 +804,12 @@ mod tests {
             BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
             BTreeSet::new(),
         );
+        let winit = member(
+            "crates/runenui_winit",
+            WINIT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
         let reference = member(
             "examples/reference_winit",
             REFERENCE_WINIT_PACKAGE,
@@ -670,6 +817,7 @@ mod tests {
                 CORE_PACKAGE.to_owned(),
                 RUNTIME_PACKAGE.to_owned(),
                 RENDER_WGPU_PACKAGE.to_owned(),
+                WINIT_PACKAGE.to_owned(),
             ]),
             BTreeSet::new(),
         );
@@ -677,6 +825,7 @@ mod tests {
             (core.package.as_str(), &core),
             (runtime.package.as_str(), &runtime),
             (renderer.package.as_str(), &renderer),
+            (winit.package.as_str(), &winit),
             (reference.package.as_str(), &reference),
         ]);
         let mut findings = Vec::new();
@@ -693,6 +842,7 @@ mod tests {
             (core.package.as_str(), &core),
             (runtime.package.as_str(), &runtime),
             (renderer.package.as_str(), &renderer),
+            (winit.package.as_str(), &winit),
             (missing_renderer.package.as_str(), &missing_renderer),
         ]);
         let mut missing_findings = Vec::new();

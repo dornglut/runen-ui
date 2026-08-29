@@ -5,6 +5,7 @@ members = [
     "crates/runenui_core",
     "crates/runenui_runtime",
     "crates/runenui_render_wgpu",
+    "crates/runenui_winit",
     "crates/runenui_testing",
 
     "examples/counter",

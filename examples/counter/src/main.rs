@@ -179,6 +179,24 @@ mod tests {
             .collect()
     }
 
+    fn published_paint_colors(counter: Counter) -> Vec<runenui_core::Color> {
+        let mut runtime = mounted_counter(counter);
+        let tokens = StyleTokens::new();
+        let context = SurfaceBuildContext::tight(
+            &tokens,
+            LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(160_u16)),
+        );
+        let publication = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|_| unreachable!("counter paint publication is admitted"));
+        publication
+            .paint_scene()
+            .items()
+            .iter()
+            .filter_map(|item| item.primitive().color())
+            .collect()
+    }
+
     fn primary_pointer_event(
         pointer_id: PointerId,
         phase: PointerPhase,
@@ -193,6 +211,17 @@ mod tests {
             })
             .with_changed_button(PointerButton::Primary)
             .with_movement_delta(LogicalDelta::ZERO)
+    }
+
+    #[test]
+    fn counter_state_changes_have_distinct_literal_paint_publications() {
+        let zero = published_paint_colors(Counter::new());
+        let one = published_paint_colors(Counter { count: 1 });
+        let win = published_paint_colors(Counter { count: WIN_COUNT });
+
+        assert!(!zero.is_empty());
+        assert_ne!(zero, one);
+        assert_ne!(one, win);
     }
 
     #[test]

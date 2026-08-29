@@ -390,8 +390,12 @@ dependencies = [
 name = "counter"
 version = "0.1.0"
 dependencies = [
+ "accesskit_winit",
  "runenui_core",
+ "runenui_render_wgpu",
  "runenui_runtime",
+ "runenui_winit",
+ "winit",
 ]
 
 [[package]]
@@ -1556,11 +1560,11 @@ dependencies = [
 name = "reference_winit"
 version = "0.1.0"
 dependencies = [
- "accesskit",
  "accesskit_winit",
  "runenui_core",
  "runenui_render_wgpu",
  "runenui_runtime",
+ "runenui_winit",
  "winit",
 ]
 
@@ -1617,6 +1621,17 @@ version = "0.1.0"
 dependencies = [
  "runenui_core",
  "runenui_runtime",
+]
+
+[[package]]
+name = "runenui_winit"
+version = "0.1.0"
+dependencies = [
+ "accesskit",
+ "accesskit_winit",
+ "runenui_core",
+ "runenui_runtime",
+ "winit",
 ]
 
 [[package]]

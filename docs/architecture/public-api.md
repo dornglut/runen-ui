@@ -44,17 +44,28 @@ Runtime must not depend on testing convenience, concrete native platforms, concr
 
 It consumes public core/runtime paint contracts and caller-owned resource payloads only. It must not own a native event loop, widget/semantic/mounted/layout authority, runtime mutation, application resource identity/bindings, production shaping/layout policy, or AccessKit/winit behavior.
 
+## `runenui_winit`
+
+`runenui_winit` is the reusable native adapter edge proven by the second real M7 winit consumer. It owns only rebuildable translation/projection state:
+
+- host-session mapping from native winit device identity to neutral `InputDeviceId` values;
+- loss-preserving native keyboard lifetime, key, repeat, location, modifier, and cancellation translation;
+- native mouse pointer/button lifetime translation, including multi-button and point-authority cancellation semantics;
+- AccessKit tree projection over ordinary semantic publication, adapter-owned stable native identity, and exact AccessKit-action to semantic-action translation.
+
+It consumes public core/runtime contracts plus winit/AccessKit types. It has no renderer dependency and must not own or hide a native window/event loop, runtime pump or mutation policy, wake/redraw/publication acknowledgement, displayed-frame authority, renderer configuration/recovery, presentation lifecycle, or application behavior.
+
 ## `runenui_testing`
 
 `runenui_testing` is a downstream public convenience crate. `TestHarness<App>` composes ordinary public core/runtime APIs with deterministic logical time, bounded pumping/settling, deterministic surface publication, read-only observation of the latest ordinary public paint/hit publication products and exact input context, synthetic public interaction, and semantic queries/targets.
 
 It owns no live runtime queue, mounted/semantic store, identity allocation, publication state, trace authority, resource provider, or private mutation bridge. A test target retains exact public surface/semantic scope; testing must not reconstruct private mounted routing identity, fabricate scene/publication lineage, duplicate hit resolution, or guess a surface from a bare semantic ID.
 
-## Accepted native reference integration
+## Accepted native application integration
 
-The accepted M7B/M7C reference path is current behavior but is not a generic public host facade. `examples/reference_winit` visibly owns its winit window/event loop, runtime pumping and redraw driving, native coordinate mapping, renderer presentation/recovery policy, and native-to-neutral input translation. Its AccessKit adapter consumes ordinary semantic publication and returns actions through ordinary semantic ingress while retaining only rebuildable adapter-owned projection identity/state.
+The accepted M7B/M7C native path remains host-owned rather than a generic framework runner. `examples/reference_winit` and the native Counter application each visibly own their winit window/event loop, runtime pumping and redraw driving, native coordinate mapping, renderer presentation/recovery policy, and displayed-frame authority. Both consume `runenui_winit` for the substantial native input/AccessKit mechanics that are independent of those application policies.
 
-Native winit/AccessKit types remain outside `runenui_core` and `runenui_runtime`, and the reference host does not become framework-owned loop authority. Reusable host/adapter packaging requires demonstrated second-consumer pressure rather than being inferred from the existence of the reference application.
+Native winit/AccessKit types remain outside `runenui_core` and `runenui_runtime`; `runenui_render_wgpu` remains winit-free; and neither native application becomes framework-owned loop authority. The second consumer justifies the bounded adapter crate, not a generic native application facade. M7D still owns external-host closure and any further factoring must be driven by that real host pressure.
 
 ## Core invariants
 
@@ -86,12 +97,12 @@ Renderer-facing paint products, hit/input products, semantics, layout, and diagn
 
 The current public surface is pre-1.0 and may change incompatibly when accepted architecture requires a clean cutover. Important missing production capabilities include:
 
-- a reusable native host/application edge proven by a second real consumer and the M7 external-host closure path;
+- a reusable native host/application edge beyond the bounded translation adapter, pending M7 external-host closure;
 - broader resource/font/shaping integration beyond the bounded accepted M7 resource realization proof;
 - multi-window lifecycle and supported platform-profile breadth;
 - production text shaping, international layout, editing, clipboard, and complete editable-text integration;
 - production responsive layout/style breadth and a complete standard control library.
 
-M7 has accepted the first real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, and AccessKit semantic adapter over the M6 neutral protocol. M7 remains incomplete until the native application showcase and external-host closure are accepted. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
+M7 has accepted the first real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, and AccessKit semantic adapter, and this native application slice establishes the bounded reusable winit adapter plus native Counter showcase from demonstrated second-consumer pressure. M7 remains incomplete until M7D external-host closure is accepted. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
 
 Do not infer support from a target ADR, design document, type name, or roadmap entry alone. Code/tests establish current behavior; source/Rustdoc establishes the exact public Rust surface.
