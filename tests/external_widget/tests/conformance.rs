@@ -6,7 +6,7 @@ use runenui_core::{
     Color, CommandOrigin, Element, LogicalLength, LogicalRect, NoHostProtocol, PaintContribution,
     PaintContributionContext, PaintContributionItem, PaintPrimitive, SemanticAction,
     SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
-    SemanticRole, StyleTokens, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
+    SemanticRole, StyleEnvironment, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
     WidgetActivationOutput, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure,
     WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, column,
 };
@@ -70,13 +70,16 @@ fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>
     ));
 }
 
-fn context(tokens: &StyleTokens) -> SurfaceBuildContext<'_> {
-    SurfaceBuildContext::new(tokens, LayoutConstraints::unbounded())
+fn context(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
+    SurfaceBuildContext::new(environment, LayoutConstraints::unbounded())
 }
 
-fn publish<App: UiApp>(runtime: &mut AppRuntime<App>, tokens: &StyleTokens) -> SurfacePublication {
+fn publish<App: UiApp>(
+    runtime: &mut AppRuntime<App>,
+    environment: &StyleEnvironment,
+) -> SurfacePublication {
     runtime
-        .publish_surface(&context(tokens))
+        .publish_surface(&context(environment))
         .unwrap_or_else(|_| unreachable!("external conformance publication is admitted"))
 }
 
@@ -242,8 +245,8 @@ fn keyed_reorder_preserves_mounted_state_focus_and_slots() {
             .interaction()
             .pressed()
     );
-    let tokens = StyleTokens::new();
-    let publication = publish(&mut runtime, &tokens);
+    let environment = StyleEnvironment::default();
+    let publication = publish(&mut runtime, &environment);
     assert!(publication.paint_scene().items().iter().any(|item| {
         matches!(
             item.primitive(),
@@ -355,8 +358,8 @@ fn mounted_publication_products_are_exactly_aligned() {
         .iter()
         .map(|node| (node.id().clone(), node.parent().cloned()))
         .collect();
-    let tokens = StyleTokens::new();
-    let publication = publish(&mut runtime, &tokens);
+    let environment = StyleEnvironment::default();
+    let publication = publish(&mut runtime, &environment);
     let frame_ids: Vec<_> = publication
         .frame()
         .nodes()
