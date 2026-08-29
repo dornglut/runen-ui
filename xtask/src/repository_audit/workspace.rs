@@ -91,44 +91,16 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
                 format!("workspace package name `{package}` is duplicated"),
             ));
         }
-        if package == TESTING_PACKAGE && manifest.contains("internal-test-seams") {
-            findings.push(Finding::fatal(
-                "workspace.testing_internal_seam_dependency",
-                Some(path_text(&manifest_relative)),
-                "runenui_testing must consume ordinary public runtime APIs and must not enable or mention `internal-test-seams` in its manifest",
-            ));
-        }
 
         let (dependencies, dev_dependencies) = parse_dependency_names(&manifest);
-        validate_external_dependency_boundaries(
-            &relative,
-            &package,
-            &dependencies,
-            &dev_dependencies,
-            findings,
-        );
-        if package == EXTERNAL_HOST_PACKAGE {
-            if manifest.contains("internal-test-seams") {
-                findings.push(Finding::fatal(
-                    "workspace.external_host_internal_seam_dependency",
-                    Some(path_text(&manifest_relative)),
-                    "external-host conformance must not enable or mention `internal-test-seams` in its manifest",
-                ));
-            }
-            validate_external_host_dependencies(
-                &relative,
-                &dependencies,
-                &dev_dependencies,
-                findings,
-            );
-            validate_external_host_source(root, &relative, findings)?;
-        }
-        members.push(WorkspaceMember {
+        let member = WorkspaceMember {
             relative,
             package,
             dependencies,
             dev_dependencies,
-        });
+        };
+        validate_member_boundaries(root, &member, &manifest, &manifest_relative, findings)?;
+        members.push(member);
     }
 
     let documented = documented_package_names(&read(root, WORKSPACE_STRUCTURE_PATH)?);
@@ -169,6 +141,47 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
         members: members.len(),
         production_crates,
     })
+}
+
+fn validate_member_boundaries(
+    root: &Path,
+    member: &WorkspaceMember,
+    manifest: &str,
+    manifest_relative: &Path,
+    findings: &mut Vec<Finding>,
+) -> Result<(), String> {
+    if member.package == TESTING_PACKAGE && manifest.contains("internal-test-seams") {
+        findings.push(Finding::fatal(
+            "workspace.testing_internal_seam_dependency",
+            Some(path_text(manifest_relative)),
+            "runenui_testing must consume ordinary public runtime APIs and must not enable or mention `internal-test-seams` in its manifest",
+        ));
+    }
+
+    validate_external_dependency_boundaries(
+        &member.relative,
+        &member.package,
+        &member.dependencies,
+        &member.dev_dependencies,
+        findings,
+    );
+    if member.package != EXTERNAL_HOST_PACKAGE {
+        return Ok(());
+    }
+    if manifest.contains("internal-test-seams") {
+        findings.push(Finding::fatal(
+            "workspace.external_host_internal_seam_dependency",
+            Some(path_text(manifest_relative)),
+            "external-host conformance must not enable or mention `internal-test-seams` in its manifest",
+        ));
+    }
+    validate_external_host_dependencies(
+        &member.relative,
+        &member.dependencies,
+        &member.dev_dependencies,
+        findings,
+    );
+    validate_external_host_source(root, &member.relative, findings)
 }
 
 fn workspace_dependency_set<'a>(
