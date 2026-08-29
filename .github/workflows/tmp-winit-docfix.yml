@@ -1,0 +1,139 @@
+name: Temporary runenui_winit API docs fix
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  docfix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: rustup toolchain install stable --profile minimal --component rustfmt
+      - name: Add promoted public API documentation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          lib = Path('crates/runenui_winit/src/lib.rs')
+          text = lib.read_text()
+          old = '//! translate native facts into existing RunenUI contracts.'
+          new = '//! translate native facts into existing `RunenUI` contracts.'
+          assert text.count(old) == 1
+          lib.write_text(text.replace(old, new))
+
+          accessibility = Path('crates/runenui_winit/src/accessibility.rs')
+          text = accessibility.read_text()
+          old = '''    pub fn action_request(
+        &self,
+        request: &ActionRequest,
+    ) -> Result<runenui_core::SemanticActionRequest, AdapterDiagnostic> {'''
+          new = '''    /// Translates one native `AccessKit` action into the exact neutral semantic request.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AdapterDiagnostic`] when the request targets the wrong tree, an unknown or
+    /// retired adapter node, carries invalid action data, or requests an unsupported semantic
+    /// action.
+    pub fn action_request(
+        &self,
+        request: &ActionRequest,
+    ) -> Result<runenui_core::SemanticActionRequest, AdapterDiagnostic> {'''
+          assert text.count(old) == 1
+          accessibility.write_text(text.replace(old, new))
+
+          device = Path('crates/runenui_winit/src/device_identity.rs')
+          text = device.read_text()
+          old = '''    pub fn resolve(&mut self, native: DeviceId) -> Result<InputDeviceId, DeviceIdentityError> {'''
+          new = '''    /// Resolves one native device to its stable host-session neutral identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DeviceIdentityError::Exhausted`] when no further neutral device identity can be
+    /// allocated.
+    pub fn resolve(&mut self, native: DeviceId) -> Result<InputDeviceId, DeviceIdentityError> {'''
+          assert text.count(old) == 1
+          device.write_text(text.replace(old, new))
+
+          mouse = Path('crates/runenui_winit/src/mouse_input.rs')
+          text = mouse.read_text()
+          replacements = [
+              ('''    pub fn cursor_moved(
+        &mut self,
+        device_id: InputDeviceId,
+        point: TranslatedPointerPoint,
+    ) -> Result<PointerEvent, MouseIngressDiagnostic> {''', '''    /// Advances the neutral pointer stream from one translated native cursor move.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MouseIngressDiagnostic`] when the incoming device conflicts with the active
+    /// stream, the movement delta cannot be represented, or pointer identity is exhausted.
+    pub fn cursor_moved(
+        &mut self,
+        device_id: InputDeviceId,
+        point: TranslatedPointerPoint,
+    ) -> Result<PointerEvent, MouseIngressDiagnostic> {'''),
+              ('''    pub fn wheel(
+        &mut self,
+        device_id: InputDeviceId,
+        point: TranslatedPointerPoint,
+        scroll_delta: LogicalDelta,
+    ) -> Result<PointerEvent, MouseIngressDiagnostic> {''', '''    /// Translates one native wheel transition within the current neutral pointer stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MouseIngressDiagnostic`] when the incoming device conflicts with the active
+    /// stream or pointer identity is exhausted.
+    pub fn wheel(
+        &mut self,
+        device_id: InputDeviceId,
+        point: TranslatedPointerPoint,
+        scroll_delta: LogicalDelta,
+    ) -> Result<PointerEvent, MouseIngressDiagnostic> {'''),
+              ('''    pub fn button_input(
+        &mut self,
+        device_id: InputDeviceId,
+        state: ElementState,
+        button: MouseButton,
+        point: Option<TranslatedPointerPoint>,
+    ) -> Result<MouseButtonOutcome, MouseIngressDiagnostic> {''', '''    /// Translates one native mouse-button transition while preserving stream lifetime semantics.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MouseIngressDiagnostic`] when an otherwise representable transition conflicts
+    /// with active-device or stream authority, or when pointer identity is exhausted. Benign
+    /// duplicate, unmatched, or deliberately suppressed transitions are returned as
+    /// [`MouseButtonOutcome::Suppressed`] instead.
+    pub fn button_input(
+        &mut self,
+        device_id: InputDeviceId,
+        state: ElementState,
+        button: MouseButton,
+        point: Option<TranslatedPointerPoint>,
+    ) -> Result<MouseButtonOutcome, MouseIngressDiagnostic> {'''),
+          ]
+          for old, new in replacements:
+              assert text.count(old) == 1, old
+              text = text.replace(old, new)
+          mouse.write_text(text)
+      - run: cargo +stable fmt --all
+      - name: Commit public API docs
+        shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Documentation already applied'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates/runenui_winit/src/lib.rs crates/runenui_winit/src/accessibility.rs crates/runenui_winit/src/device_identity.rs crates/runenui_winit/src/mouse_input.rs
+          git commit -m 'M7: document reusable winit adapter errors'
+          git push origin "HEAD:${HEAD_BRANCH}"
