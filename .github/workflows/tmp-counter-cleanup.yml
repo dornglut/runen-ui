@@ -1,0 +1,82 @@
+name: Temporary M7 Counter cleanup
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: rustup toolchain install stable --profile minimal --component rustfmt
+      - name: Restore accepted lock selections
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +stable update -p 'syn@3.0.4' --precise 3.0.0
+          cargo +stable update -p 'flate2@1.1.10' --precise 1.1.9
+          cargo +stable update -p 'indexmap@2.14.1' --precise 2.14.0
+          cargo +stable update -p 'libredox@0.1.21' --precise 0.1.20
+          cargo +stable update -p 'proc-macro2@1.0.107' --precise 1.0.106
+          cargo +stable update -p 'quote@1.0.47' --precise 1.0.46
+          cargo +stable update -p 'zmij@1.0.23' --precise 1.0.22
+      - name: Correct extraction cleanup
+        shell: python
+        run: |
+          from pathlib import Path
+          import tomllib
+
+          main = Path('examples/counter/src/main.rs')
+          text = main.read_text()
+          wrong = 'assert!(surface.contains("paint="));'
+          right = 'assert!(!surface.contains("paint="));'
+          assert text.count(wrong) == 2, 'expected exactly two incorrect frame/paint assertions'
+          main.write_text(text.replace(wrong, right))
+
+          accessibility = Path('crates/runenui_winit/src/accessibility.rs')
+          text = accessibility.read_text()
+          old = '//! AccessKit projection at the reference host boundary.'
+          new = '//! Reusable AccessKit projection at the native adapter boundary.'
+          assert text.count(old) == 1, 'unexpected accessibility module header'
+          accessibility.write_text(text.replace(old, new))
+
+          lock = tomllib.loads(Path('Cargo.lock').read_text())
+          versions = {}
+          for package in lock['package']:
+              versions.setdefault(package['name'], set()).add(package['version'])
+          expected = {
+              'flate2': {'1.1.9'},
+              'indexmap': {'2.14.0'},
+              'libredox': {'0.1.20'},
+              'proc-macro2': {'1.0.106'},
+              'quote': {'1.0.46'},
+              'syn': {'2.0.119', '3.0.0'},
+              'zmij': {'1.0.22'},
+          }
+          for name, wanted in expected.items():
+              assert versions.get(name) == wanted, (name, versions.get(name), wanted)
+          assert 'zlib-rs' not in versions
+          assert versions.get('miniz_oxide') == {'0.8.9'}
+      - run: cargo +stable fmt --all
+      - name: Commit bounded cleanup
+        shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff --quiet; then
+            echo 'Cleanup already applied'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Cargo.lock examples/counter/src/main.rs crates/runenui_winit/src/accessibility.rs
+          git commit -m 'M7: normalize Counter candidate cleanup'
+          git push origin "HEAD:${HEAD_BRANCH}"
