@@ -14,11 +14,20 @@ const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";
 const WINIT_PACKAGE: &str = "runenui_winit";
 const TESTING_PACKAGE: &str = "runenui_testing";
 const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
+const EXTERNAL_HOST_PACKAGE: &str = "runenui_external_host_conformance";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
 const RENDER_WGPU_FORBIDDEN_DEPENDENCIES: &[&str] =
     &["winit", "accesskit", "accesskit_winit", "raw-window-handle"];
 const WINIT_FORBIDDEN_DEPENDENCIES: &[&str] = &["wgpu"];
+const EXTERNAL_HOST_FORBIDDEN_SOURCE_PATTERNS: &[(&str, &str)] = &[
+    ("::__runtime", "private runtime bridge"),
+    ("internal-test-seams", "internal test seam"),
+    ("runenui_testing", "testing convenience"),
+    ("runenui_winit", "native adapter"),
+    ("winit::", "native host"),
+    ("accesskit", "accessibility adapter"),
+];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct WorkspaceMetrics {
@@ -97,6 +106,15 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
             &dev_dependencies,
             findings,
         );
+        if package == EXTERNAL_HOST_PACKAGE {
+            validate_external_host_dependencies(
+                &relative,
+                &dependencies,
+                &dev_dependencies,
+                findings,
+            );
+            validate_external_host_source(root, &relative, findings)?;
+        }
         members.push(WorkspaceMember {
             relative,
             package,
@@ -189,6 +207,9 @@ fn validate_dependency_direction(
             RENDER_WGPU_PACKAGE,
             WINIT_PACKAGE,
         ]),
+        EXTERNAL_HOST_PACKAGE => {
+            BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE])
+        }
         RENDER_WGPU_PACKAGE | TESTING_PACKAGE | EXTERNAL_WIDGET_PACKAGE => {
             BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
         }
@@ -341,6 +362,57 @@ fn validate_winit_external_dependencies(
             ));
         }
     }
+}
+
+fn validate_external_host_dependencies(
+    relative: &Path,
+    dependencies: &BTreeSet<String>,
+    dev_dependencies: &BTreeSet<String>,
+    findings: &mut Vec<Finding>,
+) {
+    let expected = BTreeSet::from([
+        CORE_PACKAGE.to_owned(),
+        RUNTIME_PACKAGE.to_owned(),
+        RENDER_WGPU_PACKAGE.to_owned(),
+    ]);
+    if dependencies != &expected || !dev_dependencies.is_empty() {
+        findings.push(Finding::fatal(
+            "workspace.external_host_dependency_contract",
+            Some(path_text(&relative.join("Cargo.toml"))),
+            "external-host conformance must depend exactly on runenui_core, runenui_runtime, and runenui_render_wgpu, with no dev-dependencies",
+        ));
+    }
+}
+
+fn validate_external_host_source(
+    root: &Path,
+    relative: &Path,
+    findings: &mut Vec<Finding>,
+) -> Result<(), String> {
+    let source_relative = relative.join("src/lib.rs");
+    let source = fs::read_to_string(root.join(&source_relative)).map_err(|error| {
+        format!(
+            "failed to read external-host conformance source {}: {error}",
+            source_relative.display()
+        )
+    })?;
+    if let Some((pattern, label)) = external_host_forbidden_source_pattern(&source) {
+        findings.push(Finding::fatal(
+            "workspace.external_host_forbidden_source",
+            Some(path_text(&source_relative)),
+            format!(
+                "external-host conformance source must not use {label} marker `{pattern}`"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn external_host_forbidden_source_pattern(source: &str) -> Option<(&'static str, &'static str)> {
+    EXTERNAL_HOST_FORBIDDEN_SOURCE_PATTERNS
+        .iter()
+        .copied()
+        .find(|(pattern, _)| source.contains(pattern))
 }
 
 fn parse_workspace_members(contents: &str) -> Option<Vec<PathBuf>> {
@@ -531,10 +603,11 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        CORE_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE, RENDER_WGPU_PACKAGE,
-        RUNTIME_PACKAGE, TESTING_PACKAGE, WINIT_PACKAGE, WorkspaceMember, documented_package_names,
-        parse_dependency_names, parse_package_name, parse_workspace_members,
-        validate_dependency_direction, validate_renderer_external_dependencies,
+        CORE_PACKAGE, EXTERNAL_HOST_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE,
+        RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, WINIT_PACKAGE, WorkspaceMember,
+        documented_package_names, external_host_forbidden_source_pattern, parse_dependency_names,
+        parse_package_name, parse_workspace_members, validate_dependency_direction,
+        validate_external_host_dependencies, validate_renderer_external_dependencies,
         validate_winit_external_dependencies,
     };
 
@@ -874,6 +947,43 @@ mod tests {
                 .iter()
                 .any(|finding| finding.code == "workspace.forbidden_dependency_direction")
         );
+    }
+
+    #[test]
+    fn external_host_has_exact_renderer_boundary_and_rejects_privileged_source_markers() {
+        let relative = Path::new("tests/external_host");
+        let dependencies = BTreeSet::from([
+            CORE_PACKAGE.to_owned(),
+            RUNTIME_PACKAGE.to_owned(),
+            RENDER_WGPU_PACKAGE.to_owned(),
+        ]);
+        let mut findings = Vec::new();
+        validate_external_host_dependencies(
+            relative,
+            &dependencies,
+            &BTreeSet::new(),
+            &mut findings,
+        );
+        assert!(findings.is_empty());
+
+        validate_external_host_dependencies(
+            relative,
+            &BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                RENDER_WGPU_PACKAGE.to_owned(),
+                "winit".to_owned(),
+            ]),
+            &BTreeSet::new(),
+            &mut findings,
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].code, "workspace.external_host_dependency_contract");
+
+        assert!(external_host_forbidden_source_pattern("use runenui_core::__runtime;").is_some());
+        assert!(external_host_forbidden_source_pattern("use runenui_winit::MouseInputState;").is_some());
+        assert!(external_host_forbidden_source_pattern("use runenui_runtime::AppRuntime;").is_none());
+        assert_eq!(EXTERNAL_HOST_PACKAGE, "runenui_external_host_conformance");
     }
 
     #[test]
