@@ -25,11 +25,14 @@ mod tests {
         WidgetMeasure,
     };
     use runenui_render_wgpu::{
-        BackendSelection, ImagePayload, PayloadValidationError, PublicationRenderError, Renderer,
-        RendererInitError, RendererOptions, ResourcePayload, ResourceProvider,
-        ResourceProviderError, ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
+        BackendSelection, ImagePayload, OffscreenPublicationReadback, OffscreenReadback,
+        PayloadValidationError, PublicationRenderError, Renderer, RendererInitError,
+        RendererOptions, ResourcePayload, ResourceProvider, ResourceProviderError,
+        ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
     };
-    use runenui_runtime::{AppRuntime, PumpBudget, SurfaceBuildContext};
+    use runenui_runtime::{
+        AppRuntime, PumpBudget, SurfaceBuildContext, SurfacePublication,
+    };
 
     const SURFACE_EXTENT: u16 = 8;
     const IMAGE_EXTENT: f32 = 4.0;
@@ -273,15 +276,7 @@ mod tests {
             .map_err(|error| debug_error("first publication failed", &error))?;
         publication_count += 1;
         let first_revision = first_publication.paint_publication().revision();
-        let semantic_snapshot = first_publication.semantic_publication().snapshot();
-        let semantic_target = semantic_snapshot
-            .nodes()
-            .iter()
-            .find(|node| node.supported_actions().contains(&SemanticAction::Activate))
-            .ok_or_else(|| io::Error::other("published fixture has no actionable semantic node"))?
-            .id()
-            .clone();
-        let semantic_surface = semantic_snapshot.surface_id().clone();
+        let semantic_request = semantic_activate_request(&first_publication)?;
 
         steps.push(FrameStep::Acknowledge);
         runtime
@@ -291,19 +286,7 @@ mod tests {
         steps.push(FrameStep::Render);
         let render_failure = renderer
             .render_offscreen_publication(first_publication.paint_publication(), &failing_provider);
-        let Err(render_failure) = render_failure else {
-            return Err(
-                io::Error::other("intentional provider failure rendered successfully").into(),
-            );
-        };
-        assert!(matches!(
-            render_failure,
-            PublicationRenderError::Resource {
-                error: ResourceResolveError::Provider(ref provider_error),
-                ..
-            } if provider_error.kind() == ResourceProviderErrorKind::Unavailable
-        ));
-        assert_eq!(failing_provider.loads(), 1);
+        assert_expected_resource_failure(render_failure, &failing_provider)?;
         steps.push(FrameStep::RenderFailed);
         assert_eq!(publication_count, 1);
 
@@ -317,34 +300,12 @@ mod tests {
         assert_ne!(provider.loads(), 0);
 
         steps.push(FrameStep::Present);
-        let first_presented = present(first_render.readback());
-        assert_eq!(
-            presented_pixel(
-                &first_presented,
-                first_render.readback().extent().width(),
-                1,
-                1,
-            ),
-            IMAGE_PIXEL
-        );
-        assert_eq!(
-            presented_pixel(
-                &first_presented,
-                first_render.readback().extent().width(),
-                6,
-                6,
-            ),
-            color_pixel(ACTIVE_BACKGROUND)
-        );
+        let first_presented = present_and_assert(first_render.readback(), ACTIVE_BACKGROUND);
         assert!(runtime.take_redraw_request().is_none());
 
         steps.push(FrameStep::SubmitSemanticAction);
         runtime
-            .submit_semantic_action(SemanticActionRequest::new(
-                semantic_surface,
-                semantic_target,
-                SemanticAction::Activate,
-            ))
+            .submit_semantic_action(semantic_request)
             .map_err(|error| debug_error("semantic action submission failed", &error))?;
 
         steps.push(FrameStep::Pump);
@@ -376,40 +337,10 @@ mod tests {
             .render_offscreen_publication(second_publication.paint_publication(), &provider)?;
 
         steps.push(FrameStep::Present);
-        let second_presented = present(second_render.readback());
-        assert_eq!(
-            presented_pixel(
-                &second_presented,
-                second_render.readback().extent().width(),
-                6,
-                6,
-            ),
-            color_pixel(INACTIVE_BACKGROUND)
-        );
+        let second_presented = present_and_assert(second_render.readback(), INACTIVE_BACKGROUND);
         assert_ne!(first_presented, second_presented);
         assert_eq!(publication_count, 2);
-
-        assert_eq!(
-            steps,
-            vec![
-                FrameStep::SubmitAction,
-                FrameStep::Pump,
-                FrameStep::TakeRedraw,
-                FrameStep::Publish,
-                FrameStep::Acknowledge,
-                FrameStep::Render,
-                FrameStep::RenderFailed,
-                FrameStep::RenderRetrySamePublication,
-                FrameStep::Present,
-                FrameStep::SubmitSemanticAction,
-                FrameStep::Pump,
-                FrameStep::TakeRedraw,
-                FrameStep::Publish,
-                FrameStep::Acknowledge,
-                FrameStep::Render,
-                FrameStep::Present,
-            ]
-        );
+        assert_eq!(steps, expected_steps());
 
         let _ = runtime.shutdown();
         eprintln!(
@@ -418,6 +349,78 @@ mod tests {
             renderer.diagnostics().adapter_info().backend,
         );
         Ok(())
+    }
+
+    fn semantic_activate_request(
+        publication: &SurfacePublication,
+    ) -> Result<SemanticActionRequest, io::Error> {
+        let snapshot = publication.semantic_publication().snapshot();
+        let target = snapshot
+            .nodes()
+            .iter()
+            .find(|node| node.supported_actions().contains(&SemanticAction::Activate))
+            .ok_or_else(|| io::Error::other("published fixture has no actionable semantic node"))?
+            .id()
+            .clone();
+        Ok(SemanticActionRequest::new(
+            snapshot.surface_id().clone(),
+            target,
+            SemanticAction::Activate,
+        ))
+    }
+
+    fn assert_expected_resource_failure(
+        result: Result<OffscreenPublicationReadback, PublicationRenderError>,
+        provider: &FailingImageProvider,
+    ) -> Result<(), Box<dyn Error>> {
+        let Err(error) = result else {
+            return Err(
+                io::Error::other("intentional provider failure rendered successfully").into(),
+            );
+        };
+        assert!(matches!(
+            error,
+            PublicationRenderError::Resource {
+                error: ResourceResolveError::Provider(ref provider_error),
+                ..
+            } if provider_error.kind() == ResourceProviderErrorKind::Unavailable
+        ));
+        assert_eq!(provider.loads(), 1);
+        Ok(())
+    }
+
+    fn present_and_assert(readback: &OffscreenReadback, background: Color) -> Vec<u8> {
+        let presented = present(readback);
+        assert_eq!(
+            presented_pixel(&presented, readback.extent().width(), 1, 1),
+            IMAGE_PIXEL
+        );
+        assert_eq!(
+            presented_pixel(&presented, readback.extent().width(), 6, 6),
+            color_pixel(background)
+        );
+        presented
+    }
+
+    fn expected_steps() -> Vec<FrameStep> {
+        vec![
+            FrameStep::SubmitAction,
+            FrameStep::Pump,
+            FrameStep::TakeRedraw,
+            FrameStep::Publish,
+            FrameStep::Acknowledge,
+            FrameStep::Render,
+            FrameStep::RenderFailed,
+            FrameStep::RenderRetrySamePublication,
+            FrameStep::Present,
+            FrameStep::SubmitSemanticAction,
+            FrameStep::Pump,
+            FrameStep::TakeRedraw,
+            FrameStep::Publish,
+            FrameStep::Acknowledge,
+            FrameStep::Render,
+            FrameStep::Present,
+        ]
     }
 
     fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
@@ -429,7 +432,7 @@ mod tests {
         [color.red(), color.green(), color.blue(), color.alpha()]
     }
 
-    fn present(readback: &runenui_render_wgpu::OffscreenReadback) -> Vec<u8> {
+    fn present(readback: &OffscreenReadback) -> Vec<u8> {
         readback.rgba8_srgb().to_vec()
     }
 
