@@ -136,8 +136,8 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     let style_dirty = pending.contains(DirtyPhases::STYLE)
         || current
             .context_key
-            .style_tokens
-            .content_differs(&next_context.style_tokens);
+            .style_environment
+            .content_differs(&next_context.style_environment);
     let mut layout_dirty =
         pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
     let mut hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
@@ -148,9 +148,10 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     let mut completed = DirtyPhases::default();
 
     if style_dirty {
-        let next_styles = resolve_styles(tree, &current.topology, context.style_tokens());
-        layout_dirty |= current.styles.padding_changed(&next_styles);
-        paint_dirty |= current.styles.paint_changed(&next_styles);
+        let next_styles = resolve_styles(tree, &current.topology, context.style_environment());
+        let effects = current.styles.effects_against(&next_styles);
+        layout_dirty |= effects.layout();
+        paint_dirty |= effects.paint();
         current.styles = Arc::new(next_styles);
         report.record(SurfacePhase::Style);
         completed.insert(DirtyPhases::STYLE);
@@ -234,7 +235,7 @@ fn plan_structural_surface<'tree, Action>(
     let mut report = SurfacePhaseReport::default();
     let topology = collect_topology(tree);
     report.record(SurfacePhase::Tree);
-    let styles = resolve_styles(tree, &topology, context.style_tokens());
+    let styles = resolve_styles(tree, &topology, context.style_environment());
     report.record(SurfacePhase::Style);
     let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::ALL);
     let semantic_capability_plan = tree.plan_semantic_publication_capabilities();

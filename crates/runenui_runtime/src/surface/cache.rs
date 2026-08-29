@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use runenui_core::{StyleTokens, WidgetDiagnostic};
+use runenui_core::{StyleEnvironment, WidgetDiagnostic};
 
 use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
@@ -117,17 +117,13 @@ pub(super) fn phase_function_counts() -> [usize; 7] {
 pub(super) struct RootConstraintKey([u32; 4]);
 
 #[derive(Clone, Debug, PartialEq)]
-// Publication context key: exact token content plus a diagnostic revision hint.
-pub(super) struct StyleTokensCacheKey {
-    pub(super) snapshot: StyleTokens,
-    pub(super) revision: u64,
+// Publication context key: complete exact style-environment content.
+pub(super) struct StyleEnvironmentCacheKey {
+    pub(super) snapshot: StyleEnvironment,
 }
 
-impl StyleTokensCacheKey {
+impl StyleEnvironmentCacheKey {
     pub(super) fn content_differs(&self, other: &Self) -> bool {
-        if self.revision == other.revision && self.snapshot == other.snapshot {
-            return false;
-        }
         self.snapshot != other.snapshot
     }
 }
@@ -136,7 +132,7 @@ impl StyleTokensCacheKey {
 pub(super) struct SurfaceContextKey {
     // Every field is a context key, not a mounted or phase-owned authored fact.
     pub(super) constraints: RootConstraintKey,
-    pub(super) style_tokens: StyleTokensCacheKey,
+    pub(super) style_environment: StyleEnvironmentCacheKey,
     pub(super) measurement_identity: u64,
     pub(super) measurement_revision: u64,
 }
@@ -259,9 +255,8 @@ pub(super) fn context_key(context: &SurfaceBuildContext<'_>) -> SurfaceContextKe
     let vertical = axis(context.root_constraints().vertical());
     SurfaceContextKey {
         constraints: RootConstraintKey([horizontal[0], horizontal[1], vertical[0], vertical[1]]),
-        style_tokens: StyleTokensCacheKey {
-            snapshot: context.style_tokens().clone(),
-            revision: context.style_tokens().revision(),
+        style_environment: StyleEnvironmentCacheKey {
+            snapshot: context.style_environment().clone(),
         },
         measurement_identity: context.measurement_provider().cache_identity(),
         measurement_revision: context.measurement_provider().cache_revision(),
@@ -270,7 +265,7 @@ pub(super) fn context_key(context: &SurfaceBuildContext<'_>) -> SurfaceContextKe
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{StyleTokens, View, WidgetInvalidation, text};
+    use runenui_core::{StyleEnvironment, View, WidgetInvalidation, text};
 
     use super::{SurfaceCache, SurfacePhase};
     use crate::{
@@ -300,8 +295,8 @@ mod tests {
     #[test]
     fn focus_only_publication_reuses_all_renderer_products() {
         let (mut tree, _) = MountedTree::<()>::mount(text("focus").key("root").into_element());
-        let tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
         let mut cache = None;
         let _ = publish(&mut tree, &context, &mut cache);
         let before = retained(cache.as_ref());
@@ -319,8 +314,8 @@ mod tests {
     #[test]
     fn dropped_dirty_non_structural_plan_leaves_live_cache_and_dirty_work_unchanged() {
         let (mut tree, _) = MountedTree::<()>::mount(text("rollback").key("root").into_element());
-        let tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
         let mut cache = None;
         let _ = publish(&mut tree, &context, &mut cache);
         let root = tree.publication_preorder_ids()[0].clone();
