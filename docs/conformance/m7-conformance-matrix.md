@@ -2,15 +2,16 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M7A, M7B, and M7C owner-accepted on accepted main; M7D remains blocked
+> **Status:** M7A, M7B, M7C, and M7D owner-accepted; M7 closed
 >
 > **Milestone:** M7
 >
-> **Reviewed baseline:** `42df29bc68cfec97c13f80f0f59c209db512152c`
+> **Reviewed baseline:** `bdb902b31e52bef9b81d7e8b809b3ab8a367d373`
 >
-> M7A, M7B, and M7C are normative for their eighteen owner-accepted rows after
-> exact-head owner acceptance, guarded merge, and accepted-main validation. M7D
-> remains blocked until its own accepted implementation and proof obligations land.
+> M7A, M7B, M7C, and M7D are normative for their twenty owner-accepted rows after
+> exact-head owner acceptance, guarded merge, and accepted-main validation. The
+> final closure reconciliation promotes only `EMBED-01` and `EMBED-02`; no M8
+> implementation capability is claimed here.
 
 [ADR 0008](../adr/0008-reference-production-spine.md) owns M7 architecture.
 M4 owns neutral input and wake/redraw; M5 owns semantic publication/action;
@@ -18,10 +19,10 @@ M6 owns paint/hit publication, revision/damage, and `ResourceRef` identity.
 
 ```text
 20 total unique rows
-18 owner-accepted
+20 owner-accepted
 0 implementation-complete
 0 proof-complete
-2 blocked
+0 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -70,11 +71,11 @@ cannot satisfy M7.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| EMBED-01 | Winit-free downstream host visibly owns submit/pump/redraw/publish/ack/render/present sequencing; ack follows publication success and renderer retry uses retained publication under host policy. | Winit-free multi-frame host corpus | Hidden loop, renderer-driven pump, premature ack, unchanged-republish recovery, private-runtime audit | External-host frame-step records | M7D | blocked | Required |
-| EMBED-02 | Standalone and external hosts share accepted runtime/publication contracts, `runenui_render_wgpu`, and complete-`ResourceRef` provider rules; integrated M4/M5/M6/M7 proof and truthful closure docs remain green. | Cross-host corpus and canonical validation | Host-specific scene/renderer/resource identity or later-capability overclaim audit | Integrated CI/evidence and authority audit | M7D | blocked | Required |
+| EMBED-01 | Winit-free downstream host visibly owns submit/pump/redraw/publish/ack/render/present sequencing; ack follows publication success and renderer retry uses retained publication under host policy. | Winit-free multi-frame host corpus | Hidden loop, renderer-driven pump, premature ack, unchanged-republish recovery, private-runtime audit | External-host frame-step records | M7D | owner-accepted | Required |
+| EMBED-02 | Standalone and external hosts share accepted runtime/publication contracts, `runenui_render_wgpu`, and complete-`ResourceRef` provider rules; integrated M4/M5/M6/M7 proof and truthful closure docs remain green. | Cross-host corpus and canonical validation | Host-specific scene/renderer/resource identity or later-capability overclaim audit | Integrated CI/evidence and authority audit | M7D | owner-accepted | Required |
 
 ## Closure rule
 
-M7 closes only after all 20 rows are `owner-accepted` on accepted default branch
-and final closure reconciliation is accepted-main validated. M8 does not begin
-from an unmerged M7 branch.
+M7 is closed with all 20 rows `owner-accepted` on accepted default branch. M8 may
+begin only from accepted default branch after this final closure reconciliation is
+itself accepted-main validated.
