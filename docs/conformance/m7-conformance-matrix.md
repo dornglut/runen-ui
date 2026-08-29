@@ -6,7 +6,7 @@
 >
 > **Milestone:** M7
 >
-> **Reviewed baseline:** `bdb902b31e52bef9b81d7e8b809b3ab8a367d373`
+> **Reviewed baseline:** `42df29bc68cfec97c13f80f0f59c209db512152c`
 >
 > M7A, M7B, M7C, and M7D are normative for their twenty owner-accepted rows after
 > exact-head owner acceptance, guarded merge, and accepted-main validation. The
