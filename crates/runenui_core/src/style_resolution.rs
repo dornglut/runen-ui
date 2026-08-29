@@ -139,7 +139,7 @@ pub struct StyleResolution {
 }
 
 impl StyleResolution {
-    fn new(
+    const fn new(
         computed_style: ComputedStyle,
         provenance: StyleProvenance,
         unresolved_tokens: Vec<UnresolvedStyleToken>,
@@ -219,17 +219,16 @@ impl ResolutionBuilder {
                 self.foreground = Some(*value);
                 self.provenance.foreground = StyleFieldProvenance::Literal;
             }
-            ColorValue::Token(token) => match tokens.color(token) {
-                Some(value) => {
+            ColorValue::Token(token) => {
+                if let Some(value) = tokens.color(token) {
                     self.foreground = Some(value);
                     self.provenance.foreground = StyleFieldProvenance::ResolvedToken(token.clone());
-                }
-                None => {
+                } else {
                     self.foreground = None;
                     self.provenance.foreground = StyleFieldProvenance::MissingToken(token.clone());
                     self.record_missing(UnresolvedStyleToken::Foreground(token.clone()));
                 }
-            },
+            }
         }
     }
 
@@ -245,17 +244,16 @@ impl ResolutionBuilder {
                 self.background = Some(*value);
                 self.provenance.background = StyleFieldProvenance::Literal;
             }
-            ColorValue::Token(token) => match tokens.color(token) {
-                Some(value) => {
+            ColorValue::Token(token) => {
+                if let Some(value) = tokens.color(token) {
                     self.background = Some(value);
                     self.provenance.background = StyleFieldProvenance::ResolvedToken(token.clone());
-                }
-                None => {
+                } else {
                     self.background = None;
                     self.provenance.background = StyleFieldProvenance::MissingToken(token.clone());
                     self.record_missing(UnresolvedStyleToken::Background(token.clone()));
                 }
-            },
+            }
         }
     }
 
@@ -271,17 +269,16 @@ impl ResolutionBuilder {
                 self.padding = Some(*value);
                 self.provenance.padding = StyleFieldProvenance::Literal;
             }
-            SpacingValue::Token(token) => match tokens.spacing(token) {
-                Some(value) => {
+            SpacingValue::Token(token) => {
+                if let Some(value) = tokens.spacing(token) {
                     self.padding = Some(value);
                     self.provenance.padding = StyleFieldProvenance::ResolvedToken(token.clone());
-                }
-                None => {
+                } else {
                     self.padding = None;
                     self.provenance.padding = StyleFieldProvenance::MissingToken(token.clone());
                     self.record_missing(UnresolvedStyleToken::Padding(token.clone()));
                 }
-            },
+            }
         }
     }
 
@@ -297,17 +294,16 @@ impl ResolutionBuilder {
                 self.radius = Some(*value);
                 self.provenance.radius = StyleFieldProvenance::Literal;
             }
-            RadiusValue::Token(token) => match tokens.radius(token) {
-                Some(value) => {
+            RadiusValue::Token(token) => {
+                if let Some(value) = tokens.radius(token) {
                     self.radius = Some(value);
                     self.provenance.radius = StyleFieldProvenance::ResolvedToken(token.clone());
-                }
-                None => {
+                } else {
                     self.radius = None;
                     self.provenance.radius = StyleFieldProvenance::MissingToken(token.clone());
                     self.record_missing(UnresolvedStyleToken::Radius(token.clone()));
                 }
-            },
+            }
         }
     }
 

@@ -60,12 +60,11 @@ fn precedence_and_provenance_are_property_local_and_deterministic()
         .with_variant(compact)
         .with_variant(danger)
         .with_foreground(Color::rgb(80, 80, 80));
-    let resolution = resolve_style_in_environment(
-        &intent,
-        &environment,
-        StyleInteractionFacts::new(true, false, true, true),
-        None,
-    );
+    let interaction = StyleInteractionFacts::NONE
+        .with(StyleInteractionState::Hover, true)
+        .with(StyleInteractionState::Active, true)
+        .with(StyleInteractionState::Disabled, true);
+    let resolution = resolve_style_in_environment(&intent, &environment, interaction, None);
 
     assert_eq!(resolution.computed_style().foreground(), Some(Color::WHITE));
     assert_eq!(
@@ -115,12 +114,10 @@ fn ordered_variants_and_framework_interaction_order_are_stable()
         .with_recipe(recipe_id)
         .with_variant(first)
         .with_variant(second);
-    let resolution = resolve_style_in_environment(
-        &intent,
-        &environment,
-        StyleInteractionFacts::new(true, false, true, false),
-        None,
-    );
+    let interaction = StyleInteractionFacts::NONE
+        .with(StyleInteractionState::Hover, true)
+        .with(StyleInteractionState::Active, true);
+    let resolution = resolve_style_in_environment(&intent, &environment, interaction, None);
     assert_eq!(
         resolution.computed_style().foreground(),
         Some(Color::rgb(40, 0, 0))

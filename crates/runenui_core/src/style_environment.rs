@@ -5,46 +5,6 @@ use std::collections::{BTreeMap, btree_map::Entry};
 
 use crate::{StyleProperties, StyleRecipeId, StyleTokens, StyleVariantId};
 
-/// Canonical transient interaction facts consumed by style resolution.
-///
-/// These are values only. `runenui_runtime` remains the sole live authority for
-/// hover, focus, press/active, and widget enablement state.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct StyleInteractionFacts {
-    hovered: bool,
-    focused: bool,
-    active: bool,
-    disabled: bool,
-}
-
-impl StyleInteractionFacts {
-    #[must_use]
-    pub const fn new(hovered: bool, focused: bool, active: bool, disabled: bool) -> Self {
-        Self {
-            hovered,
-            focused,
-            active,
-            disabled,
-        }
-    }
-    #[must_use]
-    pub const fn hovered(self) -> bool {
-        self.hovered
-    }
-    #[must_use]
-    pub const fn focused(self) -> bool {
-        self.focused
-    }
-    #[must_use]
-    pub const fn active(self) -> bool {
-        self.active
-    }
-    #[must_use]
-    pub const fn disabled(self) -> bool {
-        self.disabled
-    }
-}
-
 /// Framework-ordered interaction layer.
 ///
 /// Resolution order is hover, focus, active, disabled; later active layers win
@@ -60,14 +20,64 @@ pub enum StyleInteractionState {
 impl StyleInteractionState {
     pub const ORDERED: [Self; 4] = [Self::Hover, Self::Focus, Self::Active, Self::Disabled];
 
+    const fn mask(self) -> u8 {
+        match self {
+            Self::Hover => 1 << 0,
+            Self::Focus => 1 << 1,
+            Self::Active => 1 << 2,
+            Self::Disabled => 1 << 3,
+        }
+    }
+
     #[must_use]
     pub const fn is_active(self, facts: StyleInteractionFacts) -> bool {
-        match self {
-            Self::Hover => facts.hovered(),
-            Self::Focus => facts.focused(),
-            Self::Active => facts.active(),
-            Self::Disabled => facts.disabled(),
+        facts.contains(self)
+    }
+}
+
+/// Canonical transient interaction facts consumed by style resolution.
+///
+/// This is a compact value set, not a live state machine. `runenui_runtime`
+/// remains the sole authority for hover, focus, press/active, and widget
+/// enablement state and projects those canonical facts into this value.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StyleInteractionFacts(u8);
+
+impl StyleInteractionFacts {
+    pub const NONE: Self = Self(0);
+
+    /// Sets one typed interaction fact without positional boolean ambiguity.
+    #[must_use]
+    pub const fn with(mut self, state: StyleInteractionState, enabled: bool) -> Self {
+        let mask = state.mask();
+        if enabled {
+            self.0 |= mask;
+        } else {
+            self.0 &= !mask;
         }
+        self
+    }
+
+    #[must_use]
+    pub const fn contains(self, state: StyleInteractionState) -> bool {
+        self.0 & state.mask() != 0
+    }
+
+    #[must_use]
+    pub const fn hovered(self) -> bool {
+        self.contains(StyleInteractionState::Hover)
+    }
+    #[must_use]
+    pub const fn focused(self) -> bool {
+        self.contains(StyleInteractionState::Focus)
+    }
+    #[must_use]
+    pub const fn active(self) -> bool {
+        self.contains(StyleInteractionState::Active)
+    }
+    #[must_use]
+    pub const fn disabled(self) -> bool {
+        self.contains(StyleInteractionState::Disabled)
     }
 }
 
@@ -140,7 +150,7 @@ pub struct StyleRecipe {
 
 impl StyleRecipe {
     #[must_use]
-    pub fn new(base: StyleProperties) -> Self {
+    pub const fn new(base: StyleProperties) -> Self {
         Self {
             base,
             variants: BTreeMap::new(),
@@ -151,6 +161,13 @@ impl StyleRecipe {
     pub const fn base(&self) -> &StyleProperties {
         &self.base
     }
+
+    /// Defines one recipe variant without replacement.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DuplicateStyleDefinition::Variant`] when this recipe already
+    /// defines the same variant identity.
     pub fn define_variant(
         &mut self,
         id: StyleVariantId,
@@ -164,6 +181,13 @@ impl StyleRecipe {
             Entry::Occupied(entry) => Err(DuplicateStyleDefinition::Variant(entry.key().clone())),
         }
     }
+
+    /// Defines one framework interaction layer without replacement.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DuplicateStyleDefinition::Interaction`] when this recipe
+    /// already defines the same interaction state.
     pub fn define_interaction(
         &mut self,
         state: StyleInteractionState,
@@ -196,7 +220,7 @@ pub struct StyleTheme {
 
 impl StyleTheme {
     #[must_use]
-    pub fn new(tokens: StyleTokens) -> Self {
+    pub const fn new(tokens: StyleTokens) -> Self {
         Self {
             tokens,
             recipes: BTreeMap::new(),
@@ -206,6 +230,13 @@ impl StyleTheme {
     pub const fn tokens(&self) -> &StyleTokens {
         &self.tokens
     }
+
+    /// Defines one typed recipe without replacement.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DuplicateStyleDefinition::Recipe`] when this theme already
+    /// defines the same recipe identity.
     pub fn define_recipe(
         &mut self,
         id: StyleRecipeId,
