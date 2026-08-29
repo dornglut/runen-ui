@@ -13,6 +13,7 @@ members = [
 
     "tests/external_widget",
     "tests/external_renderer",
+    "tests/external_host",
 
     "xtask",
 ]
