@@ -1,6 +1,6 @@
 use core::{error::Error, fmt};
 
-use runenui_core::{LogicalSize, StyleTokens};
+use runenui_core::{LogicalSize, StyleEnvironment};
 use runenui_runtime::DeterministicMeasurementProvider;
 
 /// Named non-zero default surface used by deterministic harness publication.
@@ -32,7 +32,7 @@ impl Error for TestSurfaceConfigError {}
 #[derive(Clone, Debug, PartialEq)]
 pub struct TestSurfaceConfig {
     size: LogicalSize,
-    style_tokens: StyleTokens,
+    style_environment: StyleEnvironment,
     measurement: DeterministicMeasurementProvider,
 }
 
@@ -40,7 +40,7 @@ impl Default for TestSurfaceConfig {
     fn default() -> Self {
         Self {
             size: DEFAULT_TEST_SURFACE_SIZE,
-            style_tokens: StyleTokens::new(),
+            style_environment: StyleEnvironment::default(),
             measurement: DeterministicMeasurementProvider::DEFAULT,
         }
     }
@@ -68,10 +68,10 @@ impl TestSurfaceConfig {
         self.size
     }
 
-    /// Returns the style-token set used by ordinary surface publication.
+    /// Returns the complete style environment used by ordinary surface publication.
     #[must_use]
-    pub const fn style_tokens(&self) -> &StyleTokens {
-        &self.style_tokens
+    pub const fn style_environment(&self) -> &StyleEnvironment {
+        &self.style_environment
     }
 
     /// Returns the deterministic default measurement provider.
@@ -80,10 +80,10 @@ impl TestSurfaceConfig {
         self.measurement
     }
 
-    /// Replaces the harness-owned style-token set.
+    /// Replaces the harness-owned style environment.
     #[must_use]
-    pub fn with_style_tokens(mut self, style_tokens: StyleTokens) -> Self {
-        self.style_tokens = style_tokens;
+    pub fn with_style_environment(mut self, style_environment: StyleEnvironment) -> Self {
+        self.style_environment = style_environment;
         self
     }
 

@@ -2,7 +2,7 @@ use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
     Color, Element, LogicalLength, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, StyleTokens, View, Widget, WidgetInvalidation,
+    SemanticNodeContribution, SemanticRole, StyleEnvironment, View, Widget, WidgetInvalidation,
     WidgetMeasure, children, column, text,
 };
 
@@ -71,8 +71,8 @@ fn assert_retained_reuse(before: &SurfaceCache, cache: Option<&SurfaceCache>, ex
 #[test]
 fn phase_function_counters_track_only_actual_execution_branches() {
     let (mut tree, _) = MountedTree::<()>::mount(text("phase").key("root").into_element());
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     reset_phase_function_counts();
 
@@ -97,8 +97,8 @@ fn phase_function_counters_track_only_actual_execution_branches() {
 #[test]
 fn clean_and_semantic_publications_reuse_all_retained_products() {
     let mut tree = reuse_tree();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let root = tree.publication_preorder_ids()[0].clone();
@@ -121,8 +121,8 @@ fn clean_and_semantic_publications_reuse_all_retained_products() {
 #[test]
 fn paint_and_diagnostic_publications_replace_only_owned_products() {
     let mut tree = reuse_tree();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let root = tree.publication_preorder_ids()[0].clone();
@@ -157,8 +157,8 @@ fn paint_and_diagnostic_publications_replace_only_owned_products() {
 #[test]
 fn layout_publication_replaces_layout_hit_paint_and_debug_products() {
     let mut tree = reuse_tree();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let root = tree.publication_preorder_ids()[0].clone();
@@ -188,8 +188,8 @@ fn layout_publication_replaces_layout_hit_paint_and_debug_products() {
 #[test]
 fn style_publication_replaces_style_paint_and_debug_products() {
     let mut tree = reuse_tree();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let retained = staged_cache(cache.as_ref());
@@ -233,8 +233,8 @@ fn isolated_phase_entry_points_match_truthful_reports() {
             .key("root")
             .into_element(),
     );
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let root = tree.publication_preorder_ids()[0].clone();
@@ -315,8 +315,8 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
         })
         .key("root"),
     );
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
 
     let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
@@ -371,8 +371,8 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
 #[test]
 fn structural_rebuild_enters_every_conservative_phase() {
     let (mut tree, _) = MountedTree::<()>::mount(text("old").key("root").into_element());
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     tree.reconcile(

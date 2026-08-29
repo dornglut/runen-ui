@@ -159,7 +159,7 @@ impl SurfacePublicationCommit {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{StyleTokens, View, text};
+    use runenui_core::{StyleEnvironment, View, text};
 
     use super::super::{SurfaceBuildContext, plan_mounted_surface_cached};
     use crate::{
@@ -170,8 +170,8 @@ mod tests {
     #[test]
     fn planning_keeps_surface_cache_and_dirty_completion_uncommitted() {
         let (mut tree, _) = MountedTree::<()>::mount(text("staged").key("root").into_element());
-        let tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
         let mut cache = None;
         let dirty_before = tree.pending_phases();
 
