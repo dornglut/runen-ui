@@ -60,4 +60,18 @@ impl ComputedStyle {
     pub const fn radius(&self) -> Option<Radius> {
         self.radius
     }
+
+    pub(crate) const fn from_parts(
+        foreground: Option<Color>,
+        background: Option<Color>,
+        padding: Option<EdgeInsets>,
+        radius: Option<Radius>,
+    ) -> Self {
+        Self {
+            foreground,
+            background,
+            padding,
+            radius,
+        }
+    }
 }

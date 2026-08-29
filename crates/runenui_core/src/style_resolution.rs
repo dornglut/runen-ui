@@ -1,21 +1,32 @@
-//! Pure style-resolution helpers.
+//! Pure layered style-resolution helpers.
 
 use crate::{
-    ColorToken, ColorValue, ComputedStyle, RadiusToken, RadiusValue, SpacingToken, SpacingValue,
-    StyleIntent, StyleTokens,
+    Color, ColorToken, ColorValue, ComputedStyle, EdgeInsets, Radius, RadiusToken, RadiusValue,
+    SpacingToken, SpacingValue, StyleEnvironment, StyleInteractionFacts, StyleInteractionState,
+    StyleIntent, StylePreferenceKind, StyleProperties, StyleRecipeId, StyleTokens, StyleVariantId,
 };
 
-/// Resolution provenance for one authored style field.
+/// Exact precedence layer that last attempted to define one property.
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum StyleResolutionLayer {
+    Inherited,
+    FrameworkDefault,
+    ThemeRecipe(StyleRecipeId),
+    Variant(StyleVariantId),
+    Interaction(StyleInteractionState),
+    AuthoredOverride,
+    Preference(StylePreferenceKind),
+}
+
+/// Resolution value-source provenance for one style property.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum StyleFieldProvenance<Token> {
-    /// No value was authored for this field.
     #[default]
     Absent,
-    /// The field was authored as a literal value.
+    Inherited,
     Literal,
-    /// The field was authored as a token and the token resolved successfully.
     ResolvedToken(Token),
-    /// The field was authored as a token, but the token was missing.
     MissingToken(Token),
 }
 
@@ -23,21 +34,31 @@ pub enum StyleFieldProvenance<Token> {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct StyleProvenance {
     foreground: StyleFieldProvenance<ColorToken>,
+    foreground_layer: Option<StyleResolutionLayer>,
     background: StyleFieldProvenance<ColorToken>,
+    background_layer: Option<StyleResolutionLayer>,
     padding: StyleFieldProvenance<SpacingToken>,
+    padding_layer: Option<StyleResolutionLayer>,
     radius: StyleFieldProvenance<RadiusToken>,
+    radius_layer: Option<StyleResolutionLayer>,
 }
 
 impl StyleProvenance {
-    /// Provenance for an empty style intent.
     pub const EMPTY: Self = Self {
         foreground: StyleFieldProvenance::Absent,
+        foreground_layer: None,
         background: StyleFieldProvenance::Absent,
+        background_layer: None,
         padding: StyleFieldProvenance::Absent,
+        padding_layer: None,
         radius: StyleFieldProvenance::Absent,
+        radius_layer: None,
     };
 
-    /// Creates a complete per-field provenance product.
+    /// Creates value-source provenance without assigning production layers.
+    ///
+    /// This constructor remains useful for synthetic inspection fixtures. The
+    /// production resolver also records the corresponding `*_layer` values.
     #[must_use]
     pub const fn new(
         foreground: StyleFieldProvenance<ColorToken>,
@@ -47,34 +68,47 @@ impl StyleProvenance {
     ) -> Self {
         Self {
             foreground,
+            foreground_layer: None,
             background,
+            background_layer: None,
             padding,
+            padding_layer: None,
             radius,
+            radius_layer: None,
         }
     }
 
-    /// Returns foreground resolution provenance.
     #[must_use]
     pub const fn foreground(&self) -> &StyleFieldProvenance<ColorToken> {
         &self.foreground
     }
-
-    /// Returns background resolution provenance.
+    #[must_use]
+    pub const fn foreground_layer(&self) -> Option<&StyleResolutionLayer> {
+        self.foreground_layer.as_ref()
+    }
     #[must_use]
     pub const fn background(&self) -> &StyleFieldProvenance<ColorToken> {
         &self.background
     }
-
-    /// Returns padding resolution provenance.
+    #[must_use]
+    pub const fn background_layer(&self) -> Option<&StyleResolutionLayer> {
+        self.background_layer.as_ref()
+    }
     #[must_use]
     pub const fn padding(&self) -> &StyleFieldProvenance<SpacingToken> {
         &self.padding
     }
-
-    /// Returns corner-radius resolution provenance.
+    #[must_use]
+    pub const fn padding_layer(&self) -> Option<&StyleResolutionLayer> {
+        self.padding_layer.as_ref()
+    }
     #[must_use]
     pub const fn radius(&self) -> &StyleFieldProvenance<RadiusToken> {
         &self.radius
+    }
+    #[must_use]
+    pub const fn radius_layer(&self) -> Option<&StyleResolutionLayer> {
+        self.radius_layer.as_ref()
     }
 }
 
@@ -87,23 +121,34 @@ pub enum UnresolvedStyleToken {
     Radius(RadiusToken),
 }
 
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum StyleResolutionDiagnostic {
+    MissingRecipe(StyleRecipeId),
+    MissingVariant(StyleVariantId),
+    MissingToken(UnresolvedStyleToken),
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleResolution {
     computed_style: ComputedStyle,
     provenance: StyleProvenance,
     unresolved_tokens: Vec<UnresolvedStyleToken>,
+    diagnostics: Vec<StyleResolutionDiagnostic>,
 }
 
 impl StyleResolution {
-    const fn new(
+    fn new(
         computed_style: ComputedStyle,
         provenance: StyleProvenance,
         unresolved_tokens: Vec<UnresolvedStyleToken>,
+        diagnostics: Vec<StyleResolutionDiagnostic>,
     ) -> Self {
         Self {
             computed_style,
             provenance,
             unresolved_tokens,
+            diagnostics,
         }
     }
 
@@ -111,103 +156,285 @@ impl StyleResolution {
     pub const fn computed_style(&self) -> ComputedStyle {
         self.computed_style
     }
-
-    /// Returns per-field resolution provenance.
     #[must_use]
     pub const fn provenance(&self) -> &StyleProvenance {
         &self.provenance
     }
-
     #[must_use]
     pub const fn unresolved_tokens(&self) -> &[UnresolvedStyleToken] {
         self.unresolved_tokens.as_slice()
     }
-
+    #[must_use]
+    pub const fn diagnostics(&self) -> &[StyleResolutionDiagnostic] {
+        self.diagnostics.as_slice()
+    }
     #[must_use]
     pub const fn is_fully_resolved(&self) -> bool {
-        self.unresolved_tokens.is_empty()
+        self.diagnostics.is_empty()
     }
+}
+
+#[derive(Default)]
+struct ResolutionBuilder {
+    foreground: Option<Color>,
+    background: Option<Color>,
+    padding: Option<EdgeInsets>,
+    radius: Option<Radius>,
+    provenance: StyleProvenance,
+    unresolved_tokens: Vec<UnresolvedStyleToken>,
+    diagnostics: Vec<StyleResolutionDiagnostic>,
+}
+
+impl ResolutionBuilder {
+    fn apply(
+        &mut self,
+        properties: &StyleProperties,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        if let Some(value) = properties.foreground() {
+            self.apply_foreground(value, layer.clone(), tokens);
+        }
+        if let Some(value) = properties.background() {
+            self.apply_background(value, layer.clone(), tokens);
+        }
+        if let Some(value) = properties.padding() {
+            self.apply_padding(value, layer.clone(), tokens);
+        }
+        if let Some(value) = properties.radius() {
+            self.apply_radius(value, layer, tokens);
+        }
+    }
+
+    fn apply_foreground(
+        &mut self,
+        value: &ColorValue,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        self.provenance.foreground_layer = Some(layer);
+        match value {
+            ColorValue::Literal(value) => {
+                self.foreground = Some(*value);
+                self.provenance.foreground = StyleFieldProvenance::Literal;
+            }
+            ColorValue::Token(token) => match tokens.color(token) {
+                Some(value) => {
+                    self.foreground = Some(value);
+                    self.provenance.foreground =
+                        StyleFieldProvenance::ResolvedToken(token.clone());
+                }
+                None => {
+                    self.foreground = None;
+                    self.provenance.foreground = StyleFieldProvenance::MissingToken(token.clone());
+                    self.record_missing(UnresolvedStyleToken::Foreground(token.clone()));
+                }
+            },
+        }
+    }
+
+    fn apply_background(
+        &mut self,
+        value: &ColorValue,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        self.provenance.background_layer = Some(layer);
+        match value {
+            ColorValue::Literal(value) => {
+                self.background = Some(*value);
+                self.provenance.background = StyleFieldProvenance::Literal;
+            }
+            ColorValue::Token(token) => match tokens.color(token) {
+                Some(value) => {
+                    self.background = Some(value);
+                    self.provenance.background =
+                        StyleFieldProvenance::ResolvedToken(token.clone());
+                }
+                None => {
+                    self.background = None;
+                    self.provenance.background = StyleFieldProvenance::MissingToken(token.clone());
+                    self.record_missing(UnresolvedStyleToken::Background(token.clone()));
+                }
+            },
+        }
+    }
+
+    fn apply_padding(
+        &mut self,
+        value: &SpacingValue,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        self.provenance.padding_layer = Some(layer);
+        match value {
+            SpacingValue::Literal(value) => {
+                self.padding = Some(*value);
+                self.provenance.padding = StyleFieldProvenance::Literal;
+            }
+            SpacingValue::Token(token) => match tokens.spacing(token) {
+                Some(value) => {
+                    self.padding = Some(value);
+                    self.provenance.padding =
+                        StyleFieldProvenance::ResolvedToken(token.clone());
+                }
+                None => {
+                    self.padding = None;
+                    self.provenance.padding = StyleFieldProvenance::MissingToken(token.clone());
+                    self.record_missing(UnresolvedStyleToken::Padding(token.clone()));
+                }
+            },
+        }
+    }
+
+    fn apply_radius(
+        &mut self,
+        value: &RadiusValue,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        self.provenance.radius_layer = Some(layer);
+        match value {
+            RadiusValue::Literal(value) => {
+                self.radius = Some(*value);
+                self.provenance.radius = StyleFieldProvenance::Literal;
+            }
+            RadiusValue::Token(token) => match tokens.radius(token) {
+                Some(value) => {
+                    self.radius = Some(value);
+                    self.provenance.radius =
+                        StyleFieldProvenance::ResolvedToken(token.clone());
+                }
+                None => {
+                    self.radius = None;
+                    self.provenance.radius = StyleFieldProvenance::MissingToken(token.clone());
+                    self.record_missing(UnresolvedStyleToken::Radius(token.clone()));
+                }
+            },
+        }
+    }
+
+    fn record_missing(&mut self, token: UnresolvedStyleToken) {
+        self.unresolved_tokens.push(token.clone());
+        self.diagnostics
+            .push(StyleResolutionDiagnostic::MissingToken(token));
+    }
+
+    fn finish(self) -> StyleResolution {
+        StyleResolution::new(
+            ComputedStyle::from_parts(self.foreground, self.background, self.padding, self.radius),
+            self.provenance,
+            self.unresolved_tokens,
+            self.diagnostics,
+        )
+    }
+}
+
+/// Resolves one authored style against the complete production environment.
+#[must_use]
+pub fn resolve_style_in_environment(
+    intent: &StyleIntent,
+    environment: &StyleEnvironment,
+    interaction: StyleInteractionFacts,
+    parent: Option<ComputedStyle>,
+) -> StyleResolution {
+    let tokens = environment.theme().tokens();
+    let mut builder = ResolutionBuilder::default();
+
+    if let Some(foreground) = parent.and_then(|style| style.foreground()) {
+        builder.foreground = Some(foreground);
+        builder.provenance.foreground = StyleFieldProvenance::Inherited;
+        builder.provenance.foreground_layer = Some(StyleResolutionLayer::Inherited);
+    }
+
+    builder.apply(
+        environment.framework_defaults(),
+        StyleResolutionLayer::FrameworkDefault,
+        tokens,
+    );
+
+    if let Some(recipe_id) = intent.recipe() {
+        if let Some(recipe) = environment.theme().recipe(recipe_id) {
+            builder.apply(
+                recipe.base(),
+                StyleResolutionLayer::ThemeRecipe(recipe_id.clone()),
+                tokens,
+            );
+            for variant_id in intent.variants() {
+                if let Some(properties) = recipe.variant(variant_id) {
+                    builder.apply(
+                        properties,
+                        StyleResolutionLayer::Variant(variant_id.clone()),
+                        tokens,
+                    );
+                } else {
+                    builder
+                        .diagnostics
+                        .push(StyleResolutionDiagnostic::MissingVariant(variant_id.clone()));
+                }
+            }
+            for state in StyleInteractionState::ORDERED {
+                if state.is_active(interaction)
+                    && let Some(properties) = recipe.interaction(state)
+                {
+                    builder.apply(
+                        properties,
+                        StyleResolutionLayer::Interaction(state),
+                        tokens,
+                    );
+                }
+            }
+        } else {
+            builder
+                .diagnostics
+                .push(StyleResolutionDiagnostic::MissingRecipe(recipe_id.clone()));
+            for variant_id in intent.variants() {
+                builder
+                    .diagnostics
+                    .push(StyleResolutionDiagnostic::MissingVariant(variant_id.clone()));
+            }
+        }
+    } else {
+        for variant_id in intent.variants() {
+            builder
+                .diagnostics
+                .push(StyleResolutionDiagnostic::MissingVariant(variant_id.clone()));
+        }
+    }
+
+    builder.apply(
+        intent.overrides(),
+        StyleResolutionLayer::AuthoredOverride,
+        tokens,
+    );
+
+    if environment.preferences().high_contrast() {
+        builder.apply(
+            environment.preference_policy().high_contrast(),
+            StyleResolutionLayer::Preference(StylePreferenceKind::HighContrast),
+            tokens,
+        );
+    }
+
+    builder.finish()
+}
+
+/// Resolves direct authored properties without theme/state/preference layers.
+///
+/// This remains only as an in-flight bridge while M8A migrates the runtime to
+/// [`resolve_style_in_environment`]. It is removed before M8A acceptance.
+#[must_use]
+pub fn resolve_style(intent: &StyleIntent, tokens: &StyleTokens) -> StyleResolution {
+    let environment = StyleEnvironment::from_tokens(tokens.clone());
+    resolve_style_in_environment(
+        intent,
+        &environment,
+        StyleInteractionFacts::default(),
+        None,
+    )
 }
 
 #[must_use]
 pub fn resolve_literal_style(intent: &StyleIntent) -> StyleResolution {
-    let tokens = StyleTokens::new();
-    resolve_style(intent, &tokens)
-}
-
-#[must_use]
-pub fn resolve_style(intent: &StyleIntent, tokens: &StyleTokens) -> StyleResolution {
-    let mut computed_style = ComputedStyle::EMPTY;
-    let mut provenance = StyleProvenance::EMPTY;
-    let mut unresolved_tokens = Vec::new();
-
-    match intent.foreground() {
-        Some(ColorValue::Literal(color)) => {
-            computed_style = computed_style.with_foreground(*color);
-            provenance.foreground = StyleFieldProvenance::Literal;
-        }
-        Some(ColorValue::Token(token)) => {
-            if let Some(color) = tokens.color(token) {
-                computed_style = computed_style.with_foreground(color);
-                provenance.foreground = StyleFieldProvenance::ResolvedToken(token.clone());
-            } else {
-                provenance.foreground = StyleFieldProvenance::MissingToken(token.clone());
-                unresolved_tokens.push(UnresolvedStyleToken::Foreground(token.clone()));
-            }
-        }
-        None => {}
-    }
-
-    match intent.background() {
-        Some(ColorValue::Literal(color)) => {
-            computed_style = computed_style.with_background(*color);
-            provenance.background = StyleFieldProvenance::Literal;
-        }
-        Some(ColorValue::Token(token)) => {
-            if let Some(color) = tokens.color(token) {
-                computed_style = computed_style.with_background(color);
-                provenance.background = StyleFieldProvenance::ResolvedToken(token.clone());
-            } else {
-                provenance.background = StyleFieldProvenance::MissingToken(token.clone());
-                unresolved_tokens.push(UnresolvedStyleToken::Background(token.clone()));
-            }
-        }
-        None => {}
-    }
-
-    match intent.padding() {
-        Some(SpacingValue::Literal(padding)) => {
-            computed_style = computed_style.with_padding(*padding);
-            provenance.padding = StyleFieldProvenance::Literal;
-        }
-        Some(SpacingValue::Token(token)) => {
-            if let Some(padding) = tokens.spacing(token) {
-                computed_style = computed_style.with_padding(padding);
-                provenance.padding = StyleFieldProvenance::ResolvedToken(token.clone());
-            } else {
-                provenance.padding = StyleFieldProvenance::MissingToken(token.clone());
-                unresolved_tokens.push(UnresolvedStyleToken::Padding(token.clone()));
-            }
-        }
-        None => {}
-    }
-
-    match intent.radius() {
-        Some(RadiusValue::Literal(radius)) => {
-            computed_style = computed_style.with_radius(*radius);
-            provenance.radius = StyleFieldProvenance::Literal;
-        }
-        Some(RadiusValue::Token(token)) => {
-            if let Some(radius) = tokens.radius(token) {
-                computed_style = computed_style.with_radius(radius);
-                provenance.radius = StyleFieldProvenance::ResolvedToken(token.clone());
-            } else {
-                provenance.radius = StyleFieldProvenance::MissingToken(token.clone());
-                unresolved_tokens.push(UnresolvedStyleToken::Radius(token.clone()));
-            }
-        }
-        None => {}
-    }
-
-    StyleResolution::new(computed_style, provenance, unresolved_tokens)
+    resolve_style(intent, &StyleTokens::new())
 }

@@ -229,6 +229,8 @@ mod scene_geometry;
 mod semantic;
 mod semantic_action;
 mod style;
+mod style_effects;
+mod style_environment;
 mod style_resolution;
 mod style_tokens;
 mod subscription;
@@ -318,11 +320,17 @@ pub use semantic::{
 pub use semantic_action::{SemanticActionRequest, SemanticActionTarget};
 pub use style::{
     Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,
-    SpacingValue, StyleIntent, TokenId,
+    SpacingValue, StyleIntent, StyleProperties, StyleRecipeId, StyleVariantId, TokenId,
+};
+pub use style_effects::{StyleEffects, StyleProperty, style_effects_between};
+pub use style_environment::{
+    DuplicateStyleDefinition, StyleEnvironment, StyleInteractionFacts, StyleInteractionState,
+    StylePreferenceKind, StylePreferencePolicy, StylePreferences, StyleRecipe, StyleTheme,
 };
 pub use style_resolution::{
-    StyleFieldProvenance, StyleProvenance, StyleResolution, UnresolvedStyleToken,
-    resolve_literal_style, resolve_style,
+    StyleFieldProvenance, StyleProvenance, StyleResolution, StyleResolutionDiagnostic,
+    StyleResolutionLayer, UnresolvedStyleToken, resolve_literal_style, resolve_style,
+    resolve_style_in_environment,
 };
 pub use style_tokens::{DuplicateTokenDefinition, StyleTokens, TokenFamily};
 pub use subscription::{
