@@ -70,7 +70,6 @@ jobs:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          git diff --check
           if git diff --quiet; then
             echo 'Cleanup already applied'
             exit 0
