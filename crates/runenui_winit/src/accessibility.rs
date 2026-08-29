@@ -132,6 +132,13 @@ impl SemanticAdapter {
         }
     }
 
+    /// Translates one native `AccessKit` action into the exact neutral semantic request.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AdapterDiagnostic`] when the request targets the wrong tree, an unknown or
+    /// retired adapter node, carries invalid action data, or requests an unsupported semantic
+    /// action.
     pub fn action_request(
         &self,
         request: &ActionRequest,

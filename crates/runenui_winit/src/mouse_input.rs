@@ -98,6 +98,12 @@ impl MouseInputState {
         }
     }
 
+    /// Advances the neutral pointer stream from one translated native cursor move.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MouseIngressDiagnostic`] when the incoming device conflicts with the active
+    /// stream, the movement delta cannot be represented, or pointer identity is exhausted.
     pub fn cursor_moved(
         &mut self,
         device_id: InputDeviceId,
@@ -124,6 +130,12 @@ impl MouseInputState {
         .with_modifiers(point.modifiers))
     }
 
+    /// Translates one native wheel transition within the current neutral pointer stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MouseIngressDiagnostic`] when the incoming device conflicts with the active
+    /// stream or pointer identity is exhausted.
     pub fn wheel(
         &mut self,
         device_id: InputDeviceId,
@@ -147,6 +159,14 @@ impl MouseInputState {
         .with_modifiers(point.modifiers))
     }
 
+    /// Translates one native mouse-button transition while preserving stream lifetime semantics.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MouseIngressDiagnostic`] when an otherwise representable transition conflicts
+    /// with active-device or stream authority, or when pointer identity is exhausted. Benign
+    /// duplicate, unmatched, or deliberately suppressed transitions are returned as
+    /// [`MouseButtonOutcome::Suppressed`] instead.
     pub fn button_input(
         &mut self,
         device_id: InputDeviceId,

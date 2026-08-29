@@ -26,6 +26,12 @@ impl Default for DeviceIdentityMap {
 }
 
 impl DeviceIdentityMap {
+    /// Resolves one native device to its stable host-session neutral identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DeviceIdentityError::Exhausted`] when no further neutral device identity can be
+    /// allocated.
     pub fn resolve(&mut self, native: DeviceId) -> Result<InputDeviceId, DeviceIdentityError> {
         if let Some(identity) = self.identities.get(&native).copied() {
             return Ok(identity);
