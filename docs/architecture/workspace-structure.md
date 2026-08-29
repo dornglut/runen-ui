@@ -18,6 +18,7 @@ RunenUI/
 │   ├── counter/
 │   └── reference_winit/
 ├── tests/
+│   ├── external_host/
 │   ├── external_renderer/
 │   └── external_widget/
 └── xtask/
@@ -32,6 +33,7 @@ RunenUI/
 | `runenui_testing` | public deterministic headless testing over ordinary `runenui_core` + `runenui_runtime` contracts | runtime behavior, private mutation seams, identity/sequence fabrication, parallel expected state, native host behavior |
 | `counter` | application-owned state/action/update/UI plus the bounded native M7 application host composition and deterministic headless proof | framework internals, reusable native translation authority, renderer internals, generic host/facade ownership |
 | `reference_winit` | specialized M7 native conformance application: winit window/event-loop mechanics, displayed native mapping, runtime wake/redraw driving, renderer presentation/recovery, and proof logging | framework/runtime behavior, widget semantics, renderer internals, reusable native translation/accessibility authority, generic platform abstraction |
+| `runenui_external_host_conformance` | non-publishable winit-free downstream host proof over public core/runtime/renderer contracts; caller-owned submit/pump/redraw/publish/ack/render/present sequencing and retained-publication resource retry | native host/accessibility dependencies, testing convenience, direct wgpu ownership, private runtime seams, hidden framework loop, generic host/facade authority |
 | `runenui_external_renderer_conformance` | non-publishable genuine downstream renderer-neutral scene-consumer conformance proof over public core/runtime contracts | production renderer/backend ownership, testing-convenience dependency, native host/resource-provider authority, concrete widget/semantic interpretation, or privileged internal access |
 | `runenui_external_widget_conformance` | non-publishable genuine downstream custom-widget/public conformance proof | production framework ownership or privileged internal access |
 | `xtask` | deterministic repository validation/audit orchestration | framework runtime behavior |
@@ -43,7 +45,8 @@ runenui_core <- runenui_runtime
        ^             ^
        └──────┬──────┘
               ├── runenui_render_wgpu ──┬── reference_winit
-              │                         └── counter
+              │                         ├── counter
+              │                         └── external host conformance
               ├── runenui_winit ────────┬── reference_winit
               │                         └── counter
               ├── runenui_testing
@@ -59,6 +62,8 @@ xtask  (repository tooling; no framework dependency)
 
 `reference_winit` remains the specialized conformance host; Counter is the bounded application showcase. Both consume `runenui_render_wgpu` and `runenui_winit`, but each owns its own winit event loop, runtime pumping, redraw/publication acknowledgement, displayed-frame mapping, renderer recovery, and presentation policy. This does not establish a generic RunenUI host facade.
 
+The external-host conformance package independently consumes public core/runtime plus `runenui_render_wgpu` without importing native-host or accessibility orchestration. Its frame sequence remains explicit caller code, including acknowledgement after successful publication and renderer retry against the retained immutable publication. This Cargo-enforced consumer demonstrates that the accepted reusable embedding boundary is the public runtime/publication/renderer contract rather than a framework-owned host loop.
+
 The external-renderer conformance package intentionally depends only on public `runenui_core` and `runenui_runtime` contracts, including for its own tests, so Cargo preserves the independent-consumer boundary. The external-widget conformance package may consume `runenui_testing` as a test/dev dependency without making testing convenience a production dependency. Repository validation distinguishes those dependency classes.
 
 ## Ownership rules
@@ -70,6 +75,8 @@ The external-renderer conformance package intentionally depends only on public `
 `runenui_winit` may retain only native device/key/pointer lifetime translation state and rebuildable AccessKit projection identity/cache derived from public semantic publication. It must not create a second UI queue, pump or mutate the runtime, own a window/event loop, retain renderer state, acknowledge redraw, decide displayed-frame authority, or become application policy.
 
 Native applications may translate native host facts through `runenui_winit`, drive public runtime APIs from their event-loop thread, retain immutable publications for renderer retry, and retain the exact successfully displayed native mapping needed for point ingress. They must not create a second UI queue, mutate runtime off-thread, reinterpret widget semantics, move winit into the renderer, or hide host-loop ownership behind a speculative generic facade.
+
+A non-native external host may drive the same public runtime and renderer contracts directly: it owns when work is submitted and pumped, when redraw work becomes a publication, when that publication is acknowledged, when renderer work is retried, and how a successful renderer result becomes presented host state. Renderer failure must not cause unchanged runtime republish or transfer loop authority into RunenUI.
 
 `runenui_testing` may compose public contracts but must not recreate live authority. In particular it may retain immutable public publications for inspection, create scoped semantic test targets only from exact public snapshot membership, delegate semantic actions only through public runtime ingress, advance a public manual clock, perform explicit bounded pumping, and inspect public products. It must not fabricate runtime IDs/sequences, mutate mounted state, use private runtime bridges, or maintain a second expected runtime model.
 
