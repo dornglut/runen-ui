@@ -29,93 +29,24 @@ jobs:
 
           accessibility = Path('crates/runenui_winit/src/accessibility.rs')
           text = accessibility.read_text()
-          old = '''    pub fn action_request(
-        &self,
-        request: &ActionRequest,
-    ) -> Result<runenui_core::SemanticActionRequest, AdapterDiagnostic> {'''
-          new = '''    /// Translates one native `AccessKit` action into the exact neutral semantic request.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AdapterDiagnostic`] when the request targets the wrong tree, an unknown or
-    /// retired adapter node, carries invalid action data, or requests an unsupported semantic
-    /// action.
-    pub fn action_request(
-        &self,
-        request: &ActionRequest,
-    ) -> Result<runenui_core::SemanticActionRequest, AdapterDiagnostic> {'''
+          old = "    pub fn action_request(\n        &self,\n        request: &ActionRequest,\n    ) -> Result<runenui_core::SemanticActionRequest, AdapterDiagnostic> {"
+          new = "    /// Translates one native `AccessKit` action into the exact neutral semantic request.\n    ///\n    /// # Errors\n    ///\n    /// Returns [`AdapterDiagnostic`] when the request targets the wrong tree, an unknown or\n    /// retired adapter node, carries invalid action data, or requests an unsupported semantic\n    /// action.\n    pub fn action_request(\n        &self,\n        request: &ActionRequest,\n    ) -> Result<runenui_core::SemanticActionRequest, AdapterDiagnostic> {"
           assert text.count(old) == 1
           accessibility.write_text(text.replace(old, new))
 
           device = Path('crates/runenui_winit/src/device_identity.rs')
           text = device.read_text()
-          old = '''    pub fn resolve(&mut self, native: DeviceId) -> Result<InputDeviceId, DeviceIdentityError> {'''
-          new = '''    /// Resolves one native device to its stable host-session neutral identity.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`DeviceIdentityError::Exhausted`] when no further neutral device identity can be
-    /// allocated.
-    pub fn resolve(&mut self, native: DeviceId) -> Result<InputDeviceId, DeviceIdentityError> {'''
+          old = "    pub fn resolve(&mut self, native: DeviceId) -> Result<InputDeviceId, DeviceIdentityError> {"
+          new = "    /// Resolves one native device to its stable host-session neutral identity.\n    ///\n    /// # Errors\n    ///\n    /// Returns [`DeviceIdentityError::Exhausted`] when no further neutral device identity can be\n    /// allocated.\n    pub fn resolve(&mut self, native: DeviceId) -> Result<InputDeviceId, DeviceIdentityError> {"
           assert text.count(old) == 1
           device.write_text(text.replace(old, new))
 
           mouse = Path('crates/runenui_winit/src/mouse_input.rs')
           text = mouse.read_text()
           replacements = [
-              ('''    pub fn cursor_moved(
-        &mut self,
-        device_id: InputDeviceId,
-        point: TranslatedPointerPoint,
-    ) -> Result<PointerEvent, MouseIngressDiagnostic> {''', '''    /// Advances the neutral pointer stream from one translated native cursor move.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MouseIngressDiagnostic`] when the incoming device conflicts with the active
-    /// stream, the movement delta cannot be represented, or pointer identity is exhausted.
-    pub fn cursor_moved(
-        &mut self,
-        device_id: InputDeviceId,
-        point: TranslatedPointerPoint,
-    ) -> Result<PointerEvent, MouseIngressDiagnostic> {'''),
-              ('''    pub fn wheel(
-        &mut self,
-        device_id: InputDeviceId,
-        point: TranslatedPointerPoint,
-        scroll_delta: LogicalDelta,
-    ) -> Result<PointerEvent, MouseIngressDiagnostic> {''', '''    /// Translates one native wheel transition within the current neutral pointer stream.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MouseIngressDiagnostic`] when the incoming device conflicts with the active
-    /// stream or pointer identity is exhausted.
-    pub fn wheel(
-        &mut self,
-        device_id: InputDeviceId,
-        point: TranslatedPointerPoint,
-        scroll_delta: LogicalDelta,
-    ) -> Result<PointerEvent, MouseIngressDiagnostic> {'''),
-              ('''    pub fn button_input(
-        &mut self,
-        device_id: InputDeviceId,
-        state: ElementState,
-        button: MouseButton,
-        point: Option<TranslatedPointerPoint>,
-    ) -> Result<MouseButtonOutcome, MouseIngressDiagnostic> {''', '''    /// Translates one native mouse-button transition while preserving stream lifetime semantics.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MouseIngressDiagnostic`] when an otherwise representable transition conflicts
-    /// with active-device or stream authority, or when pointer identity is exhausted. Benign
-    /// duplicate, unmatched, or deliberately suppressed transitions are returned as
-    /// [`MouseButtonOutcome::Suppressed`] instead.
-    pub fn button_input(
-        &mut self,
-        device_id: InputDeviceId,
-        state: ElementState,
-        button: MouseButton,
-        point: Option<TranslatedPointerPoint>,
-    ) -> Result<MouseButtonOutcome, MouseIngressDiagnostic> {'''),
+              ("    pub fn cursor_moved(\n        &mut self,\n        device_id: InputDeviceId,\n        point: TranslatedPointerPoint,\n    ) -> Result<PointerEvent, MouseIngressDiagnostic> {", "    /// Advances the neutral pointer stream from one translated native cursor move.\n    ///\n    /// # Errors\n    ///\n    /// Returns [`MouseIngressDiagnostic`] when the incoming device conflicts with the active\n    /// stream, the movement delta cannot be represented, or pointer identity is exhausted.\n    pub fn cursor_moved(\n        &mut self,\n        device_id: InputDeviceId,\n        point: TranslatedPointerPoint,\n    ) -> Result<PointerEvent, MouseIngressDiagnostic> {"),
+              ("    pub fn wheel(\n        &mut self,\n        device_id: InputDeviceId,\n        point: TranslatedPointerPoint,\n        scroll_delta: LogicalDelta,\n    ) -> Result<PointerEvent, MouseIngressDiagnostic> {", "    /// Translates one native wheel transition within the current neutral pointer stream.\n    ///\n    /// # Errors\n    ///\n    /// Returns [`MouseIngressDiagnostic`] when the incoming device conflicts with the active\n    /// stream or pointer identity is exhausted.\n    pub fn wheel(\n        &mut self,\n        device_id: InputDeviceId,\n        point: TranslatedPointerPoint,\n        scroll_delta: LogicalDelta,\n    ) -> Result<PointerEvent, MouseIngressDiagnostic> {"),
+              ("    pub fn button_input(\n        &mut self,\n        device_id: InputDeviceId,\n        state: ElementState,\n        button: MouseButton,\n        point: Option<TranslatedPointerPoint>,\n    ) -> Result<MouseButtonOutcome, MouseIngressDiagnostic> {", "    /// Translates one native mouse-button transition while preserving stream lifetime semantics.\n    ///\n    /// # Errors\n    ///\n    /// Returns [`MouseIngressDiagnostic`] when an otherwise representable transition conflicts\n    /// with active-device or stream authority, or when pointer identity is exhausted. Benign\n    /// duplicate, unmatched, or deliberately suppressed transitions are returned as\n    /// [`MouseButtonOutcome::Suppressed`] instead.\n    pub fn button_input(\n        &mut self,\n        device_id: InputDeviceId,\n        state: ElementState,\n        button: MouseButton,\n        point: Option<TranslatedPointerPoint>,\n    ) -> Result<MouseButtonOutcome, MouseIngressDiagnostic> {"),
           ]
           for old, new in replacements:
               assert text.count(old) == 1, old
