@@ -24,6 +24,7 @@ const WINIT_FORBIDDEN_DEPENDENCIES: &[&str] = &["wgpu"];
 const EXTERNAL_HOST_FORBIDDEN_SOURCE_PATTERNS: &[(&str, &str)] = &[
     ("::__runtime", "private runtime bridge"),
     ("internal-test-seams", "internal test seam"),
+    ("_for_test", "internal test seam"),
     ("runenui_testing", "testing convenience"),
     ("runenui_winit", "native adapter"),
     ("winit::", "native host"),
@@ -1042,6 +1043,12 @@ mod tests {
         );
 
         assert!(external_host_forbidden_source_pattern("use runenui_core::__runtime;").is_some());
+        assert!(
+            external_host_forbidden_source_pattern(
+                "runtime.__seed_reconciliation_generation_for_test(u64::MAX);"
+            )
+            .is_some()
+        );
         assert!(
             external_host_forbidden_source_pattern("use runenui_winit::MouseInputState;").is_some()
         );
