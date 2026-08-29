@@ -1,0 +1,180 @@
+name: Temporary workspace audit decomposition
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: rustup toolchain install stable --profile minimal --component rustfmt
+      - name: Decompose audit checks without changing policy
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('xtask/src/repository_audit/workspace.rs')
+          text = path.read_text()
+
+          old = """        if package == RENDER_WGPU_PACKAGE {
+            validate_renderer_external_dependencies(
+                &relative,
+                &dependencies,
+                &dev_dependencies,
+                findings,
+            );
+        }
+        if package == WINIT_PACKAGE {
+            validate_winit_external_dependencies(
+                &relative,
+                &dependencies,
+                &dev_dependencies,
+                findings,
+            );
+        }
+"""
+          new = """        validate_external_dependency_boundaries(
+            &relative,
+            &package,
+            &dependencies,
+            &dev_dependencies,
+            findings,
+        );
+"""
+          assert text.count(old) == 1, 'unexpected audit external-boundary shape'
+          text = text.replace(old, new)
+
+          marker = "fn validate_dependency_direction(\n"
+          helper = """fn validate_external_dependency_boundaries(
+    relative: &Path,
+    package: &str,
+    dependencies: &BTreeSet<String>,
+    dev_dependencies: &BTreeSet<String>,
+    findings: &mut Vec<Finding>,
+) {
+    if package == RENDER_WGPU_PACKAGE {
+        validate_renderer_external_dependencies(
+            relative,
+            dependencies,
+            dev_dependencies,
+            findings,
+        );
+    }
+    if package == WINIT_PACKAGE {
+        validate_winit_external_dependencies(relative, dependencies, dev_dependencies, findings);
+    }
+}
+
+"""
+          assert text.count(marker) == 1, 'unexpected dependency-direction marker'
+          text = text.replace(marker, helper + marker)
+
+          start = text.index('    if member.package == RUNTIME_PACKAGE && !workspace_dependencies.contains(CORE_PACKAGE) {')
+          end_marker = '\n}\n\nfn validate_renderer_external_dependencies('
+          end = text.index(end_marker, start)
+          required_block = text[start:end]
+          replacement = "    validate_required_workspace_dependencies(member, &workspace_dependencies, findings);"
+          text = text[:start] + replacement + text[end:]
+
+          marker = 'fn validate_renderer_external_dependencies(\n'
+          helper = """fn validate_required_workspace_dependencies(
+    member: &WorkspaceMember,
+    workspace_dependencies: &BTreeSet<&str>,
+    findings: &mut Vec<Finding>,
+) {
+    if member.package == RUNTIME_PACKAGE && !workspace_dependencies.contains(CORE_PACKAGE) {
+        findings.push(Finding::fatal(
+            "workspace.runtime_core_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            "runenui_runtime must depend on runenui_core",
+        ));
+    }
+
+    for (package, code, label) in [
+        (
+            RENDER_WGPU_PACKAGE,
+            "workspace.renderer_public_dependency_missing",
+            "runenui_render_wgpu",
+        ),
+        (
+            TESTING_PACKAGE,
+            "workspace.testing_public_dependency_missing",
+            "runenui_testing",
+        ),
+        (
+            WINIT_PACKAGE,
+            "workspace.winit_public_dependency_missing",
+            "runenui_winit",
+        ),
+    ] {
+        if member.package == package {
+            for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
+                if !workspace_dependencies.contains(dependency) {
+                    findings.push(Finding::fatal(
+                        code,
+                        Some(path_text(&member.relative.join("Cargo.toml"))),
+                        format!("{label} must depend on public workspace package `{dependency}`"),
+                    ));
+                }
+            }
+        }
+    }
+
+    if matches!(member.package.as_str(), REFERENCE_WINIT_PACKAGE | "counter")
+        && !workspace_dependencies.contains(WINIT_PACKAGE)
+    {
+        findings.push(Finding::fatal(
+            "workspace.native_consumer_winit_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            format!(
+                "{} must consume runenui_winit as an accepted M7 native consumer",
+                member.package
+            ),
+        ));
+    }
+
+    if member.package == "counter" && !workspace_dependencies.contains(RENDER_WGPU_PACKAGE) {
+        findings.push(Finding::fatal(
+            "workspace.counter_renderer_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            "counter must consume runenui_render_wgpu as the M7 native application showcase",
+        ));
+    }
+
+    if member.package == REFERENCE_WINIT_PACKAGE
+        && !workspace_dependencies.contains(RENDER_WGPU_PACKAGE)
+    {
+        findings.push(Finding::fatal(
+            "workspace.reference_host_renderer_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            "reference_winit must consume runenui_render_wgpu as the standalone M7 native host",
+        ));
+    }
+}
+
+"""
+          assert text.count(marker) == 1, 'unexpected renderer helper marker'
+          text = text.replace(marker, helper + marker)
+          path.write_text(text)
+      - run: cargo +stable fmt --all
+      - name: Commit decomposition
+        shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add xtask/src/repository_audit/workspace.rs
+          if git diff --cached --quiet; then
+            echo 'Audit already decomposed'
+            exit 0
+          fi
+          git commit -m 'M7: decompose native dependency audit checks'
+          git push origin "HEAD:${HEAD_BRANCH}"
