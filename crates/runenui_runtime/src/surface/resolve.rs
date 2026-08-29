@@ -62,15 +62,15 @@ pub(super) struct CachedStyleFacts {
 
 impl CachedStyleFacts {
     pub(super) fn effects_against(&self, other: &Self) -> StyleEffects {
-        self.resolutions
-            .iter()
-            .zip(&other.resolutions)
-            .fold(StyleEffects::NONE, |effects, (old, new)| {
+        self.resolutions.iter().zip(&other.resolutions).fold(
+            StyleEffects::NONE,
+            |effects, (old, new)| {
                 effects.union(style_effects_between(
                     old.computed_style(),
                     new.computed_style(),
                 ))
-            })
+            },
+        )
     }
 }
 
