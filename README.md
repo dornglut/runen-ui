@@ -1,6 +1,6 @@
 # RunenUI
 
-RunenUI targets host-neutral, renderer-neutral Rust UI for headless, standalone, and embedded application profiles. The repository is pre-1.0 and currently provides a deterministic **headless framework foundation**, not a production desktop UI stack.
+RunenUI targets host-neutral, renderer-neutral Rust UI for headless, standalone, and embedded application profiles. The repository is pre-1.0 and currently provides a deterministic headless framework foundation plus a proof-level real host/renderer/accessibility production spine; it is not yet a production-complete desktop UI stack.
 
 ## Current accepted foundation
 
@@ -12,9 +12,12 @@ The implemented foundation includes:
 - bounded effects, tasks, timers, subscriptions, host requests, deterministic clocks, wake/redraw, explicit pumping, trace/export/replay;
 - canonical routed pointer, keyboard, committed-text, IME, focus, automation, and semantic-command interaction;
 - independent semantic identity/publication/action ingress;
-- public deterministic headless application testing through `runenui_testing`.
+- public deterministic headless application testing through `runenui_testing`;
+- an accepted reusable wgpu renderer/resource edge with real offscreen/readback and native presentation proof;
+- reusable winit input and AccessKit translation exercised by standalone native hosts;
+- a separate winit-free downstream host proof that owns pump/publication/render/present sequencing through ordinary public contracts.
 
-The renderer-neutral paint/hit scene protocol is complete through M6 at proof maturity, including independent-consumer and migration closure. Concrete native hosts/backends, resource realization, production text/editing, full layout/style breadth, standard controls, and multi-window lifecycle remain later roadmap outcomes.
+The renderer-neutral paint/hit scene protocol is complete through M6 at proof maturity, and the M7 reference production spine is complete at proof maturity through concrete renderer/resource, native host/input/accessibility, and external-host evidence. Production text/editing, full responsive layout/style breadth, standard controls, multi-window lifecycle, and supported platform breadth remain later roadmap outcomes.
 
 See [current status](docs/status.md) for capability maturity and [roadmap](docs/roadmap.md) for durable sequencing.
 
@@ -24,16 +27,23 @@ See [current status](docs/status.md) for capability maturity and [roadmap](docs/
 runenui_core <- runenui_runtime
        ^             ^
        └──────┬──────┘
+              ├── runenui_render_wgpu ──┬── reference_winit
+              │                         ├── counter
+              │                         └── external-host conformance
+              ├── runenui_winit ────────┬── reference_winit
+              │                         └── counter
               ├── runenui_testing
-              ├── counter example
               ├── external-renderer conformance
               └── external-widget conformance
 ```
 
 - `runenui_core` owns host-neutral public values and protocols.
 - `runenui_runtime` owns live framework authority.
+- `runenui_render_wgpu` is the reusable concrete renderer/resource edge over ordinary public paint publication.
+- `runenui_winit` owns reusable winit input and AccessKit translation/projection, not a host loop or renderer.
 - `runenui_testing` is a downstream public testing convenience layer.
-- `tests/external_renderer` is an unpublished downstream conformance consumer over ordinary public core/runtime scene contracts.
+- `tests/external_host` is an unpublished winit-free downstream host conformance consumer over public core/runtime/renderer contracts.
+- `tests/external_renderer` is an unpublished downstream renderer-neutral conformance consumer over ordinary public core/runtime scene contracts.
 - `xtask` owns repository validation tooling and has no framework dependency.
 
 See [workspace structure](docs/architecture/workspace-structure.md) for the enforced ownership/dependency contract.

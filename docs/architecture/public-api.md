@@ -61,11 +61,13 @@ It consumes public core/runtime contracts plus winit/AccessKit types. It has no 
 
 It owns no live runtime queue, mounted/semantic store, identity allocation, publication state, trace authority, resource provider, or private mutation bridge. A test target retains exact public surface/semantic scope; testing must not reconstruct private mounted routing identity, fabricate scene/publication lineage, duplicate hit resolution, or guess a surface from a bare semantic ID.
 
-## Accepted native application integration
+## Accepted native and external application integration
 
-The accepted M7B/M7C native path remains host-owned rather than a generic framework runner. `examples/reference_winit` and the native Counter application each visibly own their winit window/event loop, runtime pumping and redraw driving, native coordinate mapping, renderer presentation/recovery policy, and displayed-frame authority. Both consume `runenui_winit` for the substantial native input/AccessKit mechanics that are independent of those application policies.
+The accepted M7 native path remains host-owned rather than a generic framework runner. `examples/reference_winit` and the native Counter application each visibly own their winit window/event loop, runtime pumping and redraw driving, native coordinate mapping, renderer presentation/recovery policy, and displayed-frame authority. Both consume `runenui_winit` for the substantial native input/AccessKit mechanics that are independent of those application policies.
 
-Native winit/AccessKit types remain outside `runenui_core` and `runenui_runtime`; `runenui_render_wgpu` remains winit-free; and neither native application becomes framework-owned loop authority. The second consumer justifies the bounded adapter crate, not a generic native application facade. M7D still owns external-host closure and any further factoring must be driven by that real host pressure.
+Native winit/AccessKit types remain outside `runenui_core` and `runenui_runtime`; `runenui_render_wgpu` remains winit-free; and neither native application becomes framework-owned loop authority. The second consumer justifies the bounded adapter crate, not a generic native application facade.
+
+The accepted `tests/external_host` proof independently consumes ordinary public core/runtime contracts plus `runenui_render_wgpu` without importing winit, AccessKit, or testing convenience. Its caller-owned sequence visibly controls submit, pump, redraw consumption, publication, acknowledgement, render/retry, and presentation, including retained-publication retry after caller-owned resource failure. This confirms the reusable external-host boundary is the existing public runtime/publication/renderer/resource contract rather than a framework-owned host facade.
 
 ## Core invariants
 
@@ -97,12 +99,12 @@ Renderer-facing paint products, hit/input products, semantics, layout, and diagn
 
 The current public surface is pre-1.0 and may change incompatibly when accepted architecture requires a clean cutover. Important missing production capabilities include:
 
-- a reusable native host/application edge beyond the bounded translation adapter, pending M7 external-host closure;
+- broader production host/application ergonomics beyond the accepted proof-level native and external-host paths;
 - broader resource/font/shaping integration beyond the bounded accepted M7 resource realization proof;
 - multi-window lifecycle and supported platform-profile breadth;
 - production text shaping, international layout, editing, clipboard, and complete editable-text integration;
 - production responsive layout/style breadth and a complete standard control library.
 
-M7 has accepted the first real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, and AccessKit semantic adapter, and this native application slice establishes the bounded reusable winit adapter plus native Counter showcase from demonstrated second-consumer pressure. M7 remains incomplete until M7D external-host closure is accepted. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
+M7 is accepted complete at proof maturity through the real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, reusable winit/AccessKit adapter, native Counter showcase, and winit-free downstream external-host proof over the same public contracts. M8 production style/layout/international-text foundations are the next durable roadmap owner. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
 
 Do not infer support from a target ADR, design document, type name, or roadmap entry alone. Code/tests establish current behavior; source/Rustdoc establishes the exact public Rust surface.
