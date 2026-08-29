@@ -20,15 +20,16 @@ mod tests {
         Color, Element, IntoEffects, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
         PaintContribution, PaintContributionContext, PaintContributionItem, ResourceKind,
         ResourceRef, SemanticAction, SemanticActionRequest, SemanticContribution,
-        SemanticContributionContext, SemanticNodeContribution, SemanticRole, UiApp, View, Widget,
-        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetMeasure,
+        SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleTokens, UiApp,
+        View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+        WidgetMeasure,
     };
     use runenui_render_wgpu::{
         BackendSelection, ImagePayload, PayloadValidationError, PublicationRenderError, Renderer,
         RendererInitError, RendererOptions, ResourcePayload, ResourceProvider, ResourceProviderError,
         ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
     };
-    use runenui_runtime::{AppRuntime, PumpBudget, StyleTokens, SurfaceBuildContext};
+    use runenui_runtime::{AppRuntime, PumpBudget, SurfaceBuildContext};
 
     const SURFACE_EXTENT: u16 = 8;
     const IMAGE_EXTENT: f32 = 4.0;
@@ -166,7 +167,7 @@ mod tests {
     }
 
     impl FailingImageProvider {
-        const fn new(expected: ResourceRef) -> Self {
+        fn new(expected: ResourceRef) -> Self {
             Self {
                 expected,
                 loads: Cell::new(0),
@@ -318,7 +319,7 @@ mod tests {
             &provider,
         )?;
         assert_eq!(first_publication.paint_publication().revision(), first_revision);
-        assert!(provider.loads() >= 1);
+        assert_ne!(provider.loads(), 0);
 
         steps.push(FrameStep::Present);
         let first_presented = present(first_render.readback());
