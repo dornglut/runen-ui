@@ -90,22 +90,13 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
         }
 
         let (dependencies, dev_dependencies) = parse_dependency_names(&manifest);
-        if package == RENDER_WGPU_PACKAGE {
-            validate_renderer_external_dependencies(
-                &relative,
-                &dependencies,
-                &dev_dependencies,
-                findings,
-            );
-        }
-        if package == WINIT_PACKAGE {
-            validate_winit_external_dependencies(
-                &relative,
-                &dependencies,
-                &dev_dependencies,
-                findings,
-            );
-        }
+        validate_external_dependency_boundaries(
+            &relative,
+            &package,
+            &dependencies,
+            &dev_dependencies,
+            findings,
+        );
         members.push(WorkspaceMember {
             relative,
             package,
@@ -163,6 +154,21 @@ fn workspace_dependency_set<'a>(
         .filter(|dependency| members.contains_key(dependency.as_str()))
         .map(String::as_str)
         .collect()
+}
+
+fn validate_external_dependency_boundaries(
+    relative: &Path,
+    package: &str,
+    dependencies: &BTreeSet<String>,
+    dev_dependencies: &BTreeSet<String>,
+    findings: &mut Vec<Finding>,
+) {
+    if package == RENDER_WGPU_PACKAGE {
+        validate_renderer_external_dependencies(relative, dependencies, dev_dependencies, findings);
+    }
+    if package == WINIT_PACKAGE {
+        validate_winit_external_dependencies(relative, dependencies, dev_dependencies, findings);
+    }
 }
 
 fn validate_dependency_direction(
@@ -223,6 +229,14 @@ fn validate_dependency_direction(
         ));
     }
 
+    validate_required_workspace_dependencies(member, &workspace_dependencies, findings);
+}
+
+fn validate_required_workspace_dependencies(
+    member: &WorkspaceMember,
+    workspace_dependencies: &BTreeSet<&str>,
+    findings: &mut Vec<Finding>,
+) {
     if member.package == RUNTIME_PACKAGE && !workspace_dependencies.contains(CORE_PACKAGE) {
         findings.push(Finding::fatal(
             "workspace.runtime_core_dependency_missing",
@@ -231,42 +245,32 @@ fn validate_dependency_direction(
         ));
     }
 
-    if member.package == RENDER_WGPU_PACKAGE {
-        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
-            if !workspace_dependencies.contains(dependency) {
-                findings.push(Finding::fatal(
-                    "workspace.renderer_public_dependency_missing",
-                    Some(path_text(&member.relative.join("Cargo.toml"))),
-                    format!(
-                        "runenui_render_wgpu must depend on public workspace package `{dependency}`"
-                    ),
-                ));
-            }
-        }
-    }
-
-    if member.package == TESTING_PACKAGE {
-        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
-            if !workspace_dependencies.contains(dependency) {
-                findings.push(Finding::fatal(
-                    "workspace.testing_public_dependency_missing",
-                    Some(path_text(&member.relative.join("Cargo.toml"))),
-                    format!(
-                        "runenui_testing must depend on public workspace package `{dependency}`"
-                    ),
-                ));
-            }
-        }
-    }
-
-    if member.package == WINIT_PACKAGE {
-        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
-            if !workspace_dependencies.contains(dependency) {
-                findings.push(Finding::fatal(
-                    "workspace.winit_public_dependency_missing",
-                    Some(path_text(&member.relative.join("Cargo.toml"))),
-                    format!("runenui_winit must depend on public workspace package `{dependency}`"),
-                ));
+    for (package, code, label) in [
+        (
+            RENDER_WGPU_PACKAGE,
+            "workspace.renderer_public_dependency_missing",
+            "runenui_render_wgpu",
+        ),
+        (
+            TESTING_PACKAGE,
+            "workspace.testing_public_dependency_missing",
+            "runenui_testing",
+        ),
+        (
+            WINIT_PACKAGE,
+            "workspace.winit_public_dependency_missing",
+            "runenui_winit",
+        ),
+    ] {
+        if member.package == package {
+            for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
+                if !workspace_dependencies.contains(dependency) {
+                    findings.push(Finding::fatal(
+                        code,
+                        Some(path_text(&member.relative.join("Cargo.toml"))),
+                        format!("{label} must depend on public workspace package `{dependency}`"),
+                    ));
+                }
             }
         }
     }
