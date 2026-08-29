@@ -509,7 +509,7 @@ fn dependency_package_name(name: &str, value: &str) -> String {
         .and_then(|value| value.strip_suffix('}'))
         .and_then(|fields| {
             fields.split(',').find_map(|field| {
-                let (key, value) = field.split_once('=')?;
+                let (key, value)) = field.split_once('=')?;
                 if key.trim() == "package" {
                     quoted_values(value).into_iter().next()
                 } else {
@@ -600,7 +600,10 @@ fn read(root: &Path, relative: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        path::Path,
+    };
 
     use super::{
         CORE_PACKAGE, EXTERNAL_HOST_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE,
