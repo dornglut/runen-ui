@@ -509,7 +509,7 @@ fn dependency_package_name(name: &str, value: &str) -> String {
         .and_then(|value| value.strip_suffix('}'))
         .and_then(|fields| {
             fields.split(',').find_map(|field| {
-                let (key, value)) = field.split_once('=')?;
+                let (key, value) = field.split_once('=')?;
                 if key.trim() == "package" {
                     quoted_values(value).into_iter().next()
                 } else {
