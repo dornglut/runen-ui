@@ -2,7 +2,7 @@
 
 > **Category:** ADR
 >
-> **Status:** Proposed target architecture; acceptance requires exact-head owner acceptance
+> **Status:** Accepted target architecture on exact-head owner acceptance
 >
 > **Decision date:** 2026-08-29
 >
@@ -10,8 +10,8 @@
 >
 > **Reviewed baseline:** `1a5af89c1886654d859f56d1d8afe3e46abdcf95`
 >
-> **Acceptance:** this ADR becomes accepted target architecture only when the exact
-> M8A0 package containing it is explicitly accepted by the repository owner,
+> **Acceptance:** this ADR is the accepted M8 target architecture after the exact
+> M8A0 package containing it was explicitly accepted by the repository owner,
 > squash-merged, and accepted-main validated. Acceptance freezes target decisions;
 > it does not claim any M8 production implementation or dependency adoption.
 

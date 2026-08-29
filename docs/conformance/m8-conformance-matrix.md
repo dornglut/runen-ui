@@ -2,17 +2,16 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M8 target contract proposed by M8A0; all production rows blocked
+> **Status:** Accepted M8 target contract; all production rows blocked
 >
 > **Milestone:** M8
 >
 > **Reviewed baseline:** `1a5af89c1886654d859f56d1d8afe3e46abdcf95`
 >
-> This matrix becomes normative only when the exact M8A0 architecture/conformance
-> package containing it is explicitly accepted by the repository owner,
+> This matrix is the normative M8 target contract after the exact M8A0
+> architecture/conformance package was explicitly accepted by the repository owner,
 > squash-merged, and accepted-main validated. Acceptance freezes M8 obligations; it
-> does not promote any production row or authorize implementation from an unmerged
-> branch.
+> does not promote any production row or claim M8 implementation capability.
 
 [ADR 0009](../adr/0009-production-style-layout-text-foundation.md) owns M8
 architecture. M3 owns mounted runtime/layout authority and invalidation; M4 owns
@@ -33,8 +32,7 @@ integration. This matrix references inherited contracts rather than duplicating 
 
 All rows are `Required`. Serial delivery after accepted M8A0 is M8A style
 resolution, M8B logical text plus SDF/MSDF realization, M8C production runtime
-layout/text feedback, then M8D integrated closure. These are sequencing labels only
-until A0 is accepted-main validated.
+layout/text feedback, then M8D integrated closure.
 
 A second retained UI tree, renderer-owned shaping/layout, core/runtime renderer
 registries, private expected-layout models, ambient-system-font deterministic tests,
