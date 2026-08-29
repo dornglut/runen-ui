@@ -1,25 +1,25 @@
 use runenui_core::{
-    Color, ColorToken, ComputedStyle, EdgeInsets, LogicalLength, StyleEffects, StyleEnvironment,
-    StyleFieldProvenance, StyleInteractionFacts, StyleInteractionState, StylePreferenceKind,
-    StylePreferencePolicy, StylePreferences, StyleProperties, StyleRecipe, StyleRecipeId,
-    StyleResolutionDiagnostic, StyleResolutionLayer, StyleTheme, StyleTokens, StyleVariantId,
-    TokenId, resolve_style_in_environment, style_effects_between,
+    Color, ColorToken, ComputedStyle, EdgeInsets, IdentifierError, LogicalLength, StyleEffects,
+    StyleEnvironment, StyleFieldProvenance, StyleInteractionFacts, StyleInteractionState,
+    StylePreferenceKind, StylePreferencePolicy, StylePreferences, StyleProperties, StyleRecipe,
+    StyleRecipeId, StyleResolutionDiagnostic, StyleResolutionLayer, StyleTheme, StyleTokens,
+    StyleVariantId, TokenId, resolve_style_in_environment, style_effects_between,
 };
 
-fn recipe_id(value: &str) -> StyleRecipeId {
-    StyleRecipeId::new(value).expect("valid recipe id")
+fn recipe_id(value: &str) -> Result<StyleRecipeId, IdentifierError> {
+    StyleRecipeId::new(value)
 }
 
-fn variant_id(value: &str) -> StyleVariantId {
-    StyleVariantId::new(value).expect("valid variant id")
+fn variant_id(value: &str) -> Result<StyleVariantId, IdentifierError> {
+    StyleVariantId::new(value)
 }
 
 #[test]
 fn precedence_and_provenance_are_property_local_and_deterministic()
 -> Result<(), Box<dyn std::error::Error>> {
-    let recipe_id = recipe_id("control.button");
-    let compact = variant_id("compact");
-    let danger = variant_id("danger");
+    let recipe_id = recipe_id("control.button")?;
+    let compact = variant_id("compact")?;
+    let danger = variant_id("danger")?;
     let mut recipe = StyleRecipe::new(
         StyleProperties::EMPTY
             .with_foreground(Color::rgb(10, 10, 10))
@@ -87,9 +87,9 @@ fn precedence_and_provenance_are_property_local_and_deterministic()
 #[test]
 fn ordered_variants_and_framework_interaction_order_are_stable()
 -> Result<(), Box<dyn std::error::Error>> {
-    let recipe_id = recipe_id("control.button");
-    let first = variant_id("first");
-    let second = variant_id("second");
+    let recipe_id = recipe_id("control.button")?;
+    let first = variant_id("first")?;
+    let second = variant_id("second")?;
     let mut recipe = StyleRecipe::new(StyleProperties::EMPTY);
     recipe.define_variant(
         first.clone(),
@@ -133,7 +133,7 @@ fn ordered_variants_and_framework_interaction_order_are_stable()
 
 #[test]
 fn missing_higher_precedence_token_masks_lower_value() -> Result<(), Box<dyn std::error::Error>> {
-    let recipe_id = recipe_id("control.button");
+    let recipe_id = recipe_id("control.button")?;
     let mut theme = StyleTheme::new(StyleTokens::new());
     theme.define_recipe(
         recipe_id.clone(),
