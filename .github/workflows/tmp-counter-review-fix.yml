@@ -1,0 +1,367 @@
+name: Temporary M7 Counter cold-review fixes
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: rustup toolchain install stable --profile minimal --component rustfmt
+      - name: Apply bounded cold-review fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          native = Path('examples/counter/src/bin/native.rs')
+          text = native.read_text()
+          old = '''    fn cancel_mouse_for_device_change(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        reason: &str,
+    ) -> bool {'''
+          new = '''    fn handle_native_point_authority_loss(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        reason: &str,
+    ) -> bool {
+        if !self.invalidate_mouse_point_authority(event_loop, reason) {
+            return false;
+        }
+        self.drive_runtime(event_loop);
+        self.request_pending_redraw();
+        true
+    }
+
+    fn cancel_mouse_for_device_change(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        reason: &str,
+    ) -> bool {'''
+          assert text.count(old) == 1, 'unexpected native point-authority insertion point'
+          text = text.replace(old, new)
+          old = '''            WindowEvent::CursorLeft { .. } => {
+                let _ =
+                    self.invalidate_mouse_point_authority(event_loop, "native cursor left window");
+            }'''
+          new = '''            WindowEvent::CursorLeft { .. } => {
+                let _ = self.handle_native_point_authority_loss(
+                    event_loop,
+                    "native cursor left window",
+                );
+            }'''
+          assert text.count(old) == 1, 'unexpected CursorLeft handling'
+          text = text.replace(old, new)
+          old = '''                let _ =
+                    self.invalidate_mouse_point_authority(event_loop, "native window lost focus");
+                self.modifiers = KeyModifiers::NONE;'''
+          new = '''                if !self.handle_native_point_authority_loss(
+                    event_loop,
+                    "native window lost focus",
+                ) {
+                    return;
+                }
+                self.modifiers = KeyModifiers::NONE;'''
+          assert text.count(old) == 1, 'unexpected focus-loss point handling'
+          native.write_text(text.replace(old, new))
+
+          audit = Path('xtask/src/repository_audit/workspace.rs')
+          text = audit.read_text()
+          old = '''const RENDER_WGPU_FORBIDDEN_DEPENDENCIES: &[&str] =
+    &["winit", "accesskit", "accesskit_winit", "raw-window-handle"];'''
+          new = '''const RENDER_WGPU_FORBIDDEN_DEPENDENCIES: &[&str] =
+    &["winit", "accesskit", "accesskit_winit", "raw-window-handle"];
+const WINIT_FORBIDDEN_DEPENDENCIES: &[&str] = &["wgpu"];'''
+          assert text.count(old) == 1, 'unexpected dependency-constant shape'
+          text = text.replace(old, new)
+          old = '''        if package == RENDER_WGPU_PACKAGE {
+            validate_renderer_external_dependencies(
+                &relative,
+                &dependencies,
+                &dev_dependencies,
+                findings,
+            );
+        }
+        members.push(WorkspaceMember {'''
+          new = '''        if package == RENDER_WGPU_PACKAGE {
+            validate_renderer_external_dependencies(
+                &relative,
+                &dependencies,
+                &dev_dependencies,
+                findings,
+            );
+        }
+        if package == WINIT_PACKAGE {
+            validate_winit_external_dependencies(
+                &relative,
+                &dependencies,
+                &dev_dependencies,
+                findings,
+            );
+        }
+        members.push(WorkspaceMember {'''
+          assert text.count(old) == 1, 'unexpected external-dependency audit hook'
+          text = text.replace(old, new)
+          old = '''    if member.package == TESTING_PACKAGE {
+        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
+            if !workspace_dependencies.contains(dependency) {
+                findings.push(Finding::fatal(
+                    "workspace.testing_public_dependency_missing",
+                    Some(path_text(&member.relative.join("Cargo.toml"))),
+                    format!(
+                        "runenui_testing must depend on public workspace package `{dependency}`"
+                    ),
+                ));
+            }
+        }
+    }
+
+    if member.package == REFERENCE_WINIT_PACKAGE'''
+          new = '''    if member.package == TESTING_PACKAGE {
+        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
+            if !workspace_dependencies.contains(dependency) {
+                findings.push(Finding::fatal(
+                    "workspace.testing_public_dependency_missing",
+                    Some(path_text(&member.relative.join("Cargo.toml"))),
+                    format!(
+                        "runenui_testing must depend on public workspace package `{dependency}`"
+                    ),
+                ));
+            }
+        }
+    }
+
+    if member.package == WINIT_PACKAGE {
+        for dependency in [CORE_PACKAGE, RUNTIME_PACKAGE] {
+            if !workspace_dependencies.contains(dependency) {
+                findings.push(Finding::fatal(
+                    "workspace.winit_public_dependency_missing",
+                    Some(path_text(&member.relative.join("Cargo.toml"))),
+                    format!(
+                        "runenui_winit must depend on public workspace package `{dependency}`"
+                    ),
+                ));
+            }
+        }
+    }
+
+    if matches!(member.package.as_str(), REFERENCE_WINIT_PACKAGE | "counter")
+        && !workspace_dependencies.contains(WINIT_PACKAGE)
+    {
+        findings.push(Finding::fatal(
+            "workspace.native_consumer_winit_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            format!(
+                "{} must consume runenui_winit as an accepted M7 native consumer",
+                member.package
+            ),
+        ));
+    }
+
+    if member.package == "counter" && !workspace_dependencies.contains(RENDER_WGPU_PACKAGE) {
+        findings.push(Finding::fatal(
+            "workspace.counter_renderer_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            "counter must consume runenui_render_wgpu as the M7 native application showcase",
+        ));
+    }
+
+    if member.package == REFERENCE_WINIT_PACKAGE'''
+          assert text.count(old) == 1, 'unexpected required-dependency insertion point'
+          text = text.replace(old, new)
+          old = '''fn parse_workspace_members(contents: &str) -> Option<Vec<PathBuf>> {'''
+          new = '''fn validate_winit_external_dependencies(
+    relative: &Path,
+    dependencies: &BTreeSet<String>,
+    dev_dependencies: &BTreeSet<String>,
+    findings: &mut Vec<Finding>,
+) {
+    for forbidden in WINIT_FORBIDDEN_DEPENDENCIES {
+        if dependencies.contains(*forbidden) || dev_dependencies.contains(*forbidden) {
+            findings.push(Finding::fatal(
+                "workspace.winit_forbidden_renderer_dependency",
+                Some(path_text(&relative.join("Cargo.toml"))),
+                format!(
+                    "runenui_winit must not depend on renderer/backend package `{forbidden}`"
+                ),
+            ));
+        }
+    }
+}
+
+fn parse_workspace_members(contents: &str) -> Option<Vec<PathBuf>> {'''
+          assert text.count(old) == 1, 'unexpected helper insertion point'
+          text = text.replace(old, new)
+          old = '''        CORE_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE, RENDER_WGPU_PACKAGE,
+        RUNTIME_PACKAGE, TESTING_PACKAGE, WorkspaceMember, documented_package_names,
+        parse_dependency_names, parse_package_name, parse_workspace_members,
+        validate_dependency_direction, validate_renderer_external_dependencies,
+    };'''
+          new = '''        CORE_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE, RENDER_WGPU_PACKAGE,
+        RUNTIME_PACKAGE, TESTING_PACKAGE, WINIT_PACKAGE, WorkspaceMember, documented_package_names,
+        parse_dependency_names, parse_package_name, parse_workspace_members,
+        validate_dependency_direction, validate_renderer_external_dependencies,
+        validate_winit_external_dependencies,
+    };'''
+          assert text.count(old) == 1, 'unexpected test import shape'
+          text = text.replace(old, new)
+          old = '''    #[test]
+    fn reference_winit_may_consume_renderer_but_generic_examples_may_not() {'''
+          new = '''    #[test]
+    fn winit_adapter_requires_public_core_runtime_and_rejects_renderer_backend() {
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
+        let runtime = member(
+            "crates/runenui_runtime",
+            RUNTIME_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let winit = member(
+            "crates/runenui_winit",
+            WINIT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (winit.package.as_str(), &winit),
+        ]);
+        let mut findings = Vec::new();
+        validate_dependency_direction(&winit, &members, &mut findings);
+        validate_winit_external_dependencies(
+            &winit.relative,
+            &winit.dependencies,
+            &winit.dev_dependencies,
+            &mut findings,
+        );
+        assert!(findings.is_empty());
+
+        let missing_runtime = member(
+            "crates/runenui_winit",
+            WINIT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let missing_members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (missing_runtime.package.as_str(), &missing_runtime),
+        ]);
+        let mut missing_findings = Vec::new();
+        validate_dependency_direction(&missing_runtime, &missing_members, &mut missing_findings);
+        assert!(missing_findings.iter().any(|finding| {
+            finding.code == "workspace.winit_public_dependency_missing"
+        }));
+
+        let mut forbidden_findings = Vec::new();
+        validate_winit_external_dependencies(
+            &winit.relative,
+            &BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                "wgpu".to_owned(),
+            ]),
+            &BTreeSet::new(),
+            &mut forbidden_findings,
+        );
+        assert_eq!(
+            forbidden_findings
+                .iter()
+                .filter(|finding| {
+                    finding.code == "workspace.winit_forbidden_renderer_dependency"
+                })
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn reference_winit_may_consume_renderer_but_generic_examples_may_not() {'''
+          assert text.count(old) == 1, 'unexpected test insertion point'
+          text = text.replace(old, new)
+          old = '''        let reference = member(
+            "examples/reference_winit",
+            REFERENCE_WINIT_PACKAGE,
+            BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                RENDER_WGPU_PACKAGE.to_owned(),
+            ]),
+            BTreeSet::new(),
+        );
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (renderer.package.as_str(), &renderer),
+            (reference.package.as_str(), &reference),
+        ]);'''
+          new = '''        let winit = member(
+            "crates/runenui_winit",
+            WINIT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let reference = member(
+            "examples/reference_winit",
+            REFERENCE_WINIT_PACKAGE,
+            BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                RENDER_WGPU_PACKAGE.to_owned(),
+                WINIT_PACKAGE.to_owned(),
+            ]),
+            BTreeSet::new(),
+        );
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (renderer.package.as_str(), &renderer),
+            (winit.package.as_str(), &winit),
+            (reference.package.as_str(), &reference),
+        ]);'''
+          assert text.count(old) == 1, 'unexpected reference fixture shape'
+          text = text.replace(old, new)
+          old = '''        let missing_members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (renderer.package.as_str(), &renderer),
+            (missing_renderer.package.as_str(), &missing_renderer),
+        ]);'''
+          new = '''        let missing_members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (renderer.package.as_str(), &renderer),
+            (winit.package.as_str(), &winit),
+            (missing_renderer.package.as_str(), &missing_renderer),
+        ]);'''
+          assert text.count(old) == 1, 'unexpected missing-reference fixture shape'
+          audit.write_text(text.replace(old, new))
+      - run: cargo +stable fmt --all
+      - name: Commit bounded cold-review fixes
+        shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Cold-review fixes already applied'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add examples/counter/src/bin/native.rs xtask/src/repository_audit/workspace.rs
+          git commit -m 'M7: fix Counter point-authority publication and enforce adapter boundary'
+          git push origin "HEAD:${HEAD_BRANCH}"
