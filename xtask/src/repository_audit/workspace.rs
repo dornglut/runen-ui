@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
 };
@@ -14,11 +15,21 @@ const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";
 const WINIT_PACKAGE: &str = "runenui_winit";
 const TESTING_PACKAGE: &str = "runenui_testing";
 const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
+const EXTERNAL_HOST_PACKAGE: &str = "runenui_external_host_conformance";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
 const RENDER_WGPU_FORBIDDEN_DEPENDENCIES: &[&str] =
     &["winit", "accesskit", "accesskit_winit", "raw-window-handle"];
 const WINIT_FORBIDDEN_DEPENDENCIES: &[&str] = &["wgpu"];
+const EXTERNAL_HOST_FORBIDDEN_SOURCE_PATTERNS: &[(&str, &str)] = &[
+    ("::__runtime", "private runtime bridge"),
+    ("internal-test-seams", "internal test seam"),
+    ("_for_test", "internal test seam"),
+    ("runenui_testing", "testing convenience"),
+    ("runenui_winit", "native adapter"),
+    ("winit::", "native host"),
+    ("accesskit", "accessibility adapter"),
+];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct WorkspaceMetrics {
@@ -81,28 +92,16 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
                 format!("workspace package name `{package}` is duplicated"),
             ));
         }
-        if package == TESTING_PACKAGE && manifest.contains("internal-test-seams") {
-            findings.push(Finding::fatal(
-                "workspace.testing_internal_seam_dependency",
-                Some(path_text(&manifest_relative)),
-                "runenui_testing must consume ordinary public runtime APIs and must not enable or mention `internal-test-seams` in its manifest",
-            ));
-        }
 
         let (dependencies, dev_dependencies) = parse_dependency_names(&manifest);
-        validate_external_dependency_boundaries(
-            &relative,
-            &package,
-            &dependencies,
-            &dev_dependencies,
-            findings,
-        );
-        members.push(WorkspaceMember {
+        let member = WorkspaceMember {
             relative,
             package,
             dependencies,
             dev_dependencies,
-        });
+        };
+        validate_member_boundaries(root, &member, &manifest, &manifest_relative, findings)?;
+        members.push(member);
     }
 
     let documented = documented_package_names(&read(root, WORKSPACE_STRUCTURE_PATH)?);
@@ -143,6 +142,47 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
         members: members.len(),
         production_crates,
     })
+}
+
+fn validate_member_boundaries(
+    root: &Path,
+    member: &WorkspaceMember,
+    manifest: &str,
+    manifest_relative: &Path,
+    findings: &mut Vec<Finding>,
+) -> Result<(), String> {
+    if member.package == TESTING_PACKAGE && manifest.contains("internal-test-seams") {
+        findings.push(Finding::fatal(
+            "workspace.testing_internal_seam_dependency",
+            Some(path_text(manifest_relative)),
+            "runenui_testing must consume ordinary public runtime APIs and must not enable or mention `internal-test-seams` in its manifest",
+        ));
+    }
+
+    validate_external_dependency_boundaries(
+        &member.relative,
+        &member.package,
+        &member.dependencies,
+        &member.dev_dependencies,
+        findings,
+    );
+    if member.package != EXTERNAL_HOST_PACKAGE {
+        return Ok(());
+    }
+    if manifest.contains("internal-test-seams") {
+        findings.push(Finding::fatal(
+            "workspace.external_host_internal_seam_dependency",
+            Some(path_text(manifest_relative)),
+            "external-host conformance must not enable or mention `internal-test-seams` in its manifest",
+        ));
+    }
+    validate_external_host_dependencies(
+        &member.relative,
+        &member.dependencies,
+        &member.dev_dependencies,
+        findings,
+    );
+    validate_external_host_source(root, &member.relative, findings)
 }
 
 fn workspace_dependency_set<'a>(
@@ -189,6 +229,9 @@ fn validate_dependency_direction(
             RENDER_WGPU_PACKAGE,
             WINIT_PACKAGE,
         ]),
+        EXTERNAL_HOST_PACKAGE => {
+            BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE])
+        }
         RENDER_WGPU_PACKAGE | TESTING_PACKAGE | EXTERNAL_WIDGET_PACKAGE => {
             BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
         }
@@ -341,6 +384,91 @@ fn validate_winit_external_dependencies(
             ));
         }
     }
+}
+
+fn validate_external_host_dependencies(
+    relative: &Path,
+    dependencies: &BTreeSet<String>,
+    dev_dependencies: &BTreeSet<String>,
+    findings: &mut Vec<Finding>,
+) {
+    let expected = BTreeSet::from([
+        CORE_PACKAGE.to_owned(),
+        RUNTIME_PACKAGE.to_owned(),
+        RENDER_WGPU_PACKAGE.to_owned(),
+    ]);
+    if dependencies != &expected || !dev_dependencies.is_empty() {
+        findings.push(Finding::fatal(
+            "workspace.external_host_dependency_contract",
+            Some(path_text(&relative.join("Cargo.toml"))),
+            "external-host conformance must depend exactly on runenui_core, runenui_runtime, and runenui_render_wgpu, with no dev-dependencies",
+        ));
+    }
+}
+
+fn validate_external_host_source(
+    root: &Path,
+    relative: &Path,
+    findings: &mut Vec<Finding>,
+) -> Result<(), String> {
+    let package_root = root.join(relative);
+    let mut sources = Vec::new();
+    collect_external_host_rust_sources(root, &package_root, &mut sources)?;
+    sources.sort();
+
+    for source_relative in sources {
+        let source = fs::read_to_string(root.join(&source_relative)).map_err(|error| {
+            format!(
+                "failed to read external-host conformance source {}: {error}",
+                source_relative.display()
+            )
+        })?;
+        if let Some((pattern, label)) = external_host_forbidden_source_pattern(&source) {
+            findings.push(Finding::fatal(
+                "workspace.external_host_forbidden_source",
+                Some(path_text(&source_relative)),
+                format!("external-host conformance source must not use {label} marker `{pattern}`"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn collect_external_host_rust_sources(
+    root: &Path,
+    directory: &Path,
+    sources: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(directory)
+        .map_err(|error| format!("failed to read {}: {error}", directory.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to inspect an entry in {}: {error}",
+                directory.display()
+            )
+        })?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_external_host_rust_sources(root, &path, sources)?;
+            continue;
+        }
+        if path.extension() != Some(OsStr::new("rs")) {
+            continue;
+        }
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|error| format!("failed to relativize {}: {error}", path.display()))?;
+        sources.push(relative.to_path_buf());
+    }
+    Ok(())
+}
+
+fn external_host_forbidden_source_pattern(source: &str) -> Option<(&'static str, &'static str)> {
+    EXTERNAL_HOST_FORBIDDEN_SOURCE_PATTERNS
+        .iter()
+        .copied()
+        .find(|(pattern, _)| source.contains(pattern))
 }
 
 fn parse_workspace_members(contents: &str) -> Option<Vec<PathBuf>> {
@@ -528,13 +656,17 @@ fn read(root: &Path, relative: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        path::Path,
+    };
 
     use super::{
-        CORE_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE, RENDER_WGPU_PACKAGE,
-        RUNTIME_PACKAGE, TESTING_PACKAGE, WINIT_PACKAGE, WorkspaceMember, documented_package_names,
-        parse_dependency_names, parse_package_name, parse_workspace_members,
-        validate_dependency_direction, validate_renderer_external_dependencies,
+        CORE_PACKAGE, EXTERNAL_HOST_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE,
+        RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, WINIT_PACKAGE, WorkspaceMember,
+        documented_package_names, external_host_forbidden_source_pattern, parse_dependency_names,
+        parse_package_name, parse_workspace_members, validate_dependency_direction,
+        validate_external_host_dependencies, validate_renderer_external_dependencies,
         validate_winit_external_dependencies,
     };
 
@@ -874,6 +1006,56 @@ mod tests {
                 .iter()
                 .any(|finding| finding.code == "workspace.forbidden_dependency_direction")
         );
+    }
+
+    #[test]
+    fn external_host_has_exact_renderer_boundary_and_rejects_privileged_source_markers() {
+        let relative = Path::new("tests/external_host");
+        let dependencies = BTreeSet::from([
+            CORE_PACKAGE.to_owned(),
+            RUNTIME_PACKAGE.to_owned(),
+            RENDER_WGPU_PACKAGE.to_owned(),
+        ]);
+        let mut findings = Vec::new();
+        validate_external_host_dependencies(
+            relative,
+            &dependencies,
+            &BTreeSet::new(),
+            &mut findings,
+        );
+        assert!(findings.is_empty());
+
+        validate_external_host_dependencies(
+            relative,
+            &BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                RUNTIME_PACKAGE.to_owned(),
+                RENDER_WGPU_PACKAGE.to_owned(),
+                "winit".to_owned(),
+            ]),
+            &BTreeSet::new(),
+            &mut findings,
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].code,
+            "workspace.external_host_dependency_contract"
+        );
+
+        assert!(external_host_forbidden_source_pattern("use runenui_core::__runtime;").is_some());
+        assert!(
+            external_host_forbidden_source_pattern(
+                "runtime.__seed_reconciliation_generation_for_test(u64::MAX);"
+            )
+            .is_some()
+        );
+        assert!(
+            external_host_forbidden_source_pattern("use runenui_winit::MouseInputState;").is_some()
+        );
+        assert!(
+            external_host_forbidden_source_pattern("use runenui_runtime::AppRuntime;").is_none()
+        );
+        assert_eq!(EXTERNAL_HOST_PACKAGE, "runenui_external_host_conformance");
     }
 
     #[test]
