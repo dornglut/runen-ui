@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
 };
@@ -389,21 +390,55 @@ fn validate_external_host_source(
     relative: &Path,
     findings: &mut Vec<Finding>,
 ) -> Result<(), String> {
-    let source_relative = relative.join("src/lib.rs");
-    let source = fs::read_to_string(root.join(&source_relative)).map_err(|error| {
-        format!(
-            "failed to read external-host conformance source {}: {error}",
-            source_relative.display()
-        )
-    })?;
-    if let Some((pattern, label)) = external_host_forbidden_source_pattern(&source) {
-        findings.push(Finding::fatal(
-            "workspace.external_host_forbidden_source",
-            Some(path_text(&source_relative)),
+    let source_root = root.join(relative).join("src");
+    let mut sources = Vec::new();
+    collect_external_host_rust_sources(root, &source_root, &mut sources)?;
+    sources.sort();
+
+    for source_relative in sources {
+        let source = fs::read_to_string(root.join(&source_relative)).map_err(|error| {
             format!(
-                "external-host conformance source must not use {label} marker `{pattern}`"
-            ),
-        ));
+                "failed to read external-host conformance source {}: {error}",
+                source_relative.display()
+            )
+        })?;
+        if let Some((pattern, label)) = external_host_forbidden_source_pattern(&source) {
+            findings.push(Finding::fatal(
+                "workspace.external_host_forbidden_source",
+                Some(path_text(&source_relative)),
+                format!("external-host conformance source must not use {label} marker `{pattern}`"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn collect_external_host_rust_sources(
+    root: &Path,
+    directory: &Path,
+    sources: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(directory)
+        .map_err(|error| format!("failed to read {}: {error}", directory.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to inspect an entry in {}: {error}",
+                directory.display()
+            )
+        })?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_external_host_rust_sources(root, &path, sources)?;
+            continue;
+        }
+        if path.extension() != Some(OsStr::new("rs")) {
+            continue;
+        }
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|error| format!("failed to relativize {}: {error}", path.display()))?;
+        sources.push(relative.to_path_buf());
     }
     Ok(())
 }
@@ -981,11 +1016,18 @@ mod tests {
             &mut findings,
         );
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].code, "workspace.external_host_dependency_contract");
+        assert_eq!(
+            findings[0].code,
+            "workspace.external_host_dependency_contract"
+        );
 
         assert!(external_host_forbidden_source_pattern("use runenui_core::__runtime;").is_some());
-        assert!(external_host_forbidden_source_pattern("use runenui_winit::MouseInputState;").is_some());
-        assert!(external_host_forbidden_source_pattern("use runenui_runtime::AppRuntime;").is_none());
+        assert!(
+            external_host_forbidden_source_pattern("use runenui_winit::MouseInputState;").is_some()
+        );
+        assert!(
+            external_host_forbidden_source_pattern("use runenui_runtime::AppRuntime;").is_none()
+        );
         assert_eq!(EXTERNAL_HOST_PACKAGE, "runenui_external_host_conformance");
     }
 
