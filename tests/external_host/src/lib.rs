@@ -30,9 +30,7 @@ mod tests {
         RendererOptions, ResourcePayload, ResourceProvider, ResourceProviderError,
         ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
     };
-    use runenui_runtime::{
-        AppRuntime, PumpBudget, SurfaceBuildContext, SurfacePublication,
-    };
+    use runenui_runtime::{AppRuntime, PumpBudget, SurfaceBuildContext, SurfacePublication};
 
     const SURFACE_EXTENT: u16 = 8;
     const IMAGE_EXTENT: f32 = 4.0;
