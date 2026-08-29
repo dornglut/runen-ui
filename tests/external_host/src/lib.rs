@@ -26,8 +26,8 @@ mod tests {
     };
     use runenui_render_wgpu::{
         BackendSelection, ImagePayload, PayloadValidationError, PublicationRenderError, Renderer,
-        RendererInitError, RendererOptions, ResourcePayload, ResourceProvider, ResourceProviderError,
-        ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
+        RendererInitError, RendererOptions, ResourcePayload, ResourceProvider,
+        ResourceProviderError, ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
     };
     use runenui_runtime::{AppRuntime, PumpBudget, SurfaceBuildContext};
 
@@ -80,11 +80,7 @@ mod tests {
             }
         }
 
-        fn paint(
-            &self,
-            (): &Self::State,
-            _: PaintContributionContext,
-        ) -> PaintContribution {
+        fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
             let background = if self.active {
                 ACTIVE_BACKGROUND
             } else {
@@ -249,10 +245,8 @@ mod tests {
             active: false,
         });
         let style_tokens = StyleTokens::new();
-        let logical_size = LogicalSize::try_new(
-            f32::from(SURFACE_EXTENT),
-            f32::from(SURFACE_EXTENT),
-        )?;
+        let logical_size =
+            LogicalSize::try_new(f32::from(SURFACE_EXTENT), f32::from(SURFACE_EXTENT))?;
         let build_context = SurfaceBuildContext::tight(&style_tokens, logical_size);
         let failing_provider = FailingImageProvider::new(image.clone());
         let provider = ImageProvider::new(image)?;
@@ -295,12 +289,12 @@ mod tests {
             .map_err(|error| debug_error("first redraw acknowledgement failed", &error))?;
 
         steps.push(FrameStep::Render);
-        let render_failure = renderer.render_offscreen_publication(
-            first_publication.paint_publication(),
-            &failing_provider,
-        );
+        let render_failure = renderer
+            .render_offscreen_publication(first_publication.paint_publication(), &failing_provider);
         let Err(render_failure) = render_failure else {
-            return Err(io::Error::other("intentional provider failure rendered successfully").into());
+            return Err(
+                io::Error::other("intentional provider failure rendered successfully").into(),
+            );
         };
         assert!(matches!(
             render_failure,
@@ -314,11 +308,12 @@ mod tests {
         assert_eq!(publication_count, 1);
 
         steps.push(FrameStep::RenderRetrySamePublication);
-        let first_render = renderer.render_offscreen_publication(
-            first_publication.paint_publication(),
-            &provider,
-        )?;
-        assert_eq!(first_publication.paint_publication().revision(), first_revision);
+        let first_render = renderer
+            .render_offscreen_publication(first_publication.paint_publication(), &provider)?;
+        assert_eq!(
+            first_publication.paint_publication().revision(),
+            first_revision
+        );
         assert_ne!(provider.loads(), 0);
 
         steps.push(FrameStep::Present);
@@ -366,7 +361,10 @@ mod tests {
             .publish_surface(&build_context)
             .map_err(|error| debug_error("second publication failed", &error))?;
         publication_count += 1;
-        assert_ne!(second_publication.paint_publication().revision(), first_revision);
+        assert_ne!(
+            second_publication.paint_publication().revision(),
+            first_revision
+        );
 
         steps.push(FrameStep::Acknowledge);
         runtime
@@ -374,10 +372,8 @@ mod tests {
             .map_err(|error| debug_error("second redraw acknowledgement failed", &error))?;
 
         steps.push(FrameStep::Render);
-        let second_render = renderer.render_offscreen_publication(
-            second_publication.paint_publication(),
-            &provider,
-        )?;
+        let second_render = renderer
+            .render_offscreen_publication(second_publication.paint_publication(), &provider)?;
 
         steps.push(FrameStep::Present);
         let second_presented = present(second_render.readback());
@@ -456,9 +452,7 @@ mod tests {
                 compatible_surface_required,
                 detail,
             }) => {
-                eprintln!(
-                    "M7D external-host GPU proof unavailable under {requested:?}: {detail}"
-                );
+                eprintln!("M7D external-host GPU proof unavailable under {requested:?}: {detail}");
                 assert_eq!(requested, BackendSelection::AllNative);
                 assert!(!compatible_surface_required);
                 assert!(!detail.is_empty());
