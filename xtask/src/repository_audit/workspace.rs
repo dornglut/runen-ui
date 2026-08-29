@@ -390,9 +390,9 @@ fn validate_external_host_source(
     relative: &Path,
     findings: &mut Vec<Finding>,
 ) -> Result<(), String> {
-    let source_root = root.join(relative).join("src");
+    let package_root = root.join(relative);
     let mut sources = Vec::new();
-    collect_external_host_rust_sources(root, &source_root, &mut sources)?;
+    collect_external_host_rust_sources(root, &package_root, &mut sources)?;
     sources.sort();
 
     for source_relative in sources {
