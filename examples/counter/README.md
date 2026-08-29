@@ -12,7 +12,8 @@ cargo run --package counter
 
 The default binary opens a real winit window, publishes the ordinary Counter surface, renders it through `runenui_render_wgpu`, and exposes the same semantic tree through the accepted AccessKit adapter.
 
-- click **-**, **+**, or **Reset** with the mouse;
+- because M7 does not render glyphs yet, use the horizontal control row by position: left = decrement, middle = increment, right muted-red = reset;
+- each count change alters the filled count rectangle; reaching the win count switches the screen background to green;
 - use Tab / Shift-Tab to move runtime focus;
 - use Enter or Space to activate the focused control;
 - resize the window or move it across scale-factor boundaries; native point input remains tied to the exact successfully presented surface mapping;
