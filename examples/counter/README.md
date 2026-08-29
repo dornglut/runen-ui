@@ -30,7 +30,7 @@ cargo run --package counter --bin counter
 cargo test --package counter
 ```
 
-It continues to cover mounted identity, routed pointer/keyboard/automation interaction, semantic publication/action, explicit bounded pumping, screen replacement, trace behavior, and terminal atomicity over ordinary public runtime contracts.
+It continues to cover mounted identity, routed pointer/keyboard/automation interaction, semantic publication/action, explicit bounded pumping, screen replacement, and trace behavior through ordinary public runtime contracts. Terminal atomicity is covered separately by an explicitly test-only generation-exhaustion proof: the test enables `runenui_runtime/internal-test-seams` and uses `__seed_reconciliation_generation_for_test` to exercise terminal generation exhaustion.
 
 ## Boundaries
 
