@@ -49,14 +49,11 @@ fn precedence_and_provenance_are_property_local_and_deterministic()
     let mut theme = StyleTheme::new(StyleTokens::new());
     theme.define_recipe(recipe_id.clone(), recipe)?;
     let environment = StyleEnvironment::new(theme)
-        .with_framework_defaults(
-            StyleProperties::EMPTY.with_foreground(Color::rgb(1, 1, 1)),
-        )
+        .with_framework_defaults(StyleProperties::EMPTY.with_foreground(Color::rgb(1, 1, 1)))
         .with_preferences(StylePreferences::new(true, false))
         .with_preference_policy(
-            StylePreferencePolicy::new().with_high_contrast(
-                StyleProperties::EMPTY.with_foreground(Color::WHITE),
-            ),
+            StylePreferencePolicy::new()
+                .with_high_contrast(StyleProperties::EMPTY.with_foreground(Color::WHITE)),
         );
     let intent = runenui_core::StyleIntent::EMPTY
         .with_recipe(recipe_id)
@@ -138,15 +135,12 @@ fn ordered_variants_and_framework_interaction_order_are_stable()
 }
 
 #[test]
-fn missing_higher_precedence_token_masks_lower_value()
--> Result<(), Box<dyn std::error::Error>> {
+fn missing_higher_precedence_token_masks_lower_value() -> Result<(), Box<dyn std::error::Error>> {
     let recipe_id = recipe_id("control.button");
     let mut theme = StyleTheme::new(StyleTokens::new());
     theme.define_recipe(
         recipe_id.clone(),
-        StyleRecipe::new(
-            StyleProperties::EMPTY.with_foreground(Color::rgb(12, 12, 12)),
-        ),
+        StyleRecipe::new(StyleProperties::EMPTY.with_foreground(Color::rgb(12, 12, 12))),
     )?;
     let missing = ColorToken::new(TokenId::new("color.missing")?);
     let environment = StyleEnvironment::new(theme);

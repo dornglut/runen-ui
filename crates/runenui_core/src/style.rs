@@ -122,7 +122,10 @@ macro_rules! define_style_id {
 }
 
 define_style_id!(StyleRecipeId, "Typed identity for one theme style recipe.");
-define_style_id!(StyleVariantId, "Typed identity for one authored recipe variant.");
+define_style_id!(
+    StyleVariantId,
+    "Typed identity for one authored recipe variant."
+);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Color {

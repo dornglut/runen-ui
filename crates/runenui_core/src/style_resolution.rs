@@ -2,8 +2,9 @@
 
 use crate::{
     Color, ColorToken, ColorValue, ComputedStyle, EdgeInsets, Radius, RadiusToken, RadiusValue,
-    SpacingToken, SpacingValue, StyleEnvironment, StyleInteractionFacts, StyleInteractionState,
-    StyleIntent, StylePreferenceKind, StyleProperties, StyleRecipeId, StyleTokens, StyleVariantId,
+    SpacingToken, SpacingValue, StyleEnvironment, StyleIntent, StyleInteractionFacts,
+    StyleInteractionState, StylePreferenceKind, StyleProperties, StyleRecipeId, StyleTokens,
+    StyleVariantId,
 };
 
 /// Exact precedence layer that last attempted to define one property.
@@ -221,8 +222,7 @@ impl ResolutionBuilder {
             ColorValue::Token(token) => match tokens.color(token) {
                 Some(value) => {
                     self.foreground = Some(value);
-                    self.provenance.foreground =
-                        StyleFieldProvenance::ResolvedToken(token.clone());
+                    self.provenance.foreground = StyleFieldProvenance::ResolvedToken(token.clone());
                 }
                 None => {
                     self.foreground = None;
@@ -248,8 +248,7 @@ impl ResolutionBuilder {
             ColorValue::Token(token) => match tokens.color(token) {
                 Some(value) => {
                     self.background = Some(value);
-                    self.provenance.background =
-                        StyleFieldProvenance::ResolvedToken(token.clone());
+                    self.provenance.background = StyleFieldProvenance::ResolvedToken(token.clone());
                 }
                 None => {
                     self.background = None;
@@ -275,8 +274,7 @@ impl ResolutionBuilder {
             SpacingValue::Token(token) => match tokens.spacing(token) {
                 Some(value) => {
                     self.padding = Some(value);
-                    self.provenance.padding =
-                        StyleFieldProvenance::ResolvedToken(token.clone());
+                    self.provenance.padding = StyleFieldProvenance::ResolvedToken(token.clone());
                 }
                 None => {
                     self.padding = None;
@@ -302,8 +300,7 @@ impl ResolutionBuilder {
             RadiusValue::Token(token) => match tokens.radius(token) {
                 Some(value) => {
                     self.radius = Some(value);
-                    self.provenance.radius =
-                        StyleFieldProvenance::ResolvedToken(token.clone());
+                    self.provenance.radius = StyleFieldProvenance::ResolvedToken(token.clone());
                 }
                 None => {
                     self.radius = None;
@@ -370,18 +367,16 @@ pub fn resolve_style_in_environment(
                 } else {
                     builder
                         .diagnostics
-                        .push(StyleResolutionDiagnostic::MissingVariant(variant_id.clone()));
+                        .push(StyleResolutionDiagnostic::MissingVariant(
+                            variant_id.clone(),
+                        ));
                 }
             }
             for state in StyleInteractionState::ORDERED {
                 if state.is_active(interaction)
                     && let Some(properties) = recipe.interaction(state)
                 {
-                    builder.apply(
-                        properties,
-                        StyleResolutionLayer::Interaction(state),
-                        tokens,
-                    );
+                    builder.apply(properties, StyleResolutionLayer::Interaction(state), tokens);
                 }
             }
         } else {
@@ -391,14 +386,18 @@ pub fn resolve_style_in_environment(
             for variant_id in intent.variants() {
                 builder
                     .diagnostics
-                    .push(StyleResolutionDiagnostic::MissingVariant(variant_id.clone()));
+                    .push(StyleResolutionDiagnostic::MissingVariant(
+                        variant_id.clone(),
+                    ));
             }
         }
     } else {
         for variant_id in intent.variants() {
             builder
                 .diagnostics
-                .push(StyleResolutionDiagnostic::MissingVariant(variant_id.clone()));
+                .push(StyleResolutionDiagnostic::MissingVariant(
+                    variant_id.clone(),
+                ));
         }
     }
 
@@ -426,12 +425,7 @@ pub fn resolve_style_in_environment(
 #[must_use]
 pub fn resolve_style(intent: &StyleIntent, tokens: &StyleTokens) -> StyleResolution {
     let environment = StyleEnvironment::from_tokens(tokens.clone());
-    resolve_style_in_environment(
-        intent,
-        &environment,
-        StyleInteractionFacts::default(),
-        None,
-    )
+    resolve_style_in_environment(intent, &environment, StyleInteractionFacts::default(), None)
 }
 
 #[must_use]
