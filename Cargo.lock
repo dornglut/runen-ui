@@ -1579,6 +1579,15 @@ name = "runenui_core"
 version = "0.1.0"
 
 [[package]]
+name = "runenui_external_host_conformance"
+version = "0.1.0"
+dependencies = [
+ "runenui_core",
+ "runenui_render_wgpu",
+ "runenui_runtime",
+]
+
+[[package]]
 name = "runenui_external_renderer_conformance"
 version = "0.1.0"
 dependencies = [
