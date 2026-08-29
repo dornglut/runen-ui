@@ -413,7 +413,7 @@ mod tests {
             .find(|line| line.contains("authored=counter.increment"))
             .unwrap_or_else(|| unreachable!("increment node is present in debug surface"));
         assert!(!increment.contains("semantics="));
-        assert!(surface.contains("paint="));
+        assert!(!surface.contains("paint="));
 
         let tokens = StyleTokens::new();
         let publication = runtime
@@ -458,7 +458,7 @@ mod tests {
         assert!(surface.contains("authored=counter.win.title"));
         assert!(surface.contains("authored=counter.value"));
         assert!(surface.contains("authored=counter.reset"));
-        assert!(surface.contains("paint="));
+        assert!(!surface.contains("paint="));
     }
 
     #[test]

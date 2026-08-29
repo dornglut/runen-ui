@@ -1,4 +1,4 @@
-//! AccessKit projection at the reference host boundary.
+//! Reusable AccessKit projection at the native adapter boundary.
 //!
 //! This module deliberately owns all AccessKit identities, caches, and native
 //! callback plumbing. `RunenUI` semantic publication and action ingress remain the
