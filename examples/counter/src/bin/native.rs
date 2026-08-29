@@ -617,17 +617,16 @@ impl CounterHost {
         {
             return;
         }
-        let translated = match self.translate_latest_cursor() {
-            Ok(translated) => Some(translated),
-            Err(_) => {
-                if !self.invalidate_mouse_point_authority(
-                    event_loop,
-                    "button transition arrived without matching displayed point authority",
-                ) {
-                    return;
-                }
-                None
+        let translated = if let Ok(translated) = self.translate_latest_cursor() {
+            Some(translated)
+        } else {
+            if !self.invalidate_mouse_point_authority(
+                event_loop,
+                "button transition arrived without matching displayed point authority",
+            ) {
+                return;
             }
+            None
         };
         let outcome = match self
             .mouse
@@ -802,7 +801,7 @@ impl CounterHost {
                 {
                     Ok(_) => self.pump_runtime_once(),
                     Err(error) => {
-                        eprintln!("Counter accessibility action rejected by runtime: {error:?}")
+                        eprintln!("Counter accessibility action rejected by runtime: {error:?}");
                     }
                 },
                 Err(diagnostic) => {
