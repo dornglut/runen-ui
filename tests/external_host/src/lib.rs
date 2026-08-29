@@ -20,8 +20,8 @@ mod tests {
         Color, Element, IntoEffects, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
         PaintContribution, PaintContributionContext, PaintContributionItem, ResourceKind,
         ResourceRef, SemanticAction, SemanticActionRequest, SemanticContribution,
-        SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleTokens, UiApp,
-        View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+        SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
+        UiApp, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
         WidgetMeasure,
     };
     use runenui_render_wgpu::{
@@ -245,10 +245,10 @@ mod tests {
             image: image.clone(),
             active: false,
         });
-        let style_tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let logical_size =
             LogicalSize::try_new(f32::from(SURFACE_EXTENT), f32::from(SURFACE_EXTENT))?;
-        let build_context = SurfaceBuildContext::tight(&style_tokens, logical_size);
+        let build_context = SurfaceBuildContext::tight(&style_environment, logical_size);
         let failing_provider = FailingImageProvider::new(image.clone());
         let provider = ImageProvider::new(image)?;
         let mut steps = Vec::new();
