@@ -23,7 +23,10 @@ fn assert_foreground_resolution(
     expected_layer: StyleResolutionLayer,
 ) {
     let resolution = resolve_style_in_environment(intent, environment, interaction, None);
-    assert_eq!(resolution.computed_style().foreground(), Some(expected_color));
+    assert_eq!(
+        resolution.computed_style().foreground(),
+        Some(expected_color)
+    );
     assert_eq!(
         resolution.provenance().foreground_layer(),
         Some(&expected_layer)
@@ -105,8 +108,7 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
     let recipe_id = recipe_id("control.precedence")?;
     let first = variant_id("first")?;
     let second = variant_id("second")?;
-    let mut recipe =
-        StyleRecipe::new(StyleProperties::EMPTY.with_foreground(Color::rgb(2, 0, 0)));
+    let mut recipe = StyleRecipe::new(StyleProperties::EMPTY.with_foreground(Color::rgb(2, 0, 0)));
     recipe.define_variant(
         first.clone(),
         StyleProperties::EMPTY.with_foreground(Color::rgb(3, 0, 0)),
