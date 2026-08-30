@@ -528,6 +528,9 @@ fn unavailable_terminal_close_redraws_when_hover_projection_is_removed() {
     let mut harness = harness();
     let pointer_id =
         PointerId::new(86).unwrap_or_else(|| unreachable!("the pointer id is non-zero"));
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0)
+        .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
 
     submit_and_pump(
         &mut harness.runtime,
@@ -539,14 +542,17 @@ fn unavailable_terminal_close_redraws_when_hover_projection_is_removed() {
             harness.inside,
         ),
     );
-    let hover_redraw = harness
+    let hovered = harness
         .runtime
-        .take_redraw_request()
-        .unwrap_or_else(|| unreachable!("initial hover requests redraw"));
-    harness
-        .runtime
-        .acknowledge_redraw(&hover_redraw)
-        .unwrap_or_else(|_| unreachable!("runtime redraw token remains local"));
+        .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+        .unwrap_or_else(|_| unreachable!("hover publication is admitted"));
+    assert_eq!(
+        harness.runtime.last_surface_phase_report().executed(),
+        &[SurfacePhase::Style]
+    );
+    harness.context = hovered.input_context().clone();
+    pump_all(&mut harness.runtime);
+    assert!(harness.runtime.take_redraw_request().is_none());
 
     submit_and_pump(
         &mut harness.runtime,
@@ -611,9 +617,6 @@ fn unavailable_terminal_close_redraws_when_hover_projection_is_removed() {
         .runtime
         .acknowledge_redraw(&redraw)
         .unwrap_or_else(|_| unreachable!("runtime redraw token remains local"));
-    let environment = StyleEnvironment::default();
-    let size = LogicalSize::try_new(64.0, 64.0)
-        .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
     harness
         .runtime
         .publish_surface(&SurfaceBuildContext::tight(&environment, size))
