@@ -11,7 +11,7 @@ use std::{
 };
 
 use runenui_core::{
-    Element, NoHostProtocol, SemanticAction, SemanticActionRequest, StyleTokens, UiApp, View,
+    Element, NoHostProtocol, SemanticAction, SemanticActionRequest, StyleEnvironment, UiApp, View,
     button,
 };
 use runenui_runtime::{
@@ -70,10 +70,10 @@ fn state() -> State {
 
 fn current_request(runtime: &mut AppRuntime<App>) -> SemanticActionRequest {
     runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("semantic publication is admitted"));
