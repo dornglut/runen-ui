@@ -15,7 +15,7 @@ pub(crate) struct SurfaceInteractionProjection {
 }
 
 impl SurfaceInteractionProjection {
-    pub(crate) fn new(
+    pub(crate) const fn new(
         hovered: Vec<MountedNodeId>,
         active: Vec<MountedNodeId>,
         focused: Option<MountedNodeId>,
