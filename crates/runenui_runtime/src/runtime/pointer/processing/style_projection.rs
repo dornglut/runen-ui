@@ -34,8 +34,8 @@ fn push_unique(ids: &mut Vec<MountedNodeId>, id: &MountedNodeId) {
 #[cfg(test)]
 mod tests {
     use runenui_core::{
-        LogicalPoint, PointerButtons, PointerDeviceKind, PointerId, StyleInteractionFacts,
-        __runtime::RuntimeNamespace,
+        __runtime::RuntimeNamespace, LogicalPoint, PointerButtons, PointerDeviceKind, PointerId,
+        StyleInteractionFacts,
     };
 
     use super::*;
@@ -139,14 +139,14 @@ mod tests {
         let owner = namespace.__runtime_mounted_id(0, 1);
         let mut registry = PointerRegistry::new(2);
 
-        for value in [1, 2] {
+        for (value, position) in [(1, 1.0), (2, 2.0)] {
             let stream = registry
                 .register(
                     pointer(value),
                     surface.clone(),
                     None,
                     PointerDeviceKind::Touch,
-                    point(value as f32),
+                    point(position),
                     PointerButtons::default(),
                 )
                 .unwrap_or_else(|_| unreachable!("pointer stream fits"));
