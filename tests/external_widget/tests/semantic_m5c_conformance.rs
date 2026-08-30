@@ -9,7 +9,7 @@ use runenui_core::{
     CommandDerivation, CommandOrigin, Element, EventContext, EventPhase, EventSource, IntoEffects,
     NoHostProtocol, SemanticAction, SemanticActionRequest, SemanticActionTarget, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
-    SemanticRole, SemanticState, StyleTokens, UiApp, UiEvent, Widget, WidgetActivation,
+    SemanticRole, SemanticState, StyleEnvironment, UiApp, UiEvent, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation,
 };
 use runenui_runtime::{
@@ -355,10 +355,10 @@ fn initial_state(config: ProbeConfig) -> ProbeState {
 
 fn publish(runtime: &mut AppRuntime<ProbeApp>) -> PublishedTargets {
     drain_queued_work(runtime);
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("semantic publication is admitted"));
@@ -388,10 +388,10 @@ fn publish(runtime: &mut AppRuntime<ProbeApp>) -> PublishedTargets {
 
 fn republish(runtime: &mut AppRuntime<ProbeApp>) {
     drain_queued_work(runtime);
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("semantic republication is admitted"));
