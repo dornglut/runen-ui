@@ -1893,11 +1893,9 @@ mod tests {
                 .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));
         let raster_scale = RasterScale::new(initial_scale)
             .unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
-        let context = SurfaceBuildContext::new(
-            &style_environment,
-            LayoutConstraints::tight(logical_size),
-        )
-        .with_raster_scale(raster_scale);
+        let context =
+            SurfaceBuildContext::new(&style_environment, LayoutConstraints::tight(logical_size))
+                .with_raster_scale(raster_scale);
         let first = runtime
             .publish_surface(&context)
             .unwrap_or_else(|_| unreachable!("initial fixture publication is admitted"))
@@ -1920,11 +1918,9 @@ mod tests {
             .clone();
         let rebuilt_raster_scale = RasterScale::new(rebuilt_scale)
             .unwrap_or_else(|_| unreachable!("rebuilt fixture raster scale is valid"));
-        let rebuilt_context = SurfaceBuildContext::new(
-            &style_environment,
-            LayoutConstraints::tight(logical_size),
-        )
-        .with_raster_scale(rebuilt_raster_scale);
+        let rebuilt_context =
+            SurfaceBuildContext::new(&style_environment, LayoutConstraints::tight(logical_size))
+                .with_raster_scale(rebuilt_raster_scale);
         let rebuilt = runtime
             .publish_surface(&rebuilt_context)
             .unwrap_or_else(|_| unreachable!("rebuilt fixture publication is admitted"))
