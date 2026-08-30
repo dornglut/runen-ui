@@ -7,8 +7,8 @@ use std::{
 
 use runenui_core::{
     Element, ElementId, EventContext, LogicalLength, LogicalPoint, NoHostProtocol, PointerButton,
-    PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleTokens, UiApp,
-    UiEvent, View, Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure,
+    PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleEnvironment,
+    UiApp, UiEvent, View, Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure,
     WidgetUnmountContext,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
@@ -85,11 +85,11 @@ fn dropping_runtime_closes_active_pointer_before_one_widget_unmount_without_call
         callbacks: Rc::clone(&callbacks),
         unmounts: Rc::clone(&unmounts),
     });
-    let tokens = StyleTokens::default();
+    let style_environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(64.0, 64.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
     let publication = runtime
-        .publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+        .publish_surface(&SurfaceBuildContext::tight(&style_environment, size))
         .unwrap_or_else(|_| unreachable!("the test surface publication is admitted"));
     let authored =
         ElementId::new("target").unwrap_or_else(|_| unreachable!("the test id is valid"));
