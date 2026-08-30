@@ -1,4 +1,4 @@
-use runenui_core::{CommandOrigin, SemanticCommand, StyleTokens};
+use runenui_core::{CommandOrigin, SemanticCommand, StyleEnvironment};
 use runenui_runtime::{
     AppRuntime, RuntimeConfig, SubmitSurfaceCommandErrorKind, SurfacePublication, TraceConfig,
     TraceRecordKind, TraceSequence, TraceSurfaceIngressKind, TraceSurfaceRejection,
@@ -13,9 +13,9 @@ use crate::support::{
 #[test]
 fn every_publication_issues_a_fresh_context_for_one_surface() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
-    let first = publication(&mut runtime, &tokens);
-    let second = publication(&mut runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let first = publication(&mut runtime, &style_environment);
+    let second = publication(&mut runtime, &style_environment);
 
     assert_eq!(
         first.input_context().surface_id(),
@@ -121,10 +121,10 @@ fn update_redraw_sequence(runtime: &AppRuntime<SurfaceApp>, after: TraceSequence
 #[test]
 fn publication_retains_initial_and_update_redraw_causality() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let initial_request = initial_redraw_sequence(&runtime);
 
-    let first = publication(&mut runtime, &tokens);
+    let first = publication(&mut runtime, &style_environment);
     let first_published = publication_sequence(&runtime, &first, initial_request, None);
 
     runtime
@@ -133,7 +133,7 @@ fn publication_retains_initial_and_update_redraw_causality() {
     pump_all(&mut runtime);
     let update_request = update_redraw_sequence(&runtime, first_published);
 
-    let second = publication(&mut runtime, &tokens);
+    let second = publication(&mut runtime, &style_environment);
     let _ = publication_sequence(&runtime, &second, update_request, Some(first_published));
 }
 
@@ -141,14 +141,14 @@ fn publication_retains_initial_and_update_redraw_causality() {
 fn capacity_zero_does_not_block_publication_or_allocate_trace_context() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(0));
     let mut runtime = mounted_with(config);
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
 
-    let first = publication(&mut runtime, &tokens);
+    let first = publication(&mut runtime, &style_environment);
     runtime
         .submit_action(SurfaceAction::Swap)
         .unwrap_or_else(|_| unreachable!("trace-disabled update is accepted"));
     pump_all(&mut runtime);
-    let second = publication(&mut runtime, &tokens);
+    let second = publication(&mut runtime, &style_environment);
 
     assert_eq!(first.input_context().hit_test_generation(), 1);
     assert_eq!(second.input_context().hit_test_generation(), 2);
@@ -159,11 +159,11 @@ fn capacity_zero_does_not_block_publication_or_allocate_trace_context() {
 #[test]
 fn publication_consumes_and_replenishes_one_private_trace_reservation() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
 
     assert!(runtime.__surface_publication_trace_reserved_for_test());
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
-    let _ = publication(&mut runtime, &tokens);
+    let _ = publication(&mut runtime, &style_environment);
     assert!(runtime.__surface_publication_trace_reserved_for_test());
     assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
 }
@@ -171,8 +171,8 @@ fn publication_consumes_and_replenishes_one_private_trace_reservation() {
 #[test]
 fn current_and_retained_contexts_use_their_exact_geometry() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
-    let old = publication(&mut runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let old = publication(&mut runtime, &style_environment);
     let old_context = old.input_context().clone();
     let old_point = authored_center(&old, "surface.primary");
     let primary = authored_target(&old, "surface.primary");
@@ -181,7 +181,7 @@ fn current_and_retained_contexts_use_their_exact_geometry() {
         .submit_action(SurfaceAction::Swap)
         .unwrap_or_else(|_| unreachable!("swap action is accepted"));
     pump_all(&mut runtime);
-    let current = publication(&mut runtime, &tokens);
+    let current = publication(&mut runtime, &style_environment);
     let current_context = current.input_context().clone();
     let secondary = authored_target(&current, "surface.secondary");
 
@@ -222,8 +222,8 @@ fn current_and_retained_contexts_use_their_exact_geometry() {
 #[test]
 fn accepted_historical_target_stays_bound_after_context_retirement() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
-    let old = publication(&mut runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let old = publication(&mut runtime, &style_environment);
     let old_context = old.input_context().clone();
     let old_point = authored_center(&old, "surface.primary");
 
@@ -231,7 +231,7 @@ fn accepted_historical_target_stays_bound_after_context_retirement() {
         .submit_action(SurfaceAction::Swap)
         .unwrap_or_else(|_| unreachable!("swap action is accepted"));
     pump_all(&mut runtime);
-    let _ = publication(&mut runtime, &tokens);
+    let _ = publication(&mut runtime, &style_environment);
 
     runtime
         .submit_surface_command(
@@ -242,7 +242,7 @@ fn accepted_historical_target_stays_bound_after_context_retirement() {
         )
         .unwrap_or_else(|_| unreachable!("retained historical context is accepted"));
 
-    let _ = publication(&mut runtime, &tokens);
+    let _ = publication(&mut runtime, &style_environment);
     let requested_context = old_context.clone();
     let retired = rejected(
         runtime.submit_surface_command(
