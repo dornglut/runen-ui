@@ -3,7 +3,7 @@
 use runenui_core::{
     Color, Element, HitContribution, HitContributionContext, HitRegion, LogicalLength,
     LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, StyleTokens, UiApp, Widget,
+    PaintContributionContext, PaintContributionItem, StyleEnvironment, UiApp, Widget,
     WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_runtime::{
@@ -167,7 +167,7 @@ fn raster_scale_is_finite_positive_and_defaults_to_one() {
 fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     let initial_color = Color::rgba(10, 20, 30, 255);
     let changed_color = Color::rgba(30, 20, 10, 255);
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let logical_size = size(20.0, 20.0);
     let larger_size = size(30.0, 20.0);
     let scale_two = scale_two();
@@ -178,7 +178,7 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     });
     drain_mount(&mut runtime);
 
-    let scale_one_context = SurfaceBuildContext::tight(&tokens, logical_size);
+    let scale_one_context = SurfaceBuildContext::tight(&style_environment, logical_size);
     let initial = publish(&mut runtime, &scale_one_context);
     let initial_paint = initial.paint_publication();
     let target = initial
@@ -219,7 +219,7 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
     assert_eq!(repeated_scaled.paint_publication(), scaled_paint);
 
     let larger_context =
-        SurfaceBuildContext::tight(&tokens, larger_size).with_raster_scale(scale_two);
+        SurfaceBuildContext::tight(&style_environment, larger_size).with_raster_scale(scale_two);
     let resized = publish(&mut runtime, &larger_context);
     let resized_paint = resized.paint_publication();
     assert_eq!(resized_paint.scene(), scaled_paint.scene());
@@ -255,9 +255,9 @@ fn renderer_tuple_revision_base_damage_and_logical_hit_coordinates_are_exact() {
 fn consumer_uses_damage_only_for_matching_surface_and_base_revision() {
     let initial_color = Color::rgba(10, 20, 30, 255);
     let changed_color = Color::rgba(30, 20, 10, 255);
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let logical_size = size(20.0, 20.0);
-    let scale_one_context = SurfaceBuildContext::tight(&tokens, logical_size);
+    let scale_one_context = SurfaceBuildContext::tight(&style_environment, logical_size);
     let scale_two_context = scale_one_context.with_raster_scale(scale_two());
 
     let mut runtime = AppRuntime::<App>::mount(State {
