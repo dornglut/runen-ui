@@ -8,9 +8,7 @@ use runenui_core::{
     PointerId, PointerPhase, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetEventOutput,
     WidgetMeasure,
 };
-use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, SurfacePhase,
-};
+use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, SurfacePhase};
 
 #[derive(Clone)]
 struct State {
