@@ -3,7 +3,7 @@
 use runenui_core::{
     Element, HitContribution, HitContributionContext, HitRegion, LogicalLength, LogicalPoint,
     LogicalRect, LogicalTransform, NoHostProtocol, PointerButton, PointerButtons,
-    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, PointerPolicy, StyleTokens, UiApp,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, PointerPolicy, StyleEnvironment, UiApp,
     View, Widget, WidgetMeasure, column,
 };
 use runenui_runtime::{
@@ -120,10 +120,10 @@ fn drain_mount(runtime: &mut AppRuntime<App>) {
 }
 
 fn publish(runtime: &mut AppRuntime<App>) -> SurfacePublication {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("pointer trace fixture publication is admitted"))
