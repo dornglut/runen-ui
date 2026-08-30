@@ -13,7 +13,7 @@ pub(crate) struct SurfaceCapabilityPlan {
 
 struct PlannedSurfaceCapabilities {
     owner: MountedNodeId,
-    activation: CachedCapability<WidgetActivation>,
+    activation: Option<CachedCapability<WidgetActivation>>,
     measurement: Option<CachedCapability<WidgetMeasure>>,
     child_layout: Option<CachedCapability<Option<ChildLayout>>>,
     paint: Option<CachedCapability<PaintContribution>>,
@@ -30,12 +30,18 @@ impl SurfaceCapabilityPlan {
         position: usize,
         owner: &MountedNodeId,
     ) -> CachedCapability<WidgetActivation> {
-        self.owner_at(position, owner).activation.clone()
+        self.owner_at(position, owner)
+            .activation
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("semantic publication requires staged activation"))
+            .clone()
     }
 
     pub(crate) fn activation_at(&self, position: usize, owner: &MountedNodeId) -> WidgetActivation {
         self.owner_at(position, owner)
             .activation
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("style resolution requires staged activation"))
             .ready()
             .unwrap_or_else(WidgetActivation::disabled)
     }
@@ -111,10 +117,10 @@ impl SurfaceCapabilityPlan {
 }
 
 impl<Action> MountedTree<Action> {
-    /// Stages the canonical activation fact for every publication owner before
-    /// style or semantics consume it, then stages any immediately requested
-    /// non-contextual surface capabilities. The returned plan may be extended
-    /// after style effects determine the final downstream phase set.
+    /// Stages only the capabilities required by the supplied publication phases.
+    /// Activation is staged when style or semantics will consume it; paint and
+    /// hit callbacks remain deferred until their final contexts exist. The plan
+    /// may be extended after style effects determine additional downstream work.
     pub(crate) fn plan_surface_publication_capabilities(
         &self,
         phases: DirtyPhases,
@@ -122,33 +128,17 @@ impl<Action> MountedTree<Action> {
         let owners = self
             .publication_preorder_ids()
             .into_iter()
-            .map(|owner| {
-                let node = self
-                    .node(&owner)
-                    .unwrap_or_else(|| unreachable!("surface capability owner remains live"));
-                let mut mark_integrity_failed = false;
-                let activation = if state_is_corrupted(node) {
-                    mark_integrity_failed = true;
-                    CachedCapability::StatePayloadMismatch
-                } else {
-                    stage_cached_capability(
-                        &node.caches.activation,
-                        || node.widget.activation(&node.state),
-                        &mut mark_integrity_failed,
-                    )
-                };
-                PlannedSurfaceCapabilities {
-                    owner,
-                    activation,
-                    measurement: None,
-                    child_layout: None,
-                    paint: None,
-                    paint_context: None,
-                    hit_test: None,
-                    hit_test_context: None,
-                    diagnostics: None,
-                    mark_integrity_failed,
-                }
+            .map(|owner| PlannedSurfaceCapabilities {
+                owner,
+                activation: None,
+                measurement: None,
+                child_layout: None,
+                paint: None,
+                paint_context: None,
+                hit_test: None,
+                hit_test_context: None,
+                diagnostics: None,
+                mark_integrity_failed: false,
             })
             .collect();
         let mut plan = SurfaceCapabilityPlan {
@@ -160,20 +150,28 @@ impl<Action> MountedTree<Action> {
         plan
     }
 
-    /// Extends one already activation-staged publication plan after style
-    /// effects have determined the exact downstream phases that must execute.
+    /// Extends one staged publication plan after style effects have determined
+    /// additional exact downstream phases. Already-staged capabilities are
+    /// reused, so activation is evaluated at most once per publication attempt.
     pub(crate) fn extend_surface_publication_capabilities(
         &self,
         plan: &mut SurfaceCapabilityPlan,
         phases: DirtyPhases,
     ) {
+        let needs_activation =
+            phases.contains(DirtyPhases::STYLE) || phases.contains(DirtyPhases::SEMANTICS);
         let needs_layout = phases.contains(DirtyPhases::LAYOUT);
         let needs_paint = phases.contains(DirtyPhases::PAINT);
         let needs_hit_test = phases.contains(DirtyPhases::HIT_TEST);
         let needs_diagnostics = phases.contains(DirtyPhases::DIAGNOSTICS);
         plan.needs_paint |= needs_paint;
         plan.needs_hit_test |= needs_hit_test;
-        if !needs_layout && !needs_paint && !needs_hit_test && !needs_diagnostics {
+        if !needs_activation
+            && !needs_layout
+            && !needs_paint
+            && !needs_hit_test
+            && !needs_diagnostics
+        {
             return;
         }
         for planned in &mut plan.owners {
@@ -181,6 +179,9 @@ impl<Action> MountedTree<Action> {
                 .node(&planned.owner)
                 .unwrap_or_else(|| unreachable!("surface capability owner remains live"));
             if state_is_corrupted(node) {
+                if needs_activation && planned.activation.is_none() {
+                    planned.activation = Some(CachedCapability::StatePayloadMismatch);
+                }
                 if needs_layout {
                     planned.measurement = Some(CachedCapability::StatePayloadMismatch);
                     planned.child_layout = Some(CachedCapability::StatePayloadMismatch);
@@ -198,6 +199,13 @@ impl<Action> MountedTree<Action> {
                 continue;
             }
 
+            if needs_activation && planned.activation.is_none() {
+                planned.activation = Some(stage_cached_capability(
+                    &node.caches.activation,
+                    || node.widget.activation(&node.state),
+                    &mut planned.mark_integrity_failed,
+                ));
+            }
             if needs_layout && planned.measurement.is_none() {
                 planned.measurement = Some(stage_cached_capability(
                     &node.caches.measurement,
@@ -284,7 +292,9 @@ impl<Action> MountedTree<Action> {
             let node = self
                 .node_mut(&planned.owner)
                 .unwrap_or_else(|| unreachable!("planned surface capability owner remains live"));
-            node.caches.activation = planned.activation;
+            if let Some(activation) = planned.activation {
+                node.caches.activation = activation;
+            }
             if let Some(measurement) = planned.measurement {
                 node.caches.measurement = measurement;
             }
