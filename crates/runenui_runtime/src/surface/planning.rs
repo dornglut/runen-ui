@@ -410,6 +410,7 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
             || cache.hit_test.membership()[index] != topology.id
         {
             return Err("surface cache node identity is not topology-aligned");
+        }
     }
     Ok(())
 }
