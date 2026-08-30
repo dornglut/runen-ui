@@ -28,7 +28,7 @@ impl From<SemanticReconcileError> for SurfacePlanningError {
     }
 }
 
-fn surface_capability_phases(entries: [(bool, DirtyPhases); 4]) -> DirtyPhases {
+fn surface_capability_phases(entries: [(bool, DirtyPhases); 5]) -> DirtyPhases {
     let mut phases = DirtyPhases::default();
     for (is_dirty, phase) in entries {
         if is_dirty {
@@ -146,7 +146,12 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     let diagnostics_dirty = pending.contains(DirtyPhases::DIAGNOSTICS);
     let mut report = SurfacePhaseReport::default();
     let mut completed = DirtyPhases::default();
-    let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::default());
+    let mut initial_capability_phases = DirtyPhases::default();
+    if style_dirty {
+        initial_capability_phases.insert(DirtyPhases::STYLE);
+    }
+    let mut capability_plan =
+        tree.plan_surface_publication_capabilities(initial_capability_phases);
 
     if style_dirty {
         let next_styles = resolve_styles(
@@ -176,6 +181,7 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
             (layout_dirty, DirtyPhases::LAYOUT),
             (hit_dirty, DirtyPhases::HIT_TEST),
             (paint_dirty, DirtyPhases::PAINT),
+            (semantic_product_dirty, DirtyPhases::SEMANTICS),
             (diagnostics_dirty, DirtyPhases::DIAGNOSTICS),
         ]),
     );
@@ -243,7 +249,7 @@ fn plan_structural_surface<'tree, Action>(
     let mut report = SurfacePhaseReport::default();
     let topology = collect_topology(tree);
     report.record(SurfacePhase::Tree);
-    let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::default());
+    let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::STYLE);
     let styles = resolve_styles(
         tree,
         &topology,
