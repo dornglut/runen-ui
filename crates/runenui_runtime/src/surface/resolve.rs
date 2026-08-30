@@ -7,9 +7,11 @@ use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
     Axis, ChildLayout, ContributionClip, ElementId, HitContributionContext, LayoutStyle,
     LogicalTransform, PaintContributionContext, StyleEffects, StyleEnvironment,
-    StyleInteractionFacts, StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetMeasure,
-    WidgetTypeId, resolve_style_in_environment, style_effects_between,
+    StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetMeasure, WidgetTypeId,
+    resolve_style_in_environment, style_effects_between,
 };
+
+use super::SurfaceInteractionProjection;
 
 /// Topology and publication-alignment facts for one mounted preorder.
 ///
@@ -78,6 +80,7 @@ pub(super) fn resolve_styles<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     topology: &SurfaceTopologySnapshot,
     environment: &StyleEnvironment,
+    interaction: &SurfaceInteractionProjection,
     capabilities: &SurfaceCapabilityPlan,
 ) -> CachedStyleFacts {
     #[cfg(test)]
@@ -92,7 +95,7 @@ pub(super) fn resolve_styles<Action>(
             .parent
             .as_ref()
             .and_then(|parent| computed_by_id.get(parent).copied());
-        let interaction = StyleInteractionFacts::NONE.with(
+        let interaction = interaction.facts_for(&node.id).with(
             StyleInteractionState::Disabled,
             !capabilities.activation_at(position, &node.id).enabled(),
         );
