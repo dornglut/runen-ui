@@ -244,10 +244,7 @@ fn invalid_dynamic_sizes_and_tight_constraint_overflow_are_explicit() {
     let style_environment = StyleEnvironment::default();
     let publication = publish(
         &mut runtime,
-        &SurfaceBuildContext::new(
-            &style_environment,
-            LayoutConstraints::loose(size(2.0, 2.0)),
-        ),
+        &SurfaceBuildContext::new(&style_environment, LayoutConstraints::loose(size(2.0, 2.0))),
     );
     assert!(
         publication
