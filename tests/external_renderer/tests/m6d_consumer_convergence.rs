@@ -9,7 +9,7 @@ use runenui_core::{
     IntoEffects, LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform,
     MountedNodeId, NoHostProtocol, PaintContribution, PaintContributionContext,
     PaintContributionItem, PaintPrimitive, PointerPolicy, Radius, ResourceKind, ResourceRef,
-    SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp, View, Widget, WidgetMeasure,
+    SceneLayer, SceneOpacity, SceneShape, StyleEnvironment, UiApp, View, Widget, WidgetMeasure,
 };
 use runenui_external_renderer_conformance::{
     ConsumerSnapshot, SceneConsumer, UpdateMode, sample_literal_paint,
@@ -634,7 +634,7 @@ fn assert_already_current(
 
 fn assert_revision_modes(
     runtime: &mut AppRuntime<App>,
-    tokens: &StyleTokens,
+    style_environment: &StyleEnvironment,
     first_paint: &PaintPublication,
     first_hit: &HitTestScene,
     downstream: &mut SceneConsumer,
@@ -643,7 +643,7 @@ fn assert_revision_modes(
     assert_already_current(downstream, reference, first_paint, first_hit);
 
     let size = LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO);
-    let scale_two = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
+    let scale_two = SurfaceBuildContext::new(style_environment, LayoutConstraints::tight(size))
         .with_raster_scale(
             RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
         );
@@ -679,7 +679,7 @@ fn assert_revision_modes(
     );
 
     let second_revision = second.paint_publication().revision();
-    let scale_three = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
+    let scale_three = SurfaceBuildContext::new(style_environment, LayoutConstraints::tight(size))
         .with_raster_scale(
             RasterScale::new(3.0).unwrap_or_else(|_| unreachable!("fixture scale is valid")),
         );
@@ -738,9 +738,9 @@ fn assert_revision_modes(
 #[test]
 fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
     let mut runtime = AppRuntime::<App>::mount(state());
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(40.0, 40.0).unwrap_or(LogicalSize::ZERO);
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(size));
+    let context = SurfaceBuildContext::new(&style_environment, LayoutConstraints::tight(size));
     let first = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("first fixture publication is admitted"));
@@ -765,7 +765,7 @@ fn independent_consumers_agree_on_public_scene_semantics_and_metadata() {
     assert_capability_rejection(&first_paint, &first_hit);
     assert_revision_modes(
         &mut runtime,
-        &tokens,
+        &style_environment,
         &first_paint,
         &first_hit,
         &mut downstream,
