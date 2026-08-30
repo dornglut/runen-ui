@@ -36,8 +36,8 @@ fn reduced_motion_change_invalidates_style_only_until_motion_properties_exist() 
     let initial = StyleEnvironment::default();
     publish_initial(&mut runtime, &initial);
 
-    let reduced_motion = StyleEnvironment::default()
-        .with_preferences(StylePreferences::new(false, true));
+    let reduced_motion =
+        StyleEnvironment::default().with_preferences(StylePreferences::new(false, true));
     let context = SurfaceBuildContext::new(&reduced_motion, LayoutConstraints::unbounded());
     let publication = runtime
         .publish_surface(&context)
