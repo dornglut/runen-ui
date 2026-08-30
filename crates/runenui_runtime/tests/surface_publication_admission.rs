@@ -5,7 +5,7 @@ use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
     Element, LogicalLength, LogicalPoint, NoHostProtocol, PointerDeviceKind, PointerEvent,
-    PointerId, PointerPhase, StyleTokens, SurfaceInputContext, UiApp, Widget, WidgetMeasure,
+    PointerId, PointerPhase, StyleEnvironment, SurfaceInputContext, UiApp, Widget, WidgetMeasure,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PublishSurfaceError, PumpBudget, RuntimeConfig, RuntimeStatus,
@@ -137,10 +137,10 @@ fn prepared_runtime() -> (
         replaced: false,
         measure_calls: Rc::clone(&measure_calls),
     });
-    let tokens = StyleTokens::default();
+    let style_environment = StyleEnvironment::default();
     let first = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("initial publication is admitted"));
@@ -191,9 +191,9 @@ fn hit_test_generation_exhaustion_terminalizes_before_surface_callbacks() {
         .unwrap_or_else(|| unreachable!("first coordinate revision has a successor"));
     runtime.__seed_next_surface_publication_counters_for_test(None, Some(next_coordinate));
 
-    let tokens = StyleTokens::default();
+    let style_environment = StyleEnvironment::default();
     let result = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
+        &style_environment,
         LayoutConstraints::unbounded(),
     ));
 
@@ -219,9 +219,9 @@ fn coordinate_revision_exhaustion_terminalizes_before_surface_callbacks() {
         .unwrap_or_else(|| unreachable!("first hit-test generation has a successor"));
     runtime.__seed_next_surface_publication_counters_for_test(Some(next_hit_test), None);
 
-    let tokens = StyleTokens::default();
+    let style_environment = StyleEnvironment::default();
     let result = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
+        &style_environment,
         LayoutConstraints::unbounded(),
     ));
 
@@ -247,8 +247,9 @@ fn queued_pointer_rehit_backpressure_refuses_without_commit_and_retries_exactly(
         },
         config,
     );
-    let tokens = StyleTokens::default();
-    let build_context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let style_environment = StyleEnvironment::default();
+    let build_context =
+        SurfaceBuildContext::new(&style_environment, LayoutConstraints::unbounded());
     let first = runtime
         .publish_surface(&build_context)
         .unwrap_or_else(|_| unreachable!("initial publication is admitted"));
