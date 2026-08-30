@@ -7,8 +7,8 @@ use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
     Axis, ChildLayout, ContributionClip, ElementId, HitContributionContext, LayoutStyle,
     LogicalTransform, PaintContributionContext, StyleEffects, StyleEnvironment,
-    StyleInteractionFacts, StyleResolution, WidgetDiagnostic, WidgetMeasure, WidgetTypeId,
-    resolve_style_in_environment, style_effects_between,
+    StyleInteractionFacts, StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetMeasure,
+    WidgetTypeId, resolve_style_in_environment, style_effects_between,
 };
 
 /// Topology and publication-alignment facts for one mounted preorder.
@@ -78,12 +78,13 @@ pub(super) fn resolve_styles<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     topology: &SurfaceTopologySnapshot,
     environment: &StyleEnvironment,
+    capabilities: &SurfaceCapabilityPlan,
 ) -> CachedStyleFacts {
     #[cfg(test)]
     super::cache::note_style_phase_execution();
     let mut computed_by_id = HashMap::with_capacity(topology.nodes.len());
     let mut resolutions = Vec::with_capacity(topology.nodes.len());
-    for node in &topology.nodes {
+    for (position, node) in topology.nodes.iter().enumerate() {
         let mounted = tree
             .node(&node.id)
             .unwrap_or_else(|| unreachable!("style topology remains live"));
@@ -91,12 +92,12 @@ pub(super) fn resolve_styles<Action>(
             .parent
             .as_ref()
             .and_then(|parent| computed_by_id.get(parent).copied());
-        let resolution = resolve_style_in_environment(
-            &mounted.style,
-            environment,
-            StyleInteractionFacts::NONE,
-            parent,
+        let interaction = StyleInteractionFacts::NONE.with(
+            StyleInteractionState::Disabled,
+            !capabilities.activation_at(position, &node.id).enabled(),
         );
+        let resolution =
+            resolve_style_in_environment(&mounted.style, environment, interaction, parent);
         computed_by_id.insert(node.id.clone(), resolution.computed_style());
         resolutions.push(resolution);
     }
