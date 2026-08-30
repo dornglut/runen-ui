@@ -487,14 +487,14 @@ mod tests {
 
         fn create_state(&self) -> Self::State {}
 
-        fn activation(&self, _: &Self::State) -> WidgetActivation {
+        fn activation(&self, (): &Self::State) -> WidgetActivation {
             self.activation_callbacks.fetch_add(1, Ordering::SeqCst);
             WidgetActivation::actionable(false)
         }
 
         fn semantics(
             &self,
-            _: &Self::State,
+            (): &Self::State,
             _: SemanticContributionContext,
         ) -> SemanticContribution {
             SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::Button))
