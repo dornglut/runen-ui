@@ -5,6 +5,7 @@ mod notifications;
 mod preparation;
 mod rehit;
 mod rejection;
+mod style_projection;
 mod transaction;
 
 use runenui_core::{
