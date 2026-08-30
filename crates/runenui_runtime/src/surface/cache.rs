@@ -6,7 +6,7 @@ use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
 
 use super::{
-    SurfaceBuildContext, SurfaceLayoutReport, SurfacePublication,
+    SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport, SurfacePublication,
     resolve::{CachedStyleFacts, SurfaceTopologySnapshot},
 };
 
@@ -156,6 +156,9 @@ pub(crate) struct SurfaceCache {
     pub(super) context_key: Arc<SurfaceContextKey>,
     // Topology facts.
     pub(super) topology: Arc<SurfaceTopologySnapshot>,
+    // Last runtime-derived interaction projection consumed by the style phase.
+    // This is cache compatibility only, never pointer/focus authority.
+    pub(super) interaction: Arc<SurfaceInteractionProjection>,
     // Style-phase facts.
     pub(super) styles: Arc<CachedStyleFacts>,
     // Layout-phase facts. This is the single retained geometry storage owner
@@ -186,6 +189,7 @@ impl SurfaceCache {
         Self {
             context_key: Arc::clone(&self.context_key),
             topology: Arc::clone(&self.topology),
+            interaction: Arc::clone(&self.interaction),
             styles: Arc::clone(&self.styles),
             layout: Arc::clone(&self.layout),
             hit_test: self.hit_test.clone(),
@@ -271,7 +275,7 @@ mod tests {
     use crate::{
         LayoutConstraints,
         mounted::{DirtyPhases, MountedTree, apply_invalidation},
-        surface::{SurfaceBuildContext, plan_mounted_surface_cached},
+        surface::{SurfaceBuildContext, SurfaceInteractionProjection, plan_mounted_surface_cached},
     };
 
     fn publish(
@@ -279,7 +283,8 @@ mod tests {
         context: &SurfaceBuildContext<'_>,
         cache: &mut Option<SurfaceCache>,
     ) -> super::SurfacePhaseReport {
-        let planned = plan_mounted_surface_cached(tree, context, cache.as_ref())
+        let interaction = SurfaceInteractionProjection::default();
+        let planned = plan_mounted_surface_cached(tree, context, &interaction, cache.as_ref())
             .unwrap_or_else(|_| unreachable!("reuse proof has valid semantic planning"));
         let commit = planned.commit_store();
         let (_, report) = commit.commit(tree, cache);
@@ -328,7 +333,8 @@ mod tests {
         let dirty_before = tree.pending_phases();
         assert!(dirty_before.contains(DirtyPhases::PAINT));
 
-        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
+        let interaction = SurfaceInteractionProjection::default();
+        let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
             .unwrap_or_else(|_| unreachable!("dirty staged plan remains valid"));
         drop(planned);
 
