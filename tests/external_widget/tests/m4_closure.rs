@@ -6,8 +6,8 @@ use runenui_core::{
     Axis, ChildLayout, ChildLayoutWidget, CommandOrigin, CompositionEvent, Element, EventContext,
     EventPhase, FocusEventKind, HitContribution, HitContributionContext, LogicalLength,
     LogicalPoint, LogicalRect, NoHostProtocol, PointerButton, PointerButtons, PointerCaptureKind,
-    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand, StyleTokens, UiApp,
-    UiEvent, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand, StyleEnvironment,
+    UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
     WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetTextInput, container,
 };
 use runenui_runtime::{
@@ -295,10 +295,10 @@ fn exercise_composition(runtime: &mut AppRuntime<App>) {
 }
 
 fn exercise_capture(runtime: &mut AppRuntime<App>) {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::tight(
-            &tokens,
+            &style_environment,
             LogicalSize::try_new(64.0, 64.0)
                 .unwrap_or_else(|_| unreachable!("surface size is finite")),
         ))
