@@ -409,9 +409,8 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
     let mut cache = None;
     let interaction = super::SurfaceInteractionProjection::default();
 
-    let planned =
-        plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
-            .unwrap_or_else(|_| unreachable!("initial semantic layout plan is valid"));
+    let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
+        .unwrap_or_else(|_| unreachable!("initial semantic layout plan is valid"));
     let (first, _) = planned
         .semantic_candidate(None)
         .unwrap_or_else(|_| unreachable!("initial semantic candidate is aligned"))
@@ -435,9 +434,8 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
         .unwrap_or_else(|| unreachable!("semantic layout probe remains mounted"));
     apply_invalidation(node, WidgetInvalidation::LAYOUT);
 
-    let planned =
-        plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
-            .unwrap_or_else(|_| unreachable!("layout semantic plan is valid"));
+    let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
+        .unwrap_or_else(|_| unreachable!("layout semantic plan is valid"));
     let (second, _) = planned
         .semantic_candidate(None)
         .unwrap_or_else(|_| unreachable!("layout semantic candidate is aligned"))
