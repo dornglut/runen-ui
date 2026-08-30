@@ -1,6 +1,6 @@
 use runenui_core::{
     CommandOrigin, Element, ElementId, IntoEffects, LogicalLength, NoHostProtocol, SemanticCommand,
-    StyleEnvironment, StyleTokens, UiApp, View, button, row,
+    StyleEnvironment, UiApp, View, button, row,
 };
 use runenui_runtime::{
     AppRuntime, CommandSubmission, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
@@ -150,10 +150,9 @@ pub fn mounted() -> AppRuntime<SurfaceApp> {
 
 pub fn publication(
     runtime: &mut AppRuntime<SurfaceApp>,
-    tokens: &StyleTokens,
+    style_environment: &StyleEnvironment,
 ) -> SurfacePublication {
-    let environment = StyleEnvironment::from_tokens(tokens.clone());
-    let context = SurfaceBuildContext::tight(&environment, surface_size());
+    let context = SurfaceBuildContext::tight(style_environment, surface_size());
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("surface context publication is admitted"))
