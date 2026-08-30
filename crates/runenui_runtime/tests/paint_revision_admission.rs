@@ -1,7 +1,7 @@
 #![allow(refining_impl_trait)]
 #![cfg(feature = "internal-test-seams")]
 
-use runenui_core::{LogicalLength, NoHostProtocol, StyleTokens, UiApp, View, text};
+use runenui_core::{LogicalLength, NoHostProtocol, StyleEnvironment, UiApp, View, text};
 use runenui_runtime::{
     AppRuntime, LogicalSize, PublishSurfaceError, RuntimeStatus, RuntimeTerminalReason,
     SurfaceBuildContext, SurfacePublicationCounter, TraceRecordKind,
@@ -35,8 +35,8 @@ fn published_count(runtime: &AppRuntime<App>) -> usize {
 
 #[test]
 fn exhausted_paint_revision_does_not_block_unchanged_renderer_publication() {
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::tight(&tokens, size(16, 16));
+    let style_environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(&style_environment, size(16, 16));
     let mut runtime = AppRuntime::<App>::mount(());
     let first = runtime
         .publish_surface(&context)
@@ -59,15 +59,21 @@ fn exhausted_paint_revision_does_not_block_unchanged_renderer_publication() {
 
 #[test]
 fn paint_revision_max_is_issued_once_then_changed_publication_fails_before_commit() {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let mut runtime = AppRuntime::<App>::mount(());
     runtime
-        .publish_surface(&SurfaceBuildContext::tight(&tokens, size(16, 16)))
+        .publish_surface(&SurfaceBuildContext::tight(
+            &style_environment,
+            size(16, 16),
+        ))
         .unwrap_or_else(|_| unreachable!("initial paint publication is admitted"));
 
     runtime.__seed_next_paint_revision_for_test(Some(u64::MAX));
     let max_revision = runtime
-        .publish_surface(&SurfaceBuildContext::tight(&tokens, size(32, 16)))
+        .publish_surface(&SurfaceBuildContext::tight(
+            &style_environment,
+            size(32, 16),
+        ))
         .unwrap_or_else(|_| unreachable!("the final non-wrapping paint revision is admitted"));
     assert_eq!(max_revision.paint_publication().revision().get(), u64::MAX);
     assert_eq!(
@@ -77,7 +83,10 @@ fn paint_revision_max_is_issued_once_then_changed_publication_fails_before_commi
 
     let phase_before_failure = runtime.last_surface_phase_report().clone();
     let published_before_failure = published_count(&runtime);
-    let result = runtime.publish_surface(&SurfaceBuildContext::tight(&tokens, size(48, 16)));
+    let result = runtime.publish_surface(&SurfaceBuildContext::tight(
+        &style_environment,
+        size(48, 16),
+    ));
     let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(
         SurfacePublicationCounter::PaintRevision,
     );
