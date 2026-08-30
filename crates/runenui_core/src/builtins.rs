@@ -5,8 +5,8 @@ use crate::{
     IntoElementId, IntoElementKey, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
     PaintContribution, PaintContributionContext, PaintContributionItem, RadiusValue,
     SemanticAction, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
-    SemanticRole, SemanticState, SemanticText, SpacingValue, StyleIntent, WidgetActivationContext,
-    WidgetInvalidation, WidgetUpdateContext,
+    SemanticRole, SemanticState, SemanticText, SpacingValue, StyleIntent, StyleRecipeId,
+    StyleVariantId, WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
     element::{
         AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View,
         Views, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetTextKind,
@@ -24,6 +24,16 @@ macro_rules! common_builder_methods {
         #[must_use]
         pub fn key(mut self, key: impl IntoElementKey) -> Self {
             assign_key(&mut self.key, &mut self.diagnostics, key);
+            self
+        }
+        #[must_use]
+        pub fn recipe(mut self, recipe: StyleRecipeId) -> Self {
+            self.style = self.style.with_recipe(recipe);
+            self
+        }
+        #[must_use]
+        pub fn variant(mut self, variant: StyleVariantId) -> Self {
+            self.style = self.style.with_variant(variant);
             self
         }
         #[must_use]
