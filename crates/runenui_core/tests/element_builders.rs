@@ -63,7 +63,10 @@ fn recipes_and_variants_are_publicly_authored_in_stable_order()
     assert_eq!(root.style().recipe(), Some(&recipe));
     assert_eq!(root.style().variants(), &[compact.clone(), danger.clone()]);
     assert_eq!(root.children()[0].style().recipe(), Some(&recipe));
-    assert_eq!(root.children()[0].style().variants(), &[compact.clone()]);
+    assert_eq!(
+        root.children()[0].style().variants(),
+        std::slice::from_ref(&compact)
+    );
     assert_eq!(root.children()[1].style().recipe(), Some(&recipe));
     assert_eq!(root.children()[1].style().variants(), &[danger]);
     Ok(())
