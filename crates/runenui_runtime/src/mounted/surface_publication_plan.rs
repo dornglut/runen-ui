@@ -1,6 +1,6 @@
 use runenui_core::{
     ChildLayout, HitContribution, HitContributionContext, PaintContribution,
-    PaintContributionContext, WidgetDiagnostic, WidgetMeasure,
+    PaintContributionContext, WidgetActivation, WidgetDiagnostic, WidgetMeasure,
 };
 
 use super::{CachedCapability, DirtyPhases, MountedNodeId, MountedTree, node::state_is_corrupted};
@@ -13,6 +13,7 @@ pub(crate) struct SurfaceCapabilityPlan {
 
 struct PlannedSurfaceCapabilities {
     owner: MountedNodeId,
+    activation: CachedCapability<WidgetActivation>,
     measurement: Option<CachedCapability<WidgetMeasure>>,
     child_layout: Option<CachedCapability<Option<ChildLayout>>>,
     paint: Option<CachedCapability<PaintContribution>>,
@@ -24,6 +25,25 @@ struct PlannedSurfaceCapabilities {
 }
 
 impl SurfaceCapabilityPlan {
+    pub(crate) fn activation_cache_at(
+        &self,
+        position: usize,
+        owner: &MountedNodeId,
+    ) -> CachedCapability<WidgetActivation> {
+        self.owner_at(position, owner).activation.clone()
+    }
+
+    pub(crate) fn activation_at(
+        &self,
+        position: usize,
+        owner: &MountedNodeId,
+    ) -> WidgetActivation {
+        self.owner_at(position, owner)
+            .activation
+            .ready()
+            .unwrap_or_else(WidgetActivation::disabled)
+    }
+
     pub(crate) fn measurement_at(
         &self,
         position: usize,
@@ -95,25 +115,14 @@ impl SurfaceCapabilityPlan {
 }
 
 impl<Action> MountedTree<Action> {
-    /// Stages capabilities that do not depend on final publication-local layout.
-    /// Paint and hit callbacks are deferred until their final contexts exist so
-    /// a ready cached contribution can be reused only when that exact context is
-    /// unchanged.
+    /// Stages the canonical activation fact for every publication owner before
+    /// style or semantics consume it, then stages any immediately requested
+    /// non-contextual surface capabilities. The returned plan may be extended
+    /// after style effects determine the final downstream phase set.
     pub(crate) fn plan_surface_publication_capabilities(
         &self,
         phases: DirtyPhases,
     ) -> SurfaceCapabilityPlan {
-        let needs_layout = phases.contains(DirtyPhases::LAYOUT);
-        let needs_paint = phases.contains(DirtyPhases::PAINT);
-        let needs_hit_test = phases.contains(DirtyPhases::HIT_TEST);
-        let needs_diagnostics = phases.contains(DirtyPhases::DIAGNOSTICS);
-        if !needs_layout && !needs_paint && !needs_hit_test && !needs_diagnostics {
-            return SurfaceCapabilityPlan {
-                owners: Vec::new(),
-                needs_paint: false,
-                needs_hit_test: false,
-            };
-        }
         let owners = self
             .publication_preorder_ids()
             .into_iter()
@@ -121,8 +130,20 @@ impl<Action> MountedTree<Action> {
                 let node = self
                     .node(&owner)
                     .unwrap_or_else(|| unreachable!("surface capability owner remains live"));
-                let mut planned = PlannedSurfaceCapabilities {
+                let mut mark_integrity_failed = false;
+                let activation = if state_is_corrupted(node) {
+                    mark_integrity_failed = true;
+                    CachedCapability::StatePayloadMismatch
+                } else {
+                    stage_cached_capability(
+                        &node.caches.activation,
+                        || node.widget.activation(&node.state),
+                        &mut mark_integrity_failed,
+                    )
+                };
+                PlannedSurfaceCapabilities {
                     owner,
+                    activation,
                     measurement: None,
                     child_layout: None,
                     paint: None,
@@ -130,53 +151,76 @@ impl<Action> MountedTree<Action> {
                     hit_test: None,
                     hit_test_context: None,
                     diagnostics: None,
-                    mark_integrity_failed: false,
-                };
-                if state_is_corrupted(node) {
-                    if needs_layout {
-                        planned.measurement = Some(CachedCapability::StatePayloadMismatch);
-                        planned.child_layout = Some(CachedCapability::StatePayloadMismatch);
-                    }
-                    if needs_paint {
-                        planned.paint = Some(CachedCapability::StatePayloadMismatch);
-                    }
-                    if needs_hit_test {
-                        planned.hit_test = Some(CachedCapability::StatePayloadMismatch);
-                    }
-                    if needs_diagnostics {
-                        planned.diagnostics = Some(CachedCapability::StatePayloadMismatch);
-                    }
-                    planned.mark_integrity_failed =
-                        needs_layout || needs_paint || needs_hit_test || needs_diagnostics;
-                    return planned;
+                    mark_integrity_failed,
                 }
-
-                if needs_layout {
-                    planned.measurement = Some(stage_cached_capability(
-                        &node.caches.measurement,
-                        || node.widget.measure(&node.state),
-                        &mut planned.mark_integrity_failed,
-                    ));
-                    planned.child_layout = Some(stage_cached_capability(
-                        &node.caches.child_layout,
-                        || node.widget.child_layout(&node.state),
-                        &mut planned.mark_integrity_failed,
-                    ));
-                }
-                if needs_diagnostics {
-                    planned.diagnostics = Some(stage_cached_capability(
-                        &node.caches.diagnostics,
-                        || node.widget.diagnostics(&node.state),
-                        &mut planned.mark_integrity_failed,
-                    ));
-                }
-                planned
             })
             .collect();
-        SurfaceCapabilityPlan {
+        let mut plan = SurfaceCapabilityPlan {
             owners,
-            needs_paint,
-            needs_hit_test,
+            needs_paint: false,
+            needs_hit_test: false,
+        };
+        self.extend_surface_publication_capabilities(&mut plan, phases);
+        plan
+    }
+
+    /// Extends one already activation-staged publication plan after style
+    /// effects have determined the exact downstream phases that must execute.
+    pub(crate) fn extend_surface_publication_capabilities(
+        &self,
+        plan: &mut SurfaceCapabilityPlan,
+        phases: DirtyPhases,
+    ) {
+        let needs_layout = phases.contains(DirtyPhases::LAYOUT);
+        let needs_paint = phases.contains(DirtyPhases::PAINT);
+        let needs_hit_test = phases.contains(DirtyPhases::HIT_TEST);
+        let needs_diagnostics = phases.contains(DirtyPhases::DIAGNOSTICS);
+        plan.needs_paint |= needs_paint;
+        plan.needs_hit_test |= needs_hit_test;
+        if !needs_layout && !needs_paint && !needs_hit_test && !needs_diagnostics {
+            return;
+        }
+        for planned in &mut plan.owners {
+            let node = self
+                .node(&planned.owner)
+                .unwrap_or_else(|| unreachable!("surface capability owner remains live"));
+            if state_is_corrupted(node) {
+                if needs_layout {
+                    planned.measurement = Some(CachedCapability::StatePayloadMismatch);
+                    planned.child_layout = Some(CachedCapability::StatePayloadMismatch);
+                }
+                if needs_paint {
+                    planned.paint = Some(CachedCapability::StatePayloadMismatch);
+                }
+                if needs_hit_test {
+                    planned.hit_test = Some(CachedCapability::StatePayloadMismatch);
+                }
+                if needs_diagnostics {
+                    planned.diagnostics = Some(CachedCapability::StatePayloadMismatch);
+                }
+                planned.mark_integrity_failed = true;
+                continue;
+            }
+
+            if needs_layout && planned.measurement.is_none() {
+                planned.measurement = Some(stage_cached_capability(
+                    &node.caches.measurement,
+                    || node.widget.measure(&node.state),
+                    &mut planned.mark_integrity_failed,
+                ));
+                planned.child_layout = Some(stage_cached_capability(
+                    &node.caches.child_layout,
+                    || node.widget.child_layout(&node.state),
+                    &mut planned.mark_integrity_failed,
+                ));
+            }
+            if needs_diagnostics && planned.diagnostics.is_none() {
+                planned.diagnostics = Some(stage_cached_capability(
+                    &node.caches.diagnostics,
+                    || node.widget.diagnostics(&node.state),
+                    &mut planned.mark_integrity_failed,
+                ));
+            }
         }
     }
 
@@ -244,6 +288,7 @@ impl<Action> MountedTree<Action> {
             let node = self
                 .node_mut(&planned.owner)
                 .unwrap_or_else(|| unreachable!("planned surface capability owner remains live"));
+            node.caches.activation = planned.activation;
             if let Some(measurement) = planned.measurement {
                 node.caches.measurement = measurement;
             }
