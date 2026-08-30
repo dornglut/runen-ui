@@ -129,7 +129,10 @@ mod tests {
                 .with(StyleInteractionState::Hover, true)
                 .with(StyleInteractionState::Focus, true)
         );
-        assert_eq!(projection.facts_for(&untouched), StyleInteractionFacts::NONE);
+        assert_eq!(
+            projection.facts_for(&untouched),
+            StyleInteractionFacts::NONE
+        );
     }
 
     #[test]
