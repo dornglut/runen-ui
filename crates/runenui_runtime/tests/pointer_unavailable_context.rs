@@ -593,10 +593,12 @@ fn unavailable_terminal_close_redraws_when_hover_projection_is_removed() {
     let closed = records
         .iter()
         .copied()
-        .find(|record| matches!(
-            record.kind(),
-            TraceRecordKind::PointerStreamClosed { pointer_id: actual } if actual == &pointer_id
-        ))
+        .find(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::PointerStreamClosed { pointer_id: actual } if actual == &pointer_id
+            )
+        })
         .unwrap_or_else(|| unreachable!("unavailable terminal cleanup closes the stream"));
     let requested = records
         .iter()
