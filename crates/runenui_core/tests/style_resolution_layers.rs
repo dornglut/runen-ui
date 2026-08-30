@@ -1,6 +1,6 @@
 use runenui_core::{
-    Color, ColorToken, ComputedStyle, EdgeInsets, IdentifierError, LogicalLength, StyleEffects,
-    StyleEnvironment, StyleFieldProvenance, StyleIntent, StyleInteractionFacts,
+    Color, ColorToken, ComputedStyle, EdgeInsets, IdentifierError, LogicalLength, Radius,
+    StyleEffects, StyleEnvironment, StyleFieldProvenance, StyleIntent, StyleInteractionFacts,
     StyleInteractionState, StylePreferenceKind, StylePreferencePolicy, StylePreferences,
     StyleProperties, StyleRecipe, StyleRecipeId, StyleResolutionDiagnostic, StyleResolutionLayer,
     StyleTheme, StyleTokens, StyleVariantId, TokenId, resolve_style_in_environment,
@@ -314,9 +314,12 @@ fn missing_higher_precedence_token_masks_lower_value() -> Result<(), Box<dyn std
 #[test]
 fn inheritance_is_bounded_to_foreground_in_m8a() -> Result<(), Box<dyn std::error::Error>> {
     let padding = EdgeInsets::all(LogicalLength::new(8.0)?);
+    let radius = Radius::all(LogicalLength::new(6.0)?);
     let parent = ComputedStyle::EMPTY
         .with_foreground(Color::WHITE)
-        .with_padding(padding);
+        .with_background(Color::BLACK)
+        .with_padding(padding)
+        .with_radius(radius);
     let resolution = resolve_style_in_environment(
         &StyleIntent::EMPTY,
         &StyleEnvironment::default(),
@@ -324,7 +327,9 @@ fn inheritance_is_bounded_to_foreground_in_m8a() -> Result<(), Box<dyn std::erro
         Some(parent),
     );
     assert_eq!(resolution.computed_style().foreground(), Some(Color::WHITE));
+    assert_eq!(resolution.computed_style().background(), None);
     assert_eq!(resolution.computed_style().padding(), None);
+    assert_eq!(resolution.computed_style().radius(), None);
     assert_eq!(
         resolution.provenance().foreground(),
         &StyleFieldProvenance::Inherited
@@ -337,16 +342,39 @@ fn inheritance_is_bounded_to_foreground_in_m8a() -> Result<(), Box<dyn std::erro
 }
 
 #[test]
-fn property_effects_distinguish_paint_from_layout() -> Result<(), Box<dyn std::error::Error>> {
-    let paint = style_effects_between(
+fn property_effects_classify_every_current_property() -> Result<(), Box<dyn std::error::Error>> {
+    let foreground = style_effects_between(
         ComputedStyle::EMPTY,
         ComputedStyle::EMPTY.with_foreground(Color::WHITE),
     );
-    assert_eq!(paint, StyleEffects::PAINT);
+    assert_eq!(foreground, StyleEffects::PAINT);
+
+    let background = style_effects_between(
+        ComputedStyle::EMPTY,
+        ComputedStyle::EMPTY.with_background(Color::WHITE),
+    );
+    assert_eq!(background, StyleEffects::PAINT);
+
+    let radius = style_effects_between(
+        ComputedStyle::EMPTY,
+        ComputedStyle::EMPTY.with_radius(Radius::all(LogicalLength::new(3.0)?)),
+    );
+    assert_eq!(radius, StyleEffects::PAINT);
+
+    let padding = EdgeInsets::all(LogicalLength::new(4.0)?);
     let layout = style_effects_between(
         ComputedStyle::EMPTY,
-        ComputedStyle::EMPTY.with_padding(EdgeInsets::all(LogicalLength::new(4.0)?)),
+        ComputedStyle::EMPTY.with_padding(padding),
     );
     assert_eq!(layout, StyleEffects::LAYOUT);
+
+    let mixed = style_effects_between(
+        ComputedStyle::EMPTY,
+        ComputedStyle::EMPTY
+            .with_foreground(Color::WHITE)
+            .with_padding(padding),
+    );
+    assert!(mixed.layout());
+    assert!(mixed.paint());
     Ok(())
 }
