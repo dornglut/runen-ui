@@ -181,6 +181,13 @@
 //! let _ = button("Save").on_press(());
 //! ```
 //!
+//! The proof-era direct style resolvers are removed. Production style resolution
+//! requires the complete [`StyleEnvironment`] contract.
+//!
+//! ```compile_fail
+//! use runenui_core::{resolve_literal_style, resolve_style};
+//! ```
+//!
 //! Semantic actions have no semantic scrolling alias:
 //!
 //! ```compile_fail
@@ -329,8 +336,7 @@ pub use style_environment::{
 };
 pub use style_resolution::{
     StyleFieldProvenance, StyleProvenance, StyleResolution, StyleResolutionDiagnostic,
-    StyleResolutionLayer, UnresolvedStyleToken, resolve_literal_style, resolve_style,
-    resolve_style_in_environment,
+    StyleResolutionLayer, UnresolvedStyleToken, resolve_style_in_environment,
 };
 pub use style_tokens::{DuplicateTokenDefinition, StyleTokens, TokenFamily};
 pub use subscription::{
