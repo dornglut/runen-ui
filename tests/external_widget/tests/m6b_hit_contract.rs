@@ -2,8 +2,8 @@
 
 use runenui_core::{
     CommandOrigin, Element, ElementId, HitContribution, HitContributionContext, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, SemanticCommand, StyleTokens, UiApp, View, Widget,
-    WidgetActivation, WidgetMeasure, children, column,
+    LogicalPoint, LogicalRect, NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp, View,
+    Widget, WidgetActivation, WidgetMeasure, children, column,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SubmitSurfaceCommandErrorKind, SurfaceBuildContext,
@@ -123,10 +123,10 @@ fn hit_regions_membership_and_focusability_are_independent_authorities() {
             .is_some_and(|node| !node.is_focusable())
     );
 
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("hit authority publication is admitted"));
