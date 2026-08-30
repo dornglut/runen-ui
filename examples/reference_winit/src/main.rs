@@ -28,7 +28,7 @@ use runenui_core::{
     KeyboardEvent, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
     PaintContributionContext, PaintContributionItem, PointerEvent, SemanticAction, SemanticCommand,
     SemanticContribution, SemanticKey, SemanticNodeContribution, SemanticRole, SemanticText,
-    StyleTokens, SurfaceInputContext, UiApp, View, Widget, WidgetActivation, WidgetMeasure,
+    StyleEnvironment, SurfaceInputContext, UiApp, View, Widget, WidgetActivation, WidgetMeasure,
     WidgetTextInput,
 };
 use runenui_render_wgpu::{
@@ -347,7 +347,7 @@ fn block_on<FutureType: Future>(future: FutureType) -> FutureType::Output {
 struct ReferenceHost {
     runtime: AppRuntime<DemoApp>,
     trace_sink: Option<runenui_runtime::TraceSinkReceiver>,
-    style_tokens: StyleTokens,
+    style_environment: StyleEnvironment,
     event_loop_proxy: EventLoopProxy<HostEvent>,
     window: Option<Arc<Window>>,
     accessibility: Option<accesskit_winit::Adapter>,
@@ -383,7 +383,7 @@ impl ReferenceHost {
         let host = Self {
             runtime,
             trace_sink,
-            style_tokens: StyleTokens::new(),
+            style_environment: StyleEnvironment::default(),
             event_loop_proxy: proxy,
             window: None,
             accessibility: None,
@@ -656,7 +656,7 @@ impl ReferenceHost {
             return Ok(false);
         }
 
-        let context = SurfaceBuildContext::tight(&self.style_tokens, mapping.logical_size)
+        let context = SurfaceBuildContext::tight(&self.style_environment, mapping.logical_size)
             .with_raster_scale(mapping.raster_scale);
         let publication = self
             .runtime
@@ -1623,7 +1623,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::{
         AppRuntime, DemoApp, DisplayedFrame, HOST_PUMP_BUDGET, NativeMapping,
-        PointIngressDiagnostic, StyleTokens, SurfaceBuildContext,
+        PointIngressDiagnostic, StyleEnvironment, SurfaceBuildContext,
         mouse_input::{
             MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
             translate_mouse_button,
@@ -1645,8 +1645,8 @@ mod tests {
     fn displayed_frame(mapping: NativeMapping) -> DisplayedFrame {
         let mut runtime = AppRuntime::<DemoApp>::mount(());
         let _ = runtime.pump(HOST_PUMP_BUDGET);
-        let style_tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::tight(&style_tokens, mapping.logical_size)
+        let style_environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size)
             .with_raster_scale(mapping.raster_scale);
         let publication = runtime.publish_surface(&context).unwrap_or_else(|error| {
             unreachable!("fixture surface publication is valid: {error:?}")
