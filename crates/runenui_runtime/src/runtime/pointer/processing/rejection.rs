@@ -150,6 +150,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 work, rejected, stream, cleanup, &owner,
             );
         }
+        let pointer_interaction_before = self.pointer_registry.surface_interaction_projection(None);
         if self.pointer_registry.replace(pointer_id, stream).is_err() {
             let cancelled = self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
             return ProcessApplicationActionOutcome::Terminal {
@@ -172,7 +173,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 );
             }
         }
-        self.trace.record(
+        let committed = self.trace.record(
             TraceRecordKind::PointerInteractionCommitted { pointer_id },
             Some(work.sequence),
             parent,
@@ -180,6 +181,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             None,
         );
+        if pointer_interaction_before
+            .content_differs(&self.pointer_registry.surface_interaction_projection(None))
+        {
+            self.request_redraw(committed, work.instant);
+        }
         ProcessApplicationActionOutcome::Completed
     }
 
@@ -321,6 +327,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
         }
         let cleanup_trace = RejectedPointerCleanupTrace::terminal_from_stream(pointer_id, &stream);
+        let pointer_interaction_before = self.pointer_registry.surface_interaction_projection(None);
         self.pointer_registry
             .close(pointer_id)
             .unwrap_or_else(|| unreachable!("terminal cleanup follows active-stream validation"));
@@ -342,7 +349,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         } else {
             cleanup
         };
-        self.trace.record(
+        let closed = self.trace.record(
             TraceRecordKind::PointerStreamClosed { pointer_id },
             Some(work.sequence),
             parent,
@@ -350,6 +357,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             None,
         );
+        if pointer_interaction_before
+            .content_differs(&self.pointer_registry.surface_interaction_projection(None))
+        {
+            self.request_redraw(closed, work.instant);
+        }
         ProcessApplicationActionOutcome::Completed
     }
 
