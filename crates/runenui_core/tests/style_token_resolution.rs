@@ -3,8 +3,9 @@ use std::hash::{Hash, Hasher};
 
 use runenui_core::{
     Color, ColorToken, ComputedStyle, DuplicateTokenDefinition, EdgeInsets, IdentifierError,
-    LogicalLength, Radius, RadiusToken, SpacingToken, StyleIntent, StyleTokens, TokenId,
-    color_token, radius_token, resolve_style, spacing_token, token_id,
+    LogicalLength, Radius, RadiusToken, SpacingToken, StyleEnvironment, StyleIntent,
+    StyleInteractionFacts, StyleTokens, TokenId, color_token, radius_token,
+    resolve_style_in_environment, spacing_token, token_id,
 };
 
 fn hash(value: &impl Hash) -> u64 {
@@ -108,7 +109,13 @@ fn style_resolution_preserves_provenance() -> Result<(), DuplicateTokenDefinitio
     let token = color_token!("color.text.primary");
     let mut tokens = StyleTokens::new();
     tokens.define_color(token.clone(), Color::WHITE)?;
-    let resolution = resolve_style(&StyleIntent::EMPTY.with_foreground(token), &tokens);
+    let environment = StyleEnvironment::from_tokens(tokens);
+    let resolution = resolve_style_in_environment(
+        &StyleIntent::EMPTY.with_foreground(token),
+        &environment,
+        StyleInteractionFacts::NONE,
+        None,
+    );
     assert_eq!(
         resolution.computed_style(),
         ComputedStyle::EMPTY.with_foreground(Color::WHITE)
