@@ -334,8 +334,9 @@ mod tests {
         assert!(dirty_before.contains(DirtyPhases::PAINT));
 
         let interaction = SurfaceInteractionProjection::default();
-        let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
-            .unwrap_or_else(|_| unreachable!("dirty staged plan remains valid"));
+        let planned =
+            plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
+                .unwrap_or_else(|_| unreachable!("dirty staged plan remains valid"));
         drop(planned);
 
         let still_live = cache
