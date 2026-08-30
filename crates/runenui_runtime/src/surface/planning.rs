@@ -38,6 +38,17 @@ fn surface_capability_phases(entries: [(bool, DirtyPhases); 5]) -> DirtyPhases {
     phases
 }
 
+fn initial_surface_capability_plan<Action>(
+    tree: &crate::mounted::MountedTree<Action>,
+    style_dirty: bool,
+) -> SurfaceCapabilityPlan {
+    let mut phases = DirtyPhases::default();
+    if style_dirty {
+        phases.insert(DirtyPhases::STYLE);
+    }
+    tree.plan_surface_publication_capabilities(phases)
+}
+
 fn layout_context_changed(current: &SurfaceCache, next: &super::cache::SurfaceContextKey) -> bool {
     current.context_key.constraints != next.constraints
         || current.context_key.measurement_identity != next.measurement_identity
@@ -142,15 +153,10 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
     let mut hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
     let mut paint_dirty = pending.contains(DirtyPhases::PAINT);
-    let semantics_dirty = pending.contains(DirtyPhases::SEMANTICS);
     let diagnostics_dirty = pending.contains(DirtyPhases::DIAGNOSTICS);
     let mut report = SurfacePhaseReport::default();
     let mut completed = DirtyPhases::default();
-    let mut initial_capability_phases = DirtyPhases::default();
-    if style_dirty {
-        initial_capability_phases.insert(DirtyPhases::STYLE);
-    }
-    let mut capability_plan = tree.plan_surface_publication_capabilities(initial_capability_phases);
+    let mut capability_plan = initial_surface_capability_plan(tree, style_dirty);
 
     if style_dirty {
         let next_styles = resolve_styles(
@@ -172,8 +178,9 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         paint_dirty = true;
     }
 
-    let semantic_product_dirty =
-        semantics_dirty || layout_dirty || pending.contains(DirtyPhases::FOCUS_VALIDATION);
+    let semantic_product_dirty = pending.contains(DirtyPhases::SEMANTICS)
+        || layout_dirty
+        || pending.contains(DirtyPhases::FOCUS_VALIDATION);
     tree.extend_surface_publication_capabilities(
         &mut capability_plan,
         surface_capability_phases([
