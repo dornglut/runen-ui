@@ -35,7 +35,7 @@ fn push_unique(ids: &mut Vec<MountedNodeId>, id: &MountedNodeId) {
 mod tests {
     use runenui_core::{
         __runtime::RuntimeNamespace, LogicalPoint, PointerButtons, PointerDeviceKind, PointerId,
-        StyleInteractionFacts,
+        StyleInteractionFacts, StyleInteractionState,
     };
 
     use super::*;
