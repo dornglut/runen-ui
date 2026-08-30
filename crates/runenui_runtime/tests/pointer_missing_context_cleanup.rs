@@ -91,7 +91,7 @@ impl Widget<Action> for Probe {
 
     fn activate(
         &mut self,
-        _state: &Self::State,
+        _state: &mut Self::State,
         _context: &mut WidgetActivationContext<Action>,
     ) -> WidgetActivationOutput<Action> {
         WidgetActivationOutput::action(Action::Activated)
