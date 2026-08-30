@@ -49,7 +49,7 @@ fn initial_surface_capability_plan<Action>(
     tree.plan_surface_publication_capabilities(phases)
 }
 
-fn semantic_product_is_dirty(pending: &DirtyPhases, layout_dirty: bool) -> bool {
+const fn semantic_product_is_dirty(pending: DirtyPhases, layout_dirty: bool) -> bool {
     pending.contains(DirtyPhases::SEMANTICS)
         || layout_dirty
         || pending.contains(DirtyPhases::FOCUS_VALIDATION)
@@ -184,7 +184,7 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         paint_dirty = true;
     }
 
-    let semantic_product_dirty = semantic_product_is_dirty(&pending, layout_dirty);
+    let semantic_product_dirty = semantic_product_is_dirty(pending, layout_dirty);
     tree.extend_surface_publication_capabilities(
         &mut capability_plan,
         surface_capability_phases([
@@ -410,7 +410,6 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
             || cache.hit_test.membership()[index] != topology.id
         {
             return Err("surface cache node identity is not topology-aligned");
-        }
     }
     Ok(())
 }
