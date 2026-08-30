@@ -4,7 +4,7 @@
 use runenui_core::{
     Axis, ChildLayout, ChildLayoutWidget, CommandOrigin, Element, EventContext, EventPhase,
     FocusBoundaryPolicy, FocusEventKind, FocusReason, FocusScope, FocusScopePolicy, NoHostProtocol,
-    SemanticCommand, StyleTokens, UiApp, UiEvent, View, Widget, WidgetActivation,
+    SemanticCommand, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetEventOutput, button, column, container,
 };
 use runenui_runtime::{
@@ -151,9 +151,9 @@ fn id(runtime: &mut AppRuntime<App>, name: &str) -> MountedNodeId {
 }
 
 fn publish_geometry(runtime: &mut AppRuntime<App>, geometry: &[NamedRect<'_>]) {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let _ = runtime.publish_surface(&SurfaceBuildContext::new(
-        &tokens,
+        &style_environment,
         LayoutConstraints::unbounded(),
     ));
     let issued = geometry
