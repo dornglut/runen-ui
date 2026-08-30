@@ -1,4 +1,4 @@
-use runenui_core::{CommandOrigin, SemanticCommand, StyleTokens};
+use runenui_core::{CommandOrigin, SemanticCommand, StyleEnvironment};
 use runenui_runtime::{TraceRecordKind, TraceSurfaceIngressKind, TraceSurfaceSnapshotKind};
 
 use crate::support::{
@@ -8,8 +8,8 @@ use crate::support::{
 #[test]
 fn resolved_target_ingress_uses_the_canonical_route_update_and_trace_path() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
-    let published = publication(&mut runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let published = publication(&mut runtime, &style_environment);
     let target = authored_target(&published, "surface.primary");
 
     activate_target(&mut runtime, published.input_context().clone(), target);
@@ -28,8 +28,8 @@ fn resolved_target_ingress_uses_the_canonical_route_update_and_trace_path() {
 #[test]
 fn successful_surface_trace_has_one_causal_chain() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
-    let published = publication(&mut runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let published = publication(&mut runtime, &style_environment);
     let requested_context = published.input_context().clone();
     let point = authored_center(&published, "surface.primary");
     let generation = requested_context.hit_test_generation();
