@@ -948,7 +948,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             previous_capture_owner,
         } = pending;
         let Some(pointer_commit_trace) =
-            self.plan_pointer_commit_trace(boundary_plan.notifications.len())
+            self.plan_unrouted_pointer_commit_trace(boundary_plan.notifications.len())
         else {
             return self.pointer_runtime_outcome();
         };
@@ -989,6 +989,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             surface_context: work.event.surface_context().clone(),
             surface_snapshot: geometry.snapshot,
         };
+        let pointer_interaction_before = self.pointer_registry.surface_interaction_projection(None);
         if self
             .commit_unrouted_pointer_stream(pointer_id, stream, kind, work.sequence, &mut parent)
             .is_err()
@@ -1018,6 +1019,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         for notification in &capture_plan.notifications {
             debug_assert_eq!(notification.delivery, TraceDeliveryOutcome::Suppressed);
             parent = self.record_pointer_capture_resolution(&resolution, notification, parent);
+        }
+        if pointer_interaction_before
+            .content_differs(&self.pointer_registry.surface_interaction_projection(None))
+        {
+            self.request_redraw(parent, work.instant);
         }
         ProcessApplicationActionOutcome::Completed
     }
@@ -1073,6 +1079,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         boundary_notifications: usize,
     ) -> Option<MandatoryTracePlan> {
         let plan = MandatoryTracePlan::pointer_commit(boundary_notifications);
+        if plan.is_none() {
+            self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+        }
+        plan
+    }
+
+    fn plan_unrouted_pointer_commit_trace(
+        &mut self,
+        boundary_notifications: usize,
+    ) -> Option<MandatoryTracePlan> {
+        let plan = MandatoryTracePlan::pointer_unrouted_commit(boundary_notifications);
         if plan.is_none() {
             self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
         }
