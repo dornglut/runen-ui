@@ -50,7 +50,7 @@ impl Widget<()> for ActivationStyleProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn activation(&self, _: &Self::State) -> WidgetActivation {
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
         self.activation_callbacks
             .set(self.activation_callbacks.get() + 1);
         WidgetActivation::actionable(self.enabled.get())
