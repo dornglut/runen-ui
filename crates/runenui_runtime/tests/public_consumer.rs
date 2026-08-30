@@ -32,8 +32,8 @@ impl UiApp for App {
 fn ordinary_core_and_runtime_preludes_compile_together() {
     let mut runtime = AppRuntime::<App>::mount(());
     let size = LogicalSize::try_new(100.0, 40.0).unwrap_or_else(|_| unreachable!());
-    let tokens = runenui_core::StyleTokens::new();
-    let _context = SurfaceBuildContext::tight(&tokens, size);
+    let style_environment = runenui_core::StyleEnvironment::default();
+    let _context = SurfaceBuildContext::tight(&style_environment, size);
     assert_eq!(
         runtime.index().nodes()[0]
             .authored_id()
