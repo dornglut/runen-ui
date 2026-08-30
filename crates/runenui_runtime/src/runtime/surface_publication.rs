@@ -198,8 +198,7 @@ impl SurfacePublicationState {
         admission: SurfacePublicationAdmission,
     ) -> Result<SurfacePublication, SurfacePublicationPlanError> {
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
-        let planned =
-            plan_mounted_surface_cached(tree, context, interaction, self.cache.as_ref())?;
+        let planned = plan_mounted_surface_cached(tree, context, interaction, self.cache.as_ref())?;
         let semantic_candidate = planned.semantic_candidate(focused_owner)?;
         let semantic_plan: SemanticPublicationPlan = self
             .semantic_publication
