@@ -670,7 +670,7 @@ mod tests {
         SemanticContribution, SemanticContributionContext, SemanticItem, SemanticKey,
         SemanticNodeContribution, SemanticReference, SemanticRelationship,
         SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
-        StyleTokens, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
+        StyleEnvironment, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
         WidgetActivationOutput, WidgetInvalidation,
     };
     use runenui_runtime::{AppRuntime, SurfaceBuildContext};
@@ -790,10 +790,10 @@ mod tests {
     }
 
     fn publication(runtime: &mut AppRuntime<FixtureApp>) -> SemanticPublication {
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         runtime
             .publish_surface(&SurfaceBuildContext::tight(
-                &tokens,
+                &style_environment,
                 LogicalSize::try_new(100.0, 100.0).unwrap(),
             ))
             .unwrap()
