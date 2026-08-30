@@ -3,7 +3,7 @@
 use runenui_core::{
     Color, Element, ElementId, HitContribution, HitContributionContext, HitRegion, LogicalPoint,
     LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionItem, PointerPolicy, SceneLayer, StyleTokens, UiApp, View, Widget,
+    PaintContributionItem, PointerPolicy, SceneLayer, StyleEnvironment, UiApp, View, Widget,
     WidgetInvalidation, WidgetMeasure, WidgetUpdateContext, column,
 };
 use runenui_runtime::{
@@ -163,10 +163,13 @@ fn node_id(publication: &SurfacePublication, authored_id: &str) -> MountedNodeId
         .clone()
 }
 
-fn publish(runtime: &mut AppRuntime<OrderApp>, tokens: &StyleTokens) -> SurfacePublication {
+fn publish(
+    runtime: &mut AppRuntime<OrderApp>,
+    style_environment: &StyleEnvironment,
+) -> SurfacePublication {
     runtime
         .publish_surface(&SurfaceBuildContext::new(
-            tokens,
+            style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("order publication is admitted"))
@@ -246,9 +249,9 @@ fn layer_preorder_and_local_order_follow_logical_reorder_not_retained_storage_or
         usize::MAX,
         usize::MAX,
     ));
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
 
-    let initial = publish(&mut runtime, &tokens);
+    let initial = publish(&mut runtime, &style_environment);
     let a = node_id(&initial, "order.a");
     let b = node_id(&initial, "order.b");
     assert_eq!(
@@ -273,7 +276,7 @@ fn layer_preorder_and_local_order_follow_logical_reorder_not_retained_storage_or
             .processed_envelopes(),
         1
     );
-    let reordered = publish(&mut runtime, &tokens);
+    let reordered = publish(&mut runtime, &style_environment);
     assert_eq!(node_id(&reordered, "order.a"), a);
     assert_eq!(node_id(&reordered, "order.b"), b);
     assert_eq!(
