@@ -1,9 +1,10 @@
 use runenui_core::{
     Color, ColorToken, ComputedStyle, EdgeInsets, IdentifierError, LogicalLength, StyleEffects,
-    StyleEnvironment, StyleFieldProvenance, StyleInteractionFacts, StyleInteractionState,
-    StylePreferenceKind, StylePreferencePolicy, StylePreferences, StyleProperties, StyleRecipe,
-    StyleRecipeId, StyleResolutionDiagnostic, StyleResolutionLayer, StyleTheme, StyleTokens,
-    StyleVariantId, TokenId, resolve_style_in_environment, style_effects_between,
+    StyleEnvironment, StyleFieldProvenance, StyleIntent, StyleInteractionFacts,
+    StyleInteractionState, StylePreferenceKind, StylePreferencePolicy, StylePreferences,
+    StyleProperties, StyleRecipe, StyleRecipeId, StyleResolutionDiagnostic, StyleResolutionLayer,
+    StyleTheme, StyleTokens, StyleVariantId, TokenId, resolve_style_in_environment,
+    style_effects_between,
 };
 
 fn recipe_id(value: &str) -> Result<StyleRecipeId, IdentifierError> {
@@ -12,6 +13,21 @@ fn recipe_id(value: &str) -> Result<StyleRecipeId, IdentifierError> {
 
 fn variant_id(value: &str) -> Result<StyleVariantId, IdentifierError> {
     StyleVariantId::new(value)
+}
+
+fn assert_foreground_resolution(
+    intent: &StyleIntent,
+    environment: &StyleEnvironment,
+    interaction: StyleInteractionFacts,
+    expected_color: Color,
+    expected_layer: StyleResolutionLayer,
+) {
+    let resolution = resolve_style_in_environment(intent, environment, interaction, None);
+    assert_eq!(resolution.computed_style().foreground(), Some(expected_color));
+    assert_eq!(
+        resolution.provenance().foreground_layer(),
+        Some(&expected_layer)
+    );
 }
 
 #[test]
@@ -55,7 +71,7 @@ fn precedence_and_provenance_are_property_local_and_deterministic()
             StylePreferencePolicy::new()
                 .with_high_contrast(StyleProperties::EMPTY.with_foreground(Color::WHITE)),
         );
-    let intent = runenui_core::StyleIntent::EMPTY
+    let intent = StyleIntent::EMPTY
         .with_recipe(recipe_id)
         .with_variant(compact)
         .with_variant(danger)
@@ -80,6 +96,133 @@ fn precedence_and_provenance_are_property_local_and_deterministic()
     assert_eq!(
         resolution.computed_style().background(),
         Some(Color::rgb(20, 20, 20))
+    );
+    Ok(())
+}
+
+#[test]
+fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error::Error>> {
+    let recipe_id = recipe_id("control.precedence")?;
+    let first = variant_id("first")?;
+    let second = variant_id("second")?;
+    let mut recipe =
+        StyleRecipe::new(StyleProperties::EMPTY.with_foreground(Color::rgb(2, 0, 0)));
+    recipe.define_variant(
+        first.clone(),
+        StyleProperties::EMPTY.with_foreground(Color::rgb(3, 0, 0)),
+    )?;
+    recipe.define_variant(
+        second.clone(),
+        StyleProperties::EMPTY.with_foreground(Color::rgb(4, 0, 0)),
+    )?;
+    for (state, value) in [
+        (StyleInteractionState::Hover, 5),
+        (StyleInteractionState::Focus, 6),
+        (StyleInteractionState::Active, 7),
+        (StyleInteractionState::Disabled, 8),
+    ] {
+        recipe.define_interaction(
+            state,
+            StyleProperties::EMPTY.with_foreground(Color::rgb(value, 0, 0)),
+        )?;
+    }
+    let mut theme = StyleTheme::new(StyleTokens::new());
+    theme.define_recipe(recipe_id.clone(), recipe)?;
+    let environment = StyleEnvironment::new(theme)
+        .with_framework_defaults(StyleProperties::EMPTY.with_foreground(Color::rgb(1, 0, 0)));
+
+    assert_foreground_resolution(
+        &StyleIntent::EMPTY,
+        &environment,
+        StyleInteractionFacts::NONE,
+        Color::rgb(1, 0, 0),
+        StyleResolutionLayer::FrameworkDefault,
+    );
+
+    let recipe_intent = StyleIntent::EMPTY.with_recipe(recipe_id.clone());
+    assert_foreground_resolution(
+        &recipe_intent,
+        &environment,
+        StyleInteractionFacts::NONE,
+        Color::rgb(2, 0, 0),
+        StyleResolutionLayer::ThemeRecipe(recipe_id.clone()),
+    );
+
+    let first_variant_intent = recipe_intent.clone().with_variant(first.clone());
+    assert_foreground_resolution(
+        &first_variant_intent,
+        &environment,
+        StyleInteractionFacts::NONE,
+        Color::rgb(3, 0, 0),
+        StyleResolutionLayer::Variant(first.clone()),
+    );
+
+    let ordered_variants_intent = first_variant_intent.with_variant(second.clone());
+    assert_foreground_resolution(
+        &ordered_variants_intent,
+        &environment,
+        StyleInteractionFacts::NONE,
+        Color::rgb(4, 0, 0),
+        StyleResolutionLayer::Variant(second),
+    );
+
+    let hover = StyleInteractionFacts::NONE.with(StyleInteractionState::Hover, true);
+    assert_foreground_resolution(
+        &ordered_variants_intent,
+        &environment,
+        hover,
+        Color::rgb(5, 0, 0),
+        StyleResolutionLayer::Interaction(StyleInteractionState::Hover),
+    );
+
+    let focus = hover.with(StyleInteractionState::Focus, true);
+    assert_foreground_resolution(
+        &ordered_variants_intent,
+        &environment,
+        focus,
+        Color::rgb(6, 0, 0),
+        StyleResolutionLayer::Interaction(StyleInteractionState::Focus),
+    );
+
+    let active = focus.with(StyleInteractionState::Active, true);
+    assert_foreground_resolution(
+        &ordered_variants_intent,
+        &environment,
+        active,
+        Color::rgb(7, 0, 0),
+        StyleResolutionLayer::Interaction(StyleInteractionState::Active),
+    );
+
+    let disabled = active.with(StyleInteractionState::Disabled, true);
+    assert_foreground_resolution(
+        &ordered_variants_intent,
+        &environment,
+        disabled,
+        Color::rgb(8, 0, 0),
+        StyleResolutionLayer::Interaction(StyleInteractionState::Disabled),
+    );
+
+    let authored = ordered_variants_intent.with_foreground(Color::rgb(9, 0, 0));
+    assert_foreground_resolution(
+        &authored,
+        &environment,
+        disabled,
+        Color::rgb(9, 0, 0),
+        StyleResolutionLayer::AuthoredOverride,
+    );
+
+    let preference_environment = environment
+        .with_preferences(StylePreferences::new(true, false))
+        .with_preference_policy(
+            StylePreferencePolicy::new()
+                .with_high_contrast(StyleProperties::EMPTY.with_foreground(Color::rgb(10, 0, 0))),
+        );
+    assert_foreground_resolution(
+        &authored,
+        &preference_environment,
+        disabled,
+        Color::rgb(10, 0, 0),
+        StyleResolutionLayer::Preference(StylePreferenceKind::HighContrast),
     );
     Ok(())
 }
@@ -110,7 +253,7 @@ fn ordered_variants_and_framework_interaction_order_are_stable()
     let mut theme = StyleTheme::new(StyleTokens::new());
     theme.define_recipe(recipe_id.clone(), recipe)?;
     let environment = StyleEnvironment::new(theme);
-    let intent = runenui_core::StyleIntent::EMPTY
+    let intent = StyleIntent::EMPTY
         .with_recipe(recipe_id)
         .with_variant(first)
         .with_variant(second);
@@ -141,7 +284,7 @@ fn missing_higher_precedence_token_masks_lower_value() -> Result<(), Box<dyn std
     )?;
     let missing = ColorToken::new(TokenId::new("color.missing")?);
     let environment = StyleEnvironment::new(theme);
-    let intent = runenui_core::StyleIntent::EMPTY
+    let intent = StyleIntent::EMPTY
         .with_recipe(recipe_id)
         .with_foreground(missing.clone());
     let resolution = resolve_style_in_environment(
@@ -175,7 +318,7 @@ fn inheritance_is_bounded_to_foreground_in_m8a() -> Result<(), Box<dyn std::erro
         .with_foreground(Color::WHITE)
         .with_padding(padding);
     let resolution = resolve_style_in_environment(
-        &runenui_core::StyleIntent::EMPTY,
+        &StyleIntent::EMPTY,
         &StyleEnvironment::default(),
         StyleInteractionFacts::default(),
         Some(parent),
