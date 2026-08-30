@@ -157,6 +157,7 @@ fn pointer_event(
 const fn full_budget() -> PumpBudget {
     PumpBudget::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX)
 }
+
 fn pump_all(runtime: &mut AppRuntime<App>) {
     assert!(runtime.pump(full_budget()).is_quiescent());
 }
