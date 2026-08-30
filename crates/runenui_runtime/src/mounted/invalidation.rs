@@ -95,6 +95,7 @@ pub(crate) fn apply_invalidation<Action>(
 const fn publication_phases(invalidation: WidgetInvalidation) -> DirtyPhases {
     let mut phases = DirtyPhases(0);
     if invalidation.contains(WidgetInvalidation::INTERACTION) {
+        phases.insert(DirtyPhases::STYLE);
         phases.insert(DirtyPhases::FOCUS_VALIDATION);
         phases.insert(DirtyPhases::PAINT);
         phases.insert(DirtyPhases::SEMANTICS);
