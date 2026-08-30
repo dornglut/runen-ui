@@ -6,8 +6,8 @@ use runenui_core::{
     Axis, ChildLayout, ChildLayoutWidget, Element, ElementId, EventContext, HitContribution,
     HitContributionContext, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
     PointerBoundaryKind, PointerButton, PointerButtons, PointerCaptureKind, PointerDeviceKind,
-    PointerEvent, PointerId, PointerPhase, StyleTokens, SurfaceInputContext, UiApp, UiEvent, View,
-    Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure, children, container,
+    PointerEvent, PointerId, PointerPhase, StyleEnvironment, SurfaceInputContext, UiApp, UiEvent,
+    View, Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure, children, container,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext, TraceEventFamily,
@@ -192,11 +192,11 @@ fn harness(release_after_transfer: bool, capture_root_on_down: bool) -> Harness 
         release_after_transfer,
         capture_root_on_down,
     });
-    let tokens = StyleTokens::default();
+    let environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(96.0, 48.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
     let publication = runtime
-        .publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+        .publish_surface(&SurfaceBuildContext::tight(&environment, size))
         .unwrap_or_else(|_| unreachable!("the test surface publication is admitted"));
     let root_authored =
         ElementId::new("root").unwrap_or_else(|_| unreachable!("the test id is valid"));
