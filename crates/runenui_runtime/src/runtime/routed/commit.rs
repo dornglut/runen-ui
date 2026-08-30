@@ -1,4 +1,6 @@
-use runenui_core::{FocusReason, HostProtocol, MonotonicInstant, WidgetInvalidation};
+use runenui_core::{
+    EventSource, FocusReason, HostProtocol, MonotonicInstant, WidgetInvalidation,
+};
 
 use super::{
     super::{
@@ -38,10 +40,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if self.routed_commit_failure_for_test {
             return Err(());
         }
+        let pointer_interaction_before = (transaction.origin.source() == EventSource::Pointer)
+            .then(|| self.pointer_registry.surface_interaction_projection(None));
         pre_output_commit(self, &mut transaction)?;
         if !transaction.pointer_capture_requests.is_empty() {
             return Err(());
         }
+        let pointer_style_changed = pointer_interaction_before.is_some_and(|before| {
+            before.content_differs(&self.pointer_registry.surface_interaction_projection(None))
+        });
         let focused = self.focus.focused_node().cloned();
         if transaction
             .invalidation
@@ -54,7 +61,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .map_err(|_| ())?;
         }
         let plan = self.plan_routed_outputs(&mut transaction)?;
-        self.commit_routed_plan(transaction, plan)
+        self.commit_routed_plan(transaction, plan, pointer_style_changed)
     }
 
     fn plan_routed_outputs(
@@ -100,6 +107,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         transaction: RoutedTransaction<Action>,
         plan: PlannedApplicationTransaction<Action, Protocol>,
+        pointer_style_changed: bool,
     ) -> Result<(), ()> {
         let focus_before = transaction.focus_before.clone();
         let PlannedApplicationTransaction {
@@ -152,6 +160,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.finish_routed_invalidation(
             transaction.invalidation,
             focus_changed,
+            pointer_style_changed,
             committed,
             transaction.instant,
         );
@@ -162,6 +171,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         invalidation: WidgetInvalidation,
         focus_changed: bool,
+        pointer_style_changed: bool,
         causal_parent: Option<crate::TraceSequence>,
         instant: MonotonicInstant,
     ) {
@@ -171,7 +181,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if focus_changed {
             self.tree.mark_semantic_focus_product_dirty();
         }
-        if focus_changed || crate::mounted::publication_is_dirty(invalidation) {
+        if focus_changed
+            || pointer_style_changed
+            || crate::mounted::publication_is_dirty(invalidation)
+        {
             self.request_redraw(causal_parent, instant);
         }
     }
