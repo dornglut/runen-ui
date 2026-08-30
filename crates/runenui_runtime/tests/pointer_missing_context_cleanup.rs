@@ -8,8 +8,8 @@ use std::{
 use runenui_core::{
     Element, EventContext, HitContribution, HitContributionContext, LogicalLength, LogicalPoint,
     LogicalRect, NoHostProtocol, PointerButton, PointerButtons, PointerCaptureKind,
-    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleEnvironment, SurfaceInputContext,
-    UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleEnvironment,
+    SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
     WidgetActivationOutput, WidgetEventOutput, WidgetMeasure,
 };
 use runenui_runtime::{
@@ -91,7 +91,7 @@ impl Widget<Action> for Probe {
 
     fn activate(
         &mut self,
-        _state: &mut Self::State,
+        _state: &Self::State,
         _context: &mut WidgetActivationContext<Action>,
     ) -> WidgetActivationOutput<Action> {
         WidgetActivationOutput::action(Action::Activated)
