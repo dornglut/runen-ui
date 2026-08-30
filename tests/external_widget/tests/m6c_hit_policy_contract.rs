@@ -4,7 +4,7 @@ use runenui_core::{
     Element, ElementId, HitContribution, HitContributionContext, HitRegion, LogicalLength,
     LogicalPoint, LogicalRect, NoHostProtocol, PointerPolicy, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
-    StyleTokens, UiApp, View, Widget, WidgetMeasure, column,
+    StyleEnvironment, UiApp, View, Widget, WidgetMeasure, column,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -132,10 +132,10 @@ fn center(rect: LogicalRect) -> LogicalPoint {
 #[test]
 fn semantic_hidden_and_inert_do_not_lower_hit_policy_but_explicit_omission_and_block_do() {
     let mut runtime = AppRuntime::<App>::mount(());
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("hit-policy publication is admitted"));
