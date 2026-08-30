@@ -1,6 +1,6 @@
 use runenui_core::{
-    CommandOrigin, IntoEffects, LogicalLength, NoHostProtocol, SemanticCommand, StyleTokens, UiApp,
-    View, button,
+    CommandOrigin, IntoEffects, LogicalLength, NoHostProtocol, SemanticCommand, StyleEnvironment,
+    UiApp, View, button,
 };
 use runenui_runtime::{
     AppRuntime, LogicalPoint, LogicalSize, PumpBudget, RuntimeConfig, SurfaceBuildContext,
@@ -41,9 +41,9 @@ fn disabled_trace_preserves_checked_surface_command_behavior() {
     let mut runtime = AppRuntime::<TraceDisabledApp>::mount_with_config(0, config);
     pump_all(&mut runtime);
 
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let size = LogicalSize::new(LogicalLength::from(160_u16), LogicalLength::from(48_u16));
-    let build = SurfaceBuildContext::tight(&tokens, size);
+    let build = SurfaceBuildContext::tight(&style_environment, size);
     let publication = runtime
         .publish_surface(&build)
         .unwrap_or_else(|_| unreachable!("trace-disabled publication is admitted"));
