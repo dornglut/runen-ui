@@ -9,7 +9,7 @@ use runenui_core::{
     SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TracePointerRejection,
+    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, SurfacePhase, TracePointerRejection,
     TraceRecordKind,
 };
 
@@ -520,5 +520,104 @@ fn malformed_missing_context_up_rejects_before_integrity_settlement() {
             ))
             .count(),
         1
+    );
+}
+
+#[test]
+fn unavailable_terminal_close_redraws_when_hover_projection_is_removed() {
+    let mut harness = harness();
+    let pointer_id =
+        PointerId::new(86).unwrap_or_else(|| unreachable!("the pointer id is non-zero"));
+
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(
+            pointer_id.get(),
+            PointerDeviceKind::Mouse,
+            PointerPhase::Move,
+            &harness.context,
+            harness.inside,
+        ),
+    );
+    let hover_redraw = harness
+        .runtime
+        .take_redraw_request()
+        .unwrap_or_else(|| unreachable!("initial hover requests redraw"));
+    harness
+        .runtime
+        .acknowledge_redraw(&hover_redraw)
+        .unwrap_or_else(|_| unreachable!("runtime redraw token remains local"));
+
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(
+            pointer_id.get(),
+            PointerDeviceKind::Mouse,
+            PointerPhase::Down,
+            &harness.context,
+            harness.inside,
+        ),
+    );
+    assert!(
+        harness.runtime.take_redraw_request().is_none(),
+        "non-actionable button state alone does not alter style interaction facts"
+    );
+
+    let missing = harness.runtime.__surface_context_for_test(
+        0,
+        1,
+        harness.context.coordinate_revision(),
+        harness.context.hit_test_generation() + 100,
+    );
+    let start = harness.runtime.trace().len();
+    let unavailable_up = PointerEvent::new(
+        pointer_id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Up,
+        harness.inside,
+        missing,
+    )
+    .with_changed_button(PointerButton::Primary);
+    submit_and_pump(&mut harness.runtime, unavailable_up);
+
+    let redraw = harness
+        .runtime
+        .take_redraw_request()
+        .unwrap_or_else(|| unreachable!("closing the hovered stream requests redraw"));
+    let records = harness
+        .runtime
+        .trace()
+        .records()
+        .skip(start)
+        .collect::<Vec<_>>();
+    let closed = records
+        .iter()
+        .copied()
+        .find(|record| matches!(
+            record.kind(),
+            TraceRecordKind::PointerStreamClosed { pointer_id: actual } if actual == &pointer_id
+        ))
+        .unwrap_or_else(|| unreachable!("unavailable terminal cleanup closes the stream"));
+    let requested = records
+        .iter()
+        .copied()
+        .find(|record| matches!(record.kind(), TraceRecordKind::RedrawRequested { .. }))
+        .unwrap_or_else(|| unreachable!("projection cleanup records its redraw request"));
+    assert_eq!(requested.causal_parent(), Some(closed.sequence()));
+
+    harness
+        .runtime
+        .acknowledge_redraw(&redraw)
+        .unwrap_or_else(|_| unreachable!("runtime redraw token remains local"));
+    let environment = StyleEnvironment::default();
+    let size = LogicalSize::try_new(64.0, 64.0)
+        .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
+    harness
+        .runtime
+        .publish_surface(&SurfaceBuildContext::tight(&environment, size))
+        .unwrap_or_else(|_| unreachable!("interaction-only publication is admitted"));
+    assert_eq!(
+        harness.runtime.last_surface_phase_report().executed(),
+        &[SurfacePhase::Style]
     );
 }
