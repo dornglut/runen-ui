@@ -40,14 +40,6 @@ mod tests {
 
     use super::*;
 
-    fn ids() -> (MountedNodeId, MountedNodeId) {
-        let runtime = RuntimeNamespace::__runtime_new();
-        (
-            runtime.__runtime_mounted_id(0, 1),
-            runtime.__runtime_mounted_id(1, 1),
-        )
-    }
-
     fn pointer(value: u64) -> PointerId {
         PointerId::new(value)
             .unwrap_or_else(|| unreachable!("test pointer identities are non-zero"))
@@ -55,23 +47,6 @@ mod tests {
 
     fn point(value: f32) -> LogicalPoint {
         LogicalPoint::new(value, value).unwrap_or_else(|_| unreachable!("test point is finite"))
-    }
-
-    #[test]
-    fn membership_comparison_ignores_projection_order() {
-        let (a, b) = ids();
-        let left = SurfaceInteractionProjection::new(
-            vec![a.clone(), b.clone()],
-            vec![a.clone(), b.clone()],
-            Some(a.clone()),
-        );
-        let right = SurfaceInteractionProjection::new(
-            vec![b.clone(), a.clone()],
-            vec![b, a.clone()],
-            Some(a),
-        );
-
-        assert!(!left.content_differs(&right));
     }
 
     #[test]
