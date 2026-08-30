@@ -2,8 +2,8 @@
 
 use runenui_core::{
     Color, Element, LogicalLength, LogicalPoint, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, ResourceKind, ResourceRef, StyleTokens, UiApp,
-    Widget, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
+    PaintContributionContext, PaintContributionItem, ResourceKind, ResourceRef, StyleEnvironment,
+    UiApp, Widget, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase,
@@ -99,11 +99,11 @@ impl UiApp for App {
 
 fn publish(
     runtime: &mut AppRuntime<App>,
-    tokens: &StyleTokens,
+    environment: &StyleEnvironment,
 ) -> runenui_runtime::SurfacePublication {
     runtime
         .publish_surface(&SurfaceBuildContext::new(
-            tokens,
+            environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("resource update publication is admitted"))
@@ -127,7 +127,7 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
         shaped: original_ref.clone(),
         foreground: initial_foreground,
     });
-    let tokens = StyleTokens::new();
+    let environment = StyleEnvironment::default();
     let initial_pump = runtime.pump(PumpBudget::new(
         usize::MAX,
         usize::MAX,
@@ -136,7 +136,7 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
     ));
     assert!(initial_pump.is_quiescent());
 
-    let initial = publish(&mut runtime, &tokens);
+    let initial = publish(&mut runtime, &environment);
     let initial_scene = initial.paint_scene().clone();
     assert_eq!(shaped_run(&initial).resource_ref(), &original_ref);
     assert_eq!(shaped_run(&initial).foreground(), initial_foreground);
@@ -150,7 +150,7 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
             .processed_envelopes(),
         1
     );
-    let recolored = publish(&mut runtime, &tokens);
+    let recolored = publish(&mut runtime, &environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Paint]
@@ -169,7 +169,7 @@ fn foreground_only_change_reuses_ref_while_logical_content_replacement_uses_a_ne
             .processed_envelopes(),
         1
     );
-    let replaced = publish(&mut runtime, &tokens);
+    let replaced = publish(&mut runtime, &environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Paint]
