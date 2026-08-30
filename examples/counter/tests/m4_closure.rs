@@ -10,7 +10,7 @@ use runenui_core::{
     CommandOrigin, ElementId, EventSource, KeyLocation, KeyModifiers, KeyboardCompositionState,
     KeyboardEvent, KeyboardPhase, LogicalDelta, LogicalKey, LogicalPoint, PhysicalKey,
     PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
-    SemanticCommand, StyleTokens,
+    SemanticCommand, StyleEnvironment,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, RuntimeConfig, SurfaceBuildContext,
@@ -149,8 +149,8 @@ const fn enter_down() -> KeyboardEvent {
 #[test]
 fn m4_close_01_counter_converges_all_canonical_activation_origins() {
     let mut runtime = mounted_counter();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::tight(&tokens, surface_size());
+    let style_environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(&style_environment, surface_size());
     let publication = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("M4 closure publication is admitted"));
