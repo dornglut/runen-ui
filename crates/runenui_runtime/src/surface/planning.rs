@@ -150,8 +150,7 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     if style_dirty {
         initial_capability_phases.insert(DirtyPhases::STYLE);
     }
-    let mut capability_plan =
-        tree.plan_surface_publication_capabilities(initial_capability_phases);
+    let mut capability_plan = tree.plan_surface_publication_capabilities(initial_capability_phases);
 
     if style_dirty {
         let next_styles = resolve_styles(
