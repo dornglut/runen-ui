@@ -146,9 +146,15 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     let diagnostics_dirty = pending.contains(DirtyPhases::DIAGNOSTICS);
     let mut report = SurfacePhaseReport::default();
     let mut completed = DirtyPhases::default();
+    let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::default());
 
     if style_dirty {
-        let next_styles = resolve_styles(tree, &current.topology, context.style_environment());
+        let next_styles = resolve_styles(
+            tree,
+            &current.topology,
+            context.style_environment(),
+            &capability_plan,
+        );
         let effects = current.styles.effects_against(&next_styles);
         layout_dirty |= effects.layout();
         paint_dirty |= effects.paint();
@@ -164,15 +170,17 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
 
     let semantic_product_dirty =
         semantics_dirty || layout_dirty || pending.contains(DirtyPhases::FOCUS_VALIDATION);
-    let mut capability_plan =
-        tree.plan_surface_publication_capabilities(surface_capability_phases([
+    tree.extend_surface_publication_capabilities(
+        &mut capability_plan,
+        surface_capability_phases([
             (layout_dirty, DirtyPhases::LAYOUT),
             (hit_dirty, DirtyPhases::HIT_TEST),
             (paint_dirty, DirtyPhases::PAINT),
             (diagnostics_dirty, DirtyPhases::DIAGNOSTICS),
-        ]));
-    let semantic_capability_plan =
-        semantic_product_dirty.then(|| tree.plan_semantic_publication_capabilities());
+        ]),
+    );
+    let semantic_capability_plan = semantic_product_dirty
+        .then(|| tree.plan_semantic_publication_capabilities(&capability_plan));
 
     if layout_dirty {
         current.layout = Arc::new(resolve_layout_phase(
@@ -235,10 +243,16 @@ fn plan_structural_surface<'tree, Action>(
     let mut report = SurfacePhaseReport::default();
     let topology = collect_topology(tree);
     report.record(SurfacePhase::Tree);
-    let styles = resolve_styles(tree, &topology, context.style_environment());
+    let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::default());
+    let styles = resolve_styles(
+        tree,
+        &topology,
+        context.style_environment(),
+        &capability_plan,
+    );
     report.record(SurfacePhase::Style);
-    let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::ALL);
-    let semantic_capability_plan = tree.plan_semantic_publication_capabilities();
+    tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
+    let semantic_capability_plan = tree.plan_semantic_publication_capabilities(&capability_plan);
     let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles, &capability_plan);
     let (size, bounds, layout_report) = layout_resolved_surface(
         &resolved,
