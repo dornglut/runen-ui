@@ -413,18 +413,3 @@ pub fn resolve_style_in_environment(
 
     builder.finish()
 }
-
-/// Resolves direct authored properties without theme/state/preference layers.
-///
-/// This remains only as an in-flight bridge while M8A migrates the runtime to
-/// [`resolve_style_in_environment`]. It is removed before M8A acceptance.
-#[must_use]
-pub fn resolve_style(intent: &StyleIntent, tokens: &StyleTokens) -> StyleResolution {
-    let environment = StyleEnvironment::from_tokens(tokens.clone());
-    resolve_style_in_environment(intent, &environment, StyleInteractionFacts::default(), None)
-}
-
-#[must_use]
-pub fn resolve_literal_style(intent: &StyleIntent) -> StyleResolution {
-    resolve_style(intent, &StyleTokens::new())
-}
