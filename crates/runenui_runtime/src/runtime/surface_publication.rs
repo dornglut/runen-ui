@@ -12,7 +12,10 @@ use crate::{
     semantic_publication::{
         SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
     },
-    surface::{SurfaceCache, SurfacePlanningError, plan_mounted_surface_cached},
+    surface::{
+        SurfaceCache, SurfaceInteractionProjection, SurfacePlanningError,
+        plan_mounted_surface_cached,
+    },
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -190,11 +193,13 @@ impl SurfacePublicationState {
         &mut self,
         tree: &mut MountedTree<Action>,
         context: &SurfaceBuildContext<'_>,
+        interaction: &SurfaceInteractionProjection,
         focused_owner: Option<&MountedNodeId>,
         admission: SurfacePublicationAdmission,
     ) -> Result<SurfacePublication, SurfacePublicationPlanError> {
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
-        let planned = plan_mounted_surface_cached(tree, context, self.cache.as_ref())?;
+        let planned =
+            plan_mounted_surface_cached(tree, context, interaction, self.cache.as_ref())?;
         let semantic_candidate = planned.semantic_candidate(focused_owner)?;
         let semantic_plan: SemanticPublicationPlan = self
             .semantic_publication
