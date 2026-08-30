@@ -124,9 +124,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let admission = self.admit_surface_publication()?;
         let instant = self.now();
         let focused_owner = self.focus.focused_node().cloned();
+        let interaction = self
+            .pointer_registry
+            .surface_interaction_projection(focused_owner.as_ref());
         let publication = match self.surface_publication.publish(
             &mut self.tree,
             context,
+            &interaction,
             focused_owner.as_ref(),
             admission.surface,
         ) {
