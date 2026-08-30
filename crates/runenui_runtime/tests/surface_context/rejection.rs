@@ -3,7 +3,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use runenui_core::{CommandOrigin, SemanticCommand, StyleTokens};
+use runenui_core::{CommandOrigin, SemanticCommand, StyleEnvironment};
 use runenui_runtime::{
     LogicalPoint, RuntimeConfig, RuntimeTerminalReason, SubmitSurfaceCommandErrorKind,
     TraceSurfaceIngressKind, TraceSurfaceRejection,
@@ -19,8 +19,8 @@ const QUEUE_CAPACITY: usize = 16;
 #[test]
 fn rejected_no_hit_request_recovers_inputs_without_queue_state_or_wake_effect() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
-    let published = publication(&mut runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let published = publication(&mut runtime, &style_environment);
     let context = published.input_context().clone();
     let point = LogicalPoint::new(-1.0, -1.0).unwrap_or_else(|_| unreachable!());
     let origin = CommandOrigin::programmatic();
@@ -60,8 +60,8 @@ fn rejected_no_hit_request_recovers_inputs_without_queue_state_or_wake_effect() 
 #[test]
 fn target_absent_from_named_snapshot_is_not_retargeted() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
-    let old = publication(&mut runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let old = publication(&mut runtime, &style_environment);
     let old_context = old.input_context().clone();
 
     runtime
@@ -95,8 +95,8 @@ fn target_absent_from_named_snapshot_is_not_retargeted() {
 #[test]
 fn stale_target_is_rejected_after_snapshot_membership_succeeds() {
     let mut runtime = mounted();
-    let tokens = StyleTokens::new();
-    let published = publication(&mut runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let published = publication(&mut runtime, &style_environment);
     let context = published.input_context().clone();
     let primary = authored_target(&published, "surface.primary");
 
@@ -128,12 +128,12 @@ fn stale_target_is_rejected_after_snapshot_membership_succeeds() {
 fn foreign_and_missing_targets_are_classified_after_snapshot_membership() {
     let mut runtime = mounted();
     let mut foreign_runtime = mounted();
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
 
-    let local = publication(&mut runtime, &tokens);
+    let local = publication(&mut runtime, &style_environment);
     let local_context = local.input_context().clone();
     let local_primary = authored_target(&local, "surface.primary");
-    let foreign = publication(&mut foreign_runtime, &tokens);
+    let foreign = publication(&mut foreign_runtime, &style_environment);
     let foreign_primary = authored_target(&foreign, "surface.primary");
     runtime.__replace_surface_snapshot_target_for_test(
         &local_context,
@@ -161,7 +161,7 @@ fn foreign_and_missing_targets_are_classified_after_snapshot_membership() {
     ));
 
     let mut missing_runtime = mounted();
-    let missing_publication = publication(&mut missing_runtime, &tokens);
+    let missing_publication = publication(&mut missing_runtime, &style_environment);
     let missing_context = missing_publication.input_context().clone();
     let original = authored_target(&missing_publication, "surface.primary");
     let missing = missing_runtime.__missing_target_for_test();
@@ -194,9 +194,9 @@ fn foreign_and_missing_targets_are_classified_after_snapshot_membership() {
 fn logical_context_dimensions_have_distinct_outcomes_and_trace() {
     let mut runtime = mounted();
     let mut foreign_runtime = mounted();
-    let tokens = StyleTokens::new();
-    let published = publication(&mut runtime, &tokens);
-    let foreign = publication(&mut foreign_runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let published = publication(&mut runtime, &style_environment);
+    let foreign = publication(&mut foreign_runtime, &style_environment);
     let point = authored_center(&published, "surface.primary");
     let current = published.input_context();
     let command = SemanticCommand::Activate;
@@ -282,9 +282,9 @@ fn logical_context_dimensions_have_distinct_outcomes_and_trace() {
 fn resolved_target_reuses_every_context_validation_dimension() {
     let mut runtime = mounted();
     let mut foreign_runtime = mounted();
-    let tokens = StyleTokens::new();
-    let current = publication(&mut runtime, &tokens);
-    let foreign = publication(&mut foreign_runtime, &tokens);
+    let style_environment = StyleEnvironment::default();
+    let current = publication(&mut runtime, &style_environment);
+    let foreign = publication(&mut foreign_runtime, &style_environment);
     let target = authored_target(&current, "surface.primary");
     let context = current.input_context();
     let command = SemanticCommand::Activate;
@@ -377,10 +377,10 @@ fn resolved_target_reuses_every_context_validation_dimension() {
 
 #[test]
 fn queue_closed_work_and_trace_capacity_failures_remain_structured() {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
 
     let mut full = mounted_with(RuntimeConfig::default().with_queue_capacity(QUEUE_CAPACITY));
-    let full_publication = publication(&mut full, &tokens);
+    let full_publication = publication(&mut full, &style_environment);
     let full_point = authored_center(&full_publication, "surface.primary");
     for _ in 0..QUEUE_CAPACITY {
         full.submit_action(SurfaceAction::Swap)
@@ -403,7 +403,7 @@ fn queue_closed_work_and_trace_capacity_failures_remain_structured() {
     ));
 
     let mut closed = mounted();
-    let closed_publication = publication(&mut closed, &tokens);
+    let closed_publication = publication(&mut closed, &style_environment);
     let closed_context = closed_publication.input_context().clone();
     let closed_point = authored_center(&closed_publication, "surface.primary");
     let _ = closed.shutdown();
@@ -419,7 +419,7 @@ fn queue_closed_work_and_trace_capacity_failures_remain_structured() {
     assert_eq!(closed_error.kind(), SubmitSurfaceCommandErrorKind::Closed);
 
     let mut exhausted_work = mounted();
-    let work_publication = publication(&mut exhausted_work, &tokens);
+    let work_publication = publication(&mut exhausted_work, &style_environment);
     let work_context = work_publication.input_context().clone();
     let work_point = authored_center(&work_publication, "surface.primary");
     exhausted_work.__seed_next_work_sequence_for_test(0);
@@ -451,7 +451,7 @@ fn queue_closed_work_and_trace_capacity_failures_remain_structured() {
     );
 
     let mut exhausted_trace = mounted();
-    let trace_publication = publication(&mut exhausted_trace, &tokens);
+    let trace_publication = publication(&mut exhausted_trace, &style_environment);
     let trace_context = trace_publication.input_context().clone();
     let trace_point = authored_center(&trace_publication, "surface.primary");
     exhausted_trace.__seed_next_trace_sequence_for_test(u64::MAX - 2);
