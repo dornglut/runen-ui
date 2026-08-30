@@ -7,7 +7,8 @@ use runenui_core::{
 use crate::SemanticOwnerWithdrawalReason;
 
 use super::{
-    CachedCapability, CachedSemanticContribution, MountedNodeId, MountedTree, SurfaceCapabilityPlan,
+    CachedCapability, CachedSemanticContribution, MountedNodeId, MountedTree,
+    SurfaceCapabilityPlan,
     node::{MountedNode, state_is_corrupted},
     semantic::{SemanticBinding, SemanticOwnerPlan, SemanticReconcileError, SemanticStorePlan},
 };

@@ -33,11 +33,7 @@ impl SurfaceCapabilityPlan {
         self.owner_at(position, owner).activation.clone()
     }
 
-    pub(crate) fn activation_at(
-        &self,
-        position: usize,
-        owner: &MountedNodeId,
-    ) -> WidgetActivation {
+    pub(crate) fn activation_at(&self, position: usize, owner: &MountedNodeId) -> WidgetActivation {
         self.owner_at(position, owner)
             .activation
             .ready()
