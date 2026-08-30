@@ -5,7 +5,7 @@ use runenui_core::{
     SemanticAction, SemanticBounds, SemanticCommand, SemanticContribution,
     SemanticContributionContext, SemanticKey, SemanticNodeContribution, SemanticReference,
     SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText,
-    SemanticValue, StyleTokens, UiApp, View, Widget, WidgetActivation,
+    SemanticValue, StyleEnvironment, UiApp, View, Widget, WidgetActivation,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SemanticNode, SemanticNodeId, SemanticPublication,
@@ -274,10 +274,10 @@ impl AdapterUpdate {
 }
 
 fn publish_adapter(runtime: &mut AppRuntime<AdapterApp>) -> SurfacePublication {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("adapter conformance publication is admitted"))
