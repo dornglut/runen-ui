@@ -1,6 +1,4 @@
-use runenui_core::{
-    EventSource, FocusReason, HostProtocol, MonotonicInstant, WidgetInvalidation,
-};
+use runenui_core::{EventSource, FocusReason, HostProtocol, MonotonicInstant, WidgetInvalidation};
 
 use super::{
     super::{
