@@ -5,7 +5,7 @@ use super::{
 use crate::DemoApp;
 use runenui_core::{
     InputDeviceId, KeyModifiers, LogicalDelta, LogicalPoint, PointerButton, PointerPhase,
-    StyleTokens,
+    StyleEnvironment,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
 use winit::event::{ElementState, MouseButton};
@@ -28,10 +28,10 @@ fn translated_point(position: LogicalPoint, modifiers: KeyModifiers) -> Translat
         usize::MAX,
         usize::MAX,
     ));
-    let style_tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let logical_size = LogicalSize::try_new(200.0, 120.0)
         .unwrap_or_else(|_| unreachable!("fixture logical size is valid"));
-    let context = SurfaceBuildContext::tight(&style_tokens, logical_size);
+    let context = SurfaceBuildContext::tight(&style_environment, logical_size);
     let publication = runtime
         .publish_surface(&context)
         .unwrap_or_else(|error| unreachable!("fixture publication is valid: {error:?}"));
