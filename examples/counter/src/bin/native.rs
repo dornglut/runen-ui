@@ -16,7 +16,7 @@ use std::{
 use app::{Counter, CounterApp};
 use runenui_core::{
     ElementId, InputDeviceId, KeyModifiers, KeyboardCompositionState, LogicalPoint, PointerEvent,
-    SemanticCommand, StyleTokens, SurfaceInputContext,
+    SemanticCommand, StyleEnvironment, SurfaceInputContext,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -226,7 +226,7 @@ fn block_on<FutureType: Future>(future: FutureType) -> FutureType::Output {
 
 struct CounterHost {
     runtime: AppRuntime<CounterApp>,
-    style_tokens: StyleTokens,
+    style_environment: StyleEnvironment,
     event_loop_proxy: EventLoopProxy<HostEvent>,
     window: Option<Arc<Window>>,
     accessibility: Option<accesskit_winit::Adapter>,
@@ -254,7 +254,7 @@ impl CounterHost {
         });
         Self {
             runtime,
-            style_tokens: StyleTokens::new(),
+            style_environment: StyleEnvironment::default(),
             event_loop_proxy: proxy,
             window: None,
             accessibility: None,
@@ -419,7 +419,7 @@ impl CounterHost {
         if self.pending_redraw.is_none() && !self.mapping_publication_needed {
             return Ok(false);
         }
-        let context = SurfaceBuildContext::tight(&self.style_tokens, mapping.logical_size)
+        let context = SurfaceBuildContext::tight(&self.style_environment, mapping.logical_size)
             .with_raster_scale(mapping.raster_scale);
         let publication = self
             .runtime
