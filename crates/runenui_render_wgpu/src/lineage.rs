@@ -117,7 +117,9 @@ impl PublicationLineage {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{IntoEffects, LogicalSize, NoHostProtocol, StyleTokens, UiApp, View, text};
+    use runenui_core::{
+        IntoEffects, LogicalSize, NoHostProtocol, StyleEnvironment, UiApp, View, text,
+    };
     use runenui_runtime::{
         AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SurfaceBuildContext,
     };
@@ -144,14 +146,14 @@ mod tests {
 
     fn publication(
         runtime: &mut AppRuntime<App>,
-        tokens: &StyleTokens,
+        style_environment: &StyleEnvironment,
         scale: f32,
     ) -> PaintPublication {
         let size = LogicalSize::try_new(32.0, 24.0)
             .unwrap_or_else(|_| unreachable!("fixture surface size is valid"));
         let raster_scale = RasterScale::new(scale)
             .unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
-        let context = SurfaceBuildContext::new(tokens, LayoutConstraints::tight(size))
+        let context = SurfaceBuildContext::new(style_environment, LayoutConstraints::tight(size))
             .with_raster_scale(raster_scale);
         runtime
             .publish_surface(&context)
@@ -162,11 +164,11 @@ mod tests {
 
     #[test]
     fn lineage_uses_only_successfully_recorded_exact_predecessor_state() {
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let mut runtime = AppRuntime::<App>::mount(());
-        let first = publication(&mut runtime, &tokens, 1.0);
-        let second = publication(&mut runtime, &tokens, 2.0);
-        let third = publication(&mut runtime, &tokens, 3.0);
+        let first = publication(&mut runtime, &style_environment, 1.0);
+        let second = publication(&mut runtime, &style_environment, 2.0);
+        let third = publication(&mut runtime, &style_environment, 3.0);
 
         let mut lineage = PublicationLineage::new();
         assert_eq!(lineage.classify(&first), PublicationUpdateMode::FullResync);
@@ -196,10 +198,10 @@ mod tests {
 
     #[test]
     fn reset_forces_full_resync_without_exposing_stale_damage() {
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let mut runtime = AppRuntime::<App>::mount(());
-        let first = publication(&mut runtime, &tokens, 1.0);
-        let successor = publication(&mut runtime, &tokens, 2.0);
+        let first = publication(&mut runtime, &style_environment, 1.0);
+        let successor = publication(&mut runtime, &style_environment, 2.0);
 
         let mut lineage = PublicationLineage::new();
         lineage.record_success(&first);
@@ -223,11 +225,11 @@ mod tests {
 
     #[test]
     fn update_plan_exposes_damage_only_for_exact_predecessor() {
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let mut runtime = AppRuntime::<App>::mount(());
-        let first = publication(&mut runtime, &tokens, 1.0);
-        let second = publication(&mut runtime, &tokens, 2.0);
-        let third = publication(&mut runtime, &tokens, 3.0);
+        let first = publication(&mut runtime, &style_environment, 1.0);
+        let second = publication(&mut runtime, &style_environment, 2.0);
+        let third = publication(&mut runtime, &style_environment, 3.0);
 
         let mut lineage = PublicationLineage::new();
         let first_plan = lineage.plan(&first);
@@ -253,11 +255,11 @@ mod tests {
 
     #[test]
     fn foreign_surface_never_matches_realized_lineage() {
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let mut first_runtime = AppRuntime::<App>::mount(());
         let mut second_runtime = AppRuntime::<App>::mount(());
-        let first = publication(&mut first_runtime, &tokens, 1.0);
-        let foreign = publication(&mut second_runtime, &tokens, 1.0);
+        let first = publication(&mut first_runtime, &style_environment, 1.0);
+        let foreign = publication(&mut second_runtime, &style_environment, 1.0);
 
         let mut lineage = PublicationLineage::new();
         lineage.record_success(&first);
