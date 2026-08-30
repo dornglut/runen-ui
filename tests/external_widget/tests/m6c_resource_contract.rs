@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use runenui_core::{
     Color, Element, ImagePrimitive, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
-    ResourceKind, ResourceRef, ShapedTextRunPrimitive, StyleTokens, UiApp, Widget, WidgetMeasure,
+    ResourceKind, ResourceRef, ShapedTextRunPrimitive, StyleEnvironment, UiApp, Widget,
+    WidgetMeasure,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -133,10 +134,10 @@ fn opaque_refs_disambiguate_providers_and_resource_primitives_preserve_exact_log
         image: image_a.clone(),
         shaped: shaped.clone(),
     });
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("resource publication is admitted"));
