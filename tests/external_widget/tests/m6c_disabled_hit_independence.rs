@@ -1,7 +1,7 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Element, ElementId, LogicalPoint, LogicalRect, NoHostProtocol, SemanticAction, StyleTokens,
+    Element, ElementId, LogicalPoint, LogicalRect, NoHostProtocol, SemanticAction, StyleEnvironment,
     UiApp, View, button,
 };
 use runenui_runtime::{
@@ -57,11 +57,11 @@ fn center(rect: LogicalRect) -> LogicalPoint {
 
 fn publish(
     runtime: &mut AppRuntime<App>,
-    tokens: &StyleTokens,
+    style_environment: &StyleEnvironment,
 ) -> runenui_runtime::SurfacePublication {
     runtime
         .publish_surface(&SurfaceBuildContext::new(
-            tokens,
+            style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("disabled-control publication is admitted"))
@@ -76,9 +76,9 @@ fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability
         usize::MAX,
         usize::MAX,
     ));
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
 
-    let initial = publish(&mut runtime, &tokens);
+    let initial = publish(&mut runtime, &style_environment);
     let control = initial
         .frame()
         .nodes()
@@ -114,7 +114,7 @@ fn disabled_semantic_state_does_not_implicitly_remove_physical_hit_targetability
         1
     );
 
-    let disabled = publish(&mut runtime, &tokens);
+    let disabled = publish(&mut runtime, &style_environment);
     let report = runtime.last_surface_phase_report();
     assert!(report.contains(SurfacePhase::Paint));
     assert!(report.contains(SurfacePhase::Semantics));
