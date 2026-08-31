@@ -3,7 +3,7 @@
 use runenui_core::{
     Color, Element, LogicalLength, LogicalRect, NoHostProtocol, PaintContribution,
     PaintContributionContext, PaintContributionItem, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleTokens, UiApp,
+    SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp,
     Widget, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_runtime::{
@@ -139,8 +139,8 @@ impl Consumer {
 
 #[test]
 fn semantic_only_publication_changes_semantics_without_allocating_a_paint_revision() {
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut runtime = AppRuntime::<App>::mount(State { name: "before" });
     drain_mount(&mut runtime);
 
@@ -187,8 +187,8 @@ fn semantic_only_publication_changes_semantics_without_allocating_a_paint_revisi
 
 #[test]
 fn consumer_without_prior_runenui_state_reprocesses_the_complete_current_snapshot() {
-    let tokens = StyleTokens::new();
-    let base_context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let base_context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let scale_two =
         RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("test raster scale is valid"));
     let scaled_context = base_context.with_raster_scale(scale_two);

@@ -1,8 +1,8 @@
 use runenui_core::{
     Element, IntoEffects, LogicalRect, NoHostProtocol, SemanticAction, SemanticBounds,
     SemanticContribution, SemanticContributionContext, SemanticContributionError, SemanticKey,
-    SemanticNodeContribution, SemanticRole, SemanticText, SemanticValue, StyleTokens, UiApp, View,
-    Widget, WidgetActivation, column,
+    SemanticNodeContribution, SemanticRole, SemanticText, SemanticValue, StyleEnvironment, UiApp,
+    View, Widget, WidgetActivation, column,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, SemanticDiagnostic, SemanticOwnerWithdrawalReason,
@@ -119,10 +119,10 @@ impl UiApp for InvalidSemanticApp {
 fn published_semantic_child(
     runtime: &mut AppRuntime<MappedSemanticApp>,
 ) -> (SemanticPublication, LogicalRect) {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("M5 semantic conformance publication is admitted"));
@@ -197,10 +197,10 @@ fn downstream_widget_owner_local_bounds_publish_as_absolute_semantic_bounds() {
 #[test]
 fn invalid_owner_semantics_publish_typed_fail_closed_diagnostic() {
     let mut runtime = AppRuntime::<InvalidSemanticApp>::mount(());
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| {

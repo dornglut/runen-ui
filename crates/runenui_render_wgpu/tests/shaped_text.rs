@@ -12,8 +12,8 @@ use ab_glyph::{Font, FontArc, point};
 use runenui_core::{
     Color, ContributionClip, Element, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
     LogicalTransform, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionItem, ResourceKind, ResourceRef, SceneShape, UiApp, Widget, WidgetMeasure,
-    WidgetUpdateContext,
+    PaintContributionItem, ResourceKind, ResourceRef, SceneShape, StyleEnvironment, UiApp, Widget,
+    WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_render_wgpu::{
     BackendSelection, ImagePayload, PublicationRenderError, PublicationStageResult,
@@ -81,11 +81,12 @@ impl UiApp for FixtureApp {
 
 fn publication(items: Vec<PaintContributionItem>, raster_scale: RasterScale) -> PaintPublication {
     let mut runtime = AppRuntime::<FixtureApp>::mount(items);
-    let tokens = runenui_core::StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let logical_size = LogicalSize::try_new(f32::from(SURFACE_WIDTH), f32::from(SURFACE_HEIGHT))
         .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(logical_size))
-        .with_raster_scale(raster_scale);
+    let context =
+        SurfaceBuildContext::new(&style_environment, LayoutConstraints::tight(logical_size))
+            .with_raster_scale(raster_scale);
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("fixture publication is admitted"))

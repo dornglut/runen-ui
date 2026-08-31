@@ -1,6 +1,6 @@
 use runenui_core::{
     ChildLayout, HitContribution, HitContributionContext, PaintContribution,
-    PaintContributionContext, WidgetDiagnostic, WidgetMeasure,
+    PaintContributionContext, WidgetActivation, WidgetDiagnostic, WidgetMeasure,
 };
 
 use super::{CachedCapability, DirtyPhases, MountedNodeId, MountedTree, node::state_is_corrupted};
@@ -13,6 +13,7 @@ pub(crate) struct SurfaceCapabilityPlan {
 
 struct PlannedSurfaceCapabilities {
     owner: MountedNodeId,
+    activation: Option<CachedCapability<WidgetActivation>>,
     measurement: Option<CachedCapability<WidgetMeasure>>,
     child_layout: Option<CachedCapability<Option<ChildLayout>>>,
     paint: Option<CachedCapability<PaintContribution>>,
@@ -24,6 +25,27 @@ struct PlannedSurfaceCapabilities {
 }
 
 impl SurfaceCapabilityPlan {
+    pub(crate) fn activation_cache_at(
+        &self,
+        position: usize,
+        owner: &MountedNodeId,
+    ) -> CachedCapability<WidgetActivation> {
+        self.owner_at(position, owner)
+            .activation
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("semantic publication requires staged activation"))
+            .clone()
+    }
+
+    pub(crate) fn activation_at(&self, position: usize, owner: &MountedNodeId) -> WidgetActivation {
+        self.owner_at(position, owner)
+            .activation
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("style resolution requires staged activation"))
+            .ready()
+            .unwrap_or_else(WidgetActivation::disabled)
+    }
+
     pub(crate) fn measurement_at(
         &self,
         position: usize,
@@ -95,88 +117,114 @@ impl SurfaceCapabilityPlan {
 }
 
 impl<Action> MountedTree<Action> {
-    /// Stages capabilities that do not depend on final publication-local layout.
-    /// Paint and hit callbacks are deferred until their final contexts exist so
-    /// a ready cached contribution can be reused only when that exact context is
-    /// unchanged.
+    /// Stages only the capabilities required by the supplied publication phases.
+    /// Activation is staged when style or semantics will consume it; paint and
+    /// hit callbacks remain deferred until their final contexts exist. The plan
+    /// may be extended after style effects determine additional downstream work.
     pub(crate) fn plan_surface_publication_capabilities(
         &self,
         phases: DirtyPhases,
     ) -> SurfaceCapabilityPlan {
+        let owners = self
+            .publication_preorder_ids()
+            .into_iter()
+            .map(|owner| PlannedSurfaceCapabilities {
+                owner,
+                activation: None,
+                measurement: None,
+                child_layout: None,
+                paint: None,
+                paint_context: None,
+                hit_test: None,
+                hit_test_context: None,
+                diagnostics: None,
+                mark_integrity_failed: false,
+            })
+            .collect();
+        let mut plan = SurfaceCapabilityPlan {
+            owners,
+            needs_paint: false,
+            needs_hit_test: false,
+        };
+        self.extend_surface_publication_capabilities(&mut plan, phases);
+        plan
+    }
+
+    /// Extends one staged publication plan after style effects have determined
+    /// additional exact downstream phases. Already-staged capabilities are
+    /// reused, so activation is evaluated at most once per publication attempt.
+    pub(crate) fn extend_surface_publication_capabilities(
+        &self,
+        plan: &mut SurfaceCapabilityPlan,
+        phases: DirtyPhases,
+    ) {
+        let needs_activation =
+            phases.contains(DirtyPhases::STYLE) || phases.contains(DirtyPhases::SEMANTICS);
         let needs_layout = phases.contains(DirtyPhases::LAYOUT);
         let needs_paint = phases.contains(DirtyPhases::PAINT);
         let needs_hit_test = phases.contains(DirtyPhases::HIT_TEST);
         let needs_diagnostics = phases.contains(DirtyPhases::DIAGNOSTICS);
-        if !needs_layout && !needs_paint && !needs_hit_test && !needs_diagnostics {
-            return SurfaceCapabilityPlan {
-                owners: Vec::new(),
-                needs_paint: false,
-                needs_hit_test: false,
-            };
+        plan.needs_paint |= needs_paint;
+        plan.needs_hit_test |= needs_hit_test;
+        if !needs_activation
+            && !needs_layout
+            && !needs_paint
+            && !needs_hit_test
+            && !needs_diagnostics
+        {
+            return;
         }
-        let owners = self
-            .publication_preorder_ids()
-            .into_iter()
-            .map(|owner| {
-                let node = self
-                    .node(&owner)
-                    .unwrap_or_else(|| unreachable!("surface capability owner remains live"));
-                let mut planned = PlannedSurfaceCapabilities {
-                    owner,
-                    measurement: None,
-                    child_layout: None,
-                    paint: None,
-                    paint_context: None,
-                    hit_test: None,
-                    hit_test_context: None,
-                    diagnostics: None,
-                    mark_integrity_failed: false,
-                };
-                if state_is_corrupted(node) {
-                    if needs_layout {
-                        planned.measurement = Some(CachedCapability::StatePayloadMismatch);
-                        planned.child_layout = Some(CachedCapability::StatePayloadMismatch);
-                    }
-                    if needs_paint {
-                        planned.paint = Some(CachedCapability::StatePayloadMismatch);
-                    }
-                    if needs_hit_test {
-                        planned.hit_test = Some(CachedCapability::StatePayloadMismatch);
-                    }
-                    if needs_diagnostics {
-                        planned.diagnostics = Some(CachedCapability::StatePayloadMismatch);
-                    }
-                    planned.mark_integrity_failed =
-                        needs_layout || needs_paint || needs_hit_test || needs_diagnostics;
-                    return planned;
+        for planned in &mut plan.owners {
+            let node = self
+                .node(&planned.owner)
+                .unwrap_or_else(|| unreachable!("surface capability owner remains live"));
+            if state_is_corrupted(node) {
+                if needs_activation && planned.activation.is_none() {
+                    planned.activation = Some(CachedCapability::StatePayloadMismatch);
                 }
-
                 if needs_layout {
-                    planned.measurement = Some(stage_cached_capability(
-                        &node.caches.measurement,
-                        || node.widget.measure(&node.state),
-                        &mut planned.mark_integrity_failed,
-                    ));
-                    planned.child_layout = Some(stage_cached_capability(
-                        &node.caches.child_layout,
-                        || node.widget.child_layout(&node.state),
-                        &mut planned.mark_integrity_failed,
-                    ));
+                    planned.measurement = Some(CachedCapability::StatePayloadMismatch);
+                    planned.child_layout = Some(CachedCapability::StatePayloadMismatch);
+                }
+                if needs_paint {
+                    planned.paint = Some(CachedCapability::StatePayloadMismatch);
+                }
+                if needs_hit_test {
+                    planned.hit_test = Some(CachedCapability::StatePayloadMismatch);
                 }
                 if needs_diagnostics {
-                    planned.diagnostics = Some(stage_cached_capability(
-                        &node.caches.diagnostics,
-                        || node.widget.diagnostics(&node.state),
-                        &mut planned.mark_integrity_failed,
-                    ));
+                    planned.diagnostics = Some(CachedCapability::StatePayloadMismatch);
                 }
-                planned
-            })
-            .collect();
-        SurfaceCapabilityPlan {
-            owners,
-            needs_paint,
-            needs_hit_test,
+                planned.mark_integrity_failed = true;
+                continue;
+            }
+
+            if needs_activation && planned.activation.is_none() {
+                planned.activation = Some(stage_cached_capability(
+                    &node.caches.activation,
+                    || node.widget.activation(&node.state),
+                    &mut planned.mark_integrity_failed,
+                ));
+            }
+            if needs_layout && planned.measurement.is_none() {
+                planned.measurement = Some(stage_cached_capability(
+                    &node.caches.measurement,
+                    || node.widget.measure(&node.state),
+                    &mut planned.mark_integrity_failed,
+                ));
+                planned.child_layout = Some(stage_cached_capability(
+                    &node.caches.child_layout,
+                    || node.widget.child_layout(&node.state),
+                    &mut planned.mark_integrity_failed,
+                ));
+            }
+            if needs_diagnostics && planned.diagnostics.is_none() {
+                planned.diagnostics = Some(stage_cached_capability(
+                    &node.caches.diagnostics,
+                    || node.widget.diagnostics(&node.state),
+                    &mut planned.mark_integrity_failed,
+                ));
+            }
         }
     }
 
@@ -244,6 +292,9 @@ impl<Action> MountedTree<Action> {
             let node = self
                 .node_mut(&planned.owner)
                 .unwrap_or_else(|| unreachable!("planned surface capability owner remains live"));
+            if let Some(activation) = planned.activation {
+                node.caches.activation = activation;
+            }
             if let Some(measurement) = planned.measurement {
                 node.caches.measurement = measurement;
             }

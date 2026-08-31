@@ -1,8 +1,8 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, EdgeInsets, Element, LogicalLength, NoHostProtocol, SemanticRole, StyleTokens, UiApp,
-    View, button, children, color_token, column, row, text,
+    Color, EdgeInsets, Element, LogicalLength, NoHostProtocol, SemanticRole, StyleEnvironment,
+    StyleTokens, UiApp, View, button, children, color_token, column, row, text,
 };
 use runenui_runtime::{
     AppRuntime, DeterministicMeasurementProvider, LayoutConstraints, LogicalPoint, LogicalSize,
@@ -53,12 +53,15 @@ impl UiApp for CompositeApp {
 #[test]
 fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication() {
     let mut runtime = AppRuntime::<CompositeApp>::mount(());
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let provider = DeterministicMeasurementProvider::new(length(10.0), length(20.0));
     let publication = publish(
         &mut runtime,
-        &SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(300.0, 200.0)))
-            .with_measurement_provider(&provider),
+        &SurfaceBuildContext::new(
+            &style_environment,
+            LayoutConstraints::loose(size(300.0, 200.0)),
+        )
+        .with_measurement_provider(&provider),
     );
 
     assert_eq!(publication.frame().nodes().len(), 5);
@@ -121,10 +124,11 @@ fn resolved_padding_and_token_provenance_align_in_one_mounted_publication() {
     tokens
         .define_color(color_token!("color.text"), Color::WHITE)
         .unwrap_or_else(|_| unreachable!());
+    let style_environment = StyleEnvironment::from_tokens(tokens);
     let mut runtime = AppRuntime::<StyledApp>::mount(());
     let publication = publish(
         &mut runtime,
-        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+        &SurfaceBuildContext::new(&style_environment, LayoutConstraints::unbounded()),
     );
     let root = publication.frame().root().unwrap_or_else(|| unreachable!());
     assert_eq!(root.computed_style().foreground(), Some(Color::WHITE));
@@ -201,7 +205,7 @@ impl UiApp for BoundaryApp {
 
 #[test]
 fn derived_geometry_saturates_without_non_finite_bounds_or_maxima() {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let provider = BoundaryMeasurementProvider;
     for case in [
         BoundaryCase::Horizontal,
@@ -211,7 +215,7 @@ fn derived_geometry_saturates_without_non_finite_bounds_or_maxima() {
         let mut runtime = AppRuntime::<BoundaryApp>::mount(case);
         let publication = publish(
             &mut runtime,
-            &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded())
+            &SurfaceBuildContext::new(&style_environment, LayoutConstraints::unbounded())
                 .with_measurement_provider(&provider),
         );
         assert!(publication.frame().size().width().is_finite());
@@ -237,10 +241,10 @@ fn invalid_dynamic_sizes_and_tight_constraint_overflow_are_explicit() {
     assert!(LogicalSize::try_new(f32::NAN, 10.0).is_err());
     assert!(LogicalSize::try_new(-1.0, 10.0).is_err());
     let mut runtime = AppRuntime::<CompositeApp>::mount(());
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = publish(
         &mut runtime,
-        &SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(2.0, 2.0))),
+        &SurfaceBuildContext::new(&style_environment, LayoutConstraints::loose(size(2.0, 2.0))),
     );
     assert!(
         publication

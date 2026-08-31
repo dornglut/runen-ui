@@ -10,7 +10,7 @@ mod ui;
 use app::{Counter, CounterApp, WIN_COUNT};
 use runenui_core::{
     ElementId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase,
-    LogicalKey, LogicalLength, PhysicalKey, SemanticCommand, StyleTokens,
+    LogicalKey, LogicalLength, PhysicalKey, SemanticCommand, StyleEnvironment,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, render_debug_surface_frame,
@@ -28,8 +28,8 @@ const EXAMPLE_SURFACE_SIZE: LogicalSize = LogicalSize::new(
 );
 
 fn debug_surface(runtime: &mut AppRuntime<CounterApp>) -> String {
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::tight(&tokens, EXAMPLE_SURFACE_SIZE);
+    let style_environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(&style_environment, EXAMPLE_SURFACE_SIZE);
     let publication = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("counter debug publication is admitted"));
@@ -144,7 +144,7 @@ mod tests {
     use runenui_core::{
         LogicalDelta, LogicalKey, LogicalLength, LogicalPoint, PhysicalKey, PointerButton,
         PointerButtons, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
-        SemanticCommand, StyleTokens,
+        SemanticCommand, StyleEnvironment,
     };
     use runenui_runtime::{
         AppRuntime, LogicalSize, PublishSurfaceError, PumpBudget, RuntimeStatus,
@@ -162,9 +162,9 @@ mod tests {
 
     fn published_names(counter: Counter) -> Vec<String> {
         let mut runtime = mounted_counter(counter);
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let context = SurfaceBuildContext::tight(
-            &tokens,
+            &style_environment,
             LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(160_u16)),
         );
         let publication = runtime
@@ -181,9 +181,9 @@ mod tests {
 
     fn published_paint_colors(counter: Counter) -> Vec<runenui_core::Color> {
         let mut runtime = mounted_counter(counter);
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let context = SurfaceBuildContext::tight(
-            &tokens,
+            &style_environment,
             LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(160_u16)),
         );
         let publication = runtime
@@ -289,8 +289,8 @@ mod tests {
     #[test]
     fn physical_primary_release_inside_increments_once() {
         let mut runtime = mounted_counter(Counter::new());
-        let tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
+        let style_environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&style_environment, crate::EXAMPLE_SURFACE_SIZE);
         let publication = runtime
             .publish_surface(&context)
             .unwrap_or_else(|_| unreachable!("counter pointer publication is admitted"));
@@ -396,8 +396,8 @@ mod tests {
             .focused_node()
             .cloned()
             .unwrap_or_else(|| unreachable!("automation focus committed"));
-        let tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
+        let style_environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&style_environment, crate::EXAMPLE_SURFACE_SIZE);
         runtime
             .publish_surface(&context)
             .unwrap_or_else(|_| unreachable!("pre-terminal publication is admitted"));
@@ -444,10 +444,10 @@ mod tests {
         assert!(!increment.contains("semantics="));
         assert!(!surface.contains("paint="));
 
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let publication = runtime
             .publish_surface(&SurfaceBuildContext::tight(
-                &tokens,
+                &style_environment,
                 crate::EXAMPLE_SURFACE_SIZE,
             ))
             .unwrap_or_else(|_| unreachable!("counter semantic publication is admitted"));
@@ -511,8 +511,8 @@ mod tests {
         runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
         assert_eq!(runtime.state(), &Counter { count: 1 });
         assert_eq!(runtime.focus().focused_node(), Some(&increment));
-        let tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::tight(&tokens, crate::EXAMPLE_SURFACE_SIZE);
+        let style_environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&style_environment, crate::EXAMPLE_SURFACE_SIZE);
         let publication = runtime
             .publish_surface(&context)
             .unwrap_or_else(|_| unreachable!("counter identity publication is admitted"));

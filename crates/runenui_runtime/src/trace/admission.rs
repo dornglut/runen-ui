@@ -92,6 +92,12 @@ impl MandatoryTracePlan {
         Self::exact(10).checked_add(Self::exact(boundary_notifications))
     }
 
+    /// Unrouted pointer commits can additionally request one style redraw after
+    /// the canonical registry mutation changes effective hover/active membership.
+    pub(crate) fn pointer_unrouted_commit(boundary_notifications: usize) -> Option<Self> {
+        Self::pointer_commit(boundary_notifications)?.checked_add(Self::one_fact())
+    }
+
     pub(crate) const fn surface_command_acceptance() -> Self {
         Self::exact(3)
     }

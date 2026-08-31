@@ -4,8 +4,8 @@ use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
     Color, Element, LogicalLength, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PaintPrimitive, UiApp, View, Widget,
-    WidgetMeasure,
+    PaintContributionContext, PaintContributionItem, PaintPrimitive, StyleEnvironment, UiApp, View,
+    Widget, WidgetMeasure,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase,
@@ -121,8 +121,8 @@ fn paint_contribution_cache_is_keyed_by_exact_owner_visible_context() {
             ))
             .is_quiescent()
     );
-    let tokens = runenui_core::StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
 
     let first = publish(&mut runtime, &context);
     assert_eq!(scene_color(&first), Color::BLACK);

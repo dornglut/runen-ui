@@ -1,12 +1,17 @@
+use std::collections::HashMap;
+
 use crate::MountedNodeId;
 use crate::mounted::SurfaceCapabilityPlan;
 use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneItem, SceneClip};
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
     Axis, ChildLayout, ContributionClip, ElementId, HitContributionContext, LayoutStyle,
-    LogicalTransform, PaintContributionContext, StyleResolution, StyleTokens, WidgetDiagnostic,
-    WidgetMeasure, WidgetTypeId, resolve_style,
+    LogicalTransform, PaintContributionContext, StyleEffects, StyleEnvironment,
+    StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetMeasure, WidgetTypeId,
+    resolve_style_in_environment, style_effects_between,
 };
+
+use super::SurfaceInteractionProjection;
 
 /// Topology and publication-alignment facts for one mounted preorder.
 ///
@@ -52,50 +57,53 @@ pub(super) fn collect_topology<Action>(
 #[derive(Clone, Debug)]
 pub(super) struct CachedStyleFacts {
     // Style-phase facts aligned to the topology snapshot. They are refreshed
-    // whenever mounted style intent or exact token content changes.
+    // whenever mounted style intent or exact style-environment content changes.
     pub(super) resolutions: Vec<StyleResolution>,
     pub(super) report: SurfaceStyleReport,
 }
 
 impl CachedStyleFacts {
-    pub(super) fn padding_changed(&self, other: &Self) -> bool {
-        self.resolutions
-            .iter()
-            .zip(&other.resolutions)
-            .any(|(old, new)| old.computed_style().padding() != new.computed_style().padding())
-    }
-
-    pub(super) fn paint_changed(&self, other: &Self) -> bool {
-        self.resolutions
-            .iter()
-            .zip(&other.resolutions)
-            .any(|(old, new)| {
-                let old = old.computed_style();
-                let new = new.computed_style();
-                old.foreground() != new.foreground()
-                    || old.background() != new.background()
-                    || old.radius() != new.radius()
-            })
+    pub(super) fn effects_against(&self, other: &Self) -> StyleEffects {
+        self.resolutions.iter().zip(&other.resolutions).fold(
+            StyleEffects::NONE,
+            |effects, (old, new)| {
+                effects.union(style_effects_between(
+                    old.computed_style(),
+                    new.computed_style(),
+                ))
+            },
+        )
     }
 }
 
 pub(super) fn resolve_styles<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     topology: &SurfaceTopologySnapshot,
-    tokens: &StyleTokens,
+    environment: &StyleEnvironment,
+    interaction: &SurfaceInteractionProjection,
+    capabilities: &SurfaceCapabilityPlan,
 ) -> CachedStyleFacts {
     #[cfg(test)]
     super::cache::note_style_phase_execution();
-    let resolutions: Vec<_> = topology
-        .nodes
-        .iter()
-        .map(|node| {
-            let mounted = tree
-                .node(&node.id)
-                .unwrap_or_else(|| unreachable!("style topology remains live"));
-            resolve_style(&mounted.style, tokens)
-        })
-        .collect();
+    let mut computed_by_id = HashMap::with_capacity(topology.nodes.len());
+    let mut resolutions = Vec::with_capacity(topology.nodes.len());
+    for (position, node) in topology.nodes.iter().enumerate() {
+        let mounted = tree
+            .node(&node.id)
+            .unwrap_or_else(|| unreachable!("style topology remains live"));
+        let parent = node
+            .parent
+            .as_ref()
+            .and_then(|parent| computed_by_id.get(parent).copied());
+        let interaction = interaction.facts_for(&node.id).with(
+            StyleInteractionState::Disabled,
+            !capabilities.activation_at(position, &node.id).enabled(),
+        );
+        let resolution =
+            resolve_style_in_environment(&mounted.style, environment, interaction, parent);
+        computed_by_id.insert(node.id.clone(), resolution.computed_style());
+        resolutions.push(resolution);
+    }
     let report = SurfaceStyleReport::new(
         topology
             .nodes
@@ -173,17 +181,11 @@ impl ResolvedSurfaceTree {
 }
 
 pub(super) struct ResolvedSurfaceNode {
-    // Topology-aligned layout-phase position.
     pub(super) position: usize,
-    // Topology facts.
     topology: SurfaceTopologyNode,
-    // Publication-local layout-phase input copied from the current mounted node.
     layout: LayoutStyle,
-    // Layout-phase capability fact.
     measurement: WidgetMeasure,
-    // Layout-phase capability fact.
     child_layout: Option<ChildLayout>,
-    // Current style-phase fact.
     resolution: StyleResolution,
 }
 

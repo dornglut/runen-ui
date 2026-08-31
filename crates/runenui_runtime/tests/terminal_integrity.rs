@@ -11,7 +11,7 @@ use std::{
 
 use runenui_core::{
     ChildLayout, ChildLayoutWidget, CommandOrigin, Effects, Element, IntoEffects, NoHostProtocol,
-    SemanticCommand, StyleTokens, UiApp, View, Widget, WidgetMountContext, button, text,
+    SemanticCommand, StyleEnvironment, UiApp, View, Widget, WidgetMountContext, button, text,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PublishSurfaceError, PumpBudget, PumpOutcome,
@@ -241,8 +241,8 @@ fn command_submission_sequence_exhaustion_recovers_inputs_and_closes_mutation() 
     let target = runtime.index().nodes()[0].id().clone();
     focus(&mut runtime, target.clone());
 
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("pre-terminal publication is admitted"));
@@ -323,8 +323,8 @@ fn trace_exhaustion_during_pump_cancels_failed_and_waiting_envelopes() {
         usize::MAX,
     ));
     let target = runtime.index().nodes()[0].id().clone();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("pre-terminal publication is admitted"));
@@ -388,8 +388,8 @@ fn reconciliation_generation_exhaustion_cancels_accepted_envelopes() {
     ));
     let target = runtime.index().nodes()[0].id().clone();
     focus(&mut runtime, target.clone());
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("pre-terminal publication is admitted"));

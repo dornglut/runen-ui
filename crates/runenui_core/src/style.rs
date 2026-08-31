@@ -83,6 +83,50 @@ define_token_ref!(ColorToken, "Typed color-token reference.");
 define_token_ref!(SpacingToken, "Typed edge-spacing-token reference.");
 define_token_ref!(RadiusToken, "Typed corner-radius-token reference.");
 
+macro_rules! define_style_id {
+    ($name:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        pub struct $name(IdentifierText);
+
+        impl $name {
+            /// Validates a dynamic style identifier.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`IdentifierError`] when the identifier text is invalid.
+            pub fn new(id: impl Into<String>) -> Result<Self, IdentifierError> {
+                let id = id.into();
+                validate_identifier(&id)?;
+                Ok(Self(IdentifierText::owned(id)))
+            }
+
+            /// Validates a static style identifier.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`IdentifierError`] when the identifier text is invalid.
+            pub const fn from_static(id: &'static str) -> Result<Self, IdentifierError> {
+                match validate_identifier(id) {
+                    Ok(()) => Ok(Self(IdentifierText::from_static(id))),
+                    Err(error) => Err(error),
+                }
+            }
+
+            #[must_use]
+            pub const fn as_str(&self) -> &str {
+                self.0.as_str()
+            }
+        }
+    };
+}
+
+define_style_id!(StyleRecipeId, "Typed identity for one theme style recipe.");
+define_style_id!(
+    StyleVariantId,
+    "Typed identity for one authored recipe variant."
+);
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Color {
     red: u8,
@@ -366,21 +410,26 @@ impl From<RadiusToken> for RadiusValue {
     }
 }
 
+/// One partial set of typed style properties.
+///
+/// A property set has no precedence by itself. Resolution assigns precedence
+/// from the layer that contributes it.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct StyleIntent {
+pub struct StyleProperties {
     foreground: Option<ColorValue>,
     background: Option<ColorValue>,
     padding: Option<SpacingValue>,
     radius: Option<RadiusValue>,
 }
 
-impl StyleIntent {
+impl StyleProperties {
     pub const EMPTY: Self = Self {
         foreground: None,
         background: None,
         padding: None,
         radius: None,
     };
+
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.foreground.is_none()
@@ -423,5 +472,88 @@ impl StyleIntent {
     #[must_use]
     pub const fn radius(&self) -> Option<&RadiusValue> {
         self.radius.as_ref()
+    }
+}
+
+/// Authored style selection for one element.
+///
+/// Recipe and variants select theme-owned layers. Direct property setters are
+/// authored overrides and therefore resolve above recipe, variant, and
+/// interaction layers.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct StyleIntent {
+    recipe: Option<StyleRecipeId>,
+    variants: Vec<StyleVariantId>,
+    overrides: StyleProperties,
+}
+
+impl StyleIntent {
+    pub const EMPTY: Self = Self {
+        recipe: None,
+        variants: Vec::new(),
+        overrides: StyleProperties::EMPTY,
+    };
+
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.recipe.is_none() && self.variants.is_empty() && self.overrides.is_empty()
+    }
+    #[must_use]
+    pub fn with_recipe(mut self, recipe: StyleRecipeId) -> Self {
+        self.recipe = Some(recipe);
+        self
+    }
+    #[must_use]
+    pub fn with_variant(mut self, variant: StyleVariantId) -> Self {
+        self.variants.push(variant);
+        self
+    }
+    #[must_use]
+    pub fn with_foreground(mut self, value: impl Into<ColorValue>) -> Self {
+        self.overrides = self.overrides.with_foreground(value);
+        self
+    }
+    #[must_use]
+    pub fn with_background(mut self, value: impl Into<ColorValue>) -> Self {
+        self.overrides = self.overrides.with_background(value);
+        self
+    }
+    #[must_use]
+    pub fn with_padding(mut self, value: impl Into<SpacingValue>) -> Self {
+        self.overrides = self.overrides.with_padding(value);
+        self
+    }
+    #[must_use]
+    pub fn with_radius(mut self, value: impl Into<RadiusValue>) -> Self {
+        self.overrides = self.overrides.with_radius(value);
+        self
+    }
+    #[must_use]
+    pub const fn recipe(&self) -> Option<&StyleRecipeId> {
+        self.recipe.as_ref()
+    }
+    #[must_use]
+    pub const fn variants(&self) -> &[StyleVariantId] {
+        self.variants.as_slice()
+    }
+    #[must_use]
+    pub const fn overrides(&self) -> &StyleProperties {
+        &self.overrides
+    }
+    #[must_use]
+    pub const fn foreground(&self) -> Option<&ColorValue> {
+        self.overrides.foreground()
+    }
+    #[must_use]
+    pub const fn background(&self) -> Option<&ColorValue> {
+        self.overrides.background()
+    }
+    #[must_use]
+    pub const fn padding(&self) -> Option<&SpacingValue> {
+        self.overrides.padding()
+    }
+    #[must_use]
+    pub const fn radius(&self) -> Option<&RadiusValue> {
+        self.overrides.radius()
     }
 }

@@ -1,6 +1,6 @@
 use core::{error::Error, fmt};
 
-use runenui_core::StyleTokens;
+use runenui_core::StyleEnvironment;
 
 use crate::{
     DeterministicMeasurementProvider, LayoutConstraints, LogicalSize, MeasurementProvider,
@@ -73,7 +73,7 @@ impl Default for RasterScale {
 /// Explicit inputs used to publish one surface snapshot.
 #[derive(Clone, Copy)]
 pub struct SurfaceBuildContext<'a> {
-    style_tokens: &'a StyleTokens,
+    style_environment: &'a StyleEnvironment,
     root_constraints: LayoutConstraints,
     measurement_provider: &'a dyn MeasurementProvider,
     raster_scale: RasterScale,
@@ -81,9 +81,12 @@ pub struct SurfaceBuildContext<'a> {
 
 impl<'a> SurfaceBuildContext<'a> {
     #[must_use]
-    pub fn new(style_tokens: &'a StyleTokens, root_constraints: LayoutConstraints) -> Self {
+    pub fn new(
+        style_environment: &'a StyleEnvironment,
+        root_constraints: LayoutConstraints,
+    ) -> Self {
         Self {
-            style_tokens,
+            style_environment,
             root_constraints,
             measurement_provider: &DEFAULT_MEASUREMENT_PROVIDER,
             raster_scale: RasterScale::ONE,
@@ -91,8 +94,8 @@ impl<'a> SurfaceBuildContext<'a> {
     }
 
     #[must_use]
-    pub fn tight(style_tokens: &'a StyleTokens, size: LogicalSize) -> Self {
-        Self::new(style_tokens, LayoutConstraints::tight(size))
+    pub fn tight(style_environment: &'a StyleEnvironment, size: LogicalSize) -> Self {
+        Self::new(style_environment, LayoutConstraints::tight(size))
     }
 
     #[must_use]
@@ -117,9 +120,10 @@ impl<'a> SurfaceBuildContext<'a> {
         self
     }
 
+    /// Returns the complete host-neutral style environment for this publication.
     #[must_use]
-    pub const fn style_tokens(&self) -> &'a StyleTokens {
-        self.style_tokens
+    pub const fn style_environment(&self) -> &'a StyleEnvironment {
+        self.style_environment
     }
 
     #[must_use]

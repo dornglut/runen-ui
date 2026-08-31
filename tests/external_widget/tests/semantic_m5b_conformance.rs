@@ -1,7 +1,7 @@
 use runenui_core::{
     Element, IntoEffects, NoHostProtocol, SemanticAction, SemanticContribution,
     SemanticContributionContext, SemanticKey, SemanticNodeContribution, SemanticRole,
-    SemanticState, StyleTokens, UiApp, View, Widget, WidgetActivation, column,
+    SemanticState, StyleEnvironment, UiApp, View, Widget, WidgetActivation, column,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, SemanticNode, SemanticSnapshot, SurfaceBuildContext,
@@ -113,10 +113,10 @@ fn named_node<'a>(snapshot: &'a SemanticSnapshot, name: &str) -> &'a SemanticNod
 #[test]
 fn public_support_matrix_separates_support_from_current_availability() {
     let mut runtime = AppRuntime::<SupportApp>::mount(());
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("support conformance publication is admitted"));

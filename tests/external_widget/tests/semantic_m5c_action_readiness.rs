@@ -3,7 +3,7 @@
 use runenui_core::{
     Element, NoHostProtocol, SemanticAction, SemanticActionRequest, SemanticContribution,
     SemanticContributionContext, SemanticKey, SemanticNodeContribution, SemanticRole,
-    SemanticState, StyleTokens, UiApp, Widget, WidgetActivation,
+    SemanticState, StyleEnvironment, UiApp, Widget, WidgetActivation,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SubmitSemanticActionError,
@@ -105,10 +105,10 @@ fn expect_rejection(
 fn explicitly_focusable_disabled_owner_retains_focus_support_but_is_unavailable() {
     let mut runtime = runtime(Case::FocusOwnerDisabled);
     runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("semantic publication is admitted"));
@@ -145,10 +145,10 @@ fn menu_actions_retain_support_but_reject_disabled_and_inert_named_nodes() {
     for case in [Case::MenuNodeDisabled, Case::MenuNodeInert] {
         let mut runtime = runtime(case);
         runtime.pump(PumpBudget::new(usize::MAX, 0, 0, 0));
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let publication = runtime
             .publish_surface(&SurfaceBuildContext::new(
-                &tokens,
+                &style_environment,
                 LayoutConstraints::unbounded(),
             ))
             .unwrap_or_else(|_| unreachable!("semantic publication is admitted"));

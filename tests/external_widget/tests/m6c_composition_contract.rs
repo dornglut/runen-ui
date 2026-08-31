@@ -4,8 +4,8 @@ use runenui_core::{
     Color, ContributionClip, Element, ElementId, HitContribution, HitContributionContext,
     HitRegion, LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
-    PointerPolicy, Radius, SceneLayer, SceneOpacity, SceneShape, StyleTokens, UiApp, View, Widget,
-    WidgetMeasure, children, column,
+    PointerPolicy, Radius, SceneLayer, SceneOpacity, SceneShape, StyleEnvironment, UiApp, View,
+    Widget, WidgetMeasure, children, column,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, PaintSceneItem, SurfaceBuildContext};
 
@@ -50,10 +50,10 @@ fn fill_item_covers_surface_point(item: &PaintSceneItem, surface_point: LogicalP
 }
 
 fn publish<App: UiApp>(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("test surface publication is admitted"))

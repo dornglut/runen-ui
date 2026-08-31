@@ -5,8 +5,8 @@ use std::{cell::RefCell, rc::Rc};
 use runenui_core::{
     Element, ElementId, EventContext, HitContribution, HitContributionContext, LogicalLength,
     LogicalPoint, LogicalRect, NoHostProtocol, PointerBoundaryKind, PointerDeviceKind,
-    PointerEvent, PointerId, PointerPhase, StyleTokens, SurfaceInputContext, UiApp, UiEvent, View,
-    Widget, WidgetEventOutput, WidgetMeasure, children, row,
+    PointerEvent, PointerId, PointerPhase, StyleEnvironment, SurfaceInputContext, UiApp, UiEvent,
+    View, Widget, WidgetEventOutput, WidgetMeasure, children, row,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, PumpReport, SurfaceBuildContext, SurfacePublication,
@@ -174,11 +174,11 @@ fn harness() -> Harness {
 }
 
 fn publish(runtime: &mut AppRuntime<App>) -> SurfacePublication {
-    let tokens = StyleTokens::default();
+    let style_environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(96.0, 48.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
     runtime
-        .publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+        .publish_surface(&SurfaceBuildContext::tight(&style_environment, size))
         .unwrap_or_else(|_| unreachable!("the test surface publication is admitted"))
 }
 

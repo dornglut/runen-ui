@@ -9,9 +9,9 @@ use crate::{
     Axis, ColorValue, ElementId, ElementKey, EventContext, FocusScope, Focusability,
     HitContribution, HitContributionContext, IdentifierError, IntoElementId, IntoElementKey,
     LayoutStyle, LogicalLength, PaintContribution, PaintContributionContext, RadiusValue,
-    SemanticContribution, SemanticContributionContext, SpacingValue, StyleIntent, SubscriptionSet,
-    UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetInvalidation, WidgetMountContext,
-    WidgetUnmountContext, WidgetUpdateContext,
+    SemanticContribution, SemanticContributionContext, SpacingValue, StyleIntent, StyleRecipeId,
+    StyleVariantId, SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput,
+    WidgetInvalidation, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -498,6 +498,18 @@ impl<Action> Element<Action> {
     #[must_use]
     pub fn key(mut self, key: impl IntoElementKey) -> Self {
         assign_key(&mut self.key, &mut self.authoring_diagnostics, key);
+        self
+    }
+
+    #[must_use]
+    pub fn recipe(mut self, recipe: StyleRecipeId) -> Self {
+        self.style = self.style.with_recipe(recipe);
+        self
+    }
+
+    #[must_use]
+    pub fn variant(mut self, variant: StyleVariantId) -> Self {
+        self.style = self.style.with_variant(variant);
         self
     }
 

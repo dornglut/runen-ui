@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use runenui_core::{
     Color, Element, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, ResourceKind, ResourceRef, StyleTokens, UiApp,
-    Widget, WidgetMeasure,
+    PaintContributionContext, PaintContributionItem, ResourceKind, ResourceRef, StyleEnvironment,
+    UiApp, Widget, WidgetMeasure,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, SceneCapabilities, SurfaceBuildContext,
@@ -84,10 +84,10 @@ fn requirements_are_derived_canonically_and_capabilities_never_rewrite_the_scene
         image: image.clone(),
         shaped: shaped.clone(),
     });
-    let tokens = StyleTokens::new();
+    let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("requirements publication is admitted"));

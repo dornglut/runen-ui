@@ -2,7 +2,7 @@ use core::num::NonZeroUsize;
 
 use runenui_core::{
     CommandOrigin, Element, IntoEffects, LogicalLength, NoHostProtocol, SemanticCommand,
-    StyleTokens, UiApp, View, button, row,
+    StyleEnvironment, UiApp, View, button, row,
 };
 use runenui_runtime::{
     AppRuntime, CommandSubmission, LogicalPoint, LogicalSize, PumpBudget, RuntimeConfig,
@@ -81,9 +81,9 @@ fn pump_all(runtime: &mut AppRuntime<RetentionApp>) {
 }
 
 fn publish(runtime: &mut AppRuntime<RetentionApp>) -> runenui_runtime::SurfacePublication {
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let size = LogicalSize::new(LogicalLength::from(240_u16), LogicalLength::from(48_u16));
-    let context = SurfaceBuildContext::tight(&tokens, size);
+    let context = SurfaceBuildContext::tight(&style_environment, size);
     runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("retention geometry publication is admitted"))

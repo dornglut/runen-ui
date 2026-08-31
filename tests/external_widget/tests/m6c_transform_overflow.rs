@@ -3,8 +3,8 @@
 use runenui_core::{
     Color, ContributionClip, Element, ElementId, HitContribution, HitContributionContext,
     HitRegion, LogicalLength, LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, SceneShape, StyleTokens, UiApp, View, Widget,
-    WidgetMeasure, children, column,
+    PaintContributionContext, PaintContributionItem, SceneShape, StyleEnvironment, UiApp, View,
+    Widget, WidgetMeasure, children, column,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -97,10 +97,10 @@ impl UiApp for OverflowApp {
 #[test]
 fn finite_authored_transforms_that_overflow_surface_composition_are_excluded_and_diagnosed() {
     let mut runtime = AppRuntime::<OverflowApp>::mount(());
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("overflow fixture publication is admitted"));

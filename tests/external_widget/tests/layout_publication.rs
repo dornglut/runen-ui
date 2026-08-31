@@ -3,7 +3,7 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, Element, ElementId, NoHostProtocol, SemanticCommand, StyleTokens, UiApp,
+    CommandOrigin, Element, ElementId, NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp,
 };
 use runenui_external_widget_conformance::{
     LayoutCase, LayoutConformanceApp, LayoutState, UnsupportedMeasure, counting_measurement_tree,
@@ -117,9 +117,10 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
         revision: Cell::new(1),
         width: Cell::new(144.0),
     };
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(400.0, 200.0)))
-        .with_measurement_provider(&provider);
+    let environment = StyleEnvironment::default();
+    let context =
+        SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(400.0, 200.0)))
+            .with_measurement_provider(&provider);
 
     let first = publish(&mut runtime, &context);
     assert_eq!(
@@ -196,8 +197,9 @@ impl UiApp for UnsupportedApp {
 #[test]
 fn unsupported_measurement_is_explicit_and_deterministic() {
     let mut runtime = AppRuntime::<UnsupportedApp>::mount(());
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(100.0, 100.0)));
+    let environment = StyleEnvironment::default();
+    let context =
+        SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(100.0, 100.0)));
     let publication = publish(&mut runtime, &context);
     let diagnostic = &publication
         .layout_report()
@@ -228,9 +230,9 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
             activations: 0,
         });
         settle_initial_mounted_declarations(&mut runtime);
-        let tokens = StyleTokens::new();
+        let environment = StyleEnvironment::default();
         let context =
-            SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(600.0, 400.0)));
+            SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(600.0, 400.0)));
         let publication = publish(&mut runtime, &context);
         let indexed: Vec<_> = runtime
             .index()
@@ -324,9 +326,9 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
             case,
             activations: 0,
         });
-        let tokens = StyleTokens::new();
+        let environment = StyleEnvironment::default();
         let context =
-            SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(600.0, 400.0)));
+            SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(600.0, 400.0)));
         let publication = publish(&mut runtime, &context);
         let first = publication.frame().nodes()[1].bounds();
         let second = publication.frame().nodes()[2].bounds();
@@ -341,8 +343,9 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
         case: LayoutCase::NestedExternal,
         activations: 0,
     });
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::loose(size(600.0, 400.0)));
+    let environment = StyleEnvironment::default();
+    let context =
+        SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(600.0, 400.0)));
     let publication = publish(&mut runtime, &context);
     let nodes = publication.frame().nodes();
     assert!((nodes[2].bounds().y() - nodes[1].bounds().max_y() - 13.0).abs() <= f32::EPSILON);

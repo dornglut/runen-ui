@@ -13,8 +13,8 @@ use super::resolve::{
 };
 use super::transaction::PlannedSurfacePublication;
 use super::{
-    SurfaceBuildContext, SurfaceCache, SurfaceFrame, SurfaceLayoutReport, SurfacePhase,
-    SurfacePhaseReport, SurfacePublication, SurfaceWidgetDebug,
+    SurfaceBuildContext, SurfaceCache, SurfaceFrame, SurfaceInteractionProjection,
+    SurfaceLayoutReport, SurfacePhase, SurfacePhaseReport, SurfacePublication, SurfaceWidgetDebug,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -28,7 +28,7 @@ impl From<SemanticReconcileError> for SurfacePlanningError {
     }
 }
 
-fn surface_capability_phases(entries: [(bool, DirtyPhases); 4]) -> DirtyPhases {
+fn surface_capability_phases(entries: [(bool, DirtyPhases); 5]) -> DirtyPhases {
     let mut phases = DirtyPhases::default();
     for (is_dirty, phase) in entries {
         if is_dirty {
@@ -36,6 +36,37 @@ fn surface_capability_phases(entries: [(bool, DirtyPhases); 4]) -> DirtyPhases {
         }
     }
     phases
+}
+
+fn initial_surface_capability_plan<Action>(
+    tree: &crate::mounted::MountedTree<Action>,
+    style_dirty: bool,
+) -> SurfaceCapabilityPlan {
+    let mut phases = DirtyPhases::default();
+    if style_dirty {
+        phases.insert(DirtyPhases::STYLE);
+    }
+    tree.plan_surface_publication_capabilities(phases)
+}
+
+const fn semantic_product_is_dirty(pending: DirtyPhases, layout_dirty: bool) -> bool {
+    pending.contains(DirtyPhases::SEMANTICS)
+        || layout_dirty
+        || pending.contains(DirtyPhases::FOCUS_VALIDATION)
+}
+
+fn style_product_is_dirty(
+    pending: DirtyPhases,
+    current: &SurfaceCache,
+    next: &super::cache::SurfaceContextKey,
+    interaction: &SurfaceInteractionProjection,
+) -> bool {
+    pending.contains(DirtyPhases::STYLE)
+        || current
+            .context_key
+            .style_environment
+            .content_differs(&next.style_environment)
+        || current.interaction.content_differs(interaction)
 }
 
 fn layout_context_changed(current: &SurfaceCache, next: &super::cache::SurfaceContextKey) -> bool {
@@ -123,34 +154,39 @@ fn resolve_layout_phase<Action>(
 pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
+    interaction: &SurfaceInteractionProjection,
     cache: Option<&SurfaceCache>,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let next_context = context_key(context);
     let pending = tree.pending_phases();
     let tree_dirty = cache.is_none() || pending.contains(DirtyPhases::TREE);
     if tree_dirty {
-        return plan_structural_surface(tree, context, next_context);
+        return plan_structural_surface(tree, context, interaction, next_context);
     }
 
     let mut current = stage_non_structural_cache(cache);
-    let style_dirty = pending.contains(DirtyPhases::STYLE)
-        || current
-            .context_key
-            .style_tokens
-            .content_differs(&next_context.style_tokens);
+    let style_dirty = style_product_is_dirty(pending, &current, &next_context, interaction);
     let mut layout_dirty =
         pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
     let mut hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
     let mut paint_dirty = pending.contains(DirtyPhases::PAINT);
-    let semantics_dirty = pending.contains(DirtyPhases::SEMANTICS);
     let diagnostics_dirty = pending.contains(DirtyPhases::DIAGNOSTICS);
     let mut report = SurfacePhaseReport::default();
     let mut completed = DirtyPhases::default();
+    let mut capability_plan = initial_surface_capability_plan(tree, style_dirty);
 
     if style_dirty {
-        let next_styles = resolve_styles(tree, &current.topology, context.style_tokens());
-        layout_dirty |= current.styles.padding_changed(&next_styles);
-        paint_dirty |= current.styles.paint_changed(&next_styles);
+        let next_styles = resolve_styles(
+            tree,
+            &current.topology,
+            context.style_environment(),
+            interaction,
+            &capability_plan,
+        );
+        let effects = current.styles.effects_against(&next_styles);
+        layout_dirty |= effects.layout();
+        paint_dirty |= effects.paint();
+        current.interaction = Arc::new(interaction.clone());
         current.styles = Arc::new(next_styles);
         report.record(SurfacePhase::Style);
         completed.insert(DirtyPhases::STYLE);
@@ -161,17 +197,19 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         paint_dirty = true;
     }
 
-    let semantic_product_dirty =
-        semantics_dirty || layout_dirty || pending.contains(DirtyPhases::FOCUS_VALIDATION);
-    let mut capability_plan =
-        tree.plan_surface_publication_capabilities(surface_capability_phases([
+    let semantic_product_dirty = semantic_product_is_dirty(pending, layout_dirty);
+    tree.extend_surface_publication_capabilities(
+        &mut capability_plan,
+        surface_capability_phases([
             (layout_dirty, DirtyPhases::LAYOUT),
             (hit_dirty, DirtyPhases::HIT_TEST),
             (paint_dirty, DirtyPhases::PAINT),
+            (semantic_product_dirty, DirtyPhases::SEMANTICS),
             (diagnostics_dirty, DirtyPhases::DIAGNOSTICS),
-        ]));
-    let semantic_capability_plan =
-        semantic_product_dirty.then(|| tree.plan_semantic_publication_capabilities());
+        ]),
+    );
+    let semantic_capability_plan = semantic_product_dirty
+        .then(|| tree.plan_semantic_publication_capabilities(&capability_plan));
 
     if layout_dirty {
         current.layout = Arc::new(resolve_layout_phase(
@@ -229,15 +267,23 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
 fn plan_structural_surface<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
+    interaction: &SurfaceInteractionProjection,
     context_key: super::cache::SurfaceContextKey,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let mut report = SurfacePhaseReport::default();
     let topology = collect_topology(tree);
     report.record(SurfacePhase::Tree);
-    let styles = resolve_styles(tree, &topology, context.style_tokens());
+    let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::STYLE);
+    let styles = resolve_styles(
+        tree,
+        &topology,
+        context.style_environment(),
+        interaction,
+        &capability_plan,
+    );
     report.record(SurfacePhase::Style);
-    let mut capability_plan = tree.plan_surface_publication_capabilities(DirtyPhases::ALL);
-    let semantic_capability_plan = tree.plan_semantic_publication_capabilities();
+    tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
+    let semantic_capability_plan = tree.plan_semantic_publication_capabilities(&capability_plan);
     let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles, &capability_plan);
     let (size, bounds, layout_report) = layout_resolved_surface(
         &resolved,
@@ -284,6 +330,7 @@ fn plan_structural_surface<'tree, Action>(
     let mut rebuilt = SurfaceCache {
         context_key: Arc::new(context_key),
         topology: Arc::new(topology),
+        interaction: Arc::new(interaction.clone()),
         styles: Arc::new(styles),
         layout: Arc::new(layout),
         hit_test,
@@ -309,7 +356,8 @@ pub(super) fn publish_mounted_surface_cached<Action>(
     context: &SurfaceBuildContext<'_>,
     cache: &mut Option<SurfaceCache>,
 ) -> Result<(SurfacePublication, SurfacePhaseReport), SurfacePlanningError> {
-    let planned = plan_mounted_surface_cached(tree, context, cache.as_ref())?;
+    let interaction = SurfaceInteractionProjection::default();
+    let planned = plan_mounted_surface_cached(tree, context, &interaction, cache.as_ref())?;
     let commit = planned.commit_store();
     Ok(commit.commit(tree, cache))
 }

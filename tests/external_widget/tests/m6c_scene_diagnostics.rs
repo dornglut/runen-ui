@@ -3,7 +3,7 @@
 use runenui_core::{
     Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
     LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PaintPrimitive, SceneShape, StyleTokens,
+    PaintContributionContext, PaintContributionItem, PaintPrimitive, SceneShape, StyleEnvironment,
     UiApp, Widget, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_runtime::{
@@ -167,11 +167,11 @@ impl UiApp for SceneDiagnosticApp {
 
 fn publish(
     runtime: &mut AppRuntime<SceneDiagnosticApp>,
-    tokens: &StyleTokens,
+    style_environment: &StyleEnvironment,
 ) -> runenui_runtime::SurfacePublication {
     runtime
         .publish_surface(&SurfaceBuildContext::new(
-            tokens,
+            style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("test publication is admitted"))
@@ -189,9 +189,9 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
         usize::MAX,
         usize::MAX,
     ));
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
 
-    let initial = publish(&mut runtime, &tokens);
+    let initial = publish(&mut runtime, &style_environment);
     let root = initial
         .frame()
         .root()
@@ -226,7 +226,7 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
     );
 
     process_one(&mut runtime, SceneDiagnosticAction::FixPaint);
-    let paint_fixed = publish(&mut runtime, &tokens);
+    let paint_fixed = publish(&mut runtime, &style_environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Paint]
@@ -259,7 +259,7 @@ fn singular_scene_diagnostics_are_public_fail_closed_and_cleared_by_their_owning
     let paint_revision_after_fix = paint_fixed.paint_publication().revision();
 
     process_one(&mut runtime, SceneDiagnosticAction::FixHit);
-    let hit_fixed = publish(&mut runtime, &tokens);
+    let hit_fixed = publish(&mut runtime, &style_environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::HitTesting]

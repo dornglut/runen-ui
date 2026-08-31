@@ -1639,7 +1639,7 @@ mod tests {
         Color, ContributionClip, Element, LogicalLength, LogicalPoint, LogicalRect, LogicalSize,
         LogicalTransform, NoHostProtocol, PaintContribution, PaintContributionContext,
         PaintContributionItem, PaintPrimitive, Radius, ResourceKind, ResourceRef, SceneOpacity,
-        SceneShape, StyleTokens, UiApp, Widget, WidgetInvalidation, WidgetMeasure,
+        SceneShape, StyleEnvironment, UiApp, Widget, WidgetInvalidation, WidgetMeasure,
         WidgetUpdateContext,
     };
     use runenui_runtime::{
@@ -1857,7 +1857,7 @@ mod tests {
         scales: &[f32],
     ) -> Vec<PaintPublication> {
         let mut runtime = AppRuntime::<FixtureApp>::mount(items);
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let logical_size =
             LogicalSize::try_new(f32::from(SURFACE_WIDTH), f32::from(SURFACE_HEIGHT))
                 .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));
@@ -1866,9 +1866,11 @@ mod tests {
             .map(|scale| {
                 let raster_scale = RasterScale::new(*scale)
                     .unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
-                let context =
-                    SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(logical_size))
-                        .with_raster_scale(raster_scale);
+                let context = SurfaceBuildContext::new(
+                    &style_environment,
+                    LayoutConstraints::tight(logical_size),
+                )
+                .with_raster_scale(raster_scale);
                 runtime
                     .publish_surface(&context)
                     .unwrap_or_else(|_| unreachable!("fixture publication is admitted"))
@@ -1885,14 +1887,15 @@ mod tests {
         rebuilt_scale: f32,
     ) -> (PaintPublication, PaintPublication, PaintPublication) {
         let mut runtime = AppRuntime::<FixtureApp>::mount(initial_items);
-        let tokens = StyleTokens::new();
+        let style_environment = StyleEnvironment::default();
         let logical_size =
             LogicalSize::try_new(f32::from(SURFACE_WIDTH), f32::from(SURFACE_HEIGHT))
                 .unwrap_or_else(|_| unreachable!("fixture surface extent is valid"));
         let raster_scale = RasterScale::new(initial_scale)
             .unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
-        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(logical_size))
-            .with_raster_scale(raster_scale);
+        let context =
+            SurfaceBuildContext::new(&style_environment, LayoutConstraints::tight(logical_size))
+                .with_raster_scale(raster_scale);
         let first = runtime
             .publish_surface(&context)
             .unwrap_or_else(|_| unreachable!("initial fixture publication is admitted"))
@@ -1916,7 +1919,7 @@ mod tests {
         let rebuilt_raster_scale = RasterScale::new(rebuilt_scale)
             .unwrap_or_else(|_| unreachable!("rebuilt fixture raster scale is valid"));
         let rebuilt_context =
-            SurfaceBuildContext::new(&tokens, LayoutConstraints::tight(logical_size))
+            SurfaceBuildContext::new(&style_environment, LayoutConstraints::tight(logical_size))
                 .with_raster_scale(rebuilt_raster_scale);
         let rebuilt = runtime
             .publish_surface(&rebuilt_context)

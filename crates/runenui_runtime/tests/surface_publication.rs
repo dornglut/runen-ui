@@ -1,8 +1,9 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, EdgeInsets, Element, LogicalLength, NoHostProtocol, Radius, StyleTokens, UiApp, View,
-    button, children, color_token, column, radius_token, row, spacing_token, text,
+    Color, EdgeInsets, Element, LogicalLength, NoHostProtocol, Radius, StyleEnvironment,
+    StyleTokens, UiApp, View, button, children, color_token, column, radius_token, row,
+    spacing_token, text,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
@@ -164,10 +165,10 @@ fn warm_and_change(
     runenui_runtime::SurfacePublication,
 ) {
     let mut runtime = AppRuntime::<StructuralApp>::mount(initial);
-    let tokens = StyleTokens::new();
+    let environment = StyleEnvironment::default();
     let _ = publish(
         &mut runtime,
-        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+        &SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded()),
     );
     runtime.pump(PumpBudget::new(
         usize::MAX,
@@ -186,7 +187,7 @@ fn warm_and_change(
     );
     let publication = publish(
         &mut runtime,
-        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+        &SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded()),
     );
     (runtime, publication)
 }
@@ -267,8 +268,8 @@ impl UiApp for App {
 #[test]
 fn mounted_surface_products_align_and_hit_testing_targets_mounted_ids() {
     let mut runtime = AppRuntime::<App>::mount(());
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let publication = publish(&mut runtime, &context);
     assert_eq!(publication.frame().nodes().len(), 3);
     assert_eq!(publication.style_report().nodes().len(), 3);
@@ -433,7 +434,8 @@ fn warm_common_fields(
     Vec<MountedIdentity>,
 ) {
     let mut runtime = AppRuntime::<CommonFieldsApp>::mount(initial);
-    let context = SurfaceBuildContext::new(tokens, constraints);
+    let environment = StyleEnvironment::from_tokens(tokens.clone());
+    let context = SurfaceBuildContext::new(&environment, constraints);
     let before = publish(&mut runtime, &context);
     let identities = mounted_identities(&mut runtime);
     runtime.pump(PumpBudget::new(
@@ -778,6 +780,8 @@ fn different_token_sets_with_the_same_revision_never_alias() {
         )
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(first.revision(), second.revision());
+    let first = StyleEnvironment::from_tokens(first);
+    let second = StyleEnvironment::from_tokens(second);
     let _ = publish(
         &mut runtime,
         &SurfaceBuildContext::new(&first, LayoutConstraints::unbounded()),
@@ -820,6 +824,8 @@ fn divergent_clones_follow_exact_current_token_content() {
         )
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(left.revision(), right.revision());
+    let left = StyleEnvironment::from_tokens(left);
+    let right = StyleEnvironment::from_tokens(right);
     let mut runtime = AppRuntime::<TokenApp>::mount(());
     let _ = publish(
         &mut runtime,
@@ -847,6 +853,8 @@ fn equal_token_content_can_reuse_the_warmed_publication() {
             )
             .unwrap_or_else(|_| unreachable!());
     }
+    let first = StyleEnvironment::from_tokens(first);
+    let second = StyleEnvironment::from_tokens(second);
     let mut runtime = AppRuntime::<TokenApp>::mount(());
     let first_publication = publish(
         &mut runtime,
@@ -882,6 +890,8 @@ fn color_only_token_change_executes_style_and_paint_without_layout() {
     second
         .define_color(color_token!("surface.foreground"), Color::WHITE)
         .unwrap_or_else(|_| unreachable!());
+    let first = StyleEnvironment::from_tokens(first);
+    let second = StyleEnvironment::from_tokens(second);
     let mut runtime = AppRuntime::<TokenApp>::mount(());
     let before = publish(
         &mut runtime,
@@ -942,6 +952,8 @@ fn saturated_token_revision_still_uses_content_for_cache_compatibility() {
         )
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(first.revision(), second.revision());
+    let first = StyleEnvironment::from_tokens(first);
+    let second = StyleEnvironment::from_tokens(second);
     let mut runtime = AppRuntime::<TokenApp>::mount(());
     let _ = publish(
         &mut runtime,
@@ -961,9 +973,10 @@ fn saturated_token_revision_still_uses_content_for_cache_compatibility() {
 fn style_token_revision_invalidates_resolved_padding_and_layout() {
     let mut runtime = AppRuntime::<TokenApp>::mount(());
     let mut tokens = StyleTokens::new();
+    let first_environment = StyleEnvironment::from_tokens(tokens.clone());
     let first = publish(
         &mut runtime,
-        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+        &SurfaceBuildContext::new(&first_environment, LayoutConstraints::unbounded()),
     );
     let first_width = first
         .frame()
@@ -977,9 +990,10 @@ fn style_token_revision_invalidates_resolved_padding_and_layout() {
             EdgeInsets::all(LogicalLength::from(5_u16)),
         )
         .unwrap_or_else(|_| unreachable!());
+    let second_environment = StyleEnvironment::from_tokens(tokens);
     let second = publish(
         &mut runtime,
-        &SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded()),
+        &SurfaceBuildContext::new(&second_environment, LayoutConstraints::unbounded()),
     );
     let second_width = second
         .frame()

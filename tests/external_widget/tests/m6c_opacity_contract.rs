@@ -3,7 +3,7 @@
 use runenui_core::{
     Color, ContributionClip, Element, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive, Radius,
-    SceneOpacity, SceneShape, StyleTokens, UiApp, Widget, WidgetMeasure,
+    SceneOpacity, SceneShape, StyleEnvironment, UiApp, Widget, WidgetMeasure,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, PaintSceneItem, SurfaceBuildContext};
 
@@ -123,10 +123,10 @@ impl UiApp for OpacityApp {
 #[test]
 fn item_opacity_multiplies_source_alpha_and_rounded_paint_clip_uses_shared_shape_semantics() {
     let mut runtime = AppRuntime::<OpacityApp>::mount(());
-    let tokens = StyleTokens::new();
+    let environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("opacity publication is admitted"));

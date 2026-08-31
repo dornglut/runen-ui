@@ -159,9 +159,11 @@ impl SurfacePublicationCommit {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{StyleTokens, View, text};
+    use runenui_core::{StyleEnvironment, View, text};
 
-    use super::super::{SurfaceBuildContext, plan_mounted_surface_cached};
+    use super::super::{
+        SurfaceBuildContext, SurfaceInteractionProjection, plan_mounted_surface_cached,
+    };
     use crate::{
         LayoutConstraints,
         mounted::{DirtyPhases, MountedTree},
@@ -170,20 +172,23 @@ mod tests {
     #[test]
     fn planning_keeps_surface_cache_and_dirty_completion_uncommitted() {
         let (mut tree, _) = MountedTree::<()>::mount(text("staged").key("root").into_element());
-        let tokens = StyleTokens::new();
-        let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
         let mut cache = None;
         let dirty_before = tree.pending_phases();
+        let interaction = SurfaceInteractionProjection::default();
 
-        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
-            .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
+        let planned =
+            plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
+                .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
         assert!(!planned.publication().frame().is_empty());
         drop(planned);
         assert!(cache.is_none());
         assert_eq!(tree.pending_phases(), dirty_before);
 
-        let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
-            .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
+        let planned =
+            plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
+                .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
         let commit = planned.commit_store();
         assert!(cache.is_none());
         assert_eq!(tree.pending_phases(), dirty_before);

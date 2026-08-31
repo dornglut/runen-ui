@@ -8,6 +8,7 @@ use crate::SemanticOwnerWithdrawalReason;
 
 use super::{
     CachedCapability, CachedSemanticContribution, MountedNodeId, MountedTree,
+    SurfaceCapabilityPlan,
     node::{MountedNode, state_is_corrupted},
     semantic::{SemanticBinding, SemanticOwnerPlan, SemanticReconcileError, SemanticStorePlan},
 };
@@ -70,11 +71,6 @@ struct StagedSemanticCapability {
     contribution: SemanticContribution,
     ordered_keys: Vec<SemanticKey>,
     cache: CachedSemanticContribution,
-    integrity_failed: bool,
-}
-
-struct StagedActivationCapability {
-    cache: CachedCapability<WidgetActivation>,
     integrity_failed: bool,
 }
 
@@ -154,12 +150,22 @@ impl StagedSemanticCapability {
 impl<Action> MountedTree<Action> {
     /// Evaluates semantic-publication capabilities without mutating mounted
     /// caches, semantic bindings, semantic identity storage, or integrity state.
-    pub(crate) fn plan_semantic_publication_capabilities(&self) -> SemanticCapabilityPlan {
+    /// Activation is consumed from the surface capability transaction so style
+    /// and semantics observe one staged canonical value per publication attempt.
+    pub(crate) fn plan_semantic_publication_capabilities(
+        &self,
+        surface_capabilities: &SurfaceCapabilityPlan,
+    ) -> SemanticCapabilityPlan {
         SemanticCapabilityPlan {
             owners: self
                 .publication_preorder_ids()
                 .into_iter()
-                .map(|owner| self.stage_semantic_owner_capabilities(&owner))
+                .enumerate()
+                .map(|(position, owner)| {
+                    let activation_cache =
+                        surface_capabilities.activation_cache_at(position, &owner);
+                    self.stage_semantic_owner_capabilities(&owner, activation_cache)
+                })
                 .collect(),
         }
     }
@@ -167,17 +173,24 @@ impl<Action> MountedTree<Action> {
     fn stage_semantic_owner_capabilities(
         &self,
         owner: &MountedNodeId,
+        activation_cache: CachedCapability<WidgetActivation>,
     ) -> StagedSemanticOwnerCapabilities {
         let node = self
             .node(owner)
             .unwrap_or_else(|| unreachable!("semantic publication owner remains live"));
         if state_is_corrupted(node) {
-            return integrity_withdrawal(owner, node.semantic_bindings.clone(), node.focusability);
+            return integrity_withdrawal(
+                owner,
+                node.semantic_bindings.clone(),
+                node.focusability,
+                activation_cache,
+            );
         }
 
         let semantic = stage_semantic_capability(node);
-        let activation = stage_activation_capability(node);
-        let mark_integrity_failed = semantic.integrity_failed || activation.integrity_failed;
+        let activation_integrity_failed =
+            matches!(activation_cache, CachedCapability::StatePayloadMismatch);
+        let mark_integrity_failed = semantic.integrity_failed || activation_integrity_failed;
         if mark_integrity_failed {
             return StagedSemanticOwnerCapabilities {
                 owner: owner.clone(),
@@ -185,7 +198,7 @@ impl<Action> MountedTree<Action> {
                 ordered_keys: Vec::new(),
                 current_bindings: node.semantic_bindings.clone(),
                 semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
-                activation_cache: activation.cache,
+                activation_cache,
                 focusability: node.focusability,
                 mark_integrity_failed,
             };
@@ -197,7 +210,7 @@ impl<Action> MountedTree<Action> {
             ordered_keys: semantic.ordered_keys,
             current_bindings: node.semantic_bindings.clone(),
             semantic_cache: semantic.cache,
-            activation_cache: activation.cache,
+            activation_cache,
             focusability: node.focusability,
             mark_integrity_failed,
         }
@@ -306,7 +319,6 @@ impl<Action> MountedTree<Action> {
                 .unwrap_or_else(|| unreachable!("finalized semantic owner remains live"));
             node.semantic_bindings = finalized.bindings;
             node.caches.semantics = finalized.semantic_cache;
-            node.caches.activation = finalized.activation_cache;
             node.integrity_failed |= finalized.mark_integrity_failed;
         }
     }
@@ -366,6 +378,7 @@ fn integrity_withdrawal(
     owner: &MountedNodeId,
     current_bindings: Vec<SemanticBinding>,
     focusability: Focusability,
+    activation_cache: CachedCapability<WidgetActivation>,
 ) -> StagedSemanticOwnerCapabilities {
     StagedSemanticOwnerCapabilities {
         owner: owner.clone(),
@@ -373,7 +386,7 @@ fn integrity_withdrawal(
         ordered_keys: Vec::new(),
         current_bindings,
         semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
-        activation_cache: CachedCapability::StatePayloadMismatch,
+        activation_cache,
         focusability,
         mark_integrity_failed: true,
     }
@@ -415,29 +428,6 @@ fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemant
     }
 }
 
-fn stage_activation_capability<Action>(node: &MountedNode<Action>) -> StagedActivationCapability {
-    match &node.caches.activation {
-        CachedCapability::Ready(value) => StagedActivationCapability {
-            cache: CachedCapability::Ready(*value),
-            integrity_failed: false,
-        },
-        CachedCapability::Unresolved => node.widget.activation(&node.state).map_or_else(
-            |_| StagedActivationCapability {
-                cache: CachedCapability::StatePayloadMismatch,
-                integrity_failed: true,
-            },
-            |value| StagedActivationCapability {
-                cache: CachedCapability::Ready(value),
-                integrity_failed: false,
-            },
-        ),
-        CachedCapability::StatePayloadMismatch => StagedActivationCapability {
-            cache: CachedCapability::StatePayloadMismatch,
-            integrity_failed: true,
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use core::sync::atomic::{AtomicUsize, Ordering};
@@ -447,6 +437,8 @@ mod tests {
         Element, SemanticContribution, SemanticContributionContext, SemanticItem,
         SemanticNodeContribution, SemanticRole, Widget, WidgetActivation,
     };
+
+    use crate::mounted::DirtyPhases;
 
     use super::*;
 
@@ -485,6 +477,30 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct ActivationProbe {
+        activation_callbacks: Arc<AtomicUsize>,
+    }
+
+    impl Widget<()> for ActivationProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn activation(&self, (): &Self::State) -> WidgetActivation {
+            self.activation_callbacks.fetch_add(1, Ordering::SeqCst);
+            WidgetActivation::actionable(false)
+        }
+
+        fn semantics(
+            &self,
+            (): &Self::State,
+            _: SemanticContributionContext,
+        ) -> SemanticContribution {
+            SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::Button))
+        }
+    }
+
     fn probe(invalid: bool) -> (Probe, Arc<AtomicUsize>) {
         let semantic_callbacks = Arc::new(AtomicUsize::new(0));
         (
@@ -502,12 +518,20 @@ mod tests {
             .unwrap_or_else(|| unreachable!("mounted test tree has a root"))
     }
 
+    fn publication_plans(
+        tree: &MountedTree<()>,
+    ) -> (SurfaceCapabilityPlan, SemanticCapabilityPlan) {
+        let surface = tree.plan_surface_publication_capabilities(DirtyPhases::SEMANTICS);
+        let semantics = tree.plan_semantic_publication_capabilities(&surface);
+        (surface, semantics)
+    }
+
     #[test]
     fn unresolved_capabilities_are_staged_without_mutating_live_authority() {
         let (probe, semantic_callbacks) = probe(false);
         let (tree, _) = MountedTree::mount(Element::new(probe));
         let root = root_id(&tree);
-        let plan = tree.plan_semantic_publication_capabilities();
+        let (_surface_plan, plan) = publication_plans(&tree);
         let staged = &plan.owners[0];
 
         assert_eq!(semantic_callbacks.load(Ordering::SeqCst), 1);
@@ -552,7 +576,7 @@ mod tests {
             .clone();
         let live_count_before = tree.semantic_store.live_count();
 
-        let plan = tree.plan_semantic_publication_capabilities();
+        let (_surface_plan, plan) = publication_plans(&tree);
         assert_eq!(semantic_callbacks.load(Ordering::SeqCst), 1);
         assert_eq!(plan.owners[0].ordered_keys, vec![SemanticKey::PRIMARY]);
         assert_eq!(
@@ -573,7 +597,7 @@ mod tests {
             .node(&root)
             .unwrap_or_else(|| unreachable!("root remains mounted"))
             .focusability;
-        let plan = tree.plan_semantic_publication_capabilities();
+        let (surface_plan, plan) = publication_plans(&tree);
         let finalized = tree
             .finalize_semantic_publication(plan)
             .unwrap_or_else(|_| unreachable!("valid semantic plan finalizes"));
@@ -609,7 +633,60 @@ mod tests {
         ));
         assert!(matches!(
             live.caches.activation,
+            CachedCapability::Unresolved
+        ));
+
+        tree.commit_surface_publication_capabilities(surface_plan);
+        assert!(matches!(
+            tree.node(&root)
+                .unwrap_or_else(|| unreachable!("root remains mounted"))
+                .caches
+                .activation,
             CachedCapability::Ready(value) if value == WidgetActivation::actionable(true)
+        ));
+    }
+
+    #[test]
+    fn semantic_planning_reuses_the_surface_staged_activation_without_reentry() {
+        let activation_callbacks = Arc::new(AtomicUsize::new(0));
+        let (mut tree, _) = MountedTree::mount(Element::new(ActivationProbe {
+            activation_callbacks: Arc::clone(&activation_callbacks),
+        }));
+        let root = root_id(&tree);
+        let surface_plan = tree.plan_surface_publication_capabilities(DirtyPhases::SEMANTICS);
+        assert_eq!(activation_callbacks.load(Ordering::SeqCst), 1);
+
+        let semantic_plan = tree.plan_semantic_publication_capabilities(&surface_plan);
+        assert_eq!(activation_callbacks.load(Ordering::SeqCst), 1);
+        let finalized = tree
+            .finalize_semantic_publication(semantic_plan)
+            .unwrap_or_else(|_| unreachable!("valid semantic plan finalizes"));
+        assert_eq!(
+            finalized
+                .owner_facts()
+                .next()
+                .unwrap_or_else(|| unreachable!("root semantic facts are staged"))
+                .activation,
+            WidgetActivation::actionable(false)
+        );
+        let semantic_commit = finalized.commit_store();
+        tree.commit_semantic_publication(semantic_commit);
+        assert!(matches!(
+            tree.node(&root)
+                .unwrap_or_else(|| unreachable!("root remains mounted"))
+                .caches
+                .activation,
+            CachedCapability::Unresolved
+        ));
+
+        tree.commit_surface_publication_capabilities(surface_plan);
+        assert_eq!(activation_callbacks.load(Ordering::SeqCst), 1);
+        assert!(matches!(
+            tree.node(&root)
+                .unwrap_or_else(|| unreachable!("root remains mounted"))
+                .caches
+                .activation,
+            CachedCapability::Ready(value) if value == WidgetActivation::actionable(false)
         ));
     }
 
@@ -618,7 +695,7 @@ mod tests {
         let (probe, _) = probe(true);
         let (tree, _) = MountedTree::mount(Element::new(probe));
         let root = root_id(&tree);
-        let plan = tree.plan_semantic_publication_capabilities();
+        let (_surface_plan, plan) = publication_plans(&tree);
         let staged = &plan.owners[0];
 
         assert!(staged.contribution.roots().is_empty());
@@ -646,7 +723,7 @@ mod tests {
             .unwrap_or_else(|| unreachable!("root remains mounted"))
             .state_corrupted = true;
 
-        let plan = tree.plan_semantic_publication_capabilities();
+        let (_surface_plan, plan) = publication_plans(&tree);
         let staged = &plan.owners[0];
         assert!(staged.contribution.roots().is_empty());
         assert!(staged.ordered_keys.is_empty());

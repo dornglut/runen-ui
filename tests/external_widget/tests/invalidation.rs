@@ -5,7 +5,7 @@ use std::{cell::Cell, rc::Rc};
 use runenui_core::{
     ChildLayout, ChildLayoutWidget, Element, HitContribution, HitContributionContext,
     LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, SemanticContribution, SemanticContributionContext, StyleTokens,
+    PaintContributionContext, SemanticContribution, SemanticContributionContext, StyleEnvironment,
     UiApp, View, Widget, WidgetActivation, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure,
     WidgetUpdateContext,
 };
@@ -25,8 +25,8 @@ fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
     );
 }
 
-fn context(tokens: &StyleTokens) -> SurfaceBuildContext<'_> {
-    SurfaceBuildContext::new(tokens, LayoutConstraints::unbounded())
+fn context(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
+    SurfaceBuildContext::new(environment, LayoutConstraints::unbounded())
 }
 
 #[derive(Default, Debug)]
@@ -164,7 +164,7 @@ impl UiApp for CacheApp {
     }
 }
 
-fn mounted_cache() -> (Rc<Calls>, AppRuntime<CacheApp>, StyleTokens) {
+fn mounted_cache() -> (Rc<Calls>, AppRuntime<CacheApp>, StyleEnvironment) {
     let calls = Rc::new(Calls::default());
     let mut runtime = AppRuntime::<CacheApp>::mount(CacheState {
         invalidation: WidgetInvalidation::NONE,
@@ -177,22 +177,22 @@ fn mounted_cache() -> (Rc<Calls>, AppRuntime<CacheApp>, StyleTokens) {
         usize::MAX,
         usize::MAX,
     ));
-    (calls, runtime, StyleTokens::new())
+    (calls, runtime, StyleEnvironment::default())
 }
 
 fn publish(
     runtime: &mut AppRuntime<CacheApp>,
-    tokens: &StyleTokens,
+    environment: &StyleEnvironment,
 ) -> runenui_runtime::SurfacePublication {
     runtime
-        .publish_surface(&context(tokens))
+        .publish_surface(&context(environment))
         .unwrap_or_else(|_| unreachable!("cache publication is admitted"))
 }
 
 #[test]
 fn clean_and_paint_only_publication_skip_unrelated_work() {
-    let (calls, mut runtime, tokens) = mounted_cache();
-    let _ = publish(&mut runtime, &tokens);
+    let (calls, mut runtime, environment) = mounted_cache();
+    let _ = publish(&mut runtime, &environment);
     assert!(
         runtime
             .last_surface_phase_report()
@@ -210,7 +210,7 @@ fn clean_and_paint_only_publication_skip_unrelated_work() {
         ),
         (1, 1, 1, 1, 1, 1, 1)
     );
-    let _ = publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &environment);
     assert!(runtime.last_surface_phase_report().executed().is_empty());
     assert_eq!(calls.measure.get(), 1);
 
@@ -218,7 +218,7 @@ fn clean_and_paint_only_publication_skip_unrelated_work() {
         &mut runtime,
         CacheAction::Invalidate(WidgetInvalidation::PAINT),
     );
-    let _ = publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Paint]
@@ -231,13 +231,13 @@ fn clean_and_paint_only_publication_skip_unrelated_work() {
 
 #[test]
 fn layout_and_semantics_invalidation_execute_exact_dependencies() {
-    let (calls, mut runtime, tokens) = mounted_cache();
-    let _ = publish(&mut runtime, &tokens);
+    let (calls, mut runtime, environment) = mounted_cache();
+    let _ = publish(&mut runtime, &environment);
     process_one(
         &mut runtime,
         CacheAction::Invalidate(WidgetInvalidation::LAYOUT),
     );
-    let _ = publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[
@@ -262,7 +262,7 @@ fn layout_and_semantics_invalidation_execute_exact_dependencies() {
         &mut runtime,
         CacheAction::Invalidate(WidgetInvalidation::SEMANTICS),
     );
-    let _ = publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Semantics]
@@ -279,8 +279,8 @@ fn layout_and_semantics_invalidation_execute_exact_dependencies() {
 
 #[test]
 fn hit_invalidation_recomputes_only_hit_and_changes_targetability() {
-    let (calls, mut runtime, tokens) = mounted_cache();
-    let initial = publish(&mut runtime, &tokens);
+    let (calls, mut runtime, environment) = mounted_cache();
+    let initial = publish(&mut runtime, &environment);
     let point = LogicalPoint::new(1.0, 1.0).unwrap_or_else(|_| unreachable!());
     assert!(initial.hit_test_scene().target_at(point).is_none());
     let counts_before = (
@@ -293,7 +293,7 @@ fn hit_invalidation_recomputes_only_hit_and_changes_targetability() {
     );
 
     process_one(&mut runtime, CacheAction::SetHit(true));
-    let targetable = publish(&mut runtime, &tokens);
+    let targetable = publish(&mut runtime, &environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::HitTesting]
@@ -319,7 +319,7 @@ fn hit_invalidation_recomputes_only_hit_and_changes_targetability() {
     );
 
     process_one(&mut runtime, CacheAction::SetHit(false));
-    let pass_through = publish(&mut runtime, &tokens);
+    let pass_through = publish(&mut runtime, &environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::HitTesting]
@@ -329,13 +329,13 @@ fn hit_invalidation_recomputes_only_hit_and_changes_targetability() {
 
 #[test]
 fn diagnostics_and_interaction_invalidation_are_operationally_isolated() {
-    let (calls, mut runtime, tokens) = mounted_cache();
-    let _ = publish(&mut runtime, &tokens);
+    let (calls, mut runtime, environment) = mounted_cache();
+    let _ = publish(&mut runtime, &environment);
     process_one(
         &mut runtime,
         CacheAction::Invalidate(WidgetInvalidation::DIAGNOSTICS),
     );
-    let _ = publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &environment);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[SurfacePhase::Diagnostics]
@@ -351,7 +351,7 @@ fn diagnostics_and_interaction_invalidation_are_operationally_isolated() {
             .last_surface_phase_report()
             .contains(SurfacePhase::FocusValidation)
     );
-    let _ = publish(&mut runtime, &tokens);
+    let _ = publish(&mut runtime, &environment);
     assert!(
         !runtime
             .last_surface_phase_report()

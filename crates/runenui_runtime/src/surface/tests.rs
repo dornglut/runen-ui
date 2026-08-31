@@ -2,8 +2,9 @@ use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
     Color, Element, LogicalLength, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, StyleTokens, View, Widget, WidgetInvalidation,
-    WidgetMeasure, children, column, text,
+    SemanticNodeContribution, SemanticRole, StyleEnvironment, StyleIntent, StyleInteractionState,
+    StyleProperties, StyleRecipe, StyleRecipeId, StyleTheme, StyleTokens, View, Widget,
+    WidgetActivation, WidgetInvalidation, WidgetMeasure, children, column, text,
 };
 
 use super::{
@@ -35,6 +36,24 @@ impl Widget<()> for SemanticLayoutProbe {
         self.semantic_callbacks
             .set(self.semantic_callbacks.get() + 1);
         SemanticContribution::single(SemanticNodeContribution::primary(SemanticRole::Button))
+    }
+}
+
+#[derive(Debug)]
+struct ActivationStyleProbe {
+    enabled: Rc<Cell<bool>>,
+    activation_callbacks: Rc<Cell<usize>>,
+}
+
+impl Widget<()> for ActivationStyleProbe {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn activation(&self, (): &Self::State) -> WidgetActivation {
+        self.activation_callbacks
+            .set(self.activation_callbacks.get() + 1);
+        WidgetActivation::actionable(self.enabled.get())
     }
 }
 
@@ -71,8 +90,8 @@ fn assert_retained_reuse(before: &SurfaceCache, cache: Option<&SurfaceCache>, ex
 #[test]
 fn phase_function_counters_track_only_actual_execution_branches() {
     let (mut tree, _) = MountedTree::<()>::mount(text("phase").key("root").into_element());
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     reset_phase_function_counts();
 
@@ -97,8 +116,8 @@ fn phase_function_counters_track_only_actual_execution_branches() {
 #[test]
 fn clean_and_semantic_publications_reuse_all_retained_products() {
     let mut tree = reuse_tree();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let root = tree.publication_preorder_ids()[0].clone();
@@ -121,8 +140,8 @@ fn clean_and_semantic_publications_reuse_all_retained_products() {
 #[test]
 fn paint_and_diagnostic_publications_replace_only_owned_products() {
     let mut tree = reuse_tree();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let root = tree.publication_preorder_ids()[0].clone();
@@ -157,8 +176,8 @@ fn paint_and_diagnostic_publications_replace_only_owned_products() {
 #[test]
 fn layout_publication_replaces_layout_hit_paint_and_debug_products() {
     let mut tree = reuse_tree();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let root = tree.publication_preorder_ids()[0].clone();
@@ -188,8 +207,8 @@ fn layout_publication_replaces_layout_hit_paint_and_debug_products() {
 #[test]
 fn style_publication_replaces_style_paint_and_debug_products() {
     let mut tree = reuse_tree();
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let retained = staged_cache(cache.as_ref());
@@ -209,6 +228,76 @@ fn style_publication_replaces_style_paint_and_debug_products() {
         &retained,
         cache.as_ref(),
         [true, false, true, true, false, true, false],
+    );
+}
+
+#[test]
+fn disabled_style_uses_shared_activation_and_interaction_invalidation() {
+    let enabled = Rc::new(Cell::new(true));
+    let activation_callbacks = Rc::new(Cell::new(0));
+    let (mut tree, _) = MountedTree::<()>::mount(
+        Element::new(ActivationStyleProbe {
+            enabled: Rc::clone(&enabled),
+            activation_callbacks: Rc::clone(&activation_callbacks),
+        })
+        .key("root"),
+    );
+    let root = tree.publication_preorder_ids()[0].clone();
+    let recipe_id = StyleRecipeId::from_static("control")
+        .unwrap_or_else(|_| unreachable!("test recipe identifier is valid"));
+    let mut recipe = StyleRecipe::new(StyleProperties::EMPTY.with_background(Color::BLACK));
+    recipe
+        .define_interaction(
+            StyleInteractionState::Disabled,
+            StyleProperties::EMPTY.with_background(Color::WHITE),
+        )
+        .unwrap_or_else(|_| unreachable!("test recipe defines disabled once"));
+    let mut theme = StyleTheme::new(StyleTokens::new());
+    theme
+        .define_recipe(recipe_id.clone(), recipe)
+        .unwrap_or_else(|_| unreachable!("test theme defines recipe once"));
+    tree.node_mut(&root)
+        .unwrap_or_else(|| unreachable!("activation style probe remains mounted"))
+        .style = StyleIntent::EMPTY.with_recipe(recipe_id);
+
+    let environment = StyleEnvironment::new(theme);
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
+    let mut cache = None;
+    let (initial, _) = publish(&mut tree, &context, &mut cache);
+    assert_eq!(activation_callbacks.get(), 1);
+    assert_eq!(
+        initial
+            .frame()
+            .root()
+            .unwrap_or_else(|| unreachable!("initial publication has root"))
+            .computed_style()
+            .background(),
+        Some(Color::BLACK)
+    );
+
+    enabled.set(false);
+    let node = tree
+        .node_mut(&root)
+        .unwrap_or_else(|| unreachable!("activation style probe remains mounted"));
+    apply_invalidation(node, WidgetInvalidation::INTERACTION);
+    let (disabled, report) = publish(&mut tree, &context, &mut cache);
+    assert_eq!(activation_callbacks.get(), 2);
+    assert_eq!(
+        report.executed(),
+        &[
+            super::SurfacePhase::Style,
+            super::SurfacePhase::Paint,
+            super::SurfacePhase::Semantics,
+        ]
+    );
+    assert_eq!(
+        disabled
+            .frame()
+            .root()
+            .unwrap_or_else(|| unreachable!("disabled publication has root"))
+            .computed_style()
+            .background(),
+        Some(Color::WHITE)
     );
 }
 
@@ -233,8 +322,8 @@ fn isolated_phase_entry_points_match_truthful_reports() {
             .key("root")
             .into_element(),
     );
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     let root = tree.publication_preorder_ids()[0].clone();
@@ -315,11 +404,12 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
         })
         .key("root"),
     );
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
+    let interaction = super::SurfaceInteractionProjection::default();
 
-    let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
+    let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
         .unwrap_or_else(|_| unreachable!("initial semantic layout plan is valid"));
     let (first, _) = planned
         .semantic_candidate(None)
@@ -344,7 +434,7 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
         .unwrap_or_else(|| unreachable!("semantic layout probe remains mounted"));
     apply_invalidation(node, WidgetInvalidation::LAYOUT);
 
-    let planned = plan_mounted_surface_cached(&mut tree, &context, cache.as_ref())
+    let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
         .unwrap_or_else(|_| unreachable!("layout semantic plan is valid"));
     let (second, _) = planned
         .semantic_candidate(None)
@@ -371,8 +461,8 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
 #[test]
 fn structural_rebuild_enters_every_conservative_phase() {
     let (mut tree, _) = MountedTree::<()>::mount(text("old").key("root").into_element());
-    let tokens = StyleTokens::new();
-    let context = SurfaceBuildContext::new(&tokens, LayoutConstraints::unbounded());
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let _ = publish(&mut tree, &context, &mut cache);
     tree.reconcile(

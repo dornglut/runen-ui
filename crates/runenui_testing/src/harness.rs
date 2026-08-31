@@ -217,8 +217,9 @@ impl<App: UiApp> TestHarness<App> {
     /// Returns the ordinary runtime's publication refusal or terminal error.
     pub fn publish(&mut self) -> Result<&SurfacePublication, PublishSurfaceError> {
         let measurement = self.surface.measurement_provider();
-        let context = SurfaceBuildContext::tight(self.surface.style_tokens(), self.surface.size())
-            .with_measurement_provider(&measurement);
+        let context =
+            SurfaceBuildContext::tight(self.surface.style_environment(), self.surface.size())
+                .with_measurement_provider(&measurement);
         let publication = self.runtime.publish_surface(&context)?;
         Ok(self.publication.insert(publication))
     }
@@ -233,8 +234,9 @@ impl<App: UiApp> TestHarness<App> {
         &mut self,
         measurement_provider: &dyn MeasurementProvider,
     ) -> Result<&SurfacePublication, PublishSurfaceError> {
-        let context = SurfaceBuildContext::tight(self.surface.style_tokens(), self.surface.size())
-            .with_measurement_provider(measurement_provider);
+        let context =
+            SurfaceBuildContext::tight(self.surface.style_environment(), self.surface.size())
+                .with_measurement_provider(measurement_provider);
         let publication = self.runtime.publish_surface(&context)?;
         Ok(self.publication.insert(publication))
     }

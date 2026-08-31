@@ -5,8 +5,9 @@ use std::{cell::RefCell, rc::Rc};
 use runenui_core::{
     Element, ElementId, EventContext, EventPhase, HitContribution, HitContributionContext,
     LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PointerBoundaryKind,
-    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleTokens, SurfaceInputContext,
-    UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure, children, row,
+    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleEnvironment,
+    SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure, children,
+    row,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext, TraceRecordKind,
@@ -140,11 +141,11 @@ fn harness() -> Harness {
     let mut runtime = AppRuntime::<App>::mount(State {
         observations: Rc::clone(&observations),
     });
-    let tokens = StyleTokens::default();
+    let style_environment = StyleEnvironment::default();
     let size = LogicalSize::try_new(96.0, 48.0)
         .unwrap_or_else(|_| unreachable!("the test surface size is finite"));
     let publication = runtime
-        .publish_surface(&SurfaceBuildContext::tight(&tokens, size))
+        .publish_surface(&SurfaceBuildContext::tight(&style_environment, size))
         .unwrap_or_else(|_| unreachable!("the test surface publication is admitted"));
     let left_authored =
         ElementId::new("left").unwrap_or_else(|_| unreachable!("the test id is valid"));

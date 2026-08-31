@@ -2,8 +2,8 @@
 
 use runenui_core::{
     Color, Element, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PaintPrimitive, StyleTokens, UiApp, Widget,
-    WidgetMeasure,
+    PaintContributionContext, PaintContributionItem, PaintPrimitive, StyleEnvironment, UiApp,
+    Widget, WidgetMeasure,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -144,10 +144,10 @@ fn assert_close(actual: f32, expected: f32) {
 #[test]
 fn downstream_scene_preserves_basic_rect_literals_order_and_owner_placement() {
     let mut runtime = AppRuntime::<App>::mount(());
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::new(
-            &tokens,
+            &style_environment,
             LayoutConstraints::unbounded(),
         ))
         .unwrap_or_else(|_| unreachable!("external paint publication is admitted"));

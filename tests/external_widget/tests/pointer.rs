@@ -5,7 +5,7 @@ use std::{cell::RefCell, rc::Rc};
 use runenui_core::{
     Element, EventContext, EventPhase, HitContribution, HitContributionContext, LogicalDelta,
     LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PointerButton, PointerButtons,
-    PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleTokens,
+    PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleEnvironment,
     UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure,
 };
 use runenui_runtime::{AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext};
@@ -159,10 +159,10 @@ fn downstream_widget_uses_public_pointer_capture_boundary_and_wheel_protocol() {
         observations: Rc::clone(&observations),
     });
     settle(&mut runtime);
-    let tokens = StyleTokens::new();
+    let style_environment = StyleEnvironment::default();
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::tight(
-            &tokens,
+            &style_environment,
             LogicalSize::try_new(64.0, 64.0)
                 .unwrap_or_else(|_| unreachable!("the surface size is finite")),
         ))
