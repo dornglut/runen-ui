@@ -5,6 +5,7 @@
 //! private implementation dependencies and must not become public API authority.
 
 mod artifact;
+#[cfg(test)]
 mod layout_extract;
 mod source_identity;
 
@@ -15,9 +16,11 @@ use std::{
 };
 
 use parley::{
-    FontContext, LayoutContext,
+    FontContext,
     fontique::{Blob, Collection, CollectionOptions, SourceCache},
 };
+#[cfg(test)]
+use parley::LayoutContext;
 use runenui_core::{LogicalLength, ResourceRef};
 
 pub use artifact::{
@@ -114,6 +117,7 @@ impl Error for FontRegistrationError {}
 /// keeps only weak lookup bindings so dead logical resources can be reclaimed.
 pub struct TextSystem {
     font_context: FontContext,
+    #[cfg(test)]
     layout_context: LayoutContext,
     shaped_resources: HashMap<ResourceRef, Weak<ShapedTextResource>>,
     source_policy: FontSourcePolicy,
@@ -134,6 +138,7 @@ impl TextSystem {
         };
         Self {
             font_context,
+            #[cfg(test)]
             layout_context: LayoutContext::new(),
             shaped_resources: HashMap::new(),
             source_policy,
@@ -208,7 +213,7 @@ impl TextSystem {
         font_size: f32,
         constraints: TextConstraints,
     ) -> Option<TextArtifact> {
-        use parley::{Alignment, AlignmentOptions, FontFamily, Layout, StyleProperty};
+        use parley::{Alignment, AlignmentOptions, FontFamily, StyleProperty};
 
         let source_snapshot = self.source_snapshot();
         let mut builder =
@@ -216,7 +221,7 @@ impl TextSystem {
                 .ranged_builder(&mut self.font_context, text, 1.0, false);
         builder.push_default(StyleProperty::FontFamily(FontFamily::named(family)));
         builder.push_default(StyleProperty::FontSize(font_size));
-        let mut layout: Layout<()> = builder.build(text);
+        let mut layout = builder.build(text);
         layout.break_all_lines(constraints.max_inline().map(LogicalLength::get));
         layout.align(Alignment::Start, AlignmentOptions::default());
         layout_extract::extract_layout(&layout, source_snapshot, &mut self.shaped_resources)

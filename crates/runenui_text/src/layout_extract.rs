@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use parley::{Layout, PositionedLayoutItem};
+use parley::{Brush, Layout, PositionedLayoutItem};
 use runenui_core::{LogicalSize, ResourceKind, ResourceRef};
 
 use crate::{
@@ -11,8 +11,8 @@ use crate::{
     TextLine, TextLineMetrics, TextRun,
 };
 
-pub(crate) fn extract_layout(
-    layout: &Layout<()>,
+pub(crate) fn extract_layout<B: Brush>(
+    layout: &Layout<B>,
     source_snapshot: FontSourceSnapshot,
     resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
 ) -> Option<TextArtifact> {

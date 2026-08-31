@@ -20,6 +20,7 @@ pub struct TextArtifact {
 }
 
 impl TextArtifact {
+    #[cfg(test)]
     pub(crate) fn new(
         size: LogicalSize,
         source_snapshot: FontSourceSnapshot,
@@ -60,6 +61,7 @@ pub struct TextLine {
 }
 
 impl TextLine {
+    #[cfg(test)]
     pub(crate) fn new(
         text_range: Range<usize>,
         metrics: TextLineMetrics,
@@ -109,6 +111,7 @@ pub struct TextLineMetrics {
 }
 
 impl TextLineMetrics {
+    #[cfg(test)]
     pub(crate) fn from_finite(values: [f32; 9]) -> Option<Self> {
         values.iter().all(|value| value.is_finite()).then(|| Self {
             line_height: values[0],
@@ -191,6 +194,7 @@ pub struct TextRun {
 }
 
 impl TextRun {
+    #[cfg(test)]
     pub(crate) fn new(
         text_range: Range<usize>,
         origin_x: f32,
@@ -279,6 +283,7 @@ pub struct TextCluster {
 }
 
 impl TextCluster {
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         text_range: Range<usize>,
@@ -381,6 +386,7 @@ pub struct TextFontBinding {
 }
 
 impl TextFontBinding {
+    #[cfg(test)]
     pub(crate) fn new(
         data: Blob<u8>,
         face_index: u32,
@@ -451,6 +457,7 @@ pub struct TextGlyph {
 }
 
 impl TextGlyph {
+    #[cfg(test)]
     pub(crate) fn new(id: u32, x: f32, y: f32, advance: f32) -> Option<Self> {
         [x, y, advance]
             .iter()
@@ -493,6 +500,7 @@ pub struct ShapedTextResource {
 }
 
 impl ShapedTextResource {
+    #[cfg(test)]
     pub(crate) fn new(
         resource_ref: ResourceRef,
         font: TextFontBinding,
