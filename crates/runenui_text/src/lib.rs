@@ -48,7 +48,7 @@ impl FontSourceRevision {
 }
 
 /// Text-specific logical constraints independent of runtime layout types.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TextConstraints {
     max_inline: Option<LogicalLength>,
 }
