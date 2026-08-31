@@ -5,8 +5,9 @@
 //! private implementation dependencies and must not become public API authority.
 
 mod artifact;
-#[cfg(test)]
 mod layout_extract;
+mod parley_bridge;
+mod request;
 mod source_identity;
 
 use core::{error::Error, fmt};
@@ -15,10 +16,8 @@ use std::{
     sync::{Arc, Weak},
 };
 
-#[cfg(test)]
-use parley::LayoutContext;
 use parley::{
-    FontContext,
+    FontContext, LayoutContext,
     fontique::{Blob, Collection, CollectionOptions, SourceCache},
 };
 use runenui_core::{LogicalLength, ResourceRef};
@@ -27,6 +26,10 @@ pub use artifact::{
     ShapedTextLease, ShapedTextResource, TextArtifact, TextCluster, TextClusterFlag,
     TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics,
     TextRun,
+};
+pub use request::{
+    TextAlignment, TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap,
+    TextParagraphStyle, TextRequest, TextRequestError, TextWordBreak, TextWrapMode,
 };
 pub use source_identity::{FontSourceIdentity, FontSourceSnapshot};
 
@@ -110,6 +113,28 @@ impl fmt::Display for FontRegistrationError {
 
 impl Error for FontRegistrationError {}
 
+/// Failure while producing one immutable logical text artifact.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextLayoutError {
+    /// A future core generic family has no reviewed mapping in this text backend.
+    UnsupportedGenericFamily,
+    /// Parley produced non-finite or otherwise unrepresentable logical artifact facts.
+    InvalidArtifact,
+}
+
+impl fmt::Display for TextLayoutError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::UnsupportedGenericFamily => {
+                "text typography contains an unsupported generic font family"
+            }
+            Self::InvalidArtifact => "text layout produced an invalid logical artifact",
+        })
+    }
+}
+
+impl Error for TextLayoutError {}
+
 /// Coarse-grained renderer-neutral text-system authority.
 ///
 /// The underlying Parley/Fontique contexts are deliberately private. Consumers configure font
@@ -118,7 +143,6 @@ impl Error for FontRegistrationError {}
 /// keeps only weak lookup bindings so dead logical resources can be reclaimed.
 pub struct TextSystem {
     font_context: FontContext,
-    #[cfg(test)]
     layout_context: LayoutContext,
     shaped_resources: HashMap<ResourceRef, Weak<ShapedTextResource>>,
     source_policy: FontSourcePolicy,
@@ -139,7 +163,6 @@ impl TextSystem {
         };
         Self {
             font_context,
-            #[cfg(test)]
             layout_context: LayoutContext::new(),
             shaped_resources: HashMap::new(),
             source_policy,
@@ -164,6 +187,27 @@ impl TextSystem {
     #[must_use]
     pub const fn source_revision(&self) -> FontSourceRevision {
         self.source_revision
+    }
+
+    /// Produces the single immutable artifact used for logical measurement and later paint facts.
+    ///
+    /// The request contains only shaping/line-breaking inputs. Paint-only foreground state is not
+    /// part of this operation or shaped resource identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TextLayoutError`] when the reviewed private Parley mapping cannot represent an
+    /// input or when produced layout facts cannot be represented by RunenUI's finite artifact
+    /// contracts.
+    pub fn layout_text(&mut self, request: &TextRequest) -> Result<TextArtifact, TextLayoutError> {
+        let source_snapshot = self.source_snapshot();
+        parley_bridge::layout_text(
+            &mut self.font_context,
+            &mut self.layout_context,
+            &mut self.shaped_resources,
+            source_snapshot,
+            request,
+        )
     }
 
     /// Acquires a strong lifetime token for one live scale-independent shaped resource.
@@ -205,38 +249,27 @@ impl TextSystem {
         self.source_revision = next_revision;
         Ok(face_count)
     }
-
-    #[cfg(test)]
-    fn shape_fixture(
-        &mut self,
-        text: &str,
-        family: &str,
-        font_size: f32,
-        constraints: TextConstraints,
-    ) -> Option<TextArtifact> {
-        use parley::{Alignment, AlignmentOptions, FontFamily, StyleProperty};
-
-        let source_snapshot = self.source_snapshot();
-        let mut builder =
-            self.layout_context
-                .ranged_builder(&mut self.font_context, text, 1.0, false);
-        builder.push_default(StyleProperty::FontFamily(FontFamily::named(family)));
-        builder.push_default(StyleProperty::FontSize(font_size));
-        let mut layout = builder.build(text);
-        layout.break_all_lines(constraints.max_inline().map(LogicalLength::get));
-        layout.align(Alignment::Start, AlignmentOptions::default());
-        layout_extract::extract_layout(&layout, source_snapshot, &mut self.shaped_resources)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::error::Error;
 
-    use super::{FontSourcePolicy, FontSourceRevision, TextConstraints, TextSystem};
-    use runenui_core::{LogicalLength, ResourceKind};
+    use runenui_core::{FontFamily, LogicalLength, ResourceKind, Typography};
+
+    use super::{
+        FontSourcePolicy, FontSourceRevision, TextConstraints, TextLanguage, TextLanguageError,
+        TextMetricSpan, TextParagraphStyle, TextRequest, TextRequestError, TextSystem, TextWrapMode,
+    };
 
     const CANTARELL: &[u8] = include_bytes!("../tests/fixtures/Cantarell-Regular.ttf");
+
+    fn typography(size: f32) -> Result<Typography, Box<dyn Error>> {
+        Ok(Typography::new(
+            FontFamily::named("Cantarell")?,
+            LogicalLength::new(size)?,
+        ))
+    }
 
     #[test]
     fn independent_font_source_universes_never_alias_at_the_same_revision() {
@@ -271,19 +304,59 @@ mod tests {
     }
 
     #[test]
-    fn bundled_shaping_produces_one_measure_and_resource_artifact() -> Result<(), Box<dyn Error>> {
+    fn language_contract_canonicalizes_supported_prefix_and_rejects_discarded_subtags()
+    -> Result<(), Box<dyn Error>> {
+        let language = TextLanguage::new("EN_latn_us")?;
+        assert_eq!(language.as_str(), "en-Latn-US");
+        assert_eq!(
+            TextLanguage::new("en-US-posix"),
+            Err(TextLanguageError::UnsupportedSubtags)
+        );
+        assert_eq!(TextLanguage::new("e"), Err(TextLanguageError::Invalid));
+        Ok(())
+    }
+
+    #[test]
+    fn metric_spans_are_utf8_safe_non_overlapping_and_source_normalized()
+    -> Result<(), Box<dyn Error>> {
+        let base = typography(16.0)?;
+        let larger = typography(24.0)?;
+        let request = TextRequest::new("abc", base.clone(), TextConstraints::unbounded())
+            .try_with_metric_spans(vec![
+                TextMetricSpan::new(2..3, larger.clone()),
+                TextMetricSpan::new(0..1, larger.clone()),
+            ])?;
+        assert_eq!(request.metric_spans()[0].range(), 0..1);
+        assert_eq!(request.metric_spans()[1].range(), 2..3);
+
+        assert_eq!(
+            TextRequest::new("éx", base.clone(), TextConstraints::unbounded())
+                .try_with_metric_spans(vec![TextMetricSpan::new(1..2, larger.clone())]),
+            Err(TextRequestError::SpanNotCharBoundary { index: 0 })
+        );
+        assert_eq!(
+            TextRequest::new("abc", base, TextConstraints::unbounded()).try_with_metric_spans(vec![
+                TextMetricSpan::new(0..2, larger.clone()),
+                TextMetricSpan::new(1..3, larger),
+            ]),
+            Err(TextRequestError::OverlappingSpans)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn production_request_produces_one_measure_and_resource_artifact()
+    -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
         let faces = system.register_font_bytes(CANTARELL.to_vec())?;
         assert!(faces > 0);
 
-        let artifact = system
-            .shape_fixture(
-                "RunenUI shaping",
-                "Cantarell",
-                18.0,
-                TextConstraints::unbounded(),
-            )
-            .ok_or("fixture shaping must yield a valid logical artifact")?;
+        let request = TextRequest::new(
+            "RunenUI shaping",
+            typography(18.0)?,
+            TextConstraints::unbounded(),
+        );
+        let artifact = system.layout_text(&request)?;
 
         assert_eq!(artifact.source_snapshot(), &system.source_snapshot());
         assert!(artifact.size().width() > 0.0);
@@ -300,18 +373,63 @@ mod tests {
     }
 
     #[test]
+    fn metric_span_changes_shaped_metrics_without_paint_state()
+    -> Result<(), Box<dyn Error>> {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        system.register_font_bytes(CANTARELL.to_vec())?;
+        let request = TextRequest::new(
+            "small LARGE",
+            typography(14.0)?,
+            TextConstraints::unbounded(),
+        )
+        .try_with_metric_spans(vec![TextMetricSpan::new(6..11, typography(28.0)?)])?;
+        let artifact = system.layout_text(&request)?;
+        let sizes: Vec<f32> = artifact
+            .lines()
+            .iter()
+            .flat_map(|line| line.runs())
+            .map(|run| run.shaped_resource().font_size())
+            .collect();
+
+        assert!(sizes.iter().any(|size| (*size - 14.0).abs() <= f32::EPSILON));
+        assert!(sizes.iter().any(|size| (*size - 28.0).abs() <= f32::EPSILON));
+        Ok(())
+    }
+
+    #[test]
+    fn text_wrap_policy_controls_line_breaks_under_the_same_constraint()
+    -> Result<(), Box<dyn Error>> {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        system.register_font_bytes(CANTARELL.to_vec())?;
+        let width = LogicalLength::new(72.0)?;
+        let text = "one two three four five six";
+        let wrapped = system.layout_text(&TextRequest::new(
+            text,
+            typography(16.0)?,
+            TextConstraints::limited(width),
+        ))?;
+        let unwrapped = system.layout_text(
+            &TextRequest::new(text, typography(16.0)?, TextConstraints::limited(width))
+                .with_paragraph_style(
+                    TextParagraphStyle::default().with_wrap_mode(TextWrapMode::NoWrap),
+                ),
+        )?;
+
+        assert!(wrapped.lines().len() > 1);
+        assert_eq!(unwrapped.lines().len(), 1);
+        Ok(())
+    }
+
+    #[test]
     fn explicit_lease_preserves_retry_binding_and_dead_resources_are_reclaimable()
     -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
         system.register_font_bytes(CANTARELL.to_vec())?;
-        let artifact = system
-            .shape_fixture(
-                "retry safe",
-                "Cantarell",
-                16.0,
-                TextConstraints::unbounded(),
-            )
-            .ok_or("fixture shaping must yield a valid logical artifact")?;
+        let artifact = system.layout_text(&TextRequest::new(
+            "retry safe",
+            typography(16.0)?,
+            TextConstraints::unbounded(),
+        ))?;
         let resource = artifact.lines()[0].runs()[0].resource_ref().clone();
         let glyph_count = artifact.lines()[0].runs()[0]
             .shaped_resource()
