@@ -73,7 +73,7 @@ impl ComputedStyle {
         self.typography.as_ref()
     }
 
-    pub(crate) fn from_parts(
+    pub(crate) const fn from_parts(
         foreground: Option<Color>,
         background: Option<Color>,
         padding: Option<EdgeInsets>,

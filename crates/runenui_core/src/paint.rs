@@ -31,7 +31,7 @@ impl PaintContributionContext {
 
     #[doc(hidden)]
     #[must_use]
-    pub fn __runtime_new(local_size: LogicalSize, computed_style: ComputedStyle) -> Self {
+    pub const fn __runtime_new(local_size: LogicalSize, computed_style: ComputedStyle) -> Self {
         Self {
             local_size,
             computed_style,

@@ -161,7 +161,7 @@ pub struct StyleResolution {
 }
 
 impl StyleResolution {
-    fn new(
+    const fn new(
         computed_style: ComputedStyle,
         provenance: StyleProvenance,
         unresolved_tokens: Vec<UnresolvedStyleToken>,

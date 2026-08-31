@@ -211,7 +211,7 @@ impl FontObliqueAngle {
     /// # Errors
     ///
     /// Returns [`FontObliqueAngleError::NotFinite`] for NaN or infinity.
-    pub fn new(degrees: f32) -> Result<Self, FontObliqueAngleError> {
+    pub const fn new(degrees: f32) -> Result<Self, FontObliqueAngleError> {
         if degrees.is_finite() {
             Ok(Self(degrees))
         } else {
@@ -301,7 +301,7 @@ impl FontVariation {
     /// # Errors
     ///
     /// Returns [`FontVariationError::NotFinite`] when `value` is not finite.
-    pub fn new(tag: OpenTypeTag, value: f32) -> Result<Self, FontVariationError> {
+    pub const fn new(tag: OpenTypeTag, value: f32) -> Result<Self, FontVariationError> {
         if value.is_finite() {
             Ok(Self { tag, value })
         } else {
@@ -530,12 +530,13 @@ mod tests {
             FontObliqueAngle::new(f32::NEG_INFINITY),
             Err(FontObliqueAngleError::NotFinite)
         );
-        let angle = FontObliqueAngle::new(21.5).expect("finite fixture angle");
+        let angle = FontObliqueAngle::new(21.5)
+            .unwrap_or_else(|_| unreachable!("finite fixture angle"));
         assert_eq!(
             FontStyle::Oblique(Some(angle)),
             FontStyle::Oblique(Some(angle))
         );
-        assert_eq!(angle.degrees(), 21.5);
+        assert!((angle.degrees() - 21.5).abs() <= f32::EPSILON);
     }
 
     #[test]
@@ -568,7 +569,7 @@ mod tests {
         assert_eq!(typography.variations().len(), 2);
         assert_eq!(typography.variations()[0].tag().bytes(), *b"wdth");
         assert_eq!(typography.variations()[1].tag().bytes(), *b"wght");
-        assert_eq!(typography.variations()[1].value(), 540.0);
+        assert!((typography.variations()[1].value() - 540.0).abs() <= f32::EPSILON);
         Ok(())
     }
 }

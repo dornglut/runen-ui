@@ -115,7 +115,7 @@ impl<Action> Widget<Action> for TextWidget {
         }
     }
     fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        background_paint(context)
+        background_paint(&context)
     }
     fn semantics(
         &self,
@@ -306,7 +306,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         }
     }
     fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        background_paint(context)
+        background_paint(&context)
     }
     fn hit_test(&self, state: &Self::State, context: HitContributionContext) -> HitContribution {
         if state.actionable {
@@ -419,7 +419,7 @@ impl<Action> Widget<Action> for LinearContainerWidget {
         }
     }
     fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        background_paint(context)
+        background_paint(&context)
     }
     fn semantics(
         &self,
@@ -495,7 +495,7 @@ pub fn row<Action>(children: impl Views<Action>) -> Container<Action> {
     )
 }
 
-fn background_paint(context: PaintContributionContext) -> PaintContribution {
+fn background_paint(context: &PaintContributionContext) -> PaintContribution {
     context
         .computed_style()
         .background()
