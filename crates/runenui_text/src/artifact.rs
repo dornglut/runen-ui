@@ -181,6 +181,82 @@ impl TextLineMetrics {
     }
 }
 
+/// Logical inline direction selected by Unicode shaping.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextDirection {
+    LeftToRight,
+    RightToLeft,
+}
+
+impl TextDirection {
+    #[cfg(test)]
+    pub(crate) const fn from_rtl(rtl: bool) -> Self {
+        if rtl {
+            Self::RightToLeft
+        } else {
+            Self::LeftToRight
+        }
+    }
+
+    /// Returns whether the direction is right-to-left.
+    #[must_use]
+    pub const fn is_rtl(self) -> bool {
+        matches!(self, Self::RightToLeft)
+    }
+}
+
+/// One typed cluster classification flag.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextClusterFlag {
+    LigatureStart,
+    LigatureContinuation,
+    WordBoundary,
+    SoftLineBreak,
+    HardLineBreak,
+    SpaceOrNbsp,
+    Emoji,
+}
+
+impl TextClusterFlag {
+    const fn mask(self) -> u8 {
+        match self {
+            Self::LigatureStart => 1 << 0,
+            Self::LigatureContinuation => 1 << 1,
+            Self::WordBoundary => 1 << 2,
+            Self::SoftLineBreak => 1 << 3,
+            Self::HardLineBreak => 1 << 4,
+            Self::SpaceOrNbsp => 1 << 5,
+            Self::Emoji => 1 << 6,
+        }
+    }
+}
+
+/// Compact typed Unicode/shaping classifications for one cluster.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TextClusterFlags(u8);
+
+impl TextClusterFlags {
+    pub const NONE: Self = Self(0);
+
+    /// Sets or clears one typed cluster classification.
+    #[must_use]
+    pub const fn with(mut self, flag: TextClusterFlag, enabled: bool) -> Self {
+        let mask = flag.mask();
+        if enabled {
+            self.0 |= mask;
+        } else {
+            self.0 &= !mask;
+        }
+        self
+    }
+
+    /// Returns whether one typed classification is present.
+    #[must_use]
+    pub const fn contains(self, flag: TextClusterFlag) -> bool {
+        self.0 & flag.mask() != 0
+    }
+}
+
 /// One positioned logical shaped run within a line.
 #[derive(Clone, Debug)]
 pub struct TextRun {
@@ -188,7 +264,7 @@ pub struct TextRun {
     origin_x: f32,
     origin_y: f32,
     advance: f32,
-    rtl: bool,
+    direction: TextDirection,
     clusters: Arc<[TextCluster]>,
     shaped: Arc<ShapedTextResource>,
 }
@@ -200,7 +276,7 @@ impl TextRun {
         origin_x: f32,
         origin_y: f32,
         advance: f32,
-        rtl: bool,
+        direction: TextDirection,
         clusters: Vec<TextCluster>,
         shaped: Arc<ShapedTextResource>,
     ) -> Option<Self> {
@@ -212,7 +288,7 @@ impl TextRun {
                 origin_x,
                 origin_y,
                 advance,
-                rtl,
+                direction,
                 clusters: clusters.into(),
                 shaped,
             })
@@ -242,10 +318,16 @@ impl TextRun {
         self.advance
     }
 
+    /// Returns the logical inline direction selected by shaping.
+    #[must_use]
+    pub const fn direction(&self) -> TextDirection {
+        self.direction
+    }
+
     /// Returns whether this run has right-to-left directionality.
     #[must_use]
     pub const fn is_rtl(&self) -> bool {
-        self.rtl
+        self.direction.is_rtl()
     }
 
     /// Returns the run clusters in logical source order.
@@ -272,42 +354,23 @@ impl TextRun {
 pub struct TextCluster {
     text_range: Range<usize>,
     advance: f32,
-    rtl: bool,
-    ligature_start: bool,
-    ligature_continuation: bool,
-    word_boundary: bool,
-    soft_line_break: bool,
-    hard_line_break: bool,
-    space_or_nbsp: bool,
-    emoji: bool,
+    direction: TextDirection,
+    flags: TextClusterFlags,
 }
 
 impl TextCluster {
     #[cfg(test)]
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         text_range: Range<usize>,
         advance: f32,
-        rtl: bool,
-        ligature_start: bool,
-        ligature_continuation: bool,
-        word_boundary: bool,
-        soft_line_break: bool,
-        hard_line_break: bool,
-        space_or_nbsp: bool,
-        emoji: bool,
+        direction: TextDirection,
+        flags: TextClusterFlags,
     ) -> Option<Self> {
         advance.is_finite().then_some(Self {
             text_range,
             advance,
-            rtl,
-            ligature_start,
-            ligature_continuation,
-            word_boundary,
-            soft_line_break,
-            hard_line_break,
-            space_or_nbsp,
-            emoji,
+            direction,
+            flags,
         })
     }
 
@@ -323,52 +386,64 @@ impl TextCluster {
         self.advance
     }
 
+    /// Returns the logical inline direction selected by shaping.
+    #[must_use]
+    pub const fn direction(&self) -> TextDirection {
+        self.direction
+    }
+
+    /// Returns all typed Unicode/shaping classifications for this cluster.
+    #[must_use]
+    pub const fn flags(&self) -> TextClusterFlags {
+        self.flags
+    }
+
     /// Returns whether this cluster has right-to-left directionality.
     #[must_use]
     pub const fn is_rtl(&self) -> bool {
-        self.rtl
+        self.direction.is_rtl()
     }
 
     /// Returns whether this cluster begins a ligature.
     #[must_use]
     pub const fn is_ligature_start(&self) -> bool {
-        self.ligature_start
+        self.flags.contains(TextClusterFlag::LigatureStart)
     }
 
     /// Returns whether this cluster continues a ligature.
     #[must_use]
     pub const fn is_ligature_continuation(&self) -> bool {
-        self.ligature_continuation
+        self.flags.contains(TextClusterFlag::LigatureContinuation)
     }
 
     /// Returns whether this cluster begins a word boundary.
     #[must_use]
     pub const fn is_word_boundary(&self) -> bool {
-        self.word_boundary
+        self.flags.contains(TextClusterFlag::WordBoundary)
     }
 
     /// Returns whether this cluster is a soft line-break opportunity.
     #[must_use]
     pub const fn is_soft_line_break(&self) -> bool {
-        self.soft_line_break
+        self.flags.contains(TextClusterFlag::SoftLineBreak)
     }
 
     /// Returns whether this cluster carries a hard line break.
     #[must_use]
     pub const fn is_hard_line_break(&self) -> bool {
-        self.hard_line_break
+        self.flags.contains(TextClusterFlag::HardLineBreak)
     }
 
     /// Returns whether this cluster represents space or non-breaking space.
     #[must_use]
     pub const fn is_space_or_nbsp(&self) -> bool {
-        self.space_or_nbsp
+        self.flags.contains(TextClusterFlag::SpaceOrNbsp)
     }
 
     /// Returns whether this cluster is an emoji sequence.
     #[must_use]
     pub const fn is_emoji(&self) -> bool {
-        self.emoji
+        self.flags.contains(TextClusterFlag::Emoji)
     }
 }
 
@@ -551,7 +626,7 @@ pub struct ShapedTextLease {
 }
 
 impl ShapedTextLease {
-    pub(crate) fn new(shaped: Arc<ShapedTextResource>) -> Self {
+    pub(crate) const fn new(shaped: Arc<ShapedTextResource>) -> Self {
         Self { shaped }
     }
 

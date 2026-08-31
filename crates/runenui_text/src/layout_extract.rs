@@ -7,11 +7,11 @@ use parley::{Brush, Layout, PositionedLayoutItem};
 use runenui_core::{LogicalSize, ResourceKind, ResourceRef};
 
 use crate::{
-    FontSourceSnapshot, ShapedTextResource, TextArtifact, TextCluster, TextFontBinding, TextGlyph,
-    TextLine, TextLineMetrics, TextRun,
+    FontSourceSnapshot, ShapedTextResource, TextArtifact, TextCluster, TextClusterFlag,
+    TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics, TextRun,
 };
 
-pub(crate) fn extract_layout<B: Brush>(
+pub(super) fn extract_layout<B: Brush>(
     layout: &Layout<B>,
     source_snapshot: FontSourceSnapshot,
     resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
@@ -77,17 +77,22 @@ pub(crate) fn extract_layout<B: Brush>(
             let clusters = run
                 .clusters()
                 .map(|cluster| {
+                    let flags = TextClusterFlags::NONE
+                        .with(TextClusterFlag::LigatureStart, cluster.is_ligature_start())
+                        .with(
+                            TextClusterFlag::LigatureContinuation,
+                            cluster.is_ligature_continuation(),
+                        )
+                        .with(TextClusterFlag::WordBoundary, cluster.is_word_boundary())
+                        .with(TextClusterFlag::SoftLineBreak, cluster.is_soft_line_break())
+                        .with(TextClusterFlag::HardLineBreak, cluster.is_hard_line_break())
+                        .with(TextClusterFlag::SpaceOrNbsp, cluster.is_space_or_nbsp())
+                        .with(TextClusterFlag::Emoji, cluster.is_emoji());
                     TextCluster::new(
                         cluster.text_range(),
                         cluster.advance(),
-                        cluster.is_rtl(),
-                        cluster.is_ligature_start(),
-                        cluster.is_ligature_continuation(),
-                        cluster.is_word_boundary(),
-                        cluster.is_soft_line_break(),
-                        cluster.is_hard_line_break(),
-                        cluster.is_space_or_nbsp(),
-                        cluster.is_emoji(),
+                        TextDirection::from_rtl(cluster.is_rtl()),
+                        flags,
                     )
                 })
                 .collect::<Option<Vec<_>>>()?;
@@ -97,7 +102,7 @@ pub(crate) fn extract_layout<B: Brush>(
                 origin_x,
                 origin_y,
                 glyph_run.advance(),
-                run.is_rtl(),
+                TextDirection::from_rtl(run.is_rtl()),
                 clusters,
                 shaped,
             )?);

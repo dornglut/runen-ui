@@ -51,7 +51,7 @@ pub struct FontSourceSnapshot {
 }
 
 impl FontSourceSnapshot {
-    pub(crate) fn new(identity: FontSourceIdentity, revision: FontSourceRevision) -> Self {
+    pub(crate) const fn new(identity: FontSourceIdentity, revision: FontSourceRevision) -> Self {
         Self { identity, revision }
     }
 

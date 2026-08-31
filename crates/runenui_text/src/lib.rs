@@ -24,8 +24,8 @@ use parley::{
 use runenui_core::{LogicalLength, ResourceRef};
 
 pub use artifact::{
-    ShapedTextLease, ShapedTextResource, TextArtifact, TextCluster, TextFontBinding, TextGlyph,
-    TextLine, TextLineMetrics, TextRun,
+    ShapedTextLease, ShapedTextResource, TextArtifact, TextCluster, TextClusterFlag,
+    TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics, TextRun,
 };
 pub use source_identity::{FontSourceIdentity, FontSourceSnapshot};
 
@@ -230,6 +230,8 @@ impl TextSystem {
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+
     use super::{FontSourcePolicy, FontSourceRevision, TextConstraints, TextSystem};
     use runenui_core::{LogicalLength, ResourceKind};
 
@@ -246,17 +248,17 @@ mod tests {
     }
 
     #[test]
-    fn bundled_registration_advances_revision_without_replacing_source_identity() {
+    fn bundled_registration_advances_revision_without_replacing_source_identity()
+    -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
         let before = system.source_snapshot();
-        system
-            .register_font_bytes(CANTARELL.to_vec())
-            .unwrap_or_else(|error| panic!("Cantarell fixture registration failed: {error}"));
+        system.register_font_bytes(CANTARELL.to_vec())?;
         let after = system.source_snapshot();
 
         assert_eq!(before.identity(), after.identity());
         assert_eq!(before.revision(), FontSourceRevision::ZERO);
         assert_eq!(after.revision().get(), 1);
+        Ok(())
     }
 
     #[test]
@@ -268,11 +270,10 @@ mod tests {
     }
 
     #[test]
-    fn bundled_shaping_produces_one_measure_and_resource_artifact() {
+    fn bundled_shaping_produces_one_measure_and_resource_artifact()
+    -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
-        let faces = system
-            .register_font_bytes(CANTARELL.to_vec())
-            .unwrap_or_else(|error| panic!("Cantarell fixture registration failed: {error}"));
+        let faces = system.register_font_bytes(CANTARELL.to_vec())?;
         assert!(faces > 0);
 
         let artifact = system
@@ -282,7 +283,7 @@ mod tests {
                 18.0,
                 TextConstraints::unbounded(),
             )
-            .unwrap_or_else(|| panic!("fixture shaping must yield a valid logical artifact"));
+            .ok_or("fixture shaping must yield a valid logical artifact")?;
 
         assert_eq!(artifact.source_snapshot(), &system.source_snapshot());
         assert!(artifact.size().width() > 0.0);
@@ -291,18 +292,18 @@ mod tests {
             .lines()
             .first()
             .and_then(|line| line.runs().first())
-            .unwrap_or_else(|| panic!("fixture must produce a positioned shaped run"));
+            .ok_or("fixture must produce a positioned shaped run")?;
         assert_eq!(run.resource_ref().kind(), ResourceKind::ShapedTextRun);
         assert!(!run.shaped_resource().glyphs().is_empty());
         assert_eq!(run.shaped_resource().font().bytes(), CANTARELL);
+        Ok(())
     }
 
     #[test]
-    fn explicit_lease_preserves_retry_binding_and_dead_resources_are_reclaimable() {
+    fn explicit_lease_preserves_retry_binding_and_dead_resources_are_reclaimable()
+    -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
-        system
-            .register_font_bytes(CANTARELL.to_vec())
-            .unwrap_or_else(|error| panic!("Cantarell fixture registration failed: {error}"));
+        system.register_font_bytes(CANTARELL.to_vec())?;
         let artifact = system
             .shape_fixture(
                 "retry safe",
@@ -310,7 +311,7 @@ mod tests {
                 16.0,
                 TextConstraints::unbounded(),
             )
-            .unwrap_or_else(|| panic!("fixture shaping must yield a valid logical artifact"));
+            .ok_or("fixture shaping must yield a valid logical artifact")?;
         let resource = artifact.lines()[0].runs()[0].resource_ref().clone();
         let glyph_count = artifact.lines()[0].runs()[0]
             .shaped_resource()
@@ -318,7 +319,7 @@ mod tests {
             .len();
         let lease = system
             .lease_shaped_run(&resource)
-            .unwrap_or_else(|| panic!("artifact-backed resource must be leaseable"));
+            .ok_or("artifact-backed resource must be leaseable")?;
 
         drop(artifact);
         assert_eq!(lease.resource_ref(), &resource);
@@ -327,5 +328,6 @@ mod tests {
 
         drop(lease);
         assert!(system.lease_shaped_run(&resource).is_none());
+        Ok(())
     }
 }
