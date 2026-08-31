@@ -1,6 +1,7 @@
 use runenui_core::{
-    Element, FontFamily, GenericFontFamily, LogicalLength, StyleRecipeId, StyleVariantId, Typography,
-    TypographyToken, TypographyValue, View, Widget, button, children, column, row, text,
+    Element, FontFamily, GenericFontFamily, LogicalLength, StyleRecipeId, StyleVariantId,
+    Typography, TypographyToken, TypographyValue, View, Widget, button, children, column, row,
+    text,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -84,7 +85,10 @@ fn typography_is_publicly_authored_on_elements_and_builtins()
 
     let custom: Element<Action> = Element::new(Probe).typography(typography.clone());
     assert_eq!(
-        custom.style().typography().and_then(TypographyValue::as_literal),
+        custom
+            .style()
+            .typography()
+            .and_then(TypographyValue::as_literal),
         Some(&typography)
     );
 
@@ -96,7 +100,9 @@ fn typography_is_publicly_authored_on_elements_and_builtins()
     .into_element();
 
     assert_eq!(
-        root.style().typography().and_then(TypographyValue::as_literal),
+        root.style()
+            .typography()
+            .and_then(TypographyValue::as_literal),
         Some(&typography)
     );
     assert_eq!(
