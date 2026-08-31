@@ -2,7 +2,7 @@
 
 > **Category: Current architecture**
 
-This document describes the accepted current production style mechanism. M8A establishes deterministic environment, cascade, interaction-state, preference, inheritance, provenance, and invalidation behavior over the property families that are currently implemented truthfully. Production typography/text and responsive layout breadth remain M8B/M8C work.
+[ADR 0009](../adr/0009-production-style-layout-text-foundation.md) owns the accepted M8 architectural decisions. This document records the accepted current implementation of that architecture: M8A establishes deterministic environment, cascade, interaction-state, preference, inheritance, provenance, and invalidation behavior over the property families that are currently implemented truthfully. Production typography/text and responsive layout breadth remain M8B/M8C work.
 
 ## Ownership
 
@@ -42,7 +42,7 @@ Each property may be literal or use its typed token family. Property breadth is 
 
 The complete publication environment contains framework defaults, one theme with exact token content and typed recipes, explicit preference facts, and preference policy. A recipe contains a base property set, typed variant definitions, and framework interaction layers.
 
-Resolution is deterministic and property-local. A parent foreground, when present, is a bounded inherited seed. The production precedence above that seed is low to high:
+The current resolver implements ADR 0009's deterministic property-local cascade. A parent foreground, when present, is a bounded inherited seed. The accepted production precedence above that seed is low to high:
 
 ```text
 framework defaults
@@ -103,7 +103,7 @@ Preference/environment or interaction changes first invalidate style resolution 
 
 Typed Rust expressions remain the authoring form. `StyleIntent` may select one recipe, append variants in authored order, and set direct literal/token overrides. Built-in builders and `element!` use the same typed style intent rather than parallel styling languages.
 
-See [ADR 0001](../adr/0001-typed-token-authoring.md) for token-expression authoring and [ADR 0009](../adr/0009-production-style-layout-text-foundation.md) for the accepted M8 target architecture.
+See [ADR 0001](../adr/0001-typed-token-authoring.md) for token-expression authoring. ADR 0009 remains the canonical owner of the M8 architectural decisions summarized by this current-architecture document.
 
 ## Current limitations
 
