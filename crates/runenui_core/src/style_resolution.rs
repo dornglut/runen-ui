@@ -87,7 +87,7 @@ impl StyleProvenance {
 
     /// Adds synthetic typography provenance without assigning a production layer.
     #[must_use]
-    pub const fn with_typography(
+    pub fn with_typography(
         mut self,
         typography: StyleFieldProvenance<TypographyToken>,
     ) -> Self {
