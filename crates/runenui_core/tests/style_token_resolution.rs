@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use runenui_core::{
     Color, ColorToken, ComputedStyle, DuplicateTokenDefinition, EdgeInsets, IdentifierError,
     LogicalLength, Radius, RadiusToken, SpacingToken, StyleEnvironment, StyleIntent,
-    StyleInteractionFacts, StyleTokens, TokenId, color_token, radius_token,
+    StyleInteractionFacts, StyleTokens, TokenId, UnresolvedStyleToken, color_token, radius_token,
     resolve_style_in_environment, spacing_token, token_id,
 };
 
@@ -122,4 +122,36 @@ fn style_resolution_preserves_provenance() -> Result<(), DuplicateTokenDefinitio
     );
     assert!(resolution.is_fully_resolved());
     Ok(())
+}
+
+#[test]
+fn missing_tokens_diagnose_every_current_property() {
+    let foreground = color_token!("color.missing.foreground");
+    let background = color_token!("color.missing.background");
+    let padding = spacing_token!("space.missing.padding");
+    let radius = radius_token!("radius.missing");
+    let intent = StyleIntent::EMPTY
+        .with_foreground(foreground.clone())
+        .with_background(background.clone())
+        .with_padding(padding.clone())
+        .with_radius(radius.clone());
+    let environment = StyleEnvironment::default();
+    let resolution = resolve_style_in_environment(
+        &intent,
+        &environment,
+        StyleInteractionFacts::NONE,
+        None,
+    );
+
+    assert_eq!(resolution.computed_style(), ComputedStyle::EMPTY);
+    assert_eq!(
+        resolution.unresolved_tokens(),
+        &[
+            UnresolvedStyleToken::Foreground(foreground),
+            UnresolvedStyleToken::Background(background),
+            UnresolvedStyleToken::Padding(padding),
+            UnresolvedStyleToken::Radius(radius),
+        ]
+    );
+    assert!(!resolution.is_fully_resolved());
 }
