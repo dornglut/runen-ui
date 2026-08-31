@@ -218,8 +218,7 @@ mod tests {
     use super::{FontSourcePolicy, FontSourceRevision, TextConstraints, TextSystem};
     use runenui_core::{LogicalLength, ResourceKind};
 
-    const CANTARELL: &[u8] =
-        include_bytes!("../../runenui_render_wgpu/tests/fixtures/Cantarell-Regular.ttf");
+    const CANTARELL: &[u8] = include_bytes!("../tests/fixtures/Cantarell-Regular.ttf");
 
     #[test]
     fn font_source_policy_and_initial_revision_are_explicit() {
