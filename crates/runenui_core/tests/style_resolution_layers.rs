@@ -20,7 +20,7 @@ fn assert_foreground_resolution(
     environment: &StyleEnvironment,
     interaction: StyleInteractionFacts,
     expected_color: Color,
-    expected_layer: StyleResolutionLayer,
+    expected_layer: &StyleResolutionLayer,
 ) {
     let resolution = resolve_style_in_environment(intent, environment, interaction, None);
     assert_eq!(
@@ -29,8 +29,51 @@ fn assert_foreground_resolution(
     );
     assert_eq!(
         resolution.provenance().foreground_layer(),
-        Some(&expected_layer)
+        Some(expected_layer)
     );
+}
+
+struct PrecedenceFixture {
+    environment: StyleEnvironment,
+    recipe_id: StyleRecipeId,
+    first_variant: StyleVariantId,
+    second_variant: StyleVariantId,
+}
+
+fn precedence_fixture() -> Result<PrecedenceFixture, Box<dyn std::error::Error>> {
+    let recipe_id = recipe_id("control.precedence")?;
+    let first_variant = variant_id("first")?;
+    let second_variant = variant_id("second")?;
+    let mut recipe = StyleRecipe::new(StyleProperties::EMPTY.with_foreground(Color::rgb(2, 0, 0)));
+    recipe.define_variant(
+        first_variant.clone(),
+        StyleProperties::EMPTY.with_foreground(Color::rgb(3, 0, 0)),
+    )?;
+    recipe.define_variant(
+        second_variant.clone(),
+        StyleProperties::EMPTY.with_foreground(Color::rgb(4, 0, 0)),
+    )?;
+    for (state, value) in [
+        (StyleInteractionState::Hover, 5),
+        (StyleInteractionState::Focus, 6),
+        (StyleInteractionState::Active, 7),
+        (StyleInteractionState::Disabled, 8),
+    ] {
+        recipe.define_interaction(
+            state,
+            StyleProperties::EMPTY.with_foreground(Color::rgb(value, 0, 0)),
+        )?;
+    }
+    let mut theme = StyleTheme::new(StyleTokens::new());
+    theme.define_recipe(recipe_id.clone(), recipe)?;
+    let environment = StyleEnvironment::new(theme)
+        .with_framework_defaults(StyleProperties::EMPTY.with_foreground(Color::rgb(1, 0, 0)));
+    Ok(PrecedenceFixture {
+        environment,
+        recipe_id,
+        first_variant,
+        second_variant,
+    })
 }
 
 #[test]
@@ -105,40 +148,19 @@ fn precedence_and_provenance_are_property_local_and_deterministic()
 
 #[test]
 fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error::Error>> {
-    let recipe_id = recipe_id("control.precedence")?;
-    let first = variant_id("first")?;
-    let second = variant_id("second")?;
-    let mut recipe = StyleRecipe::new(StyleProperties::EMPTY.with_foreground(Color::rgb(2, 0, 0)));
-    recipe.define_variant(
-        first.clone(),
-        StyleProperties::EMPTY.with_foreground(Color::rgb(3, 0, 0)),
-    )?;
-    recipe.define_variant(
-        second.clone(),
-        StyleProperties::EMPTY.with_foreground(Color::rgb(4, 0, 0)),
-    )?;
-    for (state, value) in [
-        (StyleInteractionState::Hover, 5),
-        (StyleInteractionState::Focus, 6),
-        (StyleInteractionState::Active, 7),
-        (StyleInteractionState::Disabled, 8),
-    ] {
-        recipe.define_interaction(
-            state,
-            StyleProperties::EMPTY.with_foreground(Color::rgb(value, 0, 0)),
-        )?;
-    }
-    let mut theme = StyleTheme::new(StyleTokens::new());
-    theme.define_recipe(recipe_id.clone(), recipe)?;
-    let environment = StyleEnvironment::new(theme)
-        .with_framework_defaults(StyleProperties::EMPTY.with_foreground(Color::rgb(1, 0, 0)));
+    let PrecedenceFixture {
+        environment,
+        recipe_id,
+        first_variant,
+        second_variant,
+    } = precedence_fixture()?;
 
     assert_foreground_resolution(
         &StyleIntent::EMPTY,
         &environment,
         StyleInteractionFacts::NONE,
         Color::rgb(1, 0, 0),
-        StyleResolutionLayer::FrameworkDefault,
+        &StyleResolutionLayer::FrameworkDefault,
     );
 
     let recipe_intent = StyleIntent::EMPTY.with_recipe(recipe_id.clone());
@@ -147,25 +169,25 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
         &environment,
         StyleInteractionFacts::NONE,
         Color::rgb(2, 0, 0),
-        StyleResolutionLayer::ThemeRecipe(recipe_id.clone()),
+        &StyleResolutionLayer::ThemeRecipe(recipe_id),
     );
 
-    let first_variant_intent = recipe_intent.clone().with_variant(first.clone());
+    let first_variant_intent = recipe_intent.with_variant(first_variant.clone());
     assert_foreground_resolution(
         &first_variant_intent,
         &environment,
         StyleInteractionFacts::NONE,
         Color::rgb(3, 0, 0),
-        StyleResolutionLayer::Variant(first.clone()),
+        &StyleResolutionLayer::Variant(first_variant),
     );
 
-    let ordered_variants_intent = first_variant_intent.with_variant(second.clone());
+    let ordered_variants_intent = first_variant_intent.with_variant(second_variant.clone());
     assert_foreground_resolution(
         &ordered_variants_intent,
         &environment,
         StyleInteractionFacts::NONE,
         Color::rgb(4, 0, 0),
-        StyleResolutionLayer::Variant(second),
+        &StyleResolutionLayer::Variant(second_variant),
     );
 
     let hover = StyleInteractionFacts::NONE.with(StyleInteractionState::Hover, true);
@@ -174,7 +196,7 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
         &environment,
         hover,
         Color::rgb(5, 0, 0),
-        StyleResolutionLayer::Interaction(StyleInteractionState::Hover),
+        &StyleResolutionLayer::Interaction(StyleInteractionState::Hover),
     );
 
     let focus = hover.with(StyleInteractionState::Focus, true);
@@ -183,7 +205,7 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
         &environment,
         focus,
         Color::rgb(6, 0, 0),
-        StyleResolutionLayer::Interaction(StyleInteractionState::Focus),
+        &StyleResolutionLayer::Interaction(StyleInteractionState::Focus),
     );
 
     let active = focus.with(StyleInteractionState::Active, true);
@@ -192,7 +214,7 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
         &environment,
         active,
         Color::rgb(7, 0, 0),
-        StyleResolutionLayer::Interaction(StyleInteractionState::Active),
+        &StyleResolutionLayer::Interaction(StyleInteractionState::Active),
     );
 
     let disabled = active.with(StyleInteractionState::Disabled, true);
@@ -201,7 +223,7 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
         &environment,
         disabled,
         Color::rgb(8, 0, 0),
-        StyleResolutionLayer::Interaction(StyleInteractionState::Disabled),
+        &StyleResolutionLayer::Interaction(StyleInteractionState::Disabled),
     );
 
     let authored = ordered_variants_intent.with_foreground(Color::rgb(9, 0, 0));
@@ -210,7 +232,7 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
         &environment,
         disabled,
         Color::rgb(9, 0, 0),
-        StyleResolutionLayer::AuthoredOverride,
+        &StyleResolutionLayer::AuthoredOverride,
     );
 
     let preference_environment = environment
@@ -224,7 +246,7 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
         &preference_environment,
         disabled,
         Color::rgb(10, 0, 0),
-        StyleResolutionLayer::Preference(StylePreferenceKind::HighContrast),
+        &StyleResolutionLayer::Preference(StylePreferenceKind::HighContrast),
     );
     Ok(())
 }
