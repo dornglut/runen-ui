@@ -12,13 +12,13 @@ impl UiApp for PreferenceApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> impl View<Self::Action> {
+    fn root((): &Self::State) -> impl View<Self::Action> {
         text("preferences").foreground(Color::BLACK).key("root")
     }
 
     fn update(
-        _: &mut Self::State,
-        _: Self::Action,
+        (): &mut Self::State,
+        (): Self::Action,
     ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
     }
 }
