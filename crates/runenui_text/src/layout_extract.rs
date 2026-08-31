@@ -12,7 +12,7 @@ use crate::{
     TextRun,
 };
 
-fn extract_layout<B: Brush>(
+pub fn extract_layout<B: Brush>(
     layout: &Layout<B>,
     source_snapshot: FontSourceSnapshot,
     resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
