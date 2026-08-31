@@ -530,8 +530,8 @@ mod tests {
             FontObliqueAngle::new(f32::NEG_INFINITY),
             Err(FontObliqueAngleError::NotFinite)
         );
-        let angle = FontObliqueAngle::new(21.5)
-            .unwrap_or_else(|_| unreachable!("finite fixture angle"));
+        let angle =
+            FontObliqueAngle::new(21.5).unwrap_or_else(|_| unreachable!("finite fixture angle"));
         assert_eq!(
             FontStyle::Oblique(Some(angle)),
             FontStyle::Oblique(Some(angle))
