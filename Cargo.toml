@@ -3,6 +3,7 @@ resolver = "3"
 
 members = [
     "crates/runenui_core",
+    "crates/runenui_text",
     "crates/runenui_runtime",
     "crates/runenui_render_wgpu",
     "crates/runenui_winit",
