@@ -136,12 +136,8 @@ fn missing_tokens_diagnose_every_current_property() {
         .with_padding(padding.clone())
         .with_radius(radius.clone());
     let environment = StyleEnvironment::default();
-    let resolution = resolve_style_in_environment(
-        &intent,
-        &environment,
-        StyleInteractionFacts::NONE,
-        None,
-    );
+    let resolution =
+        resolve_style_in_environment(&intent, &environment, StyleInteractionFacts::NONE, None);
 
     assert_eq!(resolution.computed_style(), ComputedStyle::EMPTY);
     assert_eq!(
