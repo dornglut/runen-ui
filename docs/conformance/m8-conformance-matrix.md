@@ -2,16 +2,16 @@
 
 > **Category:** Target architecture
 >
-> **Status:** Accepted M8 target contract; all production rows blocked
+> **Status:** M8A owner-accepted; M8B, M8C, and M8D remain blocked
 >
 > **Milestone:** M8
 >
 > **Reviewed baseline:** `1a5af89c1886654d859f56d1d8afe3e46abdcf95`
 >
-> This matrix is the normative M8 target contract after the exact M8A0
-> architecture/conformance package was explicitly accepted by the repository owner,
-> squash-merged, and accepted-main validated. Acceptance freezes M8 obligations; it
-> does not promote any production row or claim M8 implementation capability.
+> The accepted M8 target contract remains normative. M8A is normative for its seven
+> owner-accepted rows after exact-head owner acceptance, squash merge, and
+> accepted-main validation. M8B, M8C, and M8D remain blocked until their own
+> accepted implementation and proof obligations land.
 
 [ADR 0009](../adr/0009-production-style-layout-text-foundation.md) owns M8
 architecture. M3 owns mounted runtime/layout authority and invalidation; M4 owns
@@ -21,18 +21,18 @@ integration. This matrix references inherited contracts rather than duplicating 
 
 ```text
 33 total unique rows
-0 owner-accepted
+7 owner-accepted
 0 implementation-complete
 0 proof-complete
-33 blocked
+26 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
 ```
 
-All rows are `Required`. Serial delivery after accepted M8A0 is M8A style
-resolution, M8B logical text plus SDF/MSDF realization, M8C production runtime
-layout/text feedback, then M8D integrated closure.
+All rows are `Required`. Serial M8 delivery is M8A style resolution, M8B logical
+text plus SDF/MSDF realization, M8C production runtime layout/text feedback, then
+M8D integrated closure.
 
 A second retained UI tree, renderer-owned shaping/layout, core/runtime renderer
 registries, private expected-layout models, ambient-system-font deterministic tests,
@@ -44,13 +44,13 @@ satisfy M8.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| M8STYLE-01 | Public authored/resolved style remains RunenUI-owned typed host-neutral vocabulary; no Taffy, Parley, renderer, native, CSS-parser, mounted, or backend type becomes public style authority. | Public-API/dependency corpus | Forbidden-type/dependency and second-style-authority audit | Style schema/provenance inspection | M8A | blocked | Required |
-| M8STYLE-02 | Resolution precedence is deterministic and property-local across framework defaults, theme recipe base, ordered variants, canonical interaction-state layers, authored overrides, and mandatory preference overrides. | Precedence permutation corpus | Hash/order-dependent, hidden cascade, or last-writer ambiguity corpus | Exact per-property provenance records | M8A | blocked | Required |
-| M8STYLE-03 | Themes, typed recipes, and variants resolve through explicit token environments; missing/invalid tokens diagnose without silent fallback, provider selection, or mutation of authored intent. | Theme/recipe/token corpus | Missing-token fallback/rebinding corpus | Token/provenance diagnostics | M8A | blocked | Required |
-| M8STYLE-04 | Hover/focus/active/disabled and other accepted transient style states derive from canonical mounted interaction state; applications do not maintain a second hidden interaction-style state machine. | Routed-state/style corpus | Duplicated app-state/direct-widget-state audit | Interaction-to-style provenance | M8A | blocked | Required |
-| M8STYLE-05 | High-contrast and reduced-motion inputs are explicit preference facts with deterministic policy effects; relevant preference changes invalidate only required dependent stages. | Preference matrix | Ignored preference, platform-global read, and invalidate-all audit | Preference revision/invalidation records | M8A | blocked | Required |
-| M8STYLE-06 | Only an explicit typed set of properties inherits through runtime topology; geometry/layout properties never inherit accidentally. | Parent/child inheritance corpus | Implicit CSS-like cascade and geometry-inheritance audit | Inheritance provenance | M8A | blocked | Required |
-| M8STYLE-07 | Resolved properties classify downstream effects so paint-only changes avoid reshaping/layout when safe while metric/layout changes invalidate every dependent text/layout/paint/hit/semantic fact required for correctness. | Differential invalidation corpus | Under-invalidation and unconditional invalidate-all corpus | Property-effect/invalidation reports | M8A | blocked | Required |
+| M8STYLE-01 | Public authored/resolved style remains RunenUI-owned typed host-neutral vocabulary; no Taffy, Parley, renderer, native, CSS-parser, mounted, or backend type becomes public style authority. | Public-API/dependency corpus | Forbidden-type/dependency and second-style-authority audit | Style schema/provenance inspection | M8A | owner-accepted | Required |
+| M8STYLE-02 | Resolution precedence is deterministic and property-local across framework defaults, theme recipe base, ordered variants, canonical interaction-state layers, authored overrides, and mandatory preference overrides. | Precedence permutation corpus | Hash/order-dependent, hidden cascade, or last-writer ambiguity corpus | Exact per-property provenance records | M8A | owner-accepted | Required |
+| M8STYLE-03 | Themes, typed recipes, and variants resolve through explicit token environments; missing/invalid tokens diagnose without silent fallback, provider selection, or mutation of authored intent. | Theme/recipe/token corpus | Missing-token fallback/rebinding corpus | Token/provenance diagnostics | M8A | owner-accepted | Required |
+| M8STYLE-04 | Hover/focus/active/disabled and other accepted transient style states derive from canonical mounted interaction state; applications do not maintain a second hidden interaction-style state machine. | Routed-state/style corpus | Duplicated app-state/direct-widget-state audit | Interaction-to-style provenance | M8A | owner-accepted | Required |
+| M8STYLE-05 | High-contrast and reduced-motion inputs are explicit preference facts with deterministic policy effects; relevant preference changes invalidate only required dependent stages. | Preference matrix | Ignored preference, platform-global read, and invalidate-all audit | Preference revision/invalidation records | M8A | owner-accepted | Required |
+| M8STYLE-06 | Only an explicit typed set of properties inherits through runtime topology; geometry/layout properties never inherit accidentally. | Parent/child inheritance corpus | Implicit CSS-like cascade and geometry-inheritance audit | Inheritance provenance | M8A | owner-accepted | Required |
+| M8STYLE-07 | Resolved properties classify downstream effects so paint-only changes avoid reshaping/layout when safe while metric/layout changes invalidate every dependent text/layout/paint/hit/semantic fact required for correctness. | Differential invalidation corpus | Under-invalidation and unconditional invalidate-all corpus | Property-effect/invalidation reports | M8A | owner-accepted | Required |
 
 ## M8B — production logical text and SDF/MSDF realization
 
