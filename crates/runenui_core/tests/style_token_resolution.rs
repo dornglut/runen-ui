@@ -5,8 +5,8 @@ use runenui_core::{
     Color, ColorToken, ComputedStyle, DuplicateTokenDefinition, EdgeInsets, FontFamily,
     GenericFontFamily, IdentifierError, LogicalLength, Radius, RadiusToken, SpacingToken,
     StyleEnvironment, StyleIntent, StyleInteractionFacts, StyleTokens, TokenId, Typography,
-    TypographyToken, UnresolvedStyleToken, color_token, radius_token,
-    resolve_style_in_environment, spacing_token, token_id, typography_token,
+    TypographyToken, UnresolvedStyleToken, color_token, radius_token, resolve_style_in_environment,
+    spacing_token, token_id, typography_token,
 };
 
 fn hash(value: &impl Hash) -> u64 {

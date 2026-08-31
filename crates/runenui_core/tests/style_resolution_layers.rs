@@ -259,8 +259,7 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
-fn typography_uses_the_existing_property_local_cascade()
--> Result<(), Box<dyn std::error::Error>> {
+fn typography_uses_the_existing_property_local_cascade() -> Result<(), Box<dyn std::error::Error>> {
     let recipe_id = recipe_id("text.body")?;
     let compact = variant_id("compact")?;
     let framework = typography(12.0)?;
@@ -268,18 +267,15 @@ fn typography_uses_the_existing_property_local_cascade()
     let variant_value = typography(16.0)?;
     let authored_value = typography(18.0)?;
 
-    let mut recipe = StyleRecipe::new(
-        StyleProperties::EMPTY.with_typography(recipe_value),
-    );
+    let mut recipe = StyleRecipe::new(StyleProperties::EMPTY.with_typography(recipe_value));
     recipe.define_variant(
         compact.clone(),
         StyleProperties::EMPTY.with_typography(variant_value.clone()),
     )?;
     let mut theme = StyleTheme::new(StyleTokens::new());
     theme.define_recipe(recipe_id.clone(), recipe)?;
-    let environment = StyleEnvironment::new(theme).with_framework_defaults(
-        StyleProperties::EMPTY.with_typography(framework),
-    );
+    let environment = StyleEnvironment::new(theme)
+        .with_framework_defaults(StyleProperties::EMPTY.with_typography(framework));
 
     let variant_resolution = resolve_style_in_environment(
         &StyleIntent::EMPTY
@@ -289,7 +285,10 @@ fn typography_uses_the_existing_property_local_cascade()
         StyleInteractionFacts::NONE,
         None,
     );
-    assert_eq!(variant_resolution.computed_style().typography(), Some(&variant_value));
+    assert_eq!(
+        variant_resolution.computed_style().typography(),
+        Some(&variant_value)
+    );
     assert_eq!(
         variant_resolution.provenance().typography_layer(),
         Some(&StyleResolutionLayer::Variant(compact))
@@ -403,8 +402,7 @@ fn missing_higher_precedence_token_masks_lower_value() -> Result<(), Box<dyn std
 }
 
 #[test]
-fn inheritance_is_bounded_to_foreground_and_typography()
--> Result<(), Box<dyn std::error::Error>> {
+fn inheritance_is_bounded_to_foreground_and_typography() -> Result<(), Box<dyn std::error::Error>> {
     let padding = EdgeInsets::all(LogicalLength::new(8.0)?);
     let radius = Radius::all(LogicalLength::new(6.0)?);
     let typography = typography(17.0)?;

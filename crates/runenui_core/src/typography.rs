@@ -476,7 +476,10 @@ fn upsert_by_tag<Value: Copy>(
     tag: impl Fn(Value) -> OpenTypeTag,
 ) {
     let value_tag = tag(value);
-    if let Some(existing) = values.iter_mut().find(|existing| tag(**existing) == value_tag) {
+    if let Some(existing) = values
+        .iter_mut()
+        .find(|existing| tag(**existing) == value_tag)
+    {
         *existing = value;
     } else {
         values.push(value);
@@ -496,7 +499,9 @@ mod tests {
     #[test]
     fn family_names_are_canonical_but_preserve_internal_whitespace() {
         assert_eq!(
-            FontFamilyName::new("Noto Sans").as_ref().map(FontFamilyName::as_str),
+            FontFamilyName::new("Noto Sans")
+                .as_ref()
+                .map(FontFamilyName::as_str),
             Ok("Noto Sans")
         );
         assert_eq!(FontFamilyName::new(""), Err(FontFamilyNameError::Empty));
@@ -515,7 +520,10 @@ mod tests {
         assert_eq!(FontWeight::new(f32::NAN), Err(FontWeightError::NotFinite));
         assert_eq!(FontWeight::new(0.0), Err(FontWeightError::OutOfRange));
         assert_eq!(FontWeight::new(1000.0).map(FontWeight::get), Ok(1000.0));
-        assert_eq!(FontWidth::new(f32::INFINITY), Err(FontWidthError::NotFinite));
+        assert_eq!(
+            FontWidth::new(f32::INFINITY),
+            Err(FontWidthError::NotFinite)
+        );
         assert_eq!(FontWidth::new(0.49), Err(FontWidthError::OutOfRange));
         assert_eq!(FontWidth::new(2.0).map(FontWidth::ratio), Ok(2.0));
         assert_eq!(
@@ -523,7 +531,10 @@ mod tests {
             Err(FontObliqueAngleError::NotFinite)
         );
         let angle = FontObliqueAngle::new(21.5).expect("finite fixture angle");
-        assert_eq!(FontStyle::Oblique(Some(angle)), FontStyle::Oblique(Some(angle)));
+        assert_eq!(
+            FontStyle::Oblique(Some(angle)),
+            FontStyle::Oblique(Some(angle))
+        );
         assert_eq!(angle.degrees(), 21.5);
     }
 
@@ -546,7 +557,10 @@ mod tests {
             .with_variation(FontVariation::new(wdth, 95.0)?)
             .with_variation(FontVariation::new(wght, 540.0)?);
 
-        assert_eq!(typography.families(), &[FontFamily::named("Cantarell")?, fallback]);
+        assert_eq!(
+            typography.families(),
+            &[FontFamily::named("Cantarell")?, fallback]
+        );
         assert_eq!(typography.features().len(), 2);
         assert_eq!(typography.features()[0].tag().bytes(), *b"kern");
         assert_eq!(typography.features()[1].tag().bytes(), *b"liga");

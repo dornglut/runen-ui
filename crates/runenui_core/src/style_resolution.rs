@@ -351,8 +351,7 @@ impl ResolutionBuilder {
             TypographyValue::Token(token) => {
                 if let Some(value) = tokens.typography(token) {
                     self.typography = Some(value.clone());
-                    self.provenance.typography =
-                        StyleFieldProvenance::ResolvedToken(token.clone());
+                    self.provenance.typography = StyleFieldProvenance::ResolvedToken(token.clone());
                 } else {
                     self.typography = None;
                     self.provenance.typography = StyleFieldProvenance::MissingToken(token.clone());
