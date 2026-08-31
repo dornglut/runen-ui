@@ -7,20 +7,20 @@ This document describes the **conceptual ownership and invariants** of RunenUI's
 `runenui_core` owns host-neutral public values and protocols that must be usable without a live runtime or platform/backend dependency. Its responsibilities include:
 
 - `UiApp` application state/action/update and host-neutral effect/subscription protocol values;
-- validated authored identity, style, geometry, transient `View`/`Element` authoring, and typed built-in view vocabulary;
+- validated authored identity, host-neutral style properties/tokens/themes/recipes/variants/preferences/resolution vocabulary, geometry, transient `View`/`Element` authoring, and typed built-in view vocabulary;
 - state-aware open widget/lifecycle/event contracts and typed action mapping;
 - runtime-local opaque protocol identity types such as mounted/semantic/surface/work identities, without allocation authority;
 - host-neutral pointer/keyboard/text/composition/focus/semantic command and semantic contribution/action vocabulary;
 - renderer- and host-neutral paint/hit contribution values, logical scene-composition geometry, opaque neutral resource identity/kind values, and image/shaped-run primitive placement values used by the accepted M6 scene protocol.
 
-Core must not own persistent mounted/semantic storage, live queue/scheduler state, runtime identity allocation, native window/accessibility objects, renderer backend handles, resource-provider/lookup/payload/cache authority, decoding/shaping/realization, application product state, or testing-only mutation seams.
+Core must not own persistent mounted/semantic storage, live queue/scheduler state, live interaction/focus/activation authority, runtime identity allocation, native window/accessibility objects, renderer backend handles, resource-provider/lookup/payload/cache authority, decoding/shaping/realization, application product state, or testing-only mutation seams.
 
 ## `runenui_runtime`
 
 `runenui_runtime` owns live framework authority:
 
 - runtime namespace and generational mounted/semantic storage;
-- reconciliation, lifecycle execution, focus/interaction state, and capability/invalidation caches;
+- reconciliation, lifecycle execution, canonical focus/interaction state, staged activation, production style-resolution orchestration/cache compatibility/invalidation, and capability/invalidation caches;
 - one generalized sequenced work queue, bounded pump, tasks/timers/subscriptions/host requests, clocks, wake/redraw, and shutdown;
 - exact routed command/input processing and defaults;
 - bounded canonical trace, deterministic export, and inert replay projections;
@@ -30,7 +30,7 @@ Core must not own persistent mounted/semantic storage, live queue/scheduler stat
 - scene requirements derived from canonical paint content and neutral consumer capability checks without resource lookup or backend-specific rewriting;
 - independent semantic publication/update/diagnostics and exact semantic-action admission/resolution.
 
-Runtime must not depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, resource-provider/lookup/payload/cache ownership, decoding/shaping/realization, or a second semantic/paint/hit/testing authority.
+Runtime must not depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, resource-provider/lookup/payload/cache ownership, decoding/shaping/realization, or a second interaction/style/semantic/paint/hit/testing authority.
 
 ## `runenui_render_wgpu`
 
@@ -42,7 +42,7 @@ Runtime must not depend on testing convenience, concrete native platforms, concr
 - the accepted image and bounded shaped-run resource payload realization path;
 - native-surface presentation, offscreen readback, and immutable renderer observation records.
 
-It consumes public core/runtime paint contracts and caller-owned resource payloads only. It must not own a native event loop, widget/semantic/mounted/layout authority, runtime mutation, application resource identity/bindings, production shaping/layout policy, or AccessKit/winit behavior.
+It consumes public core/runtime paint contracts and caller-owned resource payloads only. It must not own a native event loop, widget/semantic/mounted/layout authority, runtime mutation, application resource identity/bindings, production shaping/layout policy, style/theme resolution, or AccessKit/winit behavior.
 
 ## `runenui_winit`
 
@@ -53,13 +53,13 @@ It consumes public core/runtime paint contracts and caller-owned resource payloa
 - native mouse pointer/button lifetime translation, including multi-button and point-authority cancellation semantics;
 - AccessKit tree projection over ordinary semantic publication, adapter-owned stable native identity, and exact AccessKit-action to semantic-action translation.
 
-It consumes public core/runtime contracts plus winit/AccessKit types. It has no renderer dependency and must not own or hide a native window/event loop, runtime pump or mutation policy, wake/redraw/publication acknowledgement, displayed-frame authority, renderer configuration/recovery, presentation lifecycle, or application behavior.
+It consumes public core/runtime contracts plus winit/AccessKit types. It has no renderer dependency and must not own or hide a native window/event loop, runtime pump or mutation policy, wake/redraw/publication acknowledgement, displayed-frame authority, renderer configuration/recovery, presentation lifecycle, application behavior, or hidden style/theme authority. Explicit platform preference facts may be supplied through ordinary host-neutral style inputs without making the adapter the policy owner.
 
 ## `runenui_testing`
 
 `runenui_testing` is a downstream public convenience crate. `TestHarness<App>` composes ordinary public core/runtime APIs with deterministic logical time, bounded pumping/settling, deterministic surface publication, read-only observation of the latest ordinary public paint/hit publication products and exact input context, synthetic public interaction, and semantic queries/targets.
 
-It owns no live runtime queue, mounted/semantic store, identity allocation, publication state, trace authority, resource provider, or private mutation bridge. A test target retains exact public surface/semantic scope; testing must not reconstruct private mounted routing identity, fabricate scene/publication lineage, duplicate hit resolution, or guess a surface from a bare semantic ID.
+It owns no live runtime queue, mounted/semantic store, identity allocation, publication state, trace authority, resource provider, style authority, or private mutation bridge. A test target retains exact public surface/semantic scope; testing must not reconstruct private mounted routing identity, fabricate scene/publication lineage, duplicate hit resolution, or guess a surface from a bare semantic ID.
 
 ## Accepted native and external application integration
 
@@ -89,6 +89,10 @@ Widgets contribute platform-neutral owner-local semantic descriptions. Runtime v
 
 Exact semantic action requests are admitted against current published semantic authority and then converge on the canonical runtime command/default path. No second accessibility callback engine exists.
 
+### One style computation model
+
+Authored `StyleIntent`, explicit `StyleEnvironment` inputs, canonical transient interaction facts, and bounded parent inheritance converge through the core production resolver. Runtime supplies live interaction/activation facts, retains compatibility inputs, and drives invalidation; it does not maintain a second style tree or policy engine. Renderers and platform adapters consume or supply explicit neutral facts only and cannot reinterpret the style cascade.
+
 ### Staged publication
 
 Surface publication follows a staged transaction with admission, read-only/staged planning, candidate-dependent final preflight, and commit. Recoverable refusal or terminal failure must not expose a partial new RunenUI-owned publication state.
@@ -102,9 +106,10 @@ The current public surface is pre-1.0 and may change incompatibly when accepted 
 - broader production host/application ergonomics beyond the accepted proof-level native and external-host paths;
 - broader resource/font/shaping integration beyond the bounded accepted M7 resource realization proof;
 - multi-window lifecycle and supported platform-profile breadth;
-- production text shaping, international layout, editing, clipboard, and complete editable-text integration;
-- production responsive layout/style breadth and a complete standard control library.
+- production logical text shaping/international typography and SDF/MSDF realization (M8B), followed by editing/clipboard integration in M10;
+- production responsive layout and style-property breadth beyond the accepted M8A foreground/background/padding/radius mechanism (M8C);
+- a complete standard control library.
 
-M7 is accepted complete at proof maturity through the real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, reusable winit/AccessKit adapter, native Counter showcase, and winit-free downstream external-host proof over the same public contracts. M8 production style/layout/international-text foundations are the next durable roadmap owner. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
+M7 is accepted complete at proof maturity through the real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, reusable winit/AccessKit adapter, native Counter showcase, and winit-free downstream external-host proof over the same public contracts. M8A is accepted current behavior at partial styling maturity through the production host-neutral style environment, deterministic property-local cascade/provenance, canonical runtime interaction-state projection, explicit preferences, bounded inheritance, and exact downstream invalidation. M8B logical text plus SDF/MSDF realization is the next durable M8 slice; M8C production layout and M8D integrated closure remain later target work. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
 
 Do not infer support from a target ADR, design document, type name, or roadmap entry alone. Code/tests establish current behavior; source/Rustdoc establishes the exact public Rust surface.
