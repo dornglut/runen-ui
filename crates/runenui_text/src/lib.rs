@@ -25,7 +25,8 @@ use runenui_core::{LogicalLength, ResourceRef};
 
 pub use artifact::{
     ShapedTextLease, ShapedTextResource, TextArtifact, TextCluster, TextClusterFlag,
-    TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics, TextRun,
+    TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics,
+    TextRun,
 };
 pub use source_identity::{FontSourceIdentity, FontSourceSnapshot};
 
@@ -270,8 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn bundled_shaping_produces_one_measure_and_resource_artifact()
-    -> Result<(), Box<dyn Error>> {
+    fn bundled_shaping_produces_one_measure_and_resource_artifact() -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
         let faces = system.register_font_bytes(CANTARELL.to_vec())?;
         assert!(faces > 0);

@@ -8,7 +8,8 @@ use runenui_core::{LogicalSize, ResourceKind, ResourceRef};
 
 use crate::{
     FontSourceSnapshot, ShapedTextResource, TextArtifact, TextCluster, TextClusterFlag,
-    TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics, TextRun,
+    TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics,
+    TextRun,
 };
 
 pub(super) fn extract_layout<B: Brush>(
