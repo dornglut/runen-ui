@@ -336,10 +336,16 @@ impl fmt::Display for TextRequestError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidSpanRange { index } => {
-                write!(formatter, "text metric span {index} has an empty or reversed range")
+                write!(
+                    formatter,
+                    "text metric span {index} has an empty or reversed range"
+                )
             }
             Self::SpanOutOfBounds { index } => {
-                write!(formatter, "text metric span {index} exceeds the source text")
+                write!(
+                    formatter,
+                    "text metric span {index} exceeds the source text"
+                )
             }
             Self::SpanNotCharBoundary { index } => write!(
                 formatter,

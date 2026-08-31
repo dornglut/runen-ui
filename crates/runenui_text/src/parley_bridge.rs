@@ -1,5 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, sync::Weak};
 
+use parley::setting::Tag;
 use parley::{
     Alignment, AlignmentOptions, FontContext, FontFamily as ParleyFontFamily,
     FontFamilyName as ParleyFontFamilyName, FontFeature as ParleyFontFeature,
@@ -10,7 +11,6 @@ use parley::{
     OverflowWrap as ParleyOverflowWrap, StyleProperty, TextWrapMode as ParleyTextWrapMode,
     WordBreak as ParleyWordBreak,
 };
-use parley::setting::Tag;
 use runenui_core::{
     FontFamily, FontStyle, GenericFontFamily, LogicalLength, ResourceRef, Typography,
 };
@@ -45,11 +45,13 @@ pub(crate) fn layout_text(
         TextWordBreak::BreakAll => ParleyWordBreak::BreakAll,
         TextWordBreak::KeepAll => ParleyWordBreak::KeepAll,
     }));
-    builder.push_default(StyleProperty::OverflowWrap(match paragraph.overflow_wrap() {
-        TextOverflowWrap::Normal => ParleyOverflowWrap::Normal,
-        TextOverflowWrap::Anywhere => ParleyOverflowWrap::Anywhere,
-        TextOverflowWrap::BreakWord => ParleyOverflowWrap::BreakWord,
-    }));
+    builder.push_default(StyleProperty::OverflowWrap(
+        match paragraph.overflow_wrap() {
+            TextOverflowWrap::Normal => ParleyOverflowWrap::Normal,
+            TextOverflowWrap::Anywhere => ParleyOverflowWrap::Anywhere,
+            TextOverflowWrap::BreakWord => ParleyOverflowWrap::BreakWord,
+        },
+    ));
 
     for span in request.metric_spans() {
         let range = span.range();
@@ -101,10 +103,7 @@ fn typography_properties(
         .variations()
         .iter()
         .map(|variation| {
-            ParleyFontVariation::new(
-                Tag::from_bytes(variation.tag().bytes()),
-                variation.value(),
-            )
+            ParleyFontVariation::new(Tag::from_bytes(variation.tag().bytes()), variation.value())
         })
         .collect();
     let features = typography
@@ -132,9 +131,7 @@ fn typography_properties(
     ])
 }
 
-fn map_generic_family(
-    family: GenericFontFamily,
-) -> Result<ParleyGenericFamily, TextLayoutError> {
+fn map_generic_family(family: GenericFontFamily) -> Result<ParleyGenericFamily, TextLayoutError> {
     Ok(match family {
         GenericFontFamily::Serif => ParleyGenericFamily::Serif,
         GenericFontFamily::SansSerif => ParleyGenericFamily::SansSerif,

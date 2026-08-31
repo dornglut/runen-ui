@@ -259,7 +259,8 @@ mod tests {
 
     use super::{
         FontSourcePolicy, FontSourceRevision, TextConstraints, TextLanguage, TextLanguageError,
-        TextMetricSpan, TextParagraphStyle, TextRequest, TextRequestError, TextSystem, TextWrapMode,
+        TextMetricSpan, TextParagraphStyle, TextRequest, TextRequestError, TextSystem,
+        TextWrapMode,
     };
 
     const CANTARELL: &[u8] = include_bytes!("../tests/fixtures/Cantarell-Regular.ttf");
@@ -335,18 +336,20 @@ mod tests {
             Err(TextRequestError::SpanNotCharBoundary { index: 0 })
         );
         assert_eq!(
-            TextRequest::new("abc", base, TextConstraints::unbounded()).try_with_metric_spans(vec![
-                TextMetricSpan::new(0..2, larger.clone()),
-                TextMetricSpan::new(1..3, larger),
-            ]),
+            TextRequest::new("abc", base, TextConstraints::unbounded()).try_with_metric_spans(
+                vec![
+                    TextMetricSpan::new(0..2, larger.clone()),
+                    TextMetricSpan::new(1..3, larger),
+                ]
+            ),
             Err(TextRequestError::OverlappingSpans)
         );
         Ok(())
     }
 
     #[test]
-    fn production_request_produces_one_measure_and_resource_artifact()
-    -> Result<(), Box<dyn Error>> {
+    fn production_request_produces_one_measure_and_resource_artifact() -> Result<(), Box<dyn Error>>
+    {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
         let faces = system.register_font_bytes(CANTARELL.to_vec())?;
         assert!(faces > 0);
@@ -373,8 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn metric_span_changes_shaped_metrics_without_paint_state()
-    -> Result<(), Box<dyn Error>> {
+    fn metric_span_changes_shaped_metrics_without_paint_state() -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
         system.register_font_bytes(CANTARELL.to_vec())?;
         let request = TextRequest::new(
@@ -391,8 +393,16 @@ mod tests {
             .map(|run| run.shaped_resource().font_size())
             .collect();
 
-        assert!(sizes.iter().any(|size| (*size - 14.0).abs() <= f32::EPSILON));
-        assert!(sizes.iter().any(|size| (*size - 28.0).abs() <= f32::EPSILON));
+        assert!(
+            sizes
+                .iter()
+                .any(|size| (*size - 14.0).abs() <= f32::EPSILON)
+        );
+        assert!(
+            sizes
+                .iter()
+                .any(|size| (*size - 28.0).abs() <= f32::EPSILON)
+        );
         Ok(())
     }
 
