@@ -6,7 +6,8 @@ use crate::{
     PaintContribution, PaintContributionContext, PaintContributionItem, RadiusValue,
     SemanticAction, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
     SemanticRole, SemanticState, SemanticText, SpacingValue, StyleIntent, StyleRecipeId,
-    StyleVariantId, WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
+    StyleVariantId, TypographyValue, WidgetActivationContext, WidgetInvalidation,
+    WidgetUpdateContext,
     element::{
         AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View,
         Views, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetTextKind,
@@ -54,6 +55,11 @@ macro_rules! common_builder_methods {
         #[must_use]
         pub fn radius(mut self, value: impl Into<RadiusValue>) -> Self {
             self.style = self.style.with_radius(value);
+            self
+        }
+        #[must_use]
+        pub fn typography(mut self, value: impl Into<TypographyValue>) -> Self {
+            self.style = self.style.with_typography(value);
             self
         }
     };
