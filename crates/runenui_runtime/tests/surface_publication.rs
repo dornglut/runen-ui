@@ -472,6 +472,7 @@ fn root_style(publication: &runenui_runtime::SurfacePublication) -> runenui_core
         .root()
         .unwrap_or_else(|| unreachable!())
         .computed_style()
+        .clone()
 }
 
 #[test]
