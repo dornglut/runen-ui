@@ -46,9 +46,18 @@ pub(crate) fn extract_layout(
                 synthesis.skew(),
             )?;
 
+            let origin_x = glyph_run.offset();
+            let origin_y = glyph_run.baseline();
             let glyphs = glyph_run
-                .glyphs()
-                .map(|glyph| TextGlyph::new(glyph.id, glyph.x, glyph.y, glyph.advance))
+                .positioned_glyphs()
+                .map(|glyph| {
+                    TextGlyph::new(
+                        glyph.id,
+                        glyph.x - origin_x,
+                        glyph.y - origin_y,
+                        glyph.advance,
+                    )
+                })
                 .collect::<Option<Vec<_>>>()?;
 
             let resource_ref = ResourceRef::new(ResourceKind::ShapedTextRun);
@@ -80,8 +89,8 @@ pub(crate) fn extract_layout(
 
             runs.push(TextRun::new(
                 run.text_range(),
-                glyph_run.offset(),
-                glyph_run.baseline(),
+                origin_x,
+                origin_y,
                 glyph_run.advance(),
                 run.is_rtl(),
                 clusters,
