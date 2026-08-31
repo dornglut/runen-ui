@@ -2,16 +2,24 @@ use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 
 use runenui_core::{
-    Color, ColorToken, ComputedStyle, DuplicateTokenDefinition, EdgeInsets, IdentifierError,
-    LogicalLength, Radius, RadiusToken, SpacingToken, StyleEnvironment, StyleIntent,
-    StyleInteractionFacts, StyleTokens, TokenId, UnresolvedStyleToken, color_token, radius_token,
-    resolve_style_in_environment, spacing_token, token_id,
+    Color, ColorToken, ComputedStyle, DuplicateTokenDefinition, EdgeInsets, FontFamily,
+    GenericFontFamily, IdentifierError, LogicalLength, Radius, RadiusToken, SpacingToken,
+    StyleEnvironment, StyleIntent, StyleInteractionFacts, StyleTokens, TokenId, Typography,
+    TypographyToken, UnresolvedStyleToken, color_token, radius_token,
+    resolve_style_in_environment, spacing_token, token_id, typography_token,
 };
 
 fn hash(value: &impl Hash) -> u64 {
     let mut hasher = DefaultHasher::new();
     value.hash(&mut hasher);
     hasher.finish()
+}
+
+fn typography(size: u8) -> Typography {
+    Typography::new(
+        FontFamily::generic(GenericFontFamily::SansSerif),
+        LogicalLength::from(size),
+    )
 }
 
 #[test]
@@ -54,6 +62,10 @@ fn token_identity_and_lookup_are_textual_across_constructor_forms()
         RadiusToken::new(TokenId::new("radius.control")?),
         radius_token!("radius.control")
     );
+    assert_eq!(
+        TypographyToken::new(TokenId::new("type.body")?),
+        typography_token!("type.body")
+    );
 
     let mut tokens = StyleTokens::new();
     tokens.define_color(dynamic_color, Color::WHITE)?;
@@ -67,6 +79,14 @@ fn token_identity_and_lookup_are_textual_across_constructor_forms()
     assert_eq!(
         reverse.spacing(&SpacingToken::new(TokenId::new("space.content")?)),
         Some(EdgeInsets::all(LogicalLength::new(4.0)?))
+    );
+
+    let mut typography_tokens = StyleTokens::new();
+    let dynamic_typography = TypographyToken::new(TokenId::new("type.body")?);
+    typography_tokens.define_typography(dynamic_typography, typography(16))?;
+    assert_eq!(
+        typography_tokens.typography(&typography_token!("type.body")),
+        Some(&typography(16))
     );
 
     let mut duplicate = StyleTokens::new();
@@ -118,8 +138,28 @@ fn style_resolution_preserves_provenance() -> Result<(), DuplicateTokenDefinitio
     );
     assert_eq!(
         resolution.computed_style(),
-        ComputedStyle::EMPTY.with_foreground(Color::WHITE)
+        &ComputedStyle::EMPTY.with_foreground(Color::WHITE)
     );
+    assert!(resolution.is_fully_resolved());
+    Ok(())
+}
+
+#[test]
+fn typography_tokens_resolve_through_the_production_style_environment()
+-> Result<(), Box<dyn std::error::Error>> {
+    let token = typography_token!("type.body");
+    let expected = typography(18);
+    let mut tokens = StyleTokens::new();
+    tokens.define_typography(token.clone(), expected.clone())?;
+    let environment = StyleEnvironment::from_tokens(tokens);
+    let resolution = resolve_style_in_environment(
+        &StyleIntent::EMPTY.with_typography(token),
+        &environment,
+        StyleInteractionFacts::NONE,
+        None,
+    );
+
+    assert_eq!(resolution.computed_style().typography(), Some(&expected));
     assert!(resolution.is_fully_resolved());
     Ok(())
 }
@@ -130,16 +170,18 @@ fn missing_tokens_diagnose_every_current_property() {
     let background = color_token!("color.missing.background");
     let padding = spacing_token!("space.missing.padding");
     let radius = radius_token!("radius.missing");
+    let typography = typography_token!("type.missing");
     let intent = StyleIntent::EMPTY
         .with_foreground(foreground.clone())
         .with_background(background.clone())
         .with_padding(padding.clone())
-        .with_radius(radius.clone());
+        .with_radius(radius.clone())
+        .with_typography(typography.clone());
     let environment = StyleEnvironment::default();
     let resolution =
         resolve_style_in_environment(&intent, &environment, StyleInteractionFacts::NONE, None);
 
-    assert_eq!(resolution.computed_style(), ComputedStyle::EMPTY);
+    assert_eq!(resolution.computed_style(), &ComputedStyle::EMPTY);
     assert_eq!(
         resolution.unresolved_tokens(),
         &[
@@ -147,6 +189,7 @@ fn missing_tokens_diagnose_every_current_property() {
             UnresolvedStyleToken::Background(background),
             UnresolvedStyleToken::Padding(padding),
             UnresolvedStyleToken::Radius(radius),
+            UnresolvedStyleToken::Typography(typography),
         ]
     );
     assert!(!resolution.is_fully_resolved());

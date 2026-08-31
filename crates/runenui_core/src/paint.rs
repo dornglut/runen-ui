@@ -10,7 +10,7 @@ use crate::{
 /// The context deliberately contains no mounted identity, surface origin,
 /// raster scale, renderer/backend object, resource provider, semantic data, or
 /// publication history.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PaintContributionContext {
     local_size: LogicalSize,
     computed_style: ComputedStyle,
@@ -19,19 +19,19 @@ pub struct PaintContributionContext {
 impl PaintContributionContext {
     /// Returns the owner's final local logical size.
     #[must_use]
-    pub const fn local_size(self) -> LogicalSize {
+    pub const fn local_size(&self) -> LogicalSize {
         self.local_size
     }
 
     /// Returns the owner's resolved style facts.
     #[must_use]
-    pub const fn computed_style(self) -> ComputedStyle {
-        self.computed_style
+    pub const fn computed_style(&self) -> &ComputedStyle {
+        &self.computed_style
     }
 
     #[doc(hidden)]
     #[must_use]
-    pub const fn __runtime_new(local_size: LogicalSize, computed_style: ComputedStyle) -> Self {
+    pub fn __runtime_new(local_size: LogicalSize, computed_style: ComputedStyle) -> Self {
         Self {
             local_size,
             computed_style,

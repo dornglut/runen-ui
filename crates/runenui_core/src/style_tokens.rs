@@ -3,18 +3,22 @@
 use core::{error::Error, fmt};
 use std::collections::{BTreeMap, btree_map::Entry};
 
-use crate::{Color, ColorToken, EdgeInsets, Radius, RadiusToken, SpacingToken, TokenId};
+use crate::{
+    Color, ColorToken, EdgeInsets, Radius, RadiusToken, SpacingToken, TokenId, Typography,
+    TypographyToken,
+};
 
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Current style-token family.
 ///
 /// This enum is non-exhaustive because later style milestones may add families
-/// such as typography, borders, shadows, or opacity.
+/// such as borders, shadows, or opacity.
 pub enum TokenFamily {
     Color,
     Spacing,
     Radius,
+    Typography,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -52,12 +56,16 @@ pub struct StyleTokens {
     colors: BTreeMap<ColorToken, Color>,
     spacing: BTreeMap<SpacingToken, EdgeInsets>,
     radii: BTreeMap<RadiusToken, Radius>,
+    typography: BTreeMap<TypographyToken, Typography>,
     revision: u64,
 }
 
 impl PartialEq for StyleTokens {
     fn eq(&self, other: &Self) -> bool {
-        self.colors == other.colors && self.spacing == other.spacing && self.radii == other.radii
+        self.colors == other.colors
+            && self.spacing == other.spacing
+            && self.radii == other.radii
+            && self.typography == other.typography
     }
 }
 
@@ -130,6 +138,27 @@ impl StyleTokens {
         Ok(())
     }
 
+    /// Defines a metric typography token without replacement.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DuplicateTokenDefinition`] if the typography token already exists.
+    pub fn define_typography(
+        &mut self,
+        token: TypographyToken,
+        value: Typography,
+    ) -> Result<(), DuplicateTokenDefinition> {
+        define(
+            &mut self.typography,
+            token,
+            value,
+            TokenFamily::Typography,
+            TypographyToken::id,
+        )?;
+        self.advance_revision();
+        Ok(())
+    }
+
     #[must_use]
     pub fn color(&self, token: &ColorToken) -> Option<Color> {
         self.colors.get(token).copied()
@@ -143,8 +172,15 @@ impl StyleTokens {
         self.radii.get(token).copied()
     }
     #[must_use]
+    pub fn typography(&self, token: &TypographyToken) -> Option<&Typography> {
+        self.typography.get(token)
+    }
+    #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.colors.is_empty() && self.spacing.is_empty() && self.radii.is_empty()
+        self.colors.is_empty()
+            && self.spacing.is_empty()
+            && self.radii.is_empty()
+            && self.typography.is_empty()
     }
 
     /// Monotonic diagnostic revision for callers that want a cheap change hint.

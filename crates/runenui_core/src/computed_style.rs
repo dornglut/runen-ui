@@ -1,13 +1,14 @@
 //! Runtime-resolved host-neutral style data.
 
-use crate::{Color, EdgeInsets, Radius};
+use crate::{Color, EdgeInsets, Radius, Typography};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ComputedStyle {
     foreground: Option<Color>,
     background: Option<Color>,
     padding: Option<EdgeInsets>,
     radius: Option<Radius>,
+    typography: Option<Typography>,
 }
 
 impl ComputedStyle {
@@ -16,6 +17,7 @@ impl ComputedStyle {
         background: None,
         padding: None,
         radius: None,
+        typography: None,
     };
     #[must_use]
     pub const fn is_empty(&self) -> bool {
@@ -23,6 +25,7 @@ impl ComputedStyle {
             && self.background.is_none()
             && self.padding.is_none()
             && self.radius.is_none()
+            && self.typography.is_none()
     }
     #[must_use]
     pub const fn with_foreground(mut self, value: Color) -> Self {
@@ -45,6 +48,11 @@ impl ComputedStyle {
         self
     }
     #[must_use]
+    pub fn with_typography(mut self, value: Typography) -> Self {
+        self.typography = Some(value);
+        self
+    }
+    #[must_use]
     pub const fn foreground(&self) -> Option<Color> {
         self.foreground
     }
@@ -60,18 +68,24 @@ impl ComputedStyle {
     pub const fn radius(&self) -> Option<Radius> {
         self.radius
     }
+    #[must_use]
+    pub const fn typography(&self) -> Option<&Typography> {
+        self.typography.as_ref()
+    }
 
-    pub(crate) const fn from_parts(
+    pub(crate) fn from_parts(
         foreground: Option<Color>,
         background: Option<Color>,
         padding: Option<EdgeInsets>,
         radius: Option<Radius>,
+        typography: Option<Typography>,
     ) -> Self {
         Self {
             foreground,
             background,
             padding,
             radius,
+            typography,
         }
     }
 }

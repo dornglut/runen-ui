@@ -94,14 +94,14 @@ pub(super) fn resolve_styles<Action>(
         let parent = node
             .parent
             .as_ref()
-            .and_then(|parent| computed_by_id.get(parent).copied());
+            .and_then(|parent| computed_by_id.get(parent));
         let interaction = interaction.facts_for(&node.id).with(
             StyleInteractionState::Disabled,
             !capabilities.activation_at(position, &node.id).enabled(),
         );
         let resolution =
             resolve_style_in_environment(&mounted.style, environment, interaction, parent);
-        computed_by_id.insert(node.id.clone(), resolution.computed_style());
+        computed_by_id.insert(node.id.clone(), resolution.computed_style().clone());
         resolutions.push(resolution);
     }
     let report = SurfaceStyleReport::new(
@@ -225,7 +225,7 @@ pub(super) fn paint_contexts(
         .iter()
         .zip(&styles.resolutions)
         .map(|(bounds, style)| {
-            PaintContributionContext::__runtime_new(bounds.size(), style.computed_style())
+            PaintContributionContext::__runtime_new(bounds.size(), style.computed_style().clone())
         })
         .collect()
 }

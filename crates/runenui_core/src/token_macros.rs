@@ -35,3 +35,11 @@ macro_rules! radius_token {
         $crate::RadiusToken::new($crate::token_id!($value))
     };
 }
+
+/// Creates a compile-time-validated typed typography-token reference.
+#[macro_export]
+macro_rules! typography_token {
+    ($value:literal) => {
+        $crate::TypographyToken::new($crate::token_id!($value))
+    };
+}

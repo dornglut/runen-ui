@@ -4,7 +4,7 @@ use crate::{
     Color, ColorToken, ColorValue, ComputedStyle, EdgeInsets, Radius, RadiusToken, RadiusValue,
     SpacingToken, SpacingValue, StyleEnvironment, StyleIntent, StyleInteractionFacts,
     StyleInteractionState, StylePreferenceKind, StyleProperties, StyleRecipeId, StyleTokens,
-    StyleVariantId,
+    StyleVariantId, Typography, TypographyToken, TypographyValue,
 };
 
 /// Exact precedence layer that last attempted to define one property.
@@ -42,6 +42,8 @@ pub struct StyleProvenance {
     padding_layer: Option<StyleResolutionLayer>,
     radius: StyleFieldProvenance<RadiusToken>,
     radius_layer: Option<StyleResolutionLayer>,
+    typography: StyleFieldProvenance<TypographyToken>,
+    typography_layer: Option<StyleResolutionLayer>,
 }
 
 impl StyleProvenance {
@@ -54,6 +56,8 @@ impl StyleProvenance {
         padding_layer: None,
         radius: StyleFieldProvenance::Absent,
         radius_layer: None,
+        typography: StyleFieldProvenance::Absent,
+        typography_layer: None,
     };
 
     /// Creates value-source provenance without assigning production layers.
@@ -76,7 +80,19 @@ impl StyleProvenance {
             padding_layer: None,
             radius,
             radius_layer: None,
+            typography: StyleFieldProvenance::Absent,
+            typography_layer: None,
         }
+    }
+
+    /// Adds synthetic typography provenance without assigning a production layer.
+    #[must_use]
+    pub const fn with_typography(
+        mut self,
+        typography: StyleFieldProvenance<TypographyToken>,
+    ) -> Self {
+        self.typography = typography;
+        self
     }
 
     #[must_use]
@@ -111,6 +127,14 @@ impl StyleProvenance {
     pub const fn radius_layer(&self) -> Option<&StyleResolutionLayer> {
         self.radius_layer.as_ref()
     }
+    #[must_use]
+    pub const fn typography(&self) -> &StyleFieldProvenance<TypographyToken> {
+        &self.typography
+    }
+    #[must_use]
+    pub const fn typography_layer(&self) -> Option<&StyleResolutionLayer> {
+        self.typography_layer.as_ref()
+    }
 }
 
 #[non_exhaustive]
@@ -120,6 +144,7 @@ pub enum UnresolvedStyleToken {
     Background(ColorToken),
     Padding(SpacingToken),
     Radius(RadiusToken),
+    Typography(TypographyToken),
 }
 
 #[non_exhaustive]
@@ -139,7 +164,7 @@ pub struct StyleResolution {
 }
 
 impl StyleResolution {
-    const fn new(
+    fn new(
         computed_style: ComputedStyle,
         provenance: StyleProvenance,
         unresolved_tokens: Vec<UnresolvedStyleToken>,
@@ -154,8 +179,8 @@ impl StyleResolution {
     }
 
     #[must_use]
-    pub const fn computed_style(&self) -> ComputedStyle {
-        self.computed_style
+    pub const fn computed_style(&self) -> &ComputedStyle {
+        &self.computed_style
     }
     #[must_use]
     pub const fn provenance(&self) -> &StyleProvenance {
@@ -181,6 +206,7 @@ struct ResolutionBuilder {
     background: Option<Color>,
     padding: Option<EdgeInsets>,
     radius: Option<Radius>,
+    typography: Option<Typography>,
     provenance: StyleProvenance,
     unresolved_tokens: Vec<UnresolvedStyleToken>,
     diagnostics: Vec<StyleResolutionDiagnostic>,
@@ -203,7 +229,10 @@ impl ResolutionBuilder {
             self.apply_padding(value, layer.clone(), tokens);
         }
         if let Some(value) = properties.radius() {
-            self.apply_radius(value, layer, tokens);
+            self.apply_radius(value, layer.clone(), tokens);
+        }
+        if let Some(value) = properties.typography() {
+            self.apply_typography(value, layer, tokens);
         }
     }
 
@@ -307,6 +336,32 @@ impl ResolutionBuilder {
         }
     }
 
+    fn apply_typography(
+        &mut self,
+        value: &TypographyValue,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        self.provenance.typography_layer = Some(layer);
+        match value {
+            TypographyValue::Literal(value) => {
+                self.typography = Some(value.clone());
+                self.provenance.typography = StyleFieldProvenance::Literal;
+            }
+            TypographyValue::Token(token) => {
+                if let Some(value) = tokens.typography(token) {
+                    self.typography = Some(value.clone());
+                    self.provenance.typography =
+                        StyleFieldProvenance::ResolvedToken(token.clone());
+                } else {
+                    self.typography = None;
+                    self.provenance.typography = StyleFieldProvenance::MissingToken(token.clone());
+                    self.record_missing(UnresolvedStyleToken::Typography(token.clone()));
+                }
+            }
+        }
+    }
+
     fn record_missing(&mut self, token: UnresolvedStyleToken) {
         self.unresolved_tokens.push(token.clone());
         self.diagnostics
@@ -315,7 +370,13 @@ impl ResolutionBuilder {
 
     fn finish(self) -> StyleResolution {
         StyleResolution::new(
-            ComputedStyle::from_parts(self.foreground, self.background, self.padding, self.radius),
+            ComputedStyle::from_parts(
+                self.foreground,
+                self.background,
+                self.padding,
+                self.radius,
+                self.typography,
+            ),
             self.provenance,
             self.unresolved_tokens,
             self.diagnostics,
@@ -329,15 +390,22 @@ pub fn resolve_style_in_environment(
     intent: &StyleIntent,
     environment: &StyleEnvironment,
     interaction: StyleInteractionFacts,
-    parent: Option<ComputedStyle>,
+    parent: Option<&ComputedStyle>,
 ) -> StyleResolution {
     let tokens = environment.theme().tokens();
     let mut builder = ResolutionBuilder::default();
 
-    if let Some(foreground) = parent.and_then(|style| style.foreground()) {
-        builder.foreground = Some(foreground);
-        builder.provenance.foreground = StyleFieldProvenance::Inherited;
-        builder.provenance.foreground_layer = Some(StyleResolutionLayer::Inherited);
+    if let Some(parent) = parent {
+        if let Some(foreground) = parent.foreground() {
+            builder.foreground = Some(foreground);
+            builder.provenance.foreground = StyleFieldProvenance::Inherited;
+            builder.provenance.foreground_layer = Some(StyleResolutionLayer::Inherited);
+        }
+        if let Some(typography) = parent.typography() {
+            builder.typography = Some(typography.clone());
+            builder.provenance.typography = StyleFieldProvenance::Inherited;
+            builder.provenance.typography_layer = Some(StyleResolutionLayer::Inherited);
+        }
     }
 
     builder.apply(
