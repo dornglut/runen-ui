@@ -15,12 +15,12 @@ use std::{
     sync::{Arc, Weak},
 };
 
+#[cfg(test)]
+use parley::LayoutContext;
 use parley::{
     FontContext,
     fontique::{Blob, Collection, CollectionOptions, SourceCache},
 };
-#[cfg(test)]
-use parley::LayoutContext;
 use runenui_core::{LogicalLength, ResourceRef};
 
 pub use artifact::{
