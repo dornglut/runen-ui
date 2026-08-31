@@ -1,18 +1,23 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Weak},
+};
 
 use parley::{Layout, PositionedLayoutItem};
 use runenui_core::{LogicalSize, ResourceKind, ResourceRef};
 
 use crate::{
-    FontSourceRevision, ShapedTextResource, TextArtifact, TextCluster, TextFontBinding, TextGlyph,
+    FontSourceSnapshot, ShapedTextResource, TextArtifact, TextCluster, TextFontBinding, TextGlyph,
     TextLine, TextLineMetrics, TextRun,
 };
 
 pub(crate) fn extract_layout(
     layout: &Layout<()>,
-    source_revision: FontSourceRevision,
-    resources: &mut HashMap<ResourceRef, Arc<ShapedTextResource>>,
+    source_snapshot: FontSourceSnapshot,
+    resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
 ) -> Option<TextArtifact> {
+    resources.retain(|_, resource| resource.strong_count() > 0);
+
     let size = LogicalSize::try_new(layout.width(), layout.height()).ok()?;
     let mut lines = Vec::with_capacity(layout.lines().count());
 
@@ -39,7 +44,7 @@ pub(crate) fn extract_layout(
             let synthesis = run.synthesis();
             let font = run.font();
             let font = TextFontBinding::new(
-                Arc::<[u8]>::from(font.data.as_ref()),
+                font.data.clone(),
                 font.index,
                 run.normalized_coords().to_vec(),
                 synthesis.embolden(),
@@ -67,7 +72,7 @@ pub(crate) fn extract_layout(
                 run.font_size(),
                 glyphs,
             )?);
-            resources.insert(resource_ref, Arc::clone(&shaped));
+            resources.insert(resource_ref, Arc::downgrade(&shaped));
 
             let clusters = run
                 .clusters()
@@ -101,5 +106,5 @@ pub(crate) fn extract_layout(
         lines.push(TextLine::new(line.text_range(), metrics, runs));
     }
 
-    Some(TextArtifact::new(size, source_revision, lines))
+    Some(TextArtifact::new(size, source_snapshot, lines))
 }
