@@ -6,9 +6,13 @@
 
 mod artifact;
 mod layout_extract;
+mod source_identity;
 
 use core::{error::Error, fmt};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Weak},
+};
 
 use parley::{
     FontContext, LayoutContext,
@@ -17,9 +21,10 @@ use parley::{
 use runenui_core::{LogicalLength, ResourceRef};
 
 pub use artifact::{
-    ShapedTextResource, TextArtifact, TextCluster, TextFontBinding, TextGlyph, TextLine,
-    TextLineMetrics, TextRun,
+    ShapedTextLease, ShapedTextResource, TextArtifact, TextCluster, TextFontBinding, TextGlyph,
+    TextLine, TextLineMetrics, TextRun,
 };
+pub use source_identity::{FontSourceIdentity, FontSourceSnapshot};
 
 /// Explicit font-source policy for one text system.
 ///
@@ -37,7 +42,7 @@ impl FontSourcePolicy {
     }
 }
 
-/// Cache-visible revision of the configured font-source set.
+/// Monotonic revision within one [`FontSourceIdentity`] universe.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct FontSourceRevision(u64);
 
@@ -103,16 +108,16 @@ impl Error for FontRegistrationError {}
 
 /// Coarse-grained renderer-neutral text-system authority.
 ///
-/// The underlying Parley/Fontique contexts are deliberately private. Consumers
-/// configure font sources through `RunenUI`-owned operations rather than reaching
-/// into the dependency stack. Live shaped [`ResourceRef`] values are retained here
-/// with their immutable logical payloads so measurement/publication retry cannot
-/// outlive the content binding.
+/// The underlying Parley/Fontique contexts are deliberately private. Consumers configure font
+/// sources through `RunenUI`-owned operations rather than reaching into the dependency stack.
+/// Artifacts and explicit [`ShapedTextLease`] values own shaped payload lifetimes; this system
+/// keeps only weak lookup bindings so dead logical resources can be reclaimed.
 pub struct TextSystem {
     font_context: FontContext,
     layout_context: LayoutContext,
-    shaped_resources: HashMap<ResourceRef, Arc<ShapedTextResource>>,
+    shaped_resources: HashMap<ResourceRef, Weak<ShapedTextResource>>,
     source_policy: FontSourcePolicy,
+    source_identity: FontSourceIdentity,
     source_revision: FontSourceRevision,
 }
 
@@ -132,6 +137,7 @@ impl TextSystem {
             layout_context: LayoutContext::new(),
             shaped_resources: HashMap::new(),
             source_policy,
+            source_identity: FontSourceIdentity::fresh(),
             source_revision: FontSourceRevision::ZERO,
         }
     }
@@ -142,22 +148,29 @@ impl TextSystem {
         self.source_policy
     }
 
-    /// Returns the revision participating in text cache compatibility.
+    /// Returns the current exact font-source cache-compatibility snapshot.
+    #[must_use]
+    pub fn source_snapshot(&self) -> FontSourceSnapshot {
+        FontSourceSnapshot::new(self.source_identity.clone(), self.source_revision)
+    }
+
+    /// Returns the revision within this text system's font-source universe.
     #[must_use]
     pub const fn source_revision(&self) -> FontSourceRevision {
         self.source_revision
     }
 
-    /// Resolves one live scale-independent shaped resource by its sole opaque identity.
+    /// Acquires a strong lifetime token for one live scale-independent shaped resource.
     ///
-    /// The returned strong reference preserves the immutable logical glyph/font binding while a
-    /// renderer realizes or retries the resource. Raster scale is intentionally not an input.
+    /// Runtime caches or retained publications keep the returned lease while the corresponding
+    /// [`ResourceRef`] must remain resolvable. Raster scale is intentionally not an input.
     #[must_use]
-    pub fn resolve_shaped_run(
-        &self,
-        resource: &ResourceRef,
-    ) -> Option<Arc<ShapedTextResource>> {
-        self.shaped_resources.get(resource).cloned()
+    pub fn lease_shaped_run(&mut self, resource: &ResourceRef) -> Option<ShapedTextLease> {
+        let shaped = self.shaped_resources.get(resource).and_then(Weak::upgrade);
+        if shaped.is_none() {
+            self.shaped_resources.remove(resource);
+        }
+        shaped.map(ShapedTextLease::new)
     }
 
     /// Registers immutable bundled font bytes and advances the source revision.
@@ -166,9 +179,9 @@ impl TextSystem {
     ///
     /// # Errors
     ///
-    /// Returns [`FontRegistrationError::NoFonts`] when the bytes contain no
-    /// registerable faces, or [`FontRegistrationError::RevisionExhausted`] when
-    /// the monotonic source revision cannot advance.
+    /// Returns [`FontRegistrationError::NoFonts`] when the bytes contain no registerable font
+    /// faces, or [`FontRegistrationError::RevisionExhausted`] when the monotonic source revision
+    /// cannot advance.
     pub fn register_font_bytes(&mut self, bytes: Vec<u8>) -> Result<usize, FontRegistrationError> {
         let next_revision = self
             .source_revision
@@ -197,19 +210,16 @@ impl TextSystem {
     ) -> Option<TextArtifact> {
         use parley::{Alignment, AlignmentOptions, FontFamily, Layout, StyleProperty};
 
-        let mut builder = self
-            .layout_context
-            .ranged_builder(&mut self.font_context, text, 1.0, false);
+        let source_snapshot = self.source_snapshot();
+        let mut builder =
+            self.layout_context
+                .ranged_builder(&mut self.font_context, text, 1.0, false);
         builder.push_default(StyleProperty::FontFamily(FontFamily::named(family)));
         builder.push_default(StyleProperty::FontSize(font_size));
         let mut layout: Layout<()> = builder.build(text);
         layout.break_all_lines(constraints.max_inline().map(LogicalLength::get));
         layout.align(Alignment::Start, AlignmentOptions::default());
-        layout_extract::extract_layout(
-            &layout,
-            self.source_revision,
-            &mut self.shaped_resources,
-        )
+        layout_extract::extract_layout(&layout, source_snapshot, &mut self.shaped_resources)
     }
 }
 
@@ -221,17 +231,27 @@ mod tests {
     const CANTARELL: &[u8] = include_bytes!("../tests/fixtures/Cantarell-Regular.ttf");
 
     #[test]
-    fn font_source_policy_and_initial_revision_are_explicit() {
-        let deterministic = TextSystem::new(FontSourcePolicy::BundledOnly);
-        assert_eq!(deterministic.source_policy(), FontSourcePolicy::BundledOnly);
-        assert_eq!(deterministic.source_revision(), FontSourceRevision::ZERO);
+    fn independent_font_source_universes_never_alias_at_the_same_revision() {
+        let first = TextSystem::new(FontSourcePolicy::SystemAndBundled);
+        let second = TextSystem::new(FontSourcePolicy::SystemAndBundled);
 
-        let production = TextSystem::new(FontSourcePolicy::SystemAndBundled);
-        assert_eq!(
-            production.source_policy(),
-            FontSourcePolicy::SystemAndBundled
-        );
-        assert_eq!(production.source_revision(), FontSourceRevision::ZERO);
+        assert_eq!(first.source_revision(), FontSourceRevision::ZERO);
+        assert_eq!(second.source_revision(), FontSourceRevision::ZERO);
+        assert_ne!(first.source_snapshot(), second.source_snapshot());
+    }
+
+    #[test]
+    fn bundled_registration_advances_revision_without_replacing_source_identity() {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let before = system.source_snapshot();
+        system
+            .register_font_bytes(CANTARELL.to_vec())
+            .unwrap_or_else(|error| panic!("Cantarell fixture registration failed: {error}"));
+        let after = system.source_snapshot();
+
+        assert_eq!(before.identity(), after.identity());
+        assert_eq!(before.revision(), FontSourceRevision::ZERO);
+        assert_eq!(after.revision().get(), 1);
     }
 
     #[test]
@@ -259,7 +279,7 @@ mod tests {
             )
             .unwrap_or_else(|| panic!("fixture shaping must yield a valid logical artifact"));
 
-        assert_eq!(artifact.source_revision(), system.source_revision());
+        assert_eq!(artifact.source_snapshot(), &system.source_snapshot());
         assert!(artifact.size().width() > 0.0);
         assert!(artifact.size().height() > 0.0);
         let run = artifact
@@ -273,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn shaped_resource_binding_survives_artifact_drop_without_raster_scale() {
+    fn explicit_lease_preserves_retry_binding_and_dead_resources_are_reclaimable() {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
         system
             .register_font_bytes(CANTARELL.to_vec())
@@ -291,14 +311,16 @@ mod tests {
             .shaped_resource()
             .glyphs()
             .len();
+        let lease = system
+            .lease_shaped_run(&resource)
+            .unwrap_or_else(|| panic!("artifact-backed resource must be leaseable"));
 
         drop(artifact);
+        assert_eq!(lease.resource_ref(), &resource);
+        assert_eq!(lease.shaped_resource().glyphs().len(), glyph_count);
+        assert_eq!(lease.shaped_resource().font().bytes(), CANTARELL);
 
-        let retained = system
-            .resolve_shaped_run(&resource)
-            .unwrap_or_else(|| panic!("live shaped identity must retain immutable content"));
-        assert_eq!(retained.resource_ref(), &resource);
-        assert_eq!(retained.glyphs().len(), glyph_count);
-        assert_eq!(retained.font().bytes(), CANTARELL);
+        drop(lease);
+        assert!(system.lease_shaped_run(&resource).is_none());
     }
 }
