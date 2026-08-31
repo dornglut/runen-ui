@@ -1,11 +1,12 @@
 //! Immutable renderer-neutral logical text artifacts.
 
-use core::ops::Range;
+use core::{fmt, ops::Range};
 use std::sync::Arc;
 
+use fontique::Blob;
 use runenui_core::{LogicalSize, ResourceRef};
 
-use super::FontSourceRevision;
+use super::FontSourceSnapshot;
 
 /// One immutable paragraph layout produced from a single shaping and line-breaking result.
 ///
@@ -14,19 +15,19 @@ use super::FontSourceRevision;
 #[derive(Clone, Debug)]
 pub struct TextArtifact {
     size: LogicalSize,
-    source_revision: FontSourceRevision,
+    source_snapshot: FontSourceSnapshot,
     lines: Arc<[TextLine]>,
 }
 
 impl TextArtifact {
     pub(crate) fn new(
         size: LogicalSize,
-        source_revision: FontSourceRevision,
+        source_snapshot: FontSourceSnapshot,
         lines: Vec<TextLine>,
     ) -> Self {
         Self {
             size,
-            source_revision,
+            source_snapshot,
             lines: lines.into(),
         }
     }
@@ -37,10 +38,10 @@ impl TextArtifact {
         self.size
     }
 
-    /// Returns the font-source revision used to create this artifact.
+    /// Returns the exact font-source identity and revision used for this artifact.
     #[must_use]
-    pub const fn source_revision(&self) -> FontSourceRevision {
-        self.source_revision
+    pub const fn source_snapshot(&self) -> &FontSourceSnapshot {
+        &self.source_snapshot
     }
 
     /// Returns the positioned lines in logical block order.
@@ -370,9 +371,9 @@ impl TextCluster {
 ///
 /// The byte slice and face index identify the exact font face. Normalized variation coordinates
 /// and synthesis facts preserve the exact outline realization inputs selected during shaping.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TextFontBinding {
-    bytes: Arc<[u8]>,
+    data: Blob<u8>,
     face_index: u32,
     normalized_coords: Arc<[i16]>,
     faux_bold: bool,
@@ -381,27 +382,25 @@ pub struct TextFontBinding {
 
 impl TextFontBinding {
     pub(crate) fn new(
-        bytes: Arc<[u8]>,
+        data: Blob<u8>,
         face_index: u32,
         normalized_coords: Vec<i16>,
         faux_bold: bool,
         faux_skew: Option<f32>,
     ) -> Option<Self> {
-        faux_skew
-            .is_none_or(f32::is_finite)
-            .then(|| Self {
-                bytes,
-                face_index,
-                normalized_coords: normalized_coords.into(),
-                faux_bold,
-                faux_skew,
-            })
+        faux_skew.is_none_or(f32::is_finite).then(|| Self {
+            data,
+            face_index,
+            normalized_coords: normalized_coords.into(),
+            faux_bold,
+            faux_skew,
+        })
     }
 
     /// Returns the immutable exact font-file bytes.
     #[must_use]
     pub fn bytes(&self) -> &[u8] {
-        &self.bytes
+        self.data.as_ref()
     }
 
     /// Returns the face index inside the immutable font data.
@@ -426,6 +425,19 @@ impl TextFontBinding {
     #[must_use]
     pub const fn faux_skew(&self) -> Option<f32> {
         self.faux_skew
+    }
+}
+
+impl fmt::Debug for TextFontBinding {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TextFontBinding")
+            .field("byte_len", &self.data.as_ref().len())
+            .field("face_index", &self.face_index)
+            .field("normalized_coords", &self.normalized_coords)
+            .field("faux_bold", &self.faux_bold)
+            .field("faux_skew", &self.faux_skew)
+            .finish()
     }
 }
 
@@ -471,7 +483,7 @@ impl TextGlyph {
     }
 }
 
-/// Immutable scale-independent shaped resource retained by [`super::TextSystem`].
+/// Immutable scale-independent shaped resource retained while artifacts or leases are live.
 #[derive(Debug)]
 pub struct ShapedTextResource {
     resource_ref: ResourceRef,
@@ -517,5 +529,33 @@ impl ShapedTextResource {
     #[must_use]
     pub fn glyphs(&self) -> &[TextGlyph] {
         &self.glyphs
+    }
+}
+
+/// Strong lifetime token for one immutable shaped resource.
+///
+/// Runtime caches or retained publications hold this token for exactly as long as the associated
+/// [`ResourceRef`] must remain resolvable. Dropping the last artifact/lease permits reclamation;
+/// the text system keeps only weak lookup entries.
+#[derive(Clone, Debug)]
+pub struct ShapedTextLease {
+    shaped: Arc<ShapedTextResource>,
+}
+
+impl ShapedTextLease {
+    pub(crate) fn new(shaped: Arc<ShapedTextResource>) -> Self {
+        Self { shaped }
+    }
+
+    /// Returns the sole opaque identity of the leased logical shaped resource.
+    #[must_use]
+    pub fn resource_ref(&self) -> &ResourceRef {
+        self.shaped.resource_ref()
+    }
+
+    /// Returns the immutable logical shaped-resource payload.
+    #[must_use]
+    pub fn shaped_resource(&self) -> &ShapedTextResource {
+        &self.shaped
     }
 }
