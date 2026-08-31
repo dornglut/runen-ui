@@ -11,7 +11,7 @@ rust-version.workspace = true
 
 [dependencies]
 runenui_core = { path = "../runenui_core", version = "0.1.0" }
-parley = { version = "0.11.1", default-features = false, features = ["system"] }
+parley = { version = "0.11.1", default-features = false, features = ["system", "complex-scripts"] }
 
 [lints]
 workspace = true
