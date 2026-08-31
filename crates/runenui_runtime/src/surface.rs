@@ -53,13 +53,13 @@ struct SurfaceWidgetDebug {
 
 impl SurfaceNode {
     #[must_use]
-    const fn new(
+    fn new(
         id: MountedNodeId,
         parent: Option<MountedNodeId>,
         authored_id: Option<ElementId>,
         bounds: LogicalRect,
         widget_debug: SurfaceWidgetDebug,
-        computed_style: ComputedStyle,
+        computed_style: &ComputedStyle,
     ) -> Self {
         Self {
             id,
@@ -67,7 +67,7 @@ impl SurfaceNode {
             authored_id,
             bounds,
             widget_debug,
-            computed_style,
+            computed_style: computed_style.clone(),
         }
     }
 
