@@ -2,7 +2,7 @@
 
 > **Category: Current contract**
 
-`runenui_runtime` owns RunenUI's live deterministic mounted execution, scheduling, routing, tracing, and surface publication for the current headless framework foundation. It consumes public `runenui_core` protocol values and remains independent from `runenui_testing`, native platform implementations, and concrete renderer backends.
+`runenui_runtime` owns RunenUI's live deterministic mounted execution, scheduling, routing, style orchestration, tracing, and surface publication. It consumes public `runenui_core` protocol values and remains independent from `runenui_testing`, native platform implementations, and concrete renderer backends.
 
 ## Current ownership
 
@@ -13,6 +13,7 @@ Runtime owns:
 - one generalized sequenced FIFO and explicit bounded pump for application actions, routed commands/input, tasks, timers, subscriptions, host responses, and derived work;
 - deterministic monotonic time, producer generations, cancellation/replacement, configured backpressure, wake/redraw authority, terminal/shutdown behavior, and one bounded canonical trace with deterministic export and inert replay;
 - routed pointer, focus, keyboard, committed-text, composition, automation, and exact displayed-surface input behavior;
+- production style-resolution orchestration over one explicit `StyleEnvironment`, including ephemeral projection of canonical hover/focus/active facts, shared staged activation for disabled state, exact environment/interaction cache compatibility, inspection, and property-effect-driven invalidation;
 - proof-level measurement/layout and one fallible staged surface-publication transaction;
 - an independent semantic publication sibling with stable semantic identities, deterministic tree order, bounds, relationships, composed state/support, runtime-derived focus, revisions/updates, and typed diagnostics;
 - public exact surface-scoped semantic action admission/resolution with private semantic-to-mounted owner/key resolution and convergence onto the existing command FIFO/routed/default/update/trace architecture.
@@ -23,9 +24,11 @@ Mounted and semantic IDs are distinct opaque runtime-issued identities under one
 
 Public semantic snapshots expose semantic identities only. They do not expose or reconstruct the private mounted owner. Semantic action target metadata is read-only origin context, not a mounted routing capability. There is no public semantic-to-mounted shortcut, bare semantic-ID surface guessing, second semantic queue/default engine, or semantic scrolling compatibility path.
 
+Style interaction values are likewise projections, not new authorities. Pointer registry state remains hover/active authority, runtime focus remains focus authority, and the staged widget activation result remains disabled authority. Retained style projection/cache data exists only to determine compatibility and downstream work; it cannot become a second transient interaction state machine.
+
 ## Publication
 
-`AppRuntime::publish_surface` is the sole live surface-publication authority. A successful publication contains aligned renderer-facing proof products plus the independent semantic publication and semantic diagnostics. Renderer-facing proof products do not carry production semantic authority.
+`AppRuntime::publish_surface` is the sole live surface-publication authority. A successful publication contains aligned renderer-facing products plus the independent semantic publication, style inspection, and diagnostics. Renderer-facing products do not carry production semantic or style-policy authority.
 
 Publication follows the accepted staged boundary:
 
@@ -35,7 +38,9 @@ admit -> read-only/staged plan -> candidate-dependent final preflight -> commit
 
 Recoverable refusal exposes no partial new publication and preserves the previous coherent products/identities/revisions. Checked counter, work/trace-sequence, and integrity exhaustion never wrap or saturate into false success.
 
-The retained renderer-side publication cache is still proof-level. Its production replacement is owned by the renderer-neutral scene milestone and must preserve this staged atomicity and semantic-product separation.
+Style resolution participates in that same transaction. Disabled styling reuses the staged activation fact consumed by capability/semantic publication, and failed planning does not commit a partial new style cache. Layout-affecting style changes propagate through runtime-owned layout/hit/paint/semantic dependencies; paint-only changes remain bounded when retained facts are otherwise compatible.
+
+Renderer publication lineage and backend realization remain downstream authorities. Runtime-owned retained caches are derived publication-planning state and never substitute for renderer-local successful-publication/resource-cache state.
 
 ## Scheduling, routing, and tracing
 
@@ -45,6 +50,6 @@ The runtime has one canonical queue and work/trace lineage. Accepted semantic ac
 
 ## Must not own
 
-`runenui_runtime` must not own application-domain policy/state, testing convenience authority, native window/event-loop or accessibility adapters, concrete renderer backends, production controls/text, ECS assumptions, or compatibility aliases preserving retired prototype APIs.
+`runenui_runtime` must not own application-domain policy/state, testing convenience authority, native window/event-loop or accessibility adapters, concrete renderer backends, renderer/platform theme policy, production controls/text, ECS assumptions, or compatibility aliases preserving retired prototype APIs. Host/platform code supplies explicit neutral style preference/environment inputs; runtime remains the live orchestrator rather than an ambient theme/provider authority.
 
-See the [public API contract](../../docs/architecture/public-api.md), [workspace structure](../../docs/architecture/workspace-structure.md), [M5 semantic/testing charter](../../docs/conformance/m5-semantics-and-testing-charter.md), [current status](../../docs/status.md), [testing guide](../../TESTING.md), and [roadmap](../../docs/roadmap.md).
+See the [public API contract](../../docs/architecture/public-api.md), [styling architecture](../../docs/architecture/styling.md), [workspace structure](../../docs/architecture/workspace-structure.md), [M5 semantic/testing charter](../../docs/conformance/m5-semantics-and-testing-charter.md), [current status](../../docs/status.md), [testing guide](../../TESTING.md), and [roadmap](../../docs/roadmap.md).
