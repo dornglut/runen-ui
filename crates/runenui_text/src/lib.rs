@@ -1,17 +1,25 @@
 #![forbid(unsafe_code)]
 //! Renderer-neutral production text-system foundations.
 //!
-//! RunenUI owns the public contracts in this crate. Parley and Fontique remain
+//! `RunenUI` owns the public contracts in this crate. Parley and Fontique remain
 //! private implementation dependencies and must not become public API authority.
 
+mod artifact;
+mod layout_extract;
+
 use core::{error::Error, fmt};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use parley::{
-    FontContext,
+    FontContext, LayoutContext,
     fontique::{Blob, Collection, CollectionOptions, SourceCache},
 };
-use runenui_core::LogicalLength;
+use runenui_core::{LogicalLength, ResourceRef};
+
+pub use artifact::{
+    ShapedTextResource, TextArtifact, TextCluster, TextFontBinding, TextGlyph, TextLine,
+    TextLineMetrics, TextRun,
+};
 
 /// Explicit font-source policy for one text system.
 ///
@@ -96,10 +104,14 @@ impl Error for FontRegistrationError {}
 /// Coarse-grained renderer-neutral text-system authority.
 ///
 /// The underlying Parley/Fontique contexts are deliberately private. Consumers
-/// configure font sources through RunenUI-owned operations rather than reaching
-/// into the dependency stack.
+/// configure font sources through `RunenUI`-owned operations rather than reaching
+/// into the dependency stack. Live shaped [`ResourceRef`] values are retained here
+/// with their immutable logical payloads so measurement/publication retry cannot
+/// outlive the content binding.
 pub struct TextSystem {
     font_context: FontContext,
+    layout_context: LayoutContext,
+    shaped_resources: HashMap<ResourceRef, Arc<ShapedTextResource>>,
     source_policy: FontSourcePolicy,
     source_revision: FontSourceRevision,
 }
@@ -117,6 +129,8 @@ impl TextSystem {
         };
         Self {
             font_context,
+            layout_context: LayoutContext::new(),
+            shaped_resources: HashMap::new(),
             source_policy,
             source_revision: FontSourceRevision::ZERO,
         }
@@ -132,6 +146,18 @@ impl TextSystem {
     #[must_use]
     pub const fn source_revision(&self) -> FontSourceRevision {
         self.source_revision
+    }
+
+    /// Resolves one live scale-independent shaped resource by its sole opaque identity.
+    ///
+    /// The returned strong reference preserves the immutable logical glyph/font binding while a
+    /// renderer realizes or retries the resource. Raster scale is intentionally not an input.
+    #[must_use]
+    pub fn resolve_shaped_run(
+        &self,
+        resource: &ResourceRef,
+    ) -> Option<Arc<ShapedTextResource>> {
+        self.shaped_resources.get(resource).cloned()
     }
 
     /// Registers immutable bundled font bytes and advances the source revision.
@@ -160,12 +186,40 @@ impl TextSystem {
         self.source_revision = next_revision;
         Ok(face_count)
     }
+
+    #[cfg(test)]
+    fn shape_fixture(
+        &mut self,
+        text: &str,
+        family: &str,
+        font_size: f32,
+        constraints: TextConstraints,
+    ) -> Option<TextArtifact> {
+        use parley::{Alignment, AlignmentOptions, FontFamily, Layout, StyleProperty};
+
+        let mut builder = self
+            .layout_context
+            .ranged_builder(&mut self.font_context, text, 1.0, false);
+        builder.push_default(StyleProperty::FontFamily(FontFamily::named(family)));
+        builder.push_default(StyleProperty::FontSize(font_size));
+        let mut layout: Layout<()> = builder.build(text);
+        layout.break_all_lines(constraints.max_inline().map(LogicalLength::get));
+        layout.align(Alignment::Start, AlignmentOptions::default());
+        layout_extract::extract_layout(
+            &layout,
+            self.source_revision,
+            &mut self.shaped_resources,
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{FontSourcePolicy, FontSourceRevision, TextConstraints, TextSystem};
-    use runenui_core::LogicalLength;
+    use runenui_core::{LogicalLength, ResourceKind};
+
+    const CANTARELL: &[u8] =
+        include_bytes!("../../runenui_render_wgpu/tests/fixtures/Cantarell-Regular.ttf");
 
     #[test]
     fn font_source_policy_and_initial_revision_are_explicit() {
@@ -187,5 +241,65 @@ mod tests {
         let width = LogicalLength::new(320.0)
             .unwrap_or_else(|_| unreachable!("fixture width is a valid logical extent"));
         assert_eq!(TextConstraints::limited(width).max_inline(), Some(width));
+    }
+
+    #[test]
+    fn bundled_shaping_produces_one_measure_and_resource_artifact() {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let faces = system
+            .register_font_bytes(CANTARELL.to_vec())
+            .unwrap_or_else(|error| panic!("Cantarell fixture registration failed: {error}"));
+        assert!(faces > 0);
+
+        let artifact = system
+            .shape_fixture(
+                "RunenUI shaping",
+                "Cantarell",
+                18.0,
+                TextConstraints::unbounded(),
+            )
+            .unwrap_or_else(|| panic!("fixture shaping must yield a valid logical artifact"));
+
+        assert_eq!(artifact.source_revision(), system.source_revision());
+        assert!(artifact.size().width() > 0.0);
+        assert!(artifact.size().height() > 0.0);
+        let run = artifact
+            .lines()
+            .first()
+            .and_then(|line| line.runs().first())
+            .unwrap_or_else(|| panic!("fixture must produce a positioned shaped run"));
+        assert_eq!(run.resource_ref().kind(), ResourceKind::ShapedTextRun);
+        assert!(!run.shaped_resource().glyphs().is_empty());
+        assert_eq!(run.shaped_resource().font().bytes(), CANTARELL);
+    }
+
+    #[test]
+    fn shaped_resource_binding_survives_artifact_drop_without_raster_scale() {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        system
+            .register_font_bytes(CANTARELL.to_vec())
+            .unwrap_or_else(|error| panic!("Cantarell fixture registration failed: {error}"));
+        let artifact = system
+            .shape_fixture(
+                "retry safe",
+                "Cantarell",
+                16.0,
+                TextConstraints::unbounded(),
+            )
+            .unwrap_or_else(|| panic!("fixture shaping must yield a valid logical artifact"));
+        let resource = artifact.lines()[0].runs()[0].resource_ref().clone();
+        let glyph_count = artifact.lines()[0].runs()[0]
+            .shaped_resource()
+            .glyphs()
+            .len();
+
+        drop(artifact);
+
+        let retained = system
+            .resolve_shaped_run(&resource)
+            .unwrap_or_else(|| panic!("live shaped identity must retain immutable content"));
+        assert_eq!(retained.resource_ref(), &resource);
+        assert_eq!(retained.glyphs().len(), glyph_count);
+        assert_eq!(retained.font().bytes(), CANTARELL);
     }
 }
