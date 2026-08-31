@@ -1915,6 +1915,7 @@ dependencies = [
 name = "runenui_text"
 version = "0.1.0"
 dependencies = [
+ "fontique",
  "parley",
  "runenui_core",
 ]
