@@ -143,10 +143,7 @@ impl TextSystem {
     /// Returns [`FontRegistrationError::NoFonts`] when the bytes contain no
     /// registerable faces, or [`FontRegistrationError::RevisionExhausted`] when
     /// the monotonic source revision cannot advance.
-    pub fn register_font_bytes(
-        &mut self,
-        bytes: Vec<u8>,
-    ) -> Result<usize, FontRegistrationError> {
+    pub fn register_font_bytes(&mut self, bytes: Vec<u8>) -> Result<usize, FontRegistrationError> {
         let next_revision = self
             .source_revision
             .next()
