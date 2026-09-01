@@ -138,7 +138,9 @@ fn style_resolution_preserves_provenance() -> Result<(), DuplicateTokenDefinitio
     );
     assert_eq!(
         resolution.computed_style(),
-        &ComputedStyle::EMPTY.with_foreground(Color::WHITE)
+        &ComputedStyle::EMPTY
+            .with_foreground(Color::WHITE)
+            .with_typography(Typography::default())
     );
     assert!(resolution.is_fully_resolved());
     Ok(())
