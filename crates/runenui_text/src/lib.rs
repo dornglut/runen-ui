@@ -389,7 +389,7 @@ mod tests {
         let sizes: Vec<f32> = artifact
             .lines()
             .iter()
-            .flat_map(|line| line.runs())
+            .flat_map(super::artifact::TextLine::runs)
             .map(|run| run.shaped_resource().font_size())
             .collect();
 
