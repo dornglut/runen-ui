@@ -7,7 +7,7 @@ use crate::TextConstraints;
 
 /// Canonical language/script/region input for shaping and fallback.
 ///
-/// RunenUI intentionally models the BCP 47 prefix that Parley consumes today.
+/// `RunenUI` intentionally models the BCP 47 prefix that Parley consumes today.
 /// Variants, extensions, and private-use subtags are rejected rather than silently
 /// discarded from shaping identity.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -39,7 +39,7 @@ impl TextLanguage {
     }
 }
 
-/// Failure while constructing a RunenUI language input.
+/// Failure while constructing a `RunenUI` language input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextLanguageError {
     Invalid,
@@ -257,7 +257,7 @@ impl TextRequest {
     /// Adds complete metric spans after validating source ranges and deterministic precedence.
     ///
     /// Input order is not semantic: validated spans are normalized into source order. Overlap is
-    /// rejected so dependency insertion order cannot become a hidden RunenUI precedence rule.
+    /// rejected so dependency insertion order cannot become a hidden `RunenUI` precedence rule.
     ///
     /// # Errors
     ///

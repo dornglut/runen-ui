@@ -20,7 +20,7 @@ use crate::{
     TextOverflowWrap, TextRequest, TextWordBreak, TextWrapMode, layout_extract,
 };
 
-pub(crate) fn layout_text(
+pub fn layout_text(
     font_context: &mut FontContext,
     layout_context: &mut LayoutContext,
     resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
@@ -123,7 +123,7 @@ fn typography_properties(
             FontStyle::Normal => ParleyFontStyle::Normal,
             FontStyle::Italic => ParleyFontStyle::Italic,
             FontStyle::Oblique(angle) => {
-                ParleyFontStyle::Oblique(angle.map(|value| value.degrees()))
+                ParleyFontStyle::Oblique(angle.map(runenui_core::FontObliqueAngle::degrees))
             }
         }),
         StyleProperty::FontVariations(ParleyFontVariations::List(Cow::Owned(variations))),
@@ -131,7 +131,9 @@ fn typography_properties(
     ])
 }
 
-fn map_generic_family(family: GenericFontFamily) -> Result<ParleyGenericFamily, TextLayoutError> {
+const fn map_generic_family(
+    family: GenericFontFamily,
+) -> Result<ParleyGenericFamily, TextLayoutError> {
     Ok(match family {
         GenericFontFamily::Serif => ParleyGenericFamily::Serif,
         GenericFontFamily::SansSerif => ParleyGenericFamily::SansSerif,

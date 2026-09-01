@@ -197,7 +197,7 @@ impl TextSystem {
     /// # Errors
     ///
     /// Returns [`TextLayoutError`] when the reviewed private Parley mapping cannot represent an
-    /// input or when produced layout facts cannot be represented by RunenUI's finite artifact
+    /// input or when produced layout facts cannot be represented by `RunenUI`'s finite artifact
     /// contracts.
     pub fn layout_text(&mut self, request: &TextRequest) -> Result<TextArtifact, TextLayoutError> {
         let source_snapshot = self.source_snapshot();
