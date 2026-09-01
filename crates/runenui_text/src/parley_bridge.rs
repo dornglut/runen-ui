@@ -84,7 +84,7 @@ pub(crate) fn layout_text(
 
 fn typography_properties(
     typography: &Typography,
-) -> Result<Vec<StyleProperty<'static, ()>>, TextLayoutError> {
+) -> Result<Vec<StyleProperty<'static, [u8; 4]>>, TextLayoutError> {
     let families: Vec<ParleyFontFamilyName<'static>> = typography
         .families()
         .iter()
