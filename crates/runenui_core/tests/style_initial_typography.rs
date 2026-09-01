@@ -33,8 +33,8 @@ fn root_style_uses_canonical_initial_typography() {
 }
 
 #[test]
-fn framework_typography_overrides_only_the_initial_value()
--> Result<(), Box<dyn std::error::Error>> {
+fn framework_typography_overrides_only_the_initial_value() -> Result<(), Box<dyn std::error::Error>>
+{
     let framework = typography(12.0)?;
     let environment = StyleEnvironment::new(StyleTheme::new(StyleTokens::new()))
         .with_framework_defaults(StyleProperties::EMPTY.with_typography(framework.clone()));
