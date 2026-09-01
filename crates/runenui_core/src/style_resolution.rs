@@ -11,6 +11,7 @@ use crate::{
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StyleResolutionLayer {
+    Initial,
     Inherited,
     FrameworkDefault,
     ThemeRecipe(StyleRecipeId),
@@ -210,6 +211,14 @@ struct ResolutionBuilder {
 }
 
 impl ResolutionBuilder {
+    fn with_initial_values() -> Self {
+        let mut builder = Self::default();
+        builder.typography = Some(Typography::default());
+        builder.provenance.typography = StyleFieldProvenance::Literal;
+        builder.provenance.typography_layer = Some(StyleResolutionLayer::Initial);
+        builder
+    }
+
     fn apply(
         &mut self,
         properties: &StyleProperties,
@@ -389,7 +398,7 @@ pub fn resolve_style_in_environment(
     parent: Option<&ComputedStyle>,
 ) -> StyleResolution {
     let tokens = environment.theme().tokens();
-    let mut builder = ResolutionBuilder::default();
+    let mut builder = ResolutionBuilder::with_initial_values();
 
     if let Some(parent) = parent {
         if let Some(foreground) = parent.foreground() {
