@@ -212,11 +212,15 @@ struct ResolutionBuilder {
 
 impl ResolutionBuilder {
     fn with_initial_values() -> Self {
-        let mut builder = Self::default();
-        builder.typography = Some(Typography::default());
-        builder.provenance.typography = StyleFieldProvenance::Literal;
-        builder.provenance.typography_layer = Some(StyleResolutionLayer::Initial);
-        builder
+        Self {
+            typography: Some(Typography::default()),
+            provenance: StyleProvenance {
+                typography: StyleFieldProvenance::Literal,
+                typography_layer: Some(StyleResolutionLayer::Initial),
+                ..StyleProvenance::default()
+            },
+            ..Self::default()
+        }
     }
 
     fn apply(
