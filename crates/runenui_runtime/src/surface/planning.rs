@@ -130,7 +130,12 @@ fn resolve_contribution_phases<Action>(
         completed.insert(DirtyPhases::HIT_TEST);
     }
     if paint_dirty {
-        let resolved = resolve_paint(&current.topology, &current.layout, capability_plan);
+        let resolved = resolve_paint(
+            &current.topology,
+            &current.layout,
+            &current.styles,
+            capability_plan,
+        );
         current.paint = resolved.scene;
         scene_diagnostics_changed |= replace_scene_diagnostics_if_changed(
             &mut current.paint_diagnostics,
@@ -323,7 +328,7 @@ fn plan_structural_surface<'tree, Action>(
     let hit_test = resolved_hit_test.scene;
     let hit_diagnostics = Arc::new(resolved_hit_test.diagnostics);
     report.record(SurfacePhase::HitTesting);
-    let resolved_paint = resolve_paint(&topology, &layout, &capability_plan);
+    let resolved_paint = resolve_paint(&topology, &layout, &styles, &capability_plan);
     let paint = resolved_paint.scene;
     let paint_diagnostics = Arc::new(resolved_paint.diagnostics);
     report.record(SurfacePhase::Paint);
