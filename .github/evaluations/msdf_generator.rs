@@ -163,6 +163,9 @@ struct FieldEvidence {
     sign_mismatches: usize,
     quantized_mean_abs_error: f64,
     quantized_max_abs_error: f64,
+    quantized_boundary_mean_abs_error: f64,
+    quantized_boundary_max_abs_error: f64,
+    boundary_pixels: usize,
     quantized_sign_mismatches: usize,
 }
 
@@ -271,37 +274,33 @@ fn evaluate_shape(shape: &Shape, tier: f64) -> Result<FieldEvidence, Box<dyn Err
     let mut sdf = Bitmap::<f32, 1>::new(width, height);
     generate_sdf(&mut sdf, shape, &transform, &GeneratorConfig::default());
 
-    let mut first = Bitmap::<f32, 3>::new(width, height);
+    let mut fields = (0..REPEATS)
+        .map(|_| Bitmap::<f32, 3>::new(width, height))
+        .collect::<Vec<_>>();
     let start = Instant::now();
-    for repeat in 0..REPEATS {
-        if repeat == 0 {
-            generate_msdf(
-                &mut first,
-                shape,
-                &transform,
-                &MsdfGeneratorConfig::default(),
-            );
-        } else {
-            let mut repeated = Bitmap::<f32, 3>::new(width, height);
-            generate_msdf(
-                &mut repeated,
-                shape,
-                &transform,
-                &MsdfGeneratorConfig::default(),
-            );
-            if hash_field(&repeated) != hash_field(&first) {
-                return Err("same outline/configuration produced a nondeterministic MSDF hash".into());
-            }
-        }
+    for field in &mut fields {
+        generate_msdf(
+            field,
+            shape,
+            &transform,
+            &MsdfGeneratorConfig::default(),
+        );
     }
     let elapsed_micros = start.elapsed().as_micros() / REPEATS as u128;
-    let hash = hash_field(&first);
+    let hash = hash_field(&fields[0]);
+    if fields.iter().skip(1).any(|field| hash_field(field) != hash) {
+        return Err("same outline/configuration produced a nondeterministic MSDF hash".into());
+    }
+    let first = &fields[0];
 
     let mut abs_error = 0.0;
     let mut max_abs_error = 0.0_f64;
     let mut sign_mismatches = 0;
     let mut quantized_abs_error = 0.0;
     let mut quantized_max_abs_error = 0.0_f64;
+    let mut quantized_boundary_abs_error = 0.0;
+    let mut quantized_boundary_max_abs_error = 0.0_f64;
+    let mut boundary_pixels = 0usize;
     let mut quantized_sign_mismatches = 0;
 
     for index in 0..width * height {
@@ -328,9 +327,16 @@ fn evaluate_shape(shape: &Shape, tier: f64) -> Result<FieldEvidence, Box<dyn Err
             quantize(g) as f32,
             quantize(b) as f32,
         );
-        let quantized_error = (quantized - sdf_value).abs();
+        let clamped_sdf = sdf_value.clamp(0.0, 1.0);
+        let quantized_error = (quantized - clamped_sdf).abs();
         quantized_abs_error += quantized_error;
         quantized_max_abs_error = quantized_max_abs_error.max(quantized_error);
+        if (0.0..=1.0).contains(&sdf_value) {
+            boundary_pixels += 1;
+            quantized_boundary_abs_error += quantized_error;
+            quantized_boundary_max_abs_error =
+                quantized_boundary_max_abs_error.max(quantized_error);
+        }
         quantized_sign_mismatches +=
             usize::from((quantized >= 0.5) != (sdf_value >= 0.5));
     }
@@ -346,6 +352,13 @@ fn evaluate_shape(shape: &Shape, tier: f64) -> Result<FieldEvidence, Box<dyn Err
         sign_mismatches,
         quantized_mean_abs_error: quantized_abs_error / pixels,
         quantized_max_abs_error,
+        quantized_boundary_mean_abs_error: if boundary_pixels == 0 {
+            0.0
+        } else {
+            quantized_boundary_abs_error / boundary_pixels as f64
+        },
+        quantized_boundary_max_abs_error,
+        boundary_pixels,
         quantized_sign_mismatches,
     })
 }
@@ -372,7 +385,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let evidence = evaluate_shape(&shape, tier)?;
                     let pixels = evidence.width * evidence.height;
                     println!(
-                        "case={} glyph={} tier={} extent={}x{} edges={} hash={:016x} avg_us={} rgb_f32_bytes={} rgb8_bytes={} rgba8_wgpu_bytes={} mean_abs_error={:.8} max_abs_error={:.8} sign_mismatch={}/{} quantized_mean_abs_error={:.8} quantized_max_abs_error={:.8} quantized_sign_mismatch={}/{}",
+                        "case={} glyph={} tier={} extent={}x{} edges={} hash={:016x} avg_us={} rgb_f32_bytes={} rgb8_bytes={} rgba8_wgpu_bytes={} mean_abs_error={:.8} max_abs_error={:.8} sign_mismatch={}/{} quantized_mean_abs_error={:.8} quantized_max_abs_error={:.8} quantized_boundary_mean_abs_error={:.8} quantized_boundary_max_abs_error={:.8} boundary_pixels={} quantized_sign_mismatch={}/{}",
                         case.label,
                         glyph.id(),
                         tier as u32,
@@ -390,6 +403,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         pixels,
                         evidence.quantized_mean_abs_error,
                         evidence.quantized_max_abs_error,
+                        evidence.quantized_boundary_mean_abs_error,
+                        evidence.quantized_boundary_max_abs_error,
+                        evidence.boundary_pixels,
                         evidence.quantized_sign_mismatches,
                         pixels,
                     );
@@ -401,9 +417,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     if glyph_count == 0 {
         return Err("controlled corpus produced no outline glyphs".into());
     }
-    println!(
-        "summary glyphs={glyph_count} total_edges={total_edges} tiers={}",
-        TIERS.len()
-    );
+    println!("summary glyphs={glyph_count} total_edges={total_edges} tiers={}", TIERS.len());
     Ok(())
 }

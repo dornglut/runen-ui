@@ -23,6 +23,19 @@ jobs:
     steps:
       - name: Check out exact PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Prove exact PR head
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual_head=$(git rev-parse HEAD)
+          printf 'expected_head=%s\nactual_head=%s\n' "$EXPECTED_HEAD" "$actual_head"
+          test "$actual_head" = "$EXPECTED_HEAD"
 
       - name: Install stable Rust
         shell: bash
@@ -59,13 +72,20 @@ jobs:
           echo "temporary_lock_sha256=$(sha256sum "$eval_dir/Cargo.lock" | cut -d' ' -f1)"
           cargo +stable tree --manifest-path "$eval_dir/Cargo.toml" --locked -e normal
 
+      - name: Build isolated evaluator
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +stable build \
+            --manifest-path target/m8b-msdf-evaluation/Cargo.toml \
+            --release \
+            --locked
+
       - name: Run bounded corpus evaluation
         shell: bash
         env:
           RUNENUI_REPO_ROOT: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          /usr/bin/time -v cargo +stable run \
-            --manifest-path target/m8b-msdf-evaluation/Cargo.toml \
-            --release \
-            --locked
+          /usr/bin/time -v \
+            target/m8b-msdf-evaluation/target/release/runenui-m8b-msdf-evaluation
