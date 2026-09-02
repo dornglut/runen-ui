@@ -1,6 +1,6 @@
-use runenui_core::{FontFamilyName, GenericFontFamily};
 #[cfg(feature = "internal-test-seams")]
 use runenui_core::SurfaceInputContext;
+use runenui_core::{FontFamilyName, GenericFontFamily};
 use runenui_text::{
     FontRegistrationError, FontSourcePolicy, FontSourceSnapshot, GenericFamilyMappingError,
 };
