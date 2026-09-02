@@ -51,7 +51,7 @@ impl fmt::Debug for TextLayoutState {
 }
 
 #[derive(Clone)]
-pub(super) struct CachedTextLayout {
+pub struct CachedTextLayout {
     pub(super) layout: Layout<[u8; 4]>,
     pub(super) request: TextRequest,
     pub(super) source_snapshot: FontSourceSnapshot,
