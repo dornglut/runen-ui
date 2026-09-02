@@ -52,7 +52,7 @@ impl fmt::Debug for TextLayoutState {
 
 #[derive(Clone)]
 pub(crate) struct CachedTextLayout {
-    pub(crate) layout: Layout<()>,
+    pub(crate) layout: Layout<[u8; 4]>,
     pub(crate) request: TextRequest,
     pub(crate) source_snapshot: FontSourceSnapshot,
     pub(crate) artifact: TextArtifact,
@@ -60,7 +60,7 @@ pub(crate) struct CachedTextLayout {
 
 impl CachedTextLayout {
     pub(crate) const fn new(
-        layout: Layout<()>,
+        layout: Layout<[u8; 4]>,
         request: TextRequest,
         source_snapshot: FontSourceSnapshot,
         artifact: TextArtifact,

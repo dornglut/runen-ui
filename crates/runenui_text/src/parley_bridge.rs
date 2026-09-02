@@ -24,7 +24,7 @@ pub(crate) fn shape_text(
     font_context: &mut FontContext,
     layout_context: &mut LayoutContext,
     request: &TextRequest,
-) -> Result<Layout<()>, TextLayoutError> {
+) -> Result<Layout<[u8; 4]>, TextLayoutError> {
     let mut builder = layout_context.ranged_builder(font_context, request.text(), 1.0, false);
 
     for property in typography_properties(request.typography())? {
@@ -68,7 +68,7 @@ pub(crate) fn shape_text(
 }
 
 pub(crate) fn relayout_text(
-    layout: &mut Layout<()>,
+    layout: &mut Layout<[u8; 4]>,
     resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
     source_snapshot: FontSourceSnapshot,
     request: &TextRequest,
@@ -91,7 +91,7 @@ pub(crate) fn relayout_text(
 
 fn typography_properties(
     typography: &Typography,
-) -> Result<Vec<StyleProperty<'static, ()>>, TextLayoutError> {
+) -> Result<Vec<StyleProperty<'static, [u8; 4]>>, TextLayoutError> {
     let families: Vec<ParleyFontFamilyName<'static>> = typography
         .families()
         .iter()
