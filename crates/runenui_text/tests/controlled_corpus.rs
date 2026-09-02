@@ -3,7 +3,7 @@ use std::{collections::HashSet, error::Error};
 use runenui_core::{FontFamily, FontFamilyName, GenericFontFamily, LogicalLength, Typography};
 use runenui_text::{
     FontSourcePolicy, TextArtifact, TextConstraints, TextDirection, TextLanguage, TextLayoutState,
-    TextLine, TextParagraphStyle, TextRequest, TextRun, TextSystem,
+    TextLine, TextParagraphStyle, TextRequest, TextRun, TextSystem, TextWordBreak,
 };
 
 const CANTARELL: &[u8] = include_bytes!("fixtures/Cantarell-Regular.ttf");
@@ -162,7 +162,9 @@ fn combining_grapheme_is_not_line_broken_internally() -> Result<(), Box<dyn Erro
                 TextConstraints::limited(LogicalLength::new(0.5)?),
             )
             .with_paragraph_style(
-                TextParagraphStyle::default().with_language(TextLanguage::new("en")?),
+                TextParagraphStyle::default()
+                    .with_language(TextLanguage::new("en")?)
+                    .with_word_break(TextWordBreak::BreakAll),
             ),
         )?
         .into_artifact();
