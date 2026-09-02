@@ -15,7 +15,9 @@ Construction is explicit:
 - `FontSourcePolicy::BundledOnly` disables ambient system-font discovery and is the deterministic conformance/headless mode;
 - `FontSourcePolicy::SystemAndBundled` permits production system discovery while retaining explicit bundled-font registration.
 
-Bundled font registration advances a cache-visible `FontSourceRevision`. Deterministic tests must use controlled redistributable font data and must not rely on the host's installed fonts.
+Bundled font registration advances a cache-visible `FontSourceRevision`. Generic families are configured explicitly through ordered named-family mappings; mapping names are resolved to canonical family identity, aliases are deduplicated without changing order, and the revision advances only when the effective mapping changes. Bundled registration never silently claims a generic-family role.
+
+This makes generic typography deterministic in `BundledOnly` mode once its intended bundled families are registered and mapped. Deterministic tests must use controlled redistributable font data and must not rely on the host's installed fonts.
 
 ## Logical layout reuse
 
@@ -31,7 +33,7 @@ The returned immutable `TextArtifact` remains the single source for paragraph me
 
 ## Current M8B implementation state
 
-The package now establishes the ownership boundary, explicit font-source policy/revision, renderer/runtime-neutral text constraints, Parley-backed logical shaping and line breaking, immutable logical artifacts, caller-owned reusable layout state, cache/reflow diagnostics, and scale-independent shaped-resource lifetime.
+The package now establishes the ownership boundary, explicit font-source policy/revision and deterministic generic-family mapping, renderer/runtime-neutral text constraints, Parley-backed logical shaping and line breaking, immutable logical artifacts, caller-owned reusable layout state, cache/reflow diagnostics, and scale-independent shaped-resource lifetime.
 
 Runtime measurement/publication cutover, the bounded SDF/MSDF generator evaluation, renderer SDF/MSDF atlas/shader realization, unsupported intrinsic-color glyph diagnostics, and the remaining M8B conformance corpus are still active work. Do not infer M8B acceptance from this package state.
 

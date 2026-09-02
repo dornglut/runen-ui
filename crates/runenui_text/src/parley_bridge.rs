@@ -6,18 +6,16 @@ use parley::{
     FontFamilyName as ParleyFontFamilyName, FontFeature as ParleyFontFeature,
     FontFeatures as ParleyFontFeatures, FontStyle as ParleyFontStyle,
     FontVariation as ParleyFontVariation, FontVariations as ParleyFontVariations,
-    FontWeight as ParleyFontWeight, FontWidth as ParleyFontWidth,
-    GenericFamily as ParleyGenericFamily, Language, Layout, LayoutContext,
+    FontWeight as ParleyFontWeight, FontWidth as ParleyFontWidth, Language, Layout, LayoutContext,
     OverflowWrap as ParleyOverflowWrap, StyleProperty, TextWrapMode as ParleyTextWrapMode,
     WordBreak as ParleyWordBreak,
 };
-use runenui_core::{
-    FontFamily, FontStyle, GenericFontFamily, LogicalLength, ResourceRef, Typography,
-};
+use runenui_core::{FontFamily, FontStyle, LogicalLength, ResourceRef, Typography};
 
 use crate::{
     FontSourceSnapshot, ShapedTextResource, TextAlignment, TextArtifact, TextLayoutError,
-    TextOverflowWrap, TextRequest, TextWordBreak, TextWrapMode, layout_extract,
+    TextOverflowWrap, TextRequest, TextWordBreak, TextWrapMode,
+    font_source_config::backend_generic_family, layout_extract,
 };
 
 pub fn shape_text(
@@ -100,9 +98,10 @@ fn typography_properties(
                 FontFamily::Named(name) => {
                     ParleyFontFamilyName::Named(Cow::Owned(name.as_str().to_owned()))
                 }
-                FontFamily::Generic(family) => {
-                    ParleyFontFamilyName::Generic(map_generic_family(*family)?)
-                }
+                FontFamily::Generic(family) => ParleyFontFamilyName::Generic(
+                    backend_generic_family(*family)
+                        .ok_or(TextLayoutError::UnsupportedGenericFamily)?,
+                ),
             })
         })
         .collect::<Result<_, TextLayoutError>>()?;
@@ -136,27 +135,6 @@ fn typography_properties(
         StyleProperty::FontVariations(ParleyFontVariations::List(Cow::Owned(variations))),
         StyleProperty::FontFeatures(ParleyFontFeatures::List(Cow::Owned(features))),
     ])
-}
-
-const fn map_generic_family(
-    family: GenericFontFamily,
-) -> Result<ParleyGenericFamily, TextLayoutError> {
-    Ok(match family {
-        GenericFontFamily::Serif => ParleyGenericFamily::Serif,
-        GenericFontFamily::SansSerif => ParleyGenericFamily::SansSerif,
-        GenericFontFamily::Monospace => ParleyGenericFamily::Monospace,
-        GenericFontFamily::Cursive => ParleyGenericFamily::Cursive,
-        GenericFontFamily::Fantasy => ParleyGenericFamily::Fantasy,
-        GenericFontFamily::SystemUi => ParleyGenericFamily::SystemUi,
-        GenericFontFamily::UiSerif => ParleyGenericFamily::UiSerif,
-        GenericFontFamily::UiSansSerif => ParleyGenericFamily::UiSansSerif,
-        GenericFontFamily::UiMonospace => ParleyGenericFamily::UiMonospace,
-        GenericFontFamily::UiRounded => ParleyGenericFamily::UiRounded,
-        GenericFontFamily::Emoji => ParleyGenericFamily::Emoji,
-        GenericFontFamily::Math => ParleyGenericFamily::Math,
-        GenericFontFamily::FangSong => ParleyGenericFamily::FangSong,
-        _ => return Err(TextLayoutError::UnsupportedGenericFamily),
-    })
 }
 
 fn parley_language(language: &crate::TextLanguage) -> Language {

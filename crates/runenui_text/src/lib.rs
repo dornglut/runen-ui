@@ -5,6 +5,7 @@
 //! private implementation dependencies and must not become public API authority.
 
 mod artifact;
+mod font_source_config;
 mod layout_extract;
 mod layout_state;
 mod parley_bridge;
@@ -28,6 +29,7 @@ pub use artifact::{
     TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics,
     TextRun,
 };
+pub use font_source_config::GenericFamilyMappingError;
 pub use layout_state::{TextLayoutDecision, TextLayoutOutcome, TextLayoutState};
 pub use request::{
     TextAlignment, TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap,
