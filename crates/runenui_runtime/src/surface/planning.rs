@@ -331,13 +331,7 @@ fn plan_structural_surface<'tree, Action>(
     let hit_test = resolved_hit_test.scene;
     let hit_diagnostics = Arc::new(resolved_hit_test.diagnostics);
     report.record(SurfacePhase::HitTesting);
-    let resolved_paint = resolve_paint(
-        &topology,
-        &layout,
-        &styles,
-        &capability_plan,
-        text_system,
-    );
+    let resolved_paint = resolve_paint(&topology, &layout, &styles, &capability_plan, text_system);
     let paint = resolved_paint.scene;
     let paint_diagnostics = Arc::new(resolved_paint.diagnostics);
     report.record(SurfacePhase::Paint);
