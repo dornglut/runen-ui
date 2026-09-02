@@ -43,7 +43,7 @@ impl TextSystem {
     /// first occurrence. Reapplying the same canonical chain is a no-op and does not advance the
     /// font-source revision. Passing an empty slice explicitly clears the mapping.
     ///
-    /// This operation never creates a second RunenUI fallback registry: the private Fontique
+    /// This operation never creates a second `RunenUI` fallback registry: the private Fontique
     /// collection remains the sole concrete mapping store inside this text system.
     ///
     /// # Errors
