@@ -333,9 +333,7 @@ impl TextRequest {
         self.text == other.text
             && self.typography == other.typography
             && self.metric_spans == other.metric_spans
-            && self
-                .paragraph
-                .same_prepared_layout_inputs(&other.paragraph)
+            && self.paragraph.same_prepared_layout_inputs(&other.paragraph)
     }
 }
 

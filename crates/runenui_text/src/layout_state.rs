@@ -1,6 +1,7 @@
 //! Caller-owned reusable state for one logical text-layout stream.
 
 use core::fmt;
+use std::sync::Arc;
 
 use parley::Layout;
 
@@ -9,12 +10,15 @@ use crate::{FontSourceSnapshot, TextArtifact, TextRequest};
 /// Reusable renderer-neutral state for one logical text-layout stream.
 ///
 /// The caller owns placement, lifetime, and invalidation of this value. `runenui_text`
-/// owns only the private shaping/layout representation stored inside it. In particular,
-/// this value carries no mounted identity, runtime topology, publication state, or
+/// owns only the private shaping/layout representation stored inside it. Cloning is
+/// cheap immutable sharing; a later re-linebreak uses copy-on-write so staged runtime
+/// work cannot mutate an accepted cache before commit.
+///
+/// This value carries no mounted identity, runtime topology, publication state, or
 /// renderer state.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct TextLayoutState {
-    pub(crate) cached: Option<CachedTextLayout>,
+    pub(crate) cached: Option<Arc<CachedTextLayout>>,
 }
 
 impl TextLayoutState {
@@ -46,6 +50,7 @@ impl fmt::Debug for TextLayoutState {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct CachedTextLayout {
     pub(crate) layout: Layout<()>,
     pub(crate) request: TextRequest,
@@ -54,7 +59,7 @@ pub(crate) struct CachedTextLayout {
 }
 
 impl CachedTextLayout {
-    pub(crate) fn new(
+    pub(crate) const fn new(
         layout: Layout<()>,
         request: TextRequest,
         source_snapshot: FontSourceSnapshot,
@@ -89,7 +94,7 @@ pub struct TextLayoutOutcome {
 }
 
 impl TextLayoutOutcome {
-    pub(crate) fn new(
+    pub(crate) const fn new(
         artifact: TextArtifact,
         decision: TextLayoutDecision,
         issued_resource_count: usize,

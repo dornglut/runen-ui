@@ -222,6 +222,7 @@ impl TextSystem {
             }
 
             if cached.request.same_prepared_layout_inputs(request) {
+                let cached = Arc::make_mut(cached);
                 let artifact = parley_bridge::relayout_text(
                     &mut cached.layout,
                     &mut self.shaped_resources,
@@ -240,11 +241,8 @@ impl TextSystem {
             }
         }
 
-        let mut layout = parley_bridge::shape_text(
-            &mut self.font_context,
-            &mut self.layout_context,
-            request,
-        )?;
+        let mut layout =
+            parley_bridge::shape_text(&mut self.font_context, &mut self.layout_context, request)?;
         let artifact = parley_bridge::relayout_text(
             &mut layout,
             &mut self.shaped_resources,
@@ -252,12 +250,12 @@ impl TextSystem {
             request,
         )?;
         let issued_resource_count = shaped_run_count(&artifact);
-        state.cached = Some(layout_state::CachedTextLayout::new(
+        state.cached = Some(Arc::new(layout_state::CachedTextLayout::new(
             layout,
             request.clone(),
             source_snapshot,
             artifact.clone(),
-        ));
+        )));
         Ok(TextLayoutOutcome::new(
             artifact,
             TextLayoutDecision::Reshaped,
@@ -451,9 +449,7 @@ mod tests {
 
         let first = system.layout_text(&mut state, &request)?;
         assert_eq!(first.decision(), TextLayoutDecision::Reshaped);
-        let first_resource = first.artifact().lines()[0].runs()[0]
-            .resource_ref()
-            .clone();
+        let first_resource = first.artifact().lines()[0].runs()[0].resource_ref().clone();
 
         let second = system.layout_text(&mut state, &request)?;
         assert_eq!(second.decision(), TextLayoutDecision::Reused);
@@ -489,6 +485,41 @@ mod tests {
         assert_eq!(second.decision(), TextLayoutDecision::Relinebroken);
         assert!(second.issued_resource_count() > 0);
         assert!(second.artifact().lines().len() > wide_line_count);
+        Ok(())
+    }
+
+    #[test]
+    fn cloned_state_relinebreak_is_copy_on_write() -> Result<(), Box<dyn Error>> {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let mut accepted = TextLayoutState::new();
+        system.register_font_bytes(CANTARELL.to_vec())?;
+        let text = "staged layout must not mutate accepted layout";
+        let wide = TextRequest::new(
+            text,
+            typography(16.0)?,
+            TextConstraints::limited(LogicalLength::new(400.0)?),
+        );
+        let narrow = TextRequest::new(
+            text,
+            typography(16.0)?,
+            TextConstraints::limited(LogicalLength::new(72.0)?),
+        );
+        let accepted_outcome = system.layout_text(&mut accepted, &wide)?;
+        let accepted_resource = accepted_outcome.artifact().lines()[0].runs()[0]
+            .resource_ref()
+            .clone();
+        let mut staged = accepted.clone();
+
+        assert_eq!(
+            system.layout_text(&mut staged, &narrow)?.decision(),
+            TextLayoutDecision::Relinebroken
+        );
+        let retry = system.layout_text(&mut accepted, &wide)?;
+        assert_eq!(retry.decision(), TextLayoutDecision::Reused);
+        assert_eq!(
+            retry.artifact().lines()[0].runs()[0].resource_ref(),
+            &accepted_resource
+        );
         Ok(())
     }
 
