@@ -20,7 +20,7 @@ use crate::{
     TextOverflowWrap, TextRequest, TextWordBreak, TextWrapMode, layout_extract,
 };
 
-pub(crate) fn shape_text(
+pub(super) fn shape_text(
     font_context: &mut FontContext,
     layout_context: &mut LayoutContext,
     request: &TextRequest,
@@ -67,7 +67,7 @@ pub(crate) fn shape_text(
     Ok(builder.build(request.text()))
 }
 
-pub(crate) fn relayout_text(
+pub(super) fn relayout_text(
     layout: &mut Layout<[u8; 4]>,
     resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
     source_snapshot: FontSourceSnapshot,

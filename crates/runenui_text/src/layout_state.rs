@@ -18,7 +18,7 @@ use crate::{FontSourceSnapshot, TextArtifact, TextRequest};
 /// renderer state.
 #[derive(Clone, Default)]
 pub struct TextLayoutState {
-    pub(crate) cached: Option<Arc<CachedTextLayout>>,
+    pub(super) cached: Option<Arc<CachedTextLayout>>,
 }
 
 impl TextLayoutState {
@@ -51,15 +51,15 @@ impl fmt::Debug for TextLayoutState {
 }
 
 #[derive(Clone)]
-pub(crate) struct CachedTextLayout {
-    pub(crate) layout: Layout<[u8; 4]>,
-    pub(crate) request: TextRequest,
-    pub(crate) source_snapshot: FontSourceSnapshot,
-    pub(crate) artifact: TextArtifact,
+pub(super) struct CachedTextLayout {
+    pub(super) layout: Layout<[u8; 4]>,
+    pub(super) request: TextRequest,
+    pub(super) source_snapshot: FontSourceSnapshot,
+    pub(super) artifact: TextArtifact,
 }
 
 impl CachedTextLayout {
-    pub(crate) const fn new(
+    pub(super) const fn new(
         layout: Layout<[u8; 4]>,
         request: TextRequest,
         source_snapshot: FontSourceSnapshot,
@@ -94,7 +94,7 @@ pub struct TextLayoutOutcome {
 }
 
 impl TextLayoutOutcome {
-    pub(crate) const fn new(
+    pub(super) const fn new(
         artifact: TextArtifact,
         decision: TextLayoutDecision,
         issued_resource_count: usize,
