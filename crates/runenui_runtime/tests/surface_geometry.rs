@@ -106,8 +106,8 @@ fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication
         .unwrap_or_else(|| unreachable!("button A is present in the surface frame"));
     let bounds = button_a.bounds();
     let hit_point = LogicalPoint::new(
-        bounds.x() + bounds.width() * 0.5,
-        bounds.y() + bounds.height() * 0.5,
+        bounds.width().mul_add(0.5, bounds.x()),
+        bounds.height().mul_add(0.5, bounds.y()),
     )
     .unwrap_or_else(|_| unreachable!("button midpoint is finite"));
     assert_eq!(
