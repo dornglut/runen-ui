@@ -1,8 +1,16 @@
-use runenui_core::{ElementId, IntoEffects, NoHostProtocol, UiApp, View, children, column, text};
-use runenui_runtime::{LogicalSize, MeasurementProvider, TextMeasurement, TextMeasurementRequest};
+use runenui_core::{
+    ElementId, FontFamilyName, GenericFontFamily, IntoEffects, NoHostProtocol, UiApp, View,
+    children, column, text,
+};
+use runenui_runtime::LogicalSize;
 use runenui_testing::{
     DEFAULT_TEST_SURFACE_SIZE, TestHarness, TestSurfaceConfig, TestSurfaceConfigError,
 };
+
+const CANTARELL: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../runenui_text/tests/fixtures/Cantarell-Regular.ttf"
+));
 
 struct SurfaceApp;
 
@@ -22,64 +30,52 @@ impl UiApp for SurfaceApp {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct WideMeasurement;
-
-impl MeasurementProvider for WideMeasurement {
-    fn cache_identity(&self) -> u64 {
-        0x004d_3544
-    }
-
-    fn cache_revision(&self) -> u64 {
-        1
-    }
-
-    fn measure_text(&self, _: &TextMeasurementRequest<'_>) -> TextMeasurement {
-        let size = LogicalSize::try_new(240.0, 48.0).unwrap_or(LogicalSize::ZERO);
-        TextMeasurement::new(size)
-    }
+fn register_controlled_text(harness: &mut TestHarness<SurfaceApp>) {
+    assert!(
+        harness
+            .register_text_font_bytes(CANTARELL.to_vec())
+            .unwrap_or_else(|_| unreachable!("controlled Cantarell fixture is registerable"))
+            > 0
+    );
+    let family = FontFamilyName::new("Cantarell")
+        .unwrap_or_else(|_| unreachable!("controlled family name is canonical"));
+    assert!(
+        harness
+            .set_text_generic_family_mapping(GenericFontFamily::SansSerif, &[family])
+            .unwrap_or_else(|_| unreachable!("controlled generic mapping is valid"))
+    );
 }
 
 #[test]
-fn fixed_surface_layout_neutral_scenes_and_custom_measurement_are_public_and_deterministic() {
+fn fixed_surface_layout_and_font_backed_text_are_public_and_deterministic() {
     let mut harness = TestHarness::<SurfaceApp>::mount(());
     assert_eq!(harness.surface_config().size(), DEFAULT_TEST_SURFACE_SIZE);
+    register_controlled_text(&mut harness);
 
-    let Some((default_bounds, measured_id)) = (|| {
-        let publication = harness.publish().ok()?;
-        assert_eq!(publication.frame().size(), DEFAULT_TEST_SURFACE_SIZE);
-        let authored = ElementId::new("surface.measure").ok()?;
-        let node = publication
-            .frame()
-            .nodes()
-            .iter()
-            .find(|node| node.authored_id() == Some(&authored))?;
-        assert!(publication.paint_scene().is_empty());
-        assert!(publication.layout_report().node(node.id()).is_some());
-        let point =
-            runenui_runtime::LogicalPoint::new(node.bounds().x() + 1.0, node.bounds().y() + 1.0)
-                .ok()?;
-        assert_eq!(publication.hit_test_scene().target_at(point), None);
-        assert!(
-            publication
-                .hit_test_scene()
-                .contains_mounted_target(node.id())
-        );
-        Some((node.bounds(), node.id().clone()))
-    })() else {
-        return;
-    };
-
-    let Some(custom_bounds) = (|| {
-        let publication = harness.publish_with_measurement(&WideMeasurement).ok()?;
-        let node = publication.frame().node(&measured_id)?;
-        Some(node.bounds())
-    })() else {
-        return;
-    };
-
-    assert!(custom_bounds.width() > default_bounds.width());
-    assert!(custom_bounds.height() > default_bounds.height());
+    let publication = harness
+        .publish()
+        .unwrap_or_else(|_| unreachable!("controlled text publication succeeds"));
+    assert_eq!(publication.frame().size(), DEFAULT_TEST_SURFACE_SIZE);
+    let authored = ElementId::new("surface.measure")
+        .unwrap_or_else(|_| unreachable!("test authored identifier is canonical"));
+    let node = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("authored text node is published"));
+    assert!(node.bounds().width() > 0.0);
+    assert!(node.bounds().height() > 0.0);
+    assert!(publication.paint_scene().is_empty());
+    assert!(publication.layout_report().node(node.id()).is_some());
+    let point = runenui_runtime::LogicalPoint::new(node.bounds().x() + 1.0, node.bounds().y() + 1.0)
+        .unwrap_or_else(|_| unreachable!("test point is finite"));
+    assert_eq!(publication.hit_test_scene().target_at(point), None);
+    assert!(
+        publication
+            .hit_test_scene()
+            .contains_mounted_target(node.id())
+    );
 }
 
 #[test]
@@ -91,13 +87,13 @@ fn surface_size_is_explicitly_configurable_and_zero_extent_is_rejected() {
     );
 
     let custom_size = LogicalSize::try_new(320.0, 240.0).unwrap_or(DEFAULT_TEST_SURFACE_SIZE);
-    let Ok(config) = TestSurfaceConfig::new(custom_size) else {
-        return;
-    };
+    let config = TestSurfaceConfig::new(custom_size)
+        .unwrap_or_else(|_| unreachable!("non-zero test surface is valid"));
     let mut harness = TestHarness::<SurfaceApp>::mount(());
+    register_controlled_text(&mut harness);
     harness.set_surface_config(config);
-    let Ok(publication) = harness.publish() else {
-        return;
-    };
+    let publication = harness
+        .publish()
+        .unwrap_or_else(|_| unreachable!("controlled text publication succeeds"));
     assert_eq!(publication.frame().size(), custom_size);
 }

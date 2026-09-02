@@ -1,7 +1,6 @@
 use core::{error::Error, fmt};
 
 use runenui_core::{LogicalSize, StyleEnvironment};
-use runenui_runtime::DeterministicMeasurementProvider;
 
 /// Named non-zero default surface used by deterministic harness publication.
 pub const DEFAULT_TEST_SURFACE_SIZE: LogicalSize = match LogicalSize::try_new(800.0, 600.0) {
@@ -33,7 +32,6 @@ impl Error for TestSurfaceConfigError {}
 pub struct TestSurfaceConfig {
     size: LogicalSize,
     style_environment: StyleEnvironment,
-    measurement: DeterministicMeasurementProvider,
 }
 
 impl Default for TestSurfaceConfig {
@@ -41,7 +39,6 @@ impl Default for TestSurfaceConfig {
         Self {
             size: DEFAULT_TEST_SURFACE_SIZE,
             style_environment: StyleEnvironment::default(),
-            measurement: DeterministicMeasurementProvider::DEFAULT,
         }
     }
 }
@@ -74,26 +71,10 @@ impl TestSurfaceConfig {
         &self.style_environment
     }
 
-    /// Returns the deterministic default measurement provider.
-    #[must_use]
-    pub const fn measurement_provider(&self) -> DeterministicMeasurementProvider {
-        self.measurement
-    }
-
     /// Replaces the harness-owned style environment.
     #[must_use]
     pub fn with_style_environment(mut self, style_environment: StyleEnvironment) -> Self {
         self.style_environment = style_environment;
-        self
-    }
-
-    /// Replaces the deterministic text metrics used by default publication.
-    #[must_use]
-    pub const fn with_measurement_provider(
-        mut self,
-        measurement: DeterministicMeasurementProvider,
-    ) -> Self {
-        self.measurement = measurement;
         self
     }
 }

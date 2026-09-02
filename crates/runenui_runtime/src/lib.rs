@@ -188,7 +188,6 @@ mod constraints;
 mod debug;
 mod focus;
 mod input;
-mod measurement;
 mod mounted;
 mod pointer;
 pub mod prelude;
@@ -232,10 +231,6 @@ pub use input::{
     SubmitKeyboardError, SubmitKeyboardErrorKind, SubmitTextError, SubmitTextErrorKind,
     TextSubmission,
 };
-pub use measurement::{
-    BaselineError, DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement,
-    TextMeasurementKind, TextMeasurementRequest,
-};
 pub use mounted::{
     AutomationMatchDiagnostic, DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef,
     MountedNodeId, MountedNodeRef, MountedTreeIndex, SemanticNodeId,
@@ -259,6 +254,7 @@ pub use runenui_core::{
 };
 pub use runenui_text::{
     FontRegistrationError, FontSourcePolicy, FontSourceSnapshot, GenericFamilyMappingError,
+    TextLayoutError,
 };
 pub use runtime::{
     HostRequestCancelError, HostResponseError, PublishSurfaceError, ReconciliationDiagnostic,

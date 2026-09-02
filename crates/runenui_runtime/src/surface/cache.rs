@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use runenui_core::{StyleEnvironment, WidgetDiagnostic};
+use runenui_text::{FontSourceSnapshot, TextLayoutState};
 
 use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
@@ -133,8 +134,7 @@ pub(super) struct SurfaceContextKey {
     // Every field is a context key, not a mounted or phase-owned authored fact.
     pub(super) constraints: RootConstraintKey,
     pub(super) style_environment: StyleEnvironmentCacheKey,
-    pub(super) measurement_identity: u64,
-    pub(super) measurement_revision: u64,
+    pub(super) font_source: FontSourceSnapshot,
 }
 
 #[derive(Clone, Debug)]
@@ -143,6 +143,10 @@ pub(super) struct CachedLayoutFacts {
     pub(super) size: LogicalSize,
     pub(super) bounds: Vec<LogicalRect>,
     pub(super) report: SurfaceLayoutReport,
+    // Runtime-owned reusable logical text state aligned exactly with topology.
+    // Each state is cheap COW sharing so a staged reflow cannot mutate accepted
+    // shaping/layout state before publication commit.
+    pub(super) text_layouts: Vec<TextLayoutState>,
 }
 
 /// Sole retained renderer/input-side publication substrate.
@@ -245,7 +249,10 @@ impl SurfaceCache {
     }
 }
 
-pub(super) fn context_key(context: &SurfaceBuildContext<'_>) -> SurfaceContextKey {
+pub(super) fn context_key(
+    context: &SurfaceBuildContext<'_>,
+    font_source: FontSourceSnapshot,
+) -> SurfaceContextKey {
     const fn axis(axis: AxisConstraints) -> [u32; 2] {
         [
             axis.min().get().to_bits(),
@@ -262,8 +269,7 @@ pub(super) fn context_key(context: &SurfaceBuildContext<'_>) -> SurfaceContextKe
         style_environment: StyleEnvironmentCacheKey {
             snapshot: context.style_environment().clone(),
         },
-        measurement_identity: context.measurement_provider().cache_identity(),
-        measurement_revision: context.measurement_provider().cache_revision(),
+        font_source,
     }
 }
 
@@ -275,7 +281,10 @@ mod tests {
     use crate::{
         LayoutConstraints,
         mounted::{DirtyPhases, MountedTree, apply_invalidation},
-        surface::{SurfaceBuildContext, SurfaceInteractionProjection, plan_mounted_surface_cached},
+        surface::{
+            SurfaceBuildContext, SurfaceInteractionProjection,
+            planning::plan_mounted_surface_cached_with_test_text,
+        },
     };
 
     fn publish(
@@ -284,8 +293,13 @@ mod tests {
         cache: &mut Option<SurfaceCache>,
     ) -> super::SurfacePhaseReport {
         let interaction = SurfaceInteractionProjection::default();
-        let planned = plan_mounted_surface_cached(tree, context, &interaction, cache.as_ref())
-            .unwrap_or_else(|_| unreachable!("reuse proof has valid semantic planning"));
+        let planned = plan_mounted_surface_cached_with_test_text(
+            tree,
+            context,
+            &interaction,
+            cache.as_ref(),
+        )
+        .unwrap_or_else(|_| unreachable!("reuse proof has valid semantic planning"));
         let commit = planned.commit_store();
         let (_, report) = commit.commit(tree, cache);
         report
@@ -334,9 +348,13 @@ mod tests {
         assert!(dirty_before.contains(DirtyPhases::PAINT));
 
         let interaction = SurfaceInteractionProjection::default();
-        let planned =
-            plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
-                .unwrap_or_else(|_| unreachable!("dirty staged plan remains valid"));
+        let planned = plan_mounted_surface_cached_with_test_text(
+            &mut tree,
+            &context,
+            &interaction,
+            cache.as_ref(),
+        )
+        .unwrap_or_else(|_| unreachable!("dirty staged plan remains valid"));
         drop(planned);
 
         let still_live = cache

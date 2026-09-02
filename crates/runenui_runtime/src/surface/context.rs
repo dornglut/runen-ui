@@ -2,12 +2,7 @@ use core::{error::Error, fmt};
 
 use runenui_core::StyleEnvironment;
 
-use crate::{
-    DeterministicMeasurementProvider, LayoutConstraints, LogicalSize, MeasurementProvider,
-};
-
-static DEFAULT_MEASUREMENT_PROVIDER: DeterministicMeasurementProvider =
-    DeterministicMeasurementProvider::DEFAULT;
+use crate::{LayoutConstraints, LogicalSize};
 
 /// Error returned when a renderer raster scale is not finite and strictly positive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -70,46 +65,38 @@ impl Default for RasterScale {
     }
 }
 
-/// Explicit inputs used to publish one surface snapshot.
+/// Explicit host inputs used to publish one surface snapshot.
+///
+/// Logical text measurement is deliberately absent from this host-facing context.
+/// The runtime-owned text system is the sole production shaping and measurement authority.
 #[derive(Clone, Copy)]
 pub struct SurfaceBuildContext<'a> {
     style_environment: &'a StyleEnvironment,
     root_constraints: LayoutConstraints,
-    measurement_provider: &'a dyn MeasurementProvider,
     raster_scale: RasterScale,
 }
 
 impl<'a> SurfaceBuildContext<'a> {
     #[must_use]
-    pub fn new(
+    pub const fn new(
         style_environment: &'a StyleEnvironment,
         root_constraints: LayoutConstraints,
     ) -> Self {
         Self {
             style_environment,
             root_constraints,
-            measurement_provider: &DEFAULT_MEASUREMENT_PROVIDER,
             raster_scale: RasterScale::ONE,
         }
     }
 
     #[must_use]
-    pub fn tight(style_environment: &'a StyleEnvironment, size: LogicalSize) -> Self {
+    pub const fn tight(style_environment: &'a StyleEnvironment, size: LogicalSize) -> Self {
         Self::new(style_environment, LayoutConstraints::tight(size))
     }
 
     #[must_use]
     pub const fn with_root_constraints(mut self, root_constraints: LayoutConstraints) -> Self {
         self.root_constraints = root_constraints;
-        self
-    }
-
-    #[must_use]
-    pub fn with_measurement_provider(
-        mut self,
-        measurement_provider: &'a dyn MeasurementProvider,
-    ) -> Self {
-        self.measurement_provider = measurement_provider;
         self
     }
 
@@ -129,11 +116,6 @@ impl<'a> SurfaceBuildContext<'a> {
     #[must_use]
     pub const fn root_constraints(&self) -> LayoutConstraints {
         self.root_constraints
-    }
-
-    #[must_use]
-    pub const fn measurement_provider(&self) -> &'a dyn MeasurementProvider {
-        self.measurement_provider
     }
 
     /// Returns the exact validated renderer raster scale.

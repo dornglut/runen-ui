@@ -2,6 +2,7 @@ use core::num::NonZeroUsize;
 use std::{collections::VecDeque, sync::Arc};
 
 use runenui_core::{__runtime::RuntimeNamespace, SurfaceId, SurfaceInputContext};
+use runenui_text::{TextLayoutError, TextSystem};
 
 use crate::{
     LogicalPoint, LogicalRect, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
@@ -14,7 +15,7 @@ use crate::{
     },
     surface::{
         SurfaceCache, SurfaceInteractionProjection, SurfacePlanningError,
-        plan_mounted_surface_cached,
+        plan_mounted_surface_cached_with_text,
     },
 };
 
@@ -120,12 +121,16 @@ impl SurfacePublicationAdmission {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::runtime) enum SurfacePublicationPlanError {
     SemanticIntegrity,
+    TextLayout(TextLayoutError),
     CounterExhausted(SurfacePublicationCounter),
 }
 
 impl From<SurfacePlanningError> for SurfacePublicationPlanError {
-    fn from(_: SurfacePlanningError) -> Self {
-        Self::SemanticIntegrity
+    fn from(error: SurfacePlanningError) -> Self {
+        match error {
+            SurfacePlanningError::SemanticIntegrity => Self::SemanticIntegrity,
+            SurfacePlanningError::TextLayout(error) => Self::TextLayout(error),
+        }
     }
 }
 
@@ -192,13 +197,20 @@ impl SurfacePublicationState {
     pub(crate) fn publish<Action>(
         &mut self,
         tree: &mut MountedTree<Action>,
+        text_system: &mut TextSystem,
         context: &SurfaceBuildContext<'_>,
         interaction: &SurfaceInteractionProjection,
         focused_owner: Option<&MountedNodeId>,
         admission: SurfacePublicationAdmission,
     ) -> Result<SurfacePublication, SurfacePublicationPlanError> {
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
-        let planned = plan_mounted_surface_cached(tree, context, interaction, self.cache.as_ref())?;
+        let planned = plan_mounted_surface_cached_with_text(
+            tree,
+            context,
+            interaction,
+            text_system,
+            self.cache.as_ref(),
+        )?;
         let semantic_candidate = planned.semantic_candidate(focused_owner)?;
         let semantic_plan: SemanticPublicationPlan = self
             .semantic_publication

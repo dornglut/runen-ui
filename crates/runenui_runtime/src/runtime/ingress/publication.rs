@@ -129,6 +129,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .surface_interaction_projection(focused_owner.as_ref());
         let publication = match self.surface_publication.publish(
             &mut self.tree,
+            &mut self.text_system,
             context,
             &interaction,
             focused_owner.as_ref(),
@@ -139,6 +140,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 let reason = RuntimeTerminalReason::Poisoned;
                 self.enter_terminal(reason, 0);
                 return Err(PublishSurfaceError::Terminal(reason));
+            }
+            Err(SurfacePublicationPlanError::TextLayout(error)) => {
+                return Err(PublishSurfaceError::TextLayout(error));
             }
             Err(SurfacePublicationPlanError::CounterExhausted(counter)) => {
                 let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
