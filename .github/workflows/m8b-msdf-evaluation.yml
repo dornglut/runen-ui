@@ -1,0 +1,71 @@
+name: M8B MSDF generator evaluation
+
+on:
+  pull_request:
+    paths:
+      - ".github/evaluations/msdf_generator.rs"
+      - ".github/workflows/m8b-msdf-evaluation.yml"
+      - "crates/runenui_core/**"
+      - "crates/runenui_text/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m8b-msdf-evaluation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    name: Bounded bymsdfgen-core evaluation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install stable Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup component add rustfmt --toolchain stable
+
+      - name: Materialize isolated evaluator
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval_dir=target/m8b-msdf-evaluation
+          mkdir -p "$eval_dir/src"
+          cp .github/evaluations/msdf_generator.rs "$eval_dir/src/main.rs"
+          cat > "$eval_dir/Cargo.toml" <<'EOF'
+          [package]
+          name = "runenui-m8b-msdf-evaluation"
+          version = "0.0.0"
+          edition = "2024"
+          rust-version = "1.93.0"
+          publish = false
+
+          [workspace]
+
+          [dependencies]
+          bymsdfgen-core = { version = "=0.1.1", default-features = false }
+          skrifa = { version = "=0.44.0", default-features = false, features = ["std"] }
+          runenui_core = { path = "../../crates/runenui_core" }
+          runenui_text = { path = "../../crates/runenui_text" }
+          EOF
+          cargo +stable fmt --manifest-path "$eval_dir/Cargo.toml"
+          cargo +stable generate-lockfile --manifest-path "$eval_dir/Cargo.toml"
+          echo "temporary_lock_sha256=$(sha256sum "$eval_dir/Cargo.lock" | cut -d' ' -f1)"
+          cargo +stable tree --manifest-path "$eval_dir/Cargo.toml" --locked -e normal
+
+      - name: Run bounded corpus evaluation
+        shell: bash
+        env:
+          RUNENUI_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          /usr/bin/time -v cargo +stable run \
+            --manifest-path target/m8b-msdf-evaluation/Cargo.toml \
+            --release \
+            --locked
