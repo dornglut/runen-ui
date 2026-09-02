@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use runenui_core::{
     LogicalPoint, LogicalSize, LogicalTransform, MountedNodeId, PaintPrimitive, PointerPolicy,
-    SceneLayer, SceneOpacity, SceneShape, SurfaceId, SurfaceInputContext,
+    ResourceRef, SceneLayer, SceneOpacity, SceneShape, SurfaceId, SurfaceInputContext,
 };
+use runenui_text::{ShapedTextResource, TextArtifact};
 
 use crate::surface::RasterScale;
 
@@ -109,15 +110,35 @@ impl PaintSceneItem {
 }
 
 /// Immutable canonical renderer scene content.
-#[derive(Clone, Debug, Default, PartialEq)]
+///
+/// Logical text artifacts are retained privately only to keep every shaped
+/// `ResourceRef` in this exact scene bound to its immutable logical payload for
+/// retained-publication renderer retry. They are not separate paint authority:
+/// visible scene identity remains the ordered paint items.
+#[derive(Clone, Debug, Default)]
 pub struct PaintScene {
     items: Arc<Vec<PaintSceneItem>>,
+    text_artifacts: Arc<Vec<TextArtifact>>,
+}
+
+impl PartialEq for PaintScene {
+    fn eq(&self, other: &Self) -> bool {
+        self.items == other.items
+    }
 }
 
 impl PaintScene {
     pub(crate) fn new(items: Vec<PaintSceneItem>) -> Self {
+        Self::with_text_artifacts(items, Vec::new())
+    }
+
+    pub(crate) fn with_text_artifacts(
+        items: Vec<PaintSceneItem>,
+        text_artifacts: Vec<TextArtifact>,
+    ) -> Self {
         Self {
             items: Arc::new(items),
+            text_artifacts: Arc::new(text_artifacts),
         }
     }
 
@@ -133,9 +154,26 @@ impl PaintScene {
         self.items.is_empty()
     }
 
+    /// Resolves one runtime-backed shaped-text reference to the exact immutable
+    /// logical resource retained by this scene.
+    ///
+    /// Renderer scale, quality, atlas placement, and device state are deliberately
+    /// absent. Resource references authored by other caller-owned resource domains
+    /// simply return `None` and remain the caller's responsibility.
+    #[must_use]
+    pub fn shaped_text_resource(&self, resource: &ResourceRef) -> Option<&ShapedTextResource> {
+        self.text_artifacts
+            .iter()
+            .flat_map(|artifact| artifact.lines())
+            .flat_map(|line| line.runs())
+            .find(|run| run.resource_ref() == resource)
+            .map(|run| run.shaped_resource())
+    }
+
     #[cfg(test)]
     pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.items, &other.items)
+            && Arc::ptr_eq(&self.text_artifacts, &other.text_artifacts)
     }
 }
 
