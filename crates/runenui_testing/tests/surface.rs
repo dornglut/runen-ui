@@ -66,7 +66,18 @@ fn fixed_surface_layout_and_font_backed_text_are_public_and_deterministic() {
         .unwrap_or_else(|| unreachable!("authored text node is published"));
     assert!(node.bounds().width() > 0.0);
     assert!(node.bounds().height() > 0.0);
-    assert!(publication.paint_scene().is_empty());
+    let shaped_run = publication
+        .paint_scene()
+        .items()
+        .iter()
+        .find_map(|item| item.primitive().as_shaped_text_run())
+        .unwrap_or_else(|| unreachable!("font-backed text publishes a shaped paint run"));
+    let shaped = publication
+        .paint_scene()
+        .shaped_text_resource(shaped_run.resource_ref())
+        .unwrap_or_else(|| unreachable!("published shaped ref retains its logical resource"));
+    assert_eq!(shaped.resource_ref(), shaped_run.resource_ref());
+    assert!(!shaped.glyphs().is_empty());
     assert!(publication.layout_report().node(node.id()).is_some());
     let point =
         runenui_runtime::LogicalPoint::new(node.bounds().x() + 1.0, node.bounds().y() + 1.0)
