@@ -32,7 +32,7 @@ const DEVANAGARI_PATH: &str =
     "crates/runenui_text/tests/fixtures/RunenUIFixtureDevanagari-Regular.ttf";
 const TIERS: [f64; 4] = [16.0, 24.0, 32.0, 48.0];
 const FIELD_RANGE_PX: f64 = 4.0;
-const FDSM_DISTANCE_RANGE_PX: f64 = FIELD_RANGE_PX * 2.0;
+const FDSM_DISTANCE_RANGE_PX: f64 = FIELD_RANGE_PX;
 const REPEATS: usize = 3;
 const EDGE_ANGLE_THRESHOLD_RADIANS: f64 = 3.0;
 const EDGE_COLORING_SEED: u64 = 0;
