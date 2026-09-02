@@ -3,7 +3,7 @@ use std::{collections::HashSet, error::Error};
 use runenui_core::{FontFamily, FontFamilyName, GenericFontFamily, LogicalLength, Typography};
 use runenui_text::{
     FontSourcePolicy, TextArtifact, TextConstraints, TextDirection, TextLanguage, TextLayoutState,
-    TextParagraphStyle, TextRequest, TextSystem,
+    TextLine, TextParagraphStyle, TextRequest, TextRun, TextSystem,
 };
 
 const CANTARELL: &[u8] = include_bytes!("fixtures/Cantarell-Regular.ttf");
@@ -51,7 +51,7 @@ fn glyph_ids(artifact: &TextArtifact) -> impl Iterator<Item = u32> + '_ {
     artifact
         .lines()
         .iter()
-        .flat_map(|line| line.runs())
+        .flat_map(TextLine::runs)
         .flat_map(|run| run.shaped_resource().glyphs())
         .map(|glyph| glyph.id())
 }
@@ -71,7 +71,7 @@ fn controlled_generic_fallback_uses_each_exact_bundled_source() -> Result<(), Bo
     let mut saw_devanagari = false;
     let mut saw_arabic = false;
 
-    for run in artifact.lines().iter().flat_map(|line| line.runs()) {
+    for run in artifact.lines().iter().flat_map(TextLine::runs) {
         let bytes = run.shaped_resource().font().bytes();
         saw_cantarell |= bytes == CANTARELL;
         saw_devanagari |= bytes == DEVANAGARI;
@@ -96,7 +96,7 @@ fn arabic_joining_is_contextual_and_right_to_left() -> Result<(), Box<dyn Error>
         joined
             .lines()
             .iter()
-            .flat_map(|line| line.runs())
+            .flat_map(TextLine::runs)
             .any(|run| run.direction() == TextDirection::RightToLeft)
     );
 
@@ -138,7 +138,7 @@ fn mixed_bidi_exposes_both_visual_run_directions() -> Result<(), Box<dyn Error>>
 
     let mut saw_ltr = false;
     let mut saw_rtl = false;
-    for run in artifact.lines().iter().flat_map(|line| line.runs()) {
+    for run in artifact.lines().iter().flat_map(TextLine::runs) {
         saw_ltr |= run.direction() == TextDirection::LeftToRight;
         saw_rtl |= run.direction() == TextDirection::RightToLeft;
     }
@@ -172,7 +172,7 @@ fn combining_grapheme_is_not_line_broken_internally() -> Result<(), Box<dyn Erro
     let clusters = artifact.lines()[0]
         .runs()
         .iter()
-        .flat_map(|run| run.clusters())
+        .flat_map(TextRun::clusters)
         .collect::<Vec<_>>();
     assert!(!clusters.is_empty());
     assert_eq!(clusters[0].text_range().start, 0);
