@@ -1900,6 +1900,7 @@ name = "runenui_runtime"
 version = "0.1.0"
 dependencies = [
  "runenui_core",
+ "runenui_text",
  "serde_json",
 ]
 

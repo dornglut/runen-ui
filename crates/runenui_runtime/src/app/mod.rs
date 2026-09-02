@@ -11,9 +11,11 @@ use std::time::Duration;
 use runenui_core::{CommandOrigin, ElementId, SemanticCommand, UiApp, View};
 
 use crate::{
-    FocusState, MountedNodeId, MountedTreeIndex, PumpBudget, PumpReport, ReconciliationReport,
-    RuntimeConfig, RuntimeStatus, ShutdownReport, SubmitActionResult, SurfaceBuildContext,
-    SurfacePublication, Trace, TraceActionCategory, WorkSequence, pump, runtime::Runtime,
+    FocusState, FontFamilyName, FontRegistrationError, FontSourcePolicy, FontSourceSnapshot,
+    GenericFamilyMappingError, GenericFontFamily, MountedNodeId, MountedTreeIndex, PumpBudget,
+    PumpReport, ReconciliationReport, RuntimeConfig, RuntimeStatus, ShutdownReport,
+    SubmitActionResult, SurfaceBuildContext, SurfacePublication, Trace, TraceActionCategory,
+    WorkSequence, pump, runtime::Runtime,
 };
 
 pub struct AppRuntime<App: UiApp> {
@@ -28,7 +30,7 @@ impl<App: UiApp> AppRuntime<App> {
         Self::mount_with_config(state, RuntimeConfig::default())
     }
 
-    /// Mounts with explicit queue and trace limits.
+    /// Mounts with explicit runtime configuration.
     #[must_use]
     pub fn mount_with_config(state: App::State, config: RuntimeConfig) -> Self {
         let mut runtime = Runtime::mount(state, |state| App::root(state).into_element(), config);
@@ -39,6 +41,46 @@ impl<App: UiApp> AppRuntime<App> {
             runtime,
             _app: PhantomData,
         }
+    }
+
+    /// Registers immutable bundled font bytes with the runtime-owned text authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns a text-source registration error when the bytes contain no registerable faces or
+    /// when the font-source revision cannot advance.
+    pub fn register_text_font_bytes(
+        &mut self,
+        bytes: Vec<u8>,
+    ) -> Result<usize, FontRegistrationError> {
+        self.runtime.register_text_font_bytes(bytes)
+    }
+
+    /// Replaces one runtime text generic-family mapping with already-registered named families.
+    ///
+    /// # Errors
+    ///
+    /// Returns a mapping error when a named family is unavailable, the generic family has no
+    /// reviewed backend mapping, or the font-source revision cannot advance.
+    pub fn set_text_generic_family_mapping(
+        &mut self,
+        generic: GenericFontFamily,
+        families: &[FontFamilyName],
+    ) -> Result<bool, GenericFamilyMappingError> {
+        self.runtime
+            .set_text_generic_family_mapping(generic, families)
+    }
+
+    /// Returns the exact cache-compatibility snapshot of the runtime-owned font-source universe.
+    #[must_use]
+    pub fn text_font_source_snapshot(&self) -> FontSourceSnapshot {
+        self.runtime.text_font_source_snapshot()
+    }
+
+    /// Returns the runtime-owned text authority's ambient-font policy.
+    #[must_use]
+    pub const fn text_font_source_policy(&self) -> FontSourcePolicy {
+        self.runtime.text_font_source_policy()
     }
 
     /// Appends one programmatic application action to the canonical FIFO.
