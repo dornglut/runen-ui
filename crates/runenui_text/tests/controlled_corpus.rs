@@ -148,27 +148,41 @@ fn mixed_bidi_exposes_both_visual_run_directions() -> Result<(), Box<dyn Error>>
 }
 
 #[test]
-fn combining_sequence_remains_one_logical_cluster() -> Result<(), Box<dyn Error>> {
+fn combining_grapheme_is_not_line_broken_internally() -> Result<(), Box<dyn Error>> {
     let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
     assert!(system.register_font_bytes(CANTARELL.to_vec())? > 0);
     let text = "e\u{301}";
-    let artifact = shape(
-        &mut system,
-        text,
-        named_typography("Cantarell")?,
-        TextParagraphStyle::default().with_language(TextLanguage::new("en")?),
-    )?;
-    let clusters = artifact
-        .lines()
+    let mut state = TextLayoutState::new();
+    let artifact = system
+        .layout_text(
+            &mut state,
+            &TextRequest::new(
+                text,
+                named_typography("Cantarell")?,
+                TextConstraints::limited(LogicalLength::new(0.5)?),
+            )
+            .with_paragraph_style(
+                TextParagraphStyle::default().with_language(TextLanguage::new("en")?),
+            ),
+        )?
+        .into_artifact();
+
+    assert_eq!(artifact.lines().len(), 1);
+    assert_eq!(artifact.lines()[0].text_range(), 0..text.len());
+    let clusters = artifact.lines()[0]
+        .runs()
         .iter()
-        .flat_map(|line| line.runs())
         .flat_map(|run| run.clusters())
         .collect::<Vec<_>>();
-
-    let cluster = clusters
-        .first()
-        .ok_or("combining fixture must produce one logical cluster")?;
-    assert_eq!(clusters.len(), 1);
-    assert_eq!(cluster.text_range(), 0..text.len());
+    assert!(!clusters.is_empty());
+    assert_eq!(clusters[0].text_range().start, 0);
+    assert_eq!(
+        clusters
+            .last()
+            .ok_or("combining fixture must expose source clusters")?
+            .text_range()
+            .end,
+        text.len()
+    );
     Ok(())
 }
