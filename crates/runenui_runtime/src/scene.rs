@@ -90,7 +90,7 @@ impl PaintSceneItem {
         self.local_to_surface
     }
 
-    /// Returns conjunctive clips in exact authored order.
+    /// Returns conjunctive clips in authored order.
     #[must_use]
     pub const fn clips(&self) -> &[SceneClip] {
         self.clips.as_slice()
@@ -128,10 +128,6 @@ impl PartialEq for PaintScene {
 }
 
 impl PaintScene {
-    pub(crate) fn new(items: Vec<PaintSceneItem>) -> Self {
-        Self::with_text_artifacts(items, Vec::new())
-    }
-
     pub(crate) fn with_text_artifacts(
         items: Vec<PaintSceneItem>,
         text_artifacts: Vec<TextArtifact>,
