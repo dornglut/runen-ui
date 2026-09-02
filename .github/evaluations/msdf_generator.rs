@@ -461,7 +461,9 @@ fn field_evidence(
         }
 
         let reconstructed = median3(r, g, b);
-        let error = (reconstructed - sdf_value).abs();
+        let clamped_sdf = sdf_value.clamp(0.0, 1.0);
+        let clamped_reconstructed = reconstructed.clamp(0.0, 1.0);
+        let error = (clamped_reconstructed - clamped_sdf).abs();
         abs_error += error;
         max_abs_error = max_abs_error.max(error);
         sign_mismatches += usize::from((reconstructed >= 0.5) != (sdf_value >= 0.5));
@@ -471,7 +473,6 @@ fn field_evidence(
             quantize(g) as f32,
             quantize(b) as f32,
         );
-        let clamped_sdf = sdf_value.clamp(0.0, 1.0);
         let quantized_error = (quantized - clamped_sdf).abs();
         quantized_abs_error += quantized_error;
         quantized_max_abs_error = quantized_max_abs_error.max(quantized_error);
@@ -605,7 +606,7 @@ fn evaluate_fdsm(
     {
         return Err("fdsm produced nondeterministic output for one outline/configuration".into());
     }
-    let evidence = field_evidence(sdf.as_raw(), fields[0].as_raw(), elapsed_micros)?;
+    let evidence = field_evidence(&domain.reference_sdf, fields[0].as_raw(), elapsed_micros)?;
     Ok((evidence, cross))
 }
 
@@ -622,7 +623,7 @@ fn print_evidence(
 ) {
     let pixels = width * height;
     print!(
-        "candidate={candidate} case={} glyph={} tier={} extent={}x{} segments={} hash={:016x} avg_us={} rgb_f32_bytes={} rgb8_bytes={} rgba8_wgpu_bytes={} mean_abs_error={:.8} max_abs_error={:.8} sign_mismatch={}/{} quantized_mean_abs_error={:.8} quantized_max_abs_error={:.8} quantized_boundary_mean_abs_error={:.8} quantized_boundary_max_abs_error={:.8} boundary_pixels={} quantized_sign_mismatch={}/{}",
+        "candidate={candidate} case={} glyph={} tier={} extent={}x{} segments={} hash={:016x} avg_us={} rgb_f32_bytes={} rgb8_bytes={} rgba8_wgpu_bytes={} clamped_mean_abs_error={:.8} clamped_max_abs_error={:.8} sign_mismatch={}/{} quantized_mean_abs_error={:.8} quantized_max_abs_error={:.8} quantized_boundary_mean_abs_error={:.8} quantized_boundary_max_abs_error={:.8} boundary_pixels={} quantized_sign_mismatch={}/{}",
         case.label,
         glyph_id,
         tier as u32,
