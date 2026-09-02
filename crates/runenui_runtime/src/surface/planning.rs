@@ -110,8 +110,7 @@ fn resolve_contribution_phases<Action>(
     current: &mut SurfaceCache,
     capability_plan: &mut SurfaceCapabilityPlan,
     text_system: &mut TextSystem,
-    hit_dirty: bool,
-    paint_dirty: bool,
+    publication_phases: DirtyPhases,
     report: &mut SurfacePhaseReport,
     completed: &mut DirtyPhases,
 ) -> bool {
@@ -120,7 +119,7 @@ fn resolve_contribution_phases<Action>(
     tree.plan_surface_publication_contributions(capability_plan, &paint_contexts, &hit_contexts);
 
     let mut scene_diagnostics_changed = false;
-    if hit_dirty {
+    if publication_phases.contains(DirtyPhases::HIT_TEST) {
         let resolved = resolve_hit_test(&current.topology, &current.layout, capability_plan);
         current.hit_test = resolved.scene;
         scene_diagnostics_changed |= replace_scene_diagnostics_if_changed(
@@ -130,7 +129,7 @@ fn resolve_contribution_phases<Action>(
         report.record(SurfacePhase::HitTesting);
         completed.insert(DirtyPhases::HIT_TEST);
     }
-    if paint_dirty {
+    if publication_phases.contains(DirtyPhases::PAINT) {
         let resolved = resolve_paint(
             &current.topology,
             &current.layout,
@@ -220,16 +219,14 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     }
 
     let semantic_product_dirty = semantic_product_is_dirty(pending, layout_dirty);
-    tree.extend_surface_publication_capabilities(
-        &mut capability_plan,
-        surface_capability_phases([
-            (layout_dirty, DirtyPhases::LAYOUT),
-            (hit_dirty, DirtyPhases::HIT_TEST),
-            (paint_dirty, DirtyPhases::PAINT),
-            (semantic_product_dirty, DirtyPhases::SEMANTICS),
-            (diagnostics_dirty, DirtyPhases::DIAGNOSTICS),
-        ]),
-    );
+    let publication_phases = surface_capability_phases([
+        (layout_dirty, DirtyPhases::LAYOUT),
+        (hit_dirty, DirtyPhases::HIT_TEST),
+        (paint_dirty, DirtyPhases::PAINT),
+        (semantic_product_dirty, DirtyPhases::SEMANTICS),
+        (diagnostics_dirty, DirtyPhases::DIAGNOSTICS),
+    ]);
+    tree.extend_surface_publication_capabilities(&mut capability_plan, publication_phases);
     let semantic_capability_plan = semantic_product_dirty
         .then(|| tree.plan_semantic_publication_capabilities(&capability_plan));
 
@@ -250,8 +247,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         &mut current,
         &mut capability_plan,
         text_system,
-        hit_dirty,
-        paint_dirty,
+        publication_phases,
         &mut report,
         &mut completed,
     );
