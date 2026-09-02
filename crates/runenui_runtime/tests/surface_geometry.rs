@@ -6,7 +6,7 @@ use runenui_core::{
     color_token, column, row, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, SurfaceBuildContext,
+    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, PumpBudget, SurfaceBuildContext,
     SurfacePublication, render_debug_surface_frame, render_debug_surface_style_report,
 };
 
@@ -96,6 +96,24 @@ fn built_in_row_column_measure_arrange_hit_and_debug_through_mounted_publication
             .any()
     );
 
+    let shaped_runs: Vec<_> = publication
+        .paint_scene()
+        .items()
+        .iter()
+        .filter_map(|item| item.primitive().as_shaped_text_run())
+        .collect();
+    assert!(!shaped_runs.is_empty());
+    for run in shaped_runs {
+        let shaped = publication
+            .paint_scene()
+            .shaped_text_resource(run.resource_ref())
+            .unwrap_or_else(|| {
+                unreachable!("published text run retains its exact logical resource")
+            });
+        assert_eq!(shaped.resource_ref(), run.resource_ref());
+        assert!(!shaped.glyphs().is_empty());
+    }
+
     let button_a_id = ElementId::new("button-a")
         .unwrap_or_else(|_| unreachable!("test authored identifier is canonical"));
     let button_a = publication
@@ -168,9 +186,78 @@ fn resolved_padding_and_token_provenance_align_in_one_mounted_publication() {
             .padding(),
         Some(EdgeInsets::all(length(6.0)))
     );
+    let text_run = publication
+        .paint_scene()
+        .items()
+        .iter()
+        .find_map(|item| item.primitive().as_shaped_text_run())
+        .unwrap_or_else(|| unreachable!("logical text artifact contributes one paint run"));
+    assert_eq!(text_run.foreground(), Color::WHITE);
+    assert!(text_run.origin().x() >= 6.0);
+    assert!(text_run.origin().y() >= 6.0);
+    assert!(
+        publication
+            .paint_scene()
+            .shaped_text_resource(text_run.resource_ref())
+            .is_some()
+    );
     assert!(
         render_debug_surface_style_report(publication.style_report()).contains("ResolvedToken")
     );
+}
+
+struct RetainedTextApp;
+
+impl UiApp for RetainedTextApp {
+    type State = &'static str;
+    type Action = &'static str;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        text(*state).into_element()
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        *state = action;
+    }
+}
+
+#[test]
+fn retained_paint_publication_keeps_old_shaped_binding_after_text_changes() {
+    let mut runtime = AppRuntime::<RetainedTextApp>::mount("first");
+    register_controlled_text(&mut runtime);
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
+    let first = publish(&mut runtime, &context);
+    let old_ref = first
+        .paint_scene()
+        .items()
+        .iter()
+        .find_map(|item| item.primitive().as_shaped_text_run())
+        .unwrap_or_else(|| unreachable!("initial text contributes a shaped run"))
+        .resource_ref()
+        .clone();
+
+    runtime
+        .submit_action("second")
+        .unwrap_or_else(|_| unreachable!("test action queue has capacity"));
+    assert_eq!(
+        runtime
+            .pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX))
+            .processed_envelopes(),
+        1
+    );
+    let second = publish(&mut runtime, &context);
+    assert!(second.paint_scene().shaped_text_resource(&old_ref).is_none());
+
+    drop(second);
+    drop(runtime);
+    let retained = first
+        .paint_scene()
+        .shaped_text_resource(&old_ref)
+        .unwrap_or_else(|| unreachable!("retained publication owns the old logical binding"));
+    assert_eq!(retained.resource_ref(), &old_ref);
+    assert!(!retained.glyphs().is_empty());
 }
 
 #[derive(Clone, Copy, Debug)]
