@@ -1,13 +1,13 @@
 //! Canonical immutable renderer-neutral paint and displayed-hit products.
 
-use core::num::NonZeroU64;
-use std::sync::Arc;
+use core::{fmt, num::NonZeroU64};
+use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
     LogicalPoint, LogicalSize, LogicalTransform, MountedNodeId, PaintPrimitive, PointerPolicy,
     ResourceRef, SceneLayer, SceneOpacity, SceneShape, SurfaceId, SurfaceInputContext,
 };
-use runenui_text::{ShapedTextResource, TextArtifact, TextLine, TextRun};
+use runenui_text::{ShapedTextLease, ShapedTextResource};
 
 use crate::surface::RasterScale;
 
@@ -111,14 +111,24 @@ impl PaintSceneItem {
 
 /// Immutable canonical renderer scene content.
 ///
-/// Logical text artifacts are retained privately only to keep every shaped
+/// Strong shaped-text leases are retained privately only to keep every runtime-backed
 /// `ResourceRef` in this exact scene bound to its immutable logical payload for
 /// retained-publication renderer retry. They are not separate paint authority:
 /// visible scene identity remains the ordered paint items.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct PaintScene {
     items: Arc<Vec<PaintSceneItem>>,
-    text_artifacts: Arc<Vec<TextArtifact>>,
+    shaped_text_leases: Arc<HashMap<ResourceRef, ShapedTextLease>>,
+}
+
+impl fmt::Debug for PaintScene {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PaintScene")
+            .field("items", &self.items)
+            .field("shaped_text_resource_count", &self.shaped_text_leases.len())
+            .finish()
+    }
 }
 
 impl PartialEq for PaintScene {
@@ -128,13 +138,20 @@ impl PartialEq for PaintScene {
 }
 
 impl PaintScene {
-    pub(crate) fn with_text_artifacts(
+    pub(crate) fn with_shaped_text_leases(
         items: Vec<PaintSceneItem>,
-        text_artifacts: Vec<TextArtifact>,
+        shaped_text_leases: Vec<ShapedTextLease>,
     ) -> Self {
+        let shaped_text_leases = shaped_text_leases
+            .into_iter()
+            .map(|lease| {
+                let resource = lease.resource_ref().clone();
+                (resource, lease)
+            })
+            .collect();
         Self {
             items: Arc::new(items),
-            text_artifacts: Arc::new(text_artifacts),
+            shaped_text_leases: Arc::new(shaped_text_leases),
         }
     }
 
@@ -158,18 +175,15 @@ impl PaintScene {
     /// simply return `None` and remain the caller's responsibility.
     #[must_use]
     pub fn shaped_text_resource(&self, resource: &ResourceRef) -> Option<&ShapedTextResource> {
-        self.text_artifacts
-            .iter()
-            .flat_map(TextArtifact::lines)
-            .flat_map(TextLine::runs)
-            .find(|run| run.resource_ref() == resource)
-            .map(TextRun::shaped_resource)
+        self.shaped_text_leases
+            .get(resource)
+            .map(ShapedTextLease::shaped_resource)
     }
 
     #[cfg(test)]
     pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.items, &other.items)
-            && Arc::ptr_eq(&self.text_artifacts, &other.text_artifacts)
+            && Arc::ptr_eq(&self.shaped_text_leases, &other.shaped_text_leases)
     }
 }
 

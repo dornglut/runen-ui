@@ -10,6 +10,7 @@ use runenui_core::{
     StyleEnvironment, StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetMeasure,
     WidgetTypeId, resolve_style_in_environment, style_effects_between,
 };
+use runenui_text::TextSystem;
 
 use super::SurfaceInteractionProjection;
 
@@ -355,11 +356,13 @@ pub(super) fn resolve_paint(
     layout: &super::cache::CachedLayoutFacts,
     styles: &CachedStyleFacts,
     capabilities: &SurfaceCapabilityPlan,
+    text_system: &mut TextSystem,
 ) -> ResolvedPaint {
     #[cfg(test)]
     super::cache::note_paint_phase_execution();
     let mut diagnostics = empty_scene_diagnostics(topology);
     let mut ordered = Vec::new();
+    let mut shaped_text_leases = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
         let bounds = layout.bounds[mounted_preorder];
         let owner_to_surface = LogicalTransform::translation(bounds.x(), bounds.y())
@@ -412,6 +415,14 @@ pub(super) fn resolve_paint(
         if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact() {
             for line in artifact.lines() {
                 for run in line.runs() {
+                    let lease = text_system
+                        .lease_shaped_run(run.resource_ref())
+                        .unwrap_or_else(|| {
+                            unreachable!(
+                                "published text artifact retains its exact shaped resource"
+                            )
+                        });
+                    shaped_text_leases.push(lease);
                     let item = text_run_item(run, &styles.resolutions[mounted_preorder]);
                     ordered.push((
                         item.layer(),
@@ -433,15 +444,10 @@ pub(super) fn resolve_paint(
     ordered.sort_by_key(|(layer, mounted_preorder, contribution_local_order, _)| {
         (*layer, *mounted_preorder, *contribution_local_order)
     });
-    let text_artifacts = layout
-        .text_layouts
-        .iter()
-        .filter_map(|state| state.artifact().cloned())
-        .collect();
     ResolvedPaint {
-        scene: PaintScene::with_text_artifacts(
+        scene: PaintScene::with_shaped_text_leases(
             ordered.into_iter().map(|(_, _, _, item)| item).collect(),
-            text_artifacts,
+            shaped_text_leases,
         ),
         diagnostics,
     }

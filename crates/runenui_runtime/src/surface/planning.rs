@@ -109,6 +109,7 @@ fn resolve_contribution_phases<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     current: &mut SurfaceCache,
     capability_plan: &mut SurfaceCapabilityPlan,
+    text_system: &mut TextSystem,
     hit_dirty: bool,
     paint_dirty: bool,
     report: &mut SurfacePhaseReport,
@@ -135,6 +136,7 @@ fn resolve_contribution_phases<Action>(
             &current.layout,
             &current.styles,
             capability_plan,
+            text_system,
         );
         current.paint = resolved.scene;
         scene_diagnostics_changed |= replace_scene_diagnostics_if_changed(
@@ -247,6 +249,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         tree,
         &mut current,
         &mut capability_plan,
+        text_system,
         hit_dirty,
         paint_dirty,
         &mut report,
@@ -328,7 +331,13 @@ fn plan_structural_surface<'tree, Action>(
     let hit_test = resolved_hit_test.scene;
     let hit_diagnostics = Arc::new(resolved_hit_test.diagnostics);
     report.record(SurfacePhase::HitTesting);
-    let resolved_paint = resolve_paint(&topology, &layout, &styles, &capability_plan);
+    let resolved_paint = resolve_paint(
+        &topology,
+        &layout,
+        &styles,
+        &capability_plan,
+        text_system,
+    );
     let paint = resolved_paint.scene;
     let paint_diagnostics = Arc::new(resolved_paint.diagnostics);
     report.record(SurfacePhase::Paint);
