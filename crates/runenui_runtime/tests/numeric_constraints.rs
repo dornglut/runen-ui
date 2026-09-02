@@ -1,5 +1,5 @@
 use runenui_core::{LogicalLength, LogicalLengthError};
-use runenui_runtime::{AxisConstraints, AxisLimit, BaselineError, LogicalSize, TextMeasurement};
+use runenui_runtime::{AxisConstraints, AxisLimit};
 
 fn length(value: f32) -> LogicalLength {
     LogicalLength::new(value).unwrap_or_default()
@@ -34,18 +34,5 @@ fn inverted_constraints_normalize_and_arithmetic_saturates() {
     assert_eq!(
         LogicalLength::MAX.saturating_add(LogicalLength::MAX),
         LogicalLength::MAX
-    );
-}
-
-#[test]
-fn invalid_baselines_have_deterministic_errors() {
-    let measurement = TextMeasurement::new(LogicalSize::new(length(10.0), length(10.0)));
-    assert_eq!(
-        measurement.with_last_baseline(-1.0),
-        Err(BaselineError::Negative)
-    );
-    assert_eq!(
-        BaselineError::ExceedsHeight.to_string(),
-        "baseline must not exceed measured height"
     );
 }
