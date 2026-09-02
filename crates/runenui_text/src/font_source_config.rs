@@ -131,11 +131,7 @@ mod tests {
     }
 
     fn initial_typography_request(text: &str) -> TextRequest {
-        TextRequest::new(
-            text,
-            Typography::default(),
-            TextConstraints::unbounded(),
-        )
+        TextRequest::new(text, Typography::default(), TextConstraints::unbounded())
     }
 
     #[test]
