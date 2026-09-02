@@ -114,7 +114,7 @@ struct SurfaceMeasurer<'a> {
 }
 
 impl<'a> SurfaceMeasurer<'a> {
-    fn new(text_system: &'a mut TextSystem) -> Self {
+    const fn new(text_system: &'a mut TextSystem) -> Self {
         Self { text_system }
     }
 
@@ -268,7 +268,7 @@ impl<'a> SurfaceMeasurer<'a> {
     }
 }
 
-fn text_constraints_from_layout(constraints: LayoutConstraints) -> TextConstraints {
+const fn text_constraints_from_layout(constraints: LayoutConstraints) -> TextConstraints {
     match constraints.horizontal().max() {
         AxisLimit::Finite(max) => TextConstraints::limited(max),
         AxisLimit::Unbounded => TextConstraints::unbounded(),
