@@ -293,13 +293,9 @@ mod tests {
         cache: &mut Option<SurfaceCache>,
     ) -> super::SurfacePhaseReport {
         let interaction = SurfaceInteractionProjection::default();
-        let planned = plan_mounted_surface_cached_with_test_text(
-            tree,
-            context,
-            &interaction,
-            cache.as_ref(),
-        )
-        .unwrap_or_else(|_| unreachable!("reuse proof has valid semantic planning"));
+        let planned =
+            plan_mounted_surface_cached_with_test_text(tree, context, &interaction, cache.as_ref())
+                .unwrap_or_else(|_| unreachable!("reuse proof has valid semantic planning"));
         let commit = planned.commit_store();
         let (_, report) = commit.commit(tree, cache);
         report

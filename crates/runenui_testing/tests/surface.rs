@@ -68,8 +68,9 @@ fn fixed_surface_layout_and_font_backed_text_are_public_and_deterministic() {
     assert!(node.bounds().height() > 0.0);
     assert!(publication.paint_scene().is_empty());
     assert!(publication.layout_report().node(node.id()).is_some());
-    let point = runenui_runtime::LogicalPoint::new(node.bounds().x() + 1.0, node.bounds().y() + 1.0)
-        .unwrap_or_else(|_| unreachable!("test point is finite"));
+    let point =
+        runenui_runtime::LogicalPoint::new(node.bounds().x() + 1.0, node.bounds().y() + 1.0)
+            .unwrap_or_else(|_| unreachable!("test point is finite"));
     assert_eq!(publication.hit_test_scene().target_at(point), None);
     assert!(
         publication

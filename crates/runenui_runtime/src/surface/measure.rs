@@ -8,9 +8,7 @@ use runenui_core::{
     Axis, ChildLayout, EdgeInsets, LogicalLength, LogicalRect, LogicalSize, Typography,
     WidgetDiagnostic, WidgetMeasure,
 };
-use runenui_text::{
-    TextConstraints, TextLayoutError, TextLayoutState, TextRequest, TextSystem,
-};
+use runenui_text::{TextConstraints, TextLayoutError, TextLayoutState, TextRequest, TextSystem};
 
 pub(super) fn layout_resolved_surface(
     resolved_tree: &ResolvedSurfaceTree,
@@ -55,10 +53,7 @@ pub(super) struct MeasuredSurfaceLayout {
 }
 
 impl MeasuredSurfaceLayout {
-    fn new(
-        resolved: &ResolvedSurfaceTree,
-        prior_text_layouts: Option<&[TextLayoutState]>,
-    ) -> Self {
+    fn new(resolved: &ResolvedSurfaceTree, prior_text_layouts: Option<&[TextLayoutState]>) -> Self {
         let node_count = resolved.nodes().len();
         let text_layouts = match prior_text_layouts {
             Some(states) if states.len() == node_count => states.to_vec(),

@@ -302,12 +302,8 @@ fn plan_structural_surface<'tree, Action>(
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let semantic_capability_plan = tree.plan_semantic_publication_capabilities(&capability_plan);
     let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles, &capability_plan);
-    let (size, bounds, layout_report, text_layouts) = layout_resolved_surface(
-        &resolved,
-        context.root_constraints(),
-        text_system,
-        None,
-    )?;
+    let (size, bounds, layout_report, text_layouts) =
+        layout_resolved_surface(&resolved, context.root_constraints(), text_system, None)?;
     let layout = CachedLayoutFacts {
         size,
         bounds,
@@ -337,7 +333,6 @@ fn plan_structural_surface<'tree, Action>(
     report.record(SurfacePhase::Semantics);
     let diagnostics = resolve_diagnostics(&topology, &capability_plan);
     report.record(SurfacePhase::Diagnostics);
-
     let placeholder = SurfacePublication::new(
         SurfaceFrame::new(
             LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO),

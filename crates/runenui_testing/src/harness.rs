@@ -7,14 +7,14 @@ use runenui_runtime::{
     CompositionRange, CompositionStartSubmission, CompositionSubmission, FocusState,
     FontFamilyName, FontRegistrationError, GenericFamilyMappingError, GenericFontFamily,
     HostRequestRef, InputDeviceId, KeyboardEvent, KeyboardSubmission, LogicalPoint, ManualClock,
-    MonotonicInstant, MonotonicTimeError, MountedNodeId, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase, PointerSubmission, PublishSurfaceError, PumpBudget, PumpReport,
+    MonotonicInstant, MonotonicTimeError, MountedNodeId, PointerDeviceKind, PointerEvent,
+    PointerId, PointerPhase, PointerSubmission, PublishSurfaceError, PumpBudget, PumpReport,
     ReconciliationReport, RuntimeConfig, SemanticPublication, SemanticRevision, SemanticSnapshot,
     SemanticUpdateResult, SubmitAutomationError, SubmitCommandError, SubmitCompositionError,
-    SubmitCompositionStartError, SubmitKeyboardError, SubmitPointerError, SubmitSemanticActionError,
-    SubmitSurfaceCommandError, SubmitTextError, SurfaceBuildContext, SurfaceInputContext,
-    SurfacePublication, TextSubmission, TimerFiringOutcome, TimerStartOutcome, Trace, TraceReplay,
-    TraceReplayError,
+    SubmitCompositionStartError, SubmitKeyboardError, SubmitPointerError,
+    SubmitSemanticActionError, SubmitSurfaceCommandError, SubmitTextError, SurfaceBuildContext,
+    SurfaceInputContext, SurfacePublication, TextSubmission, TimerFiringOutcome, TimerStartOutcome,
+    Trace, TraceReplay, TraceReplayError,
 };
 
 use crate::{
@@ -246,7 +246,8 @@ impl<App: UiApp> TestHarness<App> {
     ///
     /// Returns the ordinary runtime's publication refusal or terminal error.
     pub fn publish(&mut self) -> Result<&SurfacePublication, PublishSurfaceError> {
-        let context = SurfaceBuildContext::tight(self.surface.style_environment(), self.surface.size());
+        let context =
+            SurfaceBuildContext::tight(self.surface.style_environment(), self.surface.size());
         let publication = self.runtime.publish_surface(&context)?;
         Ok(self.publication.insert(publication))
     }
@@ -528,8 +529,7 @@ impl<App: UiApp> TestHarness<App> {
         authored_id: ElementId,
         command: SemanticCommand,
     ) -> Result<AutomationSubmission, SubmitAutomationError> {
-        self.runtime
-            .submit_automation_command(authored_id, command)
+        self.runtime.submit_automation_command(authored_id, command)
     }
 
     /// Exports the canonical trace through its accepted deterministic JSONL projection.
