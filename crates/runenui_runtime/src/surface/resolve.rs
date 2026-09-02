@@ -334,10 +334,7 @@ pub(super) struct ResolvedPaint {
     pub(super) diagnostics: Vec<Vec<WidgetDiagnostic>>,
 }
 
-fn text_run_item(
-    run: &runenui_text::TextRun,
-    style: &StyleResolution,
-) -> PaintContributionItem {
+fn text_run_item(run: &runenui_text::TextRun, style: &StyleResolution) -> PaintContributionItem {
     let computed = style.computed_style();
     let padding = computed.padding().unwrap_or_default();
     let origin = LogicalPoint::new(
