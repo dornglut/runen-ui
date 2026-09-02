@@ -203,7 +203,10 @@ fn shape_case(case: CorpusCase) -> Result<(TextArtifact, Vec<u8>), Box<dyn Error
     ))
 }
 
-fn to_shape(resource: &ShapedTextResource, glyph_id: u32) -> Result<Shape, Box<dyn Error>> {
+fn to_shape(
+    resource: &ShapedTextResource,
+    glyph_id: u32,
+) -> Result<(Shape, Option<bool>), Box<dyn Error>> {
     let binding = resource.font();
     if binding.faux_bold() || binding.faux_skew().is_some() {
         return Err("controlled evaluation unexpectedly requires synthetic font transforms".into());
@@ -221,6 +224,7 @@ fn to_shape(resource: &ShapedTextResource, glyph_id: u32) -> Result<Shape, Box<d
         .outline_glyphs()
         .get(GlyphId::new(glyph_id))
         .ok_or_else(|| format!("glyph {glyph_id} has no supported outline"))?;
+    let has_overlaps = outline.has_overlaps();
     let mut pen = ShapePen::default();
     outline.draw(
         DrawSettings::unhinted(Size::new(1.0), location),
@@ -236,7 +240,7 @@ fn to_shape(resource: &ShapedTextResource, glyph_id: u32) -> Result<Shape, Box<d
     shape.normalize();
     shape.orient_contours();
     edge_coloring_simple(&mut shape, 3.0, 0);
-    Ok(shape)
+    Ok((shape, has_overlaps))
 }
 
 fn median3(a: f32, b: f32, c: f32) -> f64 {
@@ -369,6 +373,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("field_range_px={FIELD_RANGE_PX} repeats={REPEATS}");
 
     let mut glyph_count = 0usize;
+    let mut overlap_glyphs = 0usize;
+    let mut unknown_overlap_glyphs = 0usize;
     let mut total_edges = 0usize;
     for case in CORPUS {
         let (artifact, font_bytes) = shape_case(case)?;
@@ -378,16 +384,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                 return Err(format!("{} shaped with an unexpected font source", case.label).into());
             }
             for glyph in resource.glyphs() {
-                let shape = to_shape(resource, glyph.id())?;
+                let (shape, has_overlaps) = to_shape(resource, glyph.id())?;
                 glyph_count += 1;
+                overlap_glyphs += usize::from(has_overlaps == Some(true));
+                unknown_overlap_glyphs += usize::from(has_overlaps.is_none());
                 total_edges += shape.edge_count();
                 for tier in TIERS {
                     let evidence = evaluate_shape(&shape, tier)?;
                     let pixels = evidence.width * evidence.height;
                     println!(
-                        "case={} glyph={} tier={} extent={}x{} edges={} hash={:016x} avg_us={} rgb_f32_bytes={} rgb8_bytes={} rgba8_wgpu_bytes={} mean_abs_error={:.8} max_abs_error={:.8} sign_mismatch={}/{} quantized_mean_abs_error={:.8} quantized_max_abs_error={:.8} quantized_boundary_mean_abs_error={:.8} quantized_boundary_max_abs_error={:.8} boundary_pixels={} quantized_sign_mismatch={}/{}",
+                        "case={} glyph={} overlap={:?} tier={} extent={}x{} edges={} hash={:016x} avg_us={} rgb_f32_bytes={} rgb8_bytes={} rgba8_wgpu_bytes={} mean_abs_error={:.8} max_abs_error={:.8} sign_mismatch={}/{} quantized_mean_abs_error={:.8} quantized_max_abs_error={:.8} quantized_boundary_mean_abs_error={:.8} quantized_boundary_max_abs_error={:.8} boundary_pixels={} quantized_sign_mismatch={}/{}",
                         case.label,
                         glyph.id(),
+                        has_overlaps,
                         tier as u32,
                         evidence.width,
                         evidence.height,
@@ -417,6 +426,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     if glyph_count == 0 {
         return Err("controlled corpus produced no outline glyphs".into());
     }
-    println!("summary glyphs={glyph_count} total_edges={total_edges} tiers={}", TIERS.len());
+    if overlap_glyphs == 0 {
+        return Err("controlled corpus did not exercise a glyph with declared overlapping outlines".into());
+    }
+    println!(
+        "summary glyphs={glyph_count} overlap_glyphs={overlap_glyphs} unknown_overlap_glyphs={unknown_overlap_glyphs} total_edges={total_edges} tiers={}",
+        TIERS.len()
+    );
     Ok(())
 }
