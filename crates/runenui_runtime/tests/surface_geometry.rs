@@ -248,7 +248,12 @@ fn retained_paint_publication_keeps_old_shaped_binding_after_text_changes() {
         1
     );
     let second = publish(&mut runtime, &context);
-    assert!(second.paint_scene().shaped_text_resource(&old_ref).is_none());
+    assert!(
+        second
+            .paint_scene()
+            .shaped_text_resource(&old_ref)
+            .is_none()
+    );
 
     drop(second);
     drop(runtime);
