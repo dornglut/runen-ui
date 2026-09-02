@@ -7,7 +7,7 @@ use runenui_core::{
     LogicalPoint, LogicalSize, LogicalTransform, MountedNodeId, PaintPrimitive, PointerPolicy,
     ResourceRef, SceneLayer, SceneOpacity, SceneShape, SurfaceId, SurfaceInputContext,
 };
-use runenui_text::{ShapedTextResource, TextArtifact};
+use runenui_text::{ShapedTextResource, TextArtifact, TextLine, TextRun};
 
 use crate::surface::RasterScale;
 
@@ -160,10 +160,10 @@ impl PaintScene {
     pub fn shaped_text_resource(&self, resource: &ResourceRef) -> Option<&ShapedTextResource> {
         self.text_artifacts
             .iter()
-            .flat_map(|artifact| artifact.lines())
-            .flat_map(|line| line.runs())
+            .flat_map(TextArtifact::lines)
+            .flat_map(TextLine::runs)
             .find(|run| run.resource_ref() == resource)
-            .map(|run| run.shaped_resource())
+            .map(TextRun::shaped_resource)
     }
 
     #[cfg(test)]
