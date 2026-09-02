@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   evaluate:
-    name: Bounded bymsdfgen-core evaluation
+    name: Shared-corpus MSDF candidate evaluation
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -63,6 +63,8 @@ jobs:
 
           [dependencies]
           bymsdfgen-core = { version = "=0.1.1", default-features = false }
+          fdsm = { version = "=0.8.0", default-features = false }
+          image = { version = "=0.25.10", default-features = false }
           skrifa = { version = "=0.44.0", default-features = false, features = ["std"] }
           runenui_core = { path = "../../crates/runenui_core" }
           runenui_text = { path = "../../crates/runenui_text" }
@@ -81,7 +83,7 @@ jobs:
             --release \
             --locked
 
-      - name: Run bounded corpus evaluation
+      - name: Run bounded shared-corpus evaluation
         shell: bash
         env:
           RUNENUI_REPO_ROOT: ${{ github.workspace }}

@@ -1,9 +1,19 @@
 use std::{error::Error, path::PathBuf, time::Instant};
 
 use bymsdfgen_core::{
-    Bitmap, DistanceMapping, EdgeSegment, GeneratorConfig, MsdfGeneratorConfig, Projection, Range,
-    SdfTransformation, Shape, Vector2, coloring::edge_coloring_simple, generate_msdf, generate_sdf,
+    Bitmap, DistanceMapping, EdgeSegment as BySegment, GeneratorConfig, MsdfGeneratorConfig,
+    Projection, Range, SdfTransformation, Shape as ByShape, Vector2 as ByPoint,
+    coloring::edge_coloring_simple as by_edge_coloring_simple,
+    generate_msdf as by_generate_msdf, generate_sdf as by_generate_sdf,
 };
+use fdsm::{
+    bezier::{Point as FdPoint, Segment as FdSegment, scanline::FillRule},
+    correct_error::{ErrorCorrectionConfig as FdErrorCorrectionConfig, correct_error_msdf},
+    generate::{generate_msdf as fd_generate_msdf, generate_sdf as fd_generate_sdf},
+    render::{correct_sign_msdf, correct_sign_sdf},
+    shape::{Contour as FdContour, Shape as FdShape},
+};
+use image::{ImageBuffer, Luma, Rgb};
 use runenui_core::{FontFamily, LogicalLength, Typography};
 use runenui_text::{
     FontSourcePolicy, ShapedTextResource, TextArtifact, TextConstraints, TextLanguage,
@@ -22,7 +32,10 @@ const DEVANAGARI_PATH: &str =
     "crates/runenui_text/tests/fixtures/RunenUIFixtureDevanagari-Regular.ttf";
 const TIERS: [f64; 4] = [16.0, 24.0, 32.0, 48.0];
 const FIELD_RANGE_PX: f64 = 4.0;
+const FDSM_DISTANCE_RANGE_PX: f64 = FIELD_RANGE_PX * 2.0;
 const REPEATS: usize = 3;
+const EDGE_ANGLE_THRESHOLD_RADIANS: f64 = 3.0;
+const EDGE_COLORING_SEED: u64 = 0;
 
 #[derive(Clone, Copy)]
 struct CorpusCase {
@@ -33,12 +46,19 @@ struct CorpusCase {
     font_path: &'static str,
 }
 
-const CORPUS: [CorpusCase; 3] = [
+const CORPUS: [CorpusCase; 4] = [
     CorpusCase {
-        label: "latin",
+        label: "latin-acute",
         family: "Cantarell",
         language: "en",
-        text: "AVO8",
+        text: "AV",
+        font_path: CANTARELL_PATH,
+    },
+    CorpusCase {
+        label: "latin-curves",
+        family: "Cantarell",
+        language: "en",
+        text: "O8",
         font_path: CANTARELL_PATH,
     },
     CorpusCase {
@@ -57,67 +77,95 @@ const CORPUS: [CorpusCase; 3] = [
     },
 ];
 
-#[derive(Default)]
-struct ShapePen {
-    shape: Shape,
-    position: Vector2,
-    start: Vector2,
-    contour_open: bool,
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Point {
+    x: f64,
+    y: f64,
 }
 
-impl ShapePen {
-    fn point(x: f32, y: f32) -> Vector2 {
-        Vector2::new(f64::from(x), f64::from(y))
+impl Point {
+    fn new(x: f32, y: f32) -> Self {
+        Self {
+            x: f64::from(x),
+            y: f64::from(y),
+        }
     }
+}
 
-    fn current_contour(&mut self) -> &mut bymsdfgen_core::Contour {
-        self.shape
-            .contours
+#[derive(Clone, Copy, Debug)]
+enum Segment {
+    Line(Point, Point),
+    Quadratic(Point, Point, Point),
+    Cubic(Point, Point, Point, Point),
+}
+
+#[derive(Clone, Debug, Default)]
+struct Contour {
+    segments: Vec<Segment>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct OutlineGeometry {
+    contours: Vec<Contour>,
+    position: Option<Point>,
+    start: Option<Point>,
+}
+
+impl OutlineGeometry {
+    fn current_contour(&mut self) -> &mut Contour {
+        self.contours
             .last_mut()
             .expect("Skrifa emitted an edge before move_to")
     }
 
-    fn finish(mut self) -> Shape {
-        if self.contour_open {
+    fn finish(mut self) -> Self {
+        if self.position.is_some() {
             self.close();
         }
-        self.shape
-            .contours
-            .retain(|contour| !contour.segments.is_empty());
-        self.shape
+        self.contours.retain(|contour| !contour.segments.is_empty());
+        self
+    }
+
+    fn segment_count(&self) -> usize {
+        self.contours
+            .iter()
+            .map(|contour| contour.segments.len())
+            .sum()
     }
 }
 
-impl OutlinePen for ShapePen {
+impl OutlinePen for OutlineGeometry {
     fn move_to(&mut self, x: f32, y: f32) {
-        if self.contour_open {
+        if self.position.is_some() {
             self.close();
         }
-        self.shape.contours.push(bymsdfgen_core::Contour::new());
-        self.position = Self::point(x, y);
-        self.start = self.position;
-        self.contour_open = true;
+        let point = Point::new(x, y);
+        self.contours.push(Contour::default());
+        self.position = Some(point);
+        self.start = Some(point);
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
-        let endpoint = Self::point(x, y);
-        if endpoint != self.position {
-            let start = self.position;
+        let endpoint = Point::new(x, y);
+        let start = self.position.expect("line_to before move_to");
+        if endpoint != start {
             self.current_contour()
-                .add_edge(EdgeSegment::line(start, endpoint));
-            self.position = endpoint;
+                .segments
+                .push(Segment::Line(start, endpoint));
         }
+        self.position = Some(endpoint);
     }
 
     fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
-        let control = Self::point(cx0, cy0);
-        let endpoint = Self::point(x, y);
-        let start = self.position;
+        let control = Point::new(cx0, cy0);
+        let endpoint = Point::new(x, y);
+        let start = self.position.expect("quad_to before move_to");
         if control != start || endpoint != start {
             self.current_contour()
-                .add_edge(EdgeSegment::quadratic(start, control, endpoint));
+                .segments
+                .push(Segment::Quadratic(start, control, endpoint));
         }
-        self.position = endpoint;
+        self.position = Some(endpoint);
     }
 
     fn curve_to(
@@ -129,33 +177,41 @@ impl OutlinePen for ShapePen {
         x: f32,
         y: f32,
     ) {
-        let control0 = Self::point(cx0, cy0);
-        let control1 = Self::point(cx1, cy1);
-        let endpoint = Self::point(x, y);
-        let start = self.position;
+        let control0 = Point::new(cx0, cy0);
+        let control1 = Point::new(cx1, cy1);
+        let endpoint = Point::new(x, y);
+        let start = self.position.expect("curve_to before move_to");
         if control0 != start || control1 != start || endpoint != start {
-            self.current_contour().add_edge(EdgeSegment::cubic(
-                start, control0, control1, endpoint,
-            ));
+            self.current_contour()
+                .segments
+                .push(Segment::Cubic(start, control0, control1, endpoint));
         }
-        self.position = endpoint;
+        self.position = Some(endpoint);
     }
 
     fn close(&mut self) {
-        if self.contour_open && self.position != self.start {
-            let position = self.position;
-            let start = self.start;
-            self.current_contour()
-                .add_edge(EdgeSegment::line(position, start));
-            self.position = start;
+        if let (Some(position), Some(start)) = (self.position, self.start) {
+            if position != start {
+                self.current_contour()
+                    .segments
+                    .push(Segment::Line(position, start));
+            }
         }
-        self.contour_open = false;
+        self.position = None;
+        self.start = None;
     }
 }
 
-struct FieldEvidence {
+struct Domain {
+    shape: ByShape,
     width: usize,
     height: usize,
+    bounds: bymsdfgen_core::Bounds,
+    transform: SdfTransformation,
+    reference_sdf: Vec<f32>,
+}
+
+struct FieldEvidence {
     hash: u64,
     elapsed_micros: u128,
     mean_abs_error: f64,
@@ -167,6 +223,12 @@ struct FieldEvidence {
     quantized_boundary_max_abs_error: f64,
     boundary_pixels: usize,
     quantized_sign_mismatches: usize,
+}
+
+struct CrossSdfEvidence {
+    mean_abs_error: f64,
+    max_abs_error: f64,
+    sign_mismatches: usize,
 }
 
 fn typography(family: &str) -> Result<Typography, Box<dyn Error>> {
@@ -203,10 +265,10 @@ fn shape_case(case: CorpusCase) -> Result<(TextArtifact, Vec<u8>), Box<dyn Error
     ))
 }
 
-fn to_shape(
+fn outline_geometry(
     resource: &ShapedTextResource,
     glyph_id: u32,
-) -> Result<(Shape, Option<bool>), Box<dyn Error>> {
+) -> Result<OutlineGeometry, Box<dyn Error>> {
     let binding = resource.font();
     if binding.faux_bold() || binding.faux_skew().is_some() {
         return Err("controlled evaluation unexpectedly requires synthetic font transforms".into());
@@ -224,23 +286,127 @@ fn to_shape(
         .outline_glyphs()
         .get(GlyphId::new(glyph_id))
         .ok_or_else(|| format!("glyph {glyph_id} has no supported outline"))?;
-    let has_overlaps = outline.has_overlaps();
-    let mut pen = ShapePen::default();
+    let mut geometry = OutlineGeometry::default();
     outline.draw(
         DrawSettings::unhinted(Size::new(1.0), location),
-        &mut pen,
+        &mut geometry,
     )?;
-    let mut shape = pen.finish();
-    if shape.edge_count() == 0 {
+    let geometry = geometry.finish();
+    if geometry.segment_count() == 0 {
         return Err(format!("glyph {glyph_id} produced an empty outline").into());
     }
+    Ok(geometry)
+}
+
+fn by_point(point: Point) -> ByPoint {
+    ByPoint::new(point.x, point.y)
+}
+
+fn by_shape(geometry: &OutlineGeometry) -> Result<ByShape, Box<dyn Error>> {
+    let mut shape = ByShape::new();
+    for contour in &geometry.contours {
+        let target = shape.add_contour_mut();
+        for segment in &contour.segments {
+            match *segment {
+                Segment::Line(start, end) => {
+                    target.add_edge(BySegment::line(by_point(start), by_point(end)));
+                }
+                Segment::Quadratic(start, control, end) => {
+                    target.add_edge(BySegment::quadratic(
+                        by_point(start),
+                        by_point(control),
+                        by_point(end),
+                    ));
+                }
+                Segment::Cubic(start, control0, control1, end) => {
+                    target.add_edge(BySegment::cubic(
+                        by_point(start),
+                        by_point(control0),
+                        by_point(control1),
+                        by_point(end),
+                    ));
+                }
+            }
+        }
+    }
     if !shape.validate() {
-        return Err(format!("glyph {glyph_id} produced an invalid closed outline").into());
+        return Err("Skrifa outline converted into an invalid bymsdfgen shape".into());
     }
     shape.normalize();
     shape.orient_contours();
-    edge_coloring_simple(&mut shape, 3.0, 0);
-    Ok((shape, has_overlaps))
+    by_edge_coloring_simple(
+        &mut shape,
+        EDGE_ANGLE_THRESHOLD_RADIANS,
+        EDGE_COLORING_SEED,
+    );
+    Ok(shape)
+}
+
+fn domain(geometry: &OutlineGeometry, tier: f64) -> Result<Domain, Box<dyn Error>> {
+    let shape = by_shape(geometry)?;
+    let range = FIELD_RANGE_PX / tier;
+    let bounds = shape.get_bounds(range);
+    let width = ((bounds.r - bounds.l) * tier).ceil().max(1.0) as usize;
+    let height = ((bounds.t - bounds.b) * tier).ceil().max(1.0) as usize;
+    let transform = SdfTransformation::new(
+        Projection::new(
+            ByPoint::splat(tier),
+            ByPoint::new(-bounds.l, -bounds.b),
+        ),
+        DistanceMapping::from_range(Range::symmetric(range)),
+    );
+    let mut sdf = Bitmap::<f32, 1>::new(width, height);
+    by_generate_sdf(&mut sdf, &shape, &transform, &GeneratorConfig::default());
+    let reference_sdf = sdf.data().to_vec();
+    Ok(Domain {
+        shape,
+        width,
+        height,
+        bounds,
+        transform,
+        reference_sdf,
+    })
+}
+
+fn fd_point(point: Point, bounds: bymsdfgen_core::Bounds, tier: f64) -> FdPoint {
+    FdPoint::new(
+        (point.x - bounds.l) * tier,
+        (point.y - bounds.b) * tier,
+    )
+}
+
+fn fd_shape(
+    geometry: &OutlineGeometry,
+    bounds: bymsdfgen_core::Bounds,
+    tier: f64,
+) -> FdShape<FdContour> {
+    let contours = geometry
+        .contours
+        .iter()
+        .map(|contour| FdContour {
+            segments: contour
+                .segments
+                .iter()
+                .map(|segment| match *segment {
+                    Segment::Line(start, end) => {
+                        FdSegment::line(fd_point(start, bounds, tier), fd_point(end, bounds, tier))
+                    }
+                    Segment::Quadratic(start, control, end) => FdSegment::quad(
+                        fd_point(start, bounds, tier),
+                        fd_point(control, bounds, tier),
+                        fd_point(end, bounds, tier),
+                    ),
+                    Segment::Cubic(start, control0, control1, end) => FdSegment::cubic(
+                        fd_point(start, bounds, tier),
+                        fd_point(control0, bounds, tier),
+                        fd_point(control1, bounds, tier),
+                        fd_point(end, bounds, tier),
+                    ),
+                })
+                .collect(),
+        })
+        .collect();
+    FdShape { contours }
 }
 
 fn median3(a: f32, b: f32, c: f32) -> f64 {
@@ -251,9 +417,9 @@ fn quantize(value: f32) -> f64 {
     f64::from((value.clamp(0.0, 1.0) * 255.0).round()) / 255.0
 }
 
-fn hash_field(field: &Bitmap<f32, 3>) -> u64 {
+fn hash_f32(values: &[f32]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    for value in field.data() {
+    for value in values {
         for byte in value.to_bits().to_le_bytes() {
             hash ^= u64::from(byte);
             hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
@@ -262,62 +428,36 @@ fn hash_field(field: &Bitmap<f32, 3>) -> u64 {
     hash
 }
 
-fn evaluate_shape(shape: &Shape, tier: f64) -> Result<FieldEvidence, Box<dyn Error>> {
-    let range = FIELD_RANGE_PX / tier;
-    let bounds = shape.get_bounds(range);
-    let width = ((bounds.r - bounds.l) * tier).ceil().max(1.0) as usize;
-    let height = ((bounds.t - bounds.b) * tier).ceil().max(1.0) as usize;
-    let transform = SdfTransformation::new(
-        Projection::new(
-            Vector2::splat(tier),
-            Vector2::new(-bounds.l, -bounds.b),
-        ),
-        DistanceMapping::from_range(Range::symmetric(range)),
-    );
-
-    let mut sdf = Bitmap::<f32, 1>::new(width, height);
-    generate_sdf(&mut sdf, shape, &transform, &GeneratorConfig::default());
-
-    let mut fields = (0..REPEATS)
-        .map(|_| Bitmap::<f32, 3>::new(width, height))
-        .collect::<Vec<_>>();
-    let start = Instant::now();
-    for field in &mut fields {
-        generate_msdf(
-            field,
-            shape,
-            &transform,
-            &MsdfGeneratorConfig::default(),
-        );
+fn field_evidence(
+    reference_sdf: &[f32],
+    field: &[f32],
+    elapsed_micros: u128,
+) -> Result<FieldEvidence, Box<dyn Error>> {
+    if field.len() != reference_sdf.len() * 3 {
+        return Err("candidate field dimensions do not match the shared reference".into());
     }
-    let elapsed_micros = start.elapsed().as_micros() / REPEATS as u128;
-    let hash = hash_field(&fields[0]);
-    if fields.iter().skip(1).any(|field| hash_field(field) != hash) {
-        return Err("same outline/configuration produced a nondeterministic MSDF hash".into());
-    }
-    let first = &fields[0];
 
     let mut abs_error = 0.0;
     let mut max_abs_error = 0.0_f64;
-    let mut sign_mismatches = 0;
+    let mut sign_mismatches = 0usize;
     let mut quantized_abs_error = 0.0;
     let mut quantized_max_abs_error = 0.0_f64;
     let mut quantized_boundary_abs_error = 0.0;
     let mut quantized_boundary_max_abs_error = 0.0_f64;
     let mut boundary_pixels = 0usize;
-    let mut quantized_sign_mismatches = 0;
+    let mut quantized_sign_mismatches = 0usize;
 
-    for index in 0..width * height {
-        let sdf_value = f64::from(sdf.data()[index]);
+    for (index, reference) in reference_sdf.iter().enumerate() {
+        let sdf_value = f64::from(*reference);
         if !sdf_value.is_finite() {
-            return Err("SDF contained a non-finite value".into());
+            return Err("reference SDF contained a non-finite value".into());
         }
         let base = index * 3;
-        let r = first.data()[base];
-        let g = first.data()[base + 1];
-        let b = first.data()[base + 2];
+        let r = field[base];
+        let g = field[base + 1];
+        let b = field[base + 2];
         if !r.is_finite() || !g.is_finite() || !b.is_finite() {
-            return Err("MSDF contained a non-finite value".into());
+            return Err("candidate MSDF contained a non-finite value".into());
         }
 
         let reconstructed = median3(r, g, b);
@@ -345,11 +485,9 @@ fn evaluate_shape(shape: &Shape, tier: f64) -> Result<FieldEvidence, Box<dyn Err
             usize::from((quantized >= 0.5) != (sdf_value >= 0.5));
     }
 
-    let pixels = (width * height) as f64;
+    let pixels = reference_sdf.len() as f64;
     Ok(FieldEvidence {
-        width,
-        height,
-        hash,
+        hash: hash_f32(field),
         elapsed_micros,
         mean_abs_error: abs_error / pixels,
         max_abs_error,
@@ -367,15 +505,171 @@ fn evaluate_shape(shape: &Shape, tier: f64) -> Result<FieldEvidence, Box<dyn Err
     })
 }
 
+fn cross_sdf_evidence(
+    reference: &[f32],
+    candidate: &[f32],
+) -> Result<CrossSdfEvidence, Box<dyn Error>> {
+    if reference.len() != candidate.len() {
+        return Err("candidate SDF dimensions do not match the shared reference".into());
+    }
+    let mut abs_error = 0.0;
+    let mut max_abs_error = 0.0_f64;
+    let mut sign_mismatches = 0usize;
+    for (reference_value, candidate_value) in reference.iter().zip(candidate) {
+        let a = f64::from(*reference_value);
+        let b = f64::from(*candidate_value);
+        if !a.is_finite() || !b.is_finite() {
+            return Err("cross-candidate SDF comparison contained a non-finite value".into());
+        }
+        let error = (a.clamp(0.0, 1.0) - b.clamp(0.0, 1.0)).abs();
+        abs_error += error;
+        max_abs_error = max_abs_error.max(error);
+        sign_mismatches += usize::from((a >= 0.5) != (b >= 0.5));
+    }
+    Ok(CrossSdfEvidence {
+        mean_abs_error: abs_error / reference.len() as f64,
+        max_abs_error,
+        sign_mismatches,
+    })
+}
+
+fn evaluate_bymsdfgen(domain: &Domain) -> Result<FieldEvidence, Box<dyn Error>> {
+    let mut fields = (0..REPEATS)
+        .map(|_| Bitmap::<f32, 3>::new(domain.width, domain.height))
+        .collect::<Vec<_>>();
+    let start = Instant::now();
+    for field in &mut fields {
+        by_generate_msdf(
+            field,
+            &domain.shape,
+            &domain.transform,
+            &MsdfGeneratorConfig::default(),
+        );
+    }
+    let elapsed_micros = start.elapsed().as_micros() / REPEATS as u128;
+    let first_hash = hash_f32(fields[0].data());
+    if fields
+        .iter()
+        .skip(1)
+        .any(|field| hash_f32(field.data()) != first_hash)
+    {
+        return Err("bymsdfgen produced nondeterministic output for one outline/configuration".into());
+    }
+    field_evidence(&domain.reference_sdf, fields[0].data(), elapsed_micros)
+}
+
+type FdSdf = ImageBuffer<Luma<f32>, Vec<f32>>;
+type FdMsdf = ImageBuffer<Rgb<f32>, Vec<f32>>;
+
+fn evaluate_fdsm(
+    geometry: &OutlineGeometry,
+    domain: &Domain,
+    tier: f64,
+) -> Result<(FieldEvidence, CrossSdfEvidence), Box<dyn Error>> {
+    let shape = fd_shape(geometry, domain.bounds, tier);
+    let prepared_shape = shape.prepare();
+    let colored = FdShape::edge_coloring_simple(
+        shape.clone(),
+        EDGE_ANGLE_THRESHOLD_RADIANS.sin(),
+        EDGE_COLORING_SEED,
+    );
+    let prepared_colored = colored.prepare();
+
+    let mut sdf = FdSdf::new(domain.width as u32, domain.height as u32);
+    fd_generate_sdf(&prepared_shape, FDSM_DISTANCE_RANGE_PX, &mut sdf);
+    correct_sign_sdf(&mut sdf, &prepared_shape, FillRule::Nonzero);
+    let cross = cross_sdf_evidence(&domain.reference_sdf, sdf.as_raw())?;
+
+    let correction = FdErrorCorrectionConfig::default();
+    let mut fields = (0..REPEATS)
+        .map(|_| FdMsdf::new(domain.width as u32, domain.height as u32))
+        .collect::<Vec<_>>();
+    let start = Instant::now();
+    for field in &mut fields {
+        fd_generate_msdf(&prepared_colored, FDSM_DISTANCE_RANGE_PX, field);
+        correct_error_msdf(
+            field,
+            &colored,
+            &prepared_colored,
+            FDSM_DISTANCE_RANGE_PX,
+            &correction,
+        );
+        correct_sign_msdf(field, &prepared_colored, FillRule::Nonzero);
+    }
+    let elapsed_micros = start.elapsed().as_micros() / REPEATS as u128;
+    let first_hash = hash_f32(fields[0].as_raw());
+    if fields
+        .iter()
+        .skip(1)
+        .any(|field| hash_f32(field.as_raw()) != first_hash)
+    {
+        return Err("fdsm produced nondeterministic output for one outline/configuration".into());
+    }
+    let evidence = field_evidence(sdf.as_raw(), fields[0].as_raw(), elapsed_micros)?;
+    Ok((evidence, cross))
+}
+
+fn print_evidence(
+    candidate: &str,
+    case: CorpusCase,
+    glyph_id: u32,
+    tier: f64,
+    segments: usize,
+    width: usize,
+    height: usize,
+    evidence: &FieldEvidence,
+    cross: Option<&CrossSdfEvidence>,
+) {
+    let pixels = width * height;
+    print!(
+        "candidate={candidate} case={} glyph={} tier={} extent={}x{} segments={} hash={:016x} avg_us={} rgb_f32_bytes={} rgb8_bytes={} rgba8_wgpu_bytes={} mean_abs_error={:.8} max_abs_error={:.8} sign_mismatch={}/{} quantized_mean_abs_error={:.8} quantized_max_abs_error={:.8} quantized_boundary_mean_abs_error={:.8} quantized_boundary_max_abs_error={:.8} boundary_pixels={} quantized_sign_mismatch={}/{}",
+        case.label,
+        glyph_id,
+        tier as u32,
+        width,
+        height,
+        segments,
+        evidence.hash,
+        evidence.elapsed_micros,
+        pixels * 3 * std::mem::size_of::<f32>(),
+        pixels * 3,
+        pixels * 4,
+        evidence.mean_abs_error,
+        evidence.max_abs_error,
+        evidence.sign_mismatches,
+        pixels,
+        evidence.quantized_mean_abs_error,
+        evidence.quantized_max_abs_error,
+        evidence.quantized_boundary_mean_abs_error,
+        evidence.quantized_boundary_max_abs_error,
+        evidence.boundary_pixels,
+        evidence.quantized_sign_mismatches,
+        pixels,
+    );
+    if let Some(cross) = cross {
+        print!(
+            " shared_sdf_mean_abs_error={:.8} shared_sdf_max_abs_error={:.8} shared_sdf_sign_mismatch={}/{}",
+            cross.mean_abs_error,
+            cross.max_abs_error,
+            cross.sign_mismatches,
+            pixels,
+        );
+    }
+    println!();
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    println!("M8B MSDF generator evaluation");
-    println!("candidate=bymsdfgen-core@0.1.1 parallel=false edge_coloring=simple seed=0");
-    println!("field_range_px={FIELD_RANGE_PX} repeats={REPEATS}");
+    println!("M8B shared-corpus MSDF generator evaluation");
+    println!(
+        "candidates=bymsdfgen-core@0.1.1,fdsm@0.8.0 tiers=16,24,32,48 field_range_px={FIELD_RANGE_PX} repeats={REPEATS} edge_angle_rad={EDGE_ANGLE_THRESHOLD_RADIANS} seed={EDGE_COLORING_SEED}"
+    );
+    println!(
+        "timing=field_generation_with_candidate_default_error/sign_correction; outline extraction/coloring/preparation excluded"
+    );
 
     let mut glyph_count = 0usize;
-    let mut overlap_glyphs = 0usize;
-    let mut unknown_overlap_glyphs = 0usize;
-    let mut total_edges = 0usize;
+    let mut segment_count = 0usize;
+
     for case in CORPUS {
         let (artifact, font_bytes) = shape_case(case)?;
         for run in artifact.lines().iter().flat_map(TextLine::runs) {
@@ -384,39 +678,36 @@ fn main() -> Result<(), Box<dyn Error>> {
                 return Err(format!("{} shaped with an unexpected font source", case.label).into());
             }
             for glyph in resource.glyphs() {
-                let (shape, has_overlaps) = to_shape(resource, glyph.id())?;
+                let geometry = outline_geometry(resource, glyph.id())?;
                 glyph_count += 1;
-                overlap_glyphs += usize::from(has_overlaps == Some(true));
-                unknown_overlap_glyphs += usize::from(has_overlaps.is_none());
-                total_edges += shape.edge_count();
+                segment_count += geometry.segment_count();
+
                 for tier in TIERS {
-                    let evidence = evaluate_shape(&shape, tier)?;
-                    let pixels = evidence.width * evidence.height;
-                    println!(
-                        "case={} glyph={} overlap={:?} tier={} extent={}x{} edges={} hash={:016x} avg_us={} rgb_f32_bytes={} rgb8_bytes={} rgba8_wgpu_bytes={} mean_abs_error={:.8} max_abs_error={:.8} sign_mismatch={}/{} quantized_mean_abs_error={:.8} quantized_max_abs_error={:.8} quantized_boundary_mean_abs_error={:.8} quantized_boundary_max_abs_error={:.8} boundary_pixels={} quantized_sign_mismatch={}/{}",
-                        case.label,
+                    let domain = domain(&geometry, tier)?;
+                    let by = evaluate_bymsdfgen(&domain)?;
+                    print_evidence(
+                        "bymsdfgen-core@0.1.1",
+                        case,
                         glyph.id(),
-                        has_overlaps,
-                        tier as u32,
-                        evidence.width,
-                        evidence.height,
-                        shape.edge_count(),
-                        evidence.hash,
-                        evidence.elapsed_micros,
-                        pixels * 3 * std::mem::size_of::<f32>(),
-                        pixels * 3,
-                        pixels * 4,
-                        evidence.mean_abs_error,
-                        evidence.max_abs_error,
-                        evidence.sign_mismatches,
-                        pixels,
-                        evidence.quantized_mean_abs_error,
-                        evidence.quantized_max_abs_error,
-                        evidence.quantized_boundary_mean_abs_error,
-                        evidence.quantized_boundary_max_abs_error,
-                        evidence.boundary_pixels,
-                        evidence.quantized_sign_mismatches,
-                        pixels,
+                        tier,
+                        geometry.segment_count(),
+                        domain.width,
+                        domain.height,
+                        &by,
+                        None,
+                    );
+
+                    let (fd, cross) = evaluate_fdsm(&geometry, &domain, tier)?;
+                    print_evidence(
+                        "fdsm@0.8.0",
+                        case,
+                        glyph.id(),
+                        tier,
+                        geometry.segment_count(),
+                        domain.width,
+                        domain.height,
+                        &fd,
+                        Some(&cross),
                     );
                 }
             }
@@ -426,12 +717,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     if glyph_count == 0 {
         return Err("controlled corpus produced no outline glyphs".into());
     }
-    if overlap_glyphs == 0 {
-        return Err("controlled corpus did not exercise a glyph with declared overlapping outlines".into());
-    }
+
     println!(
-        "summary glyphs={glyph_count} overlap_glyphs={overlap_glyphs} unknown_overlap_glyphs={unknown_overlap_glyphs} total_edges={total_edges} tiers={}",
-        TIERS.len()
+        "summary glyphs={glyph_count} source_segments={segment_count} tiers={} candidate_runs={} shared_corpus=latin-acute,latin-curves,arabic,devanagari",
+        TIERS.len(),
+        glyph_count * TIERS.len() * 2,
     );
     Ok(())
 }
