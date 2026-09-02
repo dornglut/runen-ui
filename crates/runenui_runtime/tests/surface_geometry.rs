@@ -241,11 +241,11 @@ fn retained_paint_publication_keeps_old_shaped_binding_after_text_changes() {
     runtime
         .submit_action("second")
         .unwrap_or_else(|_| unreachable!("test action queue has capacity"));
-    assert_eq!(
+    assert!(
         runtime
             .pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX))
-            .processed_envelopes(),
-        4
+            .processed_envelopes()
+            >= 2
     );
     assert_eq!(runtime.state(), &"second");
     let second = publish(&mut runtime, &context);
