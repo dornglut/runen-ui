@@ -7,7 +7,7 @@ use parley::{
     FontFeatures as ParleyFontFeatures, FontStyle as ParleyFontStyle,
     FontVariation as ParleyFontVariation, FontVariations as ParleyFontVariations,
     FontWeight as ParleyFontWeight, FontWidth as ParleyFontWidth,
-    GenericFamily as ParleyGenericFamily, Language, LayoutContext,
+    GenericFamily as ParleyGenericFamily, Language, Layout, LayoutContext,
     OverflowWrap as ParleyOverflowWrap, StyleProperty, TextWrapMode as ParleyTextWrapMode,
     WordBreak as ParleyWordBreak,
 };
@@ -20,13 +20,11 @@ use crate::{
     TextOverflowWrap, TextRequest, TextWordBreak, TextWrapMode, layout_extract,
 };
 
-pub fn layout_text(
+pub(crate) fn shape_text(
     font_context: &mut FontContext,
     layout_context: &mut LayoutContext,
-    resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
-    source_snapshot: FontSourceSnapshot,
     request: &TextRequest,
-) -> Result<TextArtifact, TextLayoutError> {
+) -> Result<Layout<()>, TextLayoutError> {
     let mut builder = layout_context.ranged_builder(font_context, request.text(), 1.0, false);
 
     for property in typography_properties(request.typography())? {
@@ -66,7 +64,16 @@ pub fn layout_text(
         }
     }
 
-    let mut layout = builder.build(request.text());
+    Ok(builder.build(request.text()))
+}
+
+pub(crate) fn relayout_text(
+    layout: &mut Layout<()>,
+    resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
+    source_snapshot: FontSourceSnapshot,
+    request: &TextRequest,
+) -> Result<TextArtifact, TextLayoutError> {
+    let paragraph = request.paragraph_style();
     layout.break_all_lines(request.constraints().max_inline().map(LogicalLength::get));
     layout.align(
         match paragraph.alignment() {
@@ -78,7 +85,7 @@ pub fn layout_text(
         AlignmentOptions::default(),
     );
 
-    layout_extract::extract_layout(&layout, source_snapshot, resources)
+    layout_extract::extract_layout(layout, source_snapshot, resources)
         .ok_or(TextLayoutError::InvalidArtifact)
 }
 

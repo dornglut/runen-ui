@@ -1,0 +1,127 @@
+//! Caller-owned reusable state for one logical text-layout stream.
+
+use core::fmt;
+
+use parley::Layout;
+
+use crate::{FontSourceSnapshot, TextArtifact, TextRequest};
+
+/// Reusable renderer-neutral state for one logical text-layout stream.
+///
+/// The caller owns placement, lifetime, and invalidation of this value. `runenui_text`
+/// owns only the private shaping/layout representation stored inside it. In particular,
+/// this value carries no mounted identity, runtime topology, publication state, or
+/// renderer state.
+#[derive(Default)]
+pub struct TextLayoutState {
+    pub(crate) cached: Option<CachedTextLayout>,
+}
+
+impl TextLayoutState {
+    /// Creates an empty reusable text-layout state.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { cached: None }
+    }
+
+    /// Drops reusable shaping/layout state without affecting already-issued artifacts
+    /// or shaped-resource leases.
+    pub fn clear(&mut self) {
+        self.cached = None;
+    }
+
+    /// Returns whether this state currently retains reusable private layout work.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.cached.is_none()
+    }
+}
+
+impl fmt::Debug for TextLayoutState {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TextLayoutState")
+            .field("has_cached_layout", &self.cached.is_some())
+            .finish()
+    }
+}
+
+pub(crate) struct CachedTextLayout {
+    pub(crate) layout: Layout<()>,
+    pub(crate) request: TextRequest,
+    pub(crate) source_snapshot: FontSourceSnapshot,
+    pub(crate) artifact: TextArtifact,
+}
+
+impl CachedTextLayout {
+    pub(crate) fn new(
+        layout: Layout<()>,
+        request: TextRequest,
+        source_snapshot: FontSourceSnapshot,
+        artifact: TextArtifact,
+    ) -> Self {
+        Self {
+            layout,
+            request,
+            source_snapshot,
+            artifact,
+        }
+    }
+}
+
+/// Work performed to satisfy one logical text-layout request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextLayoutDecision {
+    /// The exact prior immutable artifact was reused; no resource was reissued.
+    Reused,
+    /// Existing shaped layout state was re-line-broken/re-aligned without rebuilding shaping.
+    Relinebroken,
+    /// Text/font/style/source inputs required a fresh shaping/layout build.
+    Reshaped,
+}
+
+/// Result of one logical text-layout request plus cache/reflow diagnostics.
+#[derive(Clone, Debug)]
+pub struct TextLayoutOutcome {
+    artifact: TextArtifact,
+    decision: TextLayoutDecision,
+    issued_resource_count: usize,
+}
+
+impl TextLayoutOutcome {
+    pub(crate) fn new(
+        artifact: TextArtifact,
+        decision: TextLayoutDecision,
+        issued_resource_count: usize,
+    ) -> Self {
+        Self {
+            artifact,
+            decision,
+            issued_resource_count,
+        }
+    }
+
+    /// Returns the immutable artifact used for both measurement and later paint facts.
+    #[must_use]
+    pub const fn artifact(&self) -> &TextArtifact {
+        &self.artifact
+    }
+
+    /// Consumes the outcome and returns its immutable artifact.
+    #[must_use]
+    pub fn into_artifact(self) -> TextArtifact {
+        self.artifact
+    }
+
+    /// Returns whether this request reused, re-line-broke, or reshaped private text state.
+    #[must_use]
+    pub const fn decision(&self) -> TextLayoutDecision {
+        self.decision
+    }
+
+    /// Returns the number of new logical shaped-run resources issued by this request.
+    #[must_use]
+    pub const fn issued_resource_count(&self) -> usize {
+        self.issued_resource_count
+    }
+}

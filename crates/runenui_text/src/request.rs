@@ -170,6 +170,13 @@ impl TextParagraphStyle {
     pub const fn overflow_wrap(&self) -> TextOverflowWrap {
         self.overflow_wrap
     }
+
+    pub(crate) fn same_prepared_layout_inputs(&self, other: &Self) -> bool {
+        self.language == other.language
+            && self.wrap_mode == other.wrap_mode
+            && self.word_break == other.word_break
+            && self.overflow_wrap == other.overflow_wrap
+    }
 }
 
 /// One non-overlapping UTF-8 byte range with complete metric typography.
@@ -320,6 +327,15 @@ impl TextRequest {
     #[must_use]
     pub fn metric_spans(&self) -> &[TextMetricSpan] {
         &self.metric_spans
+    }
+
+    pub(crate) fn same_prepared_layout_inputs(&self, other: &Self) -> bool {
+        self.text == other.text
+            && self.typography == other.typography
+            && self.metric_spans == other.metric_spans
+            && self
+                .paragraph
+                .same_prepared_layout_inputs(&other.paragraph)
     }
 }
 

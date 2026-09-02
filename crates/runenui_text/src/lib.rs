@@ -6,6 +6,7 @@
 
 mod artifact;
 mod layout_extract;
+mod layout_state;
 mod parley_bridge;
 mod request;
 mod source_identity;
@@ -27,6 +28,7 @@ pub use artifact::{
     TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics,
     TextRun,
 };
+pub use layout_state::{TextLayoutDecision, TextLayoutOutcome, TextLayoutState};
 pub use request::{
     TextAlignment, TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap,
     TextParagraphStyle, TextRequest, TextRequestError, TextWordBreak, TextWrapMode,
@@ -191,23 +193,76 @@ impl TextSystem {
 
     /// Produces the single immutable artifact used for logical measurement and later paint facts.
     ///
-    /// The request contains only shaping/line-breaking inputs. Paint-only foreground state is not
-    /// part of this operation or shaped resource identity.
+    /// `state` is caller-owned reusable derived state for this logical text stream. Exact requests
+    /// reuse the prior immutable artifact; constraint/alignment-only changes re-line-break the
+    /// retained shaped layout; changes to prepared text/style/font-source inputs rebuild shaping.
+    /// Paint-only foreground state is absent from both the request and shaped resource identity.
     ///
     /// # Errors
     ///
     /// Returns [`TextLayoutError`] when the reviewed private Parley mapping cannot represent an
     /// input or when produced layout facts cannot be represented by `RunenUI`'s finite artifact
     /// contracts.
-    pub fn layout_text(&mut self, request: &TextRequest) -> Result<TextArtifact, TextLayoutError> {
+    pub fn layout_text(
+        &mut self,
+        state: &mut TextLayoutState,
+        request: &TextRequest,
+    ) -> Result<TextLayoutOutcome, TextLayoutError> {
         let source_snapshot = self.source_snapshot();
-        parley_bridge::layout_text(
+
+        if let Some(cached) = state.cached.as_mut()
+            && cached.source_snapshot == source_snapshot
+        {
+            if &cached.request == request {
+                return Ok(TextLayoutOutcome::new(
+                    cached.artifact.clone(),
+                    TextLayoutDecision::Reused,
+                    0,
+                ));
+            }
+
+            if cached.request.same_prepared_layout_inputs(request) {
+                let artifact = parley_bridge::relayout_text(
+                    &mut cached.layout,
+                    &mut self.shaped_resources,
+                    source_snapshot.clone(),
+                    request,
+                )?;
+                let issued_resource_count = shaped_run_count(&artifact);
+                cached.request = request.clone();
+                cached.source_snapshot = source_snapshot;
+                cached.artifact = artifact.clone();
+                return Ok(TextLayoutOutcome::new(
+                    artifact,
+                    TextLayoutDecision::Relinebroken,
+                    issued_resource_count,
+                ));
+            }
+        }
+
+        let mut layout = parley_bridge::shape_text(
             &mut self.font_context,
             &mut self.layout_context,
-            &mut self.shaped_resources,
-            source_snapshot,
             request,
-        )
+        )?;
+        let artifact = parley_bridge::relayout_text(
+            &mut layout,
+            &mut self.shaped_resources,
+            source_snapshot.clone(),
+            request,
+        )?;
+        let issued_resource_count = shaped_run_count(&artifact);
+        state.cached = Some(layout_state::CachedTextLayout::new(
+            layout,
+            request.clone(),
+            source_snapshot,
+            artifact.clone(),
+        ));
+        Ok(TextLayoutOutcome::new(
+            artifact,
+            TextLayoutDecision::Reshaped,
+            issued_resource_count,
+        ))
     }
 
     /// Acquires a strong lifetime token for one live scale-independent shaped resource.
@@ -251,6 +306,10 @@ impl TextSystem {
     }
 }
 
+fn shaped_run_count(artifact: &TextArtifact) -> usize {
+    artifact.lines().iter().map(|line| line.runs().len()).sum()
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -259,8 +318,8 @@ mod tests {
 
     use super::{
         FontSourcePolicy, FontSourceRevision, TextConstraints, TextLanguage, TextLanguageError,
-        TextMetricSpan, TextParagraphStyle, TextRequest, TextRequestError, TextSystem,
-        TextWrapMode,
+        TextLayoutDecision, TextLayoutState, TextMetricSpan, TextParagraphStyle, TextRequest,
+        TextRequestError, TextSystem, TextWrapMode,
     };
 
     const CANTARELL: &[u8] = include_bytes!("../tests/fixtures/Cantarell-Regular.ttf");
@@ -351,6 +410,7 @@ mod tests {
     fn production_request_produces_one_measure_and_resource_artifact() -> Result<(), Box<dyn Error>>
     {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let mut state = TextLayoutState::new();
         let faces = system.register_font_bytes(CANTARELL.to_vec())?;
         assert!(faces > 0);
 
@@ -359,7 +419,10 @@ mod tests {
             typography(18.0)?,
             TextConstraints::unbounded(),
         );
-        let artifact = system.layout_text(&request)?;
+        let outcome = system.layout_text(&mut state, &request)?;
+        assert_eq!(outcome.decision(), TextLayoutDecision::Reshaped);
+        assert!(outcome.issued_resource_count() > 0);
+        let artifact = outcome.artifact();
 
         assert_eq!(artifact.source_snapshot(), &system.source_snapshot());
         assert!(artifact.size().width() > 0.0);
@@ -376,8 +439,113 @@ mod tests {
     }
 
     #[test]
+    fn exact_request_reuses_artifact_and_resource_identity() -> Result<(), Box<dyn Error>> {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let mut state = TextLayoutState::new();
+        system.register_font_bytes(CANTARELL.to_vec())?;
+        let request = TextRequest::new(
+            "reuse the exact shaped artifact",
+            typography(16.0)?,
+            TextConstraints::unbounded(),
+        );
+
+        let first = system.layout_text(&mut state, &request)?;
+        assert_eq!(first.decision(), TextLayoutDecision::Reshaped);
+        let first_resource = first.artifact().lines()[0].runs()[0]
+            .resource_ref()
+            .clone();
+
+        let second = system.layout_text(&mut state, &request)?;
+        assert_eq!(second.decision(), TextLayoutDecision::Reused);
+        assert_eq!(second.issued_resource_count(), 0);
+        assert_eq!(
+            second.artifact().lines()[0].runs()[0].resource_ref(),
+            &first_resource
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn width_only_change_relinebreaks_without_rebuilding_shaping() -> Result<(), Box<dyn Error>> {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let mut state = TextLayoutState::new();
+        system.register_font_bytes(CANTARELL.to_vec())?;
+        let text = "one two three four five six seven eight";
+        let wide = TextRequest::new(
+            text,
+            typography(16.0)?,
+            TextConstraints::limited(LogicalLength::new(400.0)?),
+        );
+        let narrow = TextRequest::new(
+            text,
+            typography(16.0)?,
+            TextConstraints::limited(LogicalLength::new(72.0)?),
+        );
+
+        let first = system.layout_text(&mut state, &wide)?;
+        assert_eq!(first.decision(), TextLayoutDecision::Reshaped);
+        let wide_line_count = first.artifact().lines().len();
+        let second = system.layout_text(&mut state, &narrow)?;
+        assert_eq!(second.decision(), TextLayoutDecision::Relinebroken);
+        assert!(second.issued_resource_count() > 0);
+        assert!(second.artifact().lines().len() > wide_line_count);
+        Ok(())
+    }
+
+    #[test]
+    fn metric_input_change_forces_reshape() -> Result<(), Box<dyn Error>> {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let mut state = TextLayoutState::new();
+        system.register_font_bytes(CANTARELL.to_vec())?;
+        let base = TextRequest::new(
+            "metric change",
+            typography(14.0)?,
+            TextConstraints::unbounded(),
+        );
+        let changed = TextRequest::new(
+            "metric change",
+            typography(28.0)?,
+            TextConstraints::unbounded(),
+        );
+
+        assert_eq!(
+            system.layout_text(&mut state, &base)?.decision(),
+            TextLayoutDecision::Reshaped
+        );
+        assert_eq!(
+            system.layout_text(&mut state, &changed)?.decision(),
+            TextLayoutDecision::Reshaped
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn font_source_revision_change_forces_reshape() -> Result<(), Box<dyn Error>> {
+        let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let mut state = TextLayoutState::new();
+        system.register_font_bytes(CANTARELL.to_vec())?;
+        let request = TextRequest::new(
+            "font revision",
+            typography(16.0)?,
+            TextConstraints::unbounded(),
+        );
+
+        assert_eq!(
+            system.layout_text(&mut state, &request)?.decision(),
+            TextLayoutDecision::Reshaped
+        );
+        system.register_font_bytes(CANTARELL.to_vec())?;
+        assert_eq!(
+            system.layout_text(&mut state, &request)?.decision(),
+            TextLayoutDecision::Reshaped
+        );
+        Ok(())
+    }
+
+    #[test]
     fn metric_span_changes_shaped_metrics_without_paint_state() -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let mut state = TextLayoutState::new();
         system.register_font_bytes(CANTARELL.to_vec())?;
         let request = TextRequest::new(
             "small LARGE",
@@ -385,7 +553,7 @@ mod tests {
             TextConstraints::unbounded(),
         )
         .try_with_metric_spans(vec![TextMetricSpan::new(6..11, typography(28.0)?)])?;
-        let artifact = system.layout_text(&request)?;
+        let artifact = system.layout_text(&mut state, &request)?.into_artifact();
         let sizes: Vec<f32> = artifact
             .lines()
             .iter()
@@ -410,20 +578,25 @@ mod tests {
     fn text_wrap_policy_controls_line_breaks_under_the_same_constraint()
     -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let mut state = TextLayoutState::new();
         system.register_font_bytes(CANTARELL.to_vec())?;
         let width = LogicalLength::new(72.0)?;
         let text = "one two three four five six";
-        let wrapped = system.layout_text(&TextRequest::new(
-            text,
-            typography(16.0)?,
-            TextConstraints::limited(width),
-        ))?;
-        let unwrapped = system.layout_text(
-            &TextRequest::new(text, typography(16.0)?, TextConstraints::limited(width))
-                .with_paragraph_style(
-                    TextParagraphStyle::default().with_wrap_mode(TextWrapMode::NoWrap),
-                ),
-        )?;
+        let wrapped = system
+            .layout_text(
+                &mut state,
+                &TextRequest::new(text, typography(16.0)?, TextConstraints::limited(width)),
+            )?
+            .into_artifact();
+        let unwrapped = system
+            .layout_text(
+                &mut state,
+                &TextRequest::new(text, typography(16.0)?, TextConstraints::limited(width))
+                    .with_paragraph_style(
+                        TextParagraphStyle::default().with_wrap_mode(TextWrapMode::NoWrap),
+                    ),
+            )?
+            .into_artifact();
 
         assert!(wrapped.lines().len() > 1);
         assert_eq!(unwrapped.lines().len(), 1);
@@ -431,15 +604,21 @@ mod tests {
     }
 
     #[test]
-    fn explicit_lease_preserves_retry_binding_and_dead_resources_are_reclaimable()
+    fn explicit_lease_and_cache_state_preserve_retry_binding_until_both_release()
     -> Result<(), Box<dyn Error>> {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+        let mut state = TextLayoutState::new();
         system.register_font_bytes(CANTARELL.to_vec())?;
-        let artifact = system.layout_text(&TextRequest::new(
-            "retry safe",
-            typography(16.0)?,
-            TextConstraints::unbounded(),
-        ))?;
+        let artifact = system
+            .layout_text(
+                &mut state,
+                &TextRequest::new(
+                    "retry safe",
+                    typography(16.0)?,
+                    TextConstraints::unbounded(),
+                ),
+            )?
+            .into_artifact();
         let resource = artifact.lines()[0].runs()[0].resource_ref().clone();
         let glyph_count = artifact.lines()[0].runs()[0]
             .shaped_resource()
@@ -450,6 +629,8 @@ mod tests {
             .ok_or("artifact-backed resource must be leaseable")?;
 
         drop(artifact);
+        assert!(system.lease_shaped_run(&resource).is_some());
+        state.clear();
         assert_eq!(lease.resource_ref(), &resource);
         assert_eq!(lease.shaped_resource().glyphs().len(), glyph_count);
         assert_eq!(lease.shaped_resource().font().bytes(), CANTARELL);
