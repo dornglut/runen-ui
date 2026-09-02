@@ -1,8 +1,6 @@
 use std::{collections::HashSet, error::Error};
 
-use runenui_core::{
-    FontFamily, FontFamilyName, GenericFontFamily, LogicalLength, Typography,
-};
+use runenui_core::{FontFamily, FontFamilyName, GenericFontFamily, LogicalLength, Typography};
 use runenui_text::{
     FontSourcePolicy, TextArtifact, TextConstraints, TextDirection, TextLanguage, TextLayoutState,
     TextParagraphStyle, TextRequest, TextSystem,
