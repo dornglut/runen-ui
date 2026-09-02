@@ -47,13 +47,15 @@ This ADR preserves these accepted ownership decisions:
 - M9/M10/M11/M13: broad composition/animation, editable text, standard controls, and
   broad platform/multi-window profiles remain later owners.
 
-**On acceptance, this ADR deliberately supersedes one ADR 0008 target detail for the
-M8 production outline-text path:** the shaped-run provider requirement that logical
-text resources resolve to scale-specific alpha coverage. M7's current
-`ShapedRunRaster` implementation remains truthful proof-era behavior until the M8B
-cutover is accepted. M8 replaces that payload with logical already-shaped
-glyph/font/outline facts and SDF/MSDF renderer realization. All other M7 resource
-ownership and complete-`ResourceRef` rules remain inherited.
+**On acceptance, this ADR deliberately supersedes the ADR 0008 shaped-run provider
+contract for the M8 production outline-text path:** M7's caller-provided,
+scale-specific alpha coverage remains truthful proof-era behavior only until the M8B
+cutover is accepted. M8 runtime-shaped text instead retains the exact immutable
+logical shaped binding with the paint publication and lets the renderer derive
+disposable SDF/MSDF realizations from that binding. External caller-owned resource
+providers remain the edge for external resources such as images. All other M7
+complete-`ResourceRef`, raster-scale, renderer, host, accessibility, and retained-
+publication rules remain inherited.
 
 ## Decision
 
@@ -205,23 +207,29 @@ adopt-versus-build evaluation on one shared corpus/benchmark, including custom,
 maintained pure-Rust, established reference-algorithm/FFI, and GPU approaches where
 applicable. The selected implementation stays behind a narrow renderer-owned seam.
 
-### Resource identity remains opaque and provider-owned at the edge
+### Resource identity remains opaque across internal and external resource domains
 
 `ResourceRef` remains the complete opaque logical identity. Text and renderer must
-not derive provider identity from debug text, kind, font name, mounted identity, or
+not derive lookup identity from debug text, kind, font name, mounted identity, or
 backend handles.
 
 `ResourceKind::ShapedTextRun` may remain if it continues to mean one immutable
-logical shaped glyph resource. A caller-owned provider still resolves the complete
-ref. The M8 production shaped-text payload contains exact immutable already-shaped
-glyph/font/outline facts rather than scale-specific coverage. `ResourceKind` does
-not select a provider.
+logical shaped glyph resource. For runtime-shaped text, the retained paint scene
+owns the exact `ResourceRef` to immutable shaped-resource binding through explicit
+lifetime leases. The renderer resolves that binding from the publication and derives
+only disposable scale/quality/atlas/device realizations; it does not ask the caller's
+external `ResourceProvider` to recreate, rasterize, or rebind shaped text. This
+retained binding is publication lifetime state rather than a second paint identity.
+
+Caller-owned resource providers remain appropriate for external resource domains,
+currently images. The complete opaque ref remains their lookup key. `ResourceKind`
+may validate a requested domain but never selects a provider or internal resolver.
 
 The text resource owner preserves each immutable binding while any live
 `ResourceRef` may be retained by measurement/cache/publication, including renderer
 retry after publication acknowledgement. If lifetime-safe pruning needs an opaque
-weak companion to `ResourceRef`, it may expose only liveness—not payload, keys,
-serialization identity, or lookup authority.
+weak companion to `ResourceRef`, it may expose only liveness—not alternate keys,
+serialization identity, or backend lookup authority.
 
 ### Non-outline/color glyph formats are explicit
 
