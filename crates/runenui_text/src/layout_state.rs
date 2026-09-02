@@ -39,6 +39,15 @@ impl TextLayoutState {
     pub const fn is_empty(&self) -> bool {
         self.cached.is_none()
     }
+
+    /// Returns the exact immutable artifact retained for the current logical text stream.
+    ///
+    /// Private Parley shaping/layout state remains encapsulated. Callers may inspect this
+    /// artifact for downstream measurement/paint correlation without reshaping or reminting.
+    #[must_use]
+    pub fn artifact(&self) -> Option<&TextArtifact> {
+        self.cached.as_deref().map(|cached| &cached.artifact)
+    }
 }
 
 impl fmt::Debug for TextLayoutState {
