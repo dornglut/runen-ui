@@ -8,16 +8,39 @@ use crate::{
     backend::{OffscreenExtent, RendererDiagnostics},
 };
 
-/// Renderer-owned result of one logical-resource lookup/realization decision.
+/// Renderer-owned category of realization work for one resource-backed scene item.
+///
+/// This deliberately describes renderer work rather than caller-provider vocabulary.
+/// External image lookup may still use [`ResourceRequest`] internally, while shaped-text
+/// realization is free to move from provider coverage to renderer-owned MSDF without changing
+/// the observation contract.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ResourceRealizationKind {
+    /// Renderer realization of an externally supplied image resource.
+    Image,
+    /// Renderer realization of one immutable logical shaped-text resource.
+    ShapedText,
+}
+
+impl ResourceRealizationKind {
+    const fn from_request(request: ResourceRequest) -> Self {
+        match request {
+            ResourceRequest::Image => Self::Image,
+            ResourceRequest::ShapedTextRun { .. } => Self::ShapedText,
+        }
+    }
+}
+
+/// Renderer-owned result of one logical-resource realization decision.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResourceCacheOutcome {
-    /// The exact complete resource identity and request were already realized.
+    /// The exact complete resource identity and renderer realization were already available.
     Reused,
-    /// The provider payload was loaded and a new renderer realization was retained.
+    /// A new renderer realization was retained.
     Realized,
-    /// The provider returned valid empty coverage, so no GPU texture was required.
+    /// The logical resource produced valid empty coverage, so no GPU texture was required.
     EmptyCoverage,
-    /// The provider or payload failed before a renderer realization was created.
+    /// Resource resolution or renderer realization failed before a usable realization existed.
     Failed,
 }
 
@@ -37,7 +60,7 @@ pub enum PublicationStageResult {
 pub struct ResourceObservation {
     item_index: usize,
     resource: ResourceRef,
-    request: ResourceRequest,
+    realization_kind: ResourceRealizationKind,
     cache_outcome: ResourceCacheOutcome,
 }
 
@@ -51,7 +74,7 @@ impl ResourceObservation {
         Self {
             item_index,
             resource,
-            request,
+            realization_kind: ResourceRealizationKind::from_request(request),
             cache_outcome,
         }
     }
@@ -66,9 +89,10 @@ impl ResourceObservation {
         &self.resource
     }
 
+    /// Returns the renderer-owned category of work represented by this observation.
     #[must_use]
-    pub const fn request(&self) -> ResourceRequest {
-        self.request
+    pub const fn realization_kind(&self) -> ResourceRealizationKind {
+        self.realization_kind
     }
 
     #[must_use]

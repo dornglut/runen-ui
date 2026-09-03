@@ -29,6 +29,7 @@ pub use backend::{
 pub use lineage::{PublicationUpdateMode, PublicationUpdatePlan};
 pub use observation::{
     PublicationObservation, PublicationStageResult, ResourceCacheOutcome, ResourceObservation,
+    ResourceRealizationKind,
 };
 pub use resource::{
     ImagePayload, PayloadValidationError, ResourcePayload, ResourceProvider, ResourceProviderError,
