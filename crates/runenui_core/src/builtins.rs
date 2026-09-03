@@ -6,7 +6,8 @@ use crate::{
     PaintContribution, PaintContributionContext, PaintContributionItem, RadiusValue,
     SemanticAction, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
     SemanticRole, SemanticState, SemanticText, SpacingValue, StyleIntent, StyleRecipeId,
-    StyleVariantId, WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
+    StyleVariantId, TypographyValue, WidgetActivationContext, WidgetInvalidation,
+    WidgetUpdateContext,
     element::{
         AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View,
         Views, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetTextKind,
@@ -54,6 +55,11 @@ macro_rules! common_builder_methods {
         #[must_use]
         pub fn radius(mut self, value: impl Into<RadiusValue>) -> Self {
             self.style = self.style.with_radius(value);
+            self
+        }
+        #[must_use]
+        pub fn typography(mut self, value: impl Into<TypographyValue>) -> Self {
+            self.style = self.style.with_typography(value);
             self
         }
     };
@@ -115,7 +121,7 @@ impl<Action> Widget<Action> for TextWidget {
         }
     }
     fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        background_paint(context)
+        background_paint(&context)
     }
     fn semantics(
         &self,
@@ -306,7 +312,7 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
         }
     }
     fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        background_paint(context)
+        background_paint(&context)
     }
     fn hit_test(&self, state: &Self::State, context: HitContributionContext) -> HitContribution {
         if state.actionable {
@@ -419,7 +425,7 @@ impl<Action> Widget<Action> for LinearContainerWidget {
         }
     }
     fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        background_paint(context)
+        background_paint(&context)
     }
     fn semantics(
         &self,
@@ -495,7 +501,7 @@ pub fn row<Action>(children: impl Views<Action>) -> Container<Action> {
     )
 }
 
-fn background_paint(context: PaintContributionContext) -> PaintContribution {
+fn background_paint(context: &PaintContributionContext) -> PaintContribution {
     context
         .computed_style()
         .background()

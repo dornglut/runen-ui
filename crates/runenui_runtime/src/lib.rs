@@ -188,7 +188,6 @@ mod constraints;
 mod debug;
 mod focus;
 mod input;
-mod measurement;
 mod mounted;
 mod pointer;
 pub mod prelude;
@@ -232,10 +231,6 @@ pub use input::{
     SubmitKeyboardError, SubmitKeyboardErrorKind, SubmitTextError, SubmitTextErrorKind,
     TextSubmission,
 };
-pub use measurement::{
-    BaselineError, DeterministicMeasurementProvider, MeasurementProvider, TextMeasurement,
-    TextMeasurementKind, TextMeasurementRequest,
-};
 pub use mounted::{
     AutomationMatchDiagnostic, DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef,
     MountedNodeId, MountedNodeRef, MountedTreeIndex, SemanticNodeId,
@@ -249,13 +244,17 @@ pub use runenui_core::{
     CompositionEnd, CompositionEvent, CompositionGeneration, CompositionRange,
     CompositionRangeError, CompositionStart, CompositionUpdate, FocusBoundaryPolicy,
     FocusDirection, FocusEvent, FocusEventKind, FocusReason, FocusScope, FocusScopePolicy,
-    Focusability, InputDeviceId, InputModality, KeyLocation, KeyModifiers,
-    KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalDelta, LogicalDeltaError,
-    LogicalKey, LogicalPoint, LogicalPointError, LogicalRect, LogicalRectError,
+    Focusability, FontFamilyName, GenericFontFamily, InputDeviceId, InputModality, KeyLocation,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalDelta,
+    LogicalDeltaError, LogicalKey, LogicalPoint, LogicalPointError, LogicalRect, LogicalRectError,
     LogicalScrollCommand, LogicalSize, PhysicalKey, PointerBoundaryEvent, PointerBoundaryKind,
     PointerButton, PointerButtons, PointerCaptureEvent, PointerCaptureKind, PointerDeviceKind,
     PointerEvent, PointerId, PointerPhase, SemanticAction, SemanticActionRequest,
     SemanticActionTarget, SurfaceId, SurfaceInputContext,
+};
+pub use runenui_text::{
+    FontRegistrationError, FontSourcePolicy, FontSourceSnapshot, GenericFamilyMappingError,
+    TextLayoutError,
 };
 pub use runtime::{
     HostRequestCancelError, HostResponseError, PublishSurfaceError, ReconciliationDiagnostic,

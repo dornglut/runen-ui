@@ -1,5 +1,9 @@
 #[cfg(feature = "internal-test-seams")]
 use runenui_core::SurfaceInputContext;
+use runenui_core::{FontFamilyName, GenericFontFamily};
+use runenui_text::{
+    FontRegistrationError, FontSourcePolicy, FontSourceSnapshot, GenericFamilyMappingError,
+};
 
 use super::{
     FocusState, HostProtocol, MandatoryTracePlan, ReconciliationReport, Runtime, RuntimeStatus,
@@ -42,6 +46,32 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     #[must_use]
     pub(crate) const fn status(&self) -> RuntimeStatus {
         self.status
+    }
+
+    pub(crate) fn register_text_font_bytes(
+        &mut self,
+        bytes: Vec<u8>,
+    ) -> Result<usize, FontRegistrationError> {
+        self.text_system.register_font_bytes(bytes)
+    }
+
+    pub(crate) fn set_text_generic_family_mapping(
+        &mut self,
+        generic: GenericFontFamily,
+        families: &[FontFamilyName],
+    ) -> Result<bool, GenericFamilyMappingError> {
+        self.text_system
+            .set_generic_family_mapping(generic, families)
+    }
+
+    #[must_use]
+    pub(crate) fn text_font_source_snapshot(&self) -> FontSourceSnapshot {
+        self.text_system.source_snapshot()
+    }
+
+    #[must_use]
+    pub(crate) const fn text_font_source_policy(&self) -> FontSourcePolicy {
+        self.text_system.source_policy()
     }
 
     #[cfg(test)]

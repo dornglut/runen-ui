@@ -321,9 +321,6 @@ pub(super) fn resolve_image(
 ) -> Result<ResolvedImage, ImageResolveFailure> {
     let payload = match crate::resolve_resource(provider, &image.resource, ResourceRequest::Image) {
         Ok(ResourcePayload::Image(payload)) => payload,
-        Ok(ResourcePayload::ShapedTextRun(_)) => {
-            unreachable!("the shared resolver rejects payload-kind mismatch")
-        }
         Err(error) => return Err(ImageResolveFailure::Resource(error)),
     };
     if payload.width() > max_texture_dimension_2d || payload.height() > max_texture_dimension_2d {

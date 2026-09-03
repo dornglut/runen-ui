@@ -29,6 +29,7 @@ use runenui_core::{
     SendSubscriptionSink, SendSubscriptionStartOutcome, SendTaskStartFailure, SubscriptionSet,
     UiApp, View,
 };
+use runenui_text::TextSystem;
 
 use crate::trace::{MandatoryTracePlan, TraceReservation};
 use crate::{
@@ -86,6 +87,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     pub(crate) queue: WorkQueue<Action>,
     pub(crate) trace: Trace,
     pub(crate) trace_action_labeler: Option<fn(&Action) -> Option<&'static str>>,
+    text_system: TextSystem,
     pub(crate) focus: FocusState,
     pointer_registry: PointerRegistry,
     pub(crate) space_ownership: Option<SpaceOwnership>,

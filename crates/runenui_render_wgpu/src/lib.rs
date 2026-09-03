@@ -20,7 +20,9 @@ mod resource;
 )]
 mod scene_subset;
 
-pub use backend::clipped::{PublicationRenderError, ResourceRenderer as Renderer};
+pub use backend::clipped::{
+    PublicationRenderError, ResourceRenderer as Renderer, UnsupportedShapedGlyphKind,
+};
 pub use backend::{
     AdapterPowerPreference, BackendSelection, OffscreenExtent, OffscreenPublicationReadback,
     OffscreenReadback, OffscreenRenderError, RendererDiagnostics, RendererInitError,
@@ -29,10 +31,10 @@ pub use backend::{
 pub use lineage::{PublicationUpdateMode, PublicationUpdatePlan};
 pub use observation::{
     PublicationObservation, PublicationStageResult, ResourceCacheOutcome, ResourceObservation,
+    ResourceRealizationKind,
 };
 pub use resource::{
     ImagePayload, PayloadValidationError, ResourcePayload, ResourceProvider, ResourceProviderError,
-    ResourceProviderErrorKind, ResourceRequest, ResourceResolveError, ShapedRunRaster,
-    resolve_resource,
+    ResourceProviderErrorKind, ResourceRequest, ResourceResolveError, resolve_resource,
 };
 pub use wgpu_types::WgpuHasDisplayHandle;

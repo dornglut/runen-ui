@@ -25,7 +25,7 @@ fn process_one<App: UiApp>(runtime: &mut AppRuntime<App>, action: App::Action) {
     );
 }
 
-fn context(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
+const fn context(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(environment, LayoutConstraints::unbounded())
 }
 

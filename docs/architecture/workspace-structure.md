@@ -10,6 +10,7 @@ RunenUI remains one Rust workspace. Crates are extracted only when Cargo should 
 RunenUI/
 ├── crates/
 │   ├── runenui_core/
+│   ├── runenui_text/
 │   ├── runenui_runtime/
 │   ├── runenui_render_wgpu/
 │   ├── runenui_winit/
@@ -27,6 +28,7 @@ RunenUI/
 | Package | Current ownership | Must not own |
 |---|---|---|
 | `runenui_core` | host-neutral application/effect protocols; validated authored values/identity/style/geometry; transient views/elements; state-aware widget/lifecycle/event/semantic vocabulary; opaque runtime-issued protocol value types | persistent mounted/semantic storage, live scheduling, native hosts, concrete renderers, application product state, ECS/legacy dependencies |
+| `runenui_text` | renderer-neutral font-source policy and cache-visible source revision; M8B text shaping/line-breaking/logical-artifact and immutable logical shaped-resource boundary behind RunenUI-owned contracts | mounted/runtime/publication authority, general layout topology/scheduling, renderer/GPU/SDF-MSDF atlas state, native host/accessibility, application state, editable-text behavior |
 | `runenui_runtime` | generational mounted/semantic arenas; reconciliation/lifecycle; canonical queue/scheduler; focus/input state; clocks/tasks/timers/subscriptions/host requests; wake/redraw; trace/replay; layout and staged surface/semantic publication | application domain policy, testing convenience authority, native platform implementations, concrete renderers, ECS/legacy dependencies |
 | `runenui_render_wgpu` | reusable renderer edge over ordinary public paint publications; caller-owned resource-provider contract; renderer-owned successful-publication lineage, realization/cache/backend work, readback, and renderer observations | native event loop, accessibility, widget/semantic/mounted/layout authority, runtime mutation, application resource registry, winit/AccessKit ownership |
 | `runenui_winit` | reusable winit input/device translation and AccessKit semantic projection/action translation proven by the reference host and native Counter | window/event-loop ownership, runtime pumping, redraw/publication policy, displayed-frame authority, renderer/presentation lifecycle, application behavior |
@@ -38,10 +40,13 @@ RunenUI/
 | `runenui_external_widget_conformance` | non-publishable genuine downstream custom-widget/public conformance proof | production framework ownership or privileged internal access |
 | `xtask` | deterministic repository validation/audit orchestration | framework runtime behavior |
 
-Current production dependency direction is acyclic:
+Current production dependency direction is acyclic. The M8B text crate currently establishes its independent core-only boundary; runtime and renderer integration edges are added only when the corresponding logical text contracts are implemented rather than being implied by crate existence:
 
 ```text
-runenui_core <- runenui_runtime
+runenui_core <- runenui_text
+       ^
+       |
+       +--------- runenui_runtime
        ^             ^
        └──────┬──────┘
               ├── runenui_render_wgpu ──┬── reference_winit
@@ -56,7 +61,9 @@ runenui_core <- runenui_runtime
 xtask  (repository tooling; no framework dependency)
 ```
 
-`runenui_render_wgpu` depends only on ordinary public core/runtime contracts inside the workspace. Its backend/resource state remains downstream and disposable; native host and accessibility dependencies are intentionally outside the renderer package boundary. The external-renderer conformance package remains a separate proof-only consumer and is not the production renderer.
+`runenui_text` depends only on ordinary public `runenui_core` contracts plus its reviewed text/font dependency stack. Parley/Fontique/HarfRust/Skrifa/ICU remain private implementation dependencies. The crate's font collection, shaping scratch state, and later logical text caches/resources are renderer-neutral derived state; they do not own mounted topology, runtime scheduling/publication, GPU realization, native integration, semantics, or editing behavior. M8B may add `runenui_runtime -> runenui_text` and `runenui_render_wgpu -> runenui_text` edges only as their accepted measurement and already-shaped realization integrations become real.
+
+`runenui_render_wgpu` depends only on ordinary public core/runtime contracts inside the workspace at the current branch state. Its backend/resource state remains downstream and disposable; native host and accessibility dependencies are intentionally outside the renderer package boundary. The external-renderer conformance package remains a separate proof-only consumer and is not the production renderer.
 
 `runenui_winit` is the targeted adapter boundary justified by the second real winit consumer in M7. It consumes ordinary public core/runtime contracts plus winit/AccessKit types and owns only loss-preserving native translation/projection mechanics. It deliberately has no renderer dependency and no run-loop API. Moving a substantial accepted adapter into one Cargo-owned source prevents Counter from copying the specialized reference application while leaving application-specific host policy visible.
 
@@ -69,6 +76,8 @@ The external-renderer conformance package intentionally depends only on public `
 ## Ownership rules
 
 `runenui_core` owns public host-neutral protocol/value definitions. `runenui_runtime` remains the sole live authority for namespace creation, mounted and semantic arenas, topology, reconciliation, routes, interaction mutation, queue/work/trace sequencing, scheduling, clocks, publication, semantic resolution, and shutdown.
+
+`runenui_text` may own renderer-neutral font-source configuration, dependency-backed shaping/line breaking, immutable logical text artifacts, and logical shaped-resource bindings. It must not import runtime/mounted/publication authority, renderer/backend state, native/accessibility integration, or editing behavior. Public contracts remain RunenUI-owned and must not expose upstream dependency types as authority.
 
 `runenui_render_wgpu` may retain only renderer-owned realization state derived from ordinary immutable paint publications plus caller-owned resource payloads. It must not inspect concrete widget/control types, semantic-tree facts, mounted/layout storage, or private runtime mutation seams, and it must not become resource-provider or application-state authority.
 
@@ -95,4 +104,4 @@ A new crate requires at least one demonstrated property:
 
 A named concept, target diagram, or large source file is not enough. Do not create empty target crates, genericize identity, or relocate values solely to satisfy an imagined package graph.
 
-Future layout/style, text, controls, host, platform, facade, or devtool crates require those same demonstrated boundaries when their owning milestones become real. The [roadmap](../roadmap.md) owns sequencing; exact current public ownership is summarized in the [public API contract](public-api.md).
+Future layout, controls, host, platform, facade, or devtool crates require those same demonstrated boundaries when their owning milestones become real. The [roadmap](../roadmap.md) owns sequencing; exact current public ownership is summarized in the [public API contract](public-api.md).

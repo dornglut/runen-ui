@@ -1,7 +1,7 @@
 //! Validated host-neutral authored style vocabulary.
 
 use crate::{
-    IdentifierError, LogicalLength,
+    IdentifierError, LogicalLength, Typography,
     identity::{IdentifierText, validate_identifier},
 };
 
@@ -82,6 +82,7 @@ macro_rules! define_token_ref {
 define_token_ref!(ColorToken, "Typed color-token reference.");
 define_token_ref!(SpacingToken, "Typed edge-spacing-token reference.");
 define_token_ref!(RadiusToken, "Typed corner-radius-token reference.");
+define_token_ref!(TypographyToken, "Typed metric-typography-token reference.");
 
 macro_rules! define_style_id {
     ($name:ident, $doc:literal) => {
@@ -410,6 +411,50 @@ impl From<RadiusToken> for RadiusValue {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypographyValue {
+    Literal(Typography),
+    Token(TypographyToken),
+}
+
+impl TypographyValue {
+    #[must_use]
+    pub const fn literal(value: Typography) -> Self {
+        Self::Literal(value)
+    }
+    #[must_use]
+    pub const fn token(token: TypographyToken) -> Self {
+        Self::Token(token)
+    }
+    #[must_use]
+    pub const fn as_literal(&self) -> Option<&Typography> {
+        if let Self::Literal(value) = self {
+            Some(value)
+        } else {
+            None
+        }
+    }
+    #[must_use]
+    pub const fn as_token(&self) -> Option<&TypographyToken> {
+        if let Self::Token(value) = self {
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+impl From<Typography> for TypographyValue {
+    fn from(value: Typography) -> Self {
+        Self::Literal(value)
+    }
+}
+impl From<TypographyToken> for TypographyValue {
+    fn from(value: TypographyToken) -> Self {
+        Self::Token(value)
+    }
+}
+
 /// One partial set of typed style properties.
 ///
 /// A property set has no precedence by itself. Resolution assigns precedence
@@ -420,6 +465,7 @@ pub struct StyleProperties {
     background: Option<ColorValue>,
     padding: Option<SpacingValue>,
     radius: Option<RadiusValue>,
+    typography: Option<TypographyValue>,
 }
 
 impl StyleProperties {
@@ -428,6 +474,7 @@ impl StyleProperties {
         background: None,
         padding: None,
         radius: None,
+        typography: None,
     };
 
     #[must_use]
@@ -436,6 +483,7 @@ impl StyleProperties {
             && self.background.is_none()
             && self.padding.is_none()
             && self.radius.is_none()
+            && self.typography.is_none()
     }
     #[must_use]
     pub fn with_foreground(mut self, value: impl Into<ColorValue>) -> Self {
@@ -458,6 +506,11 @@ impl StyleProperties {
         self
     }
     #[must_use]
+    pub fn with_typography(mut self, value: impl Into<TypographyValue>) -> Self {
+        self.typography = Some(value.into());
+        self
+    }
+    #[must_use]
     pub const fn foreground(&self) -> Option<&ColorValue> {
         self.foreground.as_ref()
     }
@@ -472,6 +525,10 @@ impl StyleProperties {
     #[must_use]
     pub const fn radius(&self) -> Option<&RadiusValue> {
         self.radius.as_ref()
+    }
+    #[must_use]
+    pub const fn typography(&self) -> Option<&TypographyValue> {
+        self.typography.as_ref()
     }
 }
 
@@ -529,6 +586,11 @@ impl StyleIntent {
         self
     }
     #[must_use]
+    pub fn with_typography(mut self, value: impl Into<TypographyValue>) -> Self {
+        self.overrides = self.overrides.with_typography(value);
+        self
+    }
+    #[must_use]
     pub const fn recipe(&self) -> Option<&StyleRecipeId> {
         self.recipe.as_ref()
     }
@@ -555,5 +617,9 @@ impl StyleIntent {
     #[must_use]
     pub const fn radius(&self) -> Option<&RadiusValue> {
         self.overrides.radius()
+    }
+    #[must_use]
+    pub const fn typography(&self) -> Option<&TypographyValue> {
+        self.overrides.typography()
     }
 }

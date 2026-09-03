@@ -81,7 +81,7 @@ impl SurfaceStyleNode {
     }
 
     #[must_use]
-    pub const fn computed_style(&self) -> ComputedStyle {
+    pub const fn computed_style(&self) -> &ComputedStyle {
         self.resolution.computed_style()
     }
 

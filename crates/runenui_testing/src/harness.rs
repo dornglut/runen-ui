@@ -5,12 +5,13 @@ use runenui_core::{CommandOrigin, ElementId, SemanticAction, SemanticCommand, Su
 use runenui_runtime::{
     AppRuntime, AutomationSubmission, CommandSubmission, CommittedTextEvent, CompositionGeneration,
     CompositionRange, CompositionStartSubmission, CompositionSubmission, FocusState,
+    FontFamilyName, FontRegistrationError, GenericFamilyMappingError, GenericFontFamily,
     HostRequestRef, InputDeviceId, KeyboardEvent, KeyboardSubmission, LogicalPoint, ManualClock,
-    MeasurementProvider, MonotonicInstant, MonotonicTimeError, MountedNodeId, PointerDeviceKind,
-    PointerEvent, PointerId, PointerPhase, PointerSubmission, PublishSurfaceError, PumpBudget,
-    PumpReport, ReconciliationReport, RuntimeConfig, SemanticPublication, SemanticRevision,
-    SemanticSnapshot, SemanticUpdateResult, SubmitAutomationError, SubmitCommandError,
-    SubmitCompositionError, SubmitCompositionStartError, SubmitKeyboardError, SubmitPointerError,
+    MonotonicInstant, MonotonicTimeError, MountedNodeId, PointerDeviceKind, PointerEvent,
+    PointerId, PointerPhase, PointerSubmission, PublishSurfaceError, PumpBudget, PumpReport,
+    ReconciliationReport, RuntimeConfig, SemanticPublication, SemanticRevision, SemanticSnapshot,
+    SemanticUpdateResult, SubmitAutomationError, SubmitCommandError, SubmitCompositionError,
+    SubmitCompositionStartError, SubmitKeyboardError, SubmitPointerError,
     SubmitSemanticActionError, SubmitSurfaceCommandError, SubmitTextError, SurfaceBuildContext,
     SurfaceInputContext, SurfacePublication, TextSubmission, TimerFiringOutcome, TimerStartOutcome,
     Trace, TraceReplay, TraceReplayError,
@@ -160,6 +161,32 @@ impl<App: UiApp> TestHarness<App> {
         self.surface = surface;
     }
 
+    /// Registers immutable bundled font bytes through the ordinary runtime text authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runtime text-source registration error unchanged.
+    pub fn register_text_font_bytes(
+        &mut self,
+        bytes: Vec<u8>,
+    ) -> Result<usize, FontRegistrationError> {
+        self.runtime.register_text_font_bytes(bytes)
+    }
+
+    /// Replaces one deterministic generic-family mapping through the ordinary runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runtime text-source mapping error unchanged.
+    pub fn set_text_generic_family_mapping(
+        &mut self,
+        generic: GenericFontFamily,
+        families: &[FontFamilyName],
+    ) -> Result<bool, GenericFamilyMappingError> {
+        self.runtime
+            .set_text_generic_family_mapping(generic, families)
+    }
+
     /// Processes one explicitly bounded runtime checkpoint.
     pub fn pump(&mut self, budget: PumpBudget) -> PumpReport {
         self.runtime.pump(budget)
@@ -210,33 +237,17 @@ impl<App: UiApp> TestHarness<App> {
         self.runtime.pending_host_requests()
     }
 
-    /// Publishes the configured fixed surface with deterministic text metrics.
+    /// Publishes the configured fixed surface through the runtime-owned logical text authority.
+    ///
+    /// Deterministic bundled-only runtimes require callers to register controlled font bytes
+    /// explicitly before publishing text-bearing surfaces.
     ///
     /// # Errors
     ///
     /// Returns the ordinary runtime's publication refusal or terminal error.
     pub fn publish(&mut self) -> Result<&SurfacePublication, PublishSurfaceError> {
-        let measurement = self.surface.measurement_provider();
         let context =
-            SurfaceBuildContext::tight(self.surface.style_environment(), self.surface.size())
-                .with_measurement_provider(&measurement);
-        let publication = self.runtime.publish_surface(&context)?;
-        Ok(self.publication.insert(publication))
-    }
-
-    /// Publishes the configured fixed surface through a caller-provided public
-    /// measurement provider.
-    ///
-    /// # Errors
-    ///
-    /// Returns the ordinary runtime's publication refusal or terminal error.
-    pub fn publish_with_measurement(
-        &mut self,
-        measurement_provider: &dyn MeasurementProvider,
-    ) -> Result<&SurfacePublication, PublishSurfaceError> {
-        let context =
-            SurfaceBuildContext::tight(self.surface.style_environment(), self.surface.size())
-                .with_measurement_provider(measurement_provider);
+            SurfaceBuildContext::tight(self.surface.style_environment(), self.surface.size());
         let publication = self.runtime.publish_surface(&context)?;
         Ok(self.publication.insert(publication))
     }

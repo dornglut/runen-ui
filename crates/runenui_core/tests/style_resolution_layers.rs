@@ -1,10 +1,10 @@
 use runenui_core::{
-    Color, ColorToken, ComputedStyle, EdgeInsets, IdentifierError, LogicalLength, Radius,
-    StyleEffects, StyleEnvironment, StyleFieldProvenance, StyleIntent, StyleInteractionFacts,
-    StyleInteractionState, StylePreferenceKind, StylePreferencePolicy, StylePreferences,
-    StyleProperties, StyleRecipe, StyleRecipeId, StyleResolutionDiagnostic, StyleResolutionLayer,
-    StyleTheme, StyleTokens, StyleVariantId, TokenId, resolve_style_in_environment,
-    style_effects_between,
+    Color, ColorToken, ComputedStyle, EdgeInsets, FontFamily, GenericFontFamily, IdentifierError,
+    LogicalLength, Radius, StyleEffects, StyleEnvironment, StyleFieldProvenance, StyleIntent,
+    StyleInteractionFacts, StyleInteractionState, StylePreferenceKind, StylePreferencePolicy,
+    StylePreferences, StyleProperties, StyleRecipe, StyleRecipeId, StyleResolutionDiagnostic,
+    StyleResolutionLayer, StyleTheme, StyleTokens, StyleVariantId, TokenId, Typography,
+    resolve_style_in_environment, style_effects_between,
 };
 
 fn recipe_id(value: &str) -> Result<StyleRecipeId, IdentifierError> {
@@ -13,6 +13,13 @@ fn recipe_id(value: &str) -> Result<StyleRecipeId, IdentifierError> {
 
 fn variant_id(value: &str) -> Result<StyleVariantId, IdentifierError> {
     StyleVariantId::new(value)
+}
+
+fn typography(size: f32) -> Result<Typography, Box<dyn std::error::Error>> {
+    Ok(Typography::new(
+        FontFamily::generic(GenericFontFamily::SansSerif),
+        LogicalLength::new(size)?,
+    ))
 }
 
 fn assert_foreground_resolution(
@@ -252,6 +259,65 @@ fn every_precedence_edge_has_an_exact_winner() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
+fn typography_uses_the_existing_property_local_cascade() -> Result<(), Box<dyn std::error::Error>> {
+    let recipe_id = recipe_id("text.body")?;
+    let compact = variant_id("compact")?;
+    let framework = typography(12.0)?;
+    let recipe_value = typography(14.0)?;
+    let variant_value = typography(16.0)?;
+    let authored_value = typography(18.0)?;
+
+    let mut recipe = StyleRecipe::new(StyleProperties::EMPTY.with_typography(recipe_value));
+    recipe.define_variant(
+        compact.clone(),
+        StyleProperties::EMPTY.with_typography(variant_value.clone()),
+    )?;
+    let mut theme = StyleTheme::new(StyleTokens::new());
+    theme.define_recipe(recipe_id.clone(), recipe)?;
+    let environment = StyleEnvironment::new(theme)
+        .with_framework_defaults(StyleProperties::EMPTY.with_typography(framework));
+
+    let variant_resolution = resolve_style_in_environment(
+        &StyleIntent::EMPTY
+            .with_recipe(recipe_id.clone())
+            .with_variant(compact.clone()),
+        &environment,
+        StyleInteractionFacts::NONE,
+        None,
+    );
+    assert_eq!(
+        variant_resolution.computed_style().typography(),
+        Some(&variant_value)
+    );
+    assert_eq!(
+        variant_resolution.provenance().typography_layer(),
+        Some(&StyleResolutionLayer::Variant(compact))
+    );
+
+    let authored_resolution = resolve_style_in_environment(
+        &StyleIntent::EMPTY
+            .with_recipe(recipe_id)
+            .with_typography(authored_value.clone()),
+        &environment,
+        StyleInteractionFacts::NONE,
+        None,
+    );
+    assert_eq!(
+        authored_resolution.computed_style().typography(),
+        Some(&authored_value)
+    );
+    assert_eq!(
+        authored_resolution.provenance().typography(),
+        &StyleFieldProvenance::Literal
+    );
+    assert_eq!(
+        authored_resolution.provenance().typography_layer(),
+        Some(&StyleResolutionLayer::AuthoredOverride)
+    );
+    Ok(())
+}
+
+#[test]
 fn ordered_variants_and_framework_interaction_order_are_stable()
 -> Result<(), Box<dyn std::error::Error>> {
     let recipe_id = recipe_id("control.button")?;
@@ -336,21 +402,24 @@ fn missing_higher_precedence_token_masks_lower_value() -> Result<(), Box<dyn std
 }
 
 #[test]
-fn inheritance_is_bounded_to_foreground_in_m8a() -> Result<(), Box<dyn std::error::Error>> {
+fn inheritance_is_bounded_to_foreground_and_typography() -> Result<(), Box<dyn std::error::Error>> {
     let padding = EdgeInsets::all(LogicalLength::new(8.0)?);
     let radius = Radius::all(LogicalLength::new(6.0)?);
+    let typography = typography(17.0)?;
     let parent = ComputedStyle::EMPTY
         .with_foreground(Color::WHITE)
         .with_background(Color::BLACK)
         .with_padding(padding)
-        .with_radius(radius);
+        .with_radius(radius)
+        .with_typography(typography.clone());
     let resolution = resolve_style_in_environment(
         &StyleIntent::EMPTY,
         &StyleEnvironment::default(),
         StyleInteractionFacts::default(),
-        Some(parent),
+        Some(&parent),
     );
     assert_eq!(resolution.computed_style().foreground(), Some(Color::WHITE));
+    assert_eq!(resolution.computed_style().typography(), Some(&typography));
     assert_eq!(resolution.computed_style().background(), None);
     assert_eq!(resolution.computed_style().padding(), None);
     assert_eq!(resolution.computed_style().radius(), None);
@@ -362,39 +431,53 @@ fn inheritance_is_bounded_to_foreground_in_m8a() -> Result<(), Box<dyn std::erro
         resolution.provenance().foreground_layer(),
         Some(&StyleResolutionLayer::Inherited)
     );
+    assert_eq!(
+        resolution.provenance().typography(),
+        &StyleFieldProvenance::Inherited
+    );
+    assert_eq!(
+        resolution.provenance().typography_layer(),
+        Some(&StyleResolutionLayer::Inherited)
+    );
     Ok(())
 }
 
 #[test]
 fn property_effects_classify_every_current_property() -> Result<(), Box<dyn std::error::Error>> {
     let foreground = style_effects_between(
-        ComputedStyle::EMPTY,
-        ComputedStyle::EMPTY.with_foreground(Color::WHITE),
+        &ComputedStyle::EMPTY,
+        &ComputedStyle::EMPTY.with_foreground(Color::WHITE),
     );
     assert_eq!(foreground, StyleEffects::PAINT);
 
     let background = style_effects_between(
-        ComputedStyle::EMPTY,
-        ComputedStyle::EMPTY.with_background(Color::WHITE),
+        &ComputedStyle::EMPTY,
+        &ComputedStyle::EMPTY.with_background(Color::WHITE),
     );
     assert_eq!(background, StyleEffects::PAINT);
 
     let radius = style_effects_between(
-        ComputedStyle::EMPTY,
-        ComputedStyle::EMPTY.with_radius(Radius::all(LogicalLength::new(3.0)?)),
+        &ComputedStyle::EMPTY,
+        &ComputedStyle::EMPTY.with_radius(Radius::all(LogicalLength::new(3.0)?)),
     );
     assert_eq!(radius, StyleEffects::PAINT);
 
     let padding = EdgeInsets::all(LogicalLength::new(4.0)?);
     let layout = style_effects_between(
-        ComputedStyle::EMPTY,
-        ComputedStyle::EMPTY.with_padding(padding),
+        &ComputedStyle::EMPTY,
+        &ComputedStyle::EMPTY.with_padding(padding),
     );
     assert_eq!(layout, StyleEffects::LAYOUT);
 
+    let typography = style_effects_between(
+        &ComputedStyle::EMPTY,
+        &ComputedStyle::EMPTY.with_typography(typography(15.0)?),
+    );
+    assert_eq!(typography, StyleEffects::LAYOUT);
+
     let mixed = style_effects_between(
-        ComputedStyle::EMPTY,
-        ComputedStyle::EMPTY
+        &ComputedStyle::EMPTY,
+        &ComputedStyle::EMPTY
             .with_foreground(Color::WHITE)
             .with_padding(padding),
     );

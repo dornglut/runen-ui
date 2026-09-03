@@ -10,8 +10,9 @@ use crate::{
     HitContribution, HitContributionContext, IdentifierError, IntoElementId, IntoElementKey,
     LayoutStyle, LogicalLength, PaintContribution, PaintContributionContext, RadiusValue,
     SemanticContribution, SemanticContributionContext, SpacingValue, StyleIntent, StyleRecipeId,
-    StyleVariantId, SubscriptionSet, UiEvent, WidgetActivationContext, WidgetEventOutput,
-    WidgetInvalidation, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext,
+    StyleVariantId, SubscriptionSet, TypographyValue, UiEvent, WidgetActivationContext,
+    WidgetEventOutput, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -534,6 +535,12 @@ impl<Action> Element<Action> {
     #[must_use]
     pub fn radius(mut self, value: impl Into<RadiusValue>) -> Self {
         self.style = self.style.with_radius(value);
+        self
+    }
+
+    #[must_use]
+    pub fn typography(mut self, value: impl Into<TypographyValue>) -> Self {
+        self.style = self.style.with_typography(value);
         self
     }
 

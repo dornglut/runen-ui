@@ -1,6 +1,8 @@
-//! Runtime queue, surface retention, and trace configuration.
+//! Runtime queue, surface retention, trace, and text-source configuration.
 
 use core::num::NonZeroUsize;
+
+use runenui_text::FontSourcePolicy;
 
 use crate::TraceConfig;
 
@@ -154,12 +156,13 @@ impl Default for RuntimeLimits {
     }
 }
 
-/// Runtime limits, displayed-surface retention, and trace configuration.
+/// Runtime limits, displayed-surface retention, trace, and text-source configuration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RuntimeConfig {
     limits: RuntimeLimits,
     trace_config: TraceConfig,
     surface_snapshot_retention: usize,
+    text_font_source_policy: FontSourcePolicy,
     #[cfg(feature = "internal-test-seams")]
     initial_next_work_sequence: u64,
     #[cfg(feature = "internal-test-seams")]
@@ -199,6 +202,13 @@ impl RuntimeConfig {
         self
     }
 
+    /// Returns this configuration with a different runtime text font-source policy.
+    #[must_use]
+    pub const fn with_text_font_source_policy(mut self, policy: FontSourcePolicy) -> Self {
+        self.text_font_source_policy = policy;
+        self
+    }
+
     /// Returns the maximum number of waiting envelopes.
     #[must_use]
     pub const fn queue_capacity(self) -> usize {
@@ -220,6 +230,12 @@ impl RuntimeConfig {
     #[must_use]
     pub const fn surface_snapshot_retention(self) -> usize {
         self.surface_snapshot_retention
+    }
+
+    /// Returns the runtime text font-source policy.
+    #[must_use]
+    pub const fn text_font_source_policy(self) -> FontSourcePolicy {
+        self.text_font_source_policy
     }
 
     #[cfg(feature = "internal-test-seams")]
@@ -262,6 +278,10 @@ impl RuntimeConfig {
     }
 
     #[cfg(not(feature = "internal-test-seams"))]
+    #[allow(
+        clippy::unused_self,
+        reason = "the production cfg keeps the same accessor signature as the test-seam cfg"
+    )]
     pub(crate) const fn mounted_public_slot_limit(self) -> u64 {
         u32::MAX as u64 + 1
     }
@@ -273,6 +293,7 @@ impl Default for RuntimeConfig {
             limits: RuntimeLimits::default(),
             trace_config: TraceConfig::new(DEFAULT_RUNTIME_LIMIT),
             surface_snapshot_retention: DEFAULT_SURFACE_SNAPSHOT_RETENTION,
+            text_font_source_policy: FontSourcePolicy::BundledOnly,
             #[cfg(feature = "internal-test-seams")]
             initial_next_work_sequence: 1,
             #[cfg(feature = "internal-test-seams")]
@@ -280,5 +301,27 @@ impl Default for RuntimeConfig {
             #[cfg(feature = "internal-test-seams")]
             mounted_public_slot_limit: u64::from(u32::MAX) + 1,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use runenui_text::FontSourcePolicy;
+
+    use super::RuntimeConfig;
+
+    #[test]
+    fn text_font_source_policy_is_explicit_and_deterministic_by_default() {
+        let default = RuntimeConfig::default();
+        assert_eq!(
+            default.text_font_source_policy(),
+            FontSourcePolicy::BundledOnly
+        );
+
+        let configured = default.with_text_font_source_policy(FontSourcePolicy::SystemAndBundled);
+        assert_eq!(
+            configured.text_font_source_policy(),
+            FontSourcePolicy::SystemAndBundled
+        );
     }
 }

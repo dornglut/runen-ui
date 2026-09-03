@@ -70,7 +70,7 @@ fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>
     ));
 }
 
-fn context(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
+const fn context(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
     SurfaceBuildContext::new(environment, LayoutConstraints::unbounded())
 }
 

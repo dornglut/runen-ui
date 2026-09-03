@@ -263,12 +263,12 @@ impl<Action> MountedTree<Action> {
                 continue;
             }
             if plan.needs_paint && planned.paint.is_none() {
-                let context = paint_contexts[position];
+                let context = paint_contexts[position].clone();
                 planned.paint = Some(stage_contextual_capability(
                     &node.caches.paint,
-                    node.caches.paint_context,
-                    context,
-                    || node.widget.paint(&node.state, context),
+                    node.caches.paint_context.as_ref(),
+                    &context,
+                    || node.widget.paint(&node.state, context.clone()),
                     &mut planned.mark_integrity_failed,
                 ));
                 planned.paint_context = Some(context);
@@ -277,8 +277,8 @@ impl<Action> MountedTree<Action> {
                 let context = hit_contexts[position];
                 planned.hit_test = Some(stage_contextual_capability(
                     &node.caches.hit_test,
-                    node.caches.hit_test_context,
-                    context,
+                    node.caches.hit_test_context.as_ref(),
+                    &context,
                     || node.widget.hit_test(&node.state, context),
                     &mut planned.mark_integrity_failed,
                 ));
@@ -328,10 +328,10 @@ fn stage_cached_capability<T: Clone, E>(
     }
 }
 
-fn stage_contextual_capability<T: Clone, Context: Copy + PartialEq, E>(
+fn stage_contextual_capability<T: Clone, Context: PartialEq, E>(
     cached: &CachedCapability<T>,
-    cached_context: Option<Context>,
-    context: Context,
+    cached_context: Option<&Context>,
+    context: &Context,
     resolve: impl FnOnce() -> Result<T, E>,
     mark_integrity_failed: &mut bool,
 ) -> CachedCapability<T> {

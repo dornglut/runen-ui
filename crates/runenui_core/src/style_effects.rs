@@ -9,6 +9,7 @@ pub enum StyleProperty {
     Background,
     Padding,
     Radius,
+    Typography,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -53,7 +54,7 @@ impl StyleProperty {
     pub const fn effects(self) -> StyleEffects {
         match self {
             Self::Foreground | Self::Background | Self::Radius => StyleEffects::PAINT,
-            Self::Padding => StyleEffects::LAYOUT,
+            Self::Padding | Self::Typography => StyleEffects::LAYOUT,
         }
     }
 }
@@ -64,7 +65,7 @@ impl StyleProperty {
 /// makes paint/hit/semantic geometry stale. This function deliberately reports
 /// only the property-owned direct effect.
 #[must_use]
-pub fn style_effects_between(old: ComputedStyle, new: ComputedStyle) -> StyleEffects {
+pub fn style_effects_between(old: &ComputedStyle, new: &ComputedStyle) -> StyleEffects {
     let mut effects = StyleEffects::NONE;
     if old.foreground() != new.foreground() {
         effects = effects.union(StyleProperty::Foreground.effects());
@@ -77,6 +78,9 @@ pub fn style_effects_between(old: ComputedStyle, new: ComputedStyle) -> StyleEff
     }
     if old.radius() != new.radius() {
         effects = effects.union(StyleProperty::Radius.effects());
+    }
+    if old.typography() != new.typography() {
+        effects = effects.union(StyleProperty::Typography.effects());
     }
     effects
 }

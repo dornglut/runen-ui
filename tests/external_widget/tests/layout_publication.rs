@@ -3,19 +3,40 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, Element, ElementId, NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp,
+    CommandOrigin, Element, ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol,
+    SemanticCommand, StyleEnvironment, UiApp,
 };
 use runenui_external_widget_conformance::{
     LayoutCase, LayoutConformanceApp, LayoutState, UnsupportedMeasure, counting_measurement_tree,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MeasurementProvider, PumpBudget,
-    SurfaceBuildContext, SurfacePublication, TextMeasurement, TextMeasurementKind,
-    TextMeasurementRequest,
+    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, PumpBudget, SurfaceBuildContext,
+    SurfacePublication,
 };
+
+const CANTARELL: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf"
+));
 
 fn size(width: f32, height: f32) -> LogicalSize {
     LogicalSize::try_new(width, height).unwrap_or_else(|_| unreachable!())
+}
+
+fn register_controlled_text<App: UiApp>(runtime: &mut AppRuntime<App>) {
+    assert!(
+        runtime
+            .register_text_font_bytes(CANTARELL.to_vec())
+            .unwrap_or_else(|_| unreachable!("controlled Cantarell fixture is registerable"))
+            > 0
+    );
+    let family = FontFamilyName::new("Cantarell")
+        .unwrap_or_else(|_| unreachable!("controlled family name is canonical"));
+    assert!(
+        runtime
+            .set_text_generic_family_mapping(GenericFontFamily::SansSerif, &[family])
+            .unwrap_or_else(|_| unreachable!("controlled generic mapping is valid"))
+    );
 }
 
 fn settle_initial_mounted_declarations<App: UiApp>(runtime: &mut AppRuntime<App>) {
@@ -47,29 +68,6 @@ fn submit_layout_activate(
             CommandOrigin::programmatic(),
         )
         .unwrap_or_else(|_| unreachable!("the exact live target is accepted"));
-}
-
-struct ControlLabelProvider {
-    kind: Cell<Option<TextMeasurementKind>>,
-    calls: Cell<usize>,
-    revision: Cell<u64>,
-    width: Cell<f32>,
-}
-
-impl MeasurementProvider for ControlLabelProvider {
-    fn cache_identity(&self) -> u64 {
-        0x434f_4e54_524f_4c4c
-    }
-
-    fn cache_revision(&self) -> u64 {
-        self.revision.get()
-    }
-
-    fn measure_text(&self, request: &TextMeasurementRequest<'_>) -> TextMeasurement {
-        self.kind.set(Some(request.kind()));
-        self.calls.set(self.calls.get() + 1);
-        TextMeasurement::new(size(self.width.get(), 20.0))
-    }
 }
 
 #[derive(Debug)]
@@ -111,26 +109,18 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
         text: Rc::clone(&text),
         fixed: Rc::clone(&fixed),
     });
-    let provider = ControlLabelProvider {
-        kind: Cell::new(None),
-        calls: Cell::new(0),
-        revision: Cell::new(1),
-        width: Cell::new(144.0),
-    };
+    register_controlled_text(&mut runtime);
     let environment = StyleEnvironment::default();
     let context =
-        SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(400.0, 200.0)))
-            .with_measurement_provider(&provider);
+        SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(400.0, 200.0)));
 
     let first = publish(&mut runtime, &context);
     assert_eq!(
         (panel.get(), text.get(), fixed.get(), layout.get()),
         (1, 1, 1, 1)
     );
-    assert_eq!(provider.kind.get(), Some(TextMeasurementKind::ControlLabel));
-    assert_eq!(provider.calls.get(), 1);
-    assert!((first.frame().size().width() - 144.0).abs() <= f32::EPSILON);
-    assert!((first.frame().size().height() - 27.0).abs() <= f32::EPSILON);
+    assert!(first.frame().size().width() > 0.0);
+    assert!(first.frame().size().height() > 0.0);
     let first_context = first.input_context().clone();
     let first_paint = first.paint_publication().clone();
     let first_hit_regions = first.hit_test_scene().regions().to_vec();
@@ -160,14 +150,17 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
         (panel.get(), text.get(), fixed.get(), layout.get()),
         (1, 1, 1, 1)
     );
-    assert_eq!(provider.calls.get(), 1);
     assert!(runtime.last_surface_phase_report().executed().is_empty());
 
-    provider.revision.set(2);
-    provider.width.set(200.0);
+    assert!(
+        runtime
+            .register_text_font_bytes(CANTARELL.to_vec())
+            .unwrap_or_else(|_| unreachable!("controlled source can advance font revision"))
+            > 0
+    );
     let revised = publish(&mut runtime, &context);
-    assert!((revised.frame().size().width() - 200.0).abs() <= f32::EPSILON);
-    assert!(revised.paint_publication().revision() > first_paint.revision());
+    assert!(revised.frame().size().width() > 0.0);
+    assert!(revised.frame().size().height() > 0.0);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
         &[
@@ -177,7 +170,10 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
             runenui_runtime::SurfacePhase::Semantics,
         ]
     );
-    assert_eq!(provider.calls.get(), 2);
+    assert_eq!(
+        (panel.get(), text.get(), fixed.get(), layout.get()),
+        (1, 1, 1, 1)
+    );
 }
 
 struct UnsupportedApp;
@@ -229,6 +225,7 @@ fn every_child_layout_variant_aligns_mounted_products_hits_and_activation() {
             case,
             activations: 0,
         });
+        register_controlled_text(&mut runtime);
         settle_initial_mounted_declarations(&mut runtime);
         let environment = StyleEnvironment::default();
         let context =
@@ -326,6 +323,7 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
             case,
             activations: 0,
         });
+        register_controlled_text(&mut runtime);
         let environment = StyleEnvironment::default();
         let context =
             SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(600.0, 400.0)));
@@ -343,6 +341,7 @@ fn external_and_nested_gaps_affect_arrangement_independently() {
         case: LayoutCase::NestedExternal,
         activations: 0,
     });
+    register_controlled_text(&mut runtime);
     let environment = StyleEnvironment::default();
     let context =
         SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(600.0, 400.0)));

@@ -23,8 +23,10 @@ pub use cache::{SurfacePhase, SurfacePhaseReport};
 pub use context::{RasterScale, RasterScaleError, SurfaceBuildContext};
 pub(crate) use interaction::SurfaceInteractionProjection;
 #[cfg(test)]
+use planning::plan_mounted_surface_cached;
+#[cfg(test)]
 use planning::publish_mounted_surface_cached;
-pub(crate) use planning::{SurfacePlanningError, plan_mounted_surface_cached};
+pub(crate) use planning::{SurfacePlanningError, plan_mounted_surface_cached_with_text};
 
 use runenui_core::{
     ComputedStyle, ElementId, LogicalLength, LogicalRect, LogicalSize, WidgetDiagnostic,
@@ -53,13 +55,13 @@ struct SurfaceWidgetDebug {
 
 impl SurfaceNode {
     #[must_use]
-    const fn new(
+    fn new(
         id: MountedNodeId,
         parent: Option<MountedNodeId>,
         authored_id: Option<ElementId>,
         bounds: LogicalRect,
         widget_debug: SurfaceWidgetDebug,
-        computed_style: ComputedStyle,
+        computed_style: &ComputedStyle,
     ) -> Self {
         Self {
             id,
@@ -67,7 +69,7 @@ impl SurfaceNode {
             authored_id,
             bounds,
             widget_debug,
-            computed_style,
+            computed_style: computed_style.clone(),
         }
     }
 
@@ -103,8 +105,8 @@ impl SurfaceNode {
     }
 
     #[must_use]
-    pub const fn computed_style(&self) -> ComputedStyle {
-        self.computed_style
+    pub const fn computed_style(&self) -> &ComputedStyle {
+        &self.computed_style
     }
 }
 

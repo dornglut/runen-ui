@@ -241,6 +241,7 @@ mod style_environment;
 mod style_resolution;
 mod style_tokens;
 mod subscription;
+mod typography;
 mod value;
 mod widget_context;
 mod widget_erasure;
@@ -328,6 +329,7 @@ pub use semantic_action::{SemanticActionRequest, SemanticActionTarget};
 pub use style::{
     Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,
     SpacingValue, StyleIntent, StyleProperties, StyleRecipeId, StyleVariantId, TokenId,
+    TypographyToken, TypographyValue,
 };
 pub use style_effects::{StyleEffects, StyleProperty, style_effects_between};
 pub use style_environment::{
@@ -342,6 +344,12 @@ pub use style_tokens::{DuplicateTokenDefinition, StyleTokens, TokenFamily};
 pub use subscription::{
     LocalSubscriptionSource, SendSubscriptionSink, SendSubscriptionSinkError,
     SendSubscriptionSource, SendSubscriptionStartOutcome, SubscriptionSet,
+};
+pub use typography::{
+    FontFamily, FontFamilyName, FontFamilyNameError, FontFeature, FontObliqueAngle,
+    FontObliqueAngleError, FontStyle, FontVariation, FontVariationError, FontWeight,
+    FontWeightError, FontWidth, FontWidthError, GenericFontFamily, OpenTypeTag, OpenTypeTagError,
+    Typography,
 };
 pub use value::{LogicalLength, LogicalLengthError};
 pub use widget_context::{

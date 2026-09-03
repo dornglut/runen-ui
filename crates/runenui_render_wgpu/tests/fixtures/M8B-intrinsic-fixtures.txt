@@ -1,0 +1,29 @@
+M8B intrinsic-format fixture record
+
+Source
+------
+The three files named below are deterministic test-only derivatives of the
+checked-in Cantarell-Regular.ttf fixture in this directory:
+
+  RunenUIFixtureColr-Regular.ttf
+  RunenUIFixtureSvg-Regular.ttf
+  RunenUIFixtureBitmap-Regular.ttf
+
+The source font is Cantarell Regular, obtained from the Cantarell project and
+redistributed here under the SIL Open Font License 1.1. Its complete notice is
+in Cantarell-Regular.OFL.txt. The derivatives retain the source outlines and
+metadata and add only the intrinsic table needed by the corresponding M8B
+classification proof.
+
+License
+-------
+The added fixture tables and their test-only construction are provided under
+the same SIL Open Font License 1.1 terms as the source fixture. These files are
+not runtime assets and are included only to make the production-path tests
+independent of host-installed fonts.
+
+Recorded SHA-256
+----------------
+b930952c07ee0734b2dd5e44dc2f606a22fa78d0ec12de18ef3cfdeb52ba6d21  RunenUIFixtureColr-Regular.ttf
+cdce35bcf90128f4fa9a489abea08e56c865bc21dc8d4b43c603f06d782bae78  RunenUIFixtureSvg-Regular.ttf
+2fedf343f234c2cd555f34b512b9c9ea017147051a874be13238acccb620934e  RunenUIFixtureBitmap-Regular.ttf

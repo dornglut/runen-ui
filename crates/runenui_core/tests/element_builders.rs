@@ -1,5 +1,7 @@
 use runenui_core::{
-    Element, StyleRecipeId, StyleVariantId, View, Widget, button, children, column, row, text,
+    Element, FontFamily, GenericFontFamily, LogicalLength, StyleRecipeId, StyleVariantId,
+    Typography, TypographyToken, TypographyValue, View, Widget, button, children, column, row,
+    text,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -69,5 +71,53 @@ fn recipes_and_variants_are_publicly_authored_in_stable_order()
     );
     assert_eq!(root.children()[1].style().recipe(), Some(&recipe));
     assert_eq!(root.children()[1].style().variants(), &[danger]);
+    Ok(())
+}
+
+#[test]
+fn typography_is_publicly_authored_on_elements_and_builtins()
+-> Result<(), Box<dyn std::error::Error>> {
+    let typography = Typography::new(
+        FontFamily::generic(GenericFontFamily::SansSerif),
+        LogicalLength::from(18_u8),
+    );
+    let token = TypographyToken::parse("text.body")?;
+
+    let custom: Element<Action> = Element::new(Probe).typography(typography.clone());
+    assert_eq!(
+        custom
+            .style()
+            .typography()
+            .and_then(TypographyValue::as_literal),
+        Some(&typography)
+    );
+
+    let root: Element<Action> = column(children![
+        text("Title").typography(token.clone()),
+        button("A").typography(typography.clone())
+    ])
+    .typography(typography.clone())
+    .into_element();
+
+    assert_eq!(
+        root.style()
+            .typography()
+            .and_then(TypographyValue::as_literal),
+        Some(&typography)
+    );
+    assert_eq!(
+        root.children()[0]
+            .style()
+            .typography()
+            .and_then(TypographyValue::as_token),
+        Some(&token)
+    );
+    assert_eq!(
+        root.children()[1]
+            .style()
+            .typography()
+            .and_then(TypographyValue::as_literal),
+        Some(&typography)
+    );
     Ok(())
 }

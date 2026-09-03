@@ -1,6 +1,11 @@
 use std::sync::Arc;
 
+#[cfg(test)]
+use runenui_core::{FontFamilyName, GenericFontFamily};
 use runenui_core::{LogicalLength, LogicalSize, WidgetDiagnostic};
+#[cfg(test)]
+use runenui_text::FontSourcePolicy;
+use runenui_text::{TextLayoutError, TextSystem};
 
 use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan};
 use crate::style_debug::SurfaceStyleReport;
@@ -20,11 +25,18 @@ use super::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SurfacePlanningError {
     SemanticIntegrity,
+    TextLayout(TextLayoutError),
 }
 
 impl From<SemanticReconcileError> for SurfacePlanningError {
     fn from(_: SemanticReconcileError) -> Self {
         Self::SemanticIntegrity
+    }
+}
+
+impl From<TextLayoutError> for SurfacePlanningError {
+    fn from(error: TextLayoutError) -> Self {
+        Self::TextLayout(error)
     }
 }
 
@@ -71,8 +83,7 @@ fn style_product_is_dirty(
 
 fn layout_context_changed(current: &SurfaceCache, next: &super::cache::SurfaceContextKey) -> bool {
     current.context_key.constraints != next.constraints
-        || current.context_key.measurement_identity != next.measurement_identity
-        || current.context_key.measurement_revision != next.measurement_revision
+        || current.context_key.font_source != next.font_source
 }
 
 fn stage_non_structural_cache(cache: Option<&SurfaceCache>) -> SurfaceCache {
@@ -98,8 +109,8 @@ fn resolve_contribution_phases<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     current: &mut SurfaceCache,
     capability_plan: &mut SurfaceCapabilityPlan,
-    hit_dirty: bool,
-    paint_dirty: bool,
+    text_system: &mut TextSystem,
+    publication_phases: DirtyPhases,
     report: &mut SurfacePhaseReport,
     completed: &mut DirtyPhases,
 ) -> bool {
@@ -108,7 +119,7 @@ fn resolve_contribution_phases<Action>(
     tree.plan_surface_publication_contributions(capability_plan, &paint_contexts, &hit_contexts);
 
     let mut scene_diagnostics_changed = false;
-    if hit_dirty {
+    if publication_phases.contains(DirtyPhases::HIT_TEST) {
         let resolved = resolve_hit_test(&current.topology, &current.layout, capability_plan);
         current.hit_test = resolved.scene;
         scene_diagnostics_changed |= replace_scene_diagnostics_if_changed(
@@ -118,8 +129,14 @@ fn resolve_contribution_phases<Action>(
         report.record(SurfacePhase::HitTesting);
         completed.insert(DirtyPhases::HIT_TEST);
     }
-    if paint_dirty {
-        let resolved = resolve_paint(&current.topology, &current.layout, capability_plan);
+    if publication_phases.contains(DirtyPhases::PAINT) {
+        let resolved = resolve_paint(
+            &current.topology,
+            &current.layout,
+            &current.styles,
+            capability_plan,
+            text_system,
+        );
         current.paint = resolved.scene;
         scene_diagnostics_changed |= replace_scene_diagnostics_if_changed(
             &mut current.paint_diagnostics,
@@ -136,32 +153,36 @@ fn resolve_layout_phase<Action>(
     current: &SurfaceCache,
     capability_plan: &SurfaceCapabilityPlan,
     context: &SurfaceBuildContext<'_>,
-) -> CachedLayoutFacts {
+    text_system: &mut TextSystem,
+) -> Result<CachedLayoutFacts, SurfacePlanningError> {
     let resolved =
         ResolvedSurfaceTree::for_layout(tree, &current.topology, &current.styles, capability_plan);
-    let (size, bounds, report) = layout_resolved_surface(
+    let (size, bounds, report, text_layouts) = layout_resolved_surface(
         &resolved,
         context.root_constraints(),
-        context.measurement_provider(),
-    );
-    CachedLayoutFacts {
+        text_system,
+        Some(current.layout.text_layouts.as_slice()),
+    )?;
+    Ok(CachedLayoutFacts {
         size,
         bounds,
         report,
-    }
+        text_layouts,
+    })
 }
 
-pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
+pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     interaction: &SurfaceInteractionProjection,
+    text_system: &mut TextSystem,
     cache: Option<&SurfaceCache>,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
-    let next_context = context_key(context);
+    let next_context = context_key(context, text_system.source_snapshot());
     let pending = tree.pending_phases();
     let tree_dirty = cache.is_none() || pending.contains(DirtyPhases::TREE);
     if tree_dirty {
-        return plan_structural_surface(tree, context, interaction, next_context);
+        return plan_structural_surface(tree, context, interaction, text_system, next_context);
     }
 
     let mut current = stage_non_structural_cache(cache);
@@ -198,16 +219,14 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
     }
 
     let semantic_product_dirty = semantic_product_is_dirty(pending, layout_dirty);
-    tree.extend_surface_publication_capabilities(
-        &mut capability_plan,
-        surface_capability_phases([
-            (layout_dirty, DirtyPhases::LAYOUT),
-            (hit_dirty, DirtyPhases::HIT_TEST),
-            (paint_dirty, DirtyPhases::PAINT),
-            (semantic_product_dirty, DirtyPhases::SEMANTICS),
-            (diagnostics_dirty, DirtyPhases::DIAGNOSTICS),
-        ]),
-    );
+    let publication_phases = surface_capability_phases([
+        (layout_dirty, DirtyPhases::LAYOUT),
+        (hit_dirty, DirtyPhases::HIT_TEST),
+        (paint_dirty, DirtyPhases::PAINT),
+        (semantic_product_dirty, DirtyPhases::SEMANTICS),
+        (diagnostics_dirty, DirtyPhases::DIAGNOSTICS),
+    ]);
+    tree.extend_surface_publication_capabilities(&mut capability_plan, publication_phases);
     let semantic_capability_plan = semantic_product_dirty
         .then(|| tree.plan_semantic_publication_capabilities(&capability_plan));
 
@@ -217,7 +236,8 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
             &current,
             &capability_plan,
             context,
-        ));
+            text_system,
+        )?);
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
     }
@@ -226,8 +246,8 @@ pub(crate) fn plan_mounted_surface_cached<'tree, Action>(
         tree,
         &mut current,
         &mut capability_plan,
-        hit_dirty,
-        paint_dirty,
+        text_system,
+        publication_phases,
         &mut report,
         &mut completed,
     );
@@ -268,6 +288,7 @@ fn plan_structural_surface<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     interaction: &SurfaceInteractionProjection,
+    text_system: &mut TextSystem,
     context_key: super::cache::SurfaceContextKey,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let mut report = SurfacePhaseReport::default();
@@ -285,15 +306,13 @@ fn plan_structural_surface<'tree, Action>(
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let semantic_capability_plan = tree.plan_semantic_publication_capabilities(&capability_plan);
     let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles, &capability_plan);
-    let (size, bounds, layout_report) = layout_resolved_surface(
-        &resolved,
-        context.root_constraints(),
-        context.measurement_provider(),
-    );
+    let (size, bounds, layout_report, text_layouts) =
+        layout_resolved_surface(&resolved, context.root_constraints(), text_system, None)?;
     let layout = CachedLayoutFacts {
         size,
         bounds,
         report: layout_report,
+        text_layouts,
     };
     report.record(SurfacePhase::Layout);
 
@@ -308,7 +327,7 @@ fn plan_structural_surface<'tree, Action>(
     let hit_test = resolved_hit_test.scene;
     let hit_diagnostics = Arc::new(resolved_hit_test.diagnostics);
     report.record(SurfacePhase::HitTesting);
-    let resolved_paint = resolve_paint(&topology, &layout, &capability_plan);
+    let resolved_paint = resolve_paint(&topology, &layout, &styles, &capability_plan, text_system);
     let paint = resolved_paint.scene;
     let paint_diagnostics = Arc::new(resolved_paint.diagnostics);
     report.record(SurfacePhase::Paint);
@@ -318,7 +337,6 @@ fn plan_structural_surface<'tree, Action>(
     report.record(SurfacePhase::Semantics);
     let diagnostics = resolve_diagnostics(&topology, &capability_plan);
     report.record(SurfacePhase::Diagnostics);
-
     let placeholder = SurfacePublication::new(
         SurfaceFrame::new(
             LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO),
@@ -348,6 +366,59 @@ fn plan_structural_surface<'tree, Action>(
         capability_plan,
         Some(finalized_semantics),
     ))
+}
+
+#[cfg(test)]
+fn test_text_system() -> TextSystem {
+    const CANTARELL: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../runenui_text/tests/fixtures/Cantarell-Regular.ttf"
+    ));
+
+    let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
+    system
+        .register_font_bytes(CANTARELL.to_vec())
+        .unwrap_or_else(|_| unreachable!("controlled Cantarell test fixture is registerable"));
+    let family = FontFamilyName::new("Cantarell")
+        .unwrap_or_else(|_| unreachable!("controlled Cantarell family name is canonical"));
+    system
+        .set_generic_family_mapping(GenericFontFamily::SansSerif, &[family])
+        .unwrap_or_else(|_| unreachable!("controlled Cantarell generic mapping is valid"));
+    system
+}
+
+#[cfg(test)]
+std::thread_local! {
+    static TEST_TEXT_SYSTEM: std::cell::RefCell<TextSystem> =
+        std::cell::RefCell::new(test_text_system());
+}
+
+#[cfg(test)]
+pub(super) fn plan_mounted_surface_cached_with_test_text<'tree, Action>(
+    tree: &'tree mut crate::mounted::MountedTree<Action>,
+    context: &SurfaceBuildContext<'_>,
+    interaction: &SurfaceInteractionProjection,
+    cache: Option<&SurfaceCache>,
+) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
+    TEST_TEXT_SYSTEM.with(|text_system| {
+        plan_mounted_surface_cached_with_text(
+            tree,
+            context,
+            interaction,
+            &mut text_system.borrow_mut(),
+            cache,
+        )
+    })
+}
+
+#[cfg(test)]
+pub(super) fn plan_mounted_surface_cached<'tree, Action>(
+    tree: &'tree mut crate::mounted::MountedTree<Action>,
+    context: &SurfaceBuildContext<'_>,
+    interaction: &SurfaceInteractionProjection,
+    cache: Option<&SurfaceCache>,
+) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
+    plan_mounted_surface_cached_with_test_text(tree, context, interaction, cache)
 }
 
 #[cfg(test)]
@@ -408,6 +479,7 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
         || cache.styles.report.nodes().len() != expected
         || cache.layout.bounds.len() != expected
         || cache.layout.report.nodes().len() != expected
+        || cache.layout.text_layouts.len() != expected
         || cache.hit_test.membership().len() != expected
         || cache.diagnostics.len() != expected
         || cache.hit_diagnostics.len() != expected

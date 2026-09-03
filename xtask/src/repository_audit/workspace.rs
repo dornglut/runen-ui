@@ -10,6 +10,7 @@ use super::{Finding, path_text};
 const ROOT_MANIFEST: &str = "Cargo.toml";
 const WORKSPACE_STRUCTURE_PATH: &str = "docs/architecture/workspace-structure.md";
 const CORE_PACKAGE: &str = "runenui_core";
+const TEXT_PACKAGE: &str = "runenui_text";
 const RUNTIME_PACKAGE: &str = "runenui_runtime";
 const RENDER_WGPU_PACKAGE: &str = "runenui_render_wgpu";
 const WINIT_PACKAGE: &str = "runenui_winit";
@@ -18,6 +19,13 @@ const REFERENCE_WINIT_PACKAGE: &str = "reference_winit";
 const EXTERNAL_HOST_PACKAGE: &str = "runenui_external_host_conformance";
 const EXTERNAL_WIDGET_PACKAGE: &str = "runenui_external_widget_conformance";
 const XTASK_PACKAGE: &str = "xtask";
+const TEXT_FORBIDDEN_DEPENDENCIES: &[&str] = &[
+    "wgpu",
+    "winit",
+    "accesskit",
+    "accesskit_winit",
+    "raw-window-handle",
+];
 const RENDER_WGPU_FORBIDDEN_DEPENDENCIES: &[&str] =
     &["winit", "accesskit", "accesskit_winit", "raw-window-handle"];
 const WINIT_FORBIDDEN_DEPENDENCIES: &[&str] = &["wgpu"];
@@ -203,6 +211,9 @@ fn validate_external_dependency_boundaries(
     dev_dependencies: &BTreeSet<String>,
     findings: &mut Vec<Finding>,
 ) {
+    if package == TEXT_PACKAGE {
+        validate_text_external_dependencies(relative, dependencies, dev_dependencies, findings);
+    }
     if package == RENDER_WGPU_PACKAGE {
         validate_renderer_external_dependencies(relative, dependencies, dev_dependencies, findings);
     }
@@ -221,7 +232,8 @@ fn validate_dependency_direction(
 
     let allowed = match member.package.as_str() {
         CORE_PACKAGE | XTASK_PACKAGE => BTreeSet::new(),
-        RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
+        TEXT_PACKAGE => BTreeSet::from([CORE_PACKAGE]),
+        RUNTIME_PACKAGE => BTreeSet::from([CORE_PACKAGE, TEXT_PACKAGE]),
         WINIT_PACKAGE => BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE]),
         REFERENCE_WINIT_PACKAGE | "counter" => BTreeSet::from([
             CORE_PACKAGE,
@@ -232,7 +244,8 @@ fn validate_dependency_direction(
         EXTERNAL_HOST_PACKAGE => {
             BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE, RENDER_WGPU_PACKAGE])
         }
-        RENDER_WGPU_PACKAGE | TESTING_PACKAGE | EXTERNAL_WIDGET_PACKAGE => {
+        RENDER_WGPU_PACKAGE => BTreeSet::from([CORE_PACKAGE, TEXT_PACKAGE, RUNTIME_PACKAGE]),
+        TESTING_PACKAGE | EXTERNAL_WIDGET_PACKAGE => {
             BTreeSet::from([CORE_PACKAGE, RUNTIME_PACKAGE])
         }
         package if member.relative.starts_with("crates") => {
@@ -280,6 +293,14 @@ fn validate_required_workspace_dependencies(
     workspace_dependencies: &BTreeSet<&str>,
     findings: &mut Vec<Finding>,
 ) {
+    if member.package == TEXT_PACKAGE && !workspace_dependencies.contains(CORE_PACKAGE) {
+        findings.push(Finding::fatal(
+            "workspace.text_core_dependency_missing",
+            Some(path_text(&member.relative.join("Cargo.toml"))),
+            "runenui_text must depend on runenui_core",
+        ));
+    }
+
     if member.package == RUNTIME_PACKAGE && !workspace_dependencies.contains(CORE_PACKAGE) {
         findings.push(Finding::fatal(
             "workspace.runtime_core_dependency_missing",
@@ -347,6 +368,25 @@ fn validate_required_workspace_dependencies(
             Some(path_text(&member.relative.join("Cargo.toml"))),
             "reference_winit must consume runenui_render_wgpu as the standalone M7 native host",
         ));
+    }
+}
+
+fn validate_text_external_dependencies(
+    relative: &Path,
+    dependencies: &BTreeSet<String>,
+    dev_dependencies: &BTreeSet<String>,
+    findings: &mut Vec<Finding>,
+) {
+    for forbidden in TEXT_FORBIDDEN_DEPENDENCIES {
+        if dependencies.contains(*forbidden) || dev_dependencies.contains(*forbidden) {
+            findings.push(Finding::fatal(
+                "workspace.text_forbidden_edge_dependency",
+                Some(path_text(&relative.join("Cargo.toml"))),
+                format!(
+                    "runenui_text must not depend on renderer/native/accessibility edge package `{forbidden}`"
+                ),
+            ));
+        }
     }
 }
 
@@ -663,10 +703,11 @@ mod tests {
 
     use super::{
         CORE_PACKAGE, EXTERNAL_HOST_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE,
-        RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, WINIT_PACKAGE, WorkspaceMember,
-        documented_package_names, external_host_forbidden_source_pattern, parse_dependency_names,
-        parse_package_name, parse_workspace_members, validate_dependency_direction,
-        validate_external_host_dependencies, validate_renderer_external_dependencies,
+        RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, TEXT_PACKAGE, WINIT_PACKAGE,
+        WorkspaceMember, documented_package_names, external_host_forbidden_source_pattern,
+        parse_dependency_names, parse_package_name, parse_workspace_members,
+        validate_dependency_direction, validate_external_host_dependencies,
+        validate_renderer_external_dependencies, validate_text_external_dependencies,
         validate_winit_external_dependencies,
     };
 
@@ -734,6 +775,102 @@ mod tests {
             findings
                 .iter()
                 .any(|finding| finding.code == "workspace.forbidden_dependency_direction")
+        );
+    }
+
+    #[test]
+    fn text_package_requires_core_and_rejects_renderer_native_accessibility_edges() {
+        let core = member(
+            "crates/runenui_core",
+            CORE_PACKAGE,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
+        let runtime = member(
+            "crates/runenui_runtime",
+            RUNTIME_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let text = member(
+            "crates/runenui_text",
+            TEXT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (text.package.as_str(), &text),
+        ]);
+        let mut findings = Vec::new();
+        validate_dependency_direction(&text, &members, &mut findings);
+        validate_text_external_dependencies(
+            &text.relative,
+            &text.dependencies,
+            &text.dev_dependencies,
+            &mut findings,
+        );
+        assert!(findings.is_empty());
+
+        let missing_core = member(
+            "crates/runenui_text",
+            TEXT_PACKAGE,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
+        let missing_members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (missing_core.package.as_str(), &missing_core),
+        ]);
+        let mut missing_findings = Vec::new();
+        validate_dependency_direction(&missing_core, &missing_members, &mut missing_findings);
+        assert!(
+            missing_findings
+                .iter()
+                .any(|finding| finding.code == "workspace.text_core_dependency_missing")
+        );
+
+        let runtime_dependent = member(
+            "crates/runenui_text",
+            TEXT_PACKAGE,
+            BTreeSet::from([CORE_PACKAGE.to_owned(), RUNTIME_PACKAGE.to_owned()]),
+            BTreeSet::new(),
+        );
+        let forbidden_members = BTreeMap::from([
+            (core.package.as_str(), &core),
+            (runtime.package.as_str(), &runtime),
+            (runtime_dependent.package.as_str(), &runtime_dependent),
+        ]);
+        let mut direction_findings = Vec::new();
+        validate_dependency_direction(
+            &runtime_dependent,
+            &forbidden_members,
+            &mut direction_findings,
+        );
+        assert!(
+            direction_findings
+                .iter()
+                .any(|finding| finding.code == "workspace.forbidden_dependency_direction")
+        );
+
+        let mut edge_findings = Vec::new();
+        validate_text_external_dependencies(
+            &text.relative,
+            &BTreeSet::from([
+                CORE_PACKAGE.to_owned(),
+                "wgpu".to_owned(),
+                "winit".to_owned(),
+            ]),
+            &BTreeSet::from(["accesskit".to_owned()]),
+            &mut edge_findings,
+        );
+        assert_eq!(
+            edge_findings
+                .iter()
+                .filter(|finding| finding.code == "workspace.text_forbidden_edge_dependency")
+                .count(),
+            3
         );
     }
 

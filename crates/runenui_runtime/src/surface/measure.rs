@@ -3,30 +3,37 @@ use super::{
     arrange::SurfaceArrangementBuilder,
     resolve::{ResolvedSurfaceNode, ResolvedSurfaceTree},
 };
-use crate::{
-    AxisConstraints, AxisLimit, LayoutConstraints, LogicalPoint, MeasurementProvider,
-    TextMeasurementKind, TextMeasurementRequest,
-};
+use crate::{AxisConstraints, AxisLimit, LayoutConstraints, LogicalPoint};
 use runenui_core::{
-    Axis, ChildLayout, EdgeInsets, LogicalLength, LogicalRect, LogicalSize, WidgetDiagnostic,
-    WidgetMeasure, WidgetTextKind,
+    Axis, ChildLayout, EdgeInsets, LogicalLength, LogicalRect, LogicalSize, Typography,
+    WidgetDiagnostic, WidgetMeasure,
 };
+use runenui_text::{TextConstraints, TextLayoutError, TextLayoutState, TextRequest, TextSystem};
 
 pub(super) fn layout_resolved_surface(
     resolved_tree: &ResolvedSurfaceTree,
     root_constraints: LayoutConstraints,
-    measurement_provider: &dyn MeasurementProvider,
-) -> (LogicalSize, Vec<LogicalRect>, SurfaceLayoutReport) {
+    text_system: &mut TextSystem,
+    prior_text_layouts: Option<&[TextLayoutState]>,
+) -> Result<
+    (
+        LogicalSize,
+        Vec<LogicalRect>,
+        SurfaceLayoutReport,
+        Vec<TextLayoutState>,
+    ),
+    TextLayoutError,
+> {
     #[cfg(test)]
     super::cache::note_layout_phase_execution();
-    let mut measured_layout = MeasuredSurfaceLayout::new(resolved_tree);
+    let mut measured_layout = MeasuredSurfaceLayout::new(resolved_tree, prior_text_layouts);
     let root = resolved_tree
         .nodes()
         .first()
         .unwrap_or_else(|| unreachable!("mounted publication has a root"));
-    let measurer = SurfaceMeasurer::new(measurement_provider);
+    let mut measurer = SurfaceMeasurer::new(text_system);
     let frame_size =
-        measurer.measure_node(resolved_tree, &mut measured_layout, root, root_constraints);
+        measurer.measure_node(resolved_tree, &mut measured_layout, root, root_constraints)?;
 
     let bounds = {
         let mut arranger = SurfaceArrangementBuilder::new(&measured_layout);
@@ -35,23 +42,39 @@ pub(super) fn layout_resolved_surface(
         arranger.push_node(resolved_tree, root, origin);
         arranger.into_nodes()
     };
-    (frame_size, bounds, measured_layout.into_report())
+    let (report, text_layouts) = measured_layout.into_parts();
+    Ok((frame_size, bounds, report, text_layouts))
 }
 
 pub(super) struct MeasuredSurfaceLayout {
     nodes: Vec<SurfaceLayoutNode>,
     measured: Vec<bool>,
+    text_layouts: Vec<TextLayoutState>,
 }
 
 impl MeasuredSurfaceLayout {
-    fn new(resolved: &ResolvedSurfaceTree) -> Self {
+    fn new(resolved: &ResolvedSurfaceTree, prior_text_layouts: Option<&[TextLayoutState]>) -> Self {
+        let node_count = resolved.nodes().len();
+        let text_layouts = match prior_text_layouts {
+            Some(states) if states.len() == node_count => states.to_vec(),
+            Some(states) => {
+                debug_assert_eq!(
+                    states.len(),
+                    node_count,
+                    "retained text-layout state remains topology aligned"
+                );
+                vec![TextLayoutState::new(); node_count]
+            }
+            None => vec![TextLayoutState::new(); node_count],
+        };
         Self {
             nodes: resolved
                 .nodes()
                 .iter()
                 .map(|node| SurfaceLayoutNode::placeholder(node.id().clone()))
                 .collect(),
-            measured: vec![false; resolved.nodes().len()],
+            measured: vec![false; node_count],
+            text_layouts,
         }
     }
 
@@ -64,6 +87,14 @@ impl MeasuredSurfaceLayout {
         &self.nodes[position]
     }
 
+    fn text_layout_mut(&mut self, position: usize) -> &mut TextLayoutState {
+        &mut self.text_layouts[position]
+    }
+
+    fn clear_text_layout(&mut self, position: usize) {
+        self.text_layouts[position].clear();
+    }
+
     fn record(&mut self, index: usize, node: SurfaceLayoutNode) -> LogicalSize {
         debug_assert!(index < self.nodes.len());
         let size = node.constrained_outer_size();
@@ -72,32 +103,30 @@ impl MeasuredSurfaceLayout {
         size
     }
 
-    fn into_report(self) -> SurfaceLayoutReport {
+    fn into_parts(self) -> (SurfaceLayoutReport, Vec<TextLayoutState>) {
         debug_assert!(self.measured.iter().all(|measured| *measured));
-        SurfaceLayoutReport::new(self.nodes)
+        (SurfaceLayoutReport::new(self.nodes), self.text_layouts)
     }
 }
 
 struct SurfaceMeasurer<'a> {
-    measurement_provider: &'a dyn MeasurementProvider,
+    text_system: &'a mut TextSystem,
 }
 
 impl<'a> SurfaceMeasurer<'a> {
-    fn new(measurement_provider: &'a dyn MeasurementProvider) -> Self {
-        Self {
-            measurement_provider,
-        }
+    const fn new(text_system: &'a mut TextSystem) -> Self {
+        Self { text_system }
     }
 
     fn measure_node(
-        &self,
+        &mut self,
         resolved_tree: &ResolvedSurfaceTree,
         measured_layout: &mut MeasuredSurfaceLayout,
         node: &ResolvedSurfaceNode,
         outer_constraints: LayoutConstraints,
-    ) -> LogicalSize {
+    ) -> Result<LogicalSize, TextLayoutError> {
         if measured_layout.is_measured(node.position) {
-            return measured_layout.node(node.position).constrained_outer_size();
+            return Ok(measured_layout.node(node.position).constrained_outer_size());
         }
 
         let padding = resolved_padding(node);
@@ -106,20 +135,20 @@ impl<'a> SurfaceMeasurer<'a> {
         let intrinsic_size = match node.measurement() {
             WidgetMeasure::Text {
                 content,
-                kind,
                 minimum_width,
                 minimum_height,
+                ..
             } => {
-                let measured_text = self.measure_text_content(
-                    node,
-                    content,
-                    measurement_kind(*kind),
-                    content_constraints,
-                );
+                let measured_text =
+                    self.measure_text_content(measured_layout, node, content, content_constraints)?;
                 apply_minimum(measured_text, *minimum_width, *minimum_height)
             }
-            WidgetMeasure::Fixed { width, height } => LogicalSize::new(*width, *height),
+            WidgetMeasure::Fixed { width, height } => {
+                measured_layout.clear_text_layout(node.position);
+                LogicalSize::new(*width, *height)
+            }
             WidgetMeasure::Unsupported { reason } => {
+                measured_layout.clear_text_layout(node.position);
                 diagnostics.push(WidgetDiagnostic::new(
                     "runenui.measurement.unsupported",
                     format!("unsupported widget measurement capability: {reason}"),
@@ -127,6 +156,7 @@ impl<'a> SurfaceMeasurer<'a> {
                 zero_size()
             }
             _ => {
+                measured_layout.clear_text_layout(node.position);
                 diagnostics.push(WidgetDiagnostic::new(
                     "runenui.measurement.unrecognized",
                     "widget measurement capability is not recognized by this runtime version",
@@ -135,7 +165,7 @@ impl<'a> SurfaceMeasurer<'a> {
             }
         };
 
-        let child_content_size = node.child_layout().map_or_else(zero_size, |child_layout| {
+        let child_content_size = if let Some(child_layout) = node.child_layout() {
             let axis = child_layout_axis(child_layout, &mut diagnostics);
             self.measure_child_layout_content(
                 resolved_tree,
@@ -143,8 +173,10 @@ impl<'a> SurfaceMeasurer<'a> {
                 node,
                 axis,
                 content_constraints,
-            )
-        });
+            )?
+        } else {
+            zero_size()
+        };
         debug_assert!(node.child_layout().is_some() || node.children().is_empty());
         let desired_content_size = component_max_size(intrinsic_size, child_content_size);
         let constrained_content_size = content_constraints.constrain(desired_content_size);
@@ -170,29 +202,41 @@ impl<'a> SurfaceMeasurer<'a> {
         )
         .with_diagnostics(diagnostics);
 
-        measured_layout.record(node.position, measured)
+        Ok(measured_layout.record(node.position, measured))
     }
 
     fn measure_text_content(
-        &self,
+        &mut self,
+        measured_layout: &mut MeasuredSurfaceLayout,
         node: &ResolvedSurfaceNode,
         content: &str,
-        kind: TextMeasurementKind,
         content_constraints: LayoutConstraints,
-    ) -> LogicalSize {
-        let request = TextMeasurementRequest::new(content, content_constraints, kind)
-            .with_node_id(node.id().clone());
-        sanitize_size(self.measurement_provider.measure_text(&request).size())
+    ) -> Result<LogicalSize, TextLayoutError> {
+        let typography = node
+            .resolution()
+            .computed_style()
+            .typography()
+            .cloned()
+            .unwrap_or_else(Typography::default);
+        let request = TextRequest::new(
+            content,
+            typography,
+            text_constraints_from_layout(content_constraints),
+        );
+        let outcome = self
+            .text_system
+            .layout_text(measured_layout.text_layout_mut(node.position), &request)?;
+        Ok(sanitize_size(outcome.artifact().size()))
     }
 
     fn measure_child_layout_content(
-        &self,
+        &mut self,
         resolved_tree: &ResolvedSurfaceTree,
         measured_layout: &mut MeasuredSurfaceLayout,
         node: &ResolvedSurfaceNode,
         axis: Axis,
         content_constraints: LayoutConstraints,
-    ) -> LogicalSize {
+    ) -> Result<LogicalSize, TextLayoutError> {
         let child_constraints = child_constraints(axis, content_constraints);
         let gap = node.layout().gap().get();
         let mut width: f32 = 0.0;
@@ -200,7 +244,7 @@ impl<'a> SurfaceMeasurer<'a> {
         for (measured_child_count, child_id) in node.children().iter().enumerate() {
             let child = resolved_tree.node(child_id);
             let child_size =
-                self.measure_node(resolved_tree, measured_layout, child, child_constraints);
+                self.measure_node(resolved_tree, measured_layout, child, child_constraints)?;
 
             if measured_child_count > 0 {
                 match axis {
@@ -220,7 +264,14 @@ impl<'a> SurfaceMeasurer<'a> {
             }
         }
 
-        logical_size_from_arithmetic(width, height)
+        Ok(logical_size_from_arithmetic(width, height))
+    }
+}
+
+const fn text_constraints_from_layout(constraints: LayoutConstraints) -> TextConstraints {
+    match constraints.horizontal().max() {
+        AxisLimit::Finite(max) => TextConstraints::limited(max),
+        AxisLimit::Unbounded => TextConstraints::unbounded(),
     }
 }
 
@@ -418,11 +469,4 @@ fn logical_size_from_arithmetic(width: f32, height: f32) -> LogicalSize {
         logical_extent_from_arithmetic(width),
         logical_extent_from_arithmetic(height),
     )
-}
-
-const fn measurement_kind(kind: WidgetTextKind) -> TextMeasurementKind {
-    match kind {
-        WidgetTextKind::ControlLabel => TextMeasurementKind::ControlLabel,
-        _ => TextMeasurementKind::Text,
-    }
 }

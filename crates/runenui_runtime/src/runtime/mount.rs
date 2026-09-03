@@ -6,8 +6,8 @@ use super::{
     Arc, AutomationSubmissionPolicy, CompletionIngress, Element, FocusState, HostProtocol,
     ManualClock, MonotonicInstant, MountedIdentityExhausted, MountedTree, PointerRegistry,
     ReconciliationGeneration, ReconciliationReport, Runtime, RuntimeConfig, RuntimeStatus,
-    RuntimeTerminalReason, SurfacePublicationState, SurfaceTraceState, Trace, TraceRecordKind,
-    UnavailableExecutor, WakeState, WorkQueue, WorkRegistry,
+    RuntimeTerminalReason, SurfacePublicationState, SurfaceTraceState, TextSystem, Trace,
+    TraceRecordKind, UnavailableExecutor, WakeState, WorkQueue, WorkRegistry,
 };
 
 fn checked_surface_snapshot_retention(retention: usize) -> NonZeroUsize {
@@ -42,6 +42,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             checked_surface_snapshot_retention(config.surface_snapshot_retention());
         let surface_publication =
             SurfacePublicationState::new(tree.runtime_namespace(), surface_snapshot_retention);
+        let text_system = TextSystem::new(config.text_font_source_policy());
         let mut trace = Trace::new_for_runtime(config.trace_config(), tree.runtime_namespace());
         let initial_trace_plan = if mount_failed {
             MandatoryTracePlan::one_fact()
@@ -100,6 +101,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             queue,
             trace,
             trace_action_labeler: None,
+            text_system,
             focus: FocusState::new(),
             pointer_registry: PointerRegistry::new(limits.pointer_streams()),
             space_ownership: None,
