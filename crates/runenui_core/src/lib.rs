@@ -307,9 +307,9 @@ pub use layout::{
     Axis, ContentAlignment, CrossAxisAlignment, FlexContainerStyle, FlexDirection, FlexItemStyle,
     FlexWrap, GridAutoFlow, GridAxisPlacement, GridContainerStyle, GridItemPlacement, GridLine,
     GridLineError, GridSpan, GridSpanError, GridTrack, GridTrackBreadth, LayoutBound,
-    LayoutContainer, LayoutDimension, LayoutFactor, LayoutFactorError, LayoutInsets, LayoutPosition,
-    LayoutStyle, MainAxisAlignment, OverflowPolicy, OverflowStyle, OverlayAlignment,
-    OverlayContainerStyle,
+    LayoutContainer, LayoutDimension, LayoutFactor, LayoutFactorError, LayoutInsets, LayoutOffset,
+    LayoutPosition, LayoutStyle, MainAxisAlignment, OverflowPolicy, OverflowStyle,
+    OverlayAlignment, OverlayContainerStyle,
 };
 pub use pointer::{
     InputDeviceId, KeyModifiers, LogicalDelta, LogicalDeltaError, LogicalPoint, LogicalPointError,
