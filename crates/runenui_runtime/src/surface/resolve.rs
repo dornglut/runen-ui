@@ -149,7 +149,7 @@ impl ResolvedSurfaceTree {
                 ResolvedSurfaceNode {
                     position,
                     topology: topology.clone(),
-                    layout: mounted.layout,
+                    layout: mounted.layout.clone(),
                     measurement: capabilities
                         .measurement_at(position, &topology.id)
                         .unwrap_or_default(),
