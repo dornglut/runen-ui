@@ -28,9 +28,9 @@ RunenUI/
 | Package | Current ownership | Must not own |
 |---|---|---|
 | `runenui_core` | host-neutral application/effect protocols; validated authored values/identity/style/geometry; transient views/elements; state-aware widget/lifecycle/event/semantic vocabulary; opaque runtime-issued protocol value types | persistent mounted/semantic storage, live scheduling, native hosts, concrete renderers, application product state, ECS/legacy dependencies |
-| `runenui_text` | renderer-neutral font-source policy and cache-visible source revision; M8B text shaping/line-breaking/logical-artifact and immutable logical shaped-resource boundary behind RunenUI-owned contracts | mounted/runtime/publication authority, general layout topology/scheduling, renderer/GPU/SDF-MSDF atlas state, native host/accessibility, application state, editable-text behavior |
-| `runenui_runtime` | generational mounted/semantic arenas; reconciliation/lifecycle; canonical queue/scheduler; focus/input state; clocks/tasks/timers/subscriptions/host requests; wake/redraw; trace/replay; layout and staged surface/semantic publication | application domain policy, testing convenience authority, native platform implementations, concrete renderers, ECS/legacy dependencies |
-| `runenui_render_wgpu` | reusable renderer edge over ordinary public paint publications; caller-owned resource-provider contract; renderer-owned successful-publication lineage, realization/cache/backend work, readback, and renderer observations | native event loop, accessibility, widget/semantic/mounted/layout authority, runtime mutation, application resource registry, winit/AccessKit ownership |
+| `runenui_text` | renderer-neutral font-source policy and cache-visible source revision; production shaping/line breaking, text-specific constraints, immutable logical artifacts and shaped-resource bindings behind RunenUI-owned contracts | mounted/runtime/publication authority, general layout topology/scheduling, renderer/GPU/SDF-MSDF atlas state, native host/accessibility, application state, editable-text behavior |
+| `runenui_runtime` | generational mounted/semantic arenas; reconciliation/lifecycle; canonical queue/scheduler; focus/input state; clocks/tasks/timers/subscriptions/host requests; wake/redraw; trace/replay; style and text-measurement orchestration; general layout and staged surface/semantic publication | application domain policy, testing convenience authority, native platform implementations, concrete renderers, text-shaping/font-algorithm authority, ECS/legacy dependencies |
+| `runenui_render_wgpu` | reusable renderer edge over ordinary public paint publications; external-image resource-provider contract; retained shaped-text consumption; renderer-owned successful-publication lineage, SDF/MSDF/image realization/cache/backend work, readback, and renderer observations | native event loop, accessibility, widget/semantic/mounted/layout authority, runtime mutation, application resource registry, shaping/line breaking/font discovery, winit/AccessKit ownership |
 | `runenui_winit` | reusable winit input/device translation and AccessKit semantic projection/action translation proven by the reference host and native Counter | window/event-loop ownership, runtime pumping, redraw/publication policy, displayed-frame authority, renderer/presentation lifecycle, application behavior |
 | `runenui_testing` | public deterministic headless testing over ordinary `runenui_core` + `runenui_runtime` contracts | runtime behavior, private mutation seams, identity/sequence fabrication, parallel expected state, native host behavior |
 | `counter` | application-owned state/action/update/UI plus the bounded native M7 application host composition and deterministic headless proof | framework internals, reusable native translation authority, renderer internals, generic host/facade ownership |
@@ -40,30 +40,23 @@ RunenUI/
 | `runenui_external_widget_conformance` | non-publishable genuine downstream custom-widget/public conformance proof | production framework ownership or privileged internal access |
 | `xtask` | deterministic repository validation/audit orchestration | framework runtime behavior |
 
-Current production dependency direction is acyclic. The M8B text crate currently establishes its independent core-only boundary; runtime and renderer integration edges are added only when the corresponding logical text contracts are implemented rather than being implied by crate existence:
+Current production dependency direction is acyclic. The accepted M8B text boundary is now integrated rather than merely reserved:
 
 ```text
-runenui_core <- runenui_text
-       ^
-       |
-       +--------- runenui_runtime
-       ^             ^
-       └──────┬──────┘
-              ├── runenui_render_wgpu ──┬── reference_winit
-              │                         ├── counter
-              │                         └── external host conformance
-              ├── runenui_winit ────────┬── reference_winit
-              │                         └── counter
-              ├── runenui_testing
-              ├── external renderer conformance
-              └── external widget conformance
-
-xtask  (repository tooling; no framework dependency)
+runenui_text        -> runenui_core
+runenui_runtime     -> runenui_core + runenui_text
+runenui_render_wgpu -> runenui_core + runenui_runtime + runenui_text
+runenui_winit       -> runenui_core + runenui_runtime
+runenui_testing     -> runenui_core + runenui_runtime
 ```
 
-`runenui_text` depends only on ordinary public `runenui_core` contracts plus its reviewed text/font dependency stack. Parley/Fontique/HarfRust/Skrifa/ICU remain private implementation dependencies. The crate's font collection, shaping scratch state, and later logical text caches/resources are renderer-neutral derived state; they do not own mounted topology, runtime scheduling/publication, GPU realization, native integration, semantics, or editing behavior. M8B may add `runenui_runtime -> runenui_text` and `runenui_render_wgpu -> runenui_text` edges only as their accepted measurement and already-shaped realization integrations become real.
+The application and downstream-conformance packages consume those public layers as required by their owned profiles; `xtask` remains repository tooling with no framework dependency.
 
-`runenui_render_wgpu` depends only on ordinary public core/runtime contracts inside the workspace at the current branch state. Its backend/resource state remains downstream and disposable; native host and accessibility dependencies are intentionally outside the renderer package boundary. The external-renderer conformance package remains a separate proof-only consumer and is not the production renderer.
+`runenui_text` depends only on ordinary public `runenui_core` contracts plus its reviewed text/font dependency stack. Parley/Fontique/HarfRust/Skrifa/ICU remain private implementation dependencies. Its font collection, shaping/line-breaking state, reusable text-layout state, immutable artifacts, and shaped-resource bindings are renderer-neutral derived state; they do not own mounted topology, runtime scheduling/publication, GPU realization, native integration, semantics, or editing behavior.
+
+`runenui_runtime` depends on `runenui_text` to orchestrate the live text system, lower runtime layout availability into text-specific constraints, retain topology-aligned reusable text state, measure from immutable logical artifacts, and carry the exact shaped-resource leases into paint publication. That dependency does not transfer mounted, scheduling, layout-topology, or publication authority into `runenui_text`.
+
+`runenui_render_wgpu` consumes public core/runtime paint-publication contracts plus the exact retained `runenui_text` shaped-resource facts needed for already-shaped outline realization. External images still use the caller-owned complete-`ResourceRef` provider contract. Runtime-shaped text does not: its immutable binding is retained by publication, while field generation, quality classes, atlas pages, GPU textures, and cache lifetime are disposable renderer-owned state. The renderer has no shaping, line-breaking, fallback, or font-discovery authority.
 
 `runenui_winit` is the targeted adapter boundary justified by the second real winit consumer in M7. It consumes ordinary public core/runtime contracts plus winit/AccessKit types and owns only loss-preserving native translation/projection mechanics. It deliberately has no renderer dependency and no run-loop API. Moving a substantial accepted adapter into one Cargo-owned source prevents Counter from copying the specialized reference application while leaving application-specific host policy visible.
 
@@ -75,11 +68,11 @@ The external-renderer conformance package intentionally depends only on public `
 
 ## Ownership rules
 
-`runenui_core` owns public host-neutral protocol/value definitions. `runenui_runtime` remains the sole live authority for namespace creation, mounted and semantic arenas, topology, reconciliation, routes, interaction mutation, queue/work/trace sequencing, scheduling, clocks, publication, semantic resolution, and shutdown.
+`runenui_core` owns public host-neutral protocol/value definitions. `runenui_runtime` remains the sole live authority for namespace creation, mounted and semantic arenas, topology, reconciliation, routes, interaction mutation, queue/work/trace sequencing, scheduling, clocks, layout orchestration, publication, semantic resolution, and shutdown.
 
-`runenui_text` may own renderer-neutral font-source configuration, dependency-backed shaping/line breaking, immutable logical text artifacts, and logical shaped-resource bindings. It must not import runtime/mounted/publication authority, renderer/backend state, native/accessibility integration, or editing behavior. Public contracts remain RunenUI-owned and must not expose upstream dependency types as authority.
+`runenui_text` owns renderer-neutral font-source configuration, dependency-backed shaping/line breaking, text-specific constraints and reuse decisions, immutable logical text artifacts, and logical shaped-resource bindings. It must not import runtime/mounted/publication authority, renderer/backend state, native/accessibility integration, or editing behavior. Public contracts remain RunenUI-owned and must not expose upstream dependency types as authority.
 
-`runenui_render_wgpu` may retain only renderer-owned realization state derived from ordinary immutable paint publications plus caller-owned resource payloads. It must not inspect concrete widget/control types, semantic-tree facts, mounted/layout storage, or private runtime mutation seams, and it must not become resource-provider or application-state authority.
+`runenui_render_wgpu` may retain only renderer-owned realization state derived from ordinary immutable paint publications, retained shaped-text resources, and caller-owned external resource payloads. It must not inspect concrete widget/control types, semantic-tree facts, mounted/layout storage, or private runtime mutation seams, and it must not become font/shaping, external-resource-provider, or application-state authority.
 
 `runenui_winit` may retain only native device/key/pointer lifetime translation state and rebuildable AccessKit projection identity/cache derived from public semantic publication. It must not create a second UI queue, pump or mutate the runtime, own a window/event loop, retain renderer state, acknowledge redraw, decide displayed-frame authority, or become application policy.
 
@@ -89,7 +82,7 @@ A non-native external host may drive the same public runtime and renderer contra
 
 `runenui_testing` may compose public contracts but must not recreate live authority. In particular it may retain immutable public publications for inspection, create scoped semantic test targets only from exact public snapshot membership, delegate semantic actions only through public runtime ingress, advance a public manual clock, perform explicit bounded pumping, and inspect public products. It must not fabricate runtime IDs/sequences, mutate mounted state, use private runtime bridges, or maintain a second expected runtime model.
 
-Built-in authoring uses the same open element/widget protocol as downstream controls. Mounted storage, semantic storage/publication, routing, scheduling, tracing, and surface publication remain focused runtime module families. File size alone is not a crate boundary.
+Built-in authoring uses the same open element/widget protocol as downstream controls. Mounted storage, semantic storage/publication, routing, scheduling, tracing, layout/text orchestration, and surface publication remain focused runtime module families. File size alone is not a crate boundary.
 
 ## Extraction rule
 
