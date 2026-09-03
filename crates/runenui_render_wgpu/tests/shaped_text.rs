@@ -135,12 +135,15 @@ fn production_msdf_uses_one_logical_ref_at_multiple_renderer_realizations()
     };
     let mut runtime = AppRuntime::<TextApp>::mount(());
     register_font(&mut runtime);
+    let low = publish(&mut runtime, RasterScale::new(0.75)?);
     let one = publish(&mut runtime, RasterScale::ONE);
     let two = publish(&mut runtime, RasterScale::new(2.0)?);
+    assert_eq!(text_ref(&low), text_ref(&one));
     assert_eq!(text_ref(&one), text_ref(&two));
 
     let provider = ExternalOnlyProvider::default();
-    let first = renderer.render_offscreen_publication(&one, &provider)?;
+    let first = renderer.render_offscreen_publication(&low, &provider)?;
+    let same_tier = renderer.render_offscreen_publication(&one, &provider)?;
     let second = renderer.render_offscreen_publication(&two, &provider)?;
     assert_eq!(
         provider.loads.get(),
@@ -165,6 +168,10 @@ fn production_msdf_uses_one_logical_ref_at_multiple_renderer_realizations()
         second.observation().resource_observations()[0].cache_outcome(),
         ResourceCacheOutcome::Realized
     );
+    assert_eq!(
+        same_tier.observation().resource_observations()[0].cache_outcome(),
+        ResourceCacheOutcome::Reused
+    );
     Ok(())
 }
 
@@ -177,11 +184,14 @@ fn retained_publication_retries_after_renderer_realization_loss()
     let mut runtime = AppRuntime::<TextApp>::mount(());
     register_font(&mut runtime);
     let publication = publish(&mut runtime, RasterScale::ONE);
+    let expected_ref = text_ref(&publication);
+    drop(runtime);
     let provider = ExternalOnlyProvider::default();
     let first = renderer.render_offscreen_publication(&publication, &provider)?;
     assert!(renderer.discard_resource_cache());
     let retry = renderer.render_offscreen_publication(&publication, &provider)?;
     assert_eq!(provider.loads.get(), 0);
+    assert_eq!(text_ref(&publication), expected_ref);
     assert!(alpha_pixels(&first) > 0);
     assert!(alpha_pixels(&retry) > 0);
     assert_eq!(
@@ -192,6 +202,12 @@ fn retained_publication_retries_after_renderer_realization_loss()
         retry.observation().resource_observations()[0].cache_outcome(),
         ResourceCacheOutcome::Realized
     );
+    let Some(mut fresh_renderer) = renderer_or_skip()? else {
+        return Ok(());
+    };
+    let fresh = fresh_renderer.render_offscreen_publication(&publication, &provider)?;
+    assert!(alpha_pixels(&fresh) > 0);
+    assert_eq!(provider.loads.get(), 0);
     Ok(())
 }
 
@@ -220,7 +236,7 @@ fn production_msdf_pixel_evidence_is_stable_and_small_size_is_covered()
         fnv1a(pixels),
         alpha_pixels(&readback)
     );
-    assert_eq!(fnv1a(pixels), 0x3078_2a08_8a9b_b450);
+    assert_eq!(fnv1a(pixels), 0x17ab_5ce9_2e28_0330);
     Ok(())
 }
 

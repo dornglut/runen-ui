@@ -117,18 +117,23 @@ The checked-in `provider_image.png` corpus is decoded by the test provider with
 RGBA8 bytes, and then passed through the same public `ImagePayload` seam.
 
 Shaped text is retained by the runtime as one immutable logical resource. The
-renderer resolves that exact resource from `PaintPublication`, extracts its
-already-shaped glyph outlines with Skrifa, generates an MSDF with
-`bymsdfgen-core`, and owns only the disposable scale-qualified atlas/device
-realization. The shader reconstructs coverage from the three MSDF channels and
-applies scene-owned foreground color and opacity through the same linear
-source-over target path as literal paint. Cache identity is `(ResourceRef, exact
-RasterScale)`; foreground color is deliberately excluded. The caller-owned
-`ResourceProvider` remains limited to external resources such as images. Color,
-bitmap, missing-outline, and invalid-font cases produce explicit diagnostics;
-supported outline glyphs never fall back to the former alpha raster path. The
-fixture in `tests/fixtures` uses the bundled redistributable Cantarell font and
-the production runtime text system for shaping, font binding, and retention.
+renderer resolves that exact resource from `PaintPublication`, extracts each
+unique already-shaped glyph outline with Skrifa, generates per-glyph MSDF fields
+with `bymsdfgen-core`, packs them into deterministic resource-local atlas pages,
+and owns only the disposable atlas/device realization. A private representation
+quality class selects among the current renderer tiers; it is not part of
+`ResourceRef`, text shaping, or runtime/publication contracts. The shader samples
+filterable `Rgba8Unorm` RGB MSDF data, reconstructs coverage using the field range
+and projected texel footprint, and applies scene-owned foreground color and
+opacity through the same linear source-over target path as literal paint.
+The caller-owned `ResourceProvider` remains limited to external resources such as
+images. Color and bitmap formats, SVG, faux bold, and invalid fonts/outlines
+produce explicit diagnostics; whitespace and other valid non-painting glyphs
+produce no atlas field or draw quad; supported outline glyphs never fall back to
+an alpha-raster path. Atlas and cache state can be discarded and reconstructed
+from the retained logical resource. The fixture in `tests/fixtures` uses the
+bundled redistributable Cantarell font and the production runtime text system for
+shaping, font binding, and retention.
 
 The real-GPU scale proof renders identical 64x48 logical two-rectangle geometry
 at scales 1.0 and 2.0, producing 64x48 and 128x96 targets with corresponding

@@ -31,7 +31,6 @@ pub enum UnsupportedShapedGlyphKind {
     ColrV1,
     Bitmap,
     Svg,
-    NoOutline,
     FauxBold,
 }
 
@@ -54,8 +53,8 @@ pub enum PublicationRenderError {
     },
     /// The tightly packed RGBA8 row byte count cannot be represented by wgpu's upload layout.
     ImageRowBytesOverflow { item_index: usize, width: u32 },
-    /// An otherwise valid shaped-run coverage exceeds this renderer device's texture limit.
-    ShapedRunExtentExceedsDeviceLimit {
+    /// An otherwise valid glyph field exceeds this renderer device's texture limit.
+    ShapedGlyphExtentExceedsDeviceLimit {
         item_index: usize,
         width: u32,
         height: u32,
@@ -114,14 +113,14 @@ impl core::fmt::Display for PublicationRenderError {
                 formatter,
                 "renderer image resource for scene item {item_index} has width {width}, whose tightly packed RGBA8 row byte count overflows u32"
             ),
-            Self::ShapedRunExtentExceedsDeviceLimit {
+            Self::ShapedGlyphExtentExceedsDeviceLimit {
                 item_index,
                 width,
                 height,
                 max_texture_dimension_2d,
             } => write!(
                 formatter,
-                "renderer shaped-run resource for scene item {item_index} has coverage extent {width}x{height}, exceeding device 2D texture limit {max_texture_dimension_2d}"
+                "renderer shaped-text glyph for scene item {item_index} has field extent {width}x{height}, exceeding device 2D texture limit {max_texture_dimension_2d}"
             ),
             Self::ShapedTextResourceUnavailable { item_index } => write!(
                 formatter,
@@ -180,7 +179,7 @@ impl core::error::Error for PublicationRenderError {
             Self::Resource { error, .. } => Some(error),
             Self::ImageExtentExceedsDeviceLimit { .. }
             | Self::ImageRowBytesOverflow { .. }
-            | Self::ShapedRunExtentExceedsDeviceLimit { .. }
+            | Self::ShapedGlyphExtentExceedsDeviceLimit { .. }
             | Self::ShapedTextResourceUnavailable { .. }
             | Self::UnsupportedShapedGlyph { .. }
             | Self::ShapedTextFontInvalid { .. }
@@ -210,7 +209,7 @@ impl PublicationRenderError {
             Self::Resource { item_index, .. }
             | Self::ImageExtentExceedsDeviceLimit { item_index, .. }
             | Self::ImageRowBytesOverflow { item_index, .. }
-            | Self::ShapedRunExtentExceedsDeviceLimit { item_index, .. }
+            | Self::ShapedGlyphExtentExceedsDeviceLimit { item_index, .. }
             | Self::ShapedTextResourceUnavailable { item_index }
             | Self::UnsupportedShapedGlyph { item_index, .. }
             | Self::ShapedTextFontInvalid { item_index }
@@ -487,9 +486,10 @@ impl ResourceRenderer {
             .any(|item| matches!(item, ResourceSceneItem::ShapedTextRun(_)));
         let needs_stencil = scene.iter().any(ResourceSceneItem::needs_stencil);
         let live_images = live_image_resources(&scene);
-        let live_shaped_runs = live_shaped_run_resources(&scene, publication.raster_scale());
+        let live_shaped_runs = live_shaped_run_resources(&scene, publication);
         let initial_resource_observations = resource_observations_for_scene(
             &scene,
+            publication,
             publication.raster_scale(),
             &self.images,
             &self.shaped_runs,
@@ -512,6 +512,7 @@ impl ResourceRenderer {
                     if let Some(observation) = self.literal.base.last_observation.as_mut() {
                         observation.set_resource_observations(resource_observations_for_scene(
                             &scene,
+                            publication,
                             publication.raster_scale(),
                             &self.images,
                             &self.shaped_runs,
@@ -524,6 +525,7 @@ impl ResourceRenderer {
             };
             let resource_observations = resource_observations_for_scene(
                 &scene,
+                publication,
                 publication.raster_scale(),
                 &self.images,
                 &self.shaped_runs,
@@ -615,6 +617,7 @@ impl ResourceRenderer {
                 extent,
                 canvas_extent,
                 publication.raster_scale(),
+                publication,
                 &scene,
                 &self.shaped_runs,
             );
@@ -738,9 +741,10 @@ impl ResourceRenderer {
             .any(|item| matches!(item, ResourceSceneItem::ShapedTextRun(_)));
         let needs_stencil = scene.iter().any(ResourceSceneItem::needs_stencil);
         let live_images = live_image_resources(&scene);
-        let live_shaped_runs = live_shaped_run_resources(&scene, publication.raster_scale());
+        let live_shaped_runs = live_shaped_run_resources(&scene, publication);
         let initial_resource_observations = resource_observations_for_scene(
             &scene,
+            publication,
             publication.raster_scale(),
             &self.images,
             &self.shaped_runs,
@@ -763,6 +767,7 @@ impl ResourceRenderer {
                     if let Some(observation) = self.literal.base.last_observation.as_mut() {
                         observation.set_resource_observations(resource_observations_for_scene(
                             &scene,
+                            publication,
                             publication.raster_scale(),
                             &self.images,
                             &self.shaped_runs,
@@ -775,6 +780,7 @@ impl ResourceRenderer {
             };
             let resource_observations = resource_observations_for_scene(
                 &scene,
+                publication,
                 publication.raster_scale(),
                 &self.images,
                 &self.shaped_runs,
@@ -878,6 +884,7 @@ impl ResourceRenderer {
             extent,
             canvas_extent,
             publication.raster_scale(),
+            publication,
             &scene,
             &self.shaped_runs,
         );
@@ -983,17 +990,6 @@ impl ResourceRenderer {
             let ResourceSceneItem::ShapedTextRun(item) = item else {
                 continue;
             };
-            let cache_key = (
-                item.shaped_run.resource.clone(),
-                raster_scale.get().to_bits(),
-            );
-            if self
-                .shaped_runs
-                .contains(&item.shaped_run.resource, raster_scale)
-                || !seen.insert(cache_key)
-            {
-                continue;
-            }
             let Some(resource) = publication
                 .scene()
                 .shaped_text_resource(&item.shaped_run.resource)
@@ -1002,6 +998,19 @@ impl ResourceRenderer {
                     item_index: item.shaped_run.item_index,
                 });
             };
+            let quality = shaped::ShapedRunRenderer::quality(
+                resource,
+                raster_scale,
+                item.shaped_run.local_to_surface,
+            );
+            let cache_key = (item.shaped_run.resource.clone(), quality);
+            if self
+                .shaped_runs
+                .contains(resource, raster_scale, item.shaped_run.local_to_surface)
+                || !seen.insert(cache_key)
+            {
+                continue;
+            }
             match shaped::resolve_shaped_run(
                 &item.shaped_run,
                 resource,
@@ -1024,9 +1033,6 @@ impl ResourceRenderer {
                                 UnsupportedShapedGlyphKind::Bitmap
                             }
                             shaped::UnsupportedGlyphKind::Svg => UnsupportedShapedGlyphKind::Svg,
-                            shaped::UnsupportedGlyphKind::NoOutline => {
-                                UnsupportedShapedGlyphKind::NoOutline
-                            }
                             shaped::UnsupportedGlyphKind::FauxBold => {
                                 UnsupportedShapedGlyphKind::FauxBold
                             }
@@ -1044,17 +1050,20 @@ impl ResourceRenderer {
                         glyph_id,
                     });
                 }
-                Err(shaped::ShapedRunResolveFailure::ExtentExceedsDeviceLimit {
+                Err(shaped::ShapedRunResolveFailure::GlyphExtentExceedsDeviceLimit {
                     width,
                     height,
                     max_texture_dimension_2d,
+                    ..
                 }) => {
-                    return Err(PublicationRenderError::ShapedRunExtentExceedsDeviceLimit {
-                        item_index: item.shaped_run.item_index,
-                        width,
-                        height,
-                        max_texture_dimension_2d,
-                    });
+                    return Err(
+                        PublicationRenderError::ShapedGlyphExtentExceedsDeviceLimit {
+                            item_index: item.shaped_run.item_index,
+                            width,
+                            height,
+                            max_texture_dimension_2d,
+                        },
+                    );
                 }
             }
         }
@@ -1170,15 +1179,24 @@ fn live_image_resources(scene: &[ResourceSceneItem]) -> HashSet<ResourceRef> {
 
 fn live_shaped_run_resources(
     scene: &[ResourceSceneItem],
-    raster_scale: RasterScale,
-) -> HashSet<(ResourceRef, u32)> {
+    publication: &PaintPublication,
+) -> HashSet<(ResourceRef, shaped::QualityTier)> {
     scene
         .iter()
         .filter_map(|item| match item {
-            ResourceSceneItem::ShapedTextRun(item) => Some((
-                item.shaped_run.resource.clone(),
-                raster_scale.get().to_bits(),
-            )),
+            ResourceSceneItem::ShapedTextRun(item) => publication
+                .scene()
+                .shaped_text_resource(&item.shaped_run.resource)
+                .map(|resource| {
+                    (
+                        item.shaped_run.resource.clone(),
+                        shaped::ShapedRunRenderer::quality(
+                            resource,
+                            publication.raster_scale(),
+                            item.shaped_run.local_to_surface,
+                        ),
+                    )
+                }),
             ResourceSceneItem::Literal(_) | ResourceSceneItem::Image(_) => None,
         })
         .collect()
@@ -1197,6 +1215,7 @@ fn surface_canvas_extent(
 
 fn resource_observations_for_scene(
     scene: &[ResourceSceneItem],
+    publication: &PaintPublication,
     raster_scale: RasterScale,
     images: &image::ImageRenderer,
     shaped_runs: &shaped::ShapedRunRenderer,
@@ -1225,15 +1244,26 @@ fn resource_observations_for_scene(
                 },
             )),
             ResourceSceneItem::ShapedTextRun(item) => {
-                let key = (
-                    item.shaped_run.resource.clone(),
-                    raster_scale.get().to_bits(),
-                );
+                let resource = publication
+                    .scene()
+                    .shaped_text_resource(&item.shaped_run.resource);
+                let key = resource.map(|resource| {
+                    (
+                        item.shaped_run.resource.clone(),
+                        shaped::ShapedRunRenderer::quality(
+                            resource,
+                            raster_scale,
+                            item.shaped_run.local_to_surface,
+                        ),
+                    )
+                });
                 let cache_outcome = if failed_item_index == Some(item.shaped_run.item_index) {
                     ResourceCacheOutcome::Failed
-                } else if shaped_runs.contains(&item.shaped_run.resource, raster_scale) {
+                } else if resource.is_some_and(|resource| {
+                    shaped_runs.contains(resource, raster_scale, item.shaped_run.local_to_surface)
+                }) {
                     ResourceCacheOutcome::Reused
-                } else if empty_shaped.contains(&key) {
+                } else if key.is_some_and(|key| empty_shaped.contains(&key)) {
                     ResourceCacheOutcome::EmptyCoverage
                 } else {
                     ResourceCacheOutcome::Realized
@@ -1266,6 +1296,7 @@ fn encode_resource_scene_to_target(
     extent: OffscreenExtent,
     canvas_extent: RasterCanvasExtent,
     raster_scale: RasterScale,
+    publication: &PaintPublication,
     scene: &[ResourceSceneItem],
     shaped_renderer: &shaped::ShapedRunRenderer,
 ) {
@@ -1308,6 +1339,7 @@ fn encode_resource_scene_to_target(
                 extent,
                 canvas_extent,
                 raster_scale,
+                publication,
                 item,
             ),
         }
@@ -1463,7 +1495,7 @@ fn encode_resource_image_item(
 
 #[allow(
     clippy::too_many_arguments,
-    reason = "mixed-scene shaped-run dispatch keeps exact geometry, scale-qualified cache identity, target format, optional stencil realization, and the sampled coverage pipeline explicit"
+    reason = "mixed-scene shaped-text dispatch keeps exact geometry, renderer quality realization, target format, optional stencil realization, and the sampled MSDF atlas pipeline explicit"
 )]
 fn encode_resource_shaped_run_item(
     device: &wgpu::Device,
@@ -1476,61 +1508,63 @@ fn encode_resource_shaped_run_item(
     extent: OffscreenExtent,
     canvas_extent: RasterCanvasExtent,
     raster_scale: RasterScale,
+    publication: &PaintPublication,
     item: &ShapedTextRunSceneItem,
 ) {
-    let raster = shaped_renderer.raster(&item.shaped_run.resource, raster_scale);
-    let vertex_bytes = shaped::vertex_bytes(
+    let resource = publication
+        .scene()
+        .shaped_text_resource(&item.shaped_run.resource)
+        .unwrap_or_else(|| unreachable!("shaped-text resource was preflighted"));
+    let batches = shaped_renderer.vertex_batches(
         &item.shaped_run,
-        raster,
+        resource,
         extent,
         canvas_extent,
         raster_scale,
     );
-    if vertex_bytes.is_empty() {
+    if batches.is_empty() {
         return;
     }
-    let vertex_count = u32::try_from(vertex_bytes.len() / 36).unwrap_or(u32::MAX);
-    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("runenui ordered mixed-scene shaped-run vertices"),
-        contents: &vertex_bytes,
-        usage: wgpu::BufferUsages::VERTEX,
-    });
-
-    if item.clips.is_empty() {
+    let stencil_view = if item.clips.is_empty() {
+        None
+    } else {
+        let Some(clip_uniforms) = prepare_clip_uniforms(&item.clips, raster_scale) else {
+            return;
+        };
+        let stencil_view = stencil_view
+            .unwrap_or_else(|| unreachable!("clipped shaped-text requires stencil target"));
+        let clip_pipelines = clip_pipelines
+            .unwrap_or_else(|| unreachable!("clipped shaped-text requires mask pipelines"));
+        clear_stencil_mask(encoder, stencil_view);
+        for uniform in &clip_uniforms {
+            apply_clip_mask(device, encoder, stencil_view, &clip_pipelines.mask, uniform);
+        }
+        Some(stencil_view)
+    };
+    let quality = shaped::ShapedRunRenderer::quality(
+        resource,
+        raster_scale,
+        item.shaped_run.local_to_surface,
+    );
+    for (page_index, vertex_bytes) in batches {
+        let vertex_count = u32::try_from(vertex_bytes.len() / 36).unwrap_or(u32::MAX);
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("runenui ordered mixed-scene shaped-text glyph vertices"),
+            contents: &vertex_bytes,
+            usage: wgpu::BufferUsages::VERTEX,
+        });
         shaped_renderer.draw(
             target_format,
             encoder,
             color_view,
-            None,
+            stencil_view,
             &item.shaped_run.resource,
-            raster_scale,
+            quality,
+            page_index,
             &vertex_buffer,
             vertex_count,
         );
-        return;
     }
-
-    let Some(clip_uniforms) = prepare_clip_uniforms(&item.clips, raster_scale) else {
-        return;
-    };
-    let stencil_view =
-        stencil_view.unwrap_or_else(|| unreachable!("clipped shaped-run requires stencil target"));
-    let clip_pipelines = clip_pipelines
-        .unwrap_or_else(|| unreachable!("clipped shaped-run requires mask pipelines"));
-    clear_stencil_mask(encoder, stencil_view);
-    for uniform in &clip_uniforms {
-        apply_clip_mask(device, encoder, stencil_view, &clip_pipelines.mask, uniform);
-    }
-    shaped_renderer.draw(
-        target_format,
-        encoder,
-        color_view,
-        Some(stencil_view),
-        &item.shaped_run.resource,
-        raster_scale,
-        &vertex_buffer,
-        vertex_count,
-    );
 }
 
 #[cfg(test)]
