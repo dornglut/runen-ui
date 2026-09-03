@@ -136,7 +136,7 @@ impl ShapedRunCacheKey {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct GlyphRaster {
     glyph_id: u32,
-    logical_origin: LogicalPoint,
+    normalized_origin: LogicalPoint,
     width: u32,
     height: u32,
     rgba8: Arc<[u8]>,
@@ -149,7 +149,7 @@ struct GlyphPlacement {
     y: u32,
     width: u32,
     height: u32,
-    logical_origin: LogicalPoint,
+    normalized_origin: LogicalPoint,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -426,6 +426,7 @@ impl ShapedRunRenderer {
                 canvas_extent,
                 raster_scale,
                 tier_scale,
+                resource.font_size(),
             ) else {
                 continue;
             };
@@ -646,10 +647,7 @@ fn rasterize_unique_glyphs(
         let mut shape = Shape::new();
         let mut pen = ShapePen::new(&mut shape, resource.font().faux_skew());
         outline
-            .draw(
-                DrawSettings::unhinted(Size::new(resource.font_size()), location),
-                &mut pen,
-            )
+            .draw(DrawSettings::unhinted(Size::new(1.0), location), &mut pen)
             .map_err(|_| ShapedRunResolveFailure::InvalidOutline {
                 glyph_id: glyph.id(),
             })?;
@@ -763,7 +761,7 @@ fn pack_atlas(
                 y,
                 width: glyph.width,
                 height: glyph.height,
-                logical_origin: glyph.logical_origin,
+                normalized_origin: glyph.normalized_origin,
             },
         );
     }
@@ -851,11 +849,11 @@ fn generate_msdf_raster(
             rgba8.push(255);
         }
     }
-    let logical_origin = LogicalPoint::new(origin_x as f32, origin_y as f32)
+    let normalized_origin = LogicalPoint::new(origin_x as f32, origin_y as f32)
         .map_err(|_| ShapedRunResolveFailure::InvalidOutline { glyph_id })?;
     Ok(GlyphRaster {
         glyph_id,
-        logical_origin,
+        normalized_origin,
         width: width_u32,
         height: height_u32,
         rgba8: rgba8.into(),
@@ -973,17 +971,23 @@ fn glyph_vertex_bytes(
     canvas_extent: super::super::RasterCanvasExtent,
     raster_scale: RasterScale,
     tier_scale: f64,
+    font_size: f32,
 ) -> Option<Vec<u8>> {
+    let font_size = f64::from(font_size);
     let origin = LogicalPoint::new(
-        shaped_run.origin.x() + glyph.x() + placement.logical_origin.x(),
-        shaped_run.origin.y() + glyph.y() + placement.logical_origin.y(),
+        shaped_run.origin.x()
+            + glyph.x()
+            + (f64::from(placement.normalized_origin.x()) * font_size) as f32,
+        shaped_run.origin.y()
+            + glyph.y()
+            + (f64::from(placement.normalized_origin.y()) * font_size) as f32,
     )
     .ok()?;
     let rect = LogicalRect::try_new(
         origin.x(),
         origin.y(),
-        f64::from(placement.width) as f32 / tier_scale as f32,
-        f64::from(placement.height) as f32 / tier_scale as f32,
+        (f64::from(placement.width) / tier_scale * font_size) as f32,
+        (f64::from(placement.height) / tier_scale * font_size) as f32,
     )
     .ok()?;
     let local_to_surface = LogicalTransform::translation(0.0, 0.0)
@@ -1025,8 +1029,8 @@ fn glyph_vertex_bytes(
             let field_x = (local_x - origin_x).clamp(0.0, width);
             let field_y = (local_y - origin_y).clamp(0.0, height);
             let uv = [
-                (f64::from(placement.x) + field_x) / page_width,
-                (f64::from(placement.y) + field_y) / page_height,
+                atlas_uv(field_x, width, placement.x, placement.width, page_width),
+                atlas_uv(field_y, height, placement.y, placement.height, page_height),
             ];
             (
                 super::super::physical_point_to_ndc(point, extent),
@@ -1049,6 +1053,18 @@ fn glyph_vertex_bytes(
         }
     }
     Some(bytes)
+}
+
+fn atlas_uv(
+    logical_coordinate: f64,
+    logical_extent: f64,
+    packed_origin: u32,
+    packed_extent: u32,
+    page_extent: f64,
+) -> f64 {
+    let normalized = (logical_coordinate / logical_extent).clamp(0.0, 1.0);
+    let last_texel = f64::from(packed_extent.saturating_sub(1));
+    (f64::from(packed_origin) + 0.5 + normalized * last_texel) / page_extent
 }
 
 fn push_shaped_vertex(
@@ -1133,7 +1149,7 @@ mod tests {
     use runenui_text::{FontSourcePolicy, TextConstraints, TextRequest, TextSystem};
 
     use super::{
-        GlyphRaster, QualityTier, max_linear_stretch, pack_atlas, quality_tier,
+        GlyphRaster, QualityTier, atlas_uv, max_linear_stretch, pack_atlas, quality_tier,
         rasterize_unique_glyphs,
     };
 
@@ -1212,13 +1228,47 @@ mod tests {
     }
 
     #[test]
+    fn asymmetric_glyph_field_has_stable_orientation_proof() {
+        let (_system, artifact) = shaped_resource("F");
+        let resource = artifact.lines()[0].runs()[0].shaped_resource();
+        let rasters = rasterize_unique_glyphs(resource, QualityTier::P16)
+            .unwrap_or_else(|_| unreachable!("Cantarell outline realization succeeds"));
+        let raster = rasters
+            .iter()
+            .find(|raster| raster.glyph_id == resource.glyphs()[0].id())
+            .unwrap_or_else(|| unreachable!("the F glyph has one outline field"));
+        let row_bytes = raster.width as usize * 4;
+        let mirrored = raster
+            .rgba8
+            .chunks_exact(row_bytes)
+            .flat_map(|row| row.chunks_exact(4).rev().flatten().copied())
+            .collect::<Vec<_>>();
+        assert_ne!(raster.rgba8.as_ref(), mirrored.as_slice());
+        assert_eq!(fnv1a(&raster.rgba8), 0xd60f_6797_64de_9f56);
+    }
+
+    #[test]
+    fn atlas_uv_span_covers_packed_field_texel_centers() {
+        let left = atlas_uv(0.0, 8.0, 7, 8, 64.0);
+        let right = atlas_uv(8.0, 8.0, 7, 8, 64.0);
+        let top = atlas_uv(0.0, 5.0, 11, 5, 64.0);
+        let bottom = atlas_uv(5.0, 5.0, 11, 5, 64.0);
+        assert!((left - 7.5 / 64.0).abs() < f64::EPSILON);
+        assert!((right - 14.5 / 64.0).abs() < f64::EPSILON);
+        assert!((top - 11.5 / 64.0).abs() < f64::EPSILON);
+        assert!((bottom - 15.5 / 64.0).abs() < f64::EPSILON);
+        assert!((right - left - 7.0 / 64.0).abs() < f64::EPSILON);
+        assert!((bottom - top - 4.0 / 64.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
     fn shelf_packing_is_deterministic_and_non_overlapping_across_pages() {
         let point = LogicalPoint::new(0.0, 0.0).unwrap_or_else(|_| unreachable!());
         let field: Arc<[u8]> = Arc::from(vec![255; 8 * 8 * 4]);
         let glyphs = (0..3)
             .map(|glyph_id| GlyphRaster {
                 glyph_id,
-                logical_origin: point,
+                normalized_origin: point,
                 width: 8,
                 height: 8,
                 rgba8: field.clone(),
@@ -1234,5 +1284,11 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn fnv1a(bytes: &[u8]) -> u64 {
+        bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+        })
     }
 }

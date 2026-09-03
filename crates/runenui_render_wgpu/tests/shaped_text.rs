@@ -16,6 +16,9 @@ use runenui_runtime::{
 };
 
 const FONT_BYTES: &[u8] = include_bytes!("fixtures/Cantarell-Regular.ttf");
+const COLR_FONT_BYTES: &[u8] = include_bytes!("fixtures/RunenUIFixtureColr-Regular.ttf");
+const SVG_FONT_BYTES: &[u8] = include_bytes!("fixtures/RunenUIFixtureSvg-Regular.ttf");
+const BITMAP_FONT_BYTES: &[u8] = include_bytes!("fixtures/RunenUIFixtureBitmap-Regular.ttf");
 
 fn surface_size() -> LogicalSize {
     LogicalSize::try_new(48.0, 32.0).unwrap_or_else(|_| unreachable!())
@@ -35,9 +38,13 @@ impl UiApp for TextApp {
 }
 
 fn register_font(runtime: &mut AppRuntime<TextApp>) {
+    register_font_bytes(runtime, FONT_BYTES);
+}
+
+fn register_font_bytes(runtime: &mut AppRuntime<TextApp>, font_bytes: &[u8]) {
     assert!(
         runtime
-            .register_text_font_bytes(FONT_BYTES.to_vec())
+            .register_text_font_bytes(font_bytes.to_vec())
             .is_ok()
     );
     let family = FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!());
@@ -236,7 +243,7 @@ fn production_msdf_pixel_evidence_is_stable_and_small_size_is_covered()
         fnv1a(pixels),
         alpha_pixels(&readback)
     );
-    assert_eq!(fnv1a(pixels), 0x17ab_5ce9_2e28_0330);
+    assert_eq!(fnv1a(pixels), 0x8a54_f9b6_5ca8_085f);
     Ok(())
 }
 
@@ -258,6 +265,52 @@ fn unsupported_glyph_diagnostic_contract_is_explicit() {
         )
         .contains("outline MSDF")
     );
+}
+
+#[test]
+fn production_intrinsic_glyph_formats_return_structured_diagnostics()
+-> Result<(), Box<dyn std::error::Error>> {
+    let Some(mut renderer) = renderer_or_skip()? else {
+        return Ok(());
+    };
+    for (font_bytes, expected) in [
+        (
+            COLR_FONT_BYTES,
+            runenui_render_wgpu::UnsupportedShapedGlyphKind::ColrV0,
+        ),
+        (
+            SVG_FONT_BYTES,
+            runenui_render_wgpu::UnsupportedShapedGlyphKind::Svg,
+        ),
+        (
+            BITMAP_FONT_BYTES,
+            runenui_render_wgpu::UnsupportedShapedGlyphKind::Bitmap,
+        ),
+    ] {
+        let mut runtime = AppRuntime::<TextApp>::mount(());
+        register_font_bytes(&mut runtime, font_bytes);
+        let publication = publish(&mut runtime, RasterScale::ONE);
+        let provider = ExternalOnlyProvider::default();
+        let result = renderer.render_offscreen_publication(&publication, &provider);
+        match result {
+            Err(runenui_render_wgpu::PublicationRenderError::UnsupportedShapedGlyph {
+                item_index,
+                glyph_id,
+                kind,
+            }) => {
+                assert_eq!(item_index, 0);
+                assert_eq!(
+                    glyph_id, 36,
+                    "fixture A must be classified on the real glyph"
+                );
+                assert_eq!(kind, expected);
+            }
+            Ok(_) => return Err("intrinsic glyph format silently reached monochrome MSDF".into()),
+            Err(error) => return Err(format!("unexpected intrinsic glyph result: {error}").into()),
+        }
+        assert_eq!(provider.loads.get(), 0);
+    }
+    Ok(())
 }
 
 fn block_on<F: Future>(future: F) -> F::Output {
