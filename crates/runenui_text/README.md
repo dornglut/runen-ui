@@ -17,7 +17,7 @@ Construction is explicit:
 
 Bundled font registration advances a cache-visible `FontSourceRevision`. Generic families are configured explicitly through ordered named-family mappings; mapping names are resolved to canonical family identity, aliases are deduplicated without changing order, and the revision advances only when the effective mapping changes. Bundled registration never silently claims a generic-family role.
 
-This makes generic typography deterministic in `BundledOnly` mode once its intended bundled families are registered and mapped. Deterministic tests must use controlled redistributable font data and must not rely on the host's installed fonts.
+This makes generic typography deterministic in `BundledOnly` mode once its intended bundled families are registered and mapped. Deterministic tests use controlled redistributable font data and do not rely on the host's installed fonts.
 
 ## Logical layout reuse
 
@@ -29,12 +29,14 @@ This makes generic typography deterministic in `BundledOnly` mode once its inten
 - inline-constraint or alignment-only changes re-line-break/re-align retained Parley layout state without rebuilding shaping;
 - changes to text, metric typography/spans, language/wrap policy, or font-source identity/revision rebuild shaping.
 
-The returned immutable `TextArtifact` remains the single source for paragraph measurement and exact shaped-run/resource facts. Paint-only foreground state is not part of the text request or shaped identity.
+The returned immutable `TextArtifact` is the single source for paragraph measurement and exact line/run/cluster/glyph/font shaped-resource facts. Paint-only foreground state is not part of the text request or shaped identity.
 
-## Current M8B implementation state
+## Accepted M8B integration
 
-The package now establishes the ownership boundary, explicit font-source policy/revision and deterministic generic-family mapping, renderer/runtime-neutral text constraints, Parley-backed logical shaping and line breaking, immutable logical artifacts, caller-owned reusable layout state, cache/reflow diagnostics, and scale-independent shaped-resource lifetime.
+Runtime owns the live `TextSystem` orchestration and topology-aligned reusable `TextLayoutState`. Generic runtime `LayoutConstraints` are lowered into the smaller `TextConstraints` request seam, and the resulting immutable artifact supplies exact text measurement. The same cached logical artifact supplies shaped run origins and immutable `ResourceRef -> ShapedTextResource` bindings for paint; publication retains explicit shaped-resource leases so renderer retry remains valid after runtime destruction or cache/device loss.
 
-Runtime measurement/publication cutover, the bounded SDF/MSDF generator evaluation, renderer SDF/MSDF atlas/shader realization, unsupported intrinsic-color glyph diagnostics, and the remaining M8B conformance corpus are still active work. Do not infer M8B acceptance from this package state.
+`runenui_render_wgpu` consumes those exact already-shaped font/glyph bindings and owns only disposable per-glyph SDF/MSDF generation, quality classes, atlas pages, GPU textures, reconstruction, and cache lifetime. It does not shape, line-break, discover fonts, or alter logical identity. Supported outline glyphs have no hidden alpha-raster fallback; unsupported intrinsic COLR/SVG/bitmap breadth diagnoses explicitly.
 
-See ADR 0009 and `docs/conformance/m8-conformance-matrix.md` for the target contract and permanent proof obligations.
+M8C is the next owner for production general layout and exact available-space feedback into these same text requests. M8D owns integrated responsive/text-heavy closure. Production editing, selection, and clipboard behavior remain M10 work; intrinsic color-glyph rendering remains separate future breadth rather than changing the accepted outline-text authority.
+
+See ADR 0009 and `docs/conformance/m8-conformance-matrix.md` for the durable architecture and permanent proof obligations.
