@@ -303,7 +303,14 @@ pub mod __runtime {
 #[doc(hidden)]
 pub use identity::is_valid_identifier_literal;
 pub use identity::{ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey};
-pub use layout::{Axis, LayoutStyle};
+pub use layout::{
+    Axis, ContentAlignment, CrossAxisAlignment, FlexContainerStyle, FlexDirection, FlexItemStyle,
+    FlexWrap, GridAutoFlow, GridAxisPlacement, GridContainerStyle, GridItemPlacement, GridLine,
+    GridLineError, GridSpan, GridSpanError, GridTrack, GridTrackBreadth, LayoutBound,
+    LayoutContainer, LayoutDimension, LayoutFactor, LayoutFactorError, LayoutInsets, LayoutPosition,
+    LayoutStyle, MainAxisAlignment, OverflowPolicy, OverflowStyle, OverlayAlignment,
+    OverlayContainerStyle,
+};
 pub use pointer::{
     InputDeviceId, KeyModifiers, LogicalDelta, LogicalDeltaError, LogicalPoint, LogicalPointError,
     LogicalScrollCommand, PointerBoundaryEvent, PointerBoundaryKind, PointerButton, PointerButtons,
