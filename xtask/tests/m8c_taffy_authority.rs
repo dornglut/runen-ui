@@ -9,8 +9,7 @@ use std::{
 const RUNTIME_MANIFEST: &str = "crates/runenui_runtime/Cargo.toml";
 const RUNTIME_SOURCE: &str = "crates/runenui_runtime/src";
 const LOCKFILE: &str = "Cargo.lock";
-const EXACT_TAFFY_DECLARATION: &str =
-    "taffy = { version = \"=0.14.0\", default-features = false, features = [\"std\", \"flexbox\", \"grid\", \"block_layout\", \"content_size\"] }";
+const EXACT_TAFFY_DECLARATION: &str = "taffy = { version = \"=0.14.0\", default-features = false, features = [\"std\", \"flexbox\", \"grid\", \"block_layout\", \"content_size\"] }";
 const EXACT_TAFFY_LOCK_BODY: &str = r#"name = "taffy"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -63,7 +62,8 @@ fn taffy_adoption_is_absent_or_exactly_bounded() -> Result<(), String> {
             }
             if !runtime_manifest.contains(EXACT_TAFFY_DECLARATION) {
                 return Err(
-                    "exact reviewed Taffy declaration is not present in runtime manifest".to_owned(),
+                    "exact reviewed Taffy declaration is not present in runtime manifest"
+                        .to_owned(),
                 );
             }
             audit_lockfile_taffy(&lockfile)
@@ -180,7 +180,10 @@ fn is_taffy_dependency_line(line: &str) -> bool {
         return false;
     }
 
-    let compact: String = line.chars().filter(|character| !character.is_whitespace()).collect();
+    let compact: String = line
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect();
     compact.starts_with("taffy=") || compact.contains("package=\"taffy\"")
 }
 
