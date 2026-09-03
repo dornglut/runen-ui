@@ -1138,6 +1138,9 @@ mod tests {
     };
 
     const FONT_BYTES: &[u8] = include_bytes!("../../../tests/fixtures/Cantarell-Regular.ttf");
+    const DEVANAGARI_FONT_BYTES: &[u8] = include_bytes!(
+        "../../../../runenui_text/tests/fixtures/RunenUIFixtureDevanagari-Regular.ttf"
+    );
 
     #[test]
     fn quality_uses_linear_stretch_and_ignores_translation() {
@@ -1159,9 +1162,17 @@ mod tests {
     }
 
     fn shaped_resource(text: &str) -> (TextSystem, runenui_text::TextArtifact) {
+        shaped_resource_with_font(text, FONT_BYTES, "Cantarell")
+    }
+
+    fn shaped_resource_with_font(
+        text: &str,
+        font_bytes: &[u8],
+        family_name: &str,
+    ) -> (TextSystem, runenui_text::TextArtifact) {
         let mut system = TextSystem::new(FontSourcePolicy::BundledOnly);
-        assert!(system.register_font_bytes(FONT_BYTES.to_vec()).is_ok());
-        let family = FontFamilyName::new("Cantarell").unwrap_or_else(|_| unreachable!());
+        assert!(system.register_font_bytes(font_bytes.to_vec()).is_ok());
+        let family = FontFamilyName::new(family_name).unwrap_or_else(|_| unreachable!());
         assert!(
             system
                 .set_generic_family_mapping(GenericFontFamily::SansSerif, &[family])
@@ -1188,6 +1199,16 @@ mod tests {
         let rasters = rasterize_unique_glyphs(whitespace_resource, QualityTier::P16)
             .unwrap_or_else(|_| unreachable!("whitespace is not an unsupported outline"));
         assert_eq!(rasters.len(), 1);
+    }
+
+    #[test]
+    fn devanagari_glyphs_produce_cpu_fields() {
+        let (_system, artifact) =
+            shaped_resource_with_font("क्षि", DEVANAGARI_FONT_BYTES, "RunenUI Fixture Devanagari");
+        let resource = artifact.lines()[0].runs()[0].shaped_resource();
+        let rasters = rasterize_unique_glyphs(resource, QualityTier::P16)
+            .unwrap_or_else(|_| unreachable!("Devanagari outline realization succeeds"));
+        assert!(!rasters.is_empty());
     }
 
     #[test]
