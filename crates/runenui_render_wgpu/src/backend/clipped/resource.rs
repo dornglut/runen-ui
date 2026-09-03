@@ -8,7 +8,7 @@ use crate::{
     PublicationUpdateMode, PublicationUpdatePlan, ResourceProvider, ResourceResolveError,
     WgpuHasDisplayHandle,
     lineage::PublicationLineage,
-    observation::{ResourceCacheOutcome, ResourceObservation},
+    observation::{ResourceCacheOutcome, ResourceObservation, ResourceRealizationKind},
     scene_subset::{SceneValidationError, validate_literal_rect_item},
 };
 
@@ -24,7 +24,18 @@ use super::{
     prepare_clip_uniforms, shaped, stroke_mask,
 };
 
-/// Structured failure while realizing one provider-backed paint publication.
+/// Explicitly unsupported glyph source encountered during renderer-owned outline realization.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UnsupportedShapedGlyphKind {
+    ColrV0,
+    ColrV1,
+    Bitmap,
+    Svg,
+    NoOutline,
+    FauxBold,
+}
+
+/// Structured failure while realizing one retained paint publication.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PublicationRenderError {
     /// Existing renderer/device/target/readback failure.
@@ -50,6 +61,18 @@ pub enum PublicationRenderError {
         height: u32,
         max_texture_dimension_2d: u32,
     },
+    /// The publication did not retain the exact immutable logical shaped resource.
+    ShapedTextResourceUnavailable { item_index: usize },
+    /// The exact shaped glyph uses a source this outline-only realization does not support.
+    UnsupportedShapedGlyph {
+        item_index: usize,
+        glyph_id: u32,
+        kind: UnsupportedShapedGlyphKind,
+    },
+    /// The retained font bytes or face index cannot be read as a font.
+    ShapedTextFontInvalid { item_index: usize },
+    /// The exact retained outline could not be converted into a valid MSDF shape.
+    ShapedTextOutlineInvalid { item_index: usize, glyph_id: u32 },
     /// This renderer was not constructed with a native surface target.
     SurfaceUnavailable,
     /// A retained native surface exists but has not been configured with a non-zero extent.
@@ -100,6 +123,29 @@ impl core::fmt::Display for PublicationRenderError {
                 formatter,
                 "renderer shaped-run resource for scene item {item_index} has coverage extent {width}x{height}, exceeding device 2D texture limit {max_texture_dimension_2d}"
             ),
+            Self::ShapedTextResourceUnavailable { item_index } => write!(
+                formatter,
+                "renderer scene item {item_index} has no retained immutable shaped-text resource"
+            ),
+            Self::UnsupportedShapedGlyph {
+                item_index,
+                glyph_id,
+                kind,
+            } => write!(
+                formatter,
+                "renderer scene item {item_index} glyph {glyph_id} is unsupported for outline MSDF realization: {kind:?}"
+            ),
+            Self::ShapedTextFontInvalid { item_index } => write!(
+                formatter,
+                "renderer scene item {item_index} retained font bytes or face index are invalid"
+            ),
+            Self::ShapedTextOutlineInvalid {
+                item_index,
+                glyph_id,
+            } => write!(
+                formatter,
+                "renderer scene item {item_index} glyph {glyph_id} has an invalid scalable outline"
+            ),
             Self::SurfaceUnavailable => {
                 formatter.write_str("renderer has no retained native surface target")
             }
@@ -135,6 +181,10 @@ impl core::error::Error for PublicationRenderError {
             Self::ImageExtentExceedsDeviceLimit { .. }
             | Self::ImageRowBytesOverflow { .. }
             | Self::ShapedRunExtentExceedsDeviceLimit { .. }
+            | Self::ShapedTextResourceUnavailable { .. }
+            | Self::UnsupportedShapedGlyph { .. }
+            | Self::ShapedTextFontInvalid { .. }
+            | Self::ShapedTextOutlineInvalid { .. }
             | Self::SurfaceUnavailable
             | Self::SurfaceNotConfigured
             | Self::SurfaceTargetGenerationExhausted
@@ -160,7 +210,11 @@ impl PublicationRenderError {
             Self::Resource { item_index, .. }
             | Self::ImageExtentExceedsDeviceLimit { item_index, .. }
             | Self::ImageRowBytesOverflow { item_index, .. }
-            | Self::ShapedRunExtentExceedsDeviceLimit { item_index, .. } => Some(*item_index),
+            | Self::ShapedRunExtentExceedsDeviceLimit { item_index, .. }
+            | Self::ShapedTextResourceUnavailable { item_index }
+            | Self::UnsupportedShapedGlyph { item_index, .. }
+            | Self::ShapedTextFontInvalid { item_index }
+            | Self::ShapedTextOutlineInvalid { item_index, .. } => Some(*item_index),
             Self::Backend(_)
             | Self::SurfaceUnavailable
             | Self::SurfaceNotConfigured
@@ -179,8 +233,9 @@ impl PublicationRenderError {
 ///
 /// The already-proven literal renderer remains private implementation machinery
 /// and continues to own the single wgpu instance/device/queue/target/lineage.
-/// Image upload, bind groups, and sampled textures are disposable child caches
-/// keyed only by the complete opaque `ResourceRef`.
+/// External image upload, bind groups, and sampled textures are disposable child
+/// caches keyed only by the complete opaque `ResourceRef`; shaped text is resolved
+/// directly from the publication's retained logical resource.
 #[derive(Debug)]
 pub struct ResourceRenderer {
     literal: Renderer,
@@ -347,7 +402,7 @@ impl ResourceRenderer {
         discarded
     }
 
-    /// Renders one complete provider-backed publication and reads actual GPU bytes.
+    /// Renders one complete publication and reads actual GPU bytes.
     ///
     /// Publications without provider-backed resources delegate to the already-proven
     /// literal renderer. Resource-bearing publications preserve exact scene order across
@@ -446,23 +501,27 @@ impl ResourceRenderer {
         }
 
         if update_plan.mode() != PublicationUpdateMode::AlreadyCurrent {
-            let (resolved_images, resolved_shaped_runs) =
-                match self.preflight_resources(&scene, publication.raster_scale(), provider) {
-                    Ok(resolved) => resolved,
-                    Err(error) => {
-                        if let Some(observation) = self.literal.base.last_observation.as_mut() {
-                            observation.set_resource_observations(resource_observations_for_scene(
-                                &scene,
-                                publication.raster_scale(),
-                                &self.images,
-                                &self.shaped_runs,
-                                None,
-                                error.item_index(),
-                            ));
-                        }
-                        return Err(error);
+            let (resolved_images, resolved_shaped_runs) = match self.preflight_resources(
+                publication,
+                &scene,
+                publication.raster_scale(),
+                provider,
+            ) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    if let Some(observation) = self.literal.base.last_observation.as_mut() {
+                        observation.set_resource_observations(resource_observations_for_scene(
+                            &scene,
+                            publication.raster_scale(),
+                            &self.images,
+                            &self.shaped_runs,
+                            None,
+                            error.item_index(),
+                        ));
                     }
-                };
+                    return Err(error);
+                }
+            };
             let resource_observations = resource_observations_for_scene(
                 &scene,
                 publication.raster_scale(),
@@ -693,23 +752,27 @@ impl ResourceRenderer {
         }
 
         if update_mode != PublicationUpdateMode::AlreadyCurrent {
-            let (resolved_images, resolved_shaped_runs) =
-                match self.preflight_resources(&scene, publication.raster_scale(), provider) {
-                    Ok(resolved) => resolved,
-                    Err(error) => {
-                        if let Some(observation) = self.literal.base.last_observation.as_mut() {
-                            observation.set_resource_observations(resource_observations_for_scene(
-                                &scene,
-                                publication.raster_scale(),
-                                &self.images,
-                                &self.shaped_runs,
-                                None,
-                                error.item_index(),
-                            ));
-                        }
-                        return Err(error);
+            let (resolved_images, resolved_shaped_runs) = match self.preflight_resources(
+                publication,
+                &scene,
+                publication.raster_scale(),
+                provider,
+            ) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    if let Some(observation) = self.literal.base.last_observation.as_mut() {
+                        observation.set_resource_observations(resource_observations_for_scene(
+                            &scene,
+                            publication.raster_scale(),
+                            &self.images,
+                            &self.shaped_runs,
+                            None,
+                            error.item_index(),
+                        ));
                     }
-                };
+                    return Err(error);
+                }
+            };
             let resource_observations = resource_observations_for_scene(
                 &scene,
                 publication.raster_scale(),
@@ -840,13 +903,14 @@ impl ResourceRenderer {
 
     fn preflight_resources<P: ResourceProvider + ?Sized>(
         &self,
+        publication: &PaintPublication,
         scene: &[ResourceSceneItem],
         raster_scale: RasterScale,
         provider: &P,
     ) -> Result<(Vec<image::ResolvedImage>, Vec<shaped::ResolvedShapedRun>), PublicationRenderError>
     {
         let images = self.preflight_images(scene, provider)?;
-        let shaped_runs = self.preflight_shaped_runs(scene, raster_scale, provider)?;
+        let shaped_runs = self.preflight_shaped_runs(publication, scene, raster_scale)?;
         Ok((images, shaped_runs))
     }
 
@@ -902,11 +966,11 @@ impl ResourceRenderer {
         Ok(resolved)
     }
 
-    fn preflight_shaped_runs<P: ResourceProvider + ?Sized>(
+    fn preflight_shaped_runs(
         &self,
+        publication: &PaintPublication,
         scene: &[ResourceSceneItem],
         raster_scale: RasterScale,
-        provider: &P,
     ) -> Result<Vec<shaped::ResolvedShapedRun>, PublicationRenderError> {
         let max_texture_dimension_2d = self
             .literal
@@ -930,17 +994,54 @@ impl ResourceRenderer {
             {
                 continue;
             }
+            let Some(resource) = publication
+                .scene()
+                .shaped_text_resource(&item.shaped_run.resource)
+            else {
+                return Err(PublicationRenderError::ShapedTextResourceUnavailable {
+                    item_index: item.shaped_run.item_index,
+                });
+            };
             match shaped::resolve_shaped_run(
-                provider,
                 &item.shaped_run,
+                resource,
                 raster_scale,
                 max_texture_dimension_2d,
             ) {
                 Ok(shaped_run) => resolved.push(shaped_run),
-                Err(shaped::ShapedRunResolveFailure::Resource(error)) => {
-                    return Err(PublicationRenderError::Resource {
+                Err(shaped::ShapedRunResolveFailure::UnsupportedGlyph { glyph_id, kind }) => {
+                    return Err(PublicationRenderError::UnsupportedShapedGlyph {
                         item_index: item.shaped_run.item_index,
-                        error,
+                        glyph_id,
+                        kind: match kind {
+                            shaped::UnsupportedGlyphKind::ColrV0 => {
+                                UnsupportedShapedGlyphKind::ColrV0
+                            }
+                            shaped::UnsupportedGlyphKind::ColrV1 => {
+                                UnsupportedShapedGlyphKind::ColrV1
+                            }
+                            shaped::UnsupportedGlyphKind::Bitmap => {
+                                UnsupportedShapedGlyphKind::Bitmap
+                            }
+                            shaped::UnsupportedGlyphKind::Svg => UnsupportedShapedGlyphKind::Svg,
+                            shaped::UnsupportedGlyphKind::NoOutline => {
+                                UnsupportedShapedGlyphKind::NoOutline
+                            }
+                            shaped::UnsupportedGlyphKind::FauxBold => {
+                                UnsupportedShapedGlyphKind::FauxBold
+                            }
+                        },
+                    });
+                }
+                Err(shaped::ShapedRunResolveFailure::InvalidFont) => {
+                    return Err(PublicationRenderError::ShapedTextFontInvalid {
+                        item_index: item.shaped_run.item_index,
+                    });
+                }
+                Err(shaped::ShapedRunResolveFailure::InvalidOutline { glyph_id }) => {
+                    return Err(PublicationRenderError::ShapedTextOutlineInvalid {
+                        item_index: item.shaped_run.item_index,
+                        glyph_id,
                     });
                 }
                 Err(shaped::ShapedRunResolveFailure::ExtentExceedsDeviceLimit {
@@ -1114,7 +1215,7 @@ fn resource_observations_for_scene(
             ResourceSceneItem::Image(item) => Some(ResourceObservation::new(
                 item.image.item_index,
                 item.image.resource.clone(),
-                crate::ResourceRequest::Image,
+                ResourceRealizationKind::Image,
                 if failed_item_index == Some(item.image.item_index) {
                     ResourceCacheOutcome::Failed
                 } else if images.contains(&item.image.resource) {
@@ -1140,7 +1241,7 @@ fn resource_observations_for_scene(
                 Some(ResourceObservation::new(
                     item.shaped_run.item_index,
                     item.shaped_run.resource.clone(),
-                    crate::ResourceRequest::ShapedTextRun { raster_scale },
+                    ResourceRealizationKind::ShapedText,
                     cache_outcome,
                 ))
             }

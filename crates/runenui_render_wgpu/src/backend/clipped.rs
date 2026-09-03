@@ -3,7 +3,8 @@ mod resource;
 mod shaped;
 mod stroke_mask;
 
-pub use resource::{PublicationRenderError, ResourceRenderer};
+#[allow(unused_imports)]
+pub use resource::{PublicationRenderError, ResourceRenderer, UnsupportedShapedGlyphKind};
 
 use std::collections::HashMap;
 

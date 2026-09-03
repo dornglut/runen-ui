@@ -278,6 +278,10 @@ impl RuntimeConfig {
     }
 
     #[cfg(not(feature = "internal-test-seams"))]
+    #[allow(
+        clippy::unused_self,
+        reason = "the production cfg keeps the same accessor signature as the test-seam cfg"
+    )]
     pub(crate) const fn mounted_public_slot_limit(self) -> u64 {
         u32::MAX as u64 + 1
     }

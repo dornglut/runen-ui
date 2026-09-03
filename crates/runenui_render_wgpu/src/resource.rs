@@ -1,8 +1,7 @@
 use core::{error::Error, fmt};
 use std::sync::Arc;
 
-use runenui_core::{LogicalPoint, ResourceKind, ResourceRef};
-use runenui_runtime::RasterScale;
+use runenui_core::{ResourceKind, ResourceRef};
 
 /// Validation failure for renderer-edge immutable raster payloads.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,86 +84,11 @@ impl ImagePayload {
     }
 }
 
-/// Scale-specific immutable alpha coverage for one already-shaped text resource.
-///
-/// `logical_origin` is the resource-local logical coordinate of the coverage
-/// raster's top-left boundary. One raster pixel spans `1 / raster_scale` logical
-/// units on each axis. Foreground color is not part of this payload; it remains
-/// ordinary scene-owned paint state.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ShapedRunRaster {
-    logical_origin: LogicalPoint,
-    width: u32,
-    height: u32,
-    raster_scale: RasterScale,
-    alpha8: Arc<[u8]>,
-}
-
-impl ShapedRunRaster {
-    /// Validates one alpha8 coverage raster.
-    ///
-    /// Zero width or height is allowed and represents an empty coverage result.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`PayloadValidationError`] when the declared extent cannot be
-    /// represented or the alpha byte length is not exactly `width * height`.
-    pub fn new(
-        logical_origin: LogicalPoint,
-        width: u32,
-        height: u32,
-        raster_scale: RasterScale,
-        alpha8: impl Into<Arc<[u8]>>,
-    ) -> Result<Self, PayloadValidationError> {
-        let alpha8 = alpha8.into();
-        validate_byte_length(width, height, 1, alpha8.len())?;
-        Ok(Self {
-            logical_origin,
-            width,
-            height,
-            raster_scale,
-            alpha8,
-        })
-    }
-
-    /// Returns the resource-local logical top-left coverage boundary.
-    #[must_use]
-    pub const fn logical_origin(&self) -> LogicalPoint {
-        self.logical_origin
-    }
-
-    /// Returns the coverage raster width in pixels.
-    #[must_use]
-    pub const fn width(&self) -> u32 {
-        self.width
-    }
-
-    /// Returns the coverage raster height in pixels.
-    #[must_use]
-    pub const fn height(&self) -> u32 {
-        self.height
-    }
-
-    /// Returns the exact scale at which this coverage was realized.
-    #[must_use]
-    pub const fn raster_scale(&self) -> RasterScale {
-        self.raster_scale
-    }
-
-    /// Returns tightly packed row-major alpha8 coverage bytes.
-    #[must_use]
-    pub fn alpha8(&self) -> &[u8] {
-        &self.alpha8
-    }
-}
-
 /// Renderer request made to the caller-owned logical resource provider.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResourceRequest {
     /// Resolve an immutable normalized image source.
     Image,
-    /// Resolve one already-shaped run as scale-specific alpha coverage.
-    ShapedTextRun { raster_scale: RasterScale },
 }
 
 impl ResourceRequest {
@@ -173,7 +97,6 @@ impl ResourceRequest {
     pub const fn resource_kind(self) -> ResourceKind {
         match self {
             Self::Image => ResourceKind::Image,
-            Self::ShapedTextRun { .. } => ResourceKind::ShapedTextRun,
         }
     }
 }
@@ -182,7 +105,6 @@ impl ResourceRequest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ResourcePayload {
     Image(ImagePayload),
-    ShapedTextRun(ShapedRunRaster),
 }
 
 impl ResourcePayload {
@@ -191,7 +113,6 @@ impl ResourcePayload {
     pub const fn resource_kind(&self) -> ResourceKind {
         match self {
             Self::Image(_) => ResourceKind::Image,
-            Self::ShapedTextRun(_) => ResourceKind::ShapedTextRun,
         }
     }
 }
@@ -256,12 +177,12 @@ impl fmt::Display for ResourceProviderError {
 
 impl Error for ResourceProviderError {}
 
-/// Caller-owned logical resource lookup.
+/// Caller-owned external-resource lookup.
 ///
 /// The complete opaque [`ResourceRef`] is the lookup key. Implementations must
 /// not derive a provider/domain/cache key from its debug representation or kind.
 pub trait ResourceProvider {
-    /// Resolves one logical resource for the exact renderer request.
+    /// Resolves one external resource for the exact renderer request.
     ///
     /// # Errors
     ///
@@ -285,10 +206,6 @@ pub enum ResourceResolveError {
         expected: ResourceKind,
         actual: ResourceKind,
     },
-    ShapedRunScaleMismatch {
-        expected: RasterScale,
-        actual: RasterScale,
-    },
     Provider(ResourceProviderError),
 }
 
@@ -303,12 +220,6 @@ impl fmt::Display for ResourceResolveError {
                 formatter,
                 "resource payload kind mismatch: expected {expected:?}, got {actual:?}"
             ),
-            Self::ShapedRunScaleMismatch { expected, actual } => write!(
-                formatter,
-                "shaped-run raster scale mismatch: expected {}, got {}",
-                expected.get(),
-                actual.get()
-            ),
             Self::Provider(error) => error.fmt(formatter),
         }
     }
@@ -318,20 +229,17 @@ impl Error for ResourceResolveError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Provider(error) => Some(error),
-            Self::ReferenceKindMismatch { .. }
-            | Self::PayloadKindMismatch { .. }
-            | Self::ShapedRunScaleMismatch { .. } => None,
+            Self::ReferenceKindMismatch { .. } | Self::PayloadKindMismatch { .. } => None,
         }
     }
 }
 
-/// Resolves one resource while enforcing complete-ref, kind, and requested-scale consistency.
+/// Resolves one external resource while enforcing complete-ref and kind consistency.
 ///
 /// # Errors
 ///
 /// Returns deterministic contract failures for reference/request mismatch,
-/// provider failure, provider payload kind mismatch, or shaped coverage realized
-/// at a scale other than the exact requested [`RasterScale`].
+/// provider failure, or provider payload kind mismatch.
 pub fn resolve_resource<P: ResourceProvider + ?Sized>(
     provider: &P,
     resource: &ResourceRef,
@@ -354,20 +262,6 @@ pub fn resolve_resource<P: ResourceProvider + ?Sized>(
         return Err(ResourceResolveError::PayloadKindMismatch {
             expected,
             actual: actual_payload,
-        });
-    }
-
-    if let (
-        ResourceRequest::ShapedTextRun {
-            raster_scale: expected_scale,
-        },
-        ResourcePayload::ShapedTextRun(raster),
-    ) = (request, &payload)
-        && raster.raster_scale() != expected_scale
-    {
-        return Err(ResourceResolveError::ShapedRunScaleMismatch {
-            expected: expected_scale,
-            actual: raster.raster_scale(),
         });
     }
 
@@ -397,14 +291,12 @@ fn validate_byte_length(
 mod tests {
     use std::collections::HashMap;
 
-    use runenui_core::{LogicalPoint, ResourceKind, ResourceRef};
-    use runenui_runtime::RasterScale;
-
     use super::{
         ImagePayload, PayloadValidationError, ResourcePayload, ResourceProvider,
         ResourceProviderError, ResourceProviderErrorKind, ResourceRequest, ResourceResolveError,
-        ShapedRunRaster, resolve_resource,
+        resolve_resource,
     };
+    use runenui_core::{ResourceKind, ResourceRef};
 
     #[derive(Default)]
     struct MapProvider {
@@ -449,25 +341,6 @@ mod tests {
     }
 
     #[test]
-    fn shaped_run_raster_preserves_requested_scale_and_allows_empty_coverage() {
-        let origin = LogicalPoint::new(-1.0, 2.0)
-            .unwrap_or_else(|_| unreachable!("fixture origin is finite"));
-        let scale =
-            RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
-        let raster = ShapedRunRaster::new(origin, 2, 1, scale, vec![0, 255])
-            .unwrap_or_else(|_| unreachable!("fixture shaped raster is valid"));
-        assert_eq!(raster.logical_origin(), origin);
-        assert_eq!(raster.width(), 2);
-        assert_eq!(raster.height(), 1);
-        assert_eq!(raster.raster_scale(), scale);
-        assert_eq!(raster.alpha8(), &[0, 255]);
-
-        let empty = ShapedRunRaster::new(origin, 0, 0, scale, Vec::<u8>::new())
-            .unwrap_or_else(|_| unreachable!("empty shaped coverage is valid"));
-        assert!(empty.alpha8().is_empty());
-    }
-
-    #[test]
     fn complete_resource_ref_is_the_provider_lookup_identity() {
         let stored = ResourceRef::new(ResourceKind::Image);
         let same = stored.clone();
@@ -491,8 +364,8 @@ mod tests {
 
     #[test]
     fn resolver_rejects_reference_and_payload_kind_mismatch() {
-        let shaped = ResourceRef::new(ResourceKind::ShapedTextRun);
         let provider = MapProvider::default();
+        let shaped = ResourceRef::new(ResourceKind::ShapedTextRun);
         assert!(matches!(
             resolve_resource(&provider, &shaped, ResourceRequest::Image),
             Err(ResourceResolveError::ReferenceKindMismatch {
@@ -502,53 +375,13 @@ mod tests {
         ));
 
         let image = ResourceRef::new(ResourceKind::Image);
-        let origin = LogicalPoint::new(0.0, 0.0)
-            .unwrap_or_else(|_| unreachable!("fixture origin is finite"));
-        let scale = RasterScale::ONE;
-        let shaped_payload = ShapedRunRaster::new(origin, 0, 0, scale, Vec::<u8>::new())
-            .unwrap_or_else(|_| unreachable!("empty shaped payload is valid"));
-        let mut wrong_provider = MapProvider::default();
-        wrong_provider.payloads.insert(
-            image.clone(),
-            ResourcePayload::ShapedTextRun(shaped_payload),
-        );
-
-        assert!(matches!(
-            resolve_resource(&wrong_provider, &image, ResourceRequest::Image),
-            Err(ResourceResolveError::PayloadKindMismatch {
-                expected: ResourceKind::Image,
-                actual: ResourceKind::ShapedTextRun,
-            })
-        ));
-    }
-
-    #[test]
-    fn resolver_rejects_shaped_coverage_for_another_scale() {
-        let shaped = ResourceRef::new(ResourceKind::ShapedTextRun);
-        let origin = LogicalPoint::new(0.0, 0.0)
-            .unwrap_or_else(|_| unreachable!("fixture origin is finite"));
-        let requested = RasterScale::ONE;
-        let actual =
-            RasterScale::new(2.0).unwrap_or_else(|_| unreachable!("fixture raster scale is valid"));
-        let payload = ShapedRunRaster::new(origin, 1, 1, actual, vec![255])
-            .unwrap_or_else(|_| unreachable!("fixture shaped payload is valid"));
         let mut provider = MapProvider::default();
         provider
             .payloads
-            .insert(shaped.clone(), ResourcePayload::ShapedTextRun(payload));
-
-        assert_eq!(
-            resolve_resource(
-                &provider,
-                &shaped,
-                ResourceRequest::ShapedTextRun {
-                    raster_scale: requested,
-                },
-            ),
-            Err(ResourceResolveError::ShapedRunScaleMismatch {
-                expected: requested,
-                actual,
-            })
-        );
+            .insert(image.clone(), ResourcePayload::Image(image_payload()));
+        assert!(matches!(
+            resolve_resource(&provider, &image, ResourceRequest::Image),
+            Ok(ResourcePayload::Image(_))
+        ));
     }
 }

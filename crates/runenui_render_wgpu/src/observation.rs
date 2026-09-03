@@ -3,10 +3,8 @@ use std::sync::Arc;
 use runenui_core::{LogicalSize, ResourceKind, ResourceRef, SurfaceId};
 use runenui_runtime::{PaintDamage, PaintPublication, PaintRevision, RasterScale};
 
-use crate::{
-    PublicationUpdateMode, ResourceRequest,
-    backend::{OffscreenExtent, RendererDiagnostics},
-};
+use crate::PublicationUpdateMode;
+use crate::backend::{OffscreenExtent, RendererDiagnostics};
 
 /// Renderer-owned category of realization work for one resource-backed scene item.
 ///
@@ -20,15 +18,6 @@ pub enum ResourceRealizationKind {
     Image,
     /// Renderer realization of one immutable logical shaped-text resource.
     ShapedText,
-}
-
-impl ResourceRealizationKind {
-    const fn from_request(request: ResourceRequest) -> Self {
-        match request {
-            ResourceRequest::Image => Self::Image,
-            ResourceRequest::ShapedTextRun { .. } => Self::ShapedText,
-        }
-    }
 }
 
 /// Renderer-owned result of one logical-resource realization decision.
@@ -68,13 +57,13 @@ impl ResourceObservation {
     pub(crate) const fn new(
         item_index: usize,
         resource: ResourceRef,
-        request: ResourceRequest,
+        realization_kind: ResourceRealizationKind,
         cache_outcome: ResourceCacheOutcome,
     ) -> Self {
         Self {
             item_index,
             resource,
-            realization_kind: ResourceRealizationKind::from_request(request),
+            realization_kind,
             cache_outcome,
         }
     }

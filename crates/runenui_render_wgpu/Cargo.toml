@@ -10,8 +10,11 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+bymsdfgen-core = { version = "=0.1.1", default-features = false }
 runenui_core = { path = "../runenui_core", version = "0.1.0" }
 runenui_runtime = { path = "../runenui_runtime", version = "0.1.0" }
+runenui_text = { version = "0.1.0", path = "../runenui_text" }
+skrifa = { version = "=0.44.0", default-features = false, features = ["std"] }
 wgpu = { version = "=30.0.0", default-features = false, features = ["std", "parking_lot", "dx12", "metal", "vulkan", "gles", "wgsl"] }
 wgpu-types = { version = "=30.0.1", default-features = false, features = ["std"] }
 
