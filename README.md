@@ -8,7 +8,9 @@ The implemented foundation includes:
 
 - typed application state/action/update and transient `View`/`Element` authoring;
 - persistent keyed mounted runtime state with checked generational identity and lifecycle;
-- validated logical geometry plus an accepted production style environment/cascade over the current foreground/background/padding/radius property set, alongside proof-level measurement/layout, hit-test, and renderer-facing publication products;
+- validated logical geometry plus an accepted production style environment/cascade with metric typography integration, alongside proof-level general layout, hit-test, and renderer-facing publication products;
+- accepted renderer-neutral production text through `runenui_text`: explicit deterministic/production font-source policy, international shaping/bidi/grapheme handling, line breaking/reflow, immutable measurement/artifact/resource facts, and scale-independent shaped-resource lifetime;
+- accepted wgpu SDF/MSDF realization of those exact already-shaped outline resources through renderer-owned quality classes and atlas pages, with no shaped-text provider or hidden alpha fallback;
 - bounded effects, tasks, timers, subscriptions, host requests, deterministic clocks, wake/redraw, explicit pumping, trace/export/replay;
 - canonical routed pointer, keyboard, committed-text, IME, focus, automation, and semantic-command interaction;
 - independent semantic identity/publication/action ingress;
@@ -17,29 +19,24 @@ The implemented foundation includes:
 - reusable winit input and AccessKit translation exercised by standalone native hosts;
 - a separate winit-free downstream host proof that owns pump/publication/render/present sequencing through ordinary public contracts.
 
-The renderer-neutral paint/hit scene protocol is complete through M6 at proof maturity, the M7 reference production spine is complete at proof maturity through concrete renderer/resource, native host/input/accessibility, and external-host evidence, and M8A is accepted at partial styling maturity through typed themes/recipes/ordered variants, canonical interaction-state styling, explicit preferences, bounded inheritance, exact provenance/diagnostics, and effect-driven invalidation. Production text/editing, responsive layout and broader style-property breadth, standard controls, multi-window lifecycle, and supported platform breadth remain later roadmap outcomes.
+The renderer-neutral paint/hit scene protocol is complete through M6 at proof maturity, the M7 reference production spine is complete at proof maturity, M8A is accepted at partial styling maturity, and M8B is accepted at partial text maturity through production logical text plus SDF/MSDF realization. Production responsive layout/text feedback is the next M8C slice, followed by M8D integrated closure. Text editing, standard controls, multi-window lifecycle, and supported platform breadth remain later roadmap outcomes.
 
 See [current status](docs/status.md) for capability maturity and [roadmap](docs/roadmap.md) for durable sequencing.
 
 ## Workspace
 
 ```text
-runenui_core <- runenui_runtime
-       ^             ^
-       └──────┬──────┘
-              ├── runenui_render_wgpu ──┬── reference_winit
-              │                         ├── counter
-              │                         └── external-host conformance
-              ├── runenui_winit ────────┬── reference_winit
-              │                         └── counter
-              ├── runenui_testing
-              ├── external-renderer conformance
-              └── external-widget conformance
+runenui_text        -> runenui_core
+runenui_runtime     -> runenui_core + runenui_text
+runenui_render_wgpu -> runenui_core + runenui_runtime + runenui_text
+runenui_winit       -> runenui_core + runenui_runtime
+runenui_testing     -> runenui_core + runenui_runtime
 ```
 
 - `runenui_core` owns host-neutral public values and protocols.
-- `runenui_runtime` owns live framework authority.
-- `runenui_render_wgpu` is the reusable concrete renderer/resource edge over ordinary public paint publication.
+- `runenui_text` owns renderer-neutral production font/shaping/line-breaking/logical-text resources behind RunenUI contracts.
+- `runenui_runtime` owns live framework authority and orchestrates style, text measurement, general layout, and publication.
+- `runenui_render_wgpu` is the reusable concrete renderer/resource edge over ordinary public paint publication; external images use the caller provider while retained logical shaped text is realized directly as renderer-owned SDF/MSDF state.
 - `runenui_winit` owns reusable winit input and AccessKit translation/projection, not a host loop or renderer.
 - `runenui_testing` is a downstream public testing convenience layer.
 - `tests/external_host` is an unpublished winit-free downstream host conformance consumer over public core/runtime/renderer contracts.

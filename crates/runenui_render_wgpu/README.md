@@ -1,8 +1,8 @@
 # runenui_render_wgpu
 
-`runenui_render_wgpu` is the reusable renderer edge for RunenUI's accepted M7 reference production spine.
+`runenui_render_wgpu` is the reusable renderer edge for RunenUI's accepted M7 reference production spine and accepted M8B outline-text realization path.
 
-It consumes ordinary public `runenui_core` and `runenui_runtime` paint/publication contracts. The package owns renderer-side publication lineage, resource-provider interaction, backend realization, rendering, readback, and renderer observations. Native event-loop and accessibility integration remain outside this crate.
+It consumes ordinary public `runenui_core`, `runenui_runtime`, and exact `runenui_text` shaped-resource contracts required by paint realization. The package owns renderer-side publication lineage, external resource-provider interaction, backend realization, rendering, readback, and renderer observations. Native event-loop, accessibility, text shaping, and logical layout integration remain outside this crate.
 
 The current implementation fails closed: before target creation or GPU
 submission it accepts the bounded M7A literal, image, and shaped-run subset.
@@ -82,9 +82,9 @@ Device creation deliberately requests `Features::empty()` and
 `Limits::downlevel_defaults().using_resolution(adapter.limits())`, disables
 experimental features and tracing, and chooses performance memory hints. This
 uses only portable core rendering, sampled-texture, buffer, and readback
-facilities needed by current and planned M7A paint/resource work while retaining
-the selected adapter's target-resolution limits. Diagnostics distinguish adapter
-capabilities, requested device policy, and actual device capabilities.
+facilities needed by current paint/resource work while retaining the selected
+adapter's target-resolution limits. Diagnostics distinguish adapter capabilities,
+requested device policy, and actual device capabilities.
 
 FillRect pipelines are renderer-owned and cached by target `TextureFormat`.
 The shared scene encoder supports both `Rgba8UnormSrgb` and
@@ -107,7 +107,7 @@ presentation remain host/present lifecycle work for M7B. Future surface drawing
 is required to call the same target-neutral scene encoder used by the offscreen
 path.
 
-### M7A resources
+### Resources and shaped text
 
 Image payloads are caller-owned, non-zero, unpremultiplied RGBA8 sRGB sources.
 The complete image maps to its declared logical destination. The renderer owns
@@ -131,9 +131,10 @@ images. Color and bitmap formats, SVG, faux bold, and invalid fonts/outlines
 produce explicit diagnostics; whitespace and other valid non-painting glyphs
 produce no atlas field or draw quad; supported outline glyphs never fall back to
 an alpha-raster path. Atlas and cache state can be discarded and reconstructed
-from the retained logical resource. The fixture in `tests/fixtures` uses the
-bundled redistributable Cantarell font and the production runtime text system for
-shaping, font binding, and retention.
+from the retained logical resource. The fixture corpus in `tests/fixtures` uses
+bundled redistributable fonts and the production runtime text system for shaping,
+font binding, retention, small-size/golden evidence, and intrinsic-format
+diagnostics.
 
 The real-GPU scale proof renders identical 64x48 logical two-rectangle geometry
 at scales 1.0 and 2.0, producing 64x48 and 128x96 targets with corresponding
@@ -167,4 +168,4 @@ unassociated; no translucent PNG visual or golden-comparison claim is made
 without test tooling that explicitly decodes target sRGB, unpremultiplies in
 linear space when alpha is nonzero, and re-encodes straight RGB to sRGB.
 
-The package must not become UI behavior authority. In particular it must not depend on concrete widgets, semantic-tree behavior, mounted/layout storage, private runtime mutation seams, winit, or AccessKit. Logical resource lookup remains caller-owned and keyed by the complete opaque `ResourceRef`; renderer caches are disposable realization state.
+The package must not become UI behavior authority. In particular it must not depend on concrete widgets, semantic-tree behavior, mounted/layout storage, private runtime mutation seams, winit, or AccessKit. External resource lookup remains caller-owned and keyed by the complete opaque `ResourceRef`; runtime-shaped text instead resolves only through the exact immutable binding retained by `PaintPublication`. Renderer caches and atlas/device resources are disposable realization state.

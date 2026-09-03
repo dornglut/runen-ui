@@ -2,16 +2,16 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M8A owner-accepted; M8B, M8C, and M8D remain blocked
+> **Status:** M8A and M8B owner-accepted; M8C and M8D remain blocked
 >
 > **Milestone:** M8
 >
 > **Reviewed baseline:** `1a5af89c1886654d859f56d1d8afe3e46abdcf95`
 >
-> The accepted M8 target contract remains normative. M8A is normative for its seven
-> owner-accepted rows after exact-head owner acceptance, squash merge, and
-> accepted-main validation. M8B, M8C, and M8D remain blocked until their own
-> accepted implementation and proof obligations land.
+> The accepted M8 target contract remains normative. M8A and M8B are normative for
+> their eighteen owner-accepted rows after exact-head owner acceptance, squash merge,
+> and accepted-main validation. M8C and M8D remain blocked until their own accepted
+> implementation and proof obligations land.
 
 [ADR 0009](../adr/0009-production-style-layout-text-foundation.md) owns M8
 architecture. M3 owns mounted runtime/layout authority and invalidation; M4 owns
@@ -21,10 +21,10 @@ integration. This matrix references inherited contracts rather than duplicating 
 
 ```text
 33 total unique rows
-7 owner-accepted
+18 owner-accepted
 0 implementation-complete
 0 proof-complete
-26 blocked
+15 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -56,17 +56,17 @@ satisfy M8.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| M8TEXT-01 | `runenui_text` is renderer-neutral and depends only on public core plus reviewed text/font dependencies; it owns shaping/font/logical-resource computation but no mounted/runtime/publication/renderer/host/semantic/editing/GPU-atlas authority. | Cargo/source boundary corpus | Runtime/renderer/private-seam/host/editing/GPU dependency audit | Package ownership report | M8B | blocked | Required |
-| M8TEXT-02 | Production shaping/layout uses the accepted Parley 0.11.x / Fontique / HarfRust / Skrifa / ICU stack behind RunenUI-owned contracts; Parley AccessKit/editing types and public upstream style/layout types do not become RunenUI authority. | Dependency/API corpus | Alternate shaper, AccessKit/editing adoption, and upstream-type-leak audit | Text-stack capability/version report | M8B | blocked | Required |
-| M8TEXT-03 | Explicit font-source policy supports production discovery/fallback and deterministic bundled-font-only construction; font-source identity/revision participates in text cache compatibility. | Bundled/system/fallback corpus | Ambient-system-font deterministic-test and stale-font-cache corpus | Font selection/fallback/revision records | M8B | blocked | Required |
-| M8TEXT-04 | Shaping preserves accepted script/language, Unicode analysis, bidi ordering, grapheme/cluster, normalization, and complex-script behavior under controlled locale/language inputs. | Multiscript/bidi/complex-script corpus | Character-count, codepoint-order, lossy-normalization, and script-fallback corpus | Run/cluster/bidi diagnostics | M8B | blocked | Required |
-| M8TEXT-05 | Line breaking, wrapping, alignment, and line/baseline metrics are deterministic for the exact shaped content/style and text-specific available-inline constraints. | Width/wrap/alignment/baseline corpus | Independent metric estimator and unbounded relayout corpus | Line-break/metric records | M8B | blocked | Required |
-| M8TEXT-06 | Styled spans separate metric-affecting typography from paint-only state; font/fallback/size/weight/variation/language/features that alter geometry reshape as required while foreground-only changes do not. | Styled-span differential corpus | Color-keyed shaping and metric-change cache-reuse corpus | Reshape/re-linebreak/reuse diagnostics | M8B | blocked | Required |
-| M8TEXT-07 | One immutable logical text artifact supplies paragraph size, required line/run/cluster metrics/ranges, exact shaped paint-run `ResourceRef`s/origins, and exact glyph/font/variation bindings from the same shaping/line-break result. | Artifact consistency corpus | Measure-then-reshape and independently minted paint-resource corpus | Artifact/run/glyph/resource records | M8B | blocked | Required |
-| M8TEXT-08 | Text uses a renderer-neutral text-specific constraint projection rather than runtime `LayoutConstraints`; equal text/style/font-revision/constraint requests are deterministic and width-only reflow may re-linebreak without reshaping when valid. | Request/cache/reflow corpus | `runenui_text -> runtime` dependency and hidden constraint-state audit | Request key/reflow/reshape records | M8B | blocked | Required |
-| M8TEXT-09 | Each live shaped `ResourceRef` retains one immutable logical shaped-content binding independent of raster scale for as long as any cache/measurement/publication may use it; pruning cannot invalidate retained-publication retry. | Resource lifetime/drop/retry/scale corpus | Live-ref eviction, scale-bound identity, rebinding, and split-key corpus | Text-resource lifetime/cache records | M8B | blocked | Required |
-| M8TEXT-10 | Supported outline glyphs are realized by `runenui_render_wgpu` through an SDF/MSDF-family atlas/shader path from exact already-shaped outline data; generator, atlas, field quality, device cache, and scale tiers are renderer-owned, while shaping/line breaking/logical metrics remain unchanged and no hidden alpha-raster production fallback is used. | Multi-scale SDF/MSDF pixel/golden/cache corpus | Renderer shaping/layout, logical-scale mutation, and alpha-fallback audit | Field-generation/atlas/quality/resource records | M8B | blocked | Required |
-| M8TEXT-11 | COLR/SVG/bitmap/intrinsic-color glyphs are never silently flattened into ordinary foreground SDF/MSDF or alpha semantics; unsupported breadth diagnoses explicitly unless a separately accepted resource/paint revision represents it truthfully. | Color/bitmap glyph capability corpus | Silent monochrome/raster reinterpretation corpus | Unsupported-capability diagnostics | M8B | blocked | Required |
+| M8TEXT-01 | `runenui_text` is renderer-neutral and depends only on public core plus reviewed text/font dependencies; it owns shaping/font/logical-resource computation but no mounted/runtime/publication/renderer/host/semantic/editing/GPU-atlas authority. | Cargo/source boundary corpus | Runtime/renderer/private-seam/host/editing/GPU dependency audit | Package ownership report | M8B | owner-accepted | Required |
+| M8TEXT-02 | Production shaping/layout uses the accepted Parley 0.11.x / Fontique / HarfRust / Skrifa / ICU stack behind RunenUI-owned contracts; Parley AccessKit/editing types and public upstream style/layout types do not become RunenUI authority. | Dependency/API corpus | Alternate shaper, AccessKit/editing adoption, and upstream-type-leak audit | Text-stack capability/version report | M8B | owner-accepted | Required |
+| M8TEXT-03 | Explicit font-source policy supports production discovery/fallback and deterministic bundled-font-only construction; font-source identity/revision participates in text cache compatibility. | Bundled/system/fallback corpus | Ambient-system-font deterministic-test and stale-font-cache corpus | Font selection/fallback/revision records | M8B | owner-accepted | Required |
+| M8TEXT-04 | Shaping preserves accepted script/language, Unicode analysis, bidi ordering, grapheme/cluster, normalization, and complex-script behavior under controlled locale/language inputs. | Multiscript/bidi/complex-script corpus | Character-count, codepoint-order, lossy-normalization, and script-fallback corpus | Run/cluster/bidi diagnostics | M8B | owner-accepted | Required |
+| M8TEXT-05 | Line breaking, wrapping, alignment, and line/baseline metrics are deterministic for the exact shaped content/style and text-specific available-inline constraints. | Width/wrap/alignment/baseline corpus | Independent metric estimator and unbounded relayout corpus | Line-break/metric records | M8B | owner-accepted | Required |
+| M8TEXT-06 | Styled spans separate metric-affecting typography from paint-only state; font/fallback/size/weight/variation/language/features that alter geometry reshape as required while foreground-only changes do not. | Styled-span differential corpus | Color-keyed shaping and metric-change cache-reuse corpus | Reshape/re-linebreak/reuse diagnostics | M8B | owner-accepted | Required |
+| M8TEXT-07 | One immutable logical text artifact supplies paragraph size, required line/run/cluster metrics/ranges, exact shaped paint-run `ResourceRef`s/origins, and exact glyph/font/variation bindings from the same shaping/line-break result. | Artifact consistency corpus | Measure-then-reshape and independently minted paint-resource corpus | Artifact/run/glyph/resource records | M8B | owner-accepted | Required |
+| M8TEXT-08 | Text uses a renderer-neutral text-specific constraint projection rather than runtime `LayoutConstraints`; equal text/style/font-revision/constraint requests are deterministic and width-only reflow may re-linebreak without reshaping when valid. | Request/cache/reflow corpus | `runenui_text -> runtime` dependency and hidden constraint-state audit | Request key/reflow/reshape records | M8B | owner-accepted | Required |
+| M8TEXT-09 | Each live shaped `ResourceRef` retains one immutable logical shaped-content binding independent of raster scale for as long as any cache/measurement/publication may use it; pruning cannot invalidate retained-publication retry. | Resource lifetime/drop/retry/scale corpus | Live-ref eviction, scale-bound identity, rebinding, and split-key corpus | Text-resource lifetime/cache records | M8B | owner-accepted | Required |
+| M8TEXT-10 | Supported outline glyphs are realized by `runenui_render_wgpu` through an SDF/MSDF-family atlas/shader path from exact already-shaped outline data; generator, atlas, field quality, device cache, and scale tiers are renderer-owned, while shaping/line breaking/logical metrics remain unchanged and no hidden alpha-raster production fallback is used. | Multi-scale SDF/MSDF pixel/golden/cache corpus | Renderer shaping/layout, logical-scale mutation, and alpha-fallback audit | Field-generation/atlas/quality/resource records | M8B | owner-accepted | Required |
+| M8TEXT-11 | COLR/SVG/bitmap/intrinsic-color glyphs are never silently flattened into ordinary foreground SDF/MSDF or alpha semantics; unsupported breadth diagnoses explicitly unless a separately accepted resource/paint revision represents it truthfully. | Color/bitmap glyph capability corpus | Silent monochrome/raster reinterpretation corpus | Unsupported-capability diagnostics | M8B | owner-accepted | Required |
 
 ## M8C — production runtime layout and text feedback
 
