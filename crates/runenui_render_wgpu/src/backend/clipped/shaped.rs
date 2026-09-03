@@ -1240,8 +1240,10 @@ mod tests {
         let row_bytes = raster.width as usize * 4;
         let mirrored = raster
             .rgba8
-            .chunks_exact(row_bytes)
-            .flat_map(|row| row.chunks_exact(4).rev().flatten().copied())
+            .as_chunks::<4>()
+            .0
+            .chunks_exact(row_bytes / 4)
+            .flat_map(|row| row.iter().rev().flatten().copied())
             .collect::<Vec<_>>();
         assert_ne!(raster.rgba8.as_ref(), mirrored.as_slice());
         assert_eq!(fnv1a(&raster.rgba8), 0xd60f_6797_64de_9f56);
