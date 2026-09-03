@@ -1,8 +1,8 @@
 //! Host-neutral authored layout intent.
 //!
-//! These types describe RunenUI semantics only. Runtime may lower them into a
-//! layout algorithm, but no dependency type or algorithm-owned identity is part
-//! of this public contract.
+//! These values describe `RunenUI` semantics only. Runtime may lower them into a
+//! layout algorithm, but dependency types, algorithm identities, and caches are
+//! never part of this public contract.
 
 use core::{error::Error, fmt};
 
@@ -14,7 +14,7 @@ pub enum Axis {
     Horizontal,
 }
 
-/// Error returned when a layout factor is not finite and non-negative.
+/// Error returned when a dimensionless layout factor is not finite and non-negative.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LayoutFactorError {
     NotFinite,
@@ -34,9 +34,8 @@ impl Error for LayoutFactorError {}
 
 /// Finite non-negative dimensionless layout factor.
 ///
-/// Percentages use ratio form (`0.5 == 50%`). Flex grow/shrink and grid
-/// fractional-track weights use the same validated scalar without sharing
-/// semantic meaning.
+/// Percentages use ratio form (`0.5 == 50%`). Flex growth/shrink and grid
+/// fractional tracks reuse this validated scalar without sharing semantic meaning.
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 pub struct LayoutFactor(f32);
 
@@ -65,22 +64,21 @@ impl LayoutFactor {
     }
 }
 
-/// Preferred logical size on one axis.
+/// Preferred border-box size on one logical axis.
 ///
-/// Authored sizes apply to the node's border box: padding is inside the size
-/// and margin remains outside it. `Fill` consumes finite available space on the
-/// axis and behaves like `Auto` when that axis is intrinsically/unbounded sized.
+/// Padding is inside this size and margin remains outside it. `Fill` consumes
+/// finite available space subject to min/max constraints; when no finite extent
+/// is available it participates through intrinsic sizing rather than creating an
+/// infinite logical size.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum LayoutDimension {
-    /// Intrinsic/content-driven size selected by the active layout algorithm.
     #[default]
     Auto,
-    /// Exact logical length.
     Length(LogicalLength),
-    /// Fraction of the containing block (`1.0 == 100%`).
     Percent(LayoutFactor),
-    /// Fill finite available space; under unbounded sizing this degrades to [`Self::Auto`].
+    MinContent,
+    MaxContent,
     Fill,
 }
 
@@ -104,8 +102,8 @@ impl From<LogicalLength> for LayoutDimension {
 
 /// Minimum/maximum bound on one logical axis.
 ///
-/// `Auto` means algorithm-default minimum for a minimum bound and no authored
-/// maximum for a maximum bound. Runtime owns the exact used-size interpretation.
+/// `Auto` means the algorithm-defined automatic minimum when used as a minimum
+/// and no authored maximum when used as a maximum.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum LayoutBound {
@@ -161,6 +159,51 @@ impl From<LogicalLength> for LayoutOffset {
     }
 }
 
+/// Independent horizontal and vertical spacing between sibling tracks/items.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LayoutGap {
+    horizontal: LogicalLength,
+    vertical: LogicalLength,
+}
+
+impl LayoutGap {
+    pub const ZERO: Self = Self {
+        horizontal: LogicalLength::ZERO,
+        vertical: LogicalLength::ZERO,
+    };
+
+    #[must_use]
+    pub const fn new(horizontal: LogicalLength, vertical: LogicalLength) -> Self {
+        Self {
+            horizontal,
+            vertical,
+        }
+    }
+
+    #[must_use]
+    pub const fn all(value: LogicalLength) -> Self {
+        Self::new(value, value)
+    }
+
+    #[must_use]
+    pub const fn horizontal(self) -> LogicalLength {
+        self.horizontal
+    }
+
+    #[must_use]
+    pub const fn vertical(self) -> LogicalLength {
+        self.vertical
+    }
+
+    #[must_use]
+    pub const fn along(self, axis: Axis) -> LogicalLength {
+        match axis {
+            Axis::Horizontal => self.horizontal,
+            Axis::Vertical => self.vertical,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum FlexDirection {
     #[default]
@@ -178,6 +221,18 @@ pub enum FlexWrap {
     WrapReverse,
 }
 
+/// Alignment of individual items on an alignment axis.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ItemAlignment {
+    #[default]
+    Stretch,
+    Start,
+    End,
+    Center,
+    Baseline,
+}
+
+/// Distribution along a Flex container's main axis.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum MainAxisAlignment {
     #[default]
@@ -189,16 +244,7 @@ pub enum MainAxisAlignment {
     SpaceEvenly,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum CrossAxisAlignment {
-    #[default]
-    Stretch,
-    Start,
-    End,
-    Center,
-    Baseline,
-}
-
+/// Distribution of multiple lines/tracks within available container space.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ContentAlignment {
     #[default]
@@ -211,12 +257,12 @@ pub enum ContentAlignment {
     SpaceEvenly,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct FlexContainerStyle {
     direction: FlexDirection,
     wrap: FlexWrap,
     justify_content: MainAxisAlignment,
-    align_items: CrossAxisAlignment,
+    align_items: ItemAlignment,
     align_content: ContentAlignment,
 }
 
@@ -237,7 +283,7 @@ impl FlexContainerStyle {
     }
 
     #[must_use]
-    pub const fn align_items(self) -> CrossAxisAlignment {
+    pub const fn align_items(self) -> ItemAlignment {
         self.align_items
     }
 
@@ -265,7 +311,7 @@ impl FlexContainerStyle {
     }
 
     #[must_use]
-    pub const fn with_align_items(mut self, alignment: CrossAxisAlignment) -> Self {
+    pub const fn with_align_items(mut self, alignment: ItemAlignment) -> Self {
         self.align_items = alignment;
         self
     }
@@ -277,16 +323,48 @@ impl FlexContainerStyle {
     }
 }
 
+/// Initial main-axis size of a Flex item.
+///
+/// This is deliberately distinct from [`LayoutDimension`]: `Fill` is a node
+/// sizing semantic, while `Content` is specific to Flex basis calculation.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum FlexBasis {
+    #[default]
+    Auto,
+    Content,
+    Length(LogicalLength),
+    Percent(LayoutFactor),
+}
+
+impl FlexBasis {
+    #[must_use]
+    pub const fn length(value: LogicalLength) -> Self {
+        Self::Length(value)
+    }
+
+    #[must_use]
+    pub const fn percent(value: LayoutFactor) -> Self {
+        Self::Percent(value)
+    }
+}
+
+impl From<LogicalLength> for FlexBasis {
+    fn from(value: LogicalLength) -> Self {
+        Self::Length(value)
+    }
+}
+
 /// Flex-specific participation of one node when its parent is a flex container.
 ///
-/// Child ordering remains the runtime's authored mounted order. This value does
-/// not introduce a second ordering authority.
+/// Child ordering remains the runtime's authored mounted order; no independent
+/// Flex ordering property is part of the M8C model.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlexItemStyle {
     grow: LayoutFactor,
     shrink: LayoutFactor,
-    basis: LayoutDimension,
-    align_self: Option<CrossAxisAlignment>,
+    basis: FlexBasis,
+    align_self: Option<ItemAlignment>,
 }
 
 impl Default for FlexItemStyle {
@@ -294,7 +372,7 @@ impl Default for FlexItemStyle {
         Self {
             grow: LayoutFactor::ZERO,
             shrink: LayoutFactor::ONE,
-            basis: LayoutDimension::Auto,
+            basis: FlexBasis::Auto,
             align_self: None,
         }
     }
@@ -312,12 +390,12 @@ impl FlexItemStyle {
     }
 
     #[must_use]
-    pub const fn basis(self) -> LayoutDimension {
+    pub const fn basis(self) -> FlexBasis {
         self.basis
     }
 
     #[must_use]
-    pub const fn align_self(self) -> Option<CrossAxisAlignment> {
+    pub const fn align_self(self) -> Option<ItemAlignment> {
         self.align_self
     }
 
@@ -334,21 +412,34 @@ impl FlexItemStyle {
     }
 
     #[must_use]
-    pub const fn with_basis(mut self, basis: LayoutDimension) -> Self {
+    pub const fn with_basis(mut self, basis: FlexBasis) -> Self {
         self.basis = basis;
         self
     }
 
     #[must_use]
-    pub const fn with_align_self(mut self, alignment: Option<CrossAxisAlignment>) -> Self {
+    pub const fn with_align_self(mut self, alignment: Option<ItemAlignment>) -> Self {
         self.align_self = alignment;
         self
     }
 }
 
+/// Legal minimum sizing function for a Grid track in the accepted M8C subset.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub enum GridTrackBreadth {
+pub enum GridTrackMin {
+    #[default]
+    Auto,
+    MinContent,
+    MaxContent,
+    Length(LogicalLength),
+    Percent(LayoutFactor),
+}
+
+/// Legal maximum sizing function for a Grid track in the accepted M8C subset.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum GridTrackMax {
     #[default]
     Auto,
     MinContent,
@@ -360,39 +451,38 @@ pub enum GridTrackBreadth {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct GridTrack {
-    min: GridTrackBreadth,
-    max: GridTrackBreadth,
+    min: GridTrackMin,
+    max: GridTrackMax,
 }
 
 impl GridTrack {
     #[must_use]
-    pub const fn new(min: GridTrackBreadth, max: GridTrackBreadth) -> Self {
+    pub const fn new(min: GridTrackMin, max: GridTrackMax) -> Self {
         Self { min, max }
     }
 
     #[must_use]
     pub const fn auto() -> Self {
-        Self::new(GridTrackBreadth::Auto, GridTrackBreadth::Auto)
+        Self::new(GridTrackMin::Auto, GridTrackMax::Auto)
     }
 
     #[must_use]
     pub const fn length(value: LogicalLength) -> Self {
-        let breadth = GridTrackBreadth::Length(value);
-        Self::new(breadth, breadth)
+        Self::new(GridTrackMin::Length(value), GridTrackMax::Length(value))
     }
 
     #[must_use]
     pub const fn fraction(value: LayoutFactor) -> Self {
-        Self::new(GridTrackBreadth::Auto, GridTrackBreadth::Fraction(value))
+        Self::new(GridTrackMin::Auto, GridTrackMax::Fraction(value))
     }
 
     #[must_use]
-    pub const fn min(self) -> GridTrackBreadth {
+    pub const fn min(self) -> GridTrackMin {
         self.min
     }
 
     #[must_use]
-    pub const fn max(self) -> GridTrackBreadth {
+    pub const fn max(self) -> GridTrackMax {
         self.max
     }
 }
@@ -402,8 +492,6 @@ pub enum GridAutoFlow {
     #[default]
     Row,
     Column,
-    RowDense,
-    ColumnDense,
 }
 
 /// Error returned when a one-based grid line is zero.
@@ -418,7 +506,7 @@ impl fmt::Display for GridLineError {
 
 impl Error for GridLineError {}
 
-/// One-based explicit grid line in the accepted M8C positive-line subset.
+/// One-based explicit grid line in the accepted positive-line subset.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GridLine(u16);
 
@@ -531,7 +619,50 @@ impl GridItemPlacement {
     }
 }
 
-/// Grid container tracks and implicit-placement policy.
+/// Grid-specific participation of one node when its parent is a Grid container.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct GridItemStyle {
+    placement: GridItemPlacement,
+    align_self: Option<ItemAlignment>,
+    justify_self: Option<ItemAlignment>,
+}
+
+impl GridItemStyle {
+    #[must_use]
+    pub const fn placement(self) -> GridItemPlacement {
+        self.placement
+    }
+
+    #[must_use]
+    pub const fn align_self(self) -> Option<ItemAlignment> {
+        self.align_self
+    }
+
+    #[must_use]
+    pub const fn justify_self(self) -> Option<ItemAlignment> {
+        self.justify_self
+    }
+
+    #[must_use]
+    pub const fn with_placement(mut self, placement: GridItemPlacement) -> Self {
+        self.placement = placement;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_align_self(mut self, alignment: Option<ItemAlignment>) -> Self {
+        self.align_self = alignment;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_justify_self(mut self, alignment: Option<ItemAlignment>) -> Self {
+        self.justify_self = alignment;
+        self
+    }
+}
+
+/// Grid container tracks, implicit placement, and two-axis alignment policy.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GridContainerStyle {
     columns: Vec<GridTrack>,
@@ -539,6 +670,10 @@ pub struct GridContainerStyle {
     auto_columns: GridTrack,
     auto_rows: GridTrack,
     auto_flow: GridAutoFlow,
+    align_items: ItemAlignment,
+    justify_items: ItemAlignment,
+    align_content: ContentAlignment,
+    justify_content: ContentAlignment,
 }
 
 impl Default for GridContainerStyle {
@@ -549,6 +684,10 @@ impl Default for GridContainerStyle {
             auto_columns: GridTrack::auto(),
             auto_rows: GridTrack::auto(),
             auto_flow: GridAutoFlow::Row,
+            align_items: ItemAlignment::Stretch,
+            justify_items: ItemAlignment::Stretch,
+            align_content: ContentAlignment::Stretch,
+            justify_content: ContentAlignment::Stretch,
         }
     }
 }
@@ -592,6 +731,26 @@ impl GridContainerStyle {
     }
 
     #[must_use]
+    pub const fn align_items(&self) -> ItemAlignment {
+        self.align_items
+    }
+
+    #[must_use]
+    pub const fn justify_items(&self) -> ItemAlignment {
+        self.justify_items
+    }
+
+    #[must_use]
+    pub const fn align_content(&self) -> ContentAlignment {
+        self.align_content
+    }
+
+    #[must_use]
+    pub const fn justify_content(&self) -> ContentAlignment {
+        self.justify_content
+    }
+
+    #[must_use]
     pub const fn with_auto_columns(mut self, track: GridTrack) -> Self {
         self.auto_columns = track;
         self
@@ -606,6 +765,30 @@ impl GridContainerStyle {
     #[must_use]
     pub const fn with_auto_flow(mut self, flow: GridAutoFlow) -> Self {
         self.auto_flow = flow;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_align_items(mut self, alignment: ItemAlignment) -> Self {
+        self.align_items = alignment;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_justify_items(mut self, alignment: ItemAlignment) -> Self {
+        self.justify_items = alignment;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_align_content(mut self, alignment: ContentAlignment) -> Self {
+        self.align_content = alignment;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_justify_content(mut self, alignment: ContentAlignment) -> Self {
+        self.justify_content = alignment;
         self
     }
 }
@@ -648,21 +831,16 @@ impl OverlayContainerStyle {
 }
 
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum LayoutContainer {
+    #[default]
     Block,
     Flex(FlexContainerStyle),
     Grid(GridContainerStyle),
     Overlay(OverlayContainerStyle),
 }
 
-impl Default for LayoutContainer {
-    fn default() -> Self {
-        Self::Block
-    }
-}
-
-/// Logical insets for an absolutely positioned node. `Auto` leaves the edge
+/// Logical insets for an absolutely positioned node. `Auto` leaves an edge
 /// unconstrained on that axis.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LayoutInsets {
@@ -717,18 +895,12 @@ pub enum LayoutPosition {
     Absolute(LayoutInsets),
 }
 
-/// Logical overflow policy.
-///
-/// `Clip` and `Hidden` are intentionally distinct: both suppress propagation of
-/// overflowing descendants, but only `Hidden` establishes scroll-container
-/// minimum-size behavior. `Scroll` additionally marks the axis as scrollable;
-/// platform scrollbar decoration is outside this renderer-neutral value.
+/// Logical overflow behavior independent of platform scrolling mechanics.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum OverflowPolicy {
     #[default]
     Visible,
     Clip,
-    Hidden,
     Scroll,
 }
 
@@ -767,10 +939,9 @@ impl OverflowStyle {
 ///
 /// Theme/cascade-resolved values such as padding and typography remain in the
 /// accepted M8A style authority. This value owns structural layout intent only:
-/// sizing, container algorithm, gap, parent-item participation, placement,
-/// margin, and logical overflow policy. Width/height/min/max describe the
-/// border box (padding included, margin excluded); M8C has no independent
-/// authored border-width vocabulary.
+/// sizing, container algorithm, sibling gaps, parent-item participation,
+/// placement, margin, and logical overflow behavior. Width/height/min/max
+/// describe the border box; M8C has no independent authored border-width model.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LayoutStyle {
     container: LayoutContainer,
@@ -781,9 +952,9 @@ pub struct LayoutStyle {
     max_width: LayoutBound,
     max_height: LayoutBound,
     margin: EdgeInsets,
-    gap: LogicalLength,
+    gap: LayoutGap,
     flex_item: FlexItemStyle,
-    grid_item: GridItemPlacement,
+    grid_item: GridItemStyle,
     position: LayoutPosition,
     overflow: OverflowStyle,
 }
@@ -799,9 +970,9 @@ impl Default for LayoutStyle {
             max_width: LayoutBound::Auto,
             max_height: LayoutBound::Auto,
             margin: EdgeInsets::ZERO,
-            gap: LogicalLength::ZERO,
+            gap: LayoutGap::ZERO,
             flex_item: FlexItemStyle::default(),
-            grid_item: GridItemPlacement::default(),
+            grid_item: GridItemStyle::default(),
             position: LayoutPosition::Flow,
             overflow: OverflowStyle::default(),
         }
@@ -850,7 +1021,7 @@ impl LayoutStyle {
     }
 
     #[must_use]
-    pub const fn gap(&self) -> LogicalLength {
+    pub const fn gap(&self) -> LayoutGap {
         self.gap
     }
 
@@ -860,7 +1031,7 @@ impl LayoutStyle {
     }
 
     #[must_use]
-    pub const fn grid_item(&self) -> GridItemPlacement {
+    pub const fn grid_item(&self) -> GridItemStyle {
         self.grid_item
     }
 
@@ -924,7 +1095,13 @@ impl LayoutStyle {
 
     #[must_use]
     pub fn with_gap(mut self, gap: impl Into<LogicalLength>) -> Self {
-        self.gap = gap.into();
+        self.gap = LayoutGap::all(gap.into());
+        self
+    }
+
+    #[must_use]
+    pub const fn with_gaps(mut self, gap: LayoutGap) -> Self {
+        self.gap = gap;
         self
     }
 
@@ -935,7 +1112,7 @@ impl LayoutStyle {
     }
 
     #[must_use]
-    pub const fn with_grid_item(mut self, grid_item: GridItemPlacement) -> Self {
+    pub const fn with_grid_item(mut self, grid_item: GridItemStyle) -> Self {
         self.grid_item = grid_item;
         self
     }
@@ -956,10 +1133,10 @@ impl LayoutStyle {
 #[cfg(test)]
 mod tests {
     use super::{
-        CrossAxisAlignment, FlexContainerStyle, FlexDirection, FlexItemStyle, GridAxisPlacement,
+        FlexBasis, FlexContainerStyle, FlexDirection, FlexItemStyle, GridAxisPlacement,
         GridContainerStyle, GridLine, GridLineError, GridSpan, GridSpanError, GridTrack,
-        LayoutContainer, LayoutDimension, LayoutFactor, LayoutFactorError, LayoutStyle,
-        OverflowPolicy, OverflowStyle,
+        GridTrackMax, GridTrackMin, ItemAlignment, LayoutContainer, LayoutDimension, LayoutFactor,
+        LayoutFactorError, LayoutGap, LayoutStyle, OverflowPolicy, OverflowStyle,
     };
     use crate::LogicalLength;
 
@@ -987,28 +1164,45 @@ mod tests {
     }
 
     #[test]
-    fn layout_style_keeps_runenui_owned_structural_facts() {
+    fn layout_style_keeps_structural_facts_without_dependency_types() {
         let half = LayoutFactor::new(0.5).unwrap_or_default();
         let two = LayoutFactor::new(2.0).unwrap_or_default();
         let column = FlexContainerStyle::default()
             .with_direction(FlexDirection::Column)
-            .with_align_items(CrossAxisAlignment::Baseline);
+            .with_align_items(ItemAlignment::Baseline);
+        let gap = LayoutGap::new(
+            LogicalLength::from(4_u16),
+            LogicalLength::from(8_u16),
+        );
         let layout = LayoutStyle::default()
             .with_container(LayoutContainer::Flex(column))
             .with_width(LayoutDimension::percent(half))
-            .with_gap(8_u16)
-            .with_flex_item(FlexItemStyle::default().with_grow(two))
+            .with_gaps(gap)
+            .with_flex_item(
+                FlexItemStyle::default()
+                    .with_grow(two)
+                    .with_basis(FlexBasis::Content),
+            )
             .with_overflow(OverflowStyle::all(OverflowPolicy::Scroll));
 
         assert_eq!(layout.width(), LayoutDimension::percent(half));
-        assert_eq!(layout.gap(), LogicalLength::from(8_u16));
+        assert_eq!(layout.gap(), gap);
         assert_eq!(layout.flex_item().grow(), two);
+        assert_eq!(layout.flex_item().basis(), FlexBasis::Content);
         assert_eq!(layout.overflow().vertical(), OverflowPolicy::Scroll);
         assert!(matches!(layout.container(), LayoutContainer::Flex(_)));
     }
 
     #[test]
-    fn grid_tracks_and_placement_are_explicit_without_algorithm_types() {
+    fn grid_track_minimum_cannot_encode_fractional_breadth() {
+        let two = LayoutFactor::new(2.0).unwrap_or_default();
+        let fractional = GridTrack::fraction(two);
+        assert_eq!(fractional.min(), GridTrackMin::Auto);
+        assert_eq!(fractional.max(), GridTrackMax::Fraction(two));
+    }
+
+    #[test]
+    fn grid_tracks_and_placement_are_explicit() {
         let two = LayoutFactor::new(2.0).unwrap_or_default();
         let columns = [
             GridTrack::fraction(LayoutFactor::ONE),

@@ -238,7 +238,7 @@ impl<'a> SurfaceMeasurer<'a> {
         content_constraints: LayoutConstraints,
     ) -> Result<LogicalSize, TextLayoutError> {
         let child_constraints = child_constraints(axis, content_constraints);
-        let gap = node.layout().gap().get();
+        let gap = node.layout().gap().along(axis).get();
         let mut width: f32 = 0.0;
         let mut height: f32 = 0.0;
         for (measured_child_count, child_id) in node.children().iter().enumerate() {

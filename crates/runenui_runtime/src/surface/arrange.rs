@@ -51,7 +51,7 @@ impl<'a> SurfaceArrangementBuilder<'a> {
         parent_bounds: LogicalRect,
         axis: Axis,
     ) {
-        let gap = container_node.layout().gap().get();
+        let gap = container_node.layout().gap().along(axis).get();
         let padding = resolved_padding(container_node);
         let mut cursor_x = finite_sum(parent_bounds.x(), padding.left().get());
         let mut cursor_y = finite_sum(parent_bounds.y(), padding.top().get());
