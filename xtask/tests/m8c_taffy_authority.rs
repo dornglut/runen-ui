@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
 };
@@ -10,8 +11,7 @@ const RUNTIME_SOURCE: &str = "crates/runenui_runtime/src";
 const LOCKFILE: &str = "Cargo.lock";
 const EXACT_TAFFY_DECLARATION: &str =
     "taffy = { version = \"=0.14.0\", default-features = false, features = [\"std\", \"flexbox\", \"grid\", \"block_layout\", \"content_size\"] }";
-const EXACT_TAFFY_LOCK_BLOCK: &str = r#"[[package]]
-name = "taffy"
+const EXACT_TAFFY_LOCK_BODY: &str = r#"name = "taffy"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "639627c87f43b9181c811f40a6296409e093a17bc761214cba3c15df74f86b99"
@@ -62,7 +62,9 @@ fn taffy_adoption_is_absent_or_exactly_bounded() -> Result<(), String> {
                 ));
             }
             if !runtime_manifest.contains(EXACT_TAFFY_DECLARATION) {
-                return Err("exact reviewed Taffy declaration is not present in runtime manifest".to_owned());
+                return Err(
+                    "exact reviewed Taffy declaration is not present in runtime manifest".to_owned(),
+                );
             }
             audit_lockfile_taffy(&lockfile)
         }
@@ -74,11 +76,13 @@ fn runtime_source_cannot_retain_or_export_taffy_tree_authority() -> Result<(), S
     let root = workspace_root()?;
     let source_root = root.join(RUNTIME_SOURCE);
     let mut files = Vec::new();
-    collect_files_named(&source_root, "rs", &mut files)?;
+    collect_files_with_extension(&source_root, "rs", &mut files)?;
     files.sort();
 
     if files.is_empty() {
-        return Err(format!("M8C source audit found no Rust files under {RUNTIME_SOURCE}"));
+        return Err(format!(
+            "M8C source audit found no Rust files under {RUNTIME_SOURCE}"
+        ));
     }
 
     let mut failures = Vec::new();
@@ -120,8 +124,11 @@ struct ManifestDeclaration {
 
 fn taffy_manifest_declarations(root: &Path) -> Result<Vec<ManifestDeclaration>, String> {
     let mut manifests = Vec::new();
-    collect_files_named(root, "toml", &mut manifests)?;
-    manifests.retain(|path| path.file_name().is_some_and(|name| name == "Cargo.toml"));
+    collect_files_with_extension(root, "toml", &mut manifests)?;
+    manifests.retain(|path| {
+        path.file_name()
+            .is_some_and(|name| name == OsStr::new("Cargo.toml"))
+    });
     manifests.sort();
 
     let mut declarations = Vec::new();
@@ -173,9 +180,8 @@ fn is_taffy_dependency_line(line: &str) -> bool {
         return false;
     }
 
-    line.strip_prefix("taffy")
-        .is_some_and(|rest| rest.trim_start().starts_with('='))
-        || (line.contains("package") && line.contains("= \"taffy\""))
+    let compact: String = line.chars().filter(|character| !character.is_whitespace()).collect();
+    compact.starts_with("taffy=") || compact.contains("package=\"taffy\"")
 }
 
 fn audit_lockfile_taffy(lockfile: &str) -> Result<(), String> {
@@ -193,10 +199,10 @@ fn audit_lockfile_taffy(lockfile: &str) -> Result<(), String> {
     }
 
     let block = taffy_blocks[0];
-    if block.trim_end() != EXACT_TAFFY_LOCK_BLOCK.trim_end() {
+    if block.trim_end() != EXACT_TAFFY_LOCK_BODY.trim_end() {
         return Err(format!(
-            "Cargo.lock Taffy package must remain the reviewed 0.14.0 arrayvec+smallvec graph with no slotmap/tree dependency.\nexpected:\n{}\nfound:\n{}",
-            EXACT_TAFFY_LOCK_BLOCK.trim_end(),
+            "Cargo.lock Taffy package must remain the reviewed 0.14.0 arrayvec+smallvec graph with no slotmap/tree dependency.\nexpected body:\n{}\nfound body:\n{}",
+            EXACT_TAFFY_LOCK_BODY.trim_end(),
             block.trim_end()
         ));
     }
@@ -213,14 +219,7 @@ fn lockfile_contains_taffy(lockfile: &str) -> bool {
 fn package_blocks(lockfile: &str) -> Vec<&str> {
     lockfile
         .split("\n[[package]]\n")
-        .enumerate()
-        .filter_map(|(index, block)| {
-            if index == 0 {
-                None
-            } else {
-                Some(block.split("\n[[package]]\n").next().unwrap_or(block))
-            }
-        })
+        .skip(1)
         .map(|block| {
             let end = block.find("\n\n").unwrap_or(block.len());
             &block[..end]
@@ -236,20 +235,30 @@ fn format_declarations(declarations: &[ManifestDeclaration]) -> String {
         .join("\n")
 }
 
-fn collect_files_named(root: &Path, extension: &str, files: &mut Vec<PathBuf>) -> Result<(), String> {
+fn collect_files_with_extension(
+    root: &Path,
+    extension: &str,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), String> {
     for entry in fs::read_dir(root)
         .map_err(|error| format!("failed to read directory {}: {error}", root.display()))?
     {
         let entry = entry.map_err(|error| {
-            format!("failed to inspect directory entry under {}: {error}", root.display())
+            format!(
+                "failed to inspect directory entry under {}: {error}",
+                root.display()
+            )
         })?;
         let path = entry.path();
         let name = entry.file_name();
         if path.is_dir() {
-            if name != ".git" && name != "target" {
-                collect_files_named(&path, extension, files)?;
+            if name != OsStr::new(".git") && name != OsStr::new("target") {
+                collect_files_with_extension(&path, extension, files)?;
             }
-        } else if path.extension().is_some_and(|value| value == extension) {
+        } else if path
+            .extension()
+            .is_some_and(|value| value == OsStr::new(extension))
+        {
             files.push(path);
         }
     }
