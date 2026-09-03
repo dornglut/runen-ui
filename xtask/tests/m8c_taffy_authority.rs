@@ -9,7 +9,7 @@ use std::{
 const RUNTIME_MANIFEST: &str = "crates/runenui_runtime/Cargo.toml";
 const RUNTIME_SOURCE: &str = "crates/runenui_runtime/src";
 const LOCKFILE: &str = "Cargo.lock";
-const EXACT_TAFFY_DECLARATION: &str = "taffy = { version = \"=0.14.0\", default-features = false, features = [\"std\", \"flexbox\", \"grid\", \"block_layout\", \"content_size\"] }";
+const EXACT_TAFFY_DECLARATION: &str = "taffy = { version = \"=0.14.0\", default-features = false, features = [\"flexbox\", \"grid\", \"block_layout\", \"content_size\"] }";
 const EXACT_TAFFY_LOCK_BODY: &str = r#"name = "taffy"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
