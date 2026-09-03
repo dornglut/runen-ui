@@ -66,6 +66,10 @@ impl LayoutFactor {
 }
 
 /// Preferred logical size on one axis.
+///
+/// Authored sizes apply to the node's border box: padding is inside the size
+/// and margin remains outside it. `Fill` consumes finite available space on the
+/// axis and behaves like `Auto` when that axis is intrinsically/unbounded sized.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum LayoutDimension {
@@ -76,7 +80,7 @@ pub enum LayoutDimension {
     Length(LogicalLength),
     /// Fraction of the containing block (`1.0 == 100%`).
     Percent(LayoutFactor),
-    /// Fill the available axis without changing logical identity or measurement authority.
+    /// Fill finite available space; under unbounded sizing this degrades to [`Self::Auto`].
     Fill,
 }
 
@@ -124,6 +128,34 @@ impl LayoutBound {
 }
 
 impl From<LogicalLength> for LayoutBound {
+    fn from(value: LogicalLength) -> Self {
+        Self::Length(value)
+    }
+}
+
+/// Offset from one edge of the containing block for positioned layout.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum LayoutOffset {
+    #[default]
+    Auto,
+    Length(LogicalLength),
+    Percent(LayoutFactor),
+}
+
+impl LayoutOffset {
+    #[must_use]
+    pub const fn length(value: LogicalLength) -> Self {
+        Self::Length(value)
+    }
+
+    #[must_use]
+    pub const fn percent(value: LayoutFactor) -> Self {
+        Self::Percent(value)
+    }
+}
+
+impl From<LogicalLength> for LayoutOffset {
     fn from(value: LogicalLength) -> Self {
         Self::Length(value)
     }
@@ -246,9 +278,11 @@ impl FlexContainerStyle {
 }
 
 /// Flex-specific participation of one node when its parent is a flex container.
+///
+/// Child ordering remains the runtime's authored mounted order. This value does
+/// not introduce a second ordering authority.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlexItemStyle {
-    order: i32,
     grow: LayoutFactor,
     shrink: LayoutFactor,
     basis: LayoutDimension,
@@ -258,7 +292,6 @@ pub struct FlexItemStyle {
 impl Default for FlexItemStyle {
     fn default() -> Self {
         Self {
-            order: 0,
             grow: LayoutFactor::ZERO,
             shrink: LayoutFactor::ONE,
             basis: LayoutDimension::Auto,
@@ -268,11 +301,6 @@ impl Default for FlexItemStyle {
 }
 
 impl FlexItemStyle {
-    #[must_use]
-    pub const fn order(self) -> i32 {
-        self.order
-    }
-
     #[must_use]
     pub const fn grow(self) -> LayoutFactor {
         self.grow
@@ -291,12 +319,6 @@ impl FlexItemStyle {
     #[must_use]
     pub const fn align_self(self) -> Option<CrossAxisAlignment> {
         self.align_self
-    }
-
-    #[must_use]
-    pub const fn with_order(mut self, order: i32) -> Self {
-        self.order = order;
-        self
     }
 
     #[must_use]
@@ -396,7 +418,7 @@ impl fmt::Display for GridLineError {
 
 impl Error for GridLineError {}
 
-/// One-based explicit grid line.
+/// One-based explicit grid line in the accepted M8C positive-line subset.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GridLine(u16);
 
@@ -644,19 +666,19 @@ impl Default for LayoutContainer {
 /// unconstrained on that axis.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LayoutInsets {
-    top: LayoutBound,
-    right: LayoutBound,
-    bottom: LayoutBound,
-    left: LayoutBound,
+    top: LayoutOffset,
+    right: LayoutOffset,
+    bottom: LayoutOffset,
+    left: LayoutOffset,
 }
 
 impl LayoutInsets {
     #[must_use]
     pub const fn new(
-        top: LayoutBound,
-        right: LayoutBound,
-        bottom: LayoutBound,
-        left: LayoutBound,
+        top: LayoutOffset,
+        right: LayoutOffset,
+        bottom: LayoutOffset,
+        left: LayoutOffset,
     ) -> Self {
         Self {
             top,
@@ -667,22 +689,22 @@ impl LayoutInsets {
     }
 
     #[must_use]
-    pub const fn top(self) -> LayoutBound {
+    pub const fn top(self) -> LayoutOffset {
         self.top
     }
 
     #[must_use]
-    pub const fn right(self) -> LayoutBound {
+    pub const fn right(self) -> LayoutOffset {
         self.right
     }
 
     #[must_use]
-    pub const fn bottom(self) -> LayoutBound {
+    pub const fn bottom(self) -> LayoutOffset {
         self.bottom
     }
 
     #[must_use]
-    pub const fn left(self) -> LayoutBound {
+    pub const fn left(self) -> LayoutOffset {
         self.left
     }
 }
@@ -695,11 +717,18 @@ pub enum LayoutPosition {
     Absolute(LayoutInsets),
 }
 
+/// Logical overflow policy.
+///
+/// `Clip` and `Hidden` are intentionally distinct: both suppress propagation of
+/// overflowing descendants, but only `Hidden` establishes scroll-container
+/// minimum-size behavior. `Scroll` additionally marks the axis as scrollable;
+/// platform scrollbar decoration is outside this renderer-neutral value.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum OverflowPolicy {
     #[default]
     Visible,
     Clip,
+    Hidden,
     Scroll,
 }
 
@@ -739,7 +768,9 @@ impl OverflowStyle {
 /// Theme/cascade-resolved values such as padding and typography remain in the
 /// accepted M8A style authority. This value owns structural layout intent only:
 /// sizing, container algorithm, gap, parent-item participation, placement,
-/// margin, and logical overflow policy.
+/// margin, and logical overflow policy. Width/height/min/max describe the
+/// border box (padding included, margin excluded); M8C has no independent
+/// authored border-width vocabulary.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LayoutStyle {
     container: LayoutContainer,
@@ -934,7 +965,10 @@ mod tests {
 
     #[test]
     fn layout_factor_validation_is_explicit() {
-        assert_eq!(LayoutFactor::new(f32::NAN), Err(LayoutFactorError::NotFinite));
+        assert_eq!(
+            LayoutFactor::new(f32::NAN),
+            Err(LayoutFactorError::NotFinite)
+        );
         assert_eq!(
             LayoutFactor::new(f32::INFINITY),
             Err(LayoutFactorError::NotFinite)
@@ -976,7 +1010,10 @@ mod tests {
     #[test]
     fn grid_tracks_and_placement_are_explicit_without_algorithm_types() {
         let two = LayoutFactor::new(2.0).unwrap_or_default();
-        let columns = [GridTrack::fraction(LayoutFactor::ONE), GridTrack::fraction(two)];
+        let columns = [
+            GridTrack::fraction(LayoutFactor::ONE),
+            GridTrack::fraction(two),
+        ];
         let grid = GridContainerStyle::new(columns, [GridTrack::auto()]);
         let placement = GridAxisPlacement::new(
             GridLine::new(2).ok(),
