@@ -575,7 +575,7 @@ fn max_linear_stretch(transform: LogicalTransform) -> f64 {
     let b = m11.mul_add(m21, m12 * m22);
     let trace = a + d;
     let discriminant = ((a - d).mul_add(a - d, 4.0 * b * b)).max(0.0).sqrt();
-    ((trace + discriminant) * 0.5).sqrt().max(0.0)
+    f64::midpoint(trace, discriminant).sqrt().max(0.0)
 }
 
 fn rasterize_unique_glyphs(
@@ -782,7 +782,7 @@ fn pack_atlas(
                         .copy_from_slice(&glyph.rgba8[source..source + bytes]);
                 }
             }
-            for pixel in rgba8.chunks_exact_mut(4) {
+            for pixel in rgba8.as_chunks_mut::<4>().0 {
                 pixel[3] = 255;
             }
             ResolvedAtlasPage {
