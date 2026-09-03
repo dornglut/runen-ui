@@ -210,7 +210,9 @@ fn production_msdf_pixel_evidence_is_stable_and_small_size_is_covered()
     assert!(alpha_pixels(&readback) > 0);
     assert!(
         pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|pixel| pixel[3] > 0 && pixel[3] < 255)
     );
     eprintln!(
