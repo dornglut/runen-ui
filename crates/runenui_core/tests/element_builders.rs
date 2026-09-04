@@ -31,7 +31,9 @@ fn builders_preserve_nested_structure_and_style() {
     .gap(8_u16)
     .into_element();
     assert_eq!(root.children().len(), 2);
-    assert!((root.children()[1].layout().gap().get() - 4.0).abs() <= f32::EPSILON);
+    let gap = root.children()[1].layout().gap();
+    assert!((gap.horizontal().get() - 4.0).abs() <= f32::EPSILON);
+    assert!((gap.vertical().get() - 4.0).abs() <= f32::EPSILON);
 }
 
 #[test]
