@@ -1170,10 +1170,7 @@ mod tests {
         let column = FlexContainerStyle::default()
             .with_direction(FlexDirection::Column)
             .with_align_items(ItemAlignment::Baseline);
-        let gap = LayoutGap::new(
-            LogicalLength::from(4_u16),
-            LogicalLength::from(8_u16),
-        );
+        let gap = LayoutGap::new(LogicalLength::from(4_u16), LogicalLength::from(8_u16));
         let layout = LayoutStyle::default()
             .with_container(LayoutContainer::Flex(column))
             .with_width(LayoutDimension::percent(half))
