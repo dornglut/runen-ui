@@ -160,7 +160,7 @@ impl From<LogicalLength> for LayoutOffset {
 }
 
 /// Independent horizontal and vertical spacing between sibling tracks/items.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LayoutGap {
     horizontal: LogicalLength,
     vertical: LogicalLength,
