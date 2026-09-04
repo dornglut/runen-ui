@@ -1,7 +1,7 @@
 use runenui_core::{
-    Element, FontFamily, GenericFontFamily, LogicalLength, StyleRecipeId, StyleVariantId,
-    Typography, TypographyToken, TypographyValue, View, Widget, button, children, column, row,
-    text,
+    Element, FlexContainerStyle, FlexDirection, FontFamily, GenericFontFamily, LayoutContainer,
+    LayoutDimension, LayoutStyle, LogicalLength, StyleRecipeId, StyleVariantId, Typography,
+    TypographyToken, TypographyValue, View, Widget, button, children, column, row, text,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -34,6 +34,29 @@ fn builders_preserve_nested_structure_and_style() {
     let gap = root.children()[1].layout().gap();
     assert!((gap.horizontal().get() - 4.0).abs() <= f32::EPSILON);
     assert!((gap.vertical().get() - 4.0).abs() <= f32::EPSILON);
+}
+
+#[test]
+fn public_layout_authoring_is_available_on_elements_and_builtin_builders() {
+    let flex = LayoutStyle::default().with_container(LayoutContainer::Flex(
+        FlexContainerStyle::default().with_direction(FlexDirection::Row),
+    ));
+    let sized = flex
+        .clone()
+        .with_width(LayoutDimension::length(LogicalLength::from(120_u16)));
+
+    let custom: Element<Action> = Element::new(Probe).with_layout(sized.clone());
+    assert_eq!(custom.layout(), &sized);
+
+    let root = column::<Action>(children![
+        text("Title").with_layout(sized.clone()),
+        button::<Action>("Save").with_layout(sized.clone()),
+    ])
+    .with_layout(flex.clone())
+    .into_element();
+    assert_eq!(root.layout(), &flex);
+    assert_eq!(root.children()[0].layout(), &sized);
+    assert_eq!(root.children()[1].layout(), &sized);
 }
 
 #[test]

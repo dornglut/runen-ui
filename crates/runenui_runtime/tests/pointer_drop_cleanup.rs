@@ -69,11 +69,15 @@ impl Widget<()> for Probe {
         WidgetActivation::actionable(true)
     }
 
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::new(32.0).unwrap_or_default(),
-            height: LogicalLength::new(32.0).unwrap_or_default(),
-        }
+    fn measure(
+        &self,
+        _state: &Self::State,
+        _input: runenui_core::WidgetMeasureInput,
+    ) -> WidgetMeasure {
+        WidgetMeasure::measured(
+            LogicalLength::new(32.0).unwrap_or_default(),
+            LogicalLength::new(32.0).unwrap_or_default(),
+        )
     }
 }
 

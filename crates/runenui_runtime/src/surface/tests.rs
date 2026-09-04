@@ -25,11 +25,11 @@ impl Widget<()> for SemanticLayoutProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(self.width.get()),
-            height: LogicalLength::from(10_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(
+            LogicalLength::from(self.width.get()),
+            LogicalLength::from(10_u16),
+        )
     }
 
     fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {

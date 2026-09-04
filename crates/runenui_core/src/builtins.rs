@@ -1,18 +1,18 @@
 use core::fmt;
 
 use crate::{
-    Axis, ColorValue, ElementId, ElementKey, HitContribution, HitContributionContext,
-    IntoElementId, IntoElementKey, LayoutStyle, LogicalLength, LogicalRect, LogicalSize,
-    PaintContribution, PaintContributionContext, PaintContributionItem, RadiusValue,
-    SemanticAction, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
-    SemanticRole, SemanticState, SemanticText, SpacingValue, StyleIntent, StyleRecipeId,
-    StyleVariantId, TypographyValue, WidgetActivationContext, WidgetInvalidation,
-    WidgetUpdateContext,
+    ColorValue, ElementId, ElementKey, FlexContainerStyle, FlexDirection, HitContribution,
+    HitContributionContext, IntoElementId, IntoElementKey, LayoutContainer, LayoutStyle,
+    LogicalLength, LogicalRect, LogicalSize, PaintContribution, PaintContributionContext,
+    PaintContributionItem, RadiusValue, SemanticAction, SemanticContribution,
+    SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
+    SemanticText, SpacingValue, StyleIntent, StyleRecipeId, StyleVariantId, TypographyValue,
+    WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
     element::{
-        AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View,
-        Views, Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetTextKind,
+        AuthoredElementFields, AuthoringDiagnostic, ChildBearingWidget, Element, View, Views,
+        Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetMeasureInput,
     },
-    widget_erasure::{ChildLayoutWidgetAdapter, ErasedWidget, WidgetAdapter},
+    widget_erasure::{ErasedWidget, WidgetAdapter},
 };
 
 macro_rules! common_builder_methods {
@@ -25,6 +25,11 @@ macro_rules! common_builder_methods {
         #[must_use]
         pub fn key(mut self, key: impl IntoElementKey) -> Self {
             assign_key(&mut self.key, &mut self.diagnostics, key);
+            self
+        }
+        #[must_use]
+        pub fn with_layout(mut self, layout: LayoutStyle) -> Self {
+            self.layout = layout;
             self
         }
         #[must_use]
@@ -70,6 +75,7 @@ pub struct Text {
     content: String,
     id: Option<ElementId>,
     key: Option<ElementKey>,
+    layout: LayoutStyle,
     style: StyleIntent,
     diagnostics: Vec<AuthoringDiagnostic>,
 }
@@ -81,6 +87,7 @@ impl Text {
             content: content.into(),
             id: None,
             key: None,
+            layout: LayoutStyle::default(),
             style: StyleIntent::EMPTY,
             diagnostics: Vec::new(),
         }
@@ -112,12 +119,9 @@ impl<Action> Widget<Action> for TextWidget {
             state.clone_from(&self.content);
         }
     }
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
+    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::Text {
             content: self.content.clone(),
-            kind: WidgetTextKind::Text,
-            minimum_width: LogicalLength::ZERO,
-            minimum_height: LogicalLength::ZERO,
         }
     }
     fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
@@ -142,7 +146,7 @@ impl<Action: 'static> View<Action> for Text {
             AuthoredElementFields::new(
                 self.id,
                 self.key,
-                LayoutStyle::default(),
+                self.layout,
                 self.style,
                 crate::Focusability::Automatic,
                 None,
@@ -160,6 +164,7 @@ pub struct Button<Action> {
     label: String,
     id: Option<ElementId>,
     key: Option<ElementKey>,
+    layout: LayoutStyle,
     enabled: bool,
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
@@ -174,6 +179,7 @@ impl<Action> fmt::Debug for Button<Action> {
             .field("label", &self.label)
             .field("id", &self.id)
             .field("key", &self.key)
+            .field("layout", &self.layout)
             .field("enabled", &self.enabled)
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
@@ -190,6 +196,7 @@ impl<Action> Button<Action> {
             label: label.into(),
             id: None,
             key: None,
+            layout: LayoutStyle::default(),
             enabled: true,
             activation_factory: None,
             actionable: false,
@@ -303,12 +310,9 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
             WidgetActivationOutput::none()
         }
     }
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
+    fn measure(&self, _: &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::Text {
             content: self.label.clone(),
-            kind: WidgetTextKind::ControlLabel,
-            minimum_width: LogicalLength::new(64.0).unwrap_or_default(),
-            minimum_height: LogicalLength::new(32.0).unwrap_or_default(),
         }
     }
     fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
@@ -342,7 +346,7 @@ impl<Action: 'static> View<Action> for Button<Action> {
             AuthoredElementFields::new(
                 self.id,
                 self.key,
-                LayoutStyle::default(),
+                self.layout,
                 self.style,
                 crate::Focusability::Automatic,
                 None,
@@ -388,10 +392,10 @@ impl<Action> Container<Action> {
     #[must_use]
     pub fn new<Implementation>(widget: Implementation, children: impl Views<Action>) -> Self
     where
-        Implementation: ChildLayoutWidget<Action> + 'static,
+        Implementation: ChildBearingWidget<Action> + 'static,
     {
         Self {
-            widget: Box::new(ChildLayoutWidgetAdapter(widget)),
+            widget: Box::new(WidgetAdapter(widget)),
             children: children.into_elements(),
             id: None,
             key: None,
@@ -409,27 +413,17 @@ impl<Action> Container<Action> {
 }
 
 #[derive(Debug)]
-struct LinearContainerWidget {
-    axis: Axis,
-}
+struct GroupWidget;
 
-impl<Action> Widget<Action> for LinearContainerWidget {
-    type State = Axis;
-    fn create_state(&self) -> Self::State {
-        self.axis
-    }
-    fn update(&self, state: &mut Self::State, context: &mut WidgetUpdateContext<Action>) {
-        if *state != self.axis {
-            context.invalidate(WidgetInvalidation::LAYOUT);
-            *state = self.axis;
-        }
-    }
-    fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
+impl<Action> Widget<Action> for GroupWidget {
+    type State = ();
+    fn create_state(&self) -> Self::State {}
+    fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
         background_paint(&context)
     }
     fn semantics(
         &self,
-        _: &Self::State,
+        (): &Self::State,
         context: SemanticContributionContext,
     ) -> SemanticContribution {
         let mut node = SemanticNodeContribution::primary(SemanticRole::Group);
@@ -440,11 +434,7 @@ impl<Action> Widget<Action> for LinearContainerWidget {
     }
 }
 
-impl<Action> ChildLayoutWidget<Action> for LinearContainerWidget {
-    fn child_layout(&self, _: &Self::State) -> ChildLayout {
-        ChildLayout::Linear { axis: self.axis }
-    }
-}
+impl<Action> ChildBearingWidget<Action> for GroupWidget {}
 
 impl<Action: 'static> View<Action> for Container<Action> {
     fn into_element(self) -> Element<Action> {
@@ -478,27 +468,21 @@ pub fn container<Action, Implementation>(
     children: impl Views<Action>,
 ) -> Container<Action>
 where
-    Implementation: ChildLayoutWidget<Action> + 'static,
+    Implementation: ChildBearingWidget<Action> + 'static,
 {
     Container::new(widget, children)
 }
 #[must_use]
 pub fn column<Action>(children: impl Views<Action>) -> Container<Action> {
-    Container::new(
-        LinearContainerWidget {
-            axis: Axis::Vertical,
-        },
-        children,
-    )
+    Container::new(GroupWidget, children).with_layout(LayoutStyle::default().with_container(
+        LayoutContainer::Flex(FlexContainerStyle::default().with_direction(FlexDirection::Column)),
+    ))
 }
 #[must_use]
 pub fn row<Action>(children: impl Views<Action>) -> Container<Action> {
-    Container::new(
-        LinearContainerWidget {
-            axis: Axis::Horizontal,
-        },
-        children,
-    )
+    Container::new(GroupWidget, children).with_layout(LayoutStyle::default().with_container(
+        LayoutContainer::Flex(FlexContainerStyle::default().with_direction(FlexDirection::Row)),
+    ))
 }
 
 fn background_paint(context: &PaintContributionContext) -> PaintContribution {

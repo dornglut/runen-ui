@@ -3,9 +3,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, CommandOrigin, CompositionCancelReason, CompositionEvent,
-    Element, EventContext, EventPhase, NoHostProtocol, SemanticCommand, UiApp, UiEvent, View,
-    Widget, WidgetEventOutput, WidgetTextInput, container,
+    ChildBearingWidget, CommandOrigin, CompositionCancelReason, CompositionEvent, Element,
+    EventContext, EventPhase, NoHostProtocol, SemanticCommand, UiApp, UiEvent, View, Widget,
+    WidgetEventOutput, WidgetTextInput, container,
 };
 use runenui_runtime::{
     AppRuntime, PumpBudget, RuntimeConfig, RuntimeLimits, RuntimeStatus, RuntimeTerminalReason,
@@ -39,13 +39,7 @@ impl Widget<Action> for RootWidget {
     fn create_state(&self) -> Self::State {}
 }
 
-impl ChildLayoutWidget<Action> for RootWidget {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: runenui_core::Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<Action> for RootWidget {}
 
 #[derive(Debug)]
 struct TargetWidget {

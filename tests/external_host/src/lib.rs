@@ -74,11 +74,15 @@ mod tests {
             WidgetActivationOutput::action(HostAction::Toggle)
         }
 
-        fn measure(&self, (): &Self::State) -> WidgetMeasure {
-            WidgetMeasure::Fixed {
-                width: LogicalLength::from(SURFACE_EXTENT),
-                height: LogicalLength::from(SURFACE_EXTENT),
-            }
+        fn measure(
+            &self,
+            (): &Self::State,
+            _input: runenui_core::WidgetMeasureInput,
+        ) -> WidgetMeasure {
+            WidgetMeasure::measured(
+                LogicalLength::from(SURFACE_EXTENT),
+                LogicalLength::from(SURFACE_EXTENT),
+            )
         }
 
         fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {

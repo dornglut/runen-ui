@@ -3,8 +3,8 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp,
-    View, Widget, WidgetMountContext, WidgetUnmountContext, children, container,
+    ChildBearingWidget, CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp, View,
+    Widget, WidgetMountContext, WidgetUnmountContext, children, container,
 };
 use runenui_runtime::{AppRuntime, PumpBudget, SubmitCommandErrorKind};
 
@@ -45,13 +45,7 @@ impl Widget<()> for LifetimeWidget {
     }
 }
 
-impl ChildLayoutWidget<()> for LifetimeWidget {
-    fn child_layout(&self, _: &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: runenui_core::Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<()> for LifetimeWidget {}
 
 #[derive(Debug)]
 struct AppState {

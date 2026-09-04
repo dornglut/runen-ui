@@ -28,11 +28,8 @@ impl Widget<()> for LowerTarget {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16),
-            height: LogicalLength::from(20_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u16), LogicalLength::from(20_u16))
     }
 
     fn hit_test(&self, (): &Self::State, _: HitContributionContext) -> HitContribution {
@@ -54,11 +51,8 @@ impl Widget<()> for UpperRegion {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16),
-            height: LogicalLength::from(20_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u16), LogicalLength::from(20_u16))
     }
 
     fn hit_test(&self, (): &Self::State, _: HitContributionContext) -> HitContribution {

@@ -756,11 +756,12 @@ mod tests {
             }
             SemanticContribution::single(button)
         }
-        fn measure(&self, _: &Self::State) -> runenui_core::WidgetMeasure {
-            runenui_core::WidgetMeasure::Fixed {
-                width: 100_u16.into(),
-                height: 100_u16.into(),
-            }
+        fn measure(
+            &self,
+            _: &Self::State,
+            _input: runenui_core::WidgetMeasureInput,
+        ) -> runenui_core::WidgetMeasure {
+            runenui_core::WidgetMeasure::measured(100_u16.into(), 100_u16.into())
         }
         fn paint(
             &self,

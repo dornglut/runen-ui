@@ -1,8 +1,8 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    CommandOrigin, Element, IntoEffects, LogicalLength, NoHostProtocol, SemanticCommand,
-    StyleEnvironment, UiApp, View, button, row,
+    CommandOrigin, Element, IntoEffects, LayoutDimension, LayoutStyle, LogicalLength,
+    NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp, View, button, row,
 };
 use runenui_runtime::{
     AppRuntime, CommandSubmission, LogicalPoint, LogicalSize, PumpBudget, RuntimeConfig,
@@ -56,6 +56,11 @@ fn retention_button(index: usize) -> Element<RetentionAction> {
         _ => "C",
     };
     button(label)
+        .with_layout(
+            LayoutStyle::default()
+                .with_width(LayoutDimension::Length(LogicalLength::from(64_u16)))
+                .with_height(LayoutDimension::Length(LogicalLength::from(24_u16))),
+        )
         .key(label)
         .on_activate(move || RetentionAction::Activate(index))
         .into_element()

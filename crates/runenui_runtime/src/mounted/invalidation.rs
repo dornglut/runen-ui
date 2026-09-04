@@ -68,8 +68,6 @@ pub(crate) fn apply_invalidation<Action>(
         node.caches.text_input = CachedCapability::Unresolved;
     }
     if invalidation.contains(WidgetInvalidation::LAYOUT) {
-        node.caches.measurement = CachedCapability::Unresolved;
-        node.caches.child_layout = CachedCapability::Unresolved;
         node.caches.paint = CachedCapability::Unresolved;
         node.caches.paint_context = None;
         node.caches.hit_test = CachedCapability::Unresolved;

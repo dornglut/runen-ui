@@ -10,7 +10,7 @@ use std::{
 };
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, CommandOrigin, Effects, Element, IntoEffects, NoHostProtocol,
+    ChildBearingWidget, CommandOrigin, Effects, Element, IntoEffects, NoHostProtocol,
     SemanticCommand, StyleEnvironment, UiApp, View, Widget, WidgetMountContext, button, text,
 };
 use runenui_runtime::{
@@ -504,13 +504,7 @@ impl Widget<()> for CapacityRoot {
     fn create_state(&self) -> Self::State {}
 }
 
-impl ChildLayoutWidget<()> for CapacityRoot {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: runenui_core::Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<()> for CapacityRoot {}
 
 #[derive(Debug)]
 struct MountedCapacityState {

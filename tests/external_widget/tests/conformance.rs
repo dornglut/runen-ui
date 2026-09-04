@@ -126,11 +126,15 @@ impl Widget<()> for StatefulPulse {
         );
         WidgetActivationOutput::changed()
     }
-    fn measure(&self, state: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16.saturating_add(state.activations)),
-            height: LogicalLength::from(10_u16),
-        }
+    fn measure(
+        &self,
+        state: &Self::State,
+        _input: runenui_core::WidgetMeasureInput,
+    ) -> WidgetMeasure {
+        WidgetMeasure::measured(
+            LogicalLength::from(20_u16.saturating_add(state.activations)),
+            LogicalLength::from(10_u16),
+        )
     }
     fn paint(&self, state: &Self::State, context: PaintContributionContext) -> PaintContribution {
         let size = context.local_size();

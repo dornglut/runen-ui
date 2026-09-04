@@ -1,8 +1,9 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    ElementId, IntoEffects, NoHostProtocol, PointerButton, PointerButtons, SemanticAction,
-    SemanticRole, UiApp, View, button, children, column,
+    ElementId, IntoEffects, LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol,
+    PointerButton, PointerButtons, SemanticAction, SemanticRole, UiApp, View, button, children,
+    column,
 };
 use runenui_runtime::{LogicalPoint, PointerDeviceKind, PointerId, PointerPhase, PumpBudget};
 use runenui_testing::{
@@ -26,10 +27,12 @@ impl UiApp for HarnessApp {
         column(children![
             button("Increment")
                 .id("harness.increment")
-                .on_activate(|| Action::Increment),
+                .on_activate(|| Action::Increment)
+                .with_layout(button_layout()),
             button("Reset")
                 .id("harness.reset")
-                .on_activate(|| Action::Reset),
+                .on_activate(|| Action::Reset)
+                .with_layout(button_layout()),
         ])
     }
 
@@ -42,6 +45,12 @@ impl UiApp for HarnessApp {
             Action::Reset => *state = 0,
         }
     }
+}
+
+fn button_layout() -> LayoutStyle {
+    LayoutStyle::default()
+        .with_width(LayoutDimension::Length(LogicalLength::from(80_u16)))
+        .with_height(LayoutDimension::Length(LogicalLength::from(24_u16)))
 }
 
 fn settle_budget() -> SettleBudget {

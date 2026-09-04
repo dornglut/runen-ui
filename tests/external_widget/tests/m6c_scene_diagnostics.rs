@@ -93,11 +93,8 @@ impl Widget<SceneDiagnosticAction> for SceneDiagnosticOwner {
         }
     }
 
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16),
-            height: LogicalLength::from(20_u16),
-        }
+    fn measure(&self, _: &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u16), LogicalLength::from(20_u16))
     }
 
     fn paint(&self, state: &Self::State, _: PaintContributionContext) -> PaintContribution {

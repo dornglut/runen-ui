@@ -1,6 +1,6 @@
 use runenui_core::{
-    ChildLayout, HitContribution, HitContributionContext, PaintContribution,
-    PaintContributionContext, WidgetActivation, WidgetDiagnostic, WidgetMeasure,
+    HitContribution, HitContributionContext, PaintContribution, PaintContributionContext,
+    WidgetActivation, WidgetDiagnostic,
 };
 
 use super::{CachedCapability, DirtyPhases, MountedNodeId, MountedTree, node::state_is_corrupted};
@@ -14,8 +14,6 @@ pub(crate) struct SurfaceCapabilityPlan {
 struct PlannedSurfaceCapabilities {
     owner: MountedNodeId,
     activation: Option<CachedCapability<WidgetActivation>>,
-    measurement: Option<CachedCapability<WidgetMeasure>>,
-    child_layout: Option<CachedCapability<Option<ChildLayout>>>,
     paint: Option<CachedCapability<PaintContribution>>,
     paint_context: Option<PaintContributionContext>,
     hit_test: Option<CachedCapability<HitContribution>>,
@@ -44,30 +42,6 @@ impl SurfaceCapabilityPlan {
             .unwrap_or_else(|| unreachable!("style resolution requires staged activation"))
             .ready()
             .unwrap_or_else(WidgetActivation::disabled)
-    }
-
-    pub(crate) fn measurement_at(
-        &self,
-        position: usize,
-        owner: &MountedNodeId,
-    ) -> Option<WidgetMeasure> {
-        self.owner_at(position, owner)
-            .measurement
-            .as_ref()
-            .and_then(CachedCapability::ready)
-    }
-
-    pub(crate) fn child_layout_at_or_else(
-        &self,
-        position: usize,
-        owner: &MountedNodeId,
-        fallback: impl FnOnce() -> Option<ChildLayout>,
-    ) -> Option<ChildLayout> {
-        self.owner_at(position, owner)
-            .child_layout
-            .as_ref()
-            .and_then(CachedCapability::ready)
-            .unwrap_or_else(fallback)
     }
 
     pub(crate) fn paint_at(
@@ -131,8 +105,6 @@ impl<Action> MountedTree<Action> {
             .map(|owner| PlannedSurfaceCapabilities {
                 owner,
                 activation: None,
-                measurement: None,
-                child_layout: None,
                 paint: None,
                 paint_context: None,
                 hit_test: None,
@@ -182,10 +154,6 @@ impl<Action> MountedTree<Action> {
                 if needs_activation && planned.activation.is_none() {
                     planned.activation = Some(CachedCapability::StatePayloadMismatch);
                 }
-                if needs_layout {
-                    planned.measurement = Some(CachedCapability::StatePayloadMismatch);
-                    planned.child_layout = Some(CachedCapability::StatePayloadMismatch);
-                }
                 if needs_paint {
                     planned.paint = Some(CachedCapability::StatePayloadMismatch);
                 }
@@ -203,18 +171,6 @@ impl<Action> MountedTree<Action> {
                 planned.activation = Some(stage_cached_capability(
                     &node.caches.activation,
                     || node.widget.activation(&node.state),
-                    &mut planned.mark_integrity_failed,
-                ));
-            }
-            if needs_layout && planned.measurement.is_none() {
-                planned.measurement = Some(stage_cached_capability(
-                    &node.caches.measurement,
-                    || node.widget.measure(&node.state),
-                    &mut planned.mark_integrity_failed,
-                ));
-                planned.child_layout = Some(stage_cached_capability(
-                    &node.caches.child_layout,
-                    || node.widget.child_layout(&node.state),
                     &mut planned.mark_integrity_failed,
                 ));
             }
@@ -294,12 +250,6 @@ impl<Action> MountedTree<Action> {
                 .unwrap_or_else(|| unreachable!("planned surface capability owner remains live"));
             if let Some(activation) = planned.activation {
                 node.caches.activation = activation;
-            }
-            if let Some(measurement) = planned.measurement {
-                node.caches.measurement = measurement;
-            }
-            if let Some(child_layout) = planned.child_layout {
-                node.caches.child_layout = child_layout;
             }
             if let Some(paint) = planned.paint {
                 node.caches.paint = paint;

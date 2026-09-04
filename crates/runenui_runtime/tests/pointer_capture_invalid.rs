@@ -3,11 +3,11 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, Element, ElementId, EventContext, HitContribution,
-    HitContributionContext, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
-    PointerBoundaryKind, PointerButton, PointerButtons, PointerCaptureKind, PointerDeviceKind,
-    PointerEvent, PointerId, PointerPhase, StyleEnvironment, SurfaceInputContext, UiApp, UiEvent,
-    View, Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure, children, container,
+    ChildBearingWidget, Element, ElementId, EventContext, HitContribution, HitContributionContext,
+    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PointerBoundaryKind, PointerButton,
+    PointerButtons, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
+    StyleEnvironment, SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetActivation,
+    WidgetEventOutput, WidgetMeasure, children, container,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext, TraceEventFamily,
@@ -107,13 +107,7 @@ impl Widget<()> for InvalidReleaseRoot {
     }
 }
 
-impl ChildLayoutWidget<()> for InvalidReleaseRoot {
-    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Horizontal,
-        }
-    }
-}
+impl ChildBearingWidget<()> for InvalidReleaseRoot {}
 
 #[derive(Debug)]
 struct CaptureProbe {
@@ -159,11 +153,15 @@ impl Widget<()> for CaptureProbe {
         WidgetActivation::actionable(true)
     }
 
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::new(32.0).unwrap_or_default(),
-            height: LogicalLength::new(32.0).unwrap_or_default(),
-        }
+    fn measure(
+        &self,
+        _state: &Self::State,
+        _input: runenui_core::WidgetMeasureInput,
+    ) -> WidgetMeasure {
+        WidgetMeasure::measured(
+            LogicalLength::new(32.0).unwrap_or_default(),
+            LogicalLength::new(32.0).unwrap_or_default(),
+        )
     }
 
     fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {

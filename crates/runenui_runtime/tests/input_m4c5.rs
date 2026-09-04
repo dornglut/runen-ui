@@ -3,7 +3,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, CommandOrigin, CommittedTextEvent, CompositionCancelReason,
+    ChildBearingWidget, CommandOrigin, CommittedTextEvent, CompositionCancelReason,
     CompositionEvent, Element, EventContext, EventPhase, InputDeviceId, KeyLocation, KeyModifiers,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, NoHostProtocol,
     PhysicalKey, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
@@ -212,13 +212,7 @@ impl Widget<InputAction> for InputWidget {
     }
 }
 
-impl ChildLayoutWidget<InputAction> for InputWidget {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: runenui_core::Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<InputAction> for InputWidget {}
 
 #[derive(Debug)]
 struct ReplacementWidget {

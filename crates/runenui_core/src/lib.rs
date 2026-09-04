@@ -259,9 +259,9 @@ pub use builtins::{Button, Container, Text, button, column, container, row, text
 pub use computed_style::ComputedStyle;
 pub use effects::{Effects, IntoEffects};
 pub use element::{
-    AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
-    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetStateTypeId,
-    WidgetTextInput, WidgetTextKind, WidgetTypeId,
+    AuthoringDiagnostic, ChildBearingWidget, Element, View, Views, Widget, WidgetActivation,
+    WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic, WidgetMeasure,
+    WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
 pub use event::{
     CommandDerivation, CommandOrigin, EventPhase, EventSource, SemanticCommand,

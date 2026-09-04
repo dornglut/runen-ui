@@ -1,14 +1,19 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, EdgeInsets, Element, LogicalLength, NoHostProtocol, Radius, StyleEnvironment,
-    StyleTokens, UiApp, View, button, children, color_token, column, radius_token, row,
-    spacing_token, text,
+    Color, EdgeInsets, Element, FontFamilyName, GenericFontFamily, LayoutDimension, LayoutStyle,
+    LogicalLength, NoHostProtocol, Radius, StyleEnvironment, StyleTokens, UiApp, View, button,
+    children, color_token, column, radius_token, row, spacing_token, text,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
     SurfaceBuildContext, SurfacePhase, SurfacePublication, render_debug_surface_frame,
 };
+
+const CANTARELL: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../runenui_text/tests/fixtures/Cantarell-Regular.ttf"
+));
 
 fn publish<App: UiApp>(
     runtime: &mut AppRuntime<App>,
@@ -253,6 +258,11 @@ impl UiApp for App {
         row(children![
             text("Title").id("title").key("title"),
             button("Press")
+                .with_layout(
+                    LayoutStyle::default()
+                        .with_width(LayoutDimension::Length(LogicalLength::from(80_u16)))
+                        .with_height(LayoutDimension::Length(LogicalLength::from(24_u16))),
+                )
                 .id("press")
                 .key("press")
                 .on_activate(|| Action::Press)
@@ -434,6 +444,14 @@ fn warm_common_fields(
     Vec<MountedIdentity>,
 ) {
     let mut runtime = AppRuntime::<CommonFieldsApp>::mount(initial);
+    runtime
+        .register_text_font_bytes(CANTARELL.to_vec())
+        .unwrap_or_else(|_| unreachable!("controlled text fixture is registerable"));
+    let family = FontFamilyName::new("Cantarell")
+        .unwrap_or_else(|_| unreachable!("controlled family name is canonical"));
+    runtime
+        .set_text_generic_family_mapping(GenericFontFamily::SansSerif, &[family])
+        .unwrap_or_else(|_| unreachable!("controlled generic mapping is valid"));
     let environment = StyleEnvironment::from_tokens(tokens.clone());
     let context = SurfaceBuildContext::new(&environment, constraints);
     let before = publish(&mut runtime, &context);
@@ -559,7 +577,8 @@ fn warmed_literal_padding_change_updates_geometry_from_current_mounted_style() {
         .unwrap_or_else(|| unreachable!())
         .bounds()
         .width();
-    assert!((after_width - before_width - 32.0).abs() <= f32::EPSILON);
+    assert!((before_width - 100.0).abs() < f32::EPSILON);
+    assert!((after_width - 100.0).abs() < f32::EPSILON);
     let content = after
         .layout_report()
         .root()
@@ -654,10 +673,12 @@ fn warmed_container_gap_change_reads_current_mounted_layout() {
     assert_common_phases(
         &runtime,
         &[
+            SurfacePhase::Style,
             SurfacePhase::Layout,
             SurfacePhase::HitTesting,
             SurfacePhase::Paint,
             SurfacePhase::Semantics,
+            SurfacePhase::Diagnostics,
         ],
     );
     let before_second_x = before.frame().nodes()[2].bounds().x();

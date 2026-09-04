@@ -1,8 +1,8 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, CommandOrigin, Element, EventContext, NoHostProtocol,
-    SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetEventOutput, container,
+    ChildBearingWidget, CommandOrigin, Element, EventContext, NoHostProtocol, SemanticCommand,
+    UiApp, UiEvent, View, Widget, WidgetActivation, WidgetEventOutput, container,
 };
 use runenui_runtime::{
     AppRuntime, MountedNodeId, PumpBudget, RuntimeConfig, TraceEventFamily, TraceRecordKind,
@@ -36,13 +36,7 @@ impl Widget<()> for RouteWidget {
     }
 }
 
-impl ChildLayoutWidget<()> for RouteWidget {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: runenui_core::Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<()> for RouteWidget {}
 
 struct RouteApp;
 

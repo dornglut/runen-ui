@@ -1,8 +1,8 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Element, ElementId, LogicalPoint, LogicalRect, NoHostProtocol, SemanticAction,
-    StyleEnvironment, UiApp, View, button,
+    Element, ElementId, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
+    NoHostProtocol, SemanticAction, StyleEnvironment, UiApp, View, button,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase,
@@ -28,6 +28,11 @@ impl UiApp for App {
 
     fn root(state: &Self::State) -> Element<Self::Action> {
         button("Control")
+            .with_layout(
+                LayoutStyle::default()
+                    .with_width(LayoutDimension::Length(LogicalLength::from(80_u16)))
+                    .with_height(LayoutDimension::Length(LogicalLength::from(24_u16))),
+            )
             .enabled(state.enabled)
             .on_activate(|| Action::Activated)
             .id("control")

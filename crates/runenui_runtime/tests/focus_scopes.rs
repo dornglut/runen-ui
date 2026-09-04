@@ -2,10 +2,10 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, CommandOrigin, Element, EventContext, EventPhase,
-    FocusBoundaryPolicy, FocusEventKind, FocusReason, FocusScope, FocusScopePolicy, NoHostProtocol,
-    SemanticCommand, StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetActivation,
-    WidgetEventOutput, button, column, container,
+    ChildBearingWidget, CommandOrigin, Element, EventContext, EventPhase, FocusBoundaryPolicy,
+    FocusEventKind, FocusReason, FocusScope, FocusScopePolicy, NoHostProtocol, SemanticCommand,
+    StyleEnvironment, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetEventOutput, button,
+    column, container,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, SurfaceBuildContext,
@@ -718,13 +718,7 @@ impl Widget<OrderingFact> for OrderingWidget {
     }
 }
 
-impl ChildLayoutWidget<OrderingFact> for OrderingWidget {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Horizontal,
-        }
-    }
-}
+impl ChildBearingWidget<OrderingFact> for OrderingWidget {}
 
 struct OrderingApp;
 

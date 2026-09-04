@@ -72,7 +72,12 @@ pub fn relayout_text(
     request: &TextRequest,
 ) -> Result<TextArtifact, TextLayoutError> {
     let paragraph = request.paragraph_style();
-    layout.break_all_lines(request.constraints().max_inline().map(LogicalLength::get));
+    let max_inline = if request.constraints().is_min_content() {
+        Some(layout.calculate_content_widths().min)
+    } else {
+        request.constraints().max_inline().map(LogicalLength::get)
+    };
+    layout.break_all_lines(max_inline);
     layout.align(
         match paragraph.alignment() {
             TextAlignment::Start => Alignment::Start,

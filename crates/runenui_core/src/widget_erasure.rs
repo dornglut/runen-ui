@@ -1,6 +1,6 @@
 use crate::element::{
-    AuthoredElementFields, AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, Widget,
-    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetStateTypeId,
+    AuthoredElementFields, AuthoringDiagnostic, Element, Widget, WidgetActivation,
+    WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput, WidgetStateTypeId,
     WidgetTextInput, WidgetTypeId,
 };
 use crate::{
@@ -51,8 +51,11 @@ pub trait ErasedWidget<Action>: fmt::Debug {
         state: &mut dyn Any,
         context: &mut WidgetActivationContext<Action>,
     ) -> Result<WidgetActivationOutput<Action>, WidgetBridgeError>;
-    fn measure(&self, state: &dyn Any) -> Result<WidgetMeasure, WidgetBridgeError>;
-    fn child_layout(&self, state: &dyn Any) -> Result<Option<ChildLayout>, WidgetBridgeError>;
+    fn measure(
+        &self,
+        state: &dyn Any,
+        input: WidgetMeasureInput,
+    ) -> Result<WidgetMeasure, WidgetBridgeError>;
     fn paint(
         &self,
         state: &dyn Any,
@@ -164,13 +167,14 @@ where
             .0
             .activate(downcast_mut::<Implementation::State>(state)?, context))
     }
-    fn measure(&self, state: &dyn Any) -> Result<WidgetMeasure, WidgetBridgeError> {
+    fn measure(
+        &self,
+        state: &dyn Any,
+        input: WidgetMeasureInput,
+    ) -> Result<WidgetMeasure, WidgetBridgeError> {
         Ok(self
             .0
-            .measure(downcast_ref::<Implementation::State>(state)?))
-    }
-    fn child_layout(&self, _state: &dyn Any) -> Result<Option<ChildLayout>, WidgetBridgeError> {
-        Ok(None)
+            .measure(downcast_ref::<Implementation::State>(state)?, input))
     }
     fn paint(
         &self,
@@ -206,138 +210,6 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct ChildLayoutWidgetAdapter<Implementation>(pub Implementation);
-
-impl<Action, Implementation> ErasedWidget<Action> for ChildLayoutWidgetAdapter<Implementation>
-where
-    Implementation: ChildLayoutWidget<Action> + 'static,
-{
-    fn widget_type_id(&self) -> WidgetTypeId {
-        WidgetTypeId::of::<Implementation>()
-    }
-    fn widget_type_name(&self) -> &'static str {
-        core::any::type_name::<Implementation>()
-    }
-    fn state_type_id(&self) -> WidgetStateTypeId {
-        WidgetStateTypeId::of::<Implementation::State>()
-    }
-    fn create_state(&self) -> Box<dyn Any> {
-        Box::new(self.0.create_state())
-    }
-    fn mount(
-        &self,
-        state: &mut dyn Any,
-        context: &mut WidgetMountContext<Action>,
-    ) -> Result<(), WidgetBridgeError> {
-        self.0
-            .mount(downcast_mut::<Implementation::State>(state)?, context);
-        Ok(())
-    }
-    fn update(
-        &self,
-        state: &mut dyn Any,
-        context: &mut WidgetUpdateContext<Action>,
-    ) -> Result<(), WidgetBridgeError> {
-        self.0
-            .update(downcast_mut::<Implementation::State>(state)?, context);
-        Ok(())
-    }
-    fn unmount(
-        &self,
-        state: &mut dyn Any,
-        context: &mut WidgetUnmountContext,
-    ) -> Result<(), WidgetBridgeError> {
-        self.0
-            .unmount(downcast_mut::<Implementation::State>(state)?, context);
-        Ok(())
-    }
-    fn subscriptions(
-        &self,
-        state: &dyn Any,
-        subscriptions: &mut SubscriptionSet<Action>,
-    ) -> Result<(), WidgetBridgeError> {
-        self.0
-            .subscriptions(downcast_ref::<Implementation::State>(state)?, subscriptions);
-        Ok(())
-    }
-    fn event_bridge_matches(&self, state: &dyn Any) -> bool {
-        state.is::<Implementation::State>()
-    }
-    fn event(
-        &mut self,
-        state: &mut dyn Any,
-        event: &UiEvent,
-        context: &mut EventContext<'_, Action>,
-    ) -> Result<WidgetEventOutput, WidgetBridgeError> {
-        Ok(self.0.event(
-            downcast_mut::<Implementation::State>(state)?,
-            event,
-            context,
-        ))
-    }
-    fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError> {
-        Ok(self
-            .0
-            .activation(downcast_ref::<Implementation::State>(state)?))
-    }
-    fn text_input(&self, state: &dyn Any) -> Result<WidgetTextInput, WidgetBridgeError> {
-        Ok(self
-            .0
-            .text_input(downcast_ref::<Implementation::State>(state)?))
-    }
-    fn activate(
-        &mut self,
-        state: &mut dyn Any,
-        context: &mut WidgetActivationContext<Action>,
-    ) -> Result<WidgetActivationOutput<Action>, WidgetBridgeError> {
-        Ok(self
-            .0
-            .activate(downcast_mut::<Implementation::State>(state)?, context))
-    }
-    fn measure(&self, state: &dyn Any) -> Result<WidgetMeasure, WidgetBridgeError> {
-        Ok(self
-            .0
-            .measure(downcast_ref::<Implementation::State>(state)?))
-    }
-    fn child_layout(&self, state: &dyn Any) -> Result<Option<ChildLayout>, WidgetBridgeError> {
-        Ok(Some(self.0.child_layout(downcast_ref::<
-            Implementation::State,
-        >(state)?)))
-    }
-    fn paint(
-        &self,
-        state: &dyn Any,
-        context: PaintContributionContext,
-    ) -> Result<PaintContribution, WidgetBridgeError> {
-        Ok(self
-            .0
-            .paint(downcast_ref::<Implementation::State>(state)?, context))
-    }
-    fn hit_test(
-        &self,
-        state: &dyn Any,
-        context: HitContributionContext,
-    ) -> Result<HitContribution, WidgetBridgeError> {
-        Ok(self
-            .0
-            .hit_test(downcast_ref::<Implementation::State>(state)?, context))
-    }
-    fn semantics(
-        &self,
-        state: &dyn Any,
-        context: SemanticContributionContext,
-    ) -> Result<SemanticContribution, WidgetBridgeError> {
-        Ok(self
-            .0
-            .semantics(downcast_ref::<Implementation::State>(state)?, context))
-    }
-    fn diagnostics(&self, state: &dyn Any) -> Result<Vec<WidgetDiagnostic>, WidgetBridgeError> {
-        Ok(self
-            .0
-            .diagnostics(downcast_ref::<Implementation::State>(state)?))
-    }
-}
 fn downcast_ref<State: 'static>(state: &dyn Any) -> Result<&State, WidgetBridgeError> {
     state
         .downcast_ref::<State>()
@@ -563,14 +435,12 @@ impl<Action> MountedWidget<Action> {
     ) -> Result<WidgetActivationOutput<Action>, WidgetBridgeError> {
         self.inner.activate(state.value.as_mut(), context)
     }
-    pub fn measure(&self, state: &MountedWidgetState) -> Result<WidgetMeasure, WidgetBridgeError> {
-        self.inner.measure(state.value.as_ref())
-    }
-    pub fn child_layout(
+    pub fn measure(
         &self,
         state: &MountedWidgetState,
-    ) -> Result<Option<ChildLayout>, WidgetBridgeError> {
-        self.inner.child_layout(state.value.as_ref())
+        input: WidgetMeasureInput,
+    ) -> Result<WidgetMeasure, WidgetBridgeError> {
+        self.inner.measure(state.value.as_ref(), input)
     }
     pub fn paint(
         &self,

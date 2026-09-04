@@ -21,11 +21,8 @@ impl Widget<()> for FocusableNoHit {
         WidgetActivation::actionable(true)
     }
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16),
-            height: LogicalLength::from(10_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u16), LogicalLength::from(10_u16))
     }
 }
 
@@ -37,11 +34,8 @@ impl Widget<()> for HitOnly {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16),
-            height: LogicalLength::from(10_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u16), LogicalLength::from(10_u16))
     }
 
     fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {

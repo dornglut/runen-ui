@@ -1,6 +1,9 @@
 #![allow(refining_impl_trait)]
 
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use runenui_core::{
     CommandOrigin, Element, ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol,
@@ -8,6 +11,7 @@ use runenui_core::{
 };
 use runenui_external_widget_conformance::{
     LayoutCase, LayoutConformanceApp, LayoutState, UnsupportedMeasure, counting_measurement_tree,
+    responsive_measurement_tree,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, PumpBudget, SurfaceBuildContext,
@@ -21,6 +25,56 @@ const CANTARELL: &[u8] = include_bytes!(concat!(
 
 fn size(width: f32, height: f32) -> LogicalSize {
     LogicalSize::try_new(width, height).unwrap_or_else(|_| unreachable!())
+}
+
+struct ResponsiveApp;
+
+impl UiApp for ResponsiveApp {
+    type State = Rc<RefCell<Vec<runenui_core::WidgetMeasureInput>>>;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        responsive_measurement_tree(Rc::clone(state))
+    }
+
+    fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+#[test]
+fn downstream_custom_measurement_receives_bounded_requests_and_baseline() {
+    let inputs = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<ResponsiveApp>::mount(Rc::clone(&inputs));
+    let environment = StyleEnvironment::default();
+    let publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(120.0, 80.0))),
+    );
+
+    let observed = inputs.borrow();
+    assert!(!observed.is_empty());
+    assert!(observed.iter().all(|input| {
+        !matches!(
+            (input.available_width(), input.available_height()),
+            (runenui_core::WidgetAvailableSpace::Definite(width), _)
+                if !width.get().is_finite()
+        )
+    }));
+    assert!(
+        observed
+            .iter()
+            .any(|input| input.known_width().is_some() || input.known_height().is_some())
+    );
+    let node = publication
+        .layout_report()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "responsive.measure")
+        })
+        .unwrap_or_else(|| unreachable!("responsive measured node is published"));
+    assert!(node.constrained_outer_size().width() > 0.0);
 }
 
 fn register_controlled_text<App: UiApp>(runtime: &mut AppRuntime<App>) {
@@ -98,7 +152,7 @@ impl UiApp for CountingApp {
 }
 
 #[test]
-fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication() {
+fn measurement_callbacks_are_transaction_local_and_clean_publication_reuses_products() {
     let panel = Rc::new(Cell::new(0));
     let layout = Rc::new(Cell::new(0));
     let text = Rc::new(Cell::new(0));
@@ -117,7 +171,7 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     let first = publish(&mut runtime, &context);
     assert_eq!(
         (panel.get(), text.get(), fixed.get(), layout.get()),
-        (1, 1, 1, 1)
+        (1, 1, 1, 0)
     );
     assert!(first.frame().size().width() > 0.0);
     assert!(first.frame().size().height() > 0.0);
@@ -148,7 +202,7 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     assert_eq!(second.into_renderer_products(), first_products);
     assert_eq!(
         (panel.get(), text.get(), fixed.get(), layout.get()),
-        (1, 1, 1, 1)
+        (1, 1, 1, 0)
     );
     assert!(runtime.last_surface_phase_report().executed().is_empty());
 
@@ -172,7 +226,7 @@ fn measurement_and_child_layout_capabilities_are_cached_across_clean_publication
     );
     assert_eq!(
         (panel.get(), text.get(), fixed.get(), layout.get()),
-        (1, 1, 1, 1)
+        (2, 2, 2, 0)
     );
 }
 
@@ -207,7 +261,7 @@ fn unsupported_measurement_is_explicit_and_deterministic() {
         diagnostic.message(),
         "unsupported widget measurement capability: external proof capability"
     );
-    assert_eq!(publication.frame().size(), size(0.0, 0.0));
+    assert_eq!(publication.frame().size(), size(100.0, 0.0));
 }
 
 #[test]

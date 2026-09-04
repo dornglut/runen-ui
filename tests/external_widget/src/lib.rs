@@ -94,16 +94,17 @@ use std::{
 };
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, Color, CompositionCancelReason, CompositionEvent,
-    Container, EdgeInsets, Element, EventContext, EventPhase, FocusEventKind, FocusReason,
-    HitContribution, HitContributionContext, IntoEffects, KeyboardPhase, LogicalLength,
-    LogicalRect, LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionItem, SemanticAction, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, SemanticState, SubscriptionSet, UiApp, UiEvent, View,
-    Views, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
-    WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetMountContext,
-    WidgetTextKind, WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children, column,
-    container, text,
+    ChildBearingWidget, Color, CompositionCancelReason, CompositionEvent, Container, EdgeInsets,
+    Element, EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusEventKind,
+    FocusReason, HitContribution, HitContributionContext, IntoEffects, KeyboardPhase,
+    LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
+    PaintContribution, PaintContributionContext, PaintContributionItem, SemanticAction,
+    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
+    SemanticState, SubscriptionSet, UiApp, UiEvent, View, Views, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic,
+    WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
+    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children,
+    column, container, row, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -183,13 +184,7 @@ impl Widget<()> for ExternalFocusWidget {
     }
 }
 
-impl ChildLayoutWidget<()> for ExternalFocusWidget {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Horizontal,
-        }
-    }
-}
+impl ChildBearingWidget<()> for ExternalFocusWidget {}
 
 #[must_use]
 pub fn external_focus_panel(log: Rc<RefCell<Vec<ExternalFocusFact>>>) -> Element<()> {
@@ -296,13 +291,7 @@ impl<Action> Widget<Action> for ExternalInputAncestor {
     }
 }
 
-impl<Action> ChildLayoutWidget<Action> for ExternalInputAncestor {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Vertical,
-        }
-    }
-}
+impl<Action> ChildBearingWidget<Action> for ExternalInputAncestor {}
 
 /// Genuine downstream text and composition-capable widget.
 #[derive(Debug)]
@@ -634,11 +623,15 @@ impl Widget<ChildAction> for PulseButton {
         }
     }
 
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::new(80.0).unwrap_or_default(),
-            height: LogicalLength::new(24.0).unwrap_or_default(),
-        }
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::Measured(WidgetMeasuredSize::new(
+            LogicalSize::new(
+                LogicalLength::new(80.0).unwrap_or_default(),
+                LogicalLength::new(24.0).unwrap_or_default(),
+            ),
+            None,
+            None,
+        ))
     }
 
     fn paint(&self, _state: &Self::State, context: PaintContributionContext) -> PaintContribution {
@@ -744,17 +737,13 @@ impl<Action> Widget<Action> for CustomColumn {
     }
 }
 
-impl<Action> ChildLayoutWidget<Action> for CustomColumn {
-    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Vertical,
-        }
-    }
-}
+impl<Action> ChildBearingWidget<Action> for CustomColumn {}
 
 #[must_use]
 pub fn custom_column<Action>(children: impl Views<Action>) -> Container<Action> {
-    container(CustomColumn, children)
+    container(CustomColumn, children).with_layout(LayoutStyle::default().with_container(
+        LayoutContainer::Flex(FlexContainerStyle::default().with_direction(FlexDirection::Column)),
+    ))
 }
 
 #[derive(Debug)]
@@ -777,13 +766,7 @@ impl<Action> Widget<Action> for CustomRow {
     }
 }
 
-impl<Action> ChildLayoutWidget<Action> for CustomRow {
-    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Horizontal,
-        }
-    }
-}
+impl<Action> ChildBearingWidget<Action> for CustomRow {}
 
 #[derive(Debug)]
 pub struct MinimumPanel;
@@ -791,21 +774,19 @@ pub struct MinimumPanel;
 impl<Action> Widget<Action> for MinimumPanel {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::new(180.0).unwrap_or_default(),
-            height: LogicalLength::new(60.0).unwrap_or_default(),
-        }
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::Measured(WidgetMeasuredSize::new(
+            LogicalSize::new(
+                LogicalLength::new(180.0).unwrap_or_default(),
+                LogicalLength::new(60.0).unwrap_or_default(),
+            ),
+            None,
+            None,
+        ))
     }
 }
 
-impl<Action> ChildLayoutWidget<Action> for MinimumPanel {
-    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Vertical,
-        }
-    }
-}
+impl<Action> ChildBearingWidget<Action> for MinimumPanel {}
 
 #[derive(Debug)]
 pub struct TextMinimumPanel;
@@ -813,23 +794,14 @@ pub struct TextMinimumPanel;
 impl<Action> Widget<Action> for TextMinimumPanel {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::Text {
             content: "external text intrinsic minimum".to_owned(),
-            kind: WidgetTextKind::Text,
-            minimum_width: LogicalLength::ZERO,
-            minimum_height: LogicalLength::ZERO,
         }
     }
 }
 
-impl<Action> ChildLayoutWidget<Action> for TextMinimumPanel {
-    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Horizontal,
-        }
-    }
-}
+impl<Action> ChildBearingWidget<Action> for TextMinimumPanel {}
 
 #[derive(Debug)]
 pub struct UnsupportedMinimumPanel;
@@ -837,39 +809,41 @@ pub struct UnsupportedMinimumPanel;
 impl<Action> Widget<Action> for UnsupportedMinimumPanel {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::Unsupported {
             reason: "external child-layout intrinsic proof",
         }
     }
 }
 
-impl<Action> ChildLayoutWidget<Action> for UnsupportedMinimumPanel {
-    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Vertical,
-        }
-    }
-}
+impl<Action> ChildBearingWidget<Action> for UnsupportedMinimumPanel {}
 
 #[must_use]
 pub fn custom_row<Action>(children: impl Views<Action>) -> Container<Action> {
-    container(CustomRow, children)
+    container(CustomRow, children).with_layout(LayoutStyle::default().with_container(
+        LayoutContainer::Flex(FlexContainerStyle::default().with_direction(FlexDirection::Row)),
+    ))
 }
 
 #[must_use]
 pub fn minimum_panel<Action>(children: impl Views<Action>) -> Container<Action> {
-    container(MinimumPanel, children)
+    container(MinimumPanel, children).with_layout(LayoutStyle::default().with_container(
+        LayoutContainer::Flex(FlexContainerStyle::default().with_direction(FlexDirection::Column)),
+    ))
 }
 
 #[must_use]
 pub fn text_minimum_panel<Action>(children: impl Views<Action>) -> Container<Action> {
-    container(TextMinimumPanel, children)
+    container(TextMinimumPanel, children).with_layout(LayoutStyle::default().with_container(
+        LayoutContainer::Flex(FlexContainerStyle::default().with_direction(FlexDirection::Column)),
+    ))
 }
 
 #[must_use]
 pub fn unsupported_minimum_panel<Action>(children: impl Views<Action>) -> Container<Action> {
-    container(UnsupportedMinimumPanel, children)
+    container(UnsupportedMinimumPanel, children).with_layout(LayoutStyle::default().with_container(
+        LayoutContainer::Flex(FlexContainerStyle::default().with_direction(FlexDirection::Column)),
+    ))
 }
 
 #[must_use]
@@ -1025,31 +999,19 @@ impl<T: core::fmt::Debug + 'static> Widget<()> for GenericWidget<T> {
 #[derive(Debug)]
 pub struct CountingLayoutPanel {
     measure_calls: Rc<Cell<usize>>,
-    child_layout_calls: Rc<Cell<usize>>,
+    _child_layout_calls: Rc<Cell<usize>>,
 }
 
 impl Widget<()> for CountingLayoutPanel {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
         self.measure_calls.set(self.measure_calls.get() + 1);
         WidgetMeasure::default()
     }
 }
 
-impl ChildLayoutWidget<()> for CountingLayoutPanel {
-    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
-        let call = self.child_layout_calls.get() + 1;
-        self.child_layout_calls.set(call);
-        ChildLayout::Linear {
-            axis: if call % 2 == 1 {
-                Axis::Vertical
-            } else {
-                Axis::Horizontal
-            },
-        }
-    }
-}
+impl ChildBearingWidget<()> for CountingLayoutPanel {}
 
 #[derive(Debug)]
 struct CountingText {
@@ -1059,13 +1021,10 @@ struct CountingText {
 impl Widget<()> for CountingText {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
         self.calls.set(self.calls.get() + 1);
         WidgetMeasure::Text {
             content: "counted descriptor".to_owned(),
-            kind: WidgetTextKind::ControlLabel,
-            minimum_width: LogicalLength::ZERO,
-            minimum_height: LogicalLength::ZERO,
         }
     }
 }
@@ -1078,12 +1037,16 @@ struct CountingFixed {
 impl Widget<()> for CountingFixed {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
         self.calls.set(self.calls.get() + 1);
-        WidgetMeasure::Fixed {
-            width: LogicalLength::new(20.0).unwrap_or_default(),
-            height: LogicalLength::new(7.0).unwrap_or_default(),
-        }
+        WidgetMeasure::Measured(WidgetMeasuredSize::new(
+            LogicalSize::new(
+                LogicalLength::new(20.0).unwrap_or_default(),
+                LogicalLength::new(7.0).unwrap_or_default(),
+            ),
+            None,
+            None,
+        ))
     }
 }
 
@@ -1097,7 +1060,7 @@ pub fn counting_measurement_tree(
     container(
         CountingLayoutPanel {
             measure_calls: panel_calls,
-            child_layout_calls,
+            _child_layout_calls: child_layout_calls,
         },
         children![
             Element::new(CountingText { calls: text_calls }).id("external.counted-text"),
@@ -1109,12 +1072,46 @@ pub fn counting_measurement_tree(
 }
 
 #[derive(Debug)]
+struct ResponsiveMeasuredWidget {
+    inputs: Rc<RefCell<Vec<WidgetMeasureInput>>>,
+}
+
+impl Widget<()> for ResponsiveMeasuredWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn measure(&self, _state: &Self::State, input: WidgetMeasureInput) -> WidgetMeasure {
+        self.inputs.borrow_mut().push(input);
+        let (width, height) = match input.available_width() {
+            WidgetAvailableSpace::Definite(value) if value.get() < 80.0 => {
+                (LogicalLength::from(60_u16), LogicalLength::from(40_u16))
+            }
+            _ => (LogicalLength::from(120_u16), LogicalLength::from(20_u16)),
+        };
+        WidgetMeasure::Measured(WidgetMeasuredSize::new(
+            LogicalSize::new(width, height),
+            Some(LogicalLength::from(12_u16)),
+            Some(LogicalLength::from(12_u16)),
+        ))
+    }
+}
+
+#[must_use]
+pub fn responsive_measurement_tree(inputs: Rc<RefCell<Vec<WidgetMeasureInput>>>) -> Element<()> {
+    row(children![
+        Element::new(ResponsiveMeasuredWidget { inputs }).id("responsive.measure")
+    ])
+    .into_element()
+}
+
+#[derive(Debug)]
 pub struct UnsupportedMeasure;
 
 impl Widget<()> for UnsupportedMeasure {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::Unsupported {
             reason: "external proof capability",
         }

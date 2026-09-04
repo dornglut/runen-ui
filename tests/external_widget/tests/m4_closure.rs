@@ -3,9 +3,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, CommandOrigin, CompositionEvent, Element, EventContext,
-    EventPhase, FocusEventKind, HitContribution, HitContributionContext, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, PointerButton, PointerButtons, PointerCaptureKind,
+    ChildBearingWidget, CommandOrigin, CompositionEvent, Element, EventContext, EventPhase,
+    FocusEventKind, HitContribution, HitContributionContext, LogicalLength, LogicalPoint,
+    LogicalRect, NoHostProtocol, PointerButton, PointerButtons, PointerCaptureKind,
     PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticCommand, StyleEnvironment,
     UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
     WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetTextInput,
@@ -79,13 +79,7 @@ impl Widget<Action> for ClosureAncestor {
     }
 }
 
-impl ChildLayoutWidget<Action> for ClosureAncestor {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<Action> for ClosureAncestor {}
 
 #[derive(Debug)]
 struct ClosureWidget {
@@ -157,11 +151,12 @@ impl Widget<ChildAction> for ClosureWidget {
         WidgetActivationOutput::changed_with_action(ChildAction::Activated)
     }
 
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(24_u16),
-            height: LogicalLength::from(24_u16),
-        }
+    fn measure(
+        &self,
+        _state: &Self::State,
+        _input: runenui_core::WidgetMeasureInput,
+    ) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(24_u16), LogicalLength::from(24_u16))
     }
 
     fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {

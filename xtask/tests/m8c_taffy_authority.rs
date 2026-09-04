@@ -1,24 +1,19 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    env,
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 const RUNTIME_MANIFEST: &str = "crates/runenui_runtime/Cargo.toml";
 const RUNTIME_SOURCE: &str = "crates/runenui_runtime/src";
 const LOCKFILE: &str = "Cargo.lock";
 const EXACT_TAFFY_DECLARATION: &str = "taffy = { version = \"=0.14.0\", default-features = false, features = [\"flexbox\", \"grid\", \"block_layout\", \"content_size\"] }";
-const EXACT_TAFFY_LOCK_BODY: &str = r#"name = "taffy"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "639627c87f43b9181c811f40a6296409e093a17bc761214cba3c15df74f86b99"
-dependencies = [
- "arrayvec",
- "smallvec",
-]
-"#;
+const EXPECTED_TAFFY_FEATURES: &[&str] =
+    &["alloc", "block_layout", "content_size", "flexbox", "grid"];
 
 #[test]
 fn taffy_adoption_is_absent_or_exactly_bounded() -> Result<(), String> {
@@ -66,7 +61,8 @@ fn taffy_adoption_is_absent_or_exactly_bounded() -> Result<(), String> {
                         .to_owned(),
                 );
             }
-            audit_lockfile_taffy(&lockfile)
+            audit_lockfile_taffy(&lockfile)?;
+            audit_resolved_taffy_features(&root)
         }
     }
 }
@@ -202,11 +198,83 @@ fn audit_lockfile_taffy(lockfile: &str) -> Result<(), String> {
     }
 
     let block = taffy_blocks[0];
-    if block.trim_end() != EXACT_TAFFY_LOCK_BODY.trim_end() {
+    for expected in [
+        "name = \"taffy\"",
+        "version = \"0.14.0\"",
+        "source = \"registry+https://github.com/rust-lang/crates.io-index\"",
+        "checksum = \"639627c87f43b9181c811f40a6296409e093a17bc761214cba3c15df74f86b99\"",
+    ] {
+        if !block.lines().any(|line| line == expected) {
+            return Err(format!(
+                "Cargo.lock Taffy package is missing exact package identity line `{expected}`:\n{block}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn audit_resolved_taffy_features(root: &Path) -> Result<(), String> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| OsStr::new("cargo").to_os_string());
+    let output = Command::new(cargo)
+        .current_dir(root)
+        .args([
+            "tree",
+            "--locked",
+            "-p",
+            "runenui_runtime",
+            "-e",
+            "normal,build",
+            "--prefix",
+            "none",
+            "--format",
+            "{p} {f}",
+        ])
+        .output()
+        .map_err(|error| format!("failed to execute Cargo feature audit: {error}"))?;
+
+    if !output.status.success() {
         return Err(format!(
-            "Cargo.lock Taffy package must remain the reviewed 0.14.0 arrayvec+smallvec graph with no slotmap/tree dependency.\nexpected body:\n{}\nfound body:\n{}",
-            EXACT_TAFFY_LOCK_BODY.trim_end(),
-            block.trim_end()
+            "Cargo production Taffy feature audit failed with {}:\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let matches: Vec<Vec<&str>> = stdout
+        .lines()
+        .filter_map(|line| {
+            let (package, features) = line.rsplit_once(' ')?;
+            (package == "taffy v0.14.0").then(|| {
+                features
+                    .strip_prefix('(')
+                    .and_then(|value| value.strip_suffix(')'))
+                    .unwrap_or(features)
+                    .split(',')
+                    .filter(|feature| !feature.is_empty())
+                    .collect()
+            })
+        })
+        .collect();
+
+    if matches.len() != 1 {
+        return Err(format!(
+            "expected exactly one production Taffy feature line, found {}:\n{}",
+            matches.len(),
+            stdout
+        ));
+    }
+
+    let mut features = matches[0].clone();
+    features.sort_unstable();
+    if features != EXPECTED_TAFFY_FEATURES {
+        return Err(format!(
+            "production Taffy feature set differs from the exact M8C boundary:\nexpected: {}\nfound: {}\nfull cargo tree output:\n{}",
+            EXPECTED_TAFFY_FEATURES.join(","),
+            features.join(","),
+            stdout
         ));
     }
 

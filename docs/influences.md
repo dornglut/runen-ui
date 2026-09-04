@@ -7,7 +7,7 @@ These projects inform specific design questions; they are not dependencies, comp
 - [Xilem and Masonry](https://docs.rs/xilem/latest/xilem/) inform the separation between declarative authoring and a retained widget runtime.
 - [Iced](https://docs.rs/iced/latest/iced/) and the Elm architecture inform application-owned state, messages/actions, and explicit update.
 - [Flutter layout constraints](https://docs.flutter.dev/ui/layout/constraints) inform explicit constraint-driven layout reasoning.
-- [Taffy](https://docs.rs/taffy/latest/taffy/) is a future adopt-versus-build candidate for standard layout algorithms behind RunenUI-owned contracts.
+- [Taffy](https://docs.rs/taffy/latest/taffy/) supplies replaceable low-level Block/Flex/Grid algorithms behind RunenUI-owned runtime contracts; its topology, styles, caches, and IDs are private derived state.
 - [AccessKit](https://docs.rs/accesskit/latest/accesskit/) informs renderer-independent semantic/accessibility output and platform adaptation.
 - [Winit](https://docs.rs/winit/latest/winit/) is a potential low-level desktop adapter dependency, not the RunenUI host contract.
 - [Parley](https://docs.rs/parley/latest/parley/) and Fontique are future text-stack candidates that require an ADR before adoption.

@@ -53,12 +53,9 @@ impl Widget<Replace> for MeasureProbe {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
         self.calls.set(self.calls.get() + 1);
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(self.width),
-            height: LogicalLength::from(16_u16),
-        }
+        WidgetMeasure::measured(LogicalLength::from(self.width), LogicalLength::from(16_u16))
     }
 }
 

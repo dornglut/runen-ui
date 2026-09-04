@@ -46,11 +46,11 @@ impl Widget<Vec<PaintContributionItem>> for SceneFixture {
         state.clone_from(&self.items);
     }
 
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(SURFACE_WIDTH),
-            height: LogicalLength::from(SURFACE_HEIGHT),
-        }
+    fn measure(&self, _: &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(
+            LogicalLength::from(SURFACE_WIDTH),
+            LogicalLength::from(SURFACE_HEIGHT),
+        )
     }
 
     fn paint(&self, items: &Self::State, _: PaintContributionContext) -> PaintContribution {
