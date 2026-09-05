@@ -2,16 +2,16 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M8A and M8B owner-accepted; M8C and M8D remain blocked
+> **Status:** M8A, M8B, and M8C owner-accepted; M8D remains blocked
 >
 > **Milestone:** M8
 >
 > **Reviewed baseline:** `1a5af89c1886654d859f56d1d8afe3e46abdcf95`
 >
-> The accepted M8 target contract remains normative. M8A and M8B are normative for
-> their eighteen owner-accepted rows after exact-head owner acceptance, squash merge,
-> and accepted-main validation. M8C and M8D remain blocked until their own accepted
-> implementation and proof obligations land.
+> The accepted M8 target contract remains normative. M8A, M8B, and M8C are normative for
+> their twenty-seven owner-accepted rows after exact-head owner acceptance, squash merge,
+> and accepted-main validation. M8D remains blocked until its own accepted implementation
+> and proof obligations land.
 
 [ADR 0009](../adr/0009-production-style-layout-text-foundation.md) owns M8
 architecture. M3 owns mounted runtime/layout authority and invalidation; M4 owns
@@ -21,10 +21,10 @@ integration. This matrix references inherited contracts rather than duplicating 
 
 ```text
 33 total unique rows
-18 owner-accepted
+27 owner-accepted
 0 implementation-complete
 0 proof-complete
-15 blocked
+6 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -72,15 +72,15 @@ satisfy M8.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| M8LAYOUT-01 | Runtime uses Taffy low-level/custom-tree algorithms over exact mounted topology/resolved style; no `TaffyTree` or other second retained UI topology/identity/lifecycle authority exists. | Custom-tree integration corpus | Retained-Taffy-tree/topology-copy/private-ID audit | Algorithm node/topology mapping records | M8C | blocked | Required |
-| M8LAYOUT-02 | Production sizing implements explicit width/height, min/max, intrinsic/auto, fill/grow, and shrink behavior under normalized finite/unbounded root constraints. | Sizing constraint corpus | NaN/inverted/overflow and proof-size fallback corpus | Constraint/used-size diagnostics | M8C | blocked | Required |
-| M8LAYOUT-03 | Flex layout preserves authored order, direction, grow/shrink/basis, gaps, and main/cross alignment under nested constraints without ad hoc widget-kind geometry. | Flex corpus | Widget-kind/layout-special-case audit | Flex algorithm/layout records | M8C | blocked | Required |
-| M8LAYOUT-04 | Grid layout preserves explicit/implicit tracks, gaps, placement/spans, and intrinsic contribution behavior for the accepted M8 grid subset. | Grid corpus | Ad hoc table/grid reinterpretation and hidden-track-state audit | Grid track/placement records | M8C | blocked | Required |
-| M8LAYOUT-05 | Block/flow behavior, wrapping, alignment, and baselines consume exact child/text measurements and remain deterministic across nested mixed layout modes. | Mixed block/flow/wrap/baseline corpus | Scalar-text-metric and independent-baseline audit | Flow/baseline records | M8C | blocked | Required |
-| M8LAYOUT-06 | Box model, stack/absolute/overlay placement, and clipping are explicit typed layout/style behavior; transformed/positioned geometry remains aligned with inherited paint/hit semantics rather than becoming renderer policy. | Box/position/clip corpus | Renderer geometry and hidden absolute-position state audit | Box/placement/clip diagnostics | M8C | blocked | Required |
-| M8LAYOUT-07 | Overflow produces exact inspectable scroll/content extents independent of later platform scroll mechanics; clipping/extent facts are not guessed from raster output. | Overflow/extent corpus | Raster-derived extent and silent overflow-loss corpus | Overflow/extent reports | M8C | blocked | Required |
-| M8LAYOUT-08 | Open widgets can contribute production intrinsic/custom measurement through bounded renderer-neutral contracts; measurement cannot mutate runtime, forge identity, inspect private topology, or install a second layout engine. | Downstream custom-measure corpus | Private-runtime/reentrant/mutating-measure audit | Measurement call/result diagnostics | M8C | blocked | Required |
-| M8LAYOUT-09 | Runtime owns incremental layout invalidation/cache compatibility and final logical geometry; derived Taffy/text caches are disposable and the exact final geometry remains one aligned authority for paint, hit, focus, and semantic bounds. | Differential dirty/recompute/alignment corpus | Parallel expected-layout/cache-authority and stale-geometry corpus | Surface phase/cache/invalidation reports | M8C | blocked | Required |
+| M8LAYOUT-01 | Runtime uses Taffy low-level/custom-tree algorithms over exact mounted topology/resolved style; no `TaffyTree` or other second retained UI topology/identity/lifecycle authority exists. | Custom-tree integration corpus | Retained-Taffy-tree/topology-copy/private-ID audit | Algorithm node/topology mapping records | M8C | owner-accepted | Required |
+| M8LAYOUT-02 | Production sizing implements explicit width/height, min/max, intrinsic/auto, fill/grow, and shrink behavior under normalized finite/unbounded root constraints. | Sizing constraint corpus | NaN/inverted/overflow and proof-size fallback corpus | Constraint/used-size diagnostics | M8C | owner-accepted | Required |
+| M8LAYOUT-03 | Flex layout preserves authored order, direction, grow/shrink/basis, gaps, and main/cross alignment under nested constraints without ad hoc widget-kind geometry. | Flex corpus | Widget-kind/layout-special-case audit | Flex algorithm/layout records | M8C | owner-accepted | Required |
+| M8LAYOUT-04 | Grid layout preserves explicit/implicit tracks, gaps, placement/spans, and intrinsic contribution behavior for the accepted M8 grid subset. | Grid corpus | Ad hoc table/grid reinterpretation and hidden-track-state audit | Grid track/placement records | M8C | owner-accepted | Required |
+| M8LAYOUT-05 | Block/flow behavior, wrapping, alignment, and baselines consume exact child/text measurements and remain deterministic across nested mixed layout modes. | Mixed block/flow/wrap/baseline corpus | Scalar-text-metric and independent-baseline audit | Flow/baseline records | M8C | owner-accepted | Required |
+| M8LAYOUT-06 | Box model, stack/absolute/overlay placement, and clipping are explicit typed layout/style behavior; transformed/positioned geometry remains aligned with inherited paint/hit semantics rather than becoming renderer policy. | Box/position/clip corpus | Renderer geometry and hidden absolute-position state audit | Box/placement/clip diagnostics | M8C | owner-accepted | Required |
+| M8LAYOUT-07 | Overflow produces exact inspectable scroll/content extents independent of later platform scroll mechanics; clipping/extent facts are not guessed from raster output. | Overflow/extent corpus | Raster-derived extent and silent overflow-loss corpus | Overflow/extent reports | M8C | owner-accepted | Required |
+| M8LAYOUT-08 | Open widgets can contribute production intrinsic/custom measurement through bounded renderer-neutral contracts; measurement cannot mutate runtime, forge identity, inspect private topology, or install a second layout engine. | Downstream custom-measure corpus | Private-runtime/reentrant/mutating-measure audit | Measurement call/result diagnostics | M8C | owner-accepted | Required |
+| M8LAYOUT-09 | Runtime owns incremental layout invalidation/cache compatibility and final logical geometry; derived Taffy/text caches are disposable and the exact final geometry remains one aligned authority for paint, hit, focus, and semantic bounds. | Differential dirty/recompute/alignment corpus | Parallel expected-layout/cache-authority and stale-geometry corpus | Surface phase/cache/invalidation reports | M8C | owner-accepted | Required |
 
 ## M8D — integrated production closure
 
