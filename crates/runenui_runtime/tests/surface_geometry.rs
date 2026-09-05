@@ -1,9 +1,9 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, EdgeInsets, Element, ElementId, FontFamilyName, GenericFontFamily, LogicalLength,
-    NoHostProtocol, SemanticRole, StyleEnvironment, StyleTokens, UiApp, View, button, children,
-    color_token, column, row, text,
+    Color, EdgeInsets, Element, ElementId, FontFamilyName, GenericFontFamily, LayoutBound,
+    LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol, SemanticRole, StyleEnvironment,
+    StyleTokens, UiApp, View, button, children, color_token, column, row, text,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, PumpBudget, SurfaceBuildContext,
@@ -351,4 +351,41 @@ fn invalid_dynamic_sizes_and_tight_constraint_overflow_are_explicit() {
             .root()
             .is_some_and(|node| node.overflow().any())
     );
+}
+
+struct AuthoredRootBoundsApp;
+
+impl UiApp for AuthoredRootBoundsApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &()) -> Element<Self::Action> {
+        text("root")
+            .with_layout(
+                LayoutStyle::default()
+                    .with_width(LayoutDimension::length(length(200.0)))
+                    .with_min_width(LayoutBound::length(length(100.0)))
+                    .with_max_width(LayoutBound::length(length(120.0))),
+            )
+            .into_element()
+    }
+
+    fn update((): &mut (), (): ()) {}
+}
+
+#[test]
+fn root_constraints_preserve_authored_root_bounds() {
+    let mut runtime = AppRuntime::<AuthoredRootBoundsApp>::mount(());
+    register_controlled_text(&mut runtime);
+    let environment = StyleEnvironment::default();
+    let publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(150.0, 100.0))),
+    );
+    let root = publication
+        .frame()
+        .root()
+        .unwrap_or_else(|| unreachable!("authored root is published"));
+    assert!((root.bounds().width() - 120.0).abs() <= f32::EPSILON);
 }

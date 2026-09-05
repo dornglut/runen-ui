@@ -120,11 +120,13 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         );
         if index == 0 {
             style.min_size.width =
-                LengthPercentageAuto::length(self.root_constraints.horizontal().min().get());
+                root_min_bound(style.min_size.width, self.root_constraints.horizontal());
             style.min_size.height =
-                LengthPercentageAuto::length(self.root_constraints.vertical().min().get());
-            style.max_size.width = root_max_bound(self.root_constraints.horizontal().max());
-            style.max_size.height = root_max_bound(self.root_constraints.vertical().max());
+                root_min_bound(style.min_size.height, self.root_constraints.vertical());
+            style.max_size.width =
+                root_max_bound(style.max_size.width, self.root_constraints.horizontal());
+            style.max_size.height =
+                root_max_bound(style.max_size.height, self.root_constraints.vertical());
         }
         if let Some(size) = self.custom_intrinsic_sizes[index] {
             apply_custom_intrinsic_minimum(
@@ -653,10 +655,39 @@ const fn bound(value: LayoutBound) -> LengthPercentageAuto {
         _ => LengthPercentageAuto::auto(),
     }
 }
-const fn root_max_bound(value: crate::AxisLimit) -> LengthPercentageAuto {
+fn root_min_bound(
+    authored: LengthPercentageAuto,
+    constraints: crate::AxisConstraints,
+) -> LengthPercentageAuto {
+    if constraints.max().is_unbounded() && constraints.min() == runenui_core::LogicalLength::ZERO {
+        return authored;
+    }
+    let minimum = constraints.min().get();
+    let authored = authored
+        .resolve_to_option(root_percentage_basis(constraints.max()), |_, _| 0.0)
+        .unwrap_or(0.0);
+    LengthPercentageAuto::length(authored.max(minimum))
+}
+
+fn root_max_bound(
+    authored: LengthPercentageAuto,
+    constraints: crate::AxisConstraints,
+) -> LengthPercentageAuto {
+    match constraints.max() {
+        AxisLimit::Finite(maximum) => {
+            let authored = authored
+                .resolve_to_option(maximum.get(), |_, _| 0.0)
+                .unwrap_or_else(|| maximum.get());
+            LengthPercentageAuto::length(authored.min(maximum.get()))
+        }
+        AxisLimit::Unbounded => authored,
+    }
+}
+
+const fn root_percentage_basis(value: AxisLimit) -> f32 {
     match value {
-        AxisLimit::Finite(value) => LengthPercentageAuto::length(value.get()),
-        AxisLimit::Unbounded => LengthPercentageAuto::auto(),
+        AxisLimit::Finite(value) => value.get(),
+        AxisLimit::Unbounded => 0.0,
     }
 }
 
