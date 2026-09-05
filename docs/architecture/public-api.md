@@ -7,13 +7,13 @@ This document describes the **conceptual ownership and invariants** of RunenUI's
 `runenui_core` owns host-neutral public values and protocols that must be usable without a live runtime or platform/backend dependency. Its responsibilities include:
 
 - `UiApp` application state/action/update and host-neutral effect/subscription protocol values;
-- validated authored identity, host-neutral style properties/tokens/themes/recipes/variants/preferences/resolution vocabulary, geometry, transient `View`/`Element` authoring, and typed built-in view vocabulary;
-- state-aware open widget/lifecycle/event contracts and typed action mapping;
+- validated authored identity, host-neutral style properties/tokens/themes/recipes/variants/preferences/resolution vocabulary, geometry, normalized layout container/sizing/positioning/overflow values, transient `View`/`Element` authoring, and typed built-in view vocabulary;
+- state-aware open widget/lifecycle/event contracts, bounded renderer-neutral `WidgetMeasure` input/result vocabulary, geometry-neutral child-bearing participation, and typed action mapping;
 - runtime-local opaque protocol identity types such as mounted/semantic/surface/work identities, without allocation authority;
 - host-neutral pointer/keyboard/text/composition/focus/semantic command and semantic contribution/action vocabulary;
 - renderer- and host-neutral paint/hit contribution values, logical scene-composition geometry, opaque neutral resource identity/kind values, and image/shaped-run primitive placement values used by the accepted M6 scene protocol.
 
-Core must not own persistent mounted/semantic storage, live queue/scheduler state, live interaction/focus/activation authority, runtime identity allocation, native window/accessibility objects, renderer backend handles, resource-provider/lookup/payload/cache authority, text shaping/line breaking, renderer realization, application product state, or testing-only mutation seams.
+Core must not own persistent mounted/semantic storage, live layout topology/algorithm/cache state, live queue/scheduler state, live interaction/focus/activation authority, runtime identity allocation, native window/accessibility objects, renderer backend handles, resource-provider/lookup/payload/cache authority, text shaping/line breaking, renderer realization, application product state, or testing-only mutation seams.
 
 ## `runenui_text`
 
@@ -36,14 +36,15 @@ Parley/Fontique/HarfRust/Skrifa/ICU types are implementation details and do not 
 - one generalized sequenced work queue, bounded pump, tasks/timers/subscriptions/host requests, clocks, wake/redraw, and shutdown;
 - exact routed command/input processing and defaults;
 - bounded canonical trace, deterministic export, and inert replay projections;
-- generic measurement/layout execution, live `TextSystem` orchestration, topology-aligned reusable text-layout state, and staged surface publication;
+- production measurement/layout execution through private low-level Taffy Block/Flex/Grid algorithms over exact mounted topology, transaction-local disposable Taffy caches, runtime-owned root constraints, bounded custom measurement dispatch, overflow/extents, and one final logical geometry authority;
+- live `TextSystem` orchestration and topology-aligned reusable text-layout state, including lowering each Taffy leaf request into renderer-neutral text constraints and retaining the exact text state associated with the final `PerformLayout` request;
 - text measurement from immutable `runenui_text` artifacts and exact projection of those same shaped-resource facts into paint, including publication-owned shaped-resource leases needed for retained renderer retry;
 - canonical renderer-neutral transformed/clipped/ordered paint-scene composition plus `RasterScale` and `PaintPublication` revision/base/damage/alignment authority;
 - canonical transformed/clipped/ordered displayed `HitTestScene` composition, mounted-target/membership injection, retained displayed-generation lookup, and point/resolved-target authority;
 - scene requirements derived from canonical paint content and neutral consumer capability checks without backend-specific rewriting;
 - independent semantic publication/update/diagnostics and exact semantic-action admission/resolution.
 
-Runtime must not depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, external resource-provider/payload/cache ownership, font/shaping/line-breaking algorithm authority, SDF/MSDF realization, or a second interaction/style/semantic/paint/hit/testing authority.
+Runtime must not depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, external resource-provider/payload/cache ownership, font/shaping/line-breaking algorithm authority, SDF/MSDF realization, or a second interaction/style/semantic/layout/paint/hit/testing authority. Taffy types, node identity, topology, and caches remain private derived implementation state rather than public or retained framework authority.
 
 ## `runenui_render_wgpu`
 
@@ -72,7 +73,7 @@ It consumes public core/runtime contracts plus winit/AccessKit types. It has no 
 
 `runenui_testing` is a downstream public convenience crate. `TestHarness<App>` composes ordinary public core/runtime APIs with deterministic logical time, bounded pumping/settling, deterministic surface publication, read-only observation of the latest ordinary public paint/hit publication products and exact input context, synthetic public interaction, and semantic queries/targets.
 
-It owns no live runtime queue, mounted/semantic store, identity allocation, publication state, trace authority, resource provider, style/text authority, or private mutation bridge. A test target retains exact public surface/semantic scope; testing must not reconstruct private mounted routing identity, fabricate scene/publication lineage, duplicate hit resolution, or guess a surface from a bare semantic ID.
+It owns no live runtime queue, mounted/semantic store, identity allocation, publication state, trace authority, resource provider, style/text/layout authority, or private mutation bridge. A test target retains exact public surface/semantic scope; testing must not reconstruct private mounted routing identity, fabricate scene/publication lineage, duplicate hit resolution, or guess a surface from a bare semantic ID.
 
 ## Accepted native and external application integration
 
@@ -106,9 +107,13 @@ Exact semantic action requests are admitted against current published semantic a
 
 Authored `StyleIntent`, explicit `StyleEnvironment` inputs, canonical transient interaction facts, and bounded parent inheritance converge through the core production resolver. Runtime supplies live interaction/activation facts, retains compatibility inputs, and drives invalidation; it does not maintain a second style tree or policy engine. Renderers and platform adapters consume or supply explicit neutral facts only and cannot reinterpret the style cascade.
 
+### One layout authority
+
+RunenUI-owned layout values and exact mounted topology are interpreted only by runtime. Taffy supplies private low-level Block/Flex/Grid algorithms and transaction-local disposable cache state; it does not own a retained UI tree, mounted identity, cross-frame layout authority, or public layout vocabulary. The final runtime-owned logical geometry and logical overflow/extents are the facts consumed by paint, hit testing, directional focus, and semantic bounds.
+
 ### One logical text computation model
 
-RunenUI-owned text requests are resolved by `runenui_text`; runtime owns when that computation participates in mounted measurement/publication. One immutable logical artifact supplies both paragraph measurement and the exact shaped resource facts later painted. Paint does not independently reshape, line-break, discover fonts, or mint alternate shaped identity. Foreground remains paint-only when glyph geometry is unchanged.
+RunenUI-owned text requests are resolved by `runenui_text`; runtime owns when that computation participates in mounted measurement/publication. One immutable logical artifact supplies both paragraph measurement and the exact shaped resource facts later painted. During production layout, intrinsic/compute-size text results are transient while the exact `TextLayoutState` produced for Taffy's final `PerformLayout` request is retained for publication. Paint does not independently reshape, line-break, discover fonts, or mint alternate shaped identity. Foreground remains paint-only when glyph geometry is unchanged.
 
 ### Staged publication
 
@@ -123,13 +128,13 @@ For runtime-shaped text, retained paint publication lifetime also preserves the 
 The current public surface is pre-1.0 and may change incompatibly when accepted architecture requires a clean cutover. Important missing production capabilities include:
 
 - broader production host/application ergonomics beyond the accepted proof-level native and external-host paths;
-- production responsive Block/Flex/Grid/intrinsic layout and exact available-space/text feedback beyond the accepted M8B text seam (M8C/M8D);
+- integrated responsive/text-heavy closure across layout, text, semantics and the real renderer (M8D), plus later virtualization and native scrolling mechanics;
 - production text editing, selection, clipboard, and related behavior (M10);
 - supported rendering for intrinsic COLR/SVG/bitmap glyph formats; current M8B behavior diagnoses that breadth explicitly;
 - multi-window lifecycle and supported platform-profile breadth;
-- broader style-property/composition breadth beyond the accepted M8A/M8B mechanism;
+- broader visual style-property/composition/animation breadth beyond the accepted M8 foundation;
 - a complete standard control library.
 
-M7 is accepted complete at proof maturity through the real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, reusable winit/AccessKit adapter, native Counter showcase, and winit-free downstream external-host proof over the same public contracts. M8A is accepted current behavior at partial styling maturity. M8B is accepted current behavior at partial text maturity through the renderer-neutral production text boundary, exact shared measurement/paint artifacts, retained shaped-resource lifetime, and renderer-owned SDF/MSDF realization. M8C production runtime layout/text feedback is the next durable M8 slice; M8D integrated closure remains later target work. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
+M7 is accepted complete at proof maturity through the real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, reusable winit/AccessKit adapter, native Counter showcase, and winit-free downstream external-host proof over the same public contracts. M8A is accepted current behavior at partial styling maturity. M8B is accepted current behavior at partial text maturity through the renderer-neutral production text boundary, exact shared measurement/paint artifacts, retained shaped-resource lifetime, and renderer-owned SDF/MSDF realization. M8C is accepted current behavior at partial layout maturity through runtime-owned production Block/Flex/Grid layout, bounded custom measurement, inspectable overflow/extents, and exact final-layout text feedback. M8D integrated production closure remains the next durable M8 slice. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
 
 Do not infer support from a target ADR, design document, type name, or roadmap entry alone. Code/tests establish current behavior; source/Rustdoc establishes the exact public Rust surface.

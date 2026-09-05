@@ -2,7 +2,7 @@
 
 > **Category: Current architecture**
 
-This document describes the layout and measurement behavior in the current framework foundation. Runtime owns layout orchestration and final geometry; private Taffy low-level algorithms provide Block/Flex/Grid computation, and ADR 0009 owns the production layout/text boundary established by M8B.
+This document describes the layout and measurement behavior in the current framework foundation. Runtime owns layout orchestration and final geometry; private Taffy low-level algorithms provide Block/Flex/Grid computation, and ADR 0009 owns the production layout/text boundary established across M8B and M8C.
 
 ## Current ownership
 

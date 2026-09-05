@@ -2,7 +2,7 @@
 
 > **Category: Current architecture**
 
-[ADR 0009](../adr/0009-production-style-layout-text-foundation.md) owns the accepted M8 architectural decisions. This document records the accepted current implementation of that architecture: M8A establishes deterministic environment, cascade, interaction-state, preference, inheritance, provenance, and invalidation behavior over the property families that are currently implemented truthfully. Production typography/text and responsive layout breadth remain M8B/M8C work.
+[ADR 0009](../adr/0009-production-style-layout-text-foundation.md) owns the accepted M8 architectural decisions. This document records the accepted current implementation of that architecture: M8A establishes deterministic environment, cascade, interaction-state, preference, inheritance, provenance, and invalidation behavior; M8B adds metric typography and production logical text integration; M8C consumes those resolved facts through the production runtime layout path. Broader visual-property and animation/composition breadth remains later work.
 
 ## Ownership
 
@@ -29,20 +29,21 @@ Application state remains authoritative for durable product meaning such as vali
 
 ## Current property vocabulary
 
-M8A deliberately preserves only property families that the implementation can represent truthfully today:
+The accepted style mechanism currently represents these property families truthfully:
 
 - foreground color;
 - background color;
 - padding;
-- corner radius.
+- corner radius;
+- metric typography.
 
-Each property may be literal or use its typed token family. Property breadth is independent from the production resolution mechanism; later slices may add new typed properties without changing the ownership model.
+Each property may be literal or use its typed token family. Property breadth is independent from the production resolution mechanism; later milestones may add new typed properties without changing the ownership model. M8C layout vocabulary is separately RunenUI-owned through `LayoutStyle`; it does not create a second style cascade.
 
 ## Resolution model
 
 The complete publication environment contains framework defaults, one theme with exact token content and typed recipes, explicit preference facts, and preference policy. A recipe contains a base property set, typed variant definitions, and framework interaction layers.
 
-The current resolver implements ADR 0009's deterministic property-local cascade. A parent foreground, when present, is a bounded inherited seed. The accepted production precedence above that seed is low to high:
+The current resolver implements ADR 0009's deterministic property-local cascade. Inherited foreground and typography, when present, seed the child. The accepted production precedence above those seeds is low to high:
 
 ```text
 framework defaults
@@ -65,13 +66,13 @@ A missing higher-precedence token does not expose a lower-precedence value. The 
 
 High contrast may apply mandatory `StylePreferencePolicy` properties above authored overrides, with ordinary winning-layer/token provenance.
 
-M8A has no animation property family. Reduced motion is therefore an explicit preference and cache/invalidation fact but currently applies no style-property override. M9 may add motion properties/policy without changing preference ownership.
+M8 has no animation property family. Reduced motion is therefore an explicit preference and cache/invalidation fact but currently applies no style-property override. M9 may add motion properties/policy without changing preference ownership.
 
 ## Inheritance
 
-Inheritance is explicit and bounded. Current M8A inheritance seeds only foreground from the resolved parent.
+Inheritance is explicit and bounded. The accepted current resolver seeds only foreground and typography from the resolved parent.
 
-Background, padding, and radius do not inherit. Geometry cannot acquire CSS-like inheritance accidentally. Future typography inheritance requires an explicit accepted extension when M8B introduces production typography.
+Background, padding, and radius do not inherit. Layout geometry does not inherit through the style cascade. Any future inherited property family requires an explicit accepted extension rather than CSS-like accidental propagation.
 
 ## Runtime interaction authority
 
@@ -93,9 +94,9 @@ Style cache compatibility includes exact style-environment content and the effec
 Current direct property effects are:
 
 - foreground, background, radius -> paint;
-- padding -> layout.
+- padding, typography -> layout.
 
-These are direct effects only. Runtime owns dependency propagation: a layout-affecting style change also makes every dependent hit, paint-placement, and semantic-geometry fact stale. Paint-only style changes do not force layout work when retained facts remain compatible.
+These are direct effects only. Runtime owns dependency propagation: a layout-affecting style change also makes every dependent text/layout, hit, paint-placement, and semantic-geometry fact stale as required. Paint-only style changes do not force layout work when retained facts remain compatible.
 
 Preference/environment or interaction changes first invalidate style resolution as required; exact computed-property differences then determine downstream work. Recoverable or terminally failed surface planning does not commit a partial new retained style cache.
 
@@ -107,9 +108,9 @@ See [ADR 0001](../adr/0001-typed-token-authoring.md) for token-expression author
 
 ## Current limitations
 
-The accepted M8A mechanism does not yet provide production typography, borders, shadows, opacity, transforms, external theme serialization/loading, broad renderer material systems, or animation/motion properties. The current theme is an explicit host-neutral value supplied in `StyleEnvironment`; no ambient global theme/provider authority exists.
+The accepted style mechanism does not yet provide borders, shadows, opacity, transforms, external theme serialization/loading, broad renderer material systems, or animation/motion properties. The current theme is an explicit host-neutral value supplied in `StyleEnvironment`; no ambient global theme/provider authority exists.
 
-M8B owns production logical text/typography and SDF/MSDF realization. M8C owns production responsive layout and the style/layout property breadth required by that work. M9 owns motion/animation behavior.
+M8B owns the accepted production logical text/typography boundary. M8C owns the accepted production responsive layout path that consumes layout-affecting style facts. M8D owns integrated style/layout/text closure, while M9 owns broader visual composition and motion/animation behavior.
 
 ## Extraction rule
 

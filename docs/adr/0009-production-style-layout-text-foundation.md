@@ -265,21 +265,21 @@ M8 replaces the proof scalar-count text measurement, linear-only layout authorit
 and M7 scale-specific alpha shaped-run renderer payload rather than preserving them
 as parallel production paths.
 
-1. **M8A — style environment/resolution:** production typed style, themes, recipes,
-   variants, interaction state, preferences, provenance, invalidation classes.
-2. **M8B — logical text + SDF/MSDF realization:** introduce `runenui_text`, adopt
-   Parley, establish logical text artifacts/resource lifetime, run the bounded field-
-   generator evaluation, implement the accepted wgpu atlas/shader path, and remove
-   alpha-shaped-run production authority.
-3. **M8C — runtime layout:** integrate Taffy low-level/custom-tree algorithms and
-   production sizing/block/flex/grid/positioning/intrinsic measurement with exact
-   text available-space feedback.
-4. **M8D — integrated closure:** overflow/scroll extents, incremental cache/
-   invalidation proof, responsive/text-heavy corpora, semantic alignment, real-wgpu
-   proof, authority cleanup, and final reconciliation.
+1. **M8A — style environment/resolution:** production style foundation.
+2. **M8B — logical text + SDF/MSDF realization:** production logical-text and
+   renderer-realization foundation.
+3. **M8C — runtime layout:** production runtime layout and exact text-feedback
+   foundation.
+4. **M8D — integrated closure:** integrated style/layout/text/semantics/renderer
+   closure and milestone exit evidence.
 
-No successor implementation issue is activated before M8A0 is owner-accepted,
-squash-merged, and accepted-main validated.
+Exact permanent observations, proof ownership, and delivery-slice assignment live in
+[`docs/conformance/m8-conformance-matrix.md`](../conformance/m8-conformance-matrix.md).
+This ADR defines the architecture and serial dependency only; it does not
+independently reassign conformance rows.
+
+No successor implementation issue is activated before its accepted predecessor is
+owner-accepted, squash-merged, reconciled, and accepted-main validated.
 
 ## Consequences
 

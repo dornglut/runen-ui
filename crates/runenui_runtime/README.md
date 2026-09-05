@@ -15,8 +15,9 @@ Runtime owns:
 - routed pointer, focus, keyboard, committed-text, composition, automation, and exact displayed-surface input behavior;
 - production style-resolution orchestration over one explicit `StyleEnvironment`, including ephemeral projection of canonical hover/focus/active facts, shared staged activation for disabled state, exact environment/interaction cache compatibility, inspection, and property-effect-driven invalidation;
 - the live production `TextSystem`, topology-aligned reusable `TextLayoutState`, lowering of runtime layout availability into renderer-neutral text constraints, and measurement from immutable logical text artifacts;
-- exact reuse of those same logical text artifacts/resources during paint planning, with publication-retained shaped-resource leases that survive runtime destruction and renderer cache/device rebuild;
-- the current proof-level general layout algorithm and one fallible staged surface-publication transaction;
+- exact reuse of the logical text state produced for Taffy's final `PerformLayout` request during paint planning, with publication-retained shaped-resource leases that survive runtime destruction and renderer cache/device rebuild;
+- the production Taffy low-level/custom-tree Block/Flex/Grid layout path over exact mounted topology, including normalized sizing, positioning/Overlay, bounded custom measurement, baselines, logical overflow/extents, transaction-local disposable Taffy caches, and one final runtime-owned logical geometry authority;
+- one fallible staged surface-publication transaction;
 - an independent semantic publication sibling with stable semantic identities, deterministic tree order, bounds, relationships, composed state/support, runtime-derived focus, revisions/updates, and typed diagnostics;
 - public exact surface-scoped semantic action admission/resolution with private semantic-to-mounted owner/key resolution and convergence onto the existing command FIFO/routed/default/update/trace architecture.
 
@@ -30,6 +31,8 @@ Style interaction values are likewise projections, not new authorities. Pointer 
 
 Text state follows the same ownership discipline. Runtime owns when text computation participates in mounted measurement/publication and which reusable state remains topology-aligned, but `runenui_text` owns font-source policy, shaping, line breaking, text-specific constraints, immutable artifacts, and logical shaped-resource bindings. Runtime neither reimplements those algorithms nor gives renderer/device state authority over logical text identity.
 
+Layout state follows the same rule: mounted topology, authored order, invalidation, measurement dispatch, final geometry, and publication remain runtime authority. Taffy supplies private algorithms and transaction-local cache data only; no `TaffyTree`, second retained topology, public Taffy identity, or renderer layout policy participates in the live framework model.
+
 ## Publication
 
 `AppRuntime::publish_surface` is the sole live surface-publication authority. A successful publication contains aligned renderer-facing products plus the independent semantic publication, style inspection, and diagnostics. Renderer-facing products do not carry production semantic or style-policy authority.
@@ -42,9 +45,9 @@ admit -> read-only/staged plan -> candidate-dependent final preflight -> commit
 
 Recoverable refusal exposes no partial new publication and preserves the previous coherent products/identities/revisions. Checked counter, work/trace-sequence, and integrity exhaustion never wrap or saturate into false success.
 
-Style and text planning participate in that same transaction. Disabled styling reuses the staged activation fact consumed by capability/semantic publication, and failed planning does not commit a partial new style or text-layout cache. Layout-affecting style/typography changes propagate through runtime-owned layout/hit/paint/semantic dependencies; paint-only foreground changes remain bounded when retained facts are otherwise compatible.
+Style, text, and layout planning participate in that same transaction. Disabled styling reuses the staged activation fact consumed by capability/semantic publication, and failed planning does not commit partial style, text-layout, or geometry state. Layout-affecting style/typography changes propagate through runtime-owned text/layout/hit/paint/semantic dependencies; paint-only foreground changes remain bounded when retained facts are otherwise compatible.
 
-For text nodes, runtime measures from the immutable `TextArtifact` returned by the live text system and later projects the exact cached artifact's shaped run/resource facts into paint instead of reshaping or reminting at paint time. `PaintPublication` retains the exact shaped-resource leases referenced by its scene, allowing downstream renderer retry after runtime destruction without a new publication.
+For text nodes, runtime measures from the immutable `TextArtifact` returned by the live text system and retains the exact `TextLayoutState` associated with Taffy's final layout request. Paint then projects that exact artifact's shaped run/resource facts instead of reshaping or reminting. `PaintPublication` retains the exact shaped-resource leases referenced by its scene, allowing downstream renderer retry after runtime destruction without a new publication.
 
 Renderer publication lineage and backend realization remain downstream authorities. Runtime-owned retained caches are derived publication-planning state and never substitute for renderer-local successful-publication/resource-cache state.
 
