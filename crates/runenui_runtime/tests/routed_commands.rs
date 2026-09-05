@@ -10,8 +10,8 @@ use std::{
 };
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, CommandDerivation, CommandOrigin, Element, EventContext,
-    EventPhase, NoHostProtocol, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
+    ChildBearingWidget, CommandDerivation, CommandOrigin, Element, EventContext, EventPhase,
+    NoHostProtocol, SemanticCommand, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetActivationContext, WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation,
     children, container,
 };
@@ -119,13 +119,7 @@ impl Widget<Action> for Probe {
     }
 }
 
-impl ChildLayoutWidget<Action> for Probe {
-    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<Action> for Probe {}
 
 #[derive(Debug)]
 struct State {

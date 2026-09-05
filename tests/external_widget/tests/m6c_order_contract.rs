@@ -65,11 +65,11 @@ impl Widget<OrderAction> for OrderOwner {
         }
     }
 
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: runenui_core::LogicalLength::from(20_u16),
-            height: runenui_core::LogicalLength::from(20_u16),
-        }
+    fn measure(&self, _: &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(
+            runenui_core::LogicalLength::from(20_u16),
+            runenui_core::LogicalLength::from(20_u16),
+        )
     }
 
     fn paint(&self, state: &Self::State, _: PaintContributionContext) -> PaintContribution {

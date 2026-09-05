@@ -30,12 +30,12 @@ impl Widget<()> for TallSpacer {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16),
-            height: LogicalLength::new(1.0e38)
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(
+            LogicalLength::from(20_u16),
+            LogicalLength::new(1.0e38)
                 .unwrap_or_else(|_| unreachable!("test spacer height is finite")),
-        }
+        )
     }
 }
 
@@ -47,11 +47,8 @@ impl Widget<()> for OverflowOwner {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16),
-            height: LogicalLength::from(20_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u16), LogicalLength::from(20_u16))
     }
 
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {

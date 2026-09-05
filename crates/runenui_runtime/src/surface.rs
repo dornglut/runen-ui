@@ -5,13 +5,12 @@
 //! paint and pointer-hit authority live in `PaintScene`/`PaintPublication` and
 //! `HitTestScene`, not in this debug product.
 
-mod arrange;
 mod cache;
 mod context;
 mod interaction;
-mod measure;
 mod planning;
 mod resolve;
+mod taffy_layout;
 #[cfg(test)]
 mod tests;
 mod transaction;
@@ -29,8 +28,7 @@ use planning::publish_mounted_surface_cached;
 pub(crate) use planning::{SurfacePlanningError, plan_mounted_surface_cached_with_text};
 
 use runenui_core::{
-    ComputedStyle, ElementId, LogicalLength, LogicalRect, LogicalSize, WidgetDiagnostic,
-    WidgetTypeId,
+    ComputedStyle, ElementId, LogicalRect, LogicalSize, WidgetDiagnostic, WidgetTypeId,
 };
 
 use crate::style_debug::SurfaceStyleReport;
@@ -186,23 +184,14 @@ pub struct SurfaceLayoutNode {
     desired_content_size: LogicalSize,
     desired_outer_size: LogicalSize,
     constrained_outer_size: LogicalSize,
+    layout_extent: LogicalSize,
+    content_extent: LogicalSize,
+    scrollable_extent: LogicalSize,
     overflow: LayoutOverflow,
     diagnostics: Vec<WidgetDiagnostic>,
 }
 
 impl SurfaceLayoutNode {
-    fn placeholder(id: MountedNodeId) -> Self {
-        let zero = LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO);
-        Self::new(
-            id,
-            None,
-            None,
-            [LayoutConstraints::unbounded(); 2],
-            [zero; 3],
-            LayoutOverflow::default(),
-        )
-    }
-
     const fn new(
         id: MountedNodeId,
         parent: Option<MountedNodeId>,
@@ -220,6 +209,9 @@ impl SurfaceLayoutNode {
             desired_content_size: sizes[0],
             desired_outer_size: sizes[1],
             constrained_outer_size: sizes[2],
+            layout_extent: sizes[2],
+            content_extent: sizes[0],
+            scrollable_extent: sizes[0],
             overflow,
             diagnostics: Vec::new(),
         }
@@ -227,6 +219,18 @@ impl SurfaceLayoutNode {
 
     fn with_diagnostics(mut self, diagnostics: Vec<WidgetDiagnostic>) -> Self {
         self.diagnostics = diagnostics;
+        self
+    }
+
+    const fn with_extents(
+        mut self,
+        layout_extent: LogicalSize,
+        content_extent: LogicalSize,
+        scrollable_extent: LogicalSize,
+    ) -> Self {
+        self.layout_extent = layout_extent;
+        self.content_extent = content_extent;
+        self.scrollable_extent = scrollable_extent;
         self
     }
 
@@ -268,6 +272,24 @@ impl SurfaceLayoutNode {
     #[must_use]
     pub const fn constrained_outer_size(&self) -> LogicalSize {
         self.constrained_outer_size
+    }
+
+    /// Returns the final border-box extent used by paint and hit testing.
+    #[must_use]
+    pub const fn layout_extent(&self) -> LogicalSize {
+        self.layout_extent
+    }
+
+    /// Returns the runtime-computed content extent before clipping.
+    #[must_use]
+    pub const fn content_extent(&self) -> LogicalSize {
+        self.content_extent
+    }
+
+    /// Returns the scrollable content extent after layout.
+    #[must_use]
+    pub const fn scrollable_extent(&self) -> LogicalSize {
+        self.scrollable_extent
     }
 
     #[must_use]

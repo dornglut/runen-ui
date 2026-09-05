@@ -11,11 +11,11 @@ use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan}
 use crate::style_debug::SurfaceStyleReport;
 
 use super::cache::{CachedLayoutFacts, context_key};
-use super::measure::layout_resolved_surface;
 use super::resolve::{
     ResolvedSurfaceTree, collect_topology, hit_contexts, paint_contexts, resolve_diagnostics,
     resolve_hit_test, resolve_paint, resolve_styles,
 };
+use super::taffy_layout::layout_resolved_surface;
 use super::transaction::PlannedSurfacePublication;
 use super::{
     SurfaceBuildContext, SurfaceCache, SurfaceFrame, SurfaceInteractionProjection,
@@ -151,14 +151,13 @@ fn resolve_contribution_phases<Action>(
 fn resolve_layout_phase<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     current: &SurfaceCache,
-    capability_plan: &SurfaceCapabilityPlan,
     context: &SurfaceBuildContext<'_>,
     text_system: &mut TextSystem,
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
-    let resolved =
-        ResolvedSurfaceTree::for_layout(tree, &current.topology, &current.styles, capability_plan);
+    let resolved = ResolvedSurfaceTree::for_layout(tree, &current.topology, &current.styles);
     let (size, bounds, report, text_layouts) = layout_resolved_surface(
         &resolved,
+        tree,
         context.root_constraints(),
         text_system,
         Some(current.layout.text_layouts.as_slice()),
@@ -231,13 +230,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         .then(|| tree.plan_semantic_publication_capabilities(&capability_plan));
 
     if layout_dirty {
-        current.layout = Arc::new(resolve_layout_phase(
-            tree,
-            &current,
-            &capability_plan,
-            context,
-            text_system,
-        )?);
+        current.layout = Arc::new(resolve_layout_phase(tree, &current, context, text_system)?);
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
     }
@@ -305,9 +298,14 @@ fn plan_structural_surface<'tree, Action>(
     report.record(SurfacePhase::Style);
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let semantic_capability_plan = tree.plan_semantic_publication_capabilities(&capability_plan);
-    let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles, &capability_plan);
-    let (size, bounds, layout_report, text_layouts) =
-        layout_resolved_surface(&resolved, context.root_constraints(), text_system, None)?;
+    let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles);
+    let (size, bounds, layout_report, text_layouts) = layout_resolved_surface(
+        &resolved,
+        tree,
+        context.root_constraints(),
+        text_system,
+        None,
+    )?;
     let layout = CachedLayoutFacts {
         size,
         bounds,

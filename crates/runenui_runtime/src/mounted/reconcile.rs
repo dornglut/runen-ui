@@ -494,7 +494,7 @@ impl<Action> MountedTree<Action> {
             common_invalidation = common_field_invalidation(
                 node,
                 authored_id.as_ref(),
-                layout,
+                &layout,
                 &style,
                 focusability,
                 focus_scope,
@@ -670,14 +670,14 @@ fn analyze_sibling_keys<Action>(
 fn common_field_invalidation<Action>(
     node: &MountedNode<Action>,
     authored_id: Option<&ElementId>,
-    layout: LayoutStyle,
+    layout: &LayoutStyle,
     style: &StyleIntent,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
     diagnostics: &[runenui_core::AuthoringDiagnostic],
 ) -> WidgetInvalidation {
     let mut invalidation = WidgetInvalidation::NONE;
-    if node.layout != layout || node.style.padding() != style.padding() {
+    if &node.layout != layout || node.style.padding() != style.padding() {
         invalidation |= WidgetInvalidation::LAYOUT;
     }
     if node.style.foreground() != style.foreground()

@@ -73,11 +73,8 @@ impl Widget<()> for PaintOwner {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16),
-            height: LogicalLength::from(20_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u16), LogicalLength::from(20_u16))
     }
 
     fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
@@ -252,11 +249,8 @@ impl Widget<()> for OverlapHitOwner {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(20_u16),
-            height: LogicalLength::from(20_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(20_u16), LogicalLength::from(20_u16))
     }
 
     fn hit_test(&self, (): &Self::State, _: HitContributionContext) -> HitContribution {
@@ -324,11 +318,8 @@ impl Widget<()> for GeometryHitOwner {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(50_u16),
-            height: LogicalLength::from(20_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(50_u16), LogicalLength::from(20_u16))
     }
 
     fn hit_test(&self, (): &Self::State, _: HitContributionContext) -> HitContribution {

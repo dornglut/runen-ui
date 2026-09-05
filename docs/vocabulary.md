@@ -10,7 +10,7 @@ This glossary provides short orientation definitions. Detailed semantics belong 
 | `Element<Action>` | Owned transient erased reconciliation input; never persistent runtime state. |
 | Component | Ordinary typed Rust composition; not automatically mounted identity or local state. |
 | `Widget<Action>` | State-aware runtime participant using the public widget/lifecycle/event contracts. |
-| `ChildLayoutWidget<Action>` | Widget contract for owning children and contributing child-layout policy. |
+| `ChildBearingWidget<Action>` | Geometry-neutral marker for widgets whose elements may structurally own children; runtime layout determines their geometry. |
 | `ElementId` | Optional validated authored debug/test/automation identity; not mounted or semantic identity. |
 | `ElementKey` | Validated sibling-local reconciliation key used to retain compatible mounted lifetime across reorder. |
 | `TokenId` | Validated textual style-token identity. |

@@ -74,28 +74,55 @@ impl FontSourceRevision {
 /// Text-specific logical constraints independent of runtime layout types.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TextConstraints {
-    max_inline: Option<LogicalLength>,
+    mode: TextConstraintMode,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum TextConstraintMode {
+    #[default]
+    MaxContent,
+    MinContent,
+    Limited(LogicalLength),
 }
 
 impl TextConstraints {
     /// Unbounded inline layout.
     #[must_use]
     pub const fn unbounded() -> Self {
-        Self { max_inline: None }
+        Self {
+            mode: TextConstraintMode::MaxContent,
+        }
     }
 
     /// Layout constrained to at most `max_inline` logical units.
     #[must_use]
     pub const fn limited(max_inline: LogicalLength) -> Self {
         Self {
-            max_inline: Some(max_inline),
+            mode: TextConstraintMode::Limited(max_inline),
+        }
+    }
+
+    /// Layout at the deterministic minimum-content inline extent.
+    #[must_use]
+    pub const fn min_content() -> Self {
+        Self {
+            mode: TextConstraintMode::MinContent,
         }
     }
 
     /// Returns the available inline extent, or `None` when unbounded.
     #[must_use]
     pub const fn max_inline(self) -> Option<LogicalLength> {
-        self.max_inline
+        match self.mode {
+            TextConstraintMode::Limited(value) => Some(value),
+            TextConstraintMode::MaxContent | TextConstraintMode::MinContent => None,
+        }
+    }
+
+    /// Returns whether this request asks for minimum-content sizing.
+    #[must_use]
+    pub const fn is_min_content(self) -> bool {
+        matches!(self.mode, TextConstraintMode::MinContent)
     }
 }
 
@@ -358,6 +385,8 @@ mod tests {
     #[test]
     fn text_constraints_are_renderer_and_runtime_neutral_values() {
         assert_eq!(TextConstraints::unbounded().max_inline(), None);
+        assert!(TextConstraints::min_content().is_min_content());
+        assert_eq!(TextConstraints::min_content().max_inline(), None);
         let width = LogicalLength::new(320.0)
             .unwrap_or_else(|_| unreachable!("fixture width is a valid logical extent"));
         assert_eq!(TextConstraints::limited(width).max_inline(), Some(width));

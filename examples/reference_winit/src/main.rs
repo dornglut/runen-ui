@@ -97,11 +97,12 @@ impl Widget<()> for DemoSurface {
         WidgetTextInput::new(true, true)
     }
 
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(400_u16),
-            height: LogicalLength::from(240_u16),
-        }
+    fn measure(
+        &self,
+        _state: &Self::State,
+        _input: runenui_core::WidgetMeasureInput,
+    ) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(400_u16), LogicalLength::from(240_u16))
     }
 
     fn paint(&self, _state: &Self::State, context: PaintContributionContext) -> PaintContribution {

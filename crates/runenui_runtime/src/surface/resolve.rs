@@ -5,10 +5,10 @@ use crate::mounted::SurfaceCapabilityPlan;
 use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneItem, SceneClip};
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
-    Axis, ChildLayout, Color, ContributionClip, ElementId, HitContributionContext, LayoutStyle,
-    LogicalPoint, LogicalTransform, PaintContributionContext, PaintContributionItem, StyleEffects,
-    StyleEnvironment, StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetMeasure,
-    WidgetTypeId, resolve_style_in_environment, style_effects_between,
+    Color, ContributionClip, ElementId, HitContributionContext, LayoutStyle, LogicalPoint,
+    LogicalTransform, PaintContributionContext, PaintContributionItem, StyleEffects,
+    StyleEnvironment, StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetTypeId,
+    resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::TextSystem;
 
@@ -135,33 +135,18 @@ impl ResolvedSurfaceTree {
         tree: &crate::mounted::MountedTree<Action>,
         topology: &SurfaceTopologySnapshot,
         styles: &CachedStyleFacts,
-        capabilities: &SurfaceCapabilityPlan,
     ) -> Self {
         let nodes = topology
             .nodes
             .iter()
             .zip(&styles.resolutions)
-            .enumerate()
-            .map(|(position, (topology, resolution))| {
+            .map(|(topology, resolution)| {
                 let mounted = tree
                     .node(&topology.id)
                     .unwrap_or_else(|| unreachable!("layout topology remains live"));
                 ResolvedSurfaceNode {
-                    position,
                     topology: topology.clone(),
-                    layout: mounted.layout,
-                    measurement: capabilities
-                        .measurement_at(position, &topology.id)
-                        .unwrap_or_default(),
-                    child_layout: capabilities.child_layout_at_or_else(
-                        position,
-                        &topology.id,
-                        || {
-                            (!mounted.children.is_empty()).then_some(ChildLayout::Linear {
-                                axis: Axis::Vertical,
-                            })
-                        },
-                    ),
+                    layout: mounted.layout.clone(),
                     resolution: resolution.clone(),
                 }
             })
@@ -173,20 +158,14 @@ impl ResolvedSurfaceTree {
         self.nodes.as_slice()
     }
 
-    pub(super) fn node(&self, id: &MountedNodeId) -> &ResolvedSurfaceNode {
-        self.nodes
-            .iter()
-            .find(|node| node.id() == id)
-            .unwrap_or_else(|| unreachable!("resolved mounted ID exists"))
+    pub(super) fn position(&self, id: &MountedNodeId) -> Option<usize> {
+        self.nodes.iter().position(|node| node.id() == id)
     }
 }
 
 pub(super) struct ResolvedSurfaceNode {
-    pub(super) position: usize,
     topology: SurfaceTopologyNode,
     layout: LayoutStyle,
-    measurement: WidgetMeasure,
-    child_layout: Option<ChildLayout>,
     resolution: StyleResolution,
 }
 
@@ -205,12 +184,6 @@ impl ResolvedSurfaceNode {
     }
     pub(super) const fn layout(&self) -> &LayoutStyle {
         &self.layout
-    }
-    pub(super) const fn measurement(&self) -> &WidgetMeasure {
-        &self.measurement
-    }
-    pub(super) const fn child_layout(&self) -> Option<ChildLayout> {
-        self.child_layout
     }
     pub(super) const fn resolution(&self) -> &StyleResolution {
         &self.resolution
@@ -339,8 +312,8 @@ fn text_run_item(run: &runenui_text::TextRun, style: &StyleResolution) -> PaintC
     let computed = style.computed_style();
     let padding = computed.padding().unwrap_or_default();
     let origin = LogicalPoint::new(
-        super::measure::finite_sum(padding.left().get(), run.origin_x()),
-        super::measure::finite_sum(padding.top().get(), run.origin_y()),
+        padding.left().get() + run.origin_x(),
+        padding.top().get() + run.origin_y(),
     )
     .unwrap_or_else(|_| unreachable!("text artifact and resolved padding remain finite"));
     PaintContributionItem::shaped_text_run(

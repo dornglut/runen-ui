@@ -78,11 +78,12 @@ impl Widget<ChildAction> for ExternalPointerWidget {
         WidgetEventOutput::none()
     }
 
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(24_u16),
-            height: LogicalLength::from(24_u16),
-        }
+    fn measure(
+        &self,
+        _state: &Self::State,
+        _input: runenui_core::WidgetMeasureInput,
+    ) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(24_u16), LogicalLength::from(24_u16))
     }
 
     fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {

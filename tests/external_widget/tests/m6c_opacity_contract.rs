@@ -84,11 +84,8 @@ impl Widget<()> for OpacityOwner {
 
     fn create_state(&self) -> Self::State {}
 
-    fn measure(&self, (): &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(10_u16),
-            height: LogicalLength::from(10_u16),
-        }
+    fn measure(&self, (): &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(10_u16), LogicalLength::from(10_u16))
     }
 
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {

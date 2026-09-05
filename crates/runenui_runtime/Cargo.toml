@@ -13,6 +13,7 @@ rust-version.workspace = true
 runenui_core = { path = "../runenui_core", version = "0.1.0" }
 runenui_text = { path = "../runenui_text", version = "0.1.0" }
 serde_json = "1.0.151"
+taffy = { version = "=0.14.0", default-features = false, features = ["flexbox", "grid", "block_layout", "content_size"] }
 
 [features]
 internal-test-seams = ["runenui_core/internal-test-seams"]

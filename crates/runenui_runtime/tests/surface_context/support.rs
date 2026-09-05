@@ -1,6 +1,6 @@
 use runenui_core::{
-    CommandOrigin, Element, ElementId, IntoEffects, LogicalLength, NoHostProtocol, SemanticCommand,
-    StyleEnvironment, UiApp, View, button, row,
+    CommandOrigin, Element, ElementId, IntoEffects, LayoutDimension, LayoutStyle, LogicalLength,
+    NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp, View, button, row,
 };
 use runenui_runtime::{
     AppRuntime, CommandSubmission, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
@@ -70,6 +70,7 @@ impl UiApp for SurfaceApp {
 
 fn primary_button() -> Element<SurfaceAction> {
     button("Alpha")
+        .with_layout(button_layout())
         .id("surface.primary")
         .key("surface.primary")
         .on_activate(|| SurfaceAction::ActivatePrimary)
@@ -78,6 +79,7 @@ fn primary_button() -> Element<SurfaceAction> {
 
 fn secondary_button() -> Element<SurfaceAction> {
     button("Bravo")
+        .with_layout(button_layout())
         .id("surface.secondary")
         .key("surface.secondary")
         .on_activate(|| SurfaceAction::ActivateSecondary)
@@ -86,10 +88,17 @@ fn secondary_button() -> Element<SurfaceAction> {
 
 fn extra_button() -> Element<SurfaceAction> {
     button("Extra")
+        .with_layout(button_layout())
         .id("surface.extra")
         .key("surface.extra")
         .on_activate(|| SurfaceAction::ActivateExtra)
         .into_element()
+}
+
+fn button_layout() -> LayoutStyle {
+    LayoutStyle::default()
+        .with_width(LayoutDimension::Length(LogicalLength::from(80_u16)))
+        .with_height(LayoutDimension::Length(LogicalLength::from(24_u16)))
 }
 
 fn surface_root(state: &SurfaceState) -> Element<SurfaceAction> {

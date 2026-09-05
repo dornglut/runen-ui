@@ -6,9 +6,9 @@ use std::rc::Rc;
 use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAdapter};
 use crate::widget_mapping::MappedWidget;
 use crate::{
-    Axis, ColorValue, ElementId, ElementKey, EventContext, FocusScope, Focusability,
-    HitContribution, HitContributionContext, IdentifierError, IntoElementId, IntoElementKey,
-    LayoutStyle, LogicalLength, PaintContribution, PaintContributionContext, RadiusValue,
+    ColorValue, ElementId, ElementKey, EventContext, FocusScope, Focusability, HitContribution,
+    HitContributionContext, IdentifierError, IntoElementId, IntoElementKey, LayoutStyle,
+    LogicalLength, LogicalSize, PaintContribution, PaintContributionContext, RadiusValue,
     SemanticContribution, SemanticContributionContext, SpacingValue, StyleIntent, StyleRecipeId,
     StyleVariantId, SubscriptionSet, TypographyValue, UiEvent, WidgetActivationContext,
     WidgetEventOutput, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
@@ -52,49 +52,126 @@ impl fmt::Debug for WidgetStateTypeId {
     }
 }
 
-/// Current proof-level measurement behavior contributed by a widget.
+/// Available-space meaning supplied to a widget intrinsic measurement callback.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WidgetAvailableSpace {
+    Definite(LogicalLength),
+    MinContent,
+    MaxContent,
+}
+
+impl WidgetAvailableSpace {
+    #[must_use]
+    pub const fn definite(value: LogicalLength) -> Self {
+        Self::Definite(value)
+    }
+}
+
+/// Bounded, renderer-neutral request for one widget's intrinsic content size.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WidgetMeasureInput {
+    known_width: Option<LogicalLength>,
+    known_height: Option<LogicalLength>,
+    available_width: WidgetAvailableSpace,
+    available_height: WidgetAvailableSpace,
+}
+
+impl WidgetMeasureInput {
+    #[must_use]
+    pub const fn new(
+        known_width: Option<LogicalLength>,
+        known_height: Option<LogicalLength>,
+        available_width: WidgetAvailableSpace,
+        available_height: WidgetAvailableSpace,
+    ) -> Self {
+        Self {
+            known_width,
+            known_height,
+            available_width,
+            available_height,
+        }
+    }
+
+    #[must_use]
+    pub const fn known_width(self) -> Option<LogicalLength> {
+        self.known_width
+    }
+    #[must_use]
+    pub const fn known_height(self) -> Option<LogicalLength> {
+        self.known_height
+    }
+    #[must_use]
+    pub const fn available_width(self) -> WidgetAvailableSpace {
+        self.available_width
+    }
+    #[must_use]
+    pub const fn available_height(self) -> WidgetAvailableSpace {
+        self.available_height
+    }
+}
+
+/// Intrinsic content measurement returned by an open widget.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WidgetMeasuredSize {
+    size: LogicalSize,
+    first_baseline: Option<LogicalLength>,
+    last_baseline: Option<LogicalLength>,
+}
+
+impl WidgetMeasuredSize {
+    #[must_use]
+    pub const fn new(
+        size: LogicalSize,
+        first_baseline: Option<LogicalLength>,
+        last_baseline: Option<LogicalLength>,
+    ) -> Self {
+        Self {
+            size,
+            first_baseline,
+            last_baseline,
+        }
+    }
+
+    #[must_use]
+    pub const fn size(self) -> LogicalSize {
+        self.size
+    }
+    #[must_use]
+    pub const fn first_baseline(self) -> Option<LogicalLength> {
+        self.first_baseline
+    }
+    #[must_use]
+    pub const fn last_baseline(self) -> Option<LogicalLength> {
+        self.last_baseline
+    }
+}
+
+/// Production measurement capability contributed by a widget.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum WidgetMeasure {
-    /// A fixed renderer-neutral logical size.
-    Fixed {
-        width: LogicalLength,
-        height: LogicalLength,
-    },
-    /// Text measured through the current measurement-provider seam.
-    Text {
-        content: String,
-        kind: WidgetTextKind,
-        minimum_width: LogicalLength,
-        minimum_height: LogicalLength,
-    },
-    /// A capability this runtime version must report rather than interpret.
+    Measured(WidgetMeasuredSize),
+    Text { content: String },
     Unsupported { reason: &'static str },
-}
-
-/// Current proof-level policy for arranging a widget's owned children.
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ChildLayout {
-    /// Children composed in authored order along one axis.
-    Linear { axis: Axis },
 }
 
 impl Default for WidgetMeasure {
     fn default() -> Self {
-        Self::Fixed {
-            width: LogicalLength::ZERO,
-            height: LogicalLength::ZERO,
-        }
+        Self::Measured(WidgetMeasuredSize::new(LogicalSize::ZERO, None, None))
     }
 }
 
-/// Text category used only by the current measurement proof.
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WidgetTextKind {
-    Text,
-    ControlLabel,
+impl WidgetMeasure {
+    /// Convenience constructor for a measured content-box size.
+    #[must_use]
+    pub const fn measured(width: LogicalLength, height: LogicalLength) -> Self {
+        Self::Measured(WidgetMeasuredSize::new(
+            LogicalSize::new(width, height),
+            None,
+            None,
+        ))
+    }
 }
 
 /// Deterministic widget-authored or capability diagnostic.
@@ -344,8 +421,8 @@ pub trait Widget<Action>: fmt::Debug {
         WidgetActivationOutput::none()
     }
 
-    /// Returns current proof-level measurement behavior.
-    fn measure(&self, _state: &Self::State) -> WidgetMeasure {
+    /// Returns the widget's intrinsic response to one bounded layout request.
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
         WidgetMeasure::default()
     }
 
@@ -381,11 +458,8 @@ pub trait Widget<Action>: fmt::Debug {
     }
 }
 
-/// Explicit behavior contract for widgets whose elements may own children.
-pub trait ChildLayoutWidget<Action>: Widget<Action> {
-    /// Returns the current proof-level child arrangement policy.
-    fn child_layout(&self, state: &Self::State) -> ChildLayout;
-}
+/// Marker for widgets whose elements may structurally own children.
+pub trait ChildBearingWidget<Action>: Widget<Action> {}
 
 pub struct Element<Action> {
     id: Option<ElementId>,
@@ -499,6 +573,12 @@ impl<Action> Element<Action> {
     #[must_use]
     pub fn key(mut self, key: impl IntoElementKey) -> Self {
         assign_key(&mut self.key, &mut self.authoring_diagnostics, key);
+        self
+    }
+
+    #[must_use]
+    pub fn with_layout(mut self, layout: LayoutStyle) -> Self {
+        self.layout = layout;
         self
     }
 

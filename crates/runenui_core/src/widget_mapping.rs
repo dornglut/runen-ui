@@ -1,5 +1,5 @@
 use crate::element::{
-    ChildLayout, WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure,
+    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetMeasureInput,
     WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
 use crate::widget_erasure::{ErasedWidget, WidgetBridgeError};
@@ -147,11 +147,12 @@ where
         transfer_context(child_context, context, &self.mapper);
         Ok(action.map_action(self.mapper.as_ref()))
     }
-    fn measure(&self, state: &dyn Any) -> Result<WidgetMeasure, WidgetBridgeError> {
-        self.child.measure(state)
-    }
-    fn child_layout(&self, state: &dyn Any) -> Result<Option<ChildLayout>, WidgetBridgeError> {
-        self.child.child_layout(state)
+    fn measure(
+        &self,
+        state: &dyn Any,
+        input: WidgetMeasureInput,
+    ) -> Result<WidgetMeasure, WidgetBridgeError> {
+        self.child.measure(state, input)
     }
     fn paint(
         &self,

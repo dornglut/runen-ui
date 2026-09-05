@@ -3,11 +3,10 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    ChildLayout, ChildLayoutWidget, Element, HitContribution, HitContributionContext,
-    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, SemanticContribution, SemanticContributionContext, StyleEnvironment,
-    UiApp, View, Widget, WidgetActivation, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure,
-    WidgetUpdateContext,
+    ChildBearingWidget, Element, HitContribution, HitContributionContext, LogicalLength,
+    LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution, PaintContributionContext,
+    SemanticContribution, SemanticContributionContext, StyleEnvironment, UiApp, View, Widget,
+    WidgetActivation, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePhase,
@@ -33,7 +32,6 @@ const fn context(environment: &StyleEnvironment) -> SurfaceBuildContext<'_> {
 struct Calls {
     activation: Cell<usize>,
     measure: Cell<usize>,
-    layout: Cell<usize>,
     paint: Cell<usize>,
     hit_test: Cell<usize>,
     semantics: Cell<usize>,
@@ -74,12 +72,9 @@ impl Widget<()> for InvalidationProbe {
         WidgetActivation::NONE
     }
 
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
+    fn measure(&self, _: &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
         self.calls.measure.set(self.calls.measure.get() + 1);
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(10_u16),
-            height: LogicalLength::from(10_u16),
-        }
+        WidgetMeasure::measured(LogicalLength::from(10_u16), LogicalLength::from(10_u16))
     }
 
     fn paint(&self, _: &Self::State, _: PaintContributionContext) -> PaintContribution {
@@ -110,14 +105,7 @@ impl Widget<()> for InvalidationProbe {
     }
 }
 
-impl ChildLayoutWidget<()> for InvalidationProbe {
-    fn child_layout(&self, _: &Self::State) -> ChildLayout {
-        self.calls.layout.set(self.calls.layout.get() + 1);
-        ChildLayout::Linear {
-            axis: runenui_core::Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<()> for InvalidationProbe {}
 
 #[derive(Debug)]
 struct CacheState {
@@ -202,13 +190,12 @@ fn clean_and_paint_only_publication_skip_unrelated_work() {
         (
             calls.activation.get(),
             calls.measure.get(),
-            calls.layout.get(),
             calls.paint.get(),
             calls.hit_test.get(),
             calls.semantics.get(),
             calls.diagnostics.get(),
         ),
-        (1, 1, 1, 1, 1, 1, 1)
+        (1, 1, 1, 1, 1, 1)
     );
     let _ = publish(&mut runtime, &environment);
     assert!(runtime.last_surface_phase_report().executed().is_empty());
@@ -250,12 +237,11 @@ fn layout_and_semantics_invalidation_execute_exact_dependencies() {
     assert_eq!(
         (
             calls.measure.get(),
-            calls.layout.get(),
             calls.paint.get(),
             calls.hit_test.get(),
             calls.semantics.get(),
         ),
-        (2, 2, 2, 2, 1)
+        (2, 2, 2, 1)
     );
 
     process_one(
@@ -285,7 +271,6 @@ fn hit_invalidation_recomputes_only_hit_and_changes_targetability() {
     assert!(initial.hit_test_scene().target_at(point).is_none());
     let counts_before = (
         calls.measure.get(),
-        calls.layout.get(),
         calls.paint.get(),
         calls.hit_test.get(),
         calls.semantics.get(),
@@ -302,7 +287,6 @@ fn hit_invalidation_recomputes_only_hit_and_changes_targetability() {
     assert_eq!(
         (
             calls.measure.get(),
-            calls.layout.get(),
             calls.paint.get(),
             calls.hit_test.get(),
             calls.semantics.get(),
@@ -311,10 +295,9 @@ fn hit_invalidation_recomputes_only_hit_and_changes_targetability() {
         (
             counts_before.0,
             counts_before.1,
-            counts_before.2,
-            counts_before.3 + 1,
+            counts_before.2 + 1,
+            counts_before.3,
             counts_before.4,
-            counts_before.5,
         )
     );
 

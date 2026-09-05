@@ -6,9 +6,9 @@ use std::{
 };
 
 use runenui_core::{
-    Axis, ChildLayout, ChildLayoutWidget, CommandDerivation, CommandOrigin, Element, EventContext,
-    EventPhase, EventSource, MonotonicInstant, MountedNodeId, NoHostProtocol, SemanticCommand,
-    SubscriptionSet, UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
+    ChildBearingWidget, CommandDerivation, CommandOrigin, Element, EventContext, EventPhase,
+    EventSource, MonotonicInstant, MountedNodeId, NoHostProtocol, SemanticCommand, SubscriptionSet,
+    UiApp, UiEvent, View, Widget, WidgetActivation, WidgetActivationContext,
     WidgetActivationOutput, WidgetEventOutput, WidgetInvalidation, WorkSequence, children,
     container,
 };
@@ -61,13 +61,7 @@ impl Widget<Action> for EventAncestor {
     }
 }
 
-impl ChildLayoutWidget<Action> for EventAncestor {
-    fn child_layout(&self, (): &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<Action> for EventAncestor {}
 
 #[derive(Debug)]
 struct EventChild {
@@ -493,13 +487,7 @@ impl Widget<ControlAction> for ControlWidget {
     }
 }
 
-impl ChildLayoutWidget<ControlAction> for ControlWidget {
-    fn child_layout(&self, _state: &Self::State) -> ChildLayout {
-        ChildLayout::Linear {
-            axis: Axis::Vertical,
-        }
-    }
-}
+impl ChildBearingWidget<ControlAction> for ControlWidget {}
 
 #[derive(Debug)]
 struct ControlState {

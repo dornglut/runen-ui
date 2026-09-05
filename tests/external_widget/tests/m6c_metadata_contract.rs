@@ -48,11 +48,8 @@ impl Widget<Action> for MetadataProbe {
         }
     }
 
-    fn measure(&self, _: &Self::State) -> WidgetMeasure {
-        WidgetMeasure::Fixed {
-            width: LogicalLength::from(10_u16),
-            height: LogicalLength::from(10_u16),
-        }
+    fn measure(&self, _: &Self::State, _input: runenui_core::WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::measured(LogicalLength::from(10_u16), LogicalLength::from(10_u16))
     }
 
     fn paint(&self, state: &Self::State, _: PaintContributionContext) -> PaintContribution {

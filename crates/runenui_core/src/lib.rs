@@ -259,9 +259,9 @@ pub use builtins::{Button, Container, Text, button, column, container, row, text
 pub use computed_style::ComputedStyle;
 pub use effects::{Effects, IntoEffects};
 pub use element::{
-    AuthoringDiagnostic, ChildLayout, ChildLayoutWidget, Element, View, Views, Widget,
-    WidgetActivation, WidgetActivationOutput, WidgetDiagnostic, WidgetMeasure, WidgetStateTypeId,
-    WidgetTextInput, WidgetTextKind, WidgetTypeId,
+    AuthoringDiagnostic, ChildBearingWidget, Element, View, Views, Widget, WidgetActivation,
+    WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic, WidgetMeasure,
+    WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
 pub use event::{
     CommandDerivation, CommandOrigin, EventPhase, EventSource, SemanticCommand,
@@ -303,7 +303,14 @@ pub mod __runtime {
 #[doc(hidden)]
 pub use identity::is_valid_identifier_literal;
 pub use identity::{ElementId, ElementKey, IdentifierError, IntoElementId, IntoElementKey};
-pub use layout::{Axis, LayoutStyle};
+pub use layout::{
+    Axis, ContentAlignment, FlexBasis, FlexContainerStyle, FlexDirection, FlexItemStyle, FlexWrap,
+    GridAutoFlow, GridAxisPlacement, GridContainerStyle, GridItemPlacement, GridItemStyle,
+    GridLine, GridLineError, GridSpan, GridSpanError, GridTrack, GridTrackMax, GridTrackMin,
+    ItemAlignment, LayoutBound, LayoutContainer, LayoutDimension, LayoutFactor, LayoutFactorError,
+    LayoutGap, LayoutInsets, LayoutOffset, LayoutPosition, LayoutStyle, MainAxisAlignment,
+    OverflowPolicy, OverflowStyle, OverlayAlignment, OverlayContainerStyle,
+};
 pub use pointer::{
     InputDeviceId, KeyModifiers, LogicalDelta, LogicalDeltaError, LogicalPoint, LogicalPointError,
     LogicalScrollCommand, PointerBoundaryEvent, PointerBoundaryKind, PointerButton, PointerButtons,
