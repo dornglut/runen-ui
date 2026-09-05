@@ -24,7 +24,7 @@ use taffy::{
     style::Overflow,
     tree::{
         Baselines, Cache, Layout, LayoutBlockContainer, LayoutFlexboxContainer,
-        LayoutGridContainer, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId,
+        LayoutGridContainer, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId, RunMode,
         TraversePartialTree,
     },
 };
@@ -69,18 +69,15 @@ struct LayoutKernel<'a, Action> {
     caches: Vec<Cache>,
     layouts: Vec<Layout>,
     text_layouts: Vec<TextLayoutState>,
-    text_candidates: Vec<Vec<TextCandidate>>,
+    // Taffy invokes text leaves synchronously for each layout request. A
+    // PerformLayout callback is the final request for that callback sequence;
+    // retaining its state avoids any post-layout geometry-based identity guess.
+    final_text_states: Vec<Option<TextLayoutState>>,
     diagnostics: Vec<Vec<runenui_core::WidgetDiagnostic>>,
     intrinsic_sizes: Vec<LogicalSize>,
     custom_intrinsic_sizes: Vec<Option<LogicalSize>>,
     text_error: Option<TextLayoutError>,
     root_constraints: LayoutConstraints,
-}
-
-#[derive(Clone)]
-struct TextCandidate {
-    state: TextLayoutState,
-    output_size: LogicalSize,
 }
 
 impl<'a, Action> LayoutKernel<'a, Action> {
@@ -133,7 +130,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             caches: vec![Cache::new(); count],
             layouts: vec![Layout::default(); count],
             text_layouts,
-            text_candidates: vec![Vec::new(); count],
+            final_text_states: vec![None; count],
             diagnostics,
             intrinsic_sizes: vec![LogicalSize::ZERO; count],
             custom_intrinsic_sizes: vec![None; count],
@@ -180,7 +177,6 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let widget_input = widget_measure_input(inputs, padding);
         let measurement = mounted.widget.measure(&mounted.state, widget_input);
         let mut baselines = Baselines::NONE;
-        let mut text_state = None;
         let size = match measurement {
             Ok(WidgetMeasure::Measured(measured)) => {
                 baselines = baselines_from_widget(measured, padding);
@@ -204,7 +200,9 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         let artifact = outcome.artifact();
                         let text_size = artifact.size();
                         baselines = text_baselines(artifact, padding);
-                        text_state = Some(state);
+                        if inputs.run_mode == RunMode::PerformLayout {
+                            self.final_text_states[index] = Some(state.clone());
+                        }
                         text_size
                     }
                     Err(error) => {
@@ -244,12 +242,6 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let mut output =
             compute_leaf_layout(inputs, &style, |_, _| 0.0, |_, _| Size { width, height });
         output.baselines = baselines;
-        if let Some(state) = text_state {
-            self.text_candidates[index].push(TextCandidate {
-                state,
-                output_size: logical_size(output.size.width, output.size.height),
-            });
-        }
         output
     }
 
@@ -369,15 +361,8 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             );
         }
         for index in 0..count {
-            let final_layout = self.layouts[index];
-            let final_size = logical_size(final_layout.size.width, final_layout.size.height);
-            if let Some(candidate) = self.text_candidates[index]
-                .iter()
-                .rev()
-                .find(|candidate| candidate.output_size == final_size)
-                .cloned()
-            {
-                self.text_layouts[index] = candidate.state;
+            if let Some(state) = self.final_text_states[index].take() {
+                self.text_layouts[index] = state;
             } else {
                 self.text_layouts[index].clear();
             }

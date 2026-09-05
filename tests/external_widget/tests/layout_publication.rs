@@ -10,8 +10,8 @@ use runenui_core::{
     SemanticCommand, StyleEnvironment, UiApp,
 };
 use runenui_external_widget_conformance::{
-    LayoutCase, LayoutConformanceApp, LayoutState, UnsupportedMeasure, counting_measurement_tree,
-    responsive_measurement_tree,
+    LayoutCase, LayoutConformanceApp, LayoutState, UnsupportedMeasure, baseline_measurement_tree,
+    counting_measurement_tree, responsive_measurement_tree,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, PumpBudget, SurfaceBuildContext,
@@ -46,9 +46,25 @@ fn downstream_custom_measurement_receives_bounded_requests_and_baseline() {
     let inputs = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<ResponsiveApp>::mount(Rc::clone(&inputs));
     let environment = StyleEnvironment::default();
-    let publication = publish(
+    let wide = publish(
         &mut runtime,
         &SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(120.0, 80.0))),
+    );
+    let wide_node = wide
+        .layout_report()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "responsive.measure")
+        })
+        .unwrap_or_else(|| unreachable!("responsive measured node is published"));
+    assert_eq!(wide_node.constrained_outer_size(), size(120.0, 20.0));
+
+    inputs.borrow_mut().clear();
+    let narrow = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(60.0, 80.0))),
     );
 
     let observed = inputs.borrow();
@@ -65,7 +81,13 @@ fn downstream_custom_measurement_receives_bounded_requests_and_baseline() {
             .iter()
             .any(|input| input.known_width().is_some() || input.known_height().is_some())
     );
-    let node = publication
+    assert!(observed.iter().any(|input| {
+        matches!(
+            input.available_width(),
+            runenui_core::WidgetAvailableSpace::Definite(width) if width.get() < 80.0
+        )
+    }));
+    let node = narrow
         .layout_report()
         .nodes()
         .iter()
@@ -74,7 +96,52 @@ fn downstream_custom_measurement_receives_bounded_requests_and_baseline() {
                 .is_some_and(|id| id.as_str() == "responsive.measure")
         })
         .unwrap_or_else(|| unreachable!("responsive measured node is published"));
-    assert!(node.constrained_outer_size().width() > 0.0);
+    assert_eq!(node.constrained_outer_size(), size(60.0, 40.0));
+}
+
+struct BaselineApp;
+
+impl UiApp for BaselineApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &()) -> Element<Self::Action> {
+        baseline_measurement_tree()
+    }
+
+    fn update((): &mut (), (): ()) {}
+}
+
+#[test]
+fn downstream_custom_baselines_reach_public_flex_alignment() {
+    let mut runtime = AppRuntime::<BaselineApp>::mount(());
+    let publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(
+            &StyleEnvironment::default(),
+            LayoutConstraints::loose(size(100.0, 40.0)),
+        ),
+    );
+    let a = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "baseline.a")
+        })
+        .unwrap_or_else(|| unreachable!("baseline a is published"));
+    let b = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "baseline.b")
+        })
+        .unwrap_or_else(|| unreachable!("baseline b is published"));
+    assert!((a.bounds().y() + 6.0 - (b.bounds().y() + 14.0)).abs() <= f32::EPSILON);
 }
 
 fn register_controlled_text<App: UiApp>(runtime: &mut AppRuntime<App>) {

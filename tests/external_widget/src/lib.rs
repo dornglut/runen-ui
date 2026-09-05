@@ -96,15 +96,15 @@ use std::{
 use runenui_core::{
     ChildBearingWidget, Color, CompositionCancelReason, CompositionEvent, Container, EdgeInsets,
     Element, EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusEventKind,
-    FocusReason, HitContribution, HitContributionContext, IntoEffects, KeyboardPhase,
-    LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
-    PaintContribution, PaintContributionContext, PaintContributionItem, SemanticAction,
-    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
-    SemanticState, SubscriptionSet, UiApp, UiEvent, View, Views, Widget, WidgetActivation,
-    WidgetActivationContext, WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic,
-    WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
-    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children,
-    column, container, row, text,
+    FocusReason, HitContribution, HitContributionContext, IntoEffects, ItemAlignment,
+    KeyboardPhase, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, LogicalRect,
+    LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
+    PaintContributionItem, SemanticAction, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticRole, SemanticState, SubscriptionSet, UiApp, UiEvent, View,
+    Views, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
+    WidgetAvailableSpace, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure,
+    WidgetMeasureInput, WidgetMeasuredSize, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext, WorkKey, button, children, column, container, row, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1102,6 +1102,55 @@ pub fn responsive_measurement_tree(inputs: Rc<RefCell<Vec<WidgetMeasureInput>>>)
     row(children![
         Element::new(ResponsiveMeasuredWidget { inputs }).id("responsive.measure")
     ])
+    .with_layout(LayoutStyle::default().with_width(LayoutDimension::Fill))
+    .into_element()
+}
+
+#[derive(Debug)]
+struct BaselineMeasuredWidget {
+    width: LogicalLength,
+    height: LogicalLength,
+    baseline: LogicalLength,
+}
+
+impl Widget<()> for BaselineMeasuredWidget {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn measure(&self, _state: &Self::State, _input: WidgetMeasureInput) -> WidgetMeasure {
+        WidgetMeasure::Measured(WidgetMeasuredSize::new(
+            LogicalSize::new(self.width, self.height),
+            Some(self.baseline),
+            Some(self.baseline),
+        ))
+    }
+}
+
+#[must_use]
+pub fn baseline_measurement_tree() -> Element<()> {
+    row(children![
+        Element::new(BaselineMeasuredWidget {
+            width: LogicalLength::from(30_u16),
+            height: LogicalLength::from(20_u16),
+            baseline: LogicalLength::from(6_u16),
+        })
+        .id("baseline.a"),
+        Element::new(BaselineMeasuredWidget {
+            width: LogicalLength::from(30_u16),
+            height: LogicalLength::from(30_u16),
+            baseline: LogicalLength::from(14_u16),
+        })
+        .id("baseline.b")
+    ])
+    .with_layout(
+        LayoutStyle::default()
+            .with_container(LayoutContainer::Flex(
+                FlexContainerStyle::default().with_align_items(ItemAlignment::Baseline),
+            ))
+            .with_width(LayoutDimension::length(LogicalLength::from(100_u16)))
+            .with_height(LayoutDimension::length(LogicalLength::from(40_u16))),
+    )
     .into_element()
 }
 

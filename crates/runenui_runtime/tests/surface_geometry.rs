@@ -9,12 +9,13 @@ use runenui_core::{
     Color, EdgeInsets, Element, ElementId, FontFamilyName, GenericFontFamily, GridAxisPlacement,
     GridContainerStyle, GridItemPlacement, GridLine, GridSpan, GridTrack, LayoutBound,
     LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol, SemanticRole,
-    StyleEnvironment, StyleTokens, UiApp, View, Widget, WidgetAvailableSpace, WidgetMeasure,
-    WidgetMeasureInput, button, children, color_token, column, row, text,
+    StyleEnvironment, StyleTokens, UiApp, View, Widget, WidgetMeasure, WidgetMeasureInput, button,
+    children, color_token, column, row, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, PumpBudget, SurfaceBuildContext,
-    SurfacePublication, render_debug_surface_frame, render_debug_surface_style_report,
+    AppRuntime, AxisConstraints, AxisLimit, LayoutConstraints, LogicalPoint, LogicalSize,
+    PumpBudget, SurfaceBuildContext, SurfacePublication, render_debug_surface_frame,
+    render_debug_surface_style_report,
 };
 
 const CANTARELL: &[u8] = include_bytes!(concat!(
@@ -395,6 +396,50 @@ fn root_constraints_preserve_authored_root_bounds() {
         .root()
         .unwrap_or_else(|| unreachable!("authored root is published"));
     assert!((root.bounds().width() - 120.0).abs() <= f32::EPSILON);
+
+    let unbounded = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(
+            &environment,
+            LayoutConstraints::new(
+                AxisConstraints::unbounded(),
+                AxisConstraints::loose(length(100.0)),
+            ),
+        ),
+    );
+    assert!(
+        (unbounded
+            .frame()
+            .root()
+            .unwrap_or_else(|| unreachable!("authored root is published"))
+            .bounds()
+            .width()
+            - 120.0)
+            .abs()
+            <= f32::EPSILON
+    );
+
+    let external_min = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(
+            &environment,
+            LayoutConstraints::new(
+                AxisConstraints::new(length(110.0), AxisLimit::Unbounded),
+                AxisConstraints::loose(length(100.0)),
+            ),
+        ),
+    );
+    assert!(
+        (external_min
+            .frame()
+            .root()
+            .unwrap_or_else(|| unreachable!("authored root is published"))
+            .bounds()
+            .width()
+            - 120.0)
+            .abs()
+            <= f32::EPSILON
+    );
 }
 
 struct OutOfRangeGridLineApp;
@@ -493,10 +538,13 @@ impl Widget<CorrelationPhase> for CorrelatingText {
     fn measure(&self, _state: &Self::State, input: WidgetMeasureInput) -> WidgetMeasure {
         let content = match self.phase.get() {
             CorrelationPhase::Prior => "P",
-            CorrelationPhase::Candidates => match input.available_width() {
-                WidgetAvailableSpace::Definite(width) if width.get() <= 80.0 => "B B B B B B B",
-                _ => "A",
-            },
+            CorrelationPhase::Candidates => {
+                if self.inputs.borrow().is_empty() {
+                    "A"
+                } else {
+                    "BBBBBBBBBBBBB"
+                }
+            }
         };
         self.inputs.borrow_mut().push((input, content));
         WidgetMeasure::Text {
@@ -518,6 +566,11 @@ impl UiApp for TextCorrelationApp {
                 phase: Rc::clone(&state.phase),
                 inputs: Rc::clone(&state.inputs),
             })
+            .with_layout(
+                LayoutStyle::default()
+                    .with_width(LayoutDimension::length(length(40.0)))
+                    .with_height(LayoutDimension::length(length(80.0))),
+            )
             .id("correlation.text")
         ])
         .into_element()
@@ -529,7 +582,7 @@ impl UiApp for TextCorrelationApp {
 }
 
 #[test]
-fn final_text_geometry_selects_the_matching_candidate_resource() {
+fn final_text_request_selects_the_matching_artifact_resource() {
     let inputs = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<TextCorrelationApp>::mount(CorrelationState {
         phase: Rc::new(Cell::new(CorrelationPhase::Prior)),
@@ -564,7 +617,7 @@ fn final_text_geometry_selects_the_matching_candidate_resource() {
     assert!(
         observed
             .iter()
-            .any(|(_, content)| *content == "B B B B B B B")
+            .any(|(_, content)| *content == "BBBBBBBBBBBBB")
     );
 
     let runs: Vec<_> = second
@@ -575,6 +628,20 @@ fn final_text_geometry_selects_the_matching_candidate_resource() {
         .collect();
     assert!(!runs.is_empty(), "final B artifact remains paintable");
     assert!(runs.iter().all(|run| run.resource_ref() != &prior_ref));
+    let glyph_ids: Vec<_> = runs
+        .iter()
+        .flat_map(|run| {
+            second
+                .paint_scene()
+                .shaped_text_resource(run.resource_ref())
+                .into_iter()
+                .flat_map(|resource| resource.glyphs().iter().map(|glyph| glyph.id()))
+        })
+        .collect();
+    assert!(
+        glyph_ids.len() >= 13 && glyph_ids.windows(2).all(|pair| pair[0] == pair[1]),
+        "final resource glyph ids: {glyph_ids:?}"
+    );
     let correlation_id = second
         .layout_report()
         .nodes()
@@ -592,7 +659,15 @@ fn final_text_geometry_selects_the_matching_candidate_resource() {
         .unwrap_or_else(|| unreachable!("correlation frame node is published"))
         .bounds()
         .height();
-    assert!(second_height > first.frame().nodes()[1].bounds().height());
+    let first_width = first.frame().nodes()[1].bounds().width();
+    let second_width = second
+        .frame()
+        .node(&correlation_id)
+        .unwrap_or_else(|| unreachable!("correlation frame node is published"))
+        .bounds()
+        .width();
+    assert!((second_width - first_width).abs() <= f32::EPSILON);
+    assert!((second_height - first.frame().nodes()[1].bounds().height()).abs() <= f32::EPSILON);
     for run in runs {
         assert!(
             second
