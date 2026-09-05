@@ -1,9 +1,16 @@
 #![allow(refining_impl_trait)]
 
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
+
 use runenui_core::{
-    Color, EdgeInsets, Element, ElementId, FontFamilyName, GenericFontFamily, LayoutBound,
-    LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol, SemanticRole, StyleEnvironment,
-    StyleTokens, UiApp, View, button, children, color_token, column, row, text,
+    Color, EdgeInsets, Element, ElementId, FontFamilyName, GenericFontFamily, GridAxisPlacement,
+    GridContainerStyle, GridItemPlacement, GridLine, GridSpan, GridTrack, LayoutBound,
+    LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol, SemanticRole,
+    StyleEnvironment, StyleTokens, UiApp, View, Widget, WidgetAvailableSpace, WidgetMeasure,
+    WidgetMeasureInput, button, children, color_token, column, row, text,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, PumpBudget, SurfaceBuildContext,
@@ -388,4 +395,210 @@ fn root_constraints_preserve_authored_root_bounds() {
         .root()
         .unwrap_or_else(|| unreachable!("authored root is published"));
     assert!((root.bounds().width() - 120.0).abs() <= f32::EPSILON);
+}
+
+struct OutOfRangeGridLineApp;
+
+impl UiApp for OutOfRangeGridLineApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &()) -> Element<Self::Action> {
+        let out_of_range = GridLine::new(40_000)
+            .unwrap_or_else(|_| unreachable!("the public Grid line remains representable"));
+        let child_layout = LayoutStyle::default().with_grid_item(
+            runenui_core::GridItemStyle::default().with_placement(GridItemPlacement::new(
+                GridAxisPlacement::new(Some(out_of_range), GridSpan::ONE),
+                GridAxisPlacement::default(),
+            )),
+        );
+        row(children![
+            text("grid child")
+                .id("grid.child")
+                .with_layout(child_layout)
+        ])
+        .with_layout(
+            LayoutStyle::default()
+                .with_container(LayoutContainer::Grid(GridContainerStyle::new(
+                    [GridTrack::length(length(100.0))],
+                    [GridTrack::length(length(40.0))],
+                )))
+                .with_width(LayoutDimension::length(length(100.0)))
+                .with_height(LayoutDimension::length(length(40.0))),
+        )
+        .into_element()
+    }
+
+    fn update((): &mut (), (): ()) {}
+}
+
+#[test]
+fn out_of_range_grid_line_is_diagnosed_without_saturation() {
+    let mut runtime = AppRuntime::<OutOfRangeGridLineApp>::mount(());
+    let publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&StyleEnvironment::default(), LayoutConstraints::unbounded()),
+    );
+    let child = publication
+        .layout_report()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "grid.child")
+        })
+        .unwrap_or_else(|| unreachable!("Grid child is published"));
+    assert_eq!(
+        child.diagnostics()[0].code(),
+        "runenui.layout.grid-line-unsupported"
+    );
+    assert!(child.diagnostics()[0].message().contains("40000"));
+    assert_eq!(child.constrained_outer_size(), size(100.0, 40.0));
+    assert!(
+        publication
+            .frame()
+            .node(child.id())
+            .unwrap_or_else(|| unreachable!("Grid child frame is published"))
+            .bounds()
+            .x()
+            .abs()
+            <= f32::EPSILON
+    );
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CorrelationPhase {
+    Prior,
+    Candidates,
+}
+
+#[derive(Debug)]
+struct CorrelationState {
+    phase: Rc<Cell<CorrelationPhase>>,
+    inputs: Rc<RefCell<Vec<(WidgetMeasureInput, &'static str)>>>,
+}
+
+#[derive(Debug)]
+struct CorrelatingText {
+    phase: Rc<Cell<CorrelationPhase>>,
+    inputs: Rc<RefCell<Vec<(WidgetMeasureInput, &'static str)>>>,
+}
+
+impl Widget<CorrelationPhase> for CorrelatingText {
+    type State = ();
+
+    fn create_state(&self) -> Self::State {}
+
+    fn measure(&self, _state: &Self::State, input: WidgetMeasureInput) -> WidgetMeasure {
+        let content = match self.phase.get() {
+            CorrelationPhase::Prior => "P",
+            CorrelationPhase::Candidates => match input.available_width() {
+                WidgetAvailableSpace::Definite(width) if width.get() <= 80.0 => "B B B B B B B",
+                _ => "A",
+            },
+        };
+        self.inputs.borrow_mut().push((input, content));
+        WidgetMeasure::Text {
+            content: content.to_owned(),
+        }
+    }
+}
+
+struct TextCorrelationApp;
+
+impl UiApp for TextCorrelationApp {
+    type State = CorrelationState;
+    type Action = CorrelationPhase;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        row(children![
+            Element::new(CorrelatingText {
+                phase: Rc::clone(&state.phase),
+                inputs: Rc::clone(&state.inputs),
+            })
+            .id("correlation.text")
+        ])
+        .into_element()
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        state.phase.set(action);
+    }
+}
+
+#[test]
+fn final_text_geometry_selects_the_matching_candidate_resource() {
+    let inputs = Rc::new(RefCell::new(Vec::new()));
+    let mut runtime = AppRuntime::<TextCorrelationApp>::mount(CorrelationState {
+        phase: Rc::new(Cell::new(CorrelationPhase::Prior)),
+        inputs: Rc::clone(&inputs),
+    });
+    register_controlled_text(&mut runtime);
+    let environment = StyleEnvironment::default();
+    let first = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(120.0, 80.0))),
+    );
+    let prior_ref = first
+        .paint_scene()
+        .items()
+        .iter()
+        .find_map(|item| item.primitive().as_shaped_text_run())
+        .unwrap_or_else(|| unreachable!("prior text artifact is painted"))
+        .resource_ref()
+        .clone();
+
+    inputs.borrow_mut().clear();
+    runtime
+        .submit_action(CorrelationPhase::Candidates)
+        .unwrap_or_else(|_| unreachable!("correlation phase action is admitted"));
+    runtime.pump(PumpBudget::new(4, usize::MAX, usize::MAX, usize::MAX));
+    let second = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&environment, LayoutConstraints::loose(size(40.0, 80.0))),
+    );
+    let observed = inputs.borrow();
+    assert!(observed.iter().any(|(_, content)| *content == "A"));
+    assert!(
+        observed
+            .iter()
+            .any(|(_, content)| *content == "B B B B B B B")
+    );
+
+    let runs: Vec<_> = second
+        .paint_scene()
+        .items()
+        .iter()
+        .filter_map(|item| item.primitive().as_shaped_text_run())
+        .collect();
+    assert!(!runs.is_empty(), "final B artifact remains paintable");
+    assert!(runs.iter().all(|run| run.resource_ref() != &prior_ref));
+    let correlation_id = second
+        .layout_report()
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.authored_id()
+                .is_some_and(|id| id.as_str() == "correlation.text")
+        })
+        .unwrap_or_else(|| unreachable!("correlation node is published"))
+        .id()
+        .clone();
+    let second_height = second
+        .frame()
+        .node(&correlation_id)
+        .unwrap_or_else(|| unreachable!("correlation frame node is published"))
+        .bounds()
+        .height();
+    assert!(second_height > first.frame().nodes()[1].bounds().height());
+    for run in runs {
+        assert!(
+            second
+                .paint_scene()
+                .shaped_text_resource(run.resource_ref())
+                .is_some()
+        );
+    }
 }

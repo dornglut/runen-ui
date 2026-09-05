@@ -5,9 +5,9 @@
 
 use runenui_core::{
     ComputedStyle, ContentAlignment, EdgeInsets, FlexBasis, FlexDirection, FlexWrap, ItemAlignment,
-    LayoutBound, LayoutContainer, LayoutDimension, LayoutPosition, LayoutStyle, LogicalLength,
-    LogicalPoint, LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy, Typography,
-    WidgetAvailableSpace, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
+    LayoutBound, LayoutContainer, LayoutDimension, LayoutPosition, LayoutStyle, LogicalPoint,
+    LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy, Typography, WidgetAvailableSpace,
+    WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
 };
 use runenui_text::{TextConstraints, TextLayoutError, TextLayoutState, TextRequest, TextSystem};
 use taffy::{
@@ -80,8 +80,7 @@ struct LayoutKernel<'a, Action> {
 #[derive(Clone)]
 struct TextCandidate {
     state: TextLayoutState,
-    size: LogicalSize,
-    constraint_width: Option<f32>,
+    output_size: LogicalSize,
 }
 
 impl<'a, Action> LayoutKernel<'a, Action> {
@@ -96,6 +95,37 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let text_layouts = prior_text_layouts
             .filter(|states| states.len() == count)
             .map_or_else(|| vec![TextLayoutState::new(); count], ToOwned::to_owned);
+        let mut diagnostics = vec![Vec::new(); count];
+        for (index, node) in resolved.nodes().iter().enumerate() {
+            if !matches!(
+                node.layout().container(),
+                LayoutContainer::Block
+                    | LayoutContainer::Flex(_)
+                    | LayoutContainer::Grid(_)
+                    | LayoutContainer::Overlay(_)
+            ) {
+                diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                    "runenui.layout.container-unsupported",
+                    "layout container variant is not supported by this runtime",
+                ));
+            }
+            for (axis, placement) in [
+                ("row", node.layout().grid_item().placement().row()),
+                ("column", node.layout().grid_item().placement().column()),
+            ] {
+                if let Some(line) = placement.start()
+                    && i16::try_from(line.get()).is_err()
+                {
+                    diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                        "runenui.layout.grid-line-unsupported",
+                        format!(
+                            "authored Grid {axis} line {} is outside the supported layout range",
+                            line.get()
+                        ),
+                    ));
+                }
+            }
+        }
         Self {
             resolved,
             mounted,
@@ -104,7 +134,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             layouts: vec![Layout::default(); count],
             text_layouts,
             text_candidates: vec![Vec::new(); count],
-            diagnostics: vec![Vec::new(); count],
+            diagnostics,
             intrinsic_sizes: vec![LogicalSize::ZERO; count],
             custom_intrinsic_sizes: vec![None; count],
             text_error: None,
@@ -150,6 +180,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let widget_input = widget_measure_input(inputs, padding);
         let measurement = mounted.widget.measure(&mounted.state, widget_input);
         let mut baselines = Baselines::NONE;
+        let mut text_state = None;
         let size = match measurement {
             Ok(WidgetMeasure::Measured(measured)) => {
                 baselines = baselines_from_widget(measured, padding);
@@ -173,17 +204,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         let artifact = outcome.artifact();
                         let text_size = artifact.size();
                         baselines = text_baselines(artifact, padding);
-                        self.text_candidates[index].push(TextCandidate {
-                            state,
-                            size: text_size,
-                            constraint_width: widget_input
-                                .known_width()
-                                .map(LogicalLength::get)
-                                .or(match inputs.available_space.width {
-                                    AvailableSpace::Definite(width) => Some(width),
-                                    AvailableSpace::MinContent | AvailableSpace::MaxContent => None,
-                                }),
-                        });
+                        text_state = Some(state);
                         text_size
                     }
                     Err(error) => {
@@ -208,7 +229,14 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 ));
                 LogicalSize::ZERO
             }
-            Ok(_) => LogicalSize::ZERO,
+            Ok(_) => {
+                self.custom_intrinsic_sizes[index] = None;
+                self.diagnostics[index].push(runenui_core::WidgetDiagnostic::new(
+                    "runenui.measurement.unsupported",
+                    "widget measurement capability is not supported by this runtime",
+                ));
+                LogicalSize::ZERO
+            }
         };
         let width = size.width();
         let height = size.height();
@@ -216,6 +244,12 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let mut output =
             compute_leaf_layout(inputs, &style, |_, _| 0.0, |_, _| Size { width, height });
         output.baselines = baselines;
+        if let Some(state) = text_state {
+            self.text_candidates[index].push(TextCandidate {
+                state,
+                output_size: logical_size(output.size.width, output.size.height),
+            });
+        }
         output
     }
 
@@ -335,22 +369,16 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             );
         }
         for index in 0..count {
+            let final_layout = self.layouts[index];
+            let final_size = logical_size(final_layout.size.width, final_layout.size.height);
             if let Some(candidate) = self.text_candidates[index]
                 .iter()
-                .find(|candidate| {
-                    let layout = self.layouts[index];
-                    let padding = resolved_padding(&self.resolved.nodes()[index]);
-                    let final_content_width =
-                        layout.size.width - padding.left().get() - padding.right().get();
-                    candidate.constraint_width.map_or_else(
-                        || (candidate.size.width() - final_content_width).abs() < 0.01,
-                        |width| (width - final_content_width).abs() < 0.01,
-                    )
-                })
+                .rev()
+                .find(|candidate| candidate.output_size == final_size)
                 .cloned()
             {
                 self.text_layouts[index] = candidate.state;
-            } else if self.text_candidates[index].is_empty() {
+            } else {
                 self.text_layouts[index].clear();
             }
         }
@@ -443,9 +471,7 @@ impl<Action> LayoutPartialTree for LayoutKernel<'_, Action> {
                     compute_block_layout(tree, node, inputs, None)
                 })
             }
-            _ => compute_cached_layout(self, node, inputs, |tree, node, inputs| {
-                compute_block_layout(tree, node, inputs, None)
-            }),
+            _ => LayoutOutput::HIDDEN,
         }
     }
 }
@@ -837,9 +863,11 @@ fn grid_placement(
     let span = value.span().get();
     match value.start() {
         Some(start) => {
-            let line = taffy::prelude::line::<Line<taffy::prelude::GridPlacement<String>>>(
-                i16::try_from(start.get()).unwrap_or(i16::MAX),
-            );
+            let Ok(line_number) = i16::try_from(start.get()) else {
+                return Line::default();
+            };
+            let line =
+                taffy::prelude::line::<Line<taffy::prelude::GridPlacement<String>>>(line_number);
             let end = if span == 1 {
                 taffy::prelude::GridPlacement::Auto
             } else {
