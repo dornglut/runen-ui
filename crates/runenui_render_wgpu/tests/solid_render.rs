@@ -859,6 +859,77 @@ fn real_gpu_shadow_support_ignores_child_alpha_and_preserves_sibling_and_group_o
     Ok(())
 }
 
+fn spread_shadow_group(
+    origin_x: u16,
+    origin_y: u16,
+    cells: impl IntoIterator<Item = (u16, u16)>,
+) -> Result<PaintContributionGroup, Box<dyn Error>> {
+    let children = cells
+        .into_iter()
+        .map(|(x, y)| {
+            PaintContributionItem::fill(
+                SceneShape::rect(rect(
+                    f32::from(origin_x + x),
+                    f32::from(origin_y + y),
+                    1.0,
+                    1.0,
+                )),
+                Brush::solid(Color::rgba(0xFF, 0xFF, 0xFF, 0x00)),
+            )
+            .into()
+        })
+        .collect::<Vec<_>>();
+    let shadow = DropShadow::new(0.0, 0.0, LogicalLength::new(0.0)?, 2.0, Color::WHITE)?;
+    Ok(PaintContributionGroup::new(children).with_shadows(vec![shadow]))
+}
+
+#[test]
+fn real_gpu_euclidean_spread_rejects_square_corners_and_is_quarter_turn_invariant()
+-> Result<(), Box<dyn Error>> {
+    let Some(mut renderer) = renderer_or_adapterless()? else {
+        return Ok(());
+    };
+    const L_SOURCE: &[(u16, u16)] = &[
+        (0, 0),
+        (0, 1),
+        (0, 2),
+        (0, 3),
+        (1, 3),
+        (2, 3),
+        (3, 3),
+        (3, 2),
+    ];
+
+    let point = spread_shadow_group(4, 4, [(0, 0)])?;
+    let source = spread_shadow_group(16, 8, L_SOURCE.iter().copied())?;
+    let rotated = spread_shadow_group(40, 8, L_SOURCE.iter().copied().map(|(x, y)| (3 - y, x)))?;
+    let publication = grouped_publication(vec![point.into(), source.into(), rotated.into()]);
+    let output = renderer.render_offscreen_publication(&publication, &NoResources)?;
+    let readback = output.readback();
+
+    assert_eq!(pixel(readback, 4, 4)[3], u8::MAX);
+    assert_eq!(pixel(readback, 2, 4)[3], u8::MAX);
+    assert_eq!(pixel(readback, 4, 2)[3], u8::MAX);
+    assert_eq!(pixel(readback, 3, 3)[3], u8::MAX);
+    assert_eq!(
+        pixel(readback, 2, 2)[3],
+        0,
+        "radius-2 Euclidean spread must reject the distance-sqrt(8) corner that a square kernel would include"
+    );
+
+    for y in 0..8 {
+        for x in 0..8 {
+            let original = pixel(readback, 14 + x, 6 + y)[3];
+            let quarter_turned = pixel(readback, 38 + (7 - y), 6 + x)[3];
+            assert_eq!(
+                quarter_turned, original,
+                "quarter-turn spread mismatch at local ({x}, {y})"
+            );
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn real_gpu_empty_and_singular_generic_clips_erase_coverage() -> Result<(), Box<dyn Error>> {
     let Some(mut renderer) = renderer_or_adapterless()? else {
