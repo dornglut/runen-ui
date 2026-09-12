@@ -134,9 +134,13 @@ struct SingleImageProvider {
 
 impl SingleImageProvider {
     fn new(resource: ResourceRef) -> Result<Self, Box<dyn Error>> {
+        Self::with_pixel(resource, [0xFF, 0x00, 0x00, 0xFF])
+    }
+
+    fn with_pixel(resource: ResourceRef, pixel: [u8; 4]) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             resource,
-            payload: ImagePayload::new(1, 1, vec![0xFF, 0x00, 0x00, 0xFF])?,
+            payload: ImagePayload::new(1, 1, pixel.to_vec())?,
         })
     }
 }
@@ -733,6 +737,49 @@ fn real_gpu_atomic_groups_preserve_contraction_clips_opacity_resources_nesting_a
     );
     assert_eq!(unchanged.target_generation(), rebuilt.target_generation());
     assert_eq!(unchanged.readback().rgba8_srgb(), first_pixels);
+    Ok(())
+}
+
+#[test]
+fn real_gpu_image_shadow_support_ignores_payload_alpha() -> Result<(), Box<dyn Error>> {
+    let Some(mut renderer) = renderer_or_adapterless()? else {
+        return Ok(());
+    };
+    let image_resource = ResourceRef::new(ResourceKind::Image);
+    let provider = SingleImageProvider::with_pixel(
+        image_resource.clone(),
+        [0xFF, 0x00, 0x00, 0x00],
+    )?;
+    let shadow = DropShadow::new(
+        0.0,
+        0.0,
+        LogicalLength::ZERO,
+        0.0,
+        Color::WHITE,
+    )?;
+    let group = PaintContributionGroup::new(vec![
+        image_item(image_resource, rect(8.0, 8.0, 8.0, 8.0)).into(),
+    ])
+    .with_shadows(vec![shadow]);
+    let publication = grouped_publication(vec![group.into()]);
+    let output = renderer.render_offscreen_publication(&publication, &provider)?;
+    let readback = output.readback();
+
+    assert_eq!(
+        pixel(readback, 10, 10),
+        [0xFF, 0xFF, 0xFF, 0xFF],
+        "transparent image payload alpha must not shrink destination-patch shadow support"
+    );
+    assert_eq!(
+        pixel(readback, 7, 10),
+        [0, 0, 0, 0],
+        "image shadow support must not extend before the destination patch"
+    );
+    assert_eq!(
+        pixel(readback, 16, 10),
+        [0, 0, 0, 0],
+        "image shadow support preserves the destination patch half-open far edge"
+    );
     Ok(())
 }
 
