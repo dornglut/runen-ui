@@ -129,13 +129,7 @@ fn spread_shadow_group(
             .into()
         })
         .collect::<Vec<_>>();
-    let shadow = DropShadow::new(
-        0.0,
-        0.0,
-        LogicalLength::new(0.0)?,
-        2.0,
-        Color::WHITE,
-    )?;
+    let shadow = DropShadow::new(0.0, 0.0, LogicalLength::new(0.0)?, 2.0, Color::WHITE)?;
     Ok(PaintContributionGroup::new(children).with_shadows(vec![shadow]))
 }
 
@@ -153,11 +147,7 @@ fn real_gpu_euclidean_spread_rejects_square_corners_and_is_quarter_turn_invarian
 
     let point = spread_shadow_group(4, 4, [(0, 0)])?;
     let source = spread_shadow_group(16, 8, L_SOURCE.iter().copied())?;
-    let rotated = spread_shadow_group(
-        40,
-        8,
-        L_SOURCE.iter().copied().map(|(x, y)| (3 - y, x)),
-    )?;
+    let rotated = spread_shadow_group(40, 8, L_SOURCE.iter().copied().map(|(x, y)| (3 - y, x)))?;
     let publication = grouped_publication(vec![point.into(), source.into(), rotated.into()]);
     let output = renderer.render_offscreen_publication(&publication, &NoResources)?;
     let readback = output.readback();
