@@ -62,16 +62,14 @@ struct OversizedShadowApp;
 
 impl UiApp for OversizedShadowApp {
     type State = f32;
-    type Action = f32;
+    type Action = ();
     type HostProtocol = NoHostProtocol;
 
     fn root(side: &Self::State) -> Element<Self::Action> {
         Element::new(OversizedShadowFixture { side: *side })
     }
 
-    fn update(side: &mut Self::State, replacement: Self::Action) {
-        *side = replacement;
-    }
+    fn update(_: &mut Self::State, (): Self::Action) {}
 }
 
 #[derive(Default)]
