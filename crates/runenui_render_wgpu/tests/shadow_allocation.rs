@@ -140,9 +140,9 @@ fn oversized_off_surface_shadow_fails_before_crop_or_target_mutation() -> Result
     let publication = publication(side);
     let provider = CountingProvider::default();
 
-    let error = renderer
-        .render_offscreen_publication(&publication, &provider)
-        .expect_err("oversized exact shadow support must fail instead of being cropped");
+    let Err(error) = renderer.render_offscreen_publication(&publication, &provider) else {
+        return Err("oversized exact shadow support rendered instead of failing".into());
+    };
     match error {
         PublicationRenderError::GroupShadowRealization {
             shadow_index,
