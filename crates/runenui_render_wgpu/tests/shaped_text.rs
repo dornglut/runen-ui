@@ -4,7 +4,8 @@ use core::{future::Future, pin::pin, task::Poll};
 use std::{cell::Cell, task::Context};
 
 use runenui_core::{
-    Element, FontFamilyName, GenericFontFamily, NoHostProtocol, StyleEnvironment, UiApp, View, text,
+    Color, DropShadow, Element, FontFamilyName, GenericFontFamily, LogicalLength, NoHostProtocol,
+    StyleEnvironment, UiApp, View, text,
 };
 use runenui_render_wgpu::{
     BackendSelection, PublicationStageResult, Renderer, RendererInitError, RendererOptions,
@@ -37,11 +38,48 @@ impl UiApp for TextApp {
     fn update((): &mut Self::State, (): Self::Action) {}
 }
 
-fn register_font(runtime: &mut AppRuntime<TextApp>) {
+struct TransparentTextApp;
+impl UiApp for TransparentTextApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> Element<Self::Action> {
+        text("A").foreground(Color::TRANSPARENT).into_element()
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+struct TransparentShadowTextApp;
+impl UiApp for TransparentShadowTextApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> Element<Self::Action> {
+        let shadow = DropShadow::new(0.0, 0.0, LogicalLength::ZERO, 0.0, Color::WHITE)
+            .unwrap_or_else(|_| unreachable!("controlled shadow is finite"));
+        text("A")
+            .foreground(Color::TRANSPARENT)
+            .shadows(vec![shadow])
+            .into_element()
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+fn register_font<App>(runtime: &mut AppRuntime<App>)
+where
+    App: UiApp<State = (), Action = (), HostProtocol = NoHostProtocol> + 'static,
+{
     register_font_bytes(runtime, FONT_BYTES);
 }
 
-fn register_font_bytes(runtime: &mut AppRuntime<TextApp>, font_bytes: &[u8]) {
+fn register_font_bytes<App>(runtime: &mut AppRuntime<App>, font_bytes: &[u8])
+where
+    App: UiApp<State = (), Action = (), HostProtocol = NoHostProtocol> + 'static,
+{
     assert!(
         runtime
             .register_text_font_bytes(font_bytes.to_vec())
@@ -55,7 +93,10 @@ fn register_font_bytes(runtime: &mut AppRuntime<TextApp>, font_bytes: &[u8]) {
     );
 }
 
-fn publish(runtime: &mut AppRuntime<TextApp>, scale: RasterScale) -> PaintPublication {
+fn publish<App>(runtime: &mut AppRuntime<App>, scale: RasterScale) -> PaintPublication
+where
+    App: UiApp<State = (), Action = (), HostProtocol = NoHostProtocol> + 'static,
+{
     let styles = StyleEnvironment::default();
     let context = SurfaceBuildContext::new(&styles, LayoutConstraints::tight(surface_size()))
         .with_raster_scale(scale);
@@ -178,6 +219,52 @@ fn production_msdf_uses_one_logical_ref_at_multiple_renderer_realizations()
     assert_eq!(
         same_tier.observation().resource_observations()[0].cache_outcome(),
         ResourceCacheOutcome::Reused
+    );
+    Ok(())
+}
+
+#[test]
+fn transparent_shaped_text_shadow_uses_retained_outline_across_msdf_realizations()
+-> Result<(), Box<dyn std::error::Error>> {
+    let Some(mut renderer) = renderer_or_skip()? else {
+        return Ok(());
+    };
+    let provider = ExternalOnlyProvider::default();
+
+    let mut transparent_runtime = AppRuntime::<TransparentTextApp>::mount(());
+    register_font(&mut transparent_runtime);
+    let transparent = publish(&mut transparent_runtime, RasterScale::ONE);
+    let transparent_render = renderer.render_offscreen_publication(&transparent, &provider)?;
+    assert_eq!(
+        alpha_pixels(&transparent_render),
+        0,
+        "transparent shaped-text foreground must contribute no visible child color"
+    );
+
+    let mut shadowed_runtime = AppRuntime::<TransparentShadowTextApp>::mount(());
+    register_font(&mut shadowed_runtime);
+    let low = publish(&mut shadowed_runtime, RasterScale::new(0.75)?);
+    let high = publish(&mut shadowed_runtime, RasterScale::new(2.0)?);
+    assert_eq!(
+        text_ref(&low),
+        text_ref(&high),
+        "raster realization scale must not remint retained shaped-text identity"
+    );
+
+    let low_render = renderer.render_offscreen_publication(&low, &provider)?;
+    let high_render = renderer.render_offscreen_publication(&high, &provider)?;
+    assert!(
+        alpha_pixels(&low_render) > 0,
+        "transparent shaped text must still cast ordinary-shadow coverage at the low raster realization"
+    );
+    assert!(
+        alpha_pixels(&high_render) > 0,
+        "transparent shaped text must still cast ordinary-shadow coverage at the high raster realization"
+    );
+    assert_eq!(
+        provider.loads.get(),
+        0,
+        "shadow support must resolve from retained shaped-text facts rather than caller resources"
     );
     Ok(())
 }
