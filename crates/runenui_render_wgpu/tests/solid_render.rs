@@ -931,8 +931,8 @@ fn real_gpu_euclidean_spread_rejects_square_corners_and_is_quarter_turn_invarian
 }
 
 #[test]
-fn real_gpu_nested_transparent_effect_support_reaches_ancestor_shadow()
--> Result<(), Box<dyn Error>> {
+fn real_gpu_nested_transparent_effect_support_reaches_ancestor_shadow() -> Result<(), Box<dyn Error>>
+{
     let Some(mut renderer) = renderer_or_adapterless()? else {
         return Ok(());
     };
