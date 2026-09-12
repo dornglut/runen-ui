@@ -6,6 +6,7 @@
 
 mod artifact;
 mod font_source_config;
+mod ink_bounds;
 mod layout_extract;
 mod layout_state;
 mod parley_bridge;
@@ -30,6 +31,7 @@ pub use artifact::{
     TextRun,
 };
 pub use font_source_config::GenericFamilyMappingError;
+pub use ink_bounds::TextInkBounds;
 pub use layout_state::{TextLayoutDecision, TextLayoutOutcome, TextLayoutState};
 pub use request::{
     TextAlignment, TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap,

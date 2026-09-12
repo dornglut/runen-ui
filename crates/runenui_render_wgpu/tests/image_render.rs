@@ -9,7 +9,8 @@ use std::{
 };
 
 use runenui_core::{
-    Color, ContributionClip, Element, LogicalLength, LogicalRect, LogicalSize, LogicalTransform,
+    Brush, Color, ContributionClip, Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
+    ImagePaintDescriptor, LogicalLength, LogicalRect, LogicalSize, LogicalTransform,
     NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem, Radius,
     ResourceKind, ResourceRef, SceneOpacity, SceneShape, StyleEnvironment, UiApp, Widget,
     WidgetMeasure, WidgetUpdateContext,
@@ -26,10 +27,7 @@ const SURFACE_WIDTH: u16 = 32;
 const SURFACE_HEIGHT: u16 = 24;
 const RASTER_SCALE: f32 = 2.0;
 const IMAGE_PIXELS: [u8; 16] = [
-    0xFF, 0x00, 0x00, 0xFF, // top-left red
-    0x00, 0xFF, 0x00, 0xFF, // top-right green
-    0x00, 0x00, 0xFF, 0xFF, // bottom-left blue
-    0xFF, 0xFF, 0xFF, 0xFF, // bottom-right white
+    0xFF, 0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 ];
 const PNG_FIXTURE: &[u8] = include_bytes!("fixtures/provider_image.png");
 
@@ -86,6 +84,23 @@ impl UiApp for FixtureApp {
 fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
     LogicalRect::try_new(x, y, width, height)
         .unwrap_or_else(|_| unreachable!("fixture rectangle is valid"))
+}
+
+const fn fill_rect(rect: LogicalRect, color: Color) -> PaintContributionItem {
+    PaintContributionItem::fill(SceneShape::rect(rect), Brush::solid(color))
+}
+
+fn image_item(resource: ResourceRef, destination: LogicalRect) -> PaintContributionItem {
+    let descriptor = ImageDescriptor::new(
+        resource,
+        ImageIntrinsicSize::new(2, 2)
+            .unwrap_or_else(|| unreachable!("fixture image extent is non-zero")),
+    )
+    .unwrap_or_else(|_| unreachable!("fixture ref is image-kind"));
+    PaintContributionItem::image(
+        ImagePaintDescriptor::new(descriptor, destination, ImageMapping::default())
+            .unwrap_or_else(|_| unreachable!("fixture image mapping is valid")),
+    )
 }
 
 fn publication(items: Vec<PaintContributionItem>) -> PaintPublication {
@@ -178,9 +193,6 @@ impl ResourceProvider for PngImageProvider {
                 format!("PNG fixture decode failed: {error}"),
             )
         })?;
-        // The fixture is authored as sRGB. `to_rgba8` is the image crate's
-        // straight/unpremultiplied RGBA8 normalization path; the renderer
-        // payload keeps those bytes unchanged and performs no decoding.
         let rgba8 = decoded.to_rgba8();
         ImagePayload::new(rgba8.width(), rgba8.height(), rgba8.into_raw())
             .map(ResourcePayload::Image)
@@ -210,15 +222,14 @@ fn real_gpu_image_semantics_match_scene_contract() -> Result<(), Box<dyn Error>>
         ),
         clip_transform,
     );
-    let transformed_image =
-        PaintContributionItem::image(image_ref.clone(), rect(2.0, 2.0, 8.0, 8.0))?
-            .with_transform(image_transform)
-            .with_clip(clip);
-    let translucent_image = PaintContributionItem::image(image_ref, rect(16.0, 4.0, 8.0, 8.0))?
-        .with_opacity(SceneOpacity::new(0.5)?);
+    let transformed_image = image_item(image_ref.clone(), rect(2.0, 2.0, 8.0, 8.0))
+        .with_transform(image_transform)
+        .with_clip(clip);
+    let translucent_image =
+        image_item(image_ref, rect(16.0, 4.0, 8.0, 8.0)).with_opacity(SceneOpacity::new(0.5)?);
     let overlay = Color::rgb(0xE0, 0xA0, 0x20);
     let publication = publication(vec![
-        PaintContributionItem::fill_rect(
+        fill_rect(
             rect(
                 0.0,
                 0.0,
@@ -229,7 +240,7 @@ fn real_gpu_image_semantics_match_scene_contract() -> Result<(), Box<dyn Error>>
         ),
         transformed_image,
         translucent_image,
-        PaintContributionItem::fill_rect(rect(5.5, 4.5, 2.0, 2.0), overlay),
+        fill_rect(rect(5.5, 4.5, 2.0, 2.0), overlay),
     ]);
 
     let output = renderer.render_offscreen_publication(&publication, &provider)?;
@@ -272,12 +283,6 @@ fn real_gpu_image_semantics_match_scene_contract() -> Result<(), Box<dyn Error>>
         "already-current image render reuses realization"
     );
     assert_eq!(current.readback().rgba8_srgb(), readback.rgba8_srgb());
-
-    eprintln!(
-        "REAL GPU IMAGE PROOF: non-uniform normalized domain, affine placement, transformed rounded clipping, item opacity, mixed literal/image ordering, scale=2, same-ref realization dedupe, and already-current cache reuse succeeded; adapter={:?} backend={}",
-        renderer.diagnostics().adapter_info().name,
-        renderer.diagnostics().adapter_info().backend,
-    );
     Ok(())
 }
 
@@ -288,10 +293,7 @@ fn png_provider_normalizes_complete_domain_and_reuses_image_cache() -> Result<()
     };
     let image_ref = ResourceRef::new(ResourceKind::Image);
     let provider = PngImageProvider::new(image_ref.clone());
-    let publication = publication(vec![PaintContributionItem::image(
-        image_ref,
-        rect(2.0, 2.0, 8.0, 8.0),
-    )?]);
+    let publication = publication(vec![image_item(image_ref, rect(2.0, 2.0, 8.0, 8.0))]);
 
     let first = renderer.render_offscreen_publication(&publication, &provider)?;
     assert_eq!(provider.loads(), 1);
@@ -313,11 +315,6 @@ fn png_provider_normalizes_complete_domain_and_reuses_image_cache() -> Result<()
     assert_eq!(
         current.readback().rgba8_srgb(),
         first.readback().rgba8_srgb()
-    );
-    eprintln!(
-        "REAL GPU PNG RESOURCE PROOF: image crate PNG decode, explicit straight RGBA8 normalization, complete orientation, destination mapping, renderer-owned upload, and cache reuse succeeded; adapter={:?} backend={}",
-        renderer.diagnostics().adapter_info().name,
-        renderer.diagnostics().adapter_info().backend,
     );
     Ok(())
 }

@@ -1,10 +1,12 @@
 //! Pure layered style-resolution helpers.
 
 use crate::{
-    Color, ColorToken, ColorValue, ComputedStyle, EdgeInsets, Radius, RadiusToken, RadiusValue,
-    SpacingToken, SpacingValue, StyleEnvironment, StyleIntent, StyleInteractionFacts,
-    StyleInteractionState, StylePreferenceKind, StyleProperties, StyleRecipeId, StyleTokens,
-    StyleVariantId, Typography, TypographyToken, TypographyValue,
+    Brush, BrushToken, BrushValue, Color, ColorToken, ColorValue, ComputedStyle, DropShadow,
+    EdgeInsets, OpacityToken, OpacityValue, Outline, OutlineToken, OutlineValue, PresentationToken,
+    PresentationTransform, PresentationValue, Radius, RadiusToken, RadiusValue, SceneOpacity,
+    ShadowToken, ShadowValue, SpacingToken, SpacingValue, StyleEnvironment, StyleIntent,
+    StyleInteractionFacts, StyleInteractionState, StylePreferenceKind, StyleProperties,
+    StyleRecipeId, StyleTokens, StyleVariantId, Typography, TypographyToken, TypographyValue,
 };
 
 /// Exact precedence layer that last attempted to define one property.
@@ -37,7 +39,7 @@ pub enum StyleFieldProvenance<Token> {
 pub struct StyleProvenance {
     foreground: StyleFieldProvenance<ColorToken>,
     foreground_layer: Option<StyleResolutionLayer>,
-    background: StyleFieldProvenance<ColorToken>,
+    background: StyleFieldProvenance<BrushToken>,
     background_layer: Option<StyleResolutionLayer>,
     padding: StyleFieldProvenance<SpacingToken>,
     padding_layer: Option<StyleResolutionLayer>,
@@ -45,6 +47,14 @@ pub struct StyleProvenance {
     radius_layer: Option<StyleResolutionLayer>,
     typography: StyleFieldProvenance<TypographyToken>,
     typography_layer: Option<StyleResolutionLayer>,
+    outline: StyleFieldProvenance<OutlineToken>,
+    outline_layer: Option<StyleResolutionLayer>,
+    shadows: StyleFieldProvenance<ShadowToken>,
+    shadows_layer: Option<StyleResolutionLayer>,
+    opacity: StyleFieldProvenance<OpacityToken>,
+    opacity_layer: Option<StyleResolutionLayer>,
+    presentation: StyleFieldProvenance<PresentationToken>,
+    presentation_layer: Option<StyleResolutionLayer>,
 }
 
 impl StyleProvenance {
@@ -59,6 +69,14 @@ impl StyleProvenance {
         radius_layer: None,
         typography: StyleFieldProvenance::Absent,
         typography_layer: None,
+        outline: StyleFieldProvenance::Absent,
+        outline_layer: None,
+        shadows: StyleFieldProvenance::Absent,
+        shadows_layer: None,
+        opacity: StyleFieldProvenance::Absent,
+        opacity_layer: None,
+        presentation: StyleFieldProvenance::Absent,
+        presentation_layer: None,
     };
 
     /// Creates value-source provenance without assigning production layers.
@@ -68,7 +86,7 @@ impl StyleProvenance {
     #[must_use]
     pub const fn new(
         foreground: StyleFieldProvenance<ColorToken>,
-        background: StyleFieldProvenance<ColorToken>,
+        background: StyleFieldProvenance<BrushToken>,
         padding: StyleFieldProvenance<SpacingToken>,
         radius: StyleFieldProvenance<RadiusToken>,
     ) -> Self {
@@ -83,6 +101,14 @@ impl StyleProvenance {
             radius_layer: None,
             typography: StyleFieldProvenance::Absent,
             typography_layer: None,
+            outline: StyleFieldProvenance::Absent,
+            outline_layer: None,
+            shadows: StyleFieldProvenance::Absent,
+            shadows_layer: None,
+            opacity: StyleFieldProvenance::Absent,
+            opacity_layer: None,
+            presentation: StyleFieldProvenance::Absent,
+            presentation_layer: None,
         }
     }
 
@@ -102,7 +128,7 @@ impl StyleProvenance {
         self.foreground_layer.as_ref()
     }
     #[must_use]
-    pub const fn background(&self) -> &StyleFieldProvenance<ColorToken> {
+    pub const fn background(&self) -> &StyleFieldProvenance<BrushToken> {
         &self.background
     }
     #[must_use]
@@ -133,16 +159,52 @@ impl StyleProvenance {
     pub const fn typography_layer(&self) -> Option<&StyleResolutionLayer> {
         self.typography_layer.as_ref()
     }
+    #[must_use]
+    pub const fn outline(&self) -> &StyleFieldProvenance<OutlineToken> {
+        &self.outline
+    }
+    #[must_use]
+    pub const fn outline_layer(&self) -> Option<&StyleResolutionLayer> {
+        self.outline_layer.as_ref()
+    }
+    #[must_use]
+    pub const fn shadows(&self) -> &StyleFieldProvenance<ShadowToken> {
+        &self.shadows
+    }
+    #[must_use]
+    pub const fn shadows_layer(&self) -> Option<&StyleResolutionLayer> {
+        self.shadows_layer.as_ref()
+    }
+    #[must_use]
+    pub const fn opacity(&self) -> &StyleFieldProvenance<OpacityToken> {
+        &self.opacity
+    }
+    #[must_use]
+    pub const fn opacity_layer(&self) -> Option<&StyleResolutionLayer> {
+        self.opacity_layer.as_ref()
+    }
+    #[must_use]
+    pub const fn presentation(&self) -> &StyleFieldProvenance<PresentationToken> {
+        &self.presentation
+    }
+    #[must_use]
+    pub const fn presentation_layer(&self) -> Option<&StyleResolutionLayer> {
+        self.presentation_layer.as_ref()
+    }
 }
 
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UnresolvedStyleToken {
     Foreground(ColorToken),
-    Background(ColorToken),
+    Background(BrushToken),
     Padding(SpacingToken),
     Radius(RadiusToken),
     Typography(TypographyToken),
+    Outline(OutlineToken),
+    Shadows(ShadowToken),
+    Opacity(OpacityToken),
+    Presentation(PresentationToken),
 }
 
 #[non_exhaustive]
@@ -201,10 +263,14 @@ impl StyleResolution {
 #[derive(Default)]
 struct ResolutionBuilder {
     foreground: Option<Color>,
-    background: Option<Color>,
+    background: Option<Brush>,
     padding: Option<EdgeInsets>,
     radius: Option<Radius>,
     typography: Option<Typography>,
+    outline: Option<Outline>,
+    shadows: Option<Vec<DropShadow>>,
+    opacity: Option<SceneOpacity>,
+    presentation: Option<PresentationTransform>,
     provenance: StyleProvenance,
     unresolved_tokens: Vec<UnresolvedStyleToken>,
     diagnostics: Vec<StyleResolutionDiagnostic>,
@@ -214,9 +280,15 @@ impl ResolutionBuilder {
     fn with_initial_values() -> Self {
         Self {
             typography: Some(Typography::default()),
+            shadows: Some(Vec::new()),
+            opacity: Some(SceneOpacity::OPAQUE),
             provenance: StyleProvenance {
                 typography: StyleFieldProvenance::Literal,
                 typography_layer: Some(StyleResolutionLayer::Initial),
+                shadows: StyleFieldProvenance::Literal,
+                shadows_layer: Some(StyleResolutionLayer::Initial),
+                opacity: StyleFieldProvenance::Literal,
+                opacity_layer: Some(StyleResolutionLayer::Initial),
                 ..StyleProvenance::default()
             },
             ..Self::default()
@@ -242,7 +314,19 @@ impl ResolutionBuilder {
             self.apply_radius(value, layer.clone(), tokens);
         }
         if let Some(value) = properties.typography() {
-            self.apply_typography(value, layer, tokens);
+            self.apply_typography(value, layer.clone(), tokens);
+        }
+        if let Some(value) = properties.outline() {
+            self.apply_outline(value, layer.clone(), tokens);
+        }
+        if let Some(value) = properties.shadows() {
+            self.apply_shadows(value, layer.clone(), tokens);
+        }
+        if let Some(value) = properties.opacity() {
+            self.apply_opacity(value, layer.clone(), tokens);
+        }
+        if let Some(value) = properties.presentation() {
+            self.apply_presentation(value, layer, tokens);
         }
     }
 
@@ -273,19 +357,19 @@ impl ResolutionBuilder {
 
     fn apply_background(
         &mut self,
-        value: &ColorValue,
+        value: &BrushValue,
         layer: StyleResolutionLayer,
         tokens: &StyleTokens,
     ) {
         self.provenance.background_layer = Some(layer);
         match value {
-            ColorValue::Literal(value) => {
-                self.background = Some(*value);
+            BrushValue::Literal(value) => {
+                self.background = Some(value.clone());
                 self.provenance.background = StyleFieldProvenance::Literal;
             }
-            ColorValue::Token(token) => {
-                if let Some(value) = tokens.color(token) {
-                    self.background = Some(value);
+            BrushValue::Token(token) => {
+                if let Some(value) = tokens.brush(token) {
+                    self.background = Some(value.clone());
                     self.provenance.background = StyleFieldProvenance::ResolvedToken(token.clone());
                 } else {
                     self.background = None;
@@ -371,6 +455,108 @@ impl ResolutionBuilder {
         }
     }
 
+    fn apply_outline(
+        &mut self,
+        value: &OutlineValue,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        self.provenance.outline_layer = Some(layer);
+        match value {
+            OutlineValue::Literal(value) => {
+                self.outline = Some(value.clone());
+                self.provenance.outline = StyleFieldProvenance::Literal;
+            }
+            OutlineValue::Token(token) => {
+                if let Some(value) = tokens.outline(token) {
+                    self.outline = Some(value.clone());
+                    self.provenance.outline = StyleFieldProvenance::ResolvedToken(token.clone());
+                } else {
+                    self.outline = None;
+                    self.provenance.outline = StyleFieldProvenance::MissingToken(token.clone());
+                    self.record_missing(UnresolvedStyleToken::Outline(token.clone()));
+                }
+            }
+        }
+    }
+
+    fn apply_shadows(
+        &mut self,
+        value: &ShadowValue,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        self.provenance.shadows_layer = Some(layer);
+        match value {
+            ShadowValue::Literal(value) => {
+                self.shadows = Some(value.clone());
+                self.provenance.shadows = StyleFieldProvenance::Literal;
+            }
+            ShadowValue::Token(token) => {
+                if let Some(value) = tokens.shadows(token) {
+                    self.shadows = Some(value.to_vec());
+                    self.provenance.shadows = StyleFieldProvenance::ResolvedToken(token.clone());
+                } else {
+                    self.shadows = None;
+                    self.provenance.shadows = StyleFieldProvenance::MissingToken(token.clone());
+                    self.record_missing(UnresolvedStyleToken::Shadows(token.clone()));
+                }
+            }
+        }
+    }
+
+    fn apply_opacity(
+        &mut self,
+        value: &OpacityValue,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        self.provenance.opacity_layer = Some(layer);
+        match value {
+            OpacityValue::Literal(value) => {
+                self.opacity = Some(*value);
+                self.provenance.opacity = StyleFieldProvenance::Literal;
+            }
+            OpacityValue::Token(token) => {
+                if let Some(value) = tokens.opacity(token) {
+                    self.opacity = Some(value);
+                    self.provenance.opacity = StyleFieldProvenance::ResolvedToken(token.clone());
+                } else {
+                    self.opacity = None;
+                    self.provenance.opacity = StyleFieldProvenance::MissingToken(token.clone());
+                    self.record_missing(UnresolvedStyleToken::Opacity(token.clone()));
+                }
+            }
+        }
+    }
+
+    fn apply_presentation(
+        &mut self,
+        value: &PresentationValue,
+        layer: StyleResolutionLayer,
+        tokens: &StyleTokens,
+    ) {
+        self.provenance.presentation_layer = Some(layer);
+        match value {
+            PresentationValue::Literal(value) => {
+                self.presentation = Some(*value);
+                self.provenance.presentation = StyleFieldProvenance::Literal;
+            }
+            PresentationValue::Token(token) => {
+                if let Some(value) = tokens.presentation(token) {
+                    self.presentation = Some(value);
+                    self.provenance.presentation =
+                        StyleFieldProvenance::ResolvedToken(token.clone());
+                } else {
+                    self.presentation = None;
+                    self.provenance.presentation =
+                        StyleFieldProvenance::MissingToken(token.clone());
+                    self.record_missing(UnresolvedStyleToken::Presentation(token.clone()));
+                }
+            }
+        }
+    }
+
     fn record_missing(&mut self, token: UnresolvedStyleToken) {
         self.unresolved_tokens.push(token.clone());
         self.diagnostics
@@ -378,18 +564,47 @@ impl ResolutionBuilder {
     }
 
     fn finish(self) -> StyleResolution {
-        StyleResolution::new(
-            ComputedStyle::from_parts(
-                self.foreground,
-                self.background,
-                self.padding,
-                self.radius,
-                self.typography,
-            ),
-            self.provenance,
-            self.unresolved_tokens,
-            self.diagnostics,
-        )
+        let Self {
+            foreground,
+            background,
+            padding,
+            radius,
+            typography,
+            outline,
+            shadows,
+            opacity,
+            presentation,
+            provenance,
+            unresolved_tokens,
+            diagnostics,
+        } = self;
+
+        let mut computed_style = ComputedStyle::EMPTY
+            .with_shadows(shadows.unwrap_or_default())
+            .with_opacity(opacity.unwrap_or(SceneOpacity::OPAQUE));
+        if let Some(value) = foreground {
+            computed_style = computed_style.with_foreground(value);
+        }
+        if let Some(value) = background {
+            computed_style = computed_style.with_background(value);
+        }
+        if let Some(value) = padding {
+            computed_style = computed_style.with_padding(value);
+        }
+        if let Some(value) = radius {
+            computed_style = computed_style.with_radius(value);
+        }
+        if let Some(value) = typography {
+            computed_style = computed_style.with_typography(value);
+        }
+        if let Some(value) = outline {
+            computed_style = computed_style.with_outline(value);
+        }
+        if let Some(value) = presentation {
+            computed_style = computed_style.with_presentation(value);
+        }
+
+        StyleResolution::new(computed_style, provenance, unresolved_tokens, diagnostics)
     }
 }
 

@@ -188,6 +188,13 @@
 //! use runenui_core::{resolve_literal_style, resolve_style};
 //! ```
 //!
+//! Background token identity is brush-specific; color tokens remain foreground-only.
+//!
+//! ```compile_fail
+//! use runenui_core::{StyleIntent, color_token};
+//! let _ = StyleIntent::EMPTY.with_background(color_token!("color.background"));
+//! ```
+//!
 //! Semantic actions have no semantic scrolling alias:
 //!
 //! ```compile_fail
@@ -228,8 +235,12 @@ mod identity;
 mod input;
 mod layout;
 mod paint;
+mod paint_group;
+mod path;
+mod path_containment;
 mod pointer;
 pub mod prelude;
+mod presentation_geometry;
 mod resource;
 mod runtime_protocol;
 mod scene_geometry;
@@ -243,6 +254,8 @@ mod style_tokens;
 mod subscription;
 mod typography;
 mod value;
+mod visual;
+mod visual_style;
 mod widget_context;
 mod widget_erasure;
 mod widget_mapping;
@@ -284,6 +297,8 @@ pub use paint::{
     ImagePrimitive, PaintContribution, PaintContributionContext, PaintContributionItem,
     PaintPrimitive, ShapedTextRunPrimitive,
 };
+pub use paint_group::{PaintContributionEntry, PaintContributionGroup};
+pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
 /// Unstable safe bridge from transient core elements to the mounted runtime.
 ///
 /// This namespace is public only because core and runtime are separate Rust
@@ -293,6 +308,7 @@ pub use paint::{
 pub mod __runtime {
     pub use crate::effects::{Effect, HostRequestEffect, MountedEffect};
     pub use crate::event_context::{EventContextOutput, PointerCaptureRequest, RoutedEventOutput};
+    pub use crate::presentation_geometry::transform_rect_aabb;
     pub use crate::runtime_protocol::RuntimeNamespace;
     pub use crate::subscription::{ErasedSendSubscriptionSource, Subscription, SubscriptionSource};
     pub use crate::widget_erasure::{
@@ -334,9 +350,10 @@ pub use semantic::{
 };
 pub use semantic_action::{SemanticActionRequest, SemanticActionTarget};
 pub use style::{
-    Color, ColorToken, ColorValue, EdgeInsets, Radius, RadiusToken, RadiusValue, SpacingToken,
-    SpacingValue, StyleIntent, StyleProperties, StyleRecipeId, StyleVariantId, TokenId,
-    TypographyToken, TypographyValue,
+    BrushToken, BrushValue, Color, ColorToken, ColorValue, EdgeInsets, OpacityToken, OutlineToken,
+    PresentationToken, Radius, RadiusToken, RadiusValue, ShadowToken, SpacingToken, SpacingValue,
+    StyleIntent, StyleProperties, StyleRecipeId, StyleVariantId, TokenId, TypographyToken,
+    TypographyValue,
 };
 pub use style_effects::{StyleEffects, StyleProperty, style_effects_between};
 pub use style_environment::{
@@ -359,6 +376,16 @@ pub use typography::{
     Typography,
 };
 pub use value::{LogicalLength, LogicalLengthError};
+pub use visual::{
+    Brush, DropShadow, GradientGeometryError, GradientStop, GradientStops, GradientStopsError,
+    ImageAlignment, ImageCrop, ImageCropError, ImageDescriptor, ImageDestinationInsets, ImageFit,
+    ImageIntrinsicSize, ImageMapping, ImageMappingError, ImagePaintDescriptor, ImageSourceInsets,
+    ImageSourceInsetsError, LinearGradient, NonFiniteVisualScalar, Outline, PresentationOrigin,
+    PresentationRotation, PresentationScalarError, PresentationScale, PresentationTransform,
+    PresentationTranslation, RadialGradient, StrokeCap, StrokeJoin, StrokeStyle, StrokeStyleError,
+    UnitInterval, UnitIntervalError,
+};
+pub use visual_style::{OpacityValue, OutlineValue, PresentationValue, ShadowValue};
 pub use widget_context::{
     WidgetActivationContext, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
     WidgetUnmountReason, WidgetUpdateContext,

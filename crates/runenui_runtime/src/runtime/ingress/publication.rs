@@ -144,6 +144,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Err(SurfacePublicationPlanError::TextLayout(error)) => {
                 return Err(PublishSurfaceError::TextLayout(error));
             }
+            Err(SurfacePublicationPlanError::PresentationGeometry) => {
+                return Err(PublishSurfaceError::PresentationGeometry);
+            }
             Err(SurfacePublicationPlanError::CounterExhausted(counter)) => {
                 let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
                 self.enter_terminal(reason, 0);

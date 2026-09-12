@@ -193,7 +193,18 @@ mod tests {
             .paint_scene()
             .items()
             .iter()
-            .filter_map(|item| item.primitive().color())
+            .filter_map(|item| match item.primitive() {
+                runenui_core::PaintPrimitive::Fill {
+                    brush: runenui_core::Brush::Solid(color),
+                    ..
+                }
+                | runenui_core::PaintPrimitive::Stroke {
+                    brush: runenui_core::Brush::Solid(color),
+                    ..
+                } => Some(*color),
+                runenui_core::PaintPrimitive::ShapedTextRun(run) => Some(run.foreground()),
+                _ => None,
+            })
             .collect()
     }
 

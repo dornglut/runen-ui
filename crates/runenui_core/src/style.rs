@@ -1,8 +1,11 @@
 //! Validated host-neutral authored style vocabulary.
 
 use crate::{
-    IdentifierError, LogicalLength, Typography,
+    Brush, IdentifierError, LogicalLength, Typography,
     identity::{IdentifierText, validate_identifier},
+    visual_style::{
+        OpacityValue, OutlineValue, PresentationValue, ShadowValue, VisualStyleProperties,
+    },
 };
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -80,9 +83,20 @@ macro_rules! define_token_ref {
 }
 
 define_token_ref!(ColorToken, "Typed color-token reference.");
+define_token_ref!(BrushToken, "Typed brush-token reference.");
 define_token_ref!(SpacingToken, "Typed edge-spacing-token reference.");
 define_token_ref!(RadiusToken, "Typed corner-radius-token reference.");
 define_token_ref!(TypographyToken, "Typed metric-typography-token reference.");
+define_token_ref!(OutlineToken, "Typed node-outline-token reference.");
+define_token_ref!(
+    ShadowToken,
+    "Typed ordered drop-shadow-list-token reference."
+);
+define_token_ref!(OpacityToken, "Typed node-opacity-token reference.");
+define_token_ref!(
+    PresentationToken,
+    "Typed node-presentation-transform-token reference."
+);
 
 macro_rules! define_style_id {
     ($name:ident, $doc:literal) => {
@@ -211,6 +225,55 @@ impl From<Color> for ColorValue {
 }
 impl From<ColorToken> for ColorValue {
     fn from(value: ColorToken) -> Self {
+        Self::Token(value)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BrushValue {
+    Literal(Brush),
+    Token(BrushToken),
+}
+
+impl BrushValue {
+    #[must_use]
+    pub const fn literal(value: Brush) -> Self {
+        Self::Literal(value)
+    }
+    #[must_use]
+    pub const fn token(token: BrushToken) -> Self {
+        Self::Token(token)
+    }
+    #[must_use]
+    pub const fn as_literal(&self) -> Option<&Brush> {
+        if let Self::Literal(value) = self {
+            Some(value)
+        } else {
+            None
+        }
+    }
+    #[must_use]
+    pub const fn as_token(&self) -> Option<&BrushToken> {
+        if let Self::Token(value) = self {
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+impl From<Brush> for BrushValue {
+    fn from(value: Brush) -> Self {
+        Self::Literal(value)
+    }
+}
+impl From<Color> for BrushValue {
+    fn from(value: Color) -> Self {
+        Self::Literal(Brush::solid(value))
+    }
+}
+impl From<BrushToken> for BrushValue {
+    fn from(value: BrushToken) -> Self {
         Self::Token(value)
     }
 }
@@ -462,10 +525,11 @@ impl From<TypographyToken> for TypographyValue {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleProperties {
     foreground: Option<ColorValue>,
-    background: Option<ColorValue>,
+    background: Option<BrushValue>,
     padding: Option<SpacingValue>,
     radius: Option<RadiusValue>,
     typography: Option<TypographyValue>,
+    visual: VisualStyleProperties,
 }
 
 impl StyleProperties {
@@ -475,6 +539,7 @@ impl StyleProperties {
         padding: None,
         radius: None,
         typography: None,
+        visual: VisualStyleProperties::EMPTY,
     };
 
     #[must_use]
@@ -484,6 +549,7 @@ impl StyleProperties {
             && self.padding.is_none()
             && self.radius.is_none()
             && self.typography.is_none()
+            && self.visual.is_empty()
     }
     #[must_use]
     pub fn with_foreground(mut self, value: impl Into<ColorValue>) -> Self {
@@ -491,7 +557,7 @@ impl StyleProperties {
         self
     }
     #[must_use]
-    pub fn with_background(mut self, value: impl Into<ColorValue>) -> Self {
+    pub fn with_background(mut self, value: impl Into<BrushValue>) -> Self {
         self.background = Some(value.into());
         self
     }
@@ -511,11 +577,31 @@ impl StyleProperties {
         self
     }
     #[must_use]
+    pub fn with_outline(mut self, value: impl Into<OutlineValue>) -> Self {
+        self.visual = self.visual.with_outline(value);
+        self
+    }
+    #[must_use]
+    pub fn with_shadows(mut self, value: impl Into<ShadowValue>) -> Self {
+        self.visual = self.visual.with_shadows(value);
+        self
+    }
+    #[must_use]
+    pub fn with_opacity(mut self, value: impl Into<OpacityValue>) -> Self {
+        self.visual = self.visual.with_opacity(value);
+        self
+    }
+    #[must_use]
+    pub fn with_presentation(mut self, value: impl Into<PresentationValue>) -> Self {
+        self.visual = self.visual.with_presentation(value);
+        self
+    }
+    #[must_use]
     pub const fn foreground(&self) -> Option<&ColorValue> {
         self.foreground.as_ref()
     }
     #[must_use]
-    pub const fn background(&self) -> Option<&ColorValue> {
+    pub const fn background(&self) -> Option<&BrushValue> {
         self.background.as_ref()
     }
     #[must_use]
@@ -529,6 +615,22 @@ impl StyleProperties {
     #[must_use]
     pub const fn typography(&self) -> Option<&TypographyValue> {
         self.typography.as_ref()
+    }
+    #[must_use]
+    pub const fn outline(&self) -> Option<&OutlineValue> {
+        self.visual.outline()
+    }
+    #[must_use]
+    pub const fn shadows(&self) -> Option<&ShadowValue> {
+        self.visual.shadows()
+    }
+    #[must_use]
+    pub const fn opacity(&self) -> Option<&OpacityValue> {
+        self.visual.opacity()
+    }
+    #[must_use]
+    pub const fn presentation(&self) -> Option<&PresentationValue> {
+        self.visual.presentation()
     }
 }
 
@@ -571,7 +673,7 @@ impl StyleIntent {
         self
     }
     #[must_use]
-    pub fn with_background(mut self, value: impl Into<ColorValue>) -> Self {
+    pub fn with_background(mut self, value: impl Into<BrushValue>) -> Self {
         self.overrides = self.overrides.with_background(value);
         self
     }
@@ -591,6 +693,26 @@ impl StyleIntent {
         self
     }
     #[must_use]
+    pub fn with_outline(mut self, value: impl Into<OutlineValue>) -> Self {
+        self.overrides = self.overrides.with_outline(value);
+        self
+    }
+    #[must_use]
+    pub fn with_shadows(mut self, value: impl Into<ShadowValue>) -> Self {
+        self.overrides = self.overrides.with_shadows(value);
+        self
+    }
+    #[must_use]
+    pub fn with_opacity(mut self, value: impl Into<OpacityValue>) -> Self {
+        self.overrides = self.overrides.with_opacity(value);
+        self
+    }
+    #[must_use]
+    pub fn with_presentation(mut self, value: impl Into<PresentationValue>) -> Self {
+        self.overrides = self.overrides.with_presentation(value);
+        self
+    }
+    #[must_use]
     pub const fn recipe(&self) -> Option<&StyleRecipeId> {
         self.recipe.as_ref()
     }
@@ -607,7 +729,7 @@ impl StyleIntent {
         self.overrides.foreground()
     }
     #[must_use]
-    pub const fn background(&self) -> Option<&ColorValue> {
+    pub const fn background(&self) -> Option<&BrushValue> {
         self.overrides.background()
     }
     #[must_use]
@@ -621,5 +743,21 @@ impl StyleIntent {
     #[must_use]
     pub const fn typography(&self) -> Option<&TypographyValue> {
         self.overrides.typography()
+    }
+    #[must_use]
+    pub const fn outline(&self) -> Option<&OutlineValue> {
+        self.overrides.outline()
+    }
+    #[must_use]
+    pub const fn shadows(&self) -> Option<&ShadowValue> {
+        self.overrides.shadows()
+    }
+    #[must_use]
+    pub const fn opacity(&self) -> Option<&OpacityValue> {
+        self.overrides.opacity()
+    }
+    #[must_use]
+    pub const fn presentation(&self) -> Option<&PresentationValue> {
+        self.overrides.presentation()
     }
 }

@@ -82,7 +82,9 @@ jobs:
           RUNENUI_M8D_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance
         run: |
           set -euo pipefail
+          cargo +stable test --locked -p runenui_render_wgpu --test solid_render -- --nocapture
           cargo +stable test --locked -p runenui_render_wgpu --test shaped_text -- --nocapture
+          cargo +stable test --locked -p runenui_render_wgpu --test shadow_allocation -- --nocapture
           cargo +stable test --locked -p runenui_render_wgpu --test m8d_visual \
             real_wgpu_m8d_contact_sheet_covers_responsive_multiscript_text \
             -- --nocapture

@@ -1,4 +1,4 @@
-use runenui_core::{Color, EdgeInsets, LogicalLength, Radius, View, button};
+use runenui_core::{Brush, BrushValue, Color, EdgeInsets, LogicalLength, Radius, View, button};
 
 #[test]
 fn typed_builder_style_remains_ergonomic() {
@@ -13,7 +13,7 @@ fn typed_builder_style_remains_ergonomic() {
         element
             .style()
             .background()
-            .and_then(runenui_core::ColorValue::as_literal),
-        Some(&Color::BLACK)
+            .and_then(BrushValue::as_literal),
+        Some(&Brush::solid(Color::BLACK))
     );
 }

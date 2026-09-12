@@ -1,9 +1,9 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, Element, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PaintPrimitive, StyleEnvironment, UiApp,
-    Widget, WidgetMeasure,
+    Brush, Color, Element, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
+    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive, SceneShape,
+    StrokeStyle, StyleEnvironment, UiApp, Widget, WidgetMeasure,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -26,14 +26,21 @@ impl Widget<()> for PaintProbe {
         let zero_area = LogicalRect::try_new(2.0, 2.0, 0.0, 4.0)
             .unwrap_or_else(|_| unreachable!("zero-width logical rectangle is valid"));
         PaintContribution::new(vec![
-            PaintContributionItem::fill_rect(full, Color::rgba(255, 0, 0, 128)),
-            PaintContributionItem::stroke_rect(
-                full,
-                Color::rgba(0, 0, 255, 128),
-                LogicalLength::from(2_u16),
+            PaintContributionItem::fill(
+                SceneShape::rect(full),
+                Brush::solid(Color::rgba(255, 0, 0, 128)),
             ),
-            PaintContributionItem::fill_rect(zero_area, Color::WHITE),
-            PaintContributionItem::stroke_rect(full, Color::BLACK, LogicalLength::ZERO),
+            PaintContributionItem::stroke(
+                SceneShape::rect(full),
+                Brush::solid(Color::rgba(0, 0, 255, 128)),
+                StrokeStyle::new(LogicalLength::from(2_u16)),
+            ),
+            PaintContributionItem::fill(SceneShape::rect(zero_area), Brush::solid(Color::WHITE)),
+            PaintContributionItem::stroke(
+                SceneShape::rect(full),
+                Brush::solid(Color::BLACK),
+                StrokeStyle::new(LogicalLength::ZERO),
+            ),
         ])
     }
 }
@@ -63,11 +70,16 @@ fn point(x: f32, y: f32) -> LogicalPoint {
 
 fn primitive_covers(primitive: &PaintPrimitive, sample: LogicalPoint) -> bool {
     match primitive {
-        PaintPrimitive::FillRect { rect, .. } => {
-            rect.width() > 0.0 && rect.height() > 0.0 && rect.contains(sample)
-        }
-        PaintPrimitive::StrokeRect { rect, width, .. } => {
-            let stroke = width.get();
+        PaintPrimitive::Fill {
+            shape: SceneShape::Rect(rect),
+            ..
+        } => rect.width() > 0.0 && rect.height() > 0.0 && rect.contains(sample),
+        PaintPrimitive::Stroke {
+            shape: SceneShape::Rect(rect),
+            style,
+            ..
+        } => {
+            let stroke = style.width().get();
             if stroke == 0.0 || rect.width() == 0.0 || rect.height() == 0.0 {
                 return false;
             }
@@ -93,6 +105,21 @@ fn primitive_covers(primitive: &PaintPrimitive, sample: LogicalPoint) -> bool {
             !inset.contains(sample)
         }
         _ => false,
+    }
+}
+
+const fn solid_color(primitive: &PaintPrimitive) -> Option<Color> {
+    match primitive {
+        PaintPrimitive::Fill {
+            brush: Brush::Solid(color),
+            ..
+        }
+        | PaintPrimitive::Stroke {
+            brush: Brush::Solid(color),
+            ..
+        } => Some(*color),
+        PaintPrimitive::ShapedTextRun(run) => Some(run.foreground()),
+        _ => None,
     }
 }
 
@@ -123,9 +150,9 @@ fn composite(primitives: &[PaintPrimitive], sample: LogicalPoint) -> [f32; 4] {
         .fold([0.0; 4], |dst, primitive| {
             source_over(
                 dst,
-                primitive
-                    .color()
-                    .unwrap_or_else(|| unreachable!("fixture primitive carries literal color")),
+                solid_color(primitive).unwrap_or_else(|| {
+                    unreachable!("fixture primitive carries literal solid color")
+                }),
             )
         })
 }
@@ -161,54 +188,62 @@ fn downstream_scene_preserves_basic_rect_literals_order_and_owner_placement() {
     }
     assert!(matches!(
         items[0].primitive(),
-        PaintPrimitive::FillRect { rect, color }
-            if close(rect.width(), 10.0)
-                && close(rect.height(), 10.0)
-                && *color == Color::rgba(255, 0, 0, 128)
+        PaintPrimitive::Fill {
+            shape: SceneShape::Rect(rect),
+            brush: Brush::Solid(color),
+        } if close(rect.width(), 10.0)
+            && close(rect.height(), 10.0)
+            && *color == Color::rgba(255, 0, 0, 128)
     ));
     assert!(matches!(
         items[1].primitive(),
-        PaintPrimitive::StrokeRect { rect, color, width }
-            if close(rect.width(), 10.0)
-                && close(rect.height(), 10.0)
-                && *color == Color::rgba(0, 0, 255, 128)
-                && *width == LogicalLength::from(2_u16)
+        PaintPrimitive::Stroke {
+            shape: SceneShape::Rect(rect),
+            brush: Brush::Solid(color),
+            style,
+        } if close(rect.width(), 10.0)
+            && close(rect.height(), 10.0)
+            && *color == Color::rgba(0, 0, 255, 128)
+            && style.width() == LogicalLength::from(2_u16)
     ));
     assert!(matches!(
         items[2].primitive(),
-        PaintPrimitive::FillRect { rect, .. } if rect.width() == 0.0
+        PaintPrimitive::Fill {
+            shape: SceneShape::Rect(rect),
+            ..
+        } if rect.width() == 0.0
     ));
-    assert_eq!(
-        items[3].primitive().stroke_width(),
-        Some(LogicalLength::ZERO)
-    );
+    assert!(matches!(
+        items[3].primitive(),
+        PaintPrimitive::Stroke { style, .. } if style.width() == LogicalLength::ZERO
+    ));
 }
 
 #[test]
 fn independent_logical_coverage_proves_degenerate_and_centered_miter_strokes() {
-    let fill_zero_width = PaintPrimitive::FillRect {
-        rect: logical_rect(0.0, 0.0, 0.0, 10.0),
-        color: Color::WHITE,
+    let fill_zero_width = PaintPrimitive::Fill {
+        shape: SceneShape::rect(logical_rect(0.0, 0.0, 0.0, 10.0)),
+        brush: Brush::solid(Color::WHITE),
     };
-    let stroke_zero_rect = PaintPrimitive::StrokeRect {
-        rect: logical_rect(0.0, 0.0, 0.0, 10.0),
-        color: Color::WHITE,
-        width: LogicalLength::from(2_u16),
+    let stroke_zero_rect = PaintPrimitive::Stroke {
+        shape: SceneShape::rect(logical_rect(0.0, 0.0, 0.0, 10.0)),
+        brush: Brush::solid(Color::WHITE),
+        style: StrokeStyle::new(LogicalLength::from(2_u16)),
     };
-    let stroke_zero_width = PaintPrimitive::StrokeRect {
-        rect: logical_rect(0.0, 0.0, 10.0, 10.0),
-        color: Color::WHITE,
-        width: LogicalLength::ZERO,
+    let stroke_zero_width = PaintPrimitive::Stroke {
+        shape: SceneShape::rect(logical_rect(0.0, 0.0, 10.0, 10.0)),
+        brush: Brush::solid(Color::WHITE),
+        style: StrokeStyle::new(LogicalLength::ZERO),
     };
-    let centered = PaintPrimitive::StrokeRect {
-        rect: logical_rect(0.0, 0.0, 10.0, 10.0),
-        color: Color::WHITE,
-        width: LogicalLength::from(2_u16),
+    let centered = PaintPrimitive::Stroke {
+        shape: SceneShape::rect(logical_rect(0.0, 0.0, 10.0, 10.0)),
+        brush: Brush::solid(Color::WHITE),
+        style: StrokeStyle::new(LogicalLength::from(2_u16)),
     };
-    let collapsed_inset = PaintPrimitive::StrokeRect {
-        rect: logical_rect(0.0, 0.0, 1.0, 10.0),
-        color: Color::WHITE,
-        width: LogicalLength::from(2_u16),
+    let collapsed_inset = PaintPrimitive::Stroke {
+        shape: SceneShape::rect(logical_rect(0.0, 0.0, 1.0, 10.0)),
+        brush: Brush::solid(Color::WHITE),
+        style: StrokeStyle::new(LogicalLength::from(2_u16)),
     };
 
     assert!(!primitive_covers(&fill_zero_width, point(0.0, 1.0)));
@@ -224,13 +259,13 @@ fn independent_logical_coverage_proves_degenerate_and_centered_miter_strokes() {
 #[test]
 fn independent_fixed_opacity_compositor_decodes_srgb_and_uses_source_over_scene_order() {
     let area = logical_rect(0.0, 0.0, 10.0, 10.0);
-    let red = PaintPrimitive::FillRect {
-        rect: area,
-        color: Color::rgba(255, 0, 0, 128),
+    let red = PaintPrimitive::Fill {
+        shape: SceneShape::rect(area),
+        brush: Brush::solid(Color::rgba(255, 0, 0, 128)),
     };
-    let blue = PaintPrimitive::FillRect {
-        rect: area,
-        color: Color::rgba(0, 0, 255, 128),
+    let blue = PaintPrimitive::Fill {
+        shape: SceneShape::rect(area),
+        brush: Brush::solid(Color::rgba(0, 0, 255, 128)),
     };
     let alpha = 128.0 / 255.0;
     let red_then_blue = composite(&[red.clone(), blue.clone()], point(1.0, 1.0));

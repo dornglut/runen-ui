@@ -1,10 +1,11 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, Element, ElementId, HitContribution, HitContributionContext, HitRegion, LogicalPoint,
-    LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionItem, PointerPolicy, SceneLayer, StyleEnvironment, UiApp, View, Widget,
-    WidgetInvalidation, WidgetMeasure, WidgetUpdateContext, column,
+    Brush, Color, Element, ElementId, HitContribution, HitContributionContext, HitRegion,
+    LogicalPoint, LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution,
+    PaintContributionContext, PaintContributionItem, PaintPrimitive, PointerPolicy, SceneLayer,
+    SceneShape, StyleEnvironment, UiApp, View, Widget, WidgetInvalidation, WidgetMeasure,
+    WidgetUpdateContext, column,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, MountedNodeId, PumpBudget, SurfaceBuildContext,
@@ -77,13 +78,13 @@ impl Widget<OrderAction> for OrderOwner {
         let transform = overlay_transform(*state);
         let [low, first, second] = colors(self.name);
         PaintContribution::new(vec![
-            PaintContributionItem::fill_rect(full, low)
+            PaintContributionItem::fill(SceneShape::rect(full), Brush::solid(low))
                 .with_transform(transform)
                 .with_layer(SceneLayer::new(-1)),
-            PaintContributionItem::fill_rect(full, first)
+            PaintContributionItem::fill(SceneShape::rect(full), Brush::solid(first))
                 .with_transform(transform)
                 .with_layer(SceneLayer::ZERO),
-            PaintContributionItem::fill_rect(full, second)
+            PaintContributionItem::fill(SceneShape::rect(full), Brush::solid(second))
                 .with_transform(transform)
                 .with_layer(SceneLayer::ZERO),
         ])
@@ -180,10 +181,12 @@ fn paint_colors(publication: &SurfacePublication) -> Vec<Color> {
         .paint_scene()
         .items()
         .iter()
-        .map(|item| {
-            item.primitive()
-                .color()
-                .unwrap_or_else(|| unreachable!("order fixture carries literal colors"))
+        .map(|item| match item.primitive() {
+            PaintPrimitive::Fill {
+                shape: SceneShape::Rect(_),
+                brush: Brush::Solid(color),
+            } => *color,
+            _ => unreachable!("order fixture carries solid rectangle fills"),
         })
         .collect()
 }

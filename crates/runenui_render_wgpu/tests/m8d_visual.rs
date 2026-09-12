@@ -10,10 +10,11 @@ use std::{
 };
 
 use runenui_core::{
-    Color, ContributionClip, EdgeInsets, Element, FontFamily, FontFamilyName, GenericFontFamily,
-    LogicalLength, LogicalRect, LogicalSize, LogicalTransform, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, SceneOpacity, SceneShape, StyleEnvironment,
-    Typography, UiApp, View, Widget, WidgetMeasure, WidgetMeasureInput, children, column, text,
+    Brush, Color, ContributionClip, EdgeInsets, Element, FontFamily, FontFamilyName,
+    GenericFontFamily, LogicalLength, LogicalRect, LogicalSize, LogicalTransform, NoHostProtocol,
+    PaintContribution, PaintContributionContext, PaintContributionItem, SceneOpacity, SceneShape,
+    StyleEnvironment, Typography, UiApp, View, Widget, WidgetMeasure, WidgetMeasureInput, children,
+    column, text,
 };
 use runenui_render_wgpu::{
     BackendSelection, OffscreenPublicationReadback, Renderer, RendererInitError, RendererOptions,
@@ -99,10 +100,13 @@ impl Widget<()> for CompositionProof {
         let opacity = SceneOpacity::new(0.68)
             .unwrap_or_else(|_| unreachable!("visual fixture opacity is valid"));
         PaintContribution::single(
-            PaintContributionItem::fill_rect(rect, Color::rgb(88, 146, 224))
-                .with_transform(transform)
-                .with_clip(ContributionClip::identity(SceneShape::rect(clip_rect)))
-                .with_opacity(opacity),
+            PaintContributionItem::fill(
+                SceneShape::rect(rect),
+                Brush::solid(Color::rgb(88, 146, 224)),
+            )
+            .with_transform(transform)
+            .with_clip(ContributionClip::identity(SceneShape::rect(clip_rect)))
+            .with_opacity(opacity),
         )
     }
 }

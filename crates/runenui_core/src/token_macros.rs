@@ -20,6 +20,14 @@ macro_rules! color_token {
     };
 }
 
+/// Creates a compile-time-validated typed brush-token reference.
+#[macro_export]
+macro_rules! brush_token {
+    ($value:literal) => {
+        $crate::BrushToken::new($crate::token_id!($value))
+    };
+}
+
 /// Creates a compile-time-validated typed spacing-token reference.
 #[macro_export]
 macro_rules! spacing_token {
@@ -41,5 +49,37 @@ macro_rules! radius_token {
 macro_rules! typography_token {
     ($value:literal) => {
         $crate::TypographyToken::new($crate::token_id!($value))
+    };
+}
+
+/// Creates a compile-time-validated typed node-outline-token reference.
+#[macro_export]
+macro_rules! outline_token {
+    ($value:literal) => {
+        $crate::OutlineToken::new($crate::token_id!($value))
+    };
+}
+
+/// Creates a compile-time-validated typed ordered-shadow-list-token reference.
+#[macro_export]
+macro_rules! shadow_token {
+    ($value:literal) => {
+        $crate::ShadowToken::new($crate::token_id!($value))
+    };
+}
+
+/// Creates a compile-time-validated typed node-opacity-token reference.
+#[macro_export]
+macro_rules! opacity_token {
+    ($value:literal) => {
+        $crate::OpacityToken::new($crate::token_id!($value))
+    };
+}
+
+/// Creates a compile-time-validated typed node-presentation-transform-token reference.
+#[macro_export]
+macro_rules! presentation_token {
+    ($value:literal) => {
+        $crate::PresentationToken::new($crate::token_id!($value))
     };
 }

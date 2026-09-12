@@ -1,8 +1,8 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, Element, LogicalLength, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, SemanticContribution,
+    Brush, Color, Element, LogicalLength, LogicalRect, NoHostProtocol, PaintContribution,
+    PaintContributionContext, PaintContributionItem, SceneShape, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp,
     Widget, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
 };
@@ -40,7 +40,10 @@ impl Widget<Action> for SemanticOnlyProbe {
     }
 
     fn paint(&self, _: &Self::State, _: PaintContributionContext) -> PaintContribution {
-        PaintContribution::single(PaintContributionItem::fill_rect(rect(), Color::BLACK))
+        PaintContribution::single(PaintContributionItem::fill(
+            SceneShape::rect(rect()),
+            Brush::solid(Color::BLACK),
+        ))
     }
 
     fn semantics(

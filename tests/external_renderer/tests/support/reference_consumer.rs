@@ -67,8 +67,8 @@ impl ReferenceHitRecord {
     }
 
     #[must_use]
-    pub const fn shape(&self) -> SceneShape {
-        self.shape
+    pub const fn shape(&self) -> &SceneShape {
+        &self.shape
     }
 
     #[must_use]
@@ -246,7 +246,7 @@ impl ReferenceConsumer {
             .iter()
             .map(|region| ReferenceHitRecord {
                 target: region.target().clone(),
-                shape: region.shape(),
+                shape: region.shape().clone(),
                 local_to_surface: region.local_to_surface(),
                 clips: region.clips().to_vec(),
                 layer: region.layer(),

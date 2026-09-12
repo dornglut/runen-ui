@@ -5,11 +5,12 @@ use reference_consumer::{
     ReferenceConsumer, ReferencePaintRecord, ReferenceSnapshot, ReferenceUpdateMode,
 };
 use runenui_core::{
-    Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
-    IntoEffects, LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform,
-    MountedNodeId, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionItem, PaintPrimitive, PointerPolicy, Radius, ResourceKind, ResourceRef,
-    SceneLayer, SceneOpacity, SceneShape, StyleEnvironment, UiApp, View, Widget, WidgetMeasure,
+    Brush, Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
+    ImageDescriptor, ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor, IntoEffects,
+    LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, MountedNodeId,
+    NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem,
+    PaintPrimitive, PointerPolicy, Radius, ResourceKind, ResourceRef, SceneLayer, SceneOpacity,
+    SceneShape, StrokeJoin, StrokeStyle, StyleEnvironment, UiApp, View, Widget, WidgetMeasure,
 };
 use runenui_external_renderer_conformance::{
     ConsumerSnapshot, SceneConsumer, UpdateMode, sample_literal_paint,
@@ -18,6 +19,9 @@ use runenui_runtime::{
     AppRuntime, HitTestScene, LayoutConstraints, PaintPublication, RasterScale, SceneCapabilities,
     SurfaceBuildContext,
 };
+
+const IMAGE_INTRINSIC_WIDTH: u32 = 8;
+const IMAGE_INTRINSIC_HEIGHT: u32 = 8;
 
 #[derive(Debug)]
 struct SceneOwner {
@@ -45,26 +49,19 @@ impl Widget<()> for SceneOwner {
             .unwrap_or_else(|_| unreachable!("fixture transform is valid"));
 
         PaintContribution::new(vec![
-            PaintContributionItem::fill_rect(
-                rect(0.0, 0.0, 30.0, 30.0),
-                Color::rgba(255, 0, 0, 255),
-            )
-            .with_layer(SceneLayer::new(-1)),
-            PaintContributionItem::fill_rect(
-                rect(0.0, 0.0, 10.0, 10.0),
-                Color::rgba(0, 0, 255, 255),
-            )
-            .with_transform(translated)
-            .with_clip(rounded_clip)
-            .with_opacity(half),
-            PaintContributionItem::stroke_rect(
+            fill_rect(rect(0.0, 0.0, 30.0, 30.0), Color::rgba(255, 0, 0, 255))
+                .with_layer(SceneLayer::new(-1)),
+            fill_rect(rect(0.0, 0.0, 10.0, 10.0), Color::rgba(0, 0, 255, 255))
+                .with_transform(translated)
+                .with_clip(rounded_clip)
+                .with_opacity(half),
+            stroke_rect(
                 rect(2.0, 2.0, 12.0, 12.0),
                 Color::rgba(0, 255, 0, 128),
                 LogicalLength::from(2_u16),
             )
             .with_layer(SceneLayer::new(1)),
-            PaintContributionItem::image(self.image.clone(), rect(1.0, 20.0, 8.0, 8.0))
-                .unwrap_or_else(|_| unreachable!("fixture image ref has image kind"))
+            image_item(self.image.clone(), rect(1.0, 20.0, 8.0, 8.0))
                 .with_layer(SceneLayer::new(2)),
             PaintContributionItem::shaped_text_run(
                 self.shaped.clone(),
@@ -142,6 +139,32 @@ fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
         .unwrap_or_else(|_| unreachable!("fixture rectangle is valid"))
 }
 
+const fn fill_rect(rect: LogicalRect, color: Color) -> PaintContributionItem {
+    PaintContributionItem::fill(SceneShape::rect(rect), Brush::solid(color))
+}
+
+const fn stroke_rect(
+    rect: LogicalRect,
+    color: Color,
+    width: LogicalLength,
+) -> PaintContributionItem {
+    PaintContributionItem::stroke(
+        SceneShape::rect(rect),
+        Brush::solid(color),
+        StrokeStyle::new(width),
+    )
+}
+
+fn image_item(resource: ResourceRef, destination: LogicalRect) -> PaintContributionItem {
+    let intrinsic = ImageIntrinsicSize::new(IMAGE_INTRINSIC_WIDTH, IMAGE_INTRINSIC_HEIGHT)
+        .unwrap_or_else(|| unreachable!("fixture image extent is non-zero"));
+    let descriptor = ImageDescriptor::new(resource, intrinsic)
+        .unwrap_or_else(|_| unreachable!("fixture resource has image kind"));
+    let paint = ImagePaintDescriptor::new(descriptor, destination, ImageMapping::default())
+        .unwrap_or_else(|_| unreachable!("fixture image mapping is valid"));
+    PaintContributionItem::image(paint)
+}
+
 fn point(x: f32, y: f32) -> LogicalPoint {
     LogicalPoint::new(x, y).unwrap_or_else(|_| unreachable!("fixture point is finite"))
 }
@@ -176,15 +199,22 @@ fn reference_literal_source(
     }
 
     let color = match item.primitive() {
-        PaintPrimitive::FillRect { rect, color }
-            if rect.width() > 0.0
-                && rect.height() > 0.0
-                && reference_rect_contains(*rect, local_point) =>
+        PaintPrimitive::Fill {
+            shape: SceneShape::Rect(rect),
+            brush: Brush::Solid(color),
+        } if rect.width() > 0.0
+            && rect.height() > 0.0
+            && reference_rect_contains(*rect, local_point) =>
         {
             *color
         }
-        PaintPrimitive::StrokeRect { rect, color, width }
-            if reference_stroke_covers(*rect, width.get(), local_point) =>
+        PaintPrimitive::Stroke {
+            shape: SceneShape::Rect(rect),
+            brush: Brush::Solid(color),
+            style,
+        } if matches!(style.join(), StrokeJoin::Miter)
+            && style.miter_limit() >= core::f32::consts::SQRT_2
+            && reference_stroke_covers(*rect, style.width().get(), local_point) =>
         {
             *color
         }
@@ -278,14 +308,21 @@ fn reference_target(
     None
 }
 
-fn reference_shape_contains(shape: SceneShape, point: LogicalPoint) -> bool {
-    let rect = shape.outer_rect();
+fn reference_shape_contains(shape: &SceneShape, point: LogicalPoint) -> bool {
+    match shape {
+        SceneShape::Rect(rect) => reference_rect_contains(*rect, point),
+        SceneShape::RoundedRect { rect, radius } => {
+            reference_rounded_rect_contains(*rect, *radius, point)
+        }
+        SceneShape::Ellipse(rect) => reference_ellipse_contains(*rect, point),
+        SceneShape::Path(path) => path.contains_fill(point),
+    }
+}
+
+fn reference_rounded_rect_contains(rect: LogicalRect, radius: Radius, point: LogicalPoint) -> bool {
     if !reference_rect_contains(rect, point) {
         return false;
     }
-    let Some(radius) = shape.radius() else {
-        return true;
-    };
 
     let radii = reference_normalized_radii(rect, radius);
     let x = f64::from(point.x());
@@ -332,6 +369,19 @@ fn reference_shape_contains(shape: SceneShape, point: LogicalPoint) -> bool {
     true
 }
 
+fn reference_ellipse_contains(rect: LogicalRect, point: LogicalPoint) -> bool {
+    if rect.width() == 0.0 || rect.height() == 0.0 {
+        return false;
+    }
+    let radius_x = f64::from(rect.width()) / 2.0;
+    let radius_y = f64::from(rect.height()) / 2.0;
+    let center_x = f64::from(rect.x()) + radius_x;
+    let center_y = f64::from(rect.y()) + radius_y;
+    let normalized_x = (f64::from(point.x()) - center_x) / radius_x;
+    let normalized_y = (f64::from(point.y()) - center_y) / radius_y;
+    normalized_x.mul_add(normalized_x, normalized_y * normalized_y) <= 1.0
+}
+
 fn reference_rect_contains(rect: LogicalRect, point: LogicalPoint) -> bool {
     (rect.x()..rect.max_x()).contains(&point.x()) && (rect.y()..rect.max_y()).contains(&point.y())
 }
@@ -369,7 +419,10 @@ fn reference_image_surface_point(
         return None;
     }
     let image = item.primitive().as_image()?;
-    let destination = image.destination();
+    if image.resolved_patch_count()? != 1 {
+        return None;
+    }
+    let (_, destination) = image.resolved_patch(0)?;
     let local = LogicalPoint::new(
         destination.width().mul_add(normalized.x(), destination.x()),
         destination
@@ -499,7 +552,23 @@ fn assert_resource_contract(snapshot: &ConsumerSnapshot, reference: &ReferenceSn
         .primitive()
         .as_image()
         .unwrap_or_else(|| unreachable!("fourth canonical item is image"));
-    assert_eq!(image.destination(), rect(1.0, 20.0, 8.0, 8.0));
+    let intrinsic = ImageIntrinsicSize::new(IMAGE_INTRINSIC_WIDTH, IMAGE_INTRINSIC_HEIGHT)
+        .unwrap_or_else(|| unreachable!("fixture image extent is non-zero"));
+    assert_eq!(image.authored_descriptor(), None);
+    assert_eq!(image.resolved_intrinsic_size(), Some(intrinsic));
+    assert_eq!(image.resolved_patch_count(), Some(1));
+    assert_eq!(
+        image.resolved_patch(0),
+        Some((
+            [
+                0.0,
+                0.0,
+                f64::from(IMAGE_INTRINSIC_WIDTH),
+                f64::from(IMAGE_INTRINSIC_HEIGHT),
+            ],
+            rect(1.0, 20.0, 8.0, 8.0),
+        ))
+    );
     assert_eq!(image.resource_ref().kind(), ResourceKind::Image);
     assert_eq!(image_record.primitive(), reference_image_record.primitive());
     for normalized in [point(0.0, 0.0), point(0.5, 0.5), point(1.0, 1.0)] {

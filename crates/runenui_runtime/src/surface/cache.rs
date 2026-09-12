@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use runenui_core::{StyleEnvironment, WidgetDiagnostic};
+use runenui_core::{LogicalTransform, StyleEnvironment, WidgetDiagnostic};
 use runenui_text::{FontSourceSnapshot, TextLayoutState};
 
 use crate::scene::{HitTestSceneContent, PaintScene};
@@ -149,6 +149,49 @@ pub(super) struct CachedLayoutFacts {
     pub(super) text_layouts: Vec<TextLayoutState>,
 }
 
+/// One runtime-owned node presentation fact in mounted-preorder alignment.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct PresentationNodeFacts {
+    owner_to_surface: LogicalTransform,
+    owner_bounds: LogicalRect,
+}
+
+impl PresentationNodeFacts {
+    #[must_use]
+    pub(super) const fn new(owner_to_surface: LogicalTransform, owner_bounds: LogicalRect) -> Self {
+        Self {
+            owner_to_surface,
+            owner_bounds,
+        }
+    }
+
+    #[must_use]
+    pub(super) const fn owner_to_surface(self) -> LogicalTransform {
+        self.owner_to_surface
+    }
+
+    #[must_use]
+    pub(super) const fn owner_bounds(self) -> LogicalRect {
+        self.owner_bounds
+    }
+}
+
+/// Correlated runtime presentation geometry aligned exactly with topology.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct CachedPresentationFacts {
+    pub(super) nodes: Vec<PresentationNodeFacts>,
+}
+
+impl CachedPresentationFacts {
+    #[must_use]
+    pub(super) fn node(&self, position: usize) -> PresentationNodeFacts {
+        *self
+            .nodes
+            .get(position)
+            .unwrap_or_else(|| unreachable!("presentation facts remain topology-aligned"))
+    }
+}
+
 /// Sole retained renderer/input-side publication substrate.
 ///
 /// Every phase product is immutable once retained. Non-structural planning
@@ -165,9 +208,10 @@ pub(crate) struct SurfaceCache {
     pub(super) interaction: Arc<SurfaceInteractionProjection>,
     // Style-phase facts.
     pub(super) styles: Arc<CachedStyleFacts>,
-    // Layout-phase facts. This is the single retained geometry storage owner
-    // used by layout publication and current directional-focus projection.
+    // Layout-phase facts: logical layout authority only.
     pub(super) layout: Arc<CachedLayoutFacts>,
+    // Runtime-owned presentation geometry derived from final layout + computed style.
+    pub(super) presentation: Arc<CachedPresentationFacts>,
     // Canonical physical-hit content; displayed context is added only by the
     // runtime-owned publication state when a generation is committed.
     pub(super) hit_test: HitTestSceneContent,
@@ -196,6 +240,7 @@ impl SurfaceCache {
             interaction: Arc::clone(&self.interaction),
             styles: Arc::clone(&self.styles),
             layout: Arc::clone(&self.layout),
+            presentation: Arc::clone(&self.presentation),
             hit_test: self.hit_test.clone(),
             paint: self.paint.clone(),
             diagnostics: Arc::clone(&self.diagnostics),
@@ -205,14 +250,14 @@ impl SurfaceCache {
         }
     }
 
-    /// Projects current directional-focus geometry from the retained layout
-    /// phase, independently of physical hit participation.
+    /// Projects current directional-focus geometry from the correlated retained
+    /// presentation product, independently of physical hit participation.
     pub(crate) fn current_focus_geometry(&self) -> Vec<(MountedNodeId, LogicalRect)> {
         self.topology
             .nodes
             .iter()
-            .zip(&self.layout.bounds)
-            .map(|(node, bounds)| (node.id.clone(), *bounds))
+            .zip(&self.presentation.nodes)
+            .map(|(node, presentation)| (node.id.clone(), presentation.owner_bounds()))
             .collect()
     }
 
@@ -221,7 +266,7 @@ impl SurfaceCache {
         &mut self,
         geometry: &[(MountedNodeId, LogicalRect)],
     ) {
-        let layout = Arc::make_mut(&mut self.layout);
+        let presentation = Arc::make_mut(&mut self.presentation);
         for (id, bounds) in geometry {
             let position = self
                 .topology
@@ -229,7 +274,9 @@ impl SurfaceCache {
                 .iter()
                 .position(|node| &node.id == id)
                 .unwrap_or_else(|| unreachable!("test geometry names a published node"));
-            layout.bounds[position] = *bounds;
+            let current = presentation.nodes[position];
+            presentation.nodes[position] =
+                PresentationNodeFacts::new(current.owner_to_surface(), *bounds);
         }
     }
 
@@ -238,7 +285,8 @@ impl SurfaceCache {
         [
             Arc::ptr_eq(&self.topology, &other.topology),
             Arc::ptr_eq(&self.styles, &other.styles),
-            Arc::ptr_eq(&self.layout, &other.layout),
+            Arc::ptr_eq(&self.layout, &other.layout)
+                && Arc::ptr_eq(&self.presentation, &other.presentation),
             self.hit_test.shares_storage_with(&other.hit_test),
             self.paint.shares_storage_with(&other.paint),
             Arc::ptr_eq(&self.diagnostics, &other.diagnostics)

@@ -1,7 +1,7 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
+    Brush, Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
     LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution,
     PaintContributionContext, PaintContributionItem, PaintPrimitive, SceneShape, StyleEnvironment,
     UiApp, Widget, WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
@@ -44,7 +44,11 @@ fn fill_item_covers_surface_point(item: &PaintSceneItem, surface_point: LogicalP
     else {
         return false;
     };
-    let PaintPrimitive::FillRect { rect, .. } = item.primitive() else {
+    let PaintPrimitive::Fill {
+        shape: SceneShape::Rect(rect),
+        ..
+    } = item.primitive()
+    else {
         return false;
     };
     rect.contains(local_point)
@@ -105,8 +109,9 @@ impl Widget<SceneDiagnosticAction> for SceneDiagnosticOwner {
         };
         let full = rect(0.0, 0.0, 20.0, 20.0);
         PaintContribution::new(vec![
-            PaintContributionItem::fill_rect(full, Color::BLACK).with_transform(transform),
-            PaintContributionItem::fill_rect(full, Color::WHITE)
+            PaintContributionItem::fill(SceneShape::rect(full), Brush::solid(Color::BLACK))
+                .with_transform(transform),
+            PaintContributionItem::fill(SceneShape::rect(full), Brush::solid(Color::WHITE))
                 .with_clip(ContributionClip::new(SceneShape::rect(full), transform)),
         ])
     }

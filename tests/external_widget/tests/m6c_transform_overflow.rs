@@ -1,7 +1,7 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, ContributionClip, Element, ElementId, HitContribution, HitContributionContext,
+    Brush, Color, ContributionClip, Element, ElementId, HitContribution, HitContributionContext,
     HitRegion, LogicalLength, LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution,
     PaintContributionContext, PaintContributionItem, SceneShape, StyleEnvironment, UiApp, View,
     Widget, WidgetMeasure, children, column,
@@ -53,11 +53,13 @@ impl Widget<()> for OverflowOwner {
 
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
         PaintContribution::new(vec![
-            PaintContributionItem::fill_rect(rect(), Color::BLACK)
+            PaintContributionItem::fill(SceneShape::rect(rect()), Brush::solid(Color::BLACK))
                 .with_transform(huge_translation()),
-            PaintContributionItem::fill_rect(rect(), Color::WHITE).with_clip(
-                ContributionClip::new(SceneShape::rect(rect()), huge_translation()),
-            ),
+            PaintContributionItem::fill(SceneShape::rect(rect()), Brush::solid(Color::WHITE))
+                .with_clip(ContributionClip::new(
+                    SceneShape::rect(rect()),
+                    huge_translation(),
+                )),
         ])
     }
 

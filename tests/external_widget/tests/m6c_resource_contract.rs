@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 
 use runenui_core::{
-    Color, Element, ImagePrimitive, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
-    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
-    ResourceKind, ResourceRef, ShapedTextRunPrimitive, StyleEnvironment, UiApp, Widget,
-    WidgetMeasure,
+    Color, Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor,
+    ImagePrimitive, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
+    PaintContributionContext, PaintContributionItem, PaintPrimitive, ResourceKind, ResourceRef,
+    ShapedTextRunPrimitive, StyleEnvironment, UiApp, Widget, WidgetMeasure,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -32,12 +32,27 @@ fn rect() -> LogicalRect {
         .unwrap_or_else(|_| unreachable!("test destination is valid"))
 }
 
+fn intrinsic() -> ImageIntrinsicSize {
+    ImageIntrinsicSize::new(40, 50).unwrap_or_else(|| unreachable!("test image extent is non-zero"))
+}
+
+fn image_item(resource: ResourceRef) -> PaintContributionItem {
+    let descriptor = ImageDescriptor::new(resource, intrinsic())
+        .unwrap_or_else(|_| unreachable!("fixture resource is image-kind"));
+    PaintContributionItem::image(
+        ImagePaintDescriptor::new(descriptor, rect(), ImageMapping::default())
+            .unwrap_or_else(|_| unreachable!("fixture mapping is valid")),
+    )
+}
+
 fn origin() -> LogicalPoint {
     LogicalPoint::new(7.0, 11.0).unwrap_or_else(|_| unreachable!("test origin is finite"))
 }
 
 fn image_point(image: &ImagePrimitive, u: f32, v: f32) -> LogicalPoint {
-    let destination = image.destination();
+    let (_, destination) = image
+        .resolved_patch(0)
+        .unwrap_or_else(|| unreachable!("default image mapping resolves one patch"));
     LogicalPoint::new(
         u.mul_add(destination.width(), destination.x()),
         v.mul_add(destination.height(), destination.y()),
@@ -67,8 +82,7 @@ impl Widget<()> for ResourceOwner {
 
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
         PaintContribution::new(vec![
-            PaintContributionItem::image(self.image.clone(), rect())
-                .unwrap_or_else(|_| unreachable!("fixture image ref has image kind")),
+            image_item(self.image.clone()),
             PaintContributionItem::shaped_text_run(
                 self.shaped.clone(),
                 origin(),
@@ -122,9 +136,9 @@ fn opaque_refs_disambiguate_providers_and_resource_primitives_preserve_exact_log
     let replaced = provider_a.replace("same-local-key", ResourceKind::Image);
     assert_ne!(image_a, replaced);
 
-    assert!(PaintContributionItem::image(shaped.clone(), rect()).is_err());
+    assert!(ImageDescriptor::new(shaped.clone(), intrinsic()).is_err());
     assert!(
-        PaintContributionItem::shaped_text_run(image_a.clone(), origin(), Color::WHITE,).is_err()
+        PaintContributionItem::shaped_text_run(image_a.clone(), origin(), Color::WHITE).is_err()
     );
 
     let mut runtime = AppRuntime::<App>::mount(State {
@@ -146,7 +160,13 @@ fn opaque_refs_disambiguate_providers_and_resource_primitives_preserve_exact_log
         .as_image()
         .unwrap_or_else(|| unreachable!("first primitive is image"));
     assert_eq!(image.resource_ref(), &image_a);
-    assert_eq!(image.destination(), rect());
+    assert!(image.authored_descriptor().is_none());
+    assert_eq!(image.resolved_intrinsic_size(), Some(intrinsic()));
+    assert_eq!(image.resolved_patch_count(), Some(1));
+    assert_eq!(
+        image.resolved_patch(0),
+        Some(([0.0, 0.0, 40.0, 50.0], rect()))
+    );
 
     let mut realization_cache = HashMap::new();
     realization_cache.insert(image_a.clone(), "first-realization");

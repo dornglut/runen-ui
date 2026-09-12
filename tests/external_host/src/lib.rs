@@ -17,9 +17,10 @@ mod tests {
     };
 
     use runenui_core::{
-        Color, Element, IntoEffects, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
+        Brush, Color, Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
+        ImagePaintDescriptor, IntoEffects, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
         PaintContribution, PaintContributionContext, PaintContributionItem, ResourceKind,
-        ResourceRef, SemanticAction, SemanticActionRequest, SemanticContribution,
+        ResourceRef, SceneShape, SemanticAction, SemanticActionRequest, SemanticContribution,
         SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
         UiApp, View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
         WidgetMeasure,
@@ -91,20 +92,29 @@ mod tests {
             } else {
                 INACTIVE_BACKGROUND
             };
-            let image = PaintContributionItem::image(
+            let descriptor = ImageDescriptor::new(
                 self.image.clone(),
-                rect(0.0, 0.0, IMAGE_EXTENT, IMAGE_EXTENT),
+                ImageIntrinsicSize::new(1, 1)
+                    .unwrap_or_else(|| unreachable!("fixture image extent is non-zero")),
             )
             .unwrap_or_else(|_| unreachable!("fixture image reference has image kind"));
+            let image = PaintContributionItem::image(
+                ImagePaintDescriptor::new(
+                    descriptor,
+                    rect(0.0, 0.0, IMAGE_EXTENT, IMAGE_EXTENT),
+                    ImageMapping::default(),
+                )
+                .unwrap_or_else(|_| unreachable!("fixture image mapping is valid")),
+            );
             PaintContribution::new(vec![
-                PaintContributionItem::fill_rect(
-                    rect(
+                PaintContributionItem::fill(
+                    SceneShape::rect(rect(
                         0.0,
                         0.0,
                         f32::from(SURFACE_EXTENT),
                         f32::from(SURFACE_EXTENT),
-                    ),
-                    background,
+                    )),
+                    Brush::solid(background),
                 ),
                 image,
             ])

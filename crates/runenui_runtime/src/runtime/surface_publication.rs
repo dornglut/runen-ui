@@ -122,6 +122,7 @@ impl SurfacePublicationAdmission {
 pub(in crate::runtime) enum SurfacePublicationPlanError {
     SemanticIntegrity,
     TextLayout(TextLayoutError),
+    PresentationGeometry,
     CounterExhausted(SurfacePublicationCounter),
 }
 
@@ -130,6 +131,7 @@ impl From<SurfacePlanningError> for SurfacePublicationPlanError {
         match error {
             SurfacePlanningError::SemanticIntegrity => Self::SemanticIntegrity,
             SurfacePlanningError::TextLayout(error) => Self::TextLayout(error),
+            SurfacePlanningError::PresentationGeometry => Self::PresentationGeometry,
         }
     }
 }
@@ -557,7 +559,7 @@ impl SurfacePublicationState {
         &self.phase_report
     }
 
-    /// Projects current focus-selection geometry from the retained layout phase.
+    /// Projects current focus-selection geometry from the retained presentation facts.
     pub(crate) fn current_focus_geometry(&self) -> Vec<(MountedNodeId, LogicalRect)> {
         self.cache
             .as_ref()
