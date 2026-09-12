@@ -889,8 +889,8 @@ fn real_gpu_euclidean_spread_rejects_square_corners_and_is_quarter_turn_invarian
     let Some(mut renderer) = renderer_or_adapterless()? else {
         return Ok(());
     };
-    const L_SOURCE: &[(u16, u16)] = &[
-        (0, 0),
+    let l_source = [
+        (0_u16, 0_u16),
         (0, 1),
         (0, 2),
         (0, 3),
@@ -901,8 +901,8 @@ fn real_gpu_euclidean_spread_rejects_square_corners_and_is_quarter_turn_invarian
     ];
 
     let point = spread_shadow_group(4, 4, [(0, 0)])?;
-    let source = spread_shadow_group(16, 8, L_SOURCE.iter().copied())?;
-    let rotated = spread_shadow_group(40, 8, L_SOURCE.iter().copied().map(|(x, y)| (3 - y, x)))?;
+    let source = spread_shadow_group(16, 8, l_source.iter().copied())?;
+    let rotated = spread_shadow_group(40, 8, l_source.iter().copied().map(|(x, y)| (3 - y, x)))?;
     let publication = grouped_publication(vec![point.into(), source.into(), rotated.into()]);
     let output = renderer.render_offscreen_publication(&publication, &NoResources)?;
     let readback = output.readback();
