@@ -931,6 +931,56 @@ fn real_gpu_euclidean_spread_rejects_square_corners_and_is_quarter_turn_invarian
 }
 
 #[test]
+fn real_gpu_nested_transparent_effect_support_reaches_ancestor_shadow()
+-> Result<(), Box<dyn Error>> {
+    let Some(mut renderer) = renderer_or_adapterless()? else {
+        return Ok(());
+    };
+
+    let transparent_child = PaintContributionItem::fill(
+        SceneShape::rect(rect(8.0, 8.0, 4.0, 4.0)),
+        Brush::solid(Color::rgba(0xFF, 0xFF, 0xFF, 0x00)),
+    );
+    let transparent_inner_shadow = DropShadow::new(
+        8.0,
+        0.0,
+        LogicalLength::new(0.0)?,
+        2.0,
+        Color::rgba(0xFF, 0x00, 0x00, 0x00),
+    )?;
+    let inner = PaintContributionGroup::new(vec![transparent_child.into()])
+        .with_shadows(vec![transparent_inner_shadow]);
+    let outer_shadow = DropShadow::new(
+        0.0,
+        0.0,
+        LogicalLength::new(0.0)?,
+        0.0,
+        Color::rgb(0x00, 0xFF, 0x00),
+    )?;
+    let outer = PaintContributionGroup::new(vec![inner.into()]).with_shadows(vec![outer_shadow]);
+    let publication = grouped_publication(vec![outer.into()]);
+    let output = renderer.render_offscreen_publication(&publication, &NoResources)?;
+    let readback = output.readback();
+
+    assert_eq!(
+        pixel(readback, 9, 9),
+        [0x00, 0xFF, 0x00, 0xFF],
+        "transparent child paint must remain symbolic support for the ancestor shadow"
+    );
+    assert_eq!(
+        pixel(readback, 19, 9),
+        [0x00, 0xFF, 0x00, 0xFF],
+        "transparent inner-shadow geometry must enlarge support consumed by the ancestor shadow"
+    );
+    assert_eq!(
+        pixel(readback, 23, 9),
+        [0, 0, 0, 0],
+        "ancestor shadow must not escape the nested symbolic support envelope"
+    );
+    Ok(())
+}
+
+#[test]
 fn real_gpu_empty_and_singular_generic_clips_erase_coverage() -> Result<(), Box<dyn Error>> {
     let Some(mut renderer) = renderer_or_adapterless()? else {
         return Ok(());
