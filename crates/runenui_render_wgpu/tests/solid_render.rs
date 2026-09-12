@@ -154,7 +154,7 @@ impl ResourceProvider for SingleImageProvider {
         if resource != &self.resource || request != ResourceRequest::Image {
             return Err(ResourceProviderError::new(
                 ResourceProviderErrorKind::Malformed,
-                "atomic-group proof requested an unexpected resource",
+                "solid-render image proof requested an unexpected resource",
             ));
         }
         Ok(ResourcePayload::Image(self.payload.clone()))
@@ -750,13 +750,7 @@ fn real_gpu_image_shadow_support_ignores_payload_alpha() -> Result<(), Box<dyn E
         image_resource.clone(),
         [0xFF, 0x00, 0x00, 0x00],
     )?;
-    let shadow = DropShadow::new(
-        0.0,
-        0.0,
-        LogicalLength::ZERO,
-        0.0,
-        Color::WHITE,
-    )?;
+    let shadow = DropShadow::new(0.0, 0.0, LogicalLength::ZERO, 0.0, Color::WHITE)?;
     let group = PaintContributionGroup::new(vec![
         image_item(image_resource, rect(8.0, 8.0, 8.0, 8.0)).into(),
     ])
