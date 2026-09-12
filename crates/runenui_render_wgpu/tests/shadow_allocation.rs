@@ -38,18 +38,10 @@ impl Widget<()> for OversizedShadowFixture {
     fn paint(&self, (): &Self::State, _: PaintContributionContext) -> PaintContribution {
         let source_rect = LogicalRect::try_new(-self.side, 0.0, self.side, self.side)
             .unwrap_or_else(|_| unreachable!("controlled source rectangle is finite"));
-        let source = PaintContributionItem::fill(
-            SceneShape::rect(source_rect),
-            Brush::solid(Color::WHITE),
-        );
-        let shadow = DropShadow::new(
-            self.side,
-            0.0,
-            LogicalLength::ZERO,
-            0.0,
-            Color::WHITE,
-        )
-        .unwrap_or_else(|_| unreachable!("controlled shadow is finite"));
+        let source =
+            PaintContributionItem::fill(SceneShape::rect(source_rect), Brush::solid(Color::WHITE));
+        let shadow = DropShadow::new(self.side, 0.0, LogicalLength::ZERO, 0.0, Color::WHITE)
+            .unwrap_or_else(|_| unreachable!("controlled shadow is finite"));
         PaintContribution::from_entries(vec![
             PaintContributionGroup::new(vec![source.into()])
                 .with_shadows(vec![shadow])
@@ -136,7 +128,8 @@ fn source_side_for_limit(max_workspace_bytes: u64) -> Result<f32, Box<dyn Error>
 }
 
 #[test]
-fn oversized_off_surface_shadow_fails_before_crop_or_target_mutation() -> Result<(), Box<dyn Error>> {
+fn oversized_off_surface_shadow_fails_before_crop_or_target_mutation() -> Result<(), Box<dyn Error>>
+{
     let Some(mut renderer) = renderer_or_adapterless()? else {
         return Ok(());
     };
