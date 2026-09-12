@@ -746,10 +746,8 @@ fn real_gpu_image_shadow_support_ignores_payload_alpha() -> Result<(), Box<dyn E
         return Ok(());
     };
     let image_resource = ResourceRef::new(ResourceKind::Image);
-    let provider = SingleImageProvider::with_pixel(
-        image_resource.clone(),
-        [0xFF, 0x00, 0x00, 0x00],
-    )?;
+    let provider =
+        SingleImageProvider::with_pixel(image_resource.clone(), [0xFF, 0x00, 0x00, 0x00])?;
     let shadow = DropShadow::new(0.0, 0.0, LogicalLength::ZERO, 0.0, Color::WHITE)?;
     let group = PaintContributionGroup::new(vec![
         image_item(image_resource, rect(8.0, 8.0, 8.0, 8.0)).into(),
