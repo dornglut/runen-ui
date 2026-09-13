@@ -2,7 +2,7 @@
 
 > **Category: Current architecture**
 
-[ADR 0009](../adr/0009-production-style-layout-text-foundation.md) owns the accepted M8 architectural decisions. This document records the accepted current implementation of that architecture: M8A establishes deterministic environment, cascade, interaction-state, preference, inheritance, provenance, and invalidation behavior; M8B adds metric typography and production logical text integration; M8C consumes those resolved facts through the production runtime layout path; M8D proves the resulting style/layout/text facts remain correlated through publication, semantics, and real renderer consumption. Broader visual-property and animation/composition breadth remains later work.
+[ADR 0009](../adr/0009-production-style-layout-text-foundation.md) owns the accepted M8 style architecture. M9A extends that same production cascade with accepted static visual properties under [ADR 0010](../adr/0010-visual-composition-and-animation.md) and its accepted clarifications, especially [ADR 0013](../adr/0013-m9-node-decoration-publication-clarification.md) for common node decoration and [ADR 0015](../adr/0015-m9-shadow-support-and-painter-order-clarification.md) for ordinary-shadow support/order. This document records current implementation: M8A establishes deterministic environment, cascade, interaction-state, preference, inheritance, provenance, and invalidation behavior; M8B–M8D integrate metric typography/layout/text; M9A adds brush-valued backgrounds, outlines, ordered ordinary shadows, opacity, and static presentation without creating a second style authority. Deterministic transitions/timelines and reduced-motion motion behavior remain M9B work.
 
 ## Ownership
 
@@ -21,9 +21,10 @@
 - the complete `StyleEnvironment` supplied for one surface publication attempt;
 - ephemeral projection of canonical pointer/focus interaction authority into style facts;
 - shared staged widget activation used by both disabled styling and semantic/capability publication;
-- retained style cache compatibility, style-resolution orchestration, inspection reports, and dependency-aware invalidation.
+- retained style cache compatibility, style-resolution orchestration, inspection reports, and dependency-aware invalidation;
+- publication of common background/outline decoration, static presentation correlation, and node-level opacity/shadow composition from the resolved style rather than widget-private reinterpretation.
 
-Renderers consume resolved visual facts. They do not resolve recipes, variants, token names, interaction states, preferences, inheritance, or theme policy. Platform adapters may supply explicit preference inputs but do not become style authority.
+Renderers consume resolved/publication visual facts. They do not resolve recipes, variants, token names, interaction states, preferences, inheritance, node-decoration policy, presentation policy, or theme policy. Platform adapters may supply explicit preference inputs but do not become style authority.
 
 Application state remains authoritative for durable product meaning such as validation, selection, or domain status. Runtime interaction state supplies transient framework facts such as hover, focus, active, and disabled; applications do not maintain a second hidden interaction-style state machine.
 
@@ -32,12 +33,16 @@ Application state remains authoritative for durable product meaning such as vali
 The accepted style mechanism currently represents these property families truthfully:
 
 - foreground color;
-- background color;
+- brush-valued background (`solid`, linear gradient, or concentric radial gradient);
 - padding;
 - corner radius;
-- metric typography.
+- metric typography;
+- optional node outline;
+- one complete ordered ordinary drop-shadow list;
+- effective node opacity;
+- static node presentation transform.
 
-Each property may be literal or use its typed token family. Property breadth is independent from the production resolution mechanism; later milestones may add new typed properties without changing the ownership model. M8C layout vocabulary is separately RunenUI-owned through `LayoutStyle`; it does not create a second style cascade.
+Each property may be literal or use its typed token family. Property breadth is independent from the production resolution mechanism; later milestones may add new typed properties without changing the ownership model. M8C layout vocabulary remains separately RunenUI-owned through `LayoutStyle`; M9A visual/composition values do not create a second style cascade.
 
 ## Resolution model
 
@@ -54,7 +59,7 @@ framework defaults
 -> mandatory preference policy
 ```
 
-Later layers replace only properties they define. Ordered variants therefore have authored-order meaning, while interaction states always use framework order independent of container/hash ordering.
+Later layers replace only properties they define. Ordered variants therefore have authored-order meaning, while interaction states always use framework order independent of container/hash ordering. The complete shadow list is one property: a later winning layer replaces the lower-precedence list rather than appending to it.
 
 `StyleResolution` records both the exact layer that last attempted to define each property and whether its value was inherited, literal, resolved from a typed token, or failed because a token was missing.
 
@@ -66,13 +71,13 @@ A missing higher-precedence token does not expose a lower-precedence value. The 
 
 High contrast may apply mandatory `StylePreferencePolicy` properties above authored overrides, with ordinary winning-layer/token provenance.
 
-M8 has no animation property family. Reduced motion is therefore an explicit preference and cache/invalidation fact but currently applies no style-property override. M9 may add motion properties/policy without changing preference ownership.
+M9A adds static presentation/composition only; it does not add a transition/timeline sampling property family. Reduced motion therefore remains an explicit preference and cache/invalidation fact without fabricated static overrides. M9B owns deterministic motion/timeline behavior and the exact reduced-motion policy applied to that motion while preserving the same preference ownership.
 
 ## Inheritance
 
 Inheritance is explicit and bounded. The accepted current resolver seeds only foreground and typography from the resolved parent.
 
-Background, padding, and radius do not inherit. Layout geometry does not inherit through the style cascade. Any future inherited property family requires an explicit accepted extension rather than CSS-like accidental propagation.
+Background, padding, radius, outline, shadows, opacity, and presentation do not inherit. Node shadows/opacity may affect a composed mounted visual subtree through runtime-owned composition-group semantics, but that effect scope is not style inheritance. Layout geometry does not inherit through the style cascade. Any future inherited property family requires an explicit accepted extension rather than CSS-like accidental propagation.
 
 ## Runtime interaction authority
 
@@ -93,29 +98,30 @@ Style cache compatibility includes exact style-environment content and the effec
 
 Current direct property effects are:
 
-- foreground, background, radius -> paint;
-- padding, typography -> layout.
+- foreground, background, radius, outline, shadows, opacity -> paint;
+- padding, typography -> layout;
+- presentation -> presentation geometry.
 
-These are direct effects only. Runtime owns dependency propagation: a layout-affecting style change also makes every dependent text/layout, hit, paint-placement, and semantic-geometry fact stale as required. Paint-only style changes do not force layout work when retained facts remain compatible.
+These are direct effects only. Runtime owns dependency propagation: a layout change also makes every dependent text/layout, presentation, hit, paint-placement, and semantic-geometry fact stale as required. Presentation changes update correlated paint/hit/focus/semantic publication geometry without mutating retained layout authority. Paint-only style changes do not force layout work when retained facts remain compatible.
 
 Preference/environment or interaction changes first invalidate style resolution as required; exact computed-property differences then determine downstream work. Recoverable or terminally failed surface planning does not commit a partial new retained style cache.
 
-M8D's accepted integration evidence exercises these resolved style facts through the same production surface path as responsive layout/text measurement, exact retained shaped-resource paint, semantic bounds/content, and real-wgpu composition. That proof does not move style resolution into runtime layout, text, semantics, or renderer ownership.
+M8D's accepted integration evidence exercises resolved style through the same production surface path as responsive layout/text measurement, exact retained shaped-resource paint, semantic bounds/content, and real-wgpu composition. M9A extends that path: runtime synthesizes common background/outline decoration from the resolved final owner-local box/radius; static presentation is correlated through paint/hit/focus/semantic geometry; and shadows/opacity are represented through runtime-owned immutable composition groups/effect bounds. Those additions do not move style resolution into layout, text, semantics, or renderer ownership.
 
 ## Authoring
 
 Typed Rust expressions remain the authoring form. `StyleIntent` may select one recipe, append variants in authored order, and set direct literal/token overrides. Built-in builders and `element!` use the same typed style intent rather than parallel styling languages.
 
-See [ADR 0001](../adr/0001-typed-token-authoring.md) for token-expression authoring. ADR 0009 remains the canonical owner of the M8 architectural decisions summarized by this current-architecture document.
+See [ADR 0001](../adr/0001-typed-token-authoring.md) for token-expression authoring. ADR 0009 remains the canonical owner of the production style cascade; accepted M9 ADRs extend static visual/composition semantics without duplicating that cascade.
 
 ## Current limitations
 
-The accepted style mechanism does not yet provide borders, shadows, opacity, transforms, external theme serialization/loading, broad renderer material systems, or animation/motion properties. The current theme is an explicit host-neutral value supplied in `StyleEnvironment`; no ambient global theme/provider authority exists.
+The accepted style mechanism does not yet provide deterministic transitions/timelines, animation sampling, or reduced-motion transformation of active motion; those belong to M9B. External theme serialization/loading, arbitrary renderer material/shader/filter policy, and broader later property families also remain outside the current style authority. The current theme is an explicit host-neutral value supplied in `StyleEnvironment`; no ambient global theme/provider authority exists.
 
-M8 owns the accepted production style/layout/text foundation and its integrated closure. M9 owns broader visual composition and motion/animation behavior; later property breadth must preserve the same explicit style ownership and invalidation model rather than creating a parallel cascade.
+M9A's accepted static visual breadth is current behavior; it must not be described as future merely because M9 motion/integration remains incomplete. M9B owns motion/timeline policy and M9C owns integrated visual-motion closure. Later property breadth must preserve the same explicit style ownership and invalidation model rather than creating a parallel cascade.
 
 ## Extraction rule
 
-Host-neutral style values, environment/policy values, pure resolution, computed style, provenance/diagnostics, and direct property-effect classification remain in `runenui_core`; mounted interaction/capability authority, orchestration, retention, and invalidation remain in `runenui_runtime`.
+Host-neutral style values, environment/policy values, pure resolution, computed style, provenance/diagnostics, and direct property-effect classification remain in `runenui_core`; mounted interaction/capability authority, orchestration, retention, invalidation, and publication of runtime-derived decoration/effect structure remain in `runenui_runtime`.
 
-M8 does not justify a `runenui_style` crate. A dedicated crate requires a real independent ownership, dependency, optionality, serialized-source, external-loading, or multiple-consumer boundary that Cargo should enforce; file size or property growth alone is insufficient.
+M8/M9A do not justify a `runenui_style` crate. A dedicated crate requires a real independent ownership, dependency, optionality, serialized-source, external-loading, or multiple-consumer boundary that Cargo should enforce; file size or property growth alone is insufficient.

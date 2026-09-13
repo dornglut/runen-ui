@@ -11,9 +11,10 @@ This document describes the **conceptual ownership and invariants** of RunenUI's
 - state-aware open widget/lifecycle/event contracts, bounded renderer-neutral `WidgetMeasure` input/result vocabulary, geometry-neutral child-bearing participation, and typed action mapping;
 - runtime-local opaque protocol identity types such as mounted/semantic/surface/work identities, without allocation authority;
 - host-neutral pointer/keyboard/text/composition/focus/semantic command and semantic contribution/action vocabulary;
-- renderer- and host-neutral paint/hit contribution values, logical scene-composition geometry, opaque neutral resource identity/kind values, and image/shaped-run primitive placement values used by the accepted M6 scene protocol.
+- renderer- and host-neutral paint/hit contribution values, logical scene-composition geometry, opaque neutral resource identity/kind values, and shaped-run placement values used by the accepted scene protocol;
+- accepted M9A structural visual/composition vocabulary: validated rectangle/rounded-rectangle/ellipse/path shapes, generic fill/stroke and stroke-style facts, solid/linear/radial brushes, exact gradient-stop semantics, image descriptor/fit/crop/alignment/nine-slice values, item/group clips and opacity, snapshot-local paint-group authoring values, ordinary-shadow/style visual values, and static presentation transforms.
 
-Core must not own persistent mounted/semantic storage, live layout topology/algorithm/cache state, live queue/scheduler state, live interaction/focus/activation authority, runtime identity allocation, native window/accessibility objects, renderer backend handles, resource-provider/lookup/payload/cache authority, text shaping/line breaking, renderer realization, application product state, or testing-only mutation seams.
+Core must not own persistent mounted/semantic storage, live layout topology/algorithm/cache state, live queue/scheduler state, live interaction/focus/activation authority, runtime identity allocation, native window/accessibility objects, renderer backend handles, resource-provider/lookup/payload/cache authority, text shaping/line breaking, renderer tessellation/raster/mask realization, application product state, or testing-only mutation seams.
 
 ## `runenui_text`
 
@@ -40,11 +41,12 @@ Parley/Fontique/HarfRust/Skrifa/ICU types are implementation details and do not 
 - live `TextSystem` orchestration and topology-aligned reusable text-layout state, including lowering each Taffy leaf request into renderer-neutral text constraints and retaining the exact text state associated with the final `PerformLayout` request;
 - text measurement from immutable `runenui_text` artifacts and exact projection of those same shaped-resource facts into paint, including publication-owned shaped-resource leases needed for retained renderer retry;
 - canonical renderer-neutral transformed/clipped/ordered paint-scene composition plus `RasterScale` and `PaintPublication` revision/base/damage/alignment authority;
+- accepted M9A publication of common node background/outline decoration from final owner-local layout-box/radius facts, static presentation correlation across paint/hit/focus/semantic geometry, exact inherited M6 pre-group ordering, explicit owner-local plus node-effect composition groups, runtime-resolved image mapping, conservative recursive paint/effect bounds, and alpha-independent neutral ordinary-shadow support/order facts;
 - canonical transformed/clipped/ordered displayed `HitTestScene` composition, mounted-target/membership injection, retained displayed-generation lookup, and point/resolved-target authority;
 - scene requirements derived from canonical paint content and neutral consumer capability checks without backend-specific rewriting;
 - independent semantic publication/update/diagnostics and exact semantic-action admission/resolution.
 
-Runtime must not depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, external resource-provider/payload/cache ownership, font/shaping/line-breaking algorithm authority, SDF/MSDF realization, or a second interaction/style/semantic/layout/paint/hit/testing authority. Taffy types, node identity, topology, and caches remain private derived implementation state rather than public or retained framework authority.
+Runtime must not depend on testing convenience, concrete native platforms, concrete renderer implementations, product state, external resource-provider/payload/cache ownership, font/shaping/line-breaking algorithm authority, SDF/MSDF realization, Lyon/backend tessellation, renderer shadow-mask/raster authority, or a second interaction/style/semantic/layout/paint/hit/testing authority. Taffy types, node identity, topology, and caches remain private derived implementation state rather than public or retained framework authority.
 
 ## `runenui_render_wgpu`
 
@@ -54,9 +56,11 @@ Runtime must not depend on testing convenience, concrete native platforms, concr
 - exact renderer-local successful-publication lineage and update/full-resync classification;
 - caller-facing complete-`ResourceRef` provider requests for external image resources plus disposable image realization/cache state;
 - consumption of exact retained `ShapedTextResource` bindings from `PaintPublication` and disposable renderer-private per-glyph SDF/MSDF generation, quality classes, atlas pages, GPU textures, cache lifetime, shader reconstruction, and antialiasing;
+- private subordinate Lyon tessellation and disposable realization of accepted generic shape fill/stroke coverage, gradients, generic clips, runtime-published atomic groups, and ordinary-shadow masks/composition;
+- renderer-private bounded requested-live-payload accounting and reusable scratch for ordinary-shadow mask realization, without exposing a public CPU-budget or scene-wide memory authority;
 - native-surface presentation, offscreen readback, and immutable renderer observation records.
 
-It consumes public core/runtime/text contracts only where required by paint realization. Caller-owned `ResourceProvider` remains the edge for external resources such as images; runtime-shaped text is resolved from the retained publication binding and is never recreated by that provider. The renderer must not own a native event loop, widget/semantic/mounted/layout authority, runtime mutation, application resource identity/bindings, shaping/line-breaking/font-discovery authority, style/theme resolution, or AccessKit/winit behavior.
+It consumes public core/runtime/text contracts only where required by paint realization. Caller-owned `ResourceProvider` remains the edge for external resources such as images; runtime-shaped text is resolved from the retained publication binding and is never recreated by that provider. The renderer must not own a native event loop, widget/semantic/mounted/layout authority, runtime mutation, application resource identity/bindings, shaping/line-breaking/font-discovery authority, style/theme resolution, logical path containment/bounds, image fit policy, group ordering/scope, neutral shadow-support semantics/painter order, or AccessKit/winit behavior.
 
 ## `runenui_winit`
 
@@ -119,6 +123,10 @@ RunenUI-owned text requests are resolved by `runenui_text`; runtime owns when th
 
 The accepted M8 closure preserves those separate ownership seams while proving their correlation. Exact Taffy known/available-space facts drive deterministic text requests inside the bounded layout transaction; the exact retained artifact/resource facts used for measurement are projected into paint; final semantic text and bounds use the same runtime-owned geometry; deterministic public tests use bundled fonts and controlled inputs; and the real wgpu renderer consumes the retained shaped resources through SDF/MSDF realization, including retry after renderer-cache loss and raster-scale/quality re-realization. None of those observations creates a second layout loop, text system, semantic tree, software expected renderer, or renderer-owned shaping authority.
 
+### One visual/composition authority
+
+M9A extends the accepted M6/M8 publication path rather than creating a second visual model. Core owns neutral visual values and exact logical geometry/brush/stroke/image/group/style semantics. Runtime resolves common node decoration and image mapping, composes node presentation with owner placement, derives the exact M6 pre-group order, publishes snapshot-local group/effect structure and conservative bounds, and owns neutral ordinary-shadow support/order. The wgpu renderer may tessellate, rasterize, allocate intermediate group targets/masks, sample gradients, and cache disposable resources, but those choices cannot redefine logical containment/bounds, item/group order, resource identity, clip semantics, effect scope/support, shadow spread/order, or style authority. Cache/target loss reconstructs from the complete publication plus retained/caller-owned resource bindings.
+
 ### Staged publication
 
 Surface publication follows a staged transaction with admission, read-only/staged planning, candidate-dependent final preflight, and commit. Recoverable refusal or terminal failure must not expose a partial new RunenUI-owned publication state.
@@ -127,18 +135,20 @@ Renderer-facing paint products, hit/input products, semantics, layout, and diagn
 
 For runtime-shaped text, retained paint publication lifetime also preserves the exact immutable logical shaped-resource bindings referenced by scene items. Renderer scale/quality/atlas/device state is disposable and can be reconstructed from those bindings without runtime republish, external provider lookup, reshaping, or `ResourceRef` reminting.
 
+M9A composition/effect structure is likewise immutable publication content, not a retained renderer tree. Renderer-private geometry, group targets, shadow masks and caches are disposable and reconstructible; renderer realization failure before submission does not mutate RunenUI publication authority.
+
 ## Current limitations
 
 The current public surface is pre-1.0 and may change incompatibly when accepted architecture requires a clean cutover. Important missing production capabilities include:
 
 - broader production host/application ergonomics beyond the accepted proof-level native and external-host paths;
 - virtualization and native scrolling mechanics beyond the accepted logical overflow/content/scroll extents;
+- deterministic transitions/timelines, animation sampling and reduced-motion motion behavior (M9B), followed by integrated visual-motion closure (M9C);
 - production text editing, selection, clipboard, and related behavior (M10);
 - supported rendering for intrinsic COLR/SVG/bitmap glyph formats; current behavior diagnoses that breadth explicitly;
 - multi-window lifecycle and supported platform-profile breadth;
-- broader visual style-property/composition/animation breadth beyond the accepted M8 foundation;
 - a complete standard control library.
 
-M7 is accepted complete at proof maturity through the real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, reusable winit/AccessKit adapter, native Counter showcase, and winit-free downstream external-host proof over the same public contracts. M8 is accepted complete at its production-foundation scope through deterministic production style resolution, renderer-neutral international text, runtime-owned Block/Flex/Grid layout with exact text feedback, retained measurement-to-paint resource identity, semantic content/bounds correlation, deterministic bundled-font public proof, and real-wgpu SDF/MSDF responsive/multiscript integration. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
+M7 is accepted complete at proof maturity through the real wgpu renderer/resource edge, standalone winit host/native-input/presentation path, reusable winit/AccessKit adapter, native Counter showcase, and winit-free downstream external-host proof over the same public contracts. M8 is accepted complete at its production-foundation scope through deterministic production style resolution, renderer-neutral international text, runtime-owned Block/Flex/Grid layout with exact text feedback, retained measurement-to-paint resource identity, semantic content/bounds correlation, deterministic bundled-font public proof, and real-wgpu SDF/MSDF responsive/multiscript integration. M9 is partial: M9A static visual/composition vocabulary, runtime publication and real-wgpu realization are accepted, while M9B motion and M9C integrated closure remain incomplete. Current maturity is summarized in [status](../status.md). Durable future sequencing belongs in the [roadmap](../roadmap.md). Permanent observable/proof requirements live under [conformance](../conformance/README.md).
 
 Do not infer support from a target ADR, design document, type name, or roadmap entry alone. Code/tests establish current behavior; source/Rustdoc establishes the exact public Rust surface.
