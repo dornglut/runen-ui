@@ -363,8 +363,7 @@ fn plan_owner(
             _ => None,
         };
 
-        let explicit_sample =
-            new_explicit.and_then(|candidate| candidate.candidate_sample.clone());
+        let explicit_sample = new_explicit.and_then(|candidate| candidate.candidate_sample.clone());
         let explicit_terminal_commit =
             new_explicit.is_some_and(|candidate| candidate.terminal_commit);
 
@@ -551,7 +550,9 @@ fn reconcile_explicit(
                         ExplicitLifecycle::Completed
                     }
                     ReducedMotionStrategy::HoldInitial => ExplicitLifecycle::HoldInitial,
-                    ReducedMotionStrategy::PreserveEssential => checked_active(declaration, instant)?,
+                    ReducedMotionStrategy::PreserveEssential => {
+                        checked_active(declaration, instant)?
+                    }
                     _ => unreachable!(
                         "runtime and core reduced-motion strategy vocabularies are version-locked"
                     ),
@@ -1005,7 +1006,9 @@ fn resolved_transition_policy(
         None => ResolvedTransitionPolicy::Absent,
         Some(TransitionPolicy::Disabled) => ResolvedTransitionPolicy::Disabled,
         Some(TransitionPolicy::Enabled(spec)) => ResolvedTransitionPolicy::Enabled(spec.clone()),
-        Some(_) => unreachable!("runtime and core transition-policy vocabularies are version-locked"),
+        Some(_) => {
+            unreachable!("runtime and core transition-policy vocabularies are version-locked")
+        }
     }
 }
 
