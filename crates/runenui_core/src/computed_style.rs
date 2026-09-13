@@ -131,11 +131,11 @@ impl ComputedStyle {
     pub(crate) fn apply_style_motion_value(&mut self, value: &MotionValue) -> bool {
         match value {
             MotionValue::Foreground(value) => self.foreground = *value,
-            MotionValue::Background(value) => self.background = value.clone(),
+            MotionValue::Background(value) => self.background.clone_from(value),
             MotionValue::Padding(value) => self.padding = *value,
             MotionValue::Radius(value) => self.radius = *value,
-            MotionValue::Typography(value) => self.typography = value.clone(),
-            MotionValue::Shadows(value) => self.shadows = value.clone(),
+            MotionValue::Typography(value) => self.typography.clone_from(value),
+            MotionValue::Shadows(value) => self.shadows.clone_from(value),
             MotionValue::Opacity(value) => self.opacity = *value,
             MotionValue::Presentation(value) => self.presentation = *value,
             MotionValue::Width(_)
