@@ -12,8 +12,9 @@ use crate::style_debug::SurfaceStyleReport;
 
 use super::cache::{CachedLayoutFacts, context_key};
 use super::resolve::{
-    PresentationGeometryError, ResolvedSurfaceTree, collect_topology, hit_contexts, paint_contexts,
-    resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
+    CachedEffectiveFacts, PresentationGeometryError, ResolvedSurfaceTree, collect_topology,
+    hit_contexts, paint_contexts, resolve_diagnostics, resolve_hit_test, resolve_paint,
+    resolve_presentation, resolve_styles,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::PlannedSurfacePublication;
@@ -126,7 +127,7 @@ fn resolve_contribution_phases<Action>(
     report: &mut SurfacePhaseReport,
     completed: &mut DirtyPhases,
 ) -> bool {
-    let paint_contexts = paint_contexts(&current.layout, &current.styles);
+    let paint_contexts = paint_contexts(&current.layout, &current.effective);
     let hit_contexts = hit_contexts(&current.layout);
     tree.plan_surface_publication_contributions(capability_plan, &paint_contexts, &hit_contexts);
 
@@ -146,7 +147,7 @@ fn resolve_contribution_phases<Action>(
             &current.topology,
             &current.layout,
             &current.presentation,
-            &current.styles,
+            &current.effective,
             capability_plan,
             text_system,
         );
@@ -167,7 +168,7 @@ fn resolve_layout_phase<Action>(
     context: &SurfaceBuildContext<'_>,
     text_system: &mut TextSystem,
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
-    let resolved = ResolvedSurfaceTree::for_layout(tree, &current.topology, &current.styles);
+    let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
     let (size, bounds, report, text_layouts) = layout_resolved_surface(
         &resolved,
         tree,
@@ -199,8 +200,8 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
 
     let mut current = stage_non_structural_cache(cache);
     let style_dirty = style_product_is_dirty(pending, &current, &next_context, interaction);
-    let mut layout_dirty =
-        pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
+    let target_layout_dirty = pending.contains(DirtyPhases::LAYOUT);
+    let mut layout_dirty = target_layout_dirty || layout_context_changed(&current, &next_context);
     let mut presentation_dirty = layout_dirty;
     let mut hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
     let mut paint_dirty = pending.contains(DirtyPhases::PAINT);
@@ -217,14 +218,21 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
             interaction,
             &capability_plan,
         );
-        let effects = current.styles.effects_against(&next_styles);
-        layout_dirty |= effects.layout();
-        presentation_dirty |= effects.presentation();
-        paint_dirty |= effects.paint();
         current.interaction = Arc::new(interaction.clone());
         current.styles = Arc::new(next_styles);
         report.record(SurfacePhase::Style);
         completed.insert(DirtyPhases::STYLE);
+    }
+
+    if style_dirty || target_layout_dirty {
+        let next_effective = CachedEffectiveFacts::identity(tree, &current.topology, &current.styles);
+        let effects = current.effective.effects_against(&next_effective);
+        layout_dirty |= effects.layout();
+        presentation_dirty |= effects.presentation();
+        paint_dirty |= effects.paint();
+        if current.effective.as_ref() != &next_effective {
+            current.effective = Arc::new(next_effective);
+        }
     }
 
     presentation_dirty |= layout_dirty;
@@ -252,7 +260,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         completed.insert(DirtyPhases::LAYOUT);
     }
     if presentation_dirty {
-        current.presentation = Arc::new(resolve_presentation(&current.layout, &current.styles)?);
+        current.presentation = Arc::new(resolve_presentation(&current.layout, &current.effective)?);
     }
 
     let scene_diagnostics_changed = resolve_contribution_phases(
@@ -315,10 +323,11 @@ fn plan_structural_surface<'tree, Action>(
         interaction,
         &capability_plan,
     );
+    let effective = CachedEffectiveFacts::identity(tree, &topology, &styles);
     report.record(SurfacePhase::Style);
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let semantic_capability_plan = tree.plan_semantic_publication_capabilities(&capability_plan);
-    let resolved = ResolvedSurfaceTree::for_layout(tree, &topology, &styles);
+    let resolved = ResolvedSurfaceTree::for_layout(&topology, &effective);
     let (size, bounds, layout_report, text_layouts) = layout_resolved_surface(
         &resolved,
         tree,
@@ -333,9 +342,9 @@ fn plan_structural_surface<'tree, Action>(
         text_layouts,
     };
     report.record(SurfacePhase::Layout);
-    let presentation = resolve_presentation(&layout, &styles)?;
+    let presentation = resolve_presentation(&layout, &effective)?;
 
-    let paint_contexts = paint_contexts(&layout, &styles);
+    let paint_contexts = paint_contexts(&layout, &effective);
     let hit_contexts = hit_contexts(&layout);
     tree.plan_surface_publication_contributions(
         &mut capability_plan,
@@ -350,7 +359,7 @@ fn plan_structural_surface<'tree, Action>(
         &topology,
         &layout,
         &presentation,
-        &styles,
+        &effective,
         &capability_plan,
         text_system,
     );
@@ -376,6 +385,7 @@ fn plan_structural_surface<'tree, Action>(
         topology: Arc::new(topology),
         interaction: Arc::new(interaction.clone()),
         styles: Arc::new(styles),
+        effective: Arc::new(effective),
         layout: Arc::new(layout),
         presentation: Arc::new(presentation),
         hit_test,
@@ -489,7 +499,7 @@ fn compose_publication(cache: &SurfaceCache) -> SurfacePublication {
                     widget_type_id: node.widget_type_id,
                     diagnostics: combined_node_diagnostics(cache, index),
                 },
-                cache.styles.resolutions[index].computed_style(),
+                cache.effective.node(index).computed_style(),
             )
         })
         .collect();
@@ -504,6 +514,7 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
     let expected = cache.topology.nodes.len();
     if cache.styles.resolutions.len() != expected
         || cache.styles.report.nodes().len() != expected
+        || cache.effective.nodes.len() != expected
         || cache.layout.bounds.len() != expected
         || cache.layout.report.nodes().len() != expected
         || cache.layout.text_layouts.len() != expected

@@ -145,7 +145,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let index = node_index(node);
         let mut style = lower_style(
             self.resolved.nodes()[index].layout(),
-            self.resolved.nodes()[index].resolution().computed_style(),
+            self.resolved.nodes()[index].computed_style(),
         );
         if index == 0 {
             style.min_size.width =
@@ -188,7 +188,6 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             Ok(WidgetMeasure::Text { content }) => {
                 self.custom_intrinsic_sizes[index] = None;
                 let typography = resolved
-                    .resolution()
                     .computed_style()
                     .typography()
                     .cloned()
@@ -894,10 +893,7 @@ fn grid_placement(
 }
 
 fn resolved_padding(node: &ResolvedSurfaceNode) -> EdgeInsets {
-    node.resolution()
-        .computed_style()
-        .padding()
-        .unwrap_or(EdgeInsets::ZERO)
+    node.computed_style().padding().unwrap_or(EdgeInsets::ZERO)
 }
 fn logical_size(width: f32, height: f32) -> LogicalSize {
     LogicalSize::try_new(width.max(0.0), height.max(0.0)).unwrap_or(LogicalSize::ZERO)
