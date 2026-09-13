@@ -113,6 +113,42 @@ impl WidgetMeasureInput {
 }
 
 /// Intrinsic content measurement returned by an open widget.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WidgetMeasuredSize {
+    size: LogicalSize,
+    first_baseline: Option<LogicalLength>,
+    last_baseline: Option<LogicalLength>,
+}
+
+impl WidgetMeasuredSize {
+    #[must_use]
+    pub const fn new(
+        size: LogicalSize,
+        first_baseline: Option<LogicalLength>,
+        last_baseline: Option<LogicalLength>,
+    ) -> Self {
+        Self {
+            size,
+            first_baseline,
+            last_baseline,
+        }
+    }
+
+    #[must_use]
+    pub const fn size(self) -> LogicalSize {
+        self.size
+    }
+    #[must_use]
+    pub const fn first_baseline(self) -> Option<LogicalLength> {
+        self.first_baseline
+    }
+    #[must_use]
+    pub const fn last_baseline(self) -> Option<LogicalLength> {
+        self.last_baseline
+    }
+}
+
+/// Production measurement capability contributed by a widget.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum WidgetMeasure {
