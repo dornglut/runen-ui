@@ -31,7 +31,7 @@ impl MaskLimits {
         }
     }
 
-    fn ensure(self, required_bytes: u64) -> Result<(), MaskError> {
+    const fn ensure(self, required_bytes: u64) -> Result<(), MaskError> {
         if required_bytes > self.max_workspace_bytes {
             return Err(MaskError::AllocationExceedsLimit {
                 required_bytes,
@@ -337,10 +337,9 @@ fn residency_with_mask(
     mask: Option<&RasterMask>,
     limits: MaskLimits,
 ) -> Result<MaskResidency, MaskError> {
-    match mask {
-        Some(mask) => residency.with_payload::<u8>(mask.samples.len(), limits),
-        None => Ok(residency),
-    }
+    mask.map_or(Ok(residency), |mask| {
+        residency.with_payload::<u8>(mask.samples.len(), limits)
+    })
 }
 
 fn geometry_mask(
@@ -592,6 +591,8 @@ fn union_pair(
             }
         }
     }
+    drop(left);
+    drop(right);
     Ok(result)
 }
 
