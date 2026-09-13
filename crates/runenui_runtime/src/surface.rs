@@ -8,6 +8,7 @@
 mod cache;
 mod context;
 mod interaction;
+mod motion;
 mod planning;
 mod resolve;
 mod taffy_layout;
