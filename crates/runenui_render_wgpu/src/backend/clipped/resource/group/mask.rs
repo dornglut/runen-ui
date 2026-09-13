@@ -7,7 +7,7 @@
 //! Off-surface source support is retained through spread/offset/blur and is cropped
 //! only after the complete shadow has been realized.
 
-use std::{fmt, sync::Arc};
+use std::{fmt, mem::size_of, sync::Arc};
 
 use runenui_core::{LogicalTransform, SceneShape};
 use runenui_runtime::{RasterScale, SceneClip};
@@ -18,7 +18,6 @@ use super::super::super::super::{OffscreenExtent, RasterCanvasExtent};
 use super::support::{NeutralPrimitiveSupport, NeutralSupport};
 
 const DISTANCE_INFINITY: f64 = 1.0e30;
-const PEAK_WORKSPACE_BYTES_PER_PIXEL: u64 = 24;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct MaskLimits {
@@ -31,15 +30,47 @@ impl MaskLimits {
             max_workspace_bytes,
         }
     }
+
+    fn ensure(self, required_bytes: u64) -> Result<(), MaskError> {
+        if required_bytes > self.max_workspace_bytes {
+            return Err(MaskError::AllocationExceedsLimit {
+                required_bytes,
+                max_bytes: self.max_workspace_bytes,
+            });
+        }
+        Ok(())
+    }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MaskResidency {
+    bytes: u64,
+}
+
+impl MaskResidency {
+    const ZERO: Self = Self { bytes: 0 };
+
+    fn with_bytes(self, additional_bytes: u64, limits: MaskLimits) -> Result<Self, MaskError> {
+        let bytes = self
+            .bytes
+            .checked_add(additional_bytes)
+            .ok_or(MaskError::WorkspaceExtentOverflow)?;
+        limits.ensure(bytes)?;
+        Ok(Self { bytes })
+    }
+
+    fn with_payload<T>(self, len: usize, limits: MaskLimits) -> Result<Self, MaskError> {
+        self.with_bytes(payload_bytes::<T>(len)?, limits)
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub(super) struct AlphaMask {
     origin_x: u32,
     origin_y: u32,
     width: u32,
     height: u32,
-    alpha: Arc<[u8]>,
+    alpha: Vec<u8>,
 }
 
 impl AlphaMask {
@@ -59,8 +90,8 @@ impl AlphaMask {
         self.height
     }
 
-    pub(super) const fn alpha(&self) -> &Arc<[u8]> {
-        &self.alpha
+    pub(super) const fn alpha(&self) -> &[u8] {
+        self.alpha.as_slice()
     }
 }
 
@@ -116,10 +147,11 @@ pub(super) fn prepare_visual_shadow(
     limits: MaskLimits,
 ) -> Result<Option<AlphaMask>, MaskError> {
     let scale = f64::from(raster_scale.get());
-    let Some(mut source) = rasterize_support(source, scale, limits)? else {
+    let residency = MaskResidency::ZERO;
+    let Some(mut source) = rasterize_support(source, scale, residency, limits)? else {
         return Ok(None);
     };
-    source = signed_euclidean_spread(source, spread * scale, limits)?;
+    source = signed_euclidean_spread(source, spread * scale, residency, limits)?;
     if source.is_empty() {
         return Ok(None);
     }
@@ -127,19 +159,24 @@ pub(super) fn prepare_visual_shadow(
     source.origin_y = offset_y.mul_add(scale, source.origin_y);
     let sigma = blur_square_half_extent / 3.0 * scale;
     let blur_radius = blur_square_half_extent * scale;
-    let blurred = gaussian_blur(source, sigma, blur_radius, limits)?;
-    crop_to_final_canvas(&blurred, canvas_extent, target_extent, limits)
+    let blurred = gaussian_blur(source, sigma, blur_radius, residency, limits)?;
+    crop_to_final_canvas(blurred, canvas_extent, target_extent, residency, limits)
 }
 
 fn rasterize_support(
     support: &Arc<NeutralSupport>,
     scale: f64,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<Option<RasterMask>, MaskError> {
     match support.as_ref() {
         NeutralSupport::Empty => Ok(None),
-        NeutralSupport::Primitive(primitive) => rasterize_primitive(primitive, scale, limits),
-        NeutralSupport::Union(members) => rasterize_support_union(members, scale, limits),
+        NeutralSupport::Primitive(primitive) => {
+            rasterize_primitive(primitive, scale, residency, limits)
+        }
+        NeutralSupport::Union(members) => {
+            rasterize_support_union(members, scale, residency, limits)
+        }
         NeutralSupport::Shadow {
             source,
             spread,
@@ -147,19 +184,26 @@ fn rasterize_support(
             offset_y,
             blur_square_half_extent,
         } => {
-            let Some(source) = rasterize_support(source, scale, limits)? else {
+            let Some(source) = rasterize_support(source, scale, residency, limits)? else {
                 return Ok(None);
             };
-            let mut shadow = signed_euclidean_spread(source, *spread * scale, limits)?;
+            let mut shadow =
+                signed_euclidean_spread(source, *spread * scale, residency, limits)?;
             if shadow.is_empty() {
                 return Ok(None);
             }
             shadow.origin_x = (*offset_x).mul_add(scale, shadow.origin_x);
             shadow.origin_y = (*offset_y).mul_add(scale, shadow.origin_y);
-            square_dilate(shadow, *blur_square_half_extent * scale, limits).map(Some)
+            square_dilate(
+                shadow,
+                *blur_square_half_extent * scale,
+                residency,
+                limits,
+            )
+            .map(Some)
         }
         NeutralSupport::Clip { source, clips } => {
-            let Some(mut source) = rasterize_support(source, scale, limits)? else {
+            let Some(mut source) = rasterize_support(source, scale, residency, limits)? else {
                 return Ok(None);
             };
             for clip in clips.iter() {
@@ -176,11 +220,14 @@ fn rasterize_support(
 fn rasterize_support_union(
     members: &[Arc<NeutralSupport>],
     scale: f64,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<Option<RasterMask>, MaskError> {
     let mut union = None;
     for member in members {
-        union = merge_masks(union, rasterize_support(member, scale, limits)?, limits)?;
+        let member_residency = residency_with_mask(residency, union.as_ref(), limits)?;
+        let next = rasterize_support(member, scale, member_residency, limits)?;
+        union = merge_masks(union, next, residency, limits)?;
     }
     Ok(union)
 }
@@ -188,6 +235,7 @@ fn rasterize_support_union(
 fn rasterize_primitive(
     primitive: &NeutralPrimitiveSupport,
     scale: f64,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<Option<RasterMask>, MaskError> {
     match primitive {
@@ -198,6 +246,7 @@ fn rasterize_primitive(
             &tessellate_fill(shape).map_err(|error| MaskError::Geometry(error.to_string()))?,
             *local_to_surface,
             scale,
+            residency,
             limits,
         ),
         NeutralPrimitiveSupport::Stroke {
@@ -209,6 +258,7 @@ fn rasterize_primitive(
                 .map_err(|error| MaskError::Geometry(error.to_string()))?,
             *local_to_surface,
             scale,
+            residency,
             limits,
         ),
         NeutralPrimitiveSupport::Image {
@@ -220,11 +270,15 @@ fn rasterize_primitive(
                 let shape = SceneShape::rect(*destination);
                 let geometry = tessellate_fill(&shape)
                     .map_err(|error| MaskError::Geometry(error.to_string()))?;
-                union = merge_masks(
-                    union,
-                    geometry_mask(&geometry, *local_to_surface, scale, limits)?,
+                let member_residency = residency_with_mask(residency, union.as_ref(), limits)?;
+                let next = geometry_mask(
+                    &geometry,
+                    *local_to_surface,
+                    scale,
+                    member_residency,
                     limits,
                 )?;
+                union = merge_masks(union, next, residency, limits)?;
             }
             Ok(union)
         }
@@ -238,18 +292,22 @@ fn rasterize_primitive(
                 let shape = SceneShape::path(path.clone());
                 let geometry = tessellate_fill(&shape)
                     .map_err(|error| MaskError::Geometry(error.to_string()))?;
-                union = merge_masks(
-                    union,
-                    geometry_mask(&geometry, *local_to_surface, scale, limits)?,
+                let member_residency = residency_with_mask(residency, union.as_ref(), limits)?;
+                let next = geometry_mask(
+                    &geometry,
+                    *local_to_surface,
+                    scale,
+                    member_residency,
                     limits,
                 )?;
+                union = merge_masks(union, next, residency, limits)?;
             }
             Ok(union)
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct RasterMask {
     origin_x: f64,
     origin_y: f64,
@@ -281,22 +339,30 @@ impl RasterMask {
     }
 }
 
+fn residency_with_mask(
+    residency: MaskResidency,
+    mask: Option<&RasterMask>,
+    limits: MaskLimits,
+) -> Result<MaskResidency, MaskError> {
+    match mask {
+        Some(mask) => residency.with_payload::<u8>(mask.samples.len(), limits),
+        None => Ok(residency),
+    }
+}
+
 fn geometry_mask(
     geometry: &TessellatedGeometry,
     transform: LogicalTransform,
     scale: f64,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<Option<RasterMask>, MaskError> {
     if geometry.positions().is_empty() || geometry.indices().is_empty() {
         return Ok(None);
     }
-    let transformed = geometry
-        .positions()
-        .iter()
-        .copied()
-        .map(|point| transform_physical(point, transform, scale))
-        .collect::<Vec<_>>();
-    let Some((origin_x, origin_y, width, height)) = point_workspace(&transformed, limits)? else {
+    let Some((origin_x, origin_y, width, height)) =
+        transformed_workspace(geometry, transform, scale)?
+    else {
         return Ok(None);
     };
     let mut mask = RasterMask {
@@ -304,12 +370,24 @@ fn geometry_mask(
         origin_y,
         width,
         height,
-        samples: allocate_u8_samples(width, height, limits)?,
+        samples: allocate_u8_samples(width, height, residency, limits)?,
     };
     for triangle in geometry.indices().chunks_exact(3) {
-        let a = transformed[usize_from_u32(triangle[0])];
-        let b = transformed[usize_from_u32(triangle[1])];
-        let c = transformed[usize_from_u32(triangle[2])];
+        let a = transform_physical(
+            geometry.positions()[usize_from_u32(triangle[0])],
+            transform,
+            scale,
+        );
+        let b = transform_physical(
+            geometry.positions()[usize_from_u32(triangle[1])],
+            transform,
+            scale,
+        );
+        let c = transform_physical(
+            geometry.positions()[usize_from_u32(triangle[2])],
+            transform,
+            scale,
+        );
         rasterize_triangle(&mut mask, a, b, c);
     }
     Ok((!mask.is_empty()).then_some(mask))
@@ -325,24 +403,30 @@ fn transform_physical(point: [f32; 2], transform: LogicalTransform, scale: f64) 
     ]
 }
 
-fn point_workspace(
-    points: &[[f64; 2]],
-    limits: MaskLimits,
+fn transformed_workspace(
+    geometry: &TessellatedGeometry,
+    transform: LogicalTransform,
+    scale: f64,
 ) -> Result<Option<(f64, f64, u32, u32)>, MaskError> {
-    let Some(first) = points.first().copied() else {
+    let mut points = geometry
+        .positions()
+        .iter()
+        .copied()
+        .map(|point| transform_physical(point, transform, scale));
+    let Some(first) = points.next() else {
         return Ok(None);
     };
     let mut min_x = first[0];
     let mut min_y = first[1];
     let mut max_x = first[0];
     let mut max_y = first[1];
-    for [x, y] in points.iter().copied().skip(1) {
+    for [x, y] in points {
         min_x = min_x.min(x);
         min_y = min_y.min(y);
         max_x = max_x.max(x);
         max_y = max_y.max(y);
     }
-    workspace_from_bounds(min_x, min_y, max_x, max_y, limits)
+    workspace_from_bounds(min_x, min_y, max_x, max_y)
 }
 
 fn workspace_from_bounds(
@@ -350,7 +434,6 @@ fn workspace_from_bounds(
     min_y: f64,
     max_x: f64,
     max_y: f64,
-    limits: MaskLimits,
 ) -> Result<Option<(f64, f64, u32, u32)>, MaskError> {
     if ![min_x, min_y, max_x, max_y].into_iter().all(f64::is_finite) {
         return Err(MaskError::NonFiniteWorkspace);
@@ -364,7 +447,6 @@ fn workspace_from_bounds(
     }
     let width = finite_dimension(end_x - origin_x)?;
     let height = finite_dimension(end_y - origin_y)?;
-    validate_workspace(width, height, limits)?;
     Ok(Some((origin_x, origin_y, width, height)))
 }
 
@@ -375,33 +457,41 @@ fn finite_dimension(value: f64) -> Result<u32, MaskError> {
     Ok(f64_to_u32(value))
 }
 
-fn validate_workspace(width: u32, height: u32, limits: MaskLimits) -> Result<(), MaskError> {
+fn sample_count(width: u32, height: u32) -> Result<usize, MaskError> {
     let pixels = u64::from(width)
         .checked_mul(u64::from(height))
         .ok_or(MaskError::WorkspaceExtentOverflow)?;
-    let required_bytes = pixels
-        .checked_mul(PEAK_WORKSPACE_BYTES_PER_PIXEL)
-        .ok_or(MaskError::WorkspaceExtentOverflow)?;
-    if required_bytes > limits.max_workspace_bytes {
-        return Err(MaskError::AllocationExceedsLimit {
-            required_bytes,
-            max_bytes: limits.max_workspace_bytes,
-        });
-    }
-    Ok(())
+    usize::try_from(pixels).map_err(|_| MaskError::WorkspaceExtentOverflow)
 }
 
-fn sample_count(width: u32, height: u32, limits: MaskLimits) -> Result<usize, MaskError> {
-    validate_workspace(width, height, limits)?;
-    usize::try_from(u64::from(width) * u64::from(height))
-        .map_err(|_| MaskError::WorkspaceExtentOverflow)
+fn payload_bytes<T>(len: usize) -> Result<u64, MaskError> {
+    let len = u64::try_from(len).map_err(|_| MaskError::WorkspaceExtentOverflow)?;
+    let item_size =
+        u64::try_from(size_of::<T>()).map_err(|_| MaskError::WorkspaceExtentOverflow)?;
+    len.checked_mul(item_size)
+        .ok_or(MaskError::WorkspaceExtentOverflow)
 }
 
-fn allocate_u8_samples(width: u32, height: u32, limits: MaskLimits) -> Result<Vec<u8>, MaskError> {
-    zeroed_vec(sample_count(width, height, limits)?, 0_u8)
+fn allocate_u8_samples(
+    width: u32,
+    height: u32,
+    residency: MaskResidency,
+    limits: MaskLimits,
+) -> Result<Vec<u8>, MaskError> {
+    allocate_filled_vec(sample_count(width, height)?, 0_u8, residency, limits)
 }
 
-fn zeroed_vec<T: Clone>(len: usize, value: T) -> Result<Vec<T>, MaskError> {
+fn allocate_filled_vec<T: Clone>(
+    len: usize,
+    value: T,
+    residency: MaskResidency,
+    limits: MaskLimits,
+) -> Result<Vec<T>, MaskError> {
+    residency.with_payload::<T>(len, limits)?;
+    fallible_filled_vec(len, value)
+}
+
+fn fallible_filled_vec<T: Clone>(len: usize, value: T) -> Result<Vec<T>, MaskError> {
     let mut values = Vec::new();
     values
         .try_reserve_exact(len)
@@ -462,18 +552,20 @@ fn edge_sign(point: [f64; 2], from: [f64; 2], to: [f64; 2]) -> f64 {
 fn merge_masks(
     current: Option<RasterMask>,
     next: Option<RasterMask>,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<Option<RasterMask>, MaskError> {
     match (current, next) {
         (None, next) => Ok(next),
         (current, None) => Ok(current),
-        (Some(current), Some(next)) => union_pair(&current, &next, limits).map(Some),
+        (Some(current), Some(next)) => union_pair(current, next, residency, limits).map(Some),
     }
 }
 
 fn union_pair(
-    left: &RasterMask,
-    right: &RasterMask,
+    left: RasterMask,
+    right: RasterMask,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<RasterMask, MaskError> {
     let min_x = left.origin_x.min(right.origin_x);
@@ -483,16 +575,19 @@ fn union_pair(
     let max_y =
         (left.origin_y + f64::from(left.height)).max(right.origin_y + f64::from(right.height));
     let Some((origin_x, origin_y, width, height)) =
-        workspace_from_bounds(min_x, min_y, max_x, max_y, limits)?
+        workspace_from_bounds(min_x, min_y, max_x, max_y)?
     else {
         unreachable!("union of two non-empty raster masks has non-empty bounds")
     };
+    let live = residency
+        .with_payload::<u8>(left.samples.len(), limits)?
+        .with_payload::<u8>(right.samples.len(), limits)?;
     let mut result = RasterMask {
         origin_x,
         origin_y,
         width,
         height,
-        samples: allocate_u8_samples(width, height, limits)?,
+        samples: allocate_u8_samples(width, height, live, limits)?,
     };
     let width_usize = usize_from_u32(width);
     for y in 0..usize_from_u32(height) {
@@ -533,64 +628,83 @@ fn intersect_clip(mask: &mut RasterMask, clip: &SceneClip, scale: f64) -> Result
 fn signed_euclidean_spread(
     mask: RasterMask,
     radius: f64,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<RasterMask, MaskError> {
     if radius == 0.0 || mask.is_empty() {
         return Ok(mask);
     }
     if radius > 0.0 {
-        dilate_euclidean(&mask, radius, limits)
+        dilate_euclidean(mask, radius, residency, limits)
     } else {
-        erode_euclidean(&mask, -radius, limits)
+        erode_euclidean(mask, -radius, residency, limits)
     }
 }
 
 fn dilate_euclidean(
-    mask: &RasterMask,
+    mask: RasterMask,
     radius: f64,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<RasterMask, MaskError> {
     if radius <= 0.0 || mask.is_empty() {
-        return Ok(mask.clone());
+        return Ok(mask);
     }
     let pad = radius_pad(radius, 0)?;
-    let padded = pad_mask(mask, pad, limits)?;
-    let distances =
-        squared_distance_transform(&padded.samples, padded.width, padded.height, true, limits)?;
+    let mut padded = pad_mask(mask, pad, residency, limits)?;
+    let padded_residency = residency.with_payload::<u8>(padded.samples.len(), limits)?;
+    let distances = squared_distance_transform(
+        &padded.samples,
+        padded.width,
+        padded.height,
+        true,
+        padded_residency,
+        limits,
+    )?;
     let threshold = radius * radius;
-    let samples = distances
-        .into_iter()
-        .map(|distance| if distance <= threshold { u8::MAX } else { 0 })
-        .collect();
-    Ok(RasterMask { samples, ..padded })
+    for (sample, distance) in padded.samples.iter_mut().zip(distances.iter().copied()) {
+        *sample = if distance <= threshold { u8::MAX } else { 0 };
+    }
+    Ok(padded)
 }
 
 fn erode_euclidean(
-    mask: &RasterMask,
+    mask: RasterMask,
     radius: f64,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<RasterMask, MaskError> {
     if radius <= 0.0 || mask.is_empty() {
-        return Ok(mask.clone());
+        return Ok(mask);
     }
+    let origin_x = mask.origin_x;
+    let origin_y = mask.origin_y;
+    let width = mask.width;
+    let height = mask.height;
     let pad = radius_pad(radius, 1)?;
-    let padded = pad_mask(mask, pad, limits)?;
-    let distances =
-        squared_distance_transform(&padded.samples, padded.width, padded.height, false, limits)?;
-    let threshold = radius * radius;
+    let padded = pad_mask(mask, pad, residency, limits)?;
     let padded_width = usize_from_u32(padded.width);
-    let source_width = usize_from_u32(mask.width);
-    let source_height = usize_from_u32(mask.height);
+    let padded_residency = residency.with_payload::<u8>(padded.samples.len(), limits)?;
+    let distances = squared_distance_transform(
+        &padded.samples,
+        padded.width,
+        padded.height,
+        false,
+        padded_residency,
+        limits,
+    )?;
+    drop(padded);
+
+    let distance_residency = residency.with_payload::<f64>(distances.len(), limits)?;
+    let mut samples = allocate_u8_samples(width, height, distance_residency, limits)?;
+    let threshold = radius * radius;
+    let source_width = usize_from_u32(width);
+    let source_height = usize_from_u32(height);
     let pad_usize = usize_from_u32(pad);
-    let mut samples = allocate_u8_samples(mask.width, mask.height, limits)?;
     for y in 0..source_height {
         for x in 0..source_width {
-            let source_index = y * source_width + x;
-            if mask.samples[source_index] == 0 {
-                continue;
-            }
             let padded_index = (y + pad_usize) * padded_width + x + pad_usize;
-            samples[source_index] = if distances[padded_index] > threshold {
+            samples[y * source_width + x] = if distances[padded_index] > threshold {
                 u8::MAX
             } else {
                 0
@@ -598,10 +712,10 @@ fn erode_euclidean(
         }
     }
     Ok(RasterMask {
-        origin_x: mask.origin_x,
-        origin_y: mask.origin_y,
-        width: mask.width,
-        height: mask.height,
+        origin_x,
+        origin_y,
+        width,
+        height,
         samples,
     })
 }
@@ -619,34 +733,46 @@ fn radius_pad(radius: f64, extra: u32) -> Result<u32, MaskError> {
         .ok_or(MaskError::WorkspaceExtentOverflow)
 }
 
-fn pad_mask(mask: &RasterMask, pad: u32, limits: MaskLimits) -> Result<RasterMask, MaskError> {
+fn pad_mask(
+    mask: RasterMask,
+    pad: u32,
+    residency: MaskResidency,
+    limits: MaskLimits,
+) -> Result<RasterMask, MaskError> {
     if pad == 0 {
-        return Ok(mask.clone());
+        return Ok(mask);
     }
+    let RasterMask {
+        origin_x,
+        origin_y,
+        width: source_width,
+        height: source_height,
+        samples: source_samples,
+    } = mask;
     let double_pad = pad
         .checked_mul(2)
         .ok_or(MaskError::WorkspaceExtentOverflow)?;
-    let width = mask
-        .width
+    let width = source_width
         .checked_add(double_pad)
         .ok_or(MaskError::WorkspaceExtentOverflow)?;
-    let height = mask
-        .height
+    let height = source_height
         .checked_add(double_pad)
         .ok_or(MaskError::WorkspaceExtentOverflow)?;
-    let mut samples = allocate_u8_samples(width, height, limits)?;
+    let source_residency = residency.with_payload::<u8>(source_samples.len(), limits)?;
+    let mut samples = allocate_u8_samples(width, height, source_residency, limits)?;
     let destination_width = usize_from_u32(width);
-    let source_width = usize_from_u32(mask.width);
+    let source_width_usize = usize_from_u32(source_width);
     let pad_usize = usize_from_u32(pad);
-    for y in 0..usize_from_u32(mask.height) {
-        let source = y * source_width;
+    for y in 0..usize_from_u32(source_height) {
+        let source = y * source_width_usize;
         let destination = (y + pad_usize) * destination_width + pad_usize;
-        samples[destination..destination + source_width]
-            .copy_from_slice(&mask.samples[source..source + source_width]);
+        samples[destination..destination + source_width_usize]
+            .copy_from_slice(&source_samples[source..source + source_width_usize]);
     }
+    drop(source_samples);
     Ok(RasterMask {
-        origin_x: mask.origin_x - f64::from(pad),
-        origin_y: mask.origin_y - f64::from(pad),
+        origin_x: origin_x - f64::from(pad),
+        origin_y: origin_y - f64::from(pad),
         width,
         height,
         samples,
@@ -658,6 +784,7 @@ fn squared_distance_transform(
     width: u32,
     height: u32,
     feature: bool,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<Vec<f64>, MaskError> {
     let width = usize_from_u32(width);
@@ -665,43 +792,52 @@ fn squared_distance_transform(
     let len = sample_count(
         u32::try_from(width).map_err(|_| MaskError::WorkspaceExtentOverflow)?,
         u32::try_from(height).map_err(|_| MaskError::WorkspaceExtentOverflow)?,
-        limits,
     )?;
-    let mut intermediate = zeroed_vec(len, 0.0_f64)?;
-    let mut result = zeroed_vec(len, 0.0_f64)?;
-    let mut column = zeroed_vec(height, 0.0_f64)?;
-    let mut transformed = zeroed_vec(height, 0.0_f64)?;
-    let mut locations = zeroed_vec(height.max(width), 0_usize)?;
-    let mut boundaries = zeroed_vec(height.max(width).saturating_add(1), 0.0_f64)?;
+    let max_dimension = width.max(height);
+    let boundary_len = max_dimension
+        .checked_add(1)
+        .ok_or(MaskError::WorkspaceExtentOverflow)?;
+    residency
+        .with_payload::<f64>(len, limits)?
+        .with_payload::<f64>(max_dimension, limits)?
+        .with_payload::<f64>(max_dimension, limits)?
+        .with_payload::<usize>(max_dimension, limits)?
+        .with_payload::<f64>(boundary_len, limits)?;
+
+    let mut grid = fallible_filled_vec(len, 0.0_f64)?;
+    let mut line = fallible_filled_vec(max_dimension, 0.0_f64)?;
+    let mut transformed = fallible_filled_vec(max_dimension, 0.0_f64)?;
+    let mut locations = fallible_filled_vec(max_dimension, 0_usize)?;
+    let mut boundaries = fallible_filled_vec(boundary_len, 0.0_f64)?;
+
     for x in 0..width {
         for y in 0..height {
             let is_feature = (samples[y * width + x] != 0) == feature;
-            column[y] = if is_feature { 0.0 } else { DISTANCE_INFINITY };
+            line[y] = if is_feature { 0.0 } else { DISTANCE_INFINITY };
         }
         edt_1d(
-            &column,
-            &mut transformed,
+            &line[..height],
+            &mut transformed[..height],
             &mut locations[..height],
             &mut boundaries[..=height],
         );
         for y in 0..height {
-            intermediate[y * width + x] = transformed[y];
+            grid[y * width + x] = transformed[y];
         }
     }
-    let mut row = zeroed_vec(width, 0.0_f64)?;
-    let mut row_transformed = zeroed_vec(width, 0.0_f64)?;
+
     for y in 0..height {
         let start = y * width;
-        row.copy_from_slice(&intermediate[start..start + width]);
+        line[..width].copy_from_slice(&grid[start..start + width]);
         edt_1d(
-            &row,
-            &mut row_transformed,
+            &line[..width],
+            &mut transformed[..width],
             &mut locations[..width],
             &mut boundaries[..=width],
         );
-        result[start..start + width].copy_from_slice(&row_transformed);
+        grid[start..start + width].copy_from_slice(&transformed[..width]);
     }
-    Ok(result)
+    Ok(grid)
 }
 
 fn edt_1d(input: &[f64], output: &mut [f64], locations: &mut [usize], boundaries: &mut [f64]) {
@@ -749,6 +885,7 @@ fn parabola_intersection(input: &[f64], left: usize, right: usize) -> f64 {
 fn square_dilate(
     mask: RasterMask,
     radius: f64,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<RasterMask, MaskError> {
     if radius <= 0.0 || mask.is_empty() {
@@ -756,29 +893,39 @@ fn square_dilate(
     }
     let pad = radius_pad(radius, 0)?;
     let kernel_radius = bounded_f64_to_usize(radius.floor());
-    let padded = pad_mask(&mask, pad, limits)?;
+    let mut padded = pad_mask(mask, pad, residency, limits)?;
     if kernel_radius == 0 {
         return Ok(padded);
     }
     let width = usize_from_u32(padded.width);
     let height = usize_from_u32(padded.height);
-    let mut horizontal = zeroed_vec(padded.samples.len(), 0_u8)?;
+    let prefix_len = width
+        .max(height)
+        .checked_add(1)
+        .ok_or(MaskError::WorkspaceExtentOverflow)?;
+    let padded_residency = residency.with_payload::<u8>(padded.samples.len(), limits)?;
+    let mut prefix = allocate_filled_vec(prefix_len, 0_u32, padded_residency, limits)?;
+
     for y in 0..height {
-        let mut prefix = zeroed_vec(width.saturating_add(1), 0_u32)?;
+        prefix[0] = 0;
         for x in 0..width {
             prefix[x + 1] = prefix[x] + u32::from(padded.samples[y * width + x] != 0);
         }
         for x in 0..width {
             let start = x.saturating_sub(kernel_radius);
             let end = x.saturating_add(kernel_radius).saturating_add(1).min(width);
-            horizontal[y * width + x] = u8::from(prefix[end] != prefix[start]);
+            padded.samples[y * width + x] = if prefix[end] == prefix[start] {
+                0
+            } else {
+                u8::MAX
+            };
         }
     }
-    let mut samples = zeroed_vec(padded.samples.len(), 0_u8)?;
+
     for x in 0..width {
-        let mut prefix = zeroed_vec(height.saturating_add(1), 0_u32)?;
+        prefix[0] = 0;
         for y in 0..height {
-            prefix[y + 1] = prefix[y] + u32::from(horizontal[y * width + x] != 0);
+            prefix[y + 1] = prefix[y] + u32::from(padded.samples[y * width + x] != 0);
         }
         for y in 0..height {
             let start = y.saturating_sub(kernel_radius);
@@ -786,20 +933,21 @@ fn square_dilate(
                 .saturating_add(kernel_radius)
                 .saturating_add(1)
                 .min(height);
-            samples[y * width + x] = if prefix[end] == prefix[start] {
+            padded.samples[y * width + x] = if prefix[end] == prefix[start] {
                 0
             } else {
                 u8::MAX
             };
         }
     }
-    Ok(RasterMask { samples, ..padded })
+    Ok(padded)
 }
 
 fn gaussian_blur(
     mask: RasterMask,
     sigma: f64,
     blur_radius: f64,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<RasterMask, MaskError> {
     if blur_radius <= 0.0 || sigma <= 0.0 || mask.is_empty() {
@@ -807,20 +955,30 @@ fn gaussian_blur(
     }
     let pad = radius_pad(blur_radius, 0)?;
     let kernel_radius = bounded_f64_to_usize(blur_radius.floor());
-    let padded = pad_mask(&mask, pad, limits)?;
+    let mut padded = pad_mask(mask, pad, residency, limits)?;
     if kernel_radius == 0 {
         return Ok(padded);
     }
-    let mut weights = (0..=kernel_radius)
-        .map(|offset| (-0.5 * (usize_as_f64(offset) / sigma).powi(2)).exp())
-        .collect::<Vec<_>>();
+    let weights_len = kernel_radius
+        .checked_add(1)
+        .ok_or(MaskError::WorkspaceExtentOverflow)?;
+    let padded_residency = residency.with_payload::<u8>(padded.samples.len(), limits)?;
+    padded_residency
+        .with_payload::<f64>(padded.samples.len(), limits)?
+        .with_payload::<f64>(weights_len, limits)?;
+
+    let mut weights = fallible_filled_vec(weights_len, 0.0_f64)?;
+    for (offset, weight) in weights.iter_mut().enumerate() {
+        *weight = (-0.5 * (usize_as_f64(offset) / sigma).powi(2)).exp();
+    }
     let normalization = 2.0_f64.mul_add(weights.iter().skip(1).sum::<f64>(), weights[0]);
     for weight in &mut weights {
         *weight /= normalization;
     }
+
     let width = usize_from_u32(padded.width);
     let height = usize_from_u32(padded.height);
-    let mut horizontal = zeroed_vec(padded.samples.len(), 0.0_f64)?;
+    let mut horizontal = fallible_filled_vec(padded.samples.len(), 0.0_f64)?;
     for y in 0..height {
         for x in 0..width {
             let mut value = weights[0] * u8_to_unit(padded.samples[y * width + x]);
@@ -836,7 +994,6 @@ fn gaussian_blur(
             horizontal[y * width + x] = value;
         }
     }
-    let mut samples = zeroed_vec(padded.samples.len(), 0_u8)?;
     for y in 0..height {
         for x in 0..width {
             let mut value = weights[0] * horizontal[y * width + x];
@@ -849,16 +1006,17 @@ fn gaussian_blur(
                     value = weight.mul_add(horizontal[bottom * width + x], value);
                 }
             }
-            samples[y * width + x] = unit_to_u8(value);
+            padded.samples[y * width + x] = unit_to_u8(value);
         }
     }
-    Ok(RasterMask { samples, ..padded })
+    Ok(padded)
 }
 
 fn crop_to_final_canvas(
-    mask: &RasterMask,
+    mask: RasterMask,
     canvas_extent: RasterCanvasExtent,
     target_extent: OffscreenExtent,
+    residency: MaskResidency,
     limits: MaskLimits,
 ) -> Result<Option<AlphaMask>, MaskError> {
     if mask.is_empty() || canvas_extent.width() <= 0.0 || canvas_extent.height() <= 0.0 {
@@ -882,83 +1040,58 @@ fn crop_to_final_canvas(
     if end_x <= origin_x || end_y <= origin_y {
         return Ok(None);
     }
-    let width = end_x - origin_x;
-    let height = end_y - origin_y;
-    let mut alpha = allocate_u8_samples(width, height, limits)?;
-    let width_usize = usize_from_u32(width);
-    for y in 0..usize_from_u32(height) {
-        let target_y =
-            origin_y + u32::try_from(y).map_err(|_| MaskError::WorkspaceExtentOverflow)?;
+
+    let mut min_x = end_x;
+    let mut min_y = end_y;
+    let mut max_x = origin_x;
+    let mut max_y = origin_y;
+    let mut found = false;
+    for target_y in origin_y..end_y {
         let surface_y = f64::from(target_y) + 0.5;
         if surface_y >= canvas_extent.height() {
             continue;
         }
-        for x in 0..width_usize {
-            let target_x =
-                origin_x + u32::try_from(x).map_err(|_| MaskError::WorkspaceExtentOverflow)?;
+        for target_x in origin_x..end_x {
             let surface_x = f64::from(target_x) + 0.5;
-            if surface_x >= canvas_extent.width() {
-                continue;
-            }
-            alpha[y * width_usize + x] = mask.sample(surface_x, surface_y);
-        }
-    }
-    trim_alpha_mask(origin_x, origin_y, width, height, &alpha)
-}
-
-fn trim_alpha_mask(
-    origin_x: u32,
-    origin_y: u32,
-    width: u32,
-    height: u32,
-    alpha: &[u8],
-) -> Result<Option<AlphaMask>, MaskError> {
-    let width_usize = usize_from_u32(width);
-    let height_usize = usize_from_u32(height);
-    let mut min_x = width_usize;
-    let mut min_y = height_usize;
-    let mut max_x = 0_usize;
-    let mut max_y = 0_usize;
-    let mut found = false;
-    for y in 0..height_usize {
-        for x in 0..width_usize {
-            if alpha[y * width_usize + x] == 0 {
+            if surface_x >= canvas_extent.width() || mask.sample(surface_x, surface_y) == 0 {
                 continue;
             }
             found = true;
-            min_x = min_x.min(x);
-            min_y = min_y.min(y);
-            max_x = max_x.max(x + 1);
-            max_y = max_y.max(y + 1);
+            min_x = min_x.min(target_x);
+            min_y = min_y.min(target_y);
+            max_x = max_x.max(target_x.saturating_add(1));
+            max_y = max_y.max(target_y.saturating_add(1));
         }
     }
     if !found {
         return Ok(None);
     }
-    let trimmed_width = max_x - min_x;
-    let trimmed_height = max_y - min_y;
-    let mut trimmed = zeroed_vec(
-        trimmed_width
-            .checked_mul(trimmed_height)
-            .ok_or(MaskError::WorkspaceExtentOverflow)?,
-        0_u8,
-    )?;
-    for y in 0..trimmed_height {
-        let source = (min_y + y) * width_usize + min_x;
-        let destination = y * trimmed_width;
-        trimmed[destination..destination + trimmed_width]
-            .copy_from_slice(&alpha[source..source + trimmed_width]);
+
+    let width = max_x - min_x;
+    let height = max_y - min_y;
+    let source_residency = residency.with_payload::<u8>(mask.samples.len(), limits)?;
+    let mut alpha = allocate_u8_samples(width, height, source_residency, limits)?;
+    let width_usize = usize_from_u32(width);
+    for y in 0..usize_from_u32(height) {
+        let target_y = min_y
+            .checked_add(u32::try_from(y).map_err(|_| MaskError::WorkspaceExtentOverflow)?)
+            .ok_or(MaskError::WorkspaceExtentOverflow)?;
+        let surface_y = f64::from(target_y) + 0.5;
+        for x in 0..width_usize {
+            let target_x = min_x
+                .checked_add(u32::try_from(x).map_err(|_| MaskError::WorkspaceExtentOverflow)?)
+                .ok_or(MaskError::WorkspaceExtentOverflow)?;
+            let surface_x = f64::from(target_x) + 0.5;
+            alpha[y * width_usize + x] = mask.sample(surface_x, surface_y);
+        }
     }
+    drop(mask);
     Ok(Some(AlphaMask {
-        origin_x: origin_x
-            .checked_add(u32::try_from(min_x).map_err(|_| MaskError::WorkspaceExtentOverflow)?)
-            .ok_or(MaskError::WorkspaceExtentOverflow)?,
-        origin_y: origin_y
-            .checked_add(u32::try_from(min_y).map_err(|_| MaskError::WorkspaceExtentOverflow)?)
-            .ok_or(MaskError::WorkspaceExtentOverflow)?,
-        width: u32::try_from(trimmed_width).map_err(|_| MaskError::WorkspaceExtentOverflow)?,
-        height: u32::try_from(trimmed_height).map_err(|_| MaskError::WorkspaceExtentOverflow)?,
-        alpha: trimmed.into(),
+        origin_x: min_x,
+        origin_y: min_y,
+        width,
+        height,
+        alpha,
     }))
 }
 
@@ -1030,16 +1163,23 @@ mod tests {
     use runenui_core::{LogicalRect, LogicalTransform, SceneShape};
     use runenui_runtime::RasterScale;
 
-    use super::{MaskLimits, prepare_visual_shadow};
+    use super::{
+        MaskError, MaskLimits, MaskResidency, prepare_visual_shadow, rasterize_support,
+        squared_distance_transform,
+    };
     use crate::backend::clipped::resource::group::support::{
         NeutralPrimitiveSupport, NeutralSupport,
     };
     use crate::backend::{OffscreenExtent, RasterCanvasExtent};
 
     fn rect_support() -> Arc<NeutralSupport> {
+        rect_support_at(0.0, 0.0, 8.0, 8.0)
+    }
+
+    fn rect_support_at(x: f32, y: f32, width: f32, height: f32) -> Arc<NeutralSupport> {
         Arc::new(NeutralSupport::Primitive(NeutralPrimitiveSupport::Fill {
             shape: SceneShape::rect(
-                LogicalRect::try_new(0.0, 0.0, 8.0, 8.0)
+                LogicalRect::try_new(x, y, width, height)
                     .unwrap_or_else(|_| unreachable!("controlled rectangle is valid")),
             ),
             local_to_surface: LogicalTransform::IDENTITY,
@@ -1047,7 +1187,7 @@ mod tests {
     }
 
     fn limits() -> MaskLimits {
-        MaskLimits::new(256 * 256 * 24)
+        MaskLimits::new(64 * 1024 * 1024)
     }
 
     fn canvas() -> RasterCanvasExtent {
@@ -1175,5 +1315,76 @@ mod tests {
         assert!(shadow.origin_y() <= 4);
         assert!(shadow.width() <= 14);
         assert!(shadow.height() <= 14);
+    }
+
+    #[test]
+    fn anisotropic_edt_accounts_true_live_payload_beyond_old_scalar_oracle() {
+        let width = 128_u32;
+        let height = 1_u32;
+        let samples = vec![0_u8; usize::try_from(width).unwrap_or(0)];
+        let obsolete_limit = u64::from(width) * u64::from(height) * 24;
+        let unlimited = MaskLimits::new(u64::MAX);
+        let residency = MaskResidency::ZERO
+            .with_payload::<u8>(samples.len(), unlimited)
+            .unwrap_or_else(|_| unreachable!("controlled sample payload is addressable"));
+        let error = squared_distance_transform(
+            &samples,
+            width,
+            height,
+            true,
+            residency,
+            MaskLimits::new(obsolete_limit),
+        )
+        .expect_err("anisotropic EDT must reject the obsolete scalar budget");
+        match error {
+            MaskError::AllocationExceedsLimit {
+                required_bytes,
+                max_bytes,
+            } => {
+                assert_eq!(max_bytes, obsolete_limit);
+                assert!(required_bytes > obsolete_limit);
+            }
+            other => panic!("unexpected anisotropic accounting failure: {other}"),
+        }
+    }
+
+    #[test]
+    fn accumulated_union_residency_is_carried_into_next_member_realization() {
+        let first = rect_support_at(0.0, 0.0, 8.0, 8.0);
+        let second = rect_support_at(8.0, 0.0, 8.0, 8.0);
+        let constrained = MaskLimits::new(96);
+        assert!(
+            rasterize_support(&first, 1.0, MaskResidency::ZERO, constrained).is_ok(),
+            "an individual 8x8 member must fit the controlled budget"
+        );
+        assert!(
+            rasterize_support(&second, 1.0, MaskResidency::ZERO, constrained).is_ok(),
+            "an individual 8x8 member must fit the controlled budget"
+        );
+        let union = NeutralSupport::union([first, second]);
+        let error = rasterize_support(&union, 1.0, MaskResidency::ZERO, constrained)
+            .expect_err("retained union plus next member must exceed the controlled budget");
+        assert!(matches!(error, MaskError::AllocationExceedsLimit { .. }));
+    }
+
+    #[test]
+    fn ordinary_square_edt_remains_admitted_under_explicit_generous_budget() {
+        let width = 16_u32;
+        let height = 16_u32;
+        let samples = vec![0_u8; 16 * 16];
+        let generous = MaskLimits::new(64 * 1024);
+        let residency = MaskResidency::ZERO
+            .with_payload::<u8>(samples.len(), generous)
+            .unwrap_or_else(|_| unreachable!("controlled sample payload fits"));
+        let distances = squared_distance_transform(
+            &samples,
+            width,
+            height,
+            true,
+            residency,
+            generous,
+        )
+        .unwrap_or_else(|_| unreachable!("ordinary square EDT remains admitted"));
+        assert_eq!(distances.len(), samples.len());
     }
 }

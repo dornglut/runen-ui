@@ -63,7 +63,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 }
 ";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(super) struct PreparedComposition {
     root_entries: Vec<PreparedSceneEntry>,
     has_groups: bool,
@@ -80,7 +80,7 @@ impl PreparedComposition {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 enum PreparedSceneEntry {
     Item {
         item_index: usize,
@@ -100,13 +100,13 @@ impl PreparedSceneEntry {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct PreparedShadow {
     mask: mask::AlphaMask,
     color: Color,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct PreparedGroup {
     entries: Vec<PreparedSceneEntry>,
     shadows: Vec<PreparedShadow>,
