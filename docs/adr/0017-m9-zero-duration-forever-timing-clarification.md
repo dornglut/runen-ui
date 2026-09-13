@@ -2,7 +2,7 @@
 
 > **Category:** ADR
 >
-> **Status:** Proposed target amendment pending exact-head owner acceptance
+> **Status:** Accepted target amendment on exact-head owner acceptance
 >
 > **Decision date:** 2026-09-13
 >
