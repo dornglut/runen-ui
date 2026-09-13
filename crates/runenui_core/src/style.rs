@@ -669,7 +669,9 @@ impl StyleProperties {
     pub(crate) fn transition_policies(
         &self,
     ) -> impl Iterator<Item = (MotionTarget, &TransitionPolicy)> {
-        self.transitions.iter().map(|(target, policy)| (*target, policy))
+        self.transitions
+            .iter()
+            .map(|(target, policy)| (*target, policy))
     }
 }
 
