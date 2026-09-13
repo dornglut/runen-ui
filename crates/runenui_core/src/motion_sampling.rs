@@ -6,11 +6,11 @@
 //! sample is taken.
 
 use crate::{
-    Brush, CubicBezier, DropShadow, EdgeInsets, FlexBasis, GradientStop, GradientStops,
-    LayoutBound, LayoutDimension, LayoutFactor, LayoutGap, LinearGradient, LogicalLength,
-    MotionEasing, MotionValue, PresentationOrigin, PresentationRotation, PresentationScale,
-    PresentationTransform, PresentationTranslation, RadialGradient, Radius, SceneOpacity,
-    UnitInterval,
+    Brush, ComputedStyle, CubicBezier, DropShadow, EdgeInsets, FlexBasis, GradientStop,
+    GradientStops, LayoutBound, LayoutDimension, LayoutFactor, LayoutGap, LayoutStyle,
+    LinearGradient, LogicalLength, MotionEasing, MotionTarget, MotionValue, PresentationOrigin,
+    PresentationRotation, PresentationScale, PresentationTransform, PresentationTranslation,
+    RadialGradient, Radius, SceneOpacity, UnitInterval,
 };
 
 /// Applies one accepted easing function to normalized progress.
@@ -23,6 +23,81 @@ pub fn ease_motion(easing: MotionEasing, progress: UnitInterval) -> UnitInterval
         MotionEasing::Linear => progress,
         MotionEasing::CubicBezier(curve) => cubic_bezier_ease(curve, progress),
     }
+}
+
+/// Projects one accepted effective style/layout target into the closed motion value vocabulary.
+#[must_use]
+pub fn motion_value_for_target(
+    computed: &ComputedStyle,
+    layout: &LayoutStyle,
+    target: MotionTarget,
+) -> MotionValue {
+    match target {
+        MotionTarget::Foreground => MotionValue::Foreground(computed.foreground()),
+        MotionTarget::Background => MotionValue::Background(computed.background().cloned()),
+        MotionTarget::Padding => MotionValue::Padding(computed.padding()),
+        MotionTarget::Radius => MotionValue::Radius(computed.radius()),
+        MotionTarget::Typography => MotionValue::Typography(computed.typography().cloned()),
+        MotionTarget::Shadows => MotionValue::Shadows(computed.shadows().to_vec()),
+        MotionTarget::Opacity => MotionValue::Opacity(computed.opacity()),
+        MotionTarget::Presentation => MotionValue::Presentation(computed.presentation()),
+        MotionTarget::Width => MotionValue::Width(layout.width()),
+        MotionTarget::Height => MotionValue::Height(layout.height()),
+        MotionTarget::MinWidth => MotionValue::MinWidth(layout.min_width()),
+        MotionTarget::MinHeight => MotionValue::MinHeight(layout.min_height()),
+        MotionTarget::MaxWidth => MotionValue::MaxWidth(layout.max_width()),
+        MotionTarget::MaxHeight => MotionValue::MaxHeight(layout.max_height()),
+        MotionTarget::Margin => MotionValue::Margin(layout.margin()),
+        MotionTarget::Gap => MotionValue::Gap(layout.gap()),
+        MotionTarget::FlexGrow => MotionValue::FlexGrow(layout.flex_item().grow()),
+        MotionTarget::FlexShrink => MotionValue::FlexShrink(layout.flex_item().shrink()),
+        MotionTarget::FlexBasis => MotionValue::FlexBasis(layout.flex_item().basis()),
+    }
+}
+
+/// Applies one typed motion value to cloned effective style/layout facts.
+///
+/// This bridge never mutates authored state. It exists so optional style absence and
+/// the closed structural target set have one core-owned mapping rather than a runtime
+/// shadow representation.
+pub fn apply_motion_value(
+    computed: &mut ComputedStyle,
+    layout: &mut LayoutStyle,
+    value: &MotionValue,
+) {
+    if computed.apply_style_motion_value(value) {
+        return;
+    }
+
+    *layout = match value {
+        MotionValue::Width(value) => layout.clone().with_width(*value),
+        MotionValue::Height(value) => layout.clone().with_height(*value),
+        MotionValue::MinWidth(value) => layout.clone().with_min_width(*value),
+        MotionValue::MinHeight(value) => layout.clone().with_min_height(*value),
+        MotionValue::MaxWidth(value) => layout.clone().with_max_width(*value),
+        MotionValue::MaxHeight(value) => layout.clone().with_max_height(*value),
+        MotionValue::Margin(value) => layout.clone().with_margin(*value),
+        MotionValue::Gap(value) => layout.clone().with_gaps(*value),
+        MotionValue::FlexGrow(value) => layout
+            .clone()
+            .with_flex_item(layout.flex_item().with_grow(*value)),
+        MotionValue::FlexShrink(value) => layout
+            .clone()
+            .with_flex_item(layout.flex_item().with_shrink(*value)),
+        MotionValue::FlexBasis(value) => layout
+            .clone()
+            .with_flex_item(layout.flex_item().with_basis(*value)),
+        MotionValue::Foreground(_)
+        | MotionValue::Background(_)
+        | MotionValue::Padding(_)
+        | MotionValue::Radius(_)
+        | MotionValue::Typography(_)
+        | MotionValue::Shadows(_)
+        | MotionValue::Opacity(_)
+        | MotionValue::Presentation(_) => {
+            unreachable!("style-family motion values were handled by ComputedStyle")
+        }
+    };
 }
 
 /// Samples two values for one exact motion target at already-eased progress.
@@ -428,11 +503,15 @@ fn cubic_bezier_ease(curve: CubicBezier, progress: UnitInterval) -> UnitInterval
 mod tests {
     use core::f32::consts::{PI, TAU};
 
-    use super::{ease_motion, interpolate_f32, interpolate_motion_value};
+    use super::{
+        apply_motion_value, ease_motion, interpolate_f32, interpolate_motion_value,
+        motion_value_for_target,
+    };
     use crate::{
-        Color, CubicBezier, LayoutDimension, LogicalLength, MotionEasing, MotionValue,
-        PresentationOrigin, PresentationRotation, PresentationScale, PresentationTransform,
-        PresentationTranslation, Typography, UnitInterval,
+        Color, ComputedStyle, CubicBezier, FlexBasis, LayoutDimension, LayoutFactor, LayoutStyle,
+        LogicalLength, MotionEasing, MotionTarget, MotionValue, PresentationOrigin,
+        PresentationRotation, PresentationScale, PresentationTransform, PresentationTranslation,
+        Typography, UnitInterval,
     };
 
     fn unit(value: f32) -> UnitInterval {
@@ -482,6 +561,35 @@ mod tests {
             interpolate_motion_value(&start, &end, UnitInterval::ONE),
             Some(end)
         );
+    }
+
+    #[test]
+    fn projection_and_application_preserve_optional_absence() {
+        let mut computed = ComputedStyle::EMPTY.with_typography(Typography::default());
+        let mut layout = LayoutStyle::default();
+        apply_motion_value(&mut computed, &mut layout, &MotionValue::Typography(None));
+        assert_eq!(
+            motion_value_for_target(&computed, &layout, MotionTarget::Typography),
+            MotionValue::Typography(None)
+        );
+    }
+
+    #[test]
+    fn structural_application_changes_only_targeted_flex_field() {
+        let grow = LayoutFactor::new(2.0).unwrap_or_else(|_| unreachable!("grow is valid"));
+        let shrink = LayoutFactor::new(3.0).unwrap_or_else(|_| unreachable!("shrink is valid"));
+        let basis = FlexBasis::Length(LogicalLength::from(10_u16));
+        let initial = LayoutStyle::default().with_flex_item(
+            crate::FlexItemStyle::default()
+                .with_shrink(shrink)
+                .with_basis(basis),
+        );
+        let mut layout = initial.clone();
+        let mut computed = ComputedStyle::EMPTY;
+        apply_motion_value(&mut computed, &mut layout, &MotionValue::FlexGrow(grow));
+        assert_eq!(layout.flex_item().grow(), grow);
+        assert_eq!(layout.flex_item().shrink(), initial.flex_item().shrink());
+        assert_eq!(layout.flex_item().basis(), initial.flex_item().basis());
     }
 
     #[test]
