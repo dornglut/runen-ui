@@ -263,25 +263,25 @@ pub enum MotionSpecError {
 impl fmt::Display for MotionSpecError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DurationOutOfRange => {
-                formatter.write_str("motion duration must fit the runtime-relative u64 nanosecond domain")
-            }
-            Self::DelayOutOfRange => {
-                formatter.write_str("motion delay must fit the runtime-relative u64 nanosecond domain")
-            }
-            Self::RelativeScheduleOverflow => {
-                formatter.write_str("finite motion schedule exceeds the runtime-relative u64 nanosecond domain")
-            }
+            Self::DurationOutOfRange => formatter.write_str(
+                "motion duration must fit the runtime-relative u64 nanosecond domain",
+            ),
+            Self::DelayOutOfRange => formatter.write_str(
+                "motion delay must fit the runtime-relative u64 nanosecond domain",
+            ),
+            Self::RelativeScheduleOverflow => formatter.write_str(
+                "finite motion schedule exceeds the runtime-relative u64 nanosecond domain",
+            ),
             Self::ZeroDurationForever => {
                 formatter.write_str("a forever timeline requires a strictly positive duration")
             }
-            Self::TransitionHoldInitial => {
-                formatter.write_str("style transitions cannot use HoldInitial reduced-motion strategy")
+            Self::TransitionHoldInitial => formatter
+                .write_str("style transitions cannot use HoldInitial reduced-motion strategy"),
+            Self::ForeverSnapToEnd => formatter
+                .write_str("forever timelines cannot use SnapToEnd reduced-motion strategy"),
+            Self::TooFewKeyframes => {
+                formatter.write_str("a timeline requires at least two keyframes")
             }
-            Self::ForeverSnapToEnd => {
-                formatter.write_str("forever timelines cannot use SnapToEnd reduced-motion strategy")
-            }
-            Self::TooFewKeyframes => formatter.write_str("a timeline requires at least two keyframes"),
             Self::FirstKeyframeNotZero => {
                 formatter.write_str("the first timeline keyframe offset must be exactly 0")
             }
@@ -310,7 +310,10 @@ impl fmt::Display for MotionSpecError {
 
 impl Error for MotionSpecError {}
 
-fn duration_nanos(duration: Duration, error: MotionSpecError) -> Result<u64, MotionSpecError> {
+fn checked_duration_nanos(
+    duration: Duration,
+    error: MotionSpecError,
+) -> Result<u64, MotionSpecError> {
     u64::try_from(duration.as_nanos()).map_err(|_| error)
 }
 
@@ -338,8 +341,9 @@ impl TransitionSpec {
         easing: MotionEasing,
         reduced_motion: Option<ReducedMotionStrategy>,
     ) -> Result<Self, MotionSpecError> {
-        let duration_nanos = duration_nanos(duration, MotionSpecError::DurationOutOfRange)?;
-        let delay_nanos = duration_nanos(delay, MotionSpecError::DelayOutOfRange)?;
+        let duration_nanos =
+            checked_duration_nanos(duration, MotionSpecError::DurationOutOfRange)?;
+        let delay_nanos = checked_duration_nanos(delay, MotionSpecError::DelayOutOfRange)?;
         delay_nanos
             .checked_add(duration_nanos)
             .ok_or(MotionSpecError::RelativeScheduleOverflow)?;
@@ -393,7 +397,7 @@ pub struct MotionKeyframe {
 
 impl MotionKeyframe {
     #[must_use]
-    pub const fn new(offset: UnitInterval, value: MotionValue) -> Self {
+    pub fn new(offset: UnitInterval, value: MotionValue) -> Self {
         Self { offset, value }
     }
 
@@ -476,8 +480,9 @@ impl TimelineSpec {
             });
         }
 
-        let duration_nanos = duration_nanos(duration, MotionSpecError::DurationOutOfRange)?;
-        let delay_nanos = duration_nanos(delay, MotionSpecError::DelayOutOfRange)?;
+        let duration_nanos =
+            checked_duration_nanos(duration, MotionSpecError::DurationOutOfRange)?;
+        let delay_nanos = checked_duration_nanos(delay, MotionSpecError::DelayOutOfRange)?;
         let reduced_motion = match repeat {
             MotionRepeat::Finite(iterations) => {
                 let active_nanos = duration_nanos
@@ -556,7 +561,7 @@ pub struct ExplicitTimeline {
 
 impl ExplicitTimeline {
     #[must_use]
-    pub const fn new(id: AnimationId, spec: TimelineSpec) -> Self {
+    pub fn new(id: AnimationId, spec: TimelineSpec) -> Self {
         Self { id, spec }
     }
 
