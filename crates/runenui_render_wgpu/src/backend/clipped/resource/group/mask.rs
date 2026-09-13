@@ -1321,25 +1321,25 @@ mod tests {
         let residency = MaskResidency::ZERO
             .with_payload::<u8>(samples.len(), unlimited)
             .unwrap_or_else(|_| unreachable!("controlled sample payload is addressable"));
-        let error = squared_distance_transform(
+        let Err(error) = squared_distance_transform(
             &samples,
             width,
             height,
             true,
             residency,
             MaskLimits::new(obsolete_limit),
-        )
-        .expect_err("anisotropic EDT must reject the obsolete scalar budget");
-        match error {
-            MaskError::AllocationExceedsLimit {
-                required_bytes,
-                max_bytes,
-            } => {
-                assert_eq!(max_bytes, obsolete_limit);
-                assert!(required_bytes > obsolete_limit);
-            }
-            other => panic!("unexpected anisotropic accounting failure: {other}"),
-        }
+        ) else {
+            unreachable!("anisotropic EDT must reject the obsolete scalar budget")
+        };
+        let MaskError::AllocationExceedsLimit {
+            required_bytes,
+            max_bytes,
+        } = error
+        else {
+            unreachable!("controlled anisotropic accounting must fail by allocation limit")
+        };
+        assert_eq!(max_bytes, obsolete_limit);
+        assert!(required_bytes > obsolete_limit);
     }
 
     #[test]
@@ -1356,8 +1356,9 @@ mod tests {
             "an individual 8x8 member must fit the controlled budget"
         );
         let union = NeutralSupport::union([first, second]);
-        let error = rasterize_support(&union, 1.0, MaskResidency::ZERO, constrained)
-            .expect_err("retained union plus next member must exceed the controlled budget");
+        let Err(error) = rasterize_support(&union, 1.0, MaskResidency::ZERO, constrained) else {
+            unreachable!("retained union plus next member must exceed the controlled budget")
+        };
         assert!(matches!(error, MaskError::AllocationExceedsLimit { .. }));
     }
 
