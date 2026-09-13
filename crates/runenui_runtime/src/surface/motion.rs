@@ -9,12 +9,14 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use runenui_core::{
+    __runtime::{
+        apply_motion_value, ease_motion, interpolate_motion_value, motion_value_for_target,
+    },
     BrushToken, ColorToken, ComputedStyle, ExplicitTimeline, LayoutStyle, MonotonicInstant,
     MotionRepeat, MotionTarget, MotionValue, OpacityToken, PresentationToken, RadiusToken,
     ReducedMotionStrategy, ShadowToken, SpacingToken, StyleFieldProvenance, StylePreferenceKind,
     StylePreferences, StyleResolution, StyleResolutionLayer, TransitionPolicy, TransitionSpec,
     TypographyToken, UnitInterval,
-    __runtime::{apply_motion_value, ease_motion, interpolate_motion_value, motion_value_for_target},
 };
 
 use crate::{MountedNodeId, mounted::MountedTree};
@@ -308,13 +310,19 @@ fn plan_owner(
             instant,
         )?);
     }
-    next_store
-        .explicit
-        .extend(explicit_evaluations.iter().map(|candidate| candidate.record.clone()));
+    next_store.explicit.extend(
+        explicit_evaluations
+            .iter()
+            .map(|candidate| candidate.record.clone()),
+    );
 
     let mut targets = BTreeSet::new();
     targets.extend(declarations.iter().map(ExplicitTimeline::target));
-    targets.extend(old_explicit.iter().map(|record| record.declaration.target()));
+    targets.extend(
+        old_explicit
+            .iter()
+            .map(|record| record.declaration.target()),
+    );
     targets.extend(old_transitions.iter().map(|record| record.target));
     targets.extend(
         resolution
@@ -323,7 +331,8 @@ fn plan_owner(
     );
 
     for target in targets {
-        let target_value = motion_value_for_target(resolution.computed_style(), target_layout, target);
+        let target_value =
+            motion_value_for_target(resolution.computed_style(), target_layout, target);
         let provenance = target_provenance(resolution, target);
         let suppressed = provenance.high_contrast();
         let policy = resolved_transition_policy(resolution, target);
@@ -354,8 +363,10 @@ fn plan_owner(
             _ => None,
         };
 
-        let explicit_sample = new_explicit.and_then(|candidate| candidate.candidate_sample.clone());
-        let explicit_terminal_commit = new_explicit.is_some_and(|candidate| candidate.terminal_commit);
+        let explicit_sample =
+            new_explicit.and_then(|candidate| candidate.candidate_sample.clone());
+        let explicit_terminal_commit =
+            new_explicit.is_some_and(|candidate| candidate.terminal_commit);
 
         if let Some(candidate) = new_explicit
             && let Some(live) = candidate.live_sample.as_ref()
@@ -376,11 +387,25 @@ fn plan_owner(
             {
                 apply_effective_sample(effective, position, sample);
             }
-            if !suppressed
+            let active_unsuppressed = new_explicit.is_some_and(|candidate| {
+                !suppressed
+                    && matches!(candidate.record.lifecycle, ExplicitLifecycle::Active { .. })
+            });
+            if active_unsuppressed
                 && new_explicit
                     .is_some_and(|candidate| explicit_requires_group(&candidate.record.declaration))
             {
                 retain_effective_group(effective, position);
+            }
+            continue;
+        }
+
+        if suppressed {
+            if let (Some(retained), Some(sample)) = (old_transition, old_transition_sample.as_ref())
+                && !matches!(sample.phase, LivePhase::Completed)
+            {
+                note_live_activity(sample, true, activity);
+                next_store.transitions.push(retained.clone());
             }
             continue;
         }
@@ -400,7 +425,11 @@ fn plan_owner(
 
         let source = explicit_exit_source
             .clone()
-            .or_else(|| old_transition_sample.as_ref().map(|sample| sample.value.clone()))
+            .or_else(|| {
+                old_transition_sample
+                    .as_ref()
+                    .map(|sample| sample.value.clone())
+            })
             .or(prior_value)
             .unwrap_or_else(|| target_value.clone());
 
@@ -422,32 +451,30 @@ fn plan_owner(
             let live = sample_transition(transition, instant)?;
             let transition_is_live = !matches!(live.phase, LivePhase::Completed);
             if transition_is_live {
-                note_live_activity(&live, suppressed, activity);
+                note_live_activity(&live, false, activity);
                 next_store.transitions.push(transition.clone());
-                if !suppressed && transition_requires_group(transition) {
+                if transition_requires_group(transition) {
                     retain_effective_group(effective, position);
                 }
             }
             if explicit_terminal_commit {
-                if !suppressed
-                    && explicit_sample.as_ref().is_some_and(|sample| sample != &target_value)
+                if explicit_sample
+                    .as_ref()
+                    .is_some_and(|sample| sample != &target_value)
                     && !transition_is_live
                 {
                     activity.followup_publication = true;
                 }
-            } else if !suppressed {
+            } else {
                 apply_effective_sample(effective, position, &live.value);
             }
         } else if explicit_terminal_commit {
-            if let Some(sample) = explicit_sample.as_ref()
-                && !suppressed
-            {
+            if let Some(sample) = explicit_sample.as_ref() {
                 apply_effective_sample(effective, position, sample);
             }
-            if !suppressed
-                && explicit_sample
-                    .as_ref()
-                    .is_some_and(|sample| sample != &target_value)
+            if explicit_sample
+                .as_ref()
+                .is_some_and(|sample| sample != &target_value)
             {
                 activity.followup_publication = true;
             }
@@ -509,6 +536,9 @@ fn reconcile_explicit(
                         ReducedMotionStrategy::PreserveEssential => {
                             ExplicitLifecycle::Active { start: *start }
                         }
+                        _ => unreachable!(
+                            "runtime and core reduced-motion strategy vocabularies are version-locked"
+                        ),
                     }
                 }
             }
@@ -522,6 +552,9 @@ fn reconcile_explicit(
                     }
                     ReducedMotionStrategy::HoldInitial => ExplicitLifecycle::HoldInitial,
                     ReducedMotionStrategy::PreserveEssential => checked_active(declaration, instant)?,
+                    _ => unreachable!(
+                        "runtime and core reduced-motion strategy vocabularies are version-locked"
+                    ),
                 }
             } else {
                 checked_active(declaration, instant)?
@@ -531,7 +564,9 @@ fn reconcile_explicit(
 
     let mut live_sample = None;
     let candidate_sample = match lifecycle {
-        ExplicitLifecycle::Completed if terminal_commit => Some(terminal_keyframe(declaration).clone()),
+        ExplicitLifecycle::Completed if terminal_commit => {
+            Some(terminal_keyframe(declaration).clone())
+        }
         ExplicitLifecycle::Completed => None,
         ExplicitLifecycle::HoldInitial => Some(initial_keyframe(declaration).clone()),
         ExplicitLifecycle::Active { start } => {
@@ -661,9 +696,7 @@ fn start_transition(
     if source == target_value {
         return Ok(None);
     }
-    if preferences.reduced_motion()
-        && spec.reduced_motion() == ReducedMotionStrategy::SnapToEnd
-    {
+    if preferences.reduced_motion() && spec.reduced_motion() == ReducedMotionStrategy::SnapToEnd {
         return Ok(None);
     }
     check_transition_schedule(spec, instant)?;
@@ -707,12 +740,13 @@ fn sample_explicit(
                 .unwrap_or_else(|| unreachable!("validated finite schedule remains representable"));
             Some(checked_add_nanos(
                 start,
-                delay_nanos
-                    .checked_add(active_nanos)
-                    .unwrap_or_else(|| unreachable!("validated finite schedule remains representable")),
+                delay_nanos.checked_add(active_nanos).unwrap_or_else(|| {
+                    unreachable!("validated finite schedule remains representable")
+                }),
             )?)
         }
         MotionRepeat::Forever => None,
+        _ => unreachable!("runtime and core repeat vocabularies are version-locked"),
     };
 
     if instant < delay_deadline {
@@ -836,11 +870,7 @@ fn sample_keyframes(
         .ok_or(MotionPlanningError::Interpolation(spec.target()))
 }
 
-fn note_live_activity(
-    sample: &LiveSample,
-    suppressed: bool,
-    activity: &mut MotionActivity,
-) {
+fn note_live_activity(sample: &LiveSample, suppressed: bool, activity: &mut MotionActivity) {
     if suppressed {
         if let Some(deadline) = sample.terminal_deadline {
             activity.note_deadline(deadline);
@@ -875,14 +905,15 @@ fn check_timeline_schedule(
                 .unwrap_or_else(|| unreachable!("validated finite schedule remains representable"));
             checked_add_nanos(
                 instant,
-                delay_nanos
-                    .checked_add(active_nanos)
-                    .unwrap_or_else(|| unreachable!("validated finite schedule remains representable")),
+                delay_nanos.checked_add(active_nanos).unwrap_or_else(|| {
+                    unreachable!("validated finite schedule remains representable")
+                }),
             )?;
         }
         MotionRepeat::Forever => {
             checked_add_nanos(instant, delay_nanos)?;
         }
+        _ => unreachable!("runtime and core repeat vocabularies are version-locked"),
     }
     Ok(())
 }
@@ -974,7 +1005,7 @@ fn resolved_transition_policy(
         None => ResolvedTransitionPolicy::Absent,
         Some(TransitionPolicy::Disabled) => ResolvedTransitionPolicy::Disabled,
         Some(TransitionPolicy::Enabled(spec)) => ResolvedTransitionPolicy::Enabled(spec.clone()),
-        Some(_) => ResolvedTransitionPolicy::Absent,
+        Some(_) => unreachable!("runtime and core transition-policy vocabularies are version-locked"),
     }
 }
 
@@ -1024,7 +1055,7 @@ fn target_provenance(resolution: &StyleResolution, target: MotionTarget) -> Targ
         | MotionTarget::FlexGrow
         | MotionTarget::FlexShrink
         | MotionTarget::FlexBasis => TargetProvenance::Structural,
-        _ => TargetProvenance::Structural,
+        _ => unreachable!("runtime and core motion-target vocabularies are version-locked"),
     }
 }
 
@@ -1044,7 +1075,24 @@ fn motion_value_requires_group(value: &MotionValue) -> bool {
     match value {
         MotionValue::Opacity(value) => *value != runenui_core::SceneOpacity::OPAQUE,
         MotionValue::Shadows(value) => !value.is_empty(),
-        _ => false,
+        MotionValue::Foreground(_)
+        | MotionValue::Background(_)
+        | MotionValue::Padding(_)
+        | MotionValue::Radius(_)
+        | MotionValue::Typography(_)
+        | MotionValue::Presentation(_)
+        | MotionValue::Width(_)
+        | MotionValue::Height(_)
+        | MotionValue::MinWidth(_)
+        | MotionValue::MinHeight(_)
+        | MotionValue::MaxWidth(_)
+        | MotionValue::MaxHeight(_)
+        | MotionValue::Margin(_)
+        | MotionValue::Gap(_)
+        | MotionValue::FlexGrow(_)
+        | MotionValue::FlexShrink(_)
+        | MotionValue::FlexBasis(_) => false,
+        _ => unreachable!("runtime and core motion-value vocabularies are version-locked"),
     }
 }
 
@@ -1053,15 +1101,14 @@ mod tests {
     use std::time::Duration;
 
     use runenui_core::{
-        AnimationId, MotionEasing, MotionKeyframe, MotionRepeat, MotionTarget, MotionValue,
-        ReducedMotionStrategy, SceneOpacity, TimelineSpec, UnitInterval,
+        __runtime::RuntimeNamespace, AnimationId, MotionEasing, MotionKeyframe, MotionRepeat,
+        MotionTarget, MotionValue, ReducedMotionStrategy, SceneOpacity, TimelineSpec, UnitInterval,
     };
 
     use super::{
         ExplicitLifecycle, ExplicitMotionRecord, MotionPlanningError, sample_explicit,
         validate_owner_declarations,
     };
-    use runenui_core::__runtime::RuntimeNamespace;
 
     fn timeline(
         id: &'static str,
