@@ -234,6 +234,7 @@ mod hit;
 mod identity;
 mod input;
 mod layout;
+mod motion;
 mod paint;
 mod paint_group;
 mod path;
@@ -292,6 +293,11 @@ pub use input::{
     CompositionEnd, CompositionEvent, CompositionGeneration, CompositionRange,
     CompositionRangeError, CompositionStart, CompositionUpdate, KeyLocation,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
+};
+pub use motion::{
+    AnimationId, CubicBezier, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,
+    MotionSpecError, MotionTarget, MotionValue, ReducedMotionStrategy, TimelineSpec,
+    TransitionPolicy, TransitionSpec,
 };
 pub use paint::{
     ImagePrimitive, PaintContribution, PaintContributionContext, PaintContributionItem,
