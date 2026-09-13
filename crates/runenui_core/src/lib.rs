@@ -235,6 +235,7 @@ mod identity;
 mod input;
 mod layout;
 mod motion;
+mod motion_sampling;
 mod paint;
 mod paint_group;
 mod path;
@@ -314,6 +315,7 @@ pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
 pub mod __runtime {
     pub use crate::effects::{Effect, HostRequestEffect, MountedEffect};
     pub use crate::event_context::{EventContextOutput, PointerCaptureRequest, RoutedEventOutput};
+    pub use crate::motion_sampling::{ease_motion, interpolate_motion_value};
     pub use crate::presentation_geometry::transform_rect_aabb;
     pub use crate::runtime_protocol::RuntimeNamespace;
     pub use crate::subscription::{ErasedSendSubscriptionSource, Subscription, SubscriptionSource};
