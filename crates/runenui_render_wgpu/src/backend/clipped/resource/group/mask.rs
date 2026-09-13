@@ -187,20 +187,13 @@ fn rasterize_support(
             let Some(source) = rasterize_support(source, scale, residency, limits)? else {
                 return Ok(None);
             };
-            let mut shadow =
-                signed_euclidean_spread(source, *spread * scale, residency, limits)?;
+            let mut shadow = signed_euclidean_spread(source, *spread * scale, residency, limits)?;
             if shadow.is_empty() {
                 return Ok(None);
             }
             shadow.origin_x = (*offset_x).mul_add(scale, shadow.origin_x);
             shadow.origin_y = (*offset_y).mul_add(scale, shadow.origin_y);
-            square_dilate(
-                shadow,
-                *blur_square_half_extent * scale,
-                residency,
-                limits,
-            )
-            .map(Some)
+            square_dilate(shadow, *blur_square_half_extent * scale, residency, limits).map(Some)
         }
         NeutralSupport::Clip { source, clips } => {
             let Some(mut source) = rasterize_support(source, scale, residency, limits)? else {
@@ -1376,15 +1369,9 @@ mod tests {
         let residency = MaskResidency::ZERO
             .with_payload::<u8>(samples.len(), generous)
             .unwrap_or_else(|_| unreachable!("controlled sample payload fits"));
-        let distances = squared_distance_transform(
-            &samples,
-            width,
-            height,
-            true,
-            residency,
-            generous,
-        )
-        .unwrap_or_else(|_| unreachable!("ordinary square EDT remains admitted"));
+        let distances =
+            squared_distance_transform(&samples, width, height, true, residency, generous)
+                .unwrap_or_else(|_| unreachable!("ordinary square EDT remains admitted"));
         assert_eq!(distances.len(), samples.len());
     }
 }
