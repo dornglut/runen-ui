@@ -1,7 +1,7 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, ContributionClip, Element, ElementId, HitContribution, HitContributionContext,
+    Brush, Color, ContributionClip, Element, ElementId, HitContribution, HitContributionContext,
     HitRegion, LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
     PointerPolicy, Radius, SceneLayer, SceneOpacity, SceneShape, StyleEnvironment, UiApp, View,
@@ -39,7 +39,11 @@ fn fill_item_covers_surface_point(item: &PaintSceneItem, surface_point: LogicalP
     else {
         return false;
     };
-    let PaintPrimitive::FillRect { rect, .. } = item.primitive() else {
+    let PaintPrimitive::Fill {
+        shape: SceneShape::Rect(rect),
+        ..
+    } = item.primitive()
+    else {
         return false;
     };
     rect.contains(local_point)
@@ -47,6 +51,21 @@ fn fill_item_covers_surface_point(item: &PaintSceneItem, surface_point: LogicalP
             .clips()
             .iter()
             .all(|clip| clip.contains_surface_point(surface_point))
+}
+
+const fn solid_color(primitive: &PaintPrimitive) -> Option<Color> {
+    match primitive {
+        PaintPrimitive::Fill {
+            brush: Brush::Solid(color),
+            ..
+        }
+        | PaintPrimitive::Stroke {
+            brush: Brush::Solid(color),
+            ..
+        } => Some(*color),
+        PaintPrimitive::ShapedTextRun(run) => Some(run.foreground()),
+        _ => None,
+    }
 }
 
 fn publish<App: UiApp>(runtime: &mut AppRuntime<App>) -> runenui_runtime::SurfacePublication {
@@ -93,20 +112,30 @@ impl Widget<()> for PaintOwner {
                     translation(6.0, 7.0),
                 );
                 PaintContribution::new(vec![
-                    PaintContributionItem::fill_rect(full, Color::rgba(255, 0, 0, 255))
-                        .with_transform(translation(2.0, 3.0))
-                        .with_clip(first_clip)
-                        .with_clip(second_clip)
-                        .with_opacity(opacity)
-                        .with_layer(SceneLayer::ZERO),
-                    PaintContributionItem::fill_rect(full, Color::rgba(0, 255, 0, 255))
-                        .with_layer(SceneLayer::ZERO),
+                    PaintContributionItem::fill(
+                        SceneShape::rect(full),
+                        Brush::solid(Color::rgba(255, 0, 0, 255)),
+                    )
+                    .with_transform(translation(2.0, 3.0))
+                    .with_clip(first_clip)
+                    .with_clip(second_clip)
+                    .with_opacity(opacity)
+                    .with_layer(SceneLayer::ZERO),
+                    PaintContributionItem::fill(
+                        SceneShape::rect(full),
+                        Brush::solid(Color::rgba(0, 255, 0, 255)),
+                    )
+                    .with_layer(SceneLayer::ZERO),
                 ])
             }
             PaintOwnerKind::Second => PaintContribution::new(vec![
-                PaintContributionItem::fill_rect(full, Color::rgba(0, 0, 255, 255))
-                    .with_layer(SceneLayer::new(-1)),
-                PaintContributionItem::fill_rect(full, Color::WHITE).with_layer(SceneLayer::ZERO),
+                PaintContributionItem::fill(
+                    SceneShape::rect(full),
+                    Brush::solid(Color::rgba(0, 0, 255, 255)),
+                )
+                .with_layer(SceneLayer::new(-1)),
+                PaintContributionItem::fill(SceneShape::rect(full), Brush::solid(Color::WHITE))
+                    .with_layer(SceneLayer::ZERO),
             ]),
         }
     }
@@ -146,7 +175,7 @@ fn paint_scene_composes_self_contained_values_exact_order_and_conjunctive_clips(
     assert_eq!(
         items
             .iter()
-            .map(|item| item.primitive().color())
+            .map(|item| solid_color(item.primitive()))
             .collect::<Vec<_>>(),
         vec![
             Some(Color::rgba(0, 0, 255, 255)),
@@ -209,7 +238,7 @@ fn paint_scene_composes_self_contained_values_exact_order_and_conjunctive_clips(
     );
     assert_eq!(
         red.clips()[0].shape(),
-        SceneShape::rect(rect(0.0, 0.0, 8.0, 9.0))
+        &SceneShape::rect(rect(0.0, 0.0, 8.0, 9.0))
     );
 
     let owner_x = first_owner.bounds().x();

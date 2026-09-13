@@ -1,9 +1,10 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, ContributionClip, Element, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
-    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive, Radius,
-    SceneOpacity, SceneShape, StyleEnvironment, UiApp, Widget, WidgetMeasure,
+    Brush, Color, ContributionClip, Element, LogicalLength, LogicalPoint, LogicalRect,
+    NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem,
+    PaintPrimitive, Radius, SceneOpacity, SceneShape, StyleEnvironment, UiApp, Widget,
+    WidgetMeasure,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, PaintSceneItem, SurfaceBuildContext};
 
@@ -24,7 +25,11 @@ fn item_covers(item: &PaintSceneItem, surface_point: LogicalPoint) -> bool {
     else {
         return false;
     };
-    let PaintPrimitive::FillRect { rect, .. } = item.primitive() else {
+    let PaintPrimitive::Fill {
+        shape: SceneShape::Rect(rect),
+        ..
+    } = item.primitive()
+    else {
         return false;
     };
     rect.width() > 0.0
@@ -45,11 +50,24 @@ fn srgb8_to_linear(channel: u8) -> f32 {
     }
 }
 
+const fn solid_color(primitive: &PaintPrimitive) -> Option<Color> {
+    match primitive {
+        PaintPrimitive::Fill {
+            brush: Brush::Solid(color),
+            ..
+        }
+        | PaintPrimitive::Stroke {
+            brush: Brush::Solid(color),
+            ..
+        } => Some(*color),
+        PaintPrimitive::ShapedTextRun(run) => Some(run.foreground()),
+        _ => None,
+    }
+}
+
 fn source_over(dst: [f32; 4], item: &PaintSceneItem) -> [f32; 4] {
-    let color = item
-        .primitive()
-        .color()
-        .unwrap_or_else(|| unreachable!("fixture primitive carries literal color"));
+    let color = solid_color(item.primitive())
+        .unwrap_or_else(|| unreachable!("fixture primitive carries literal solid color"));
     let alpha = (f32::from(color.alpha()) / 255.0) * item.opacity().get();
     let one_minus_alpha = 1.0 - alpha;
     [
@@ -92,13 +110,19 @@ impl Widget<()> for OpacityOwner {
         let radius = Radius::all(LogicalLength::from(5_u16));
         let half = SceneOpacity::new(0.5).unwrap_or_else(|_| unreachable!("test opacity is valid"));
         PaintContribution::new(vec![
-            PaintContributionItem::fill_rect(rect(), Color::rgba(255, 0, 0, 255)),
-            PaintContributionItem::fill_rect(rect(), Color::rgba(0, 0, 255, 255))
-                .with_opacity(half)
-                .with_clip(ContributionClip::identity(SceneShape::rounded_rect(
-                    rect(),
-                    radius,
-                ))),
+            PaintContributionItem::fill(
+                SceneShape::rect(rect()),
+                Brush::solid(Color::rgba(255, 0, 0, 255)),
+            ),
+            PaintContributionItem::fill(
+                SceneShape::rect(rect()),
+                Brush::solid(Color::rgba(0, 0, 255, 255)),
+            )
+            .with_opacity(half)
+            .with_clip(ContributionClip::identity(SceneShape::rounded_rect(
+                rect(),
+                radius,
+            ))),
         ])
     }
 }

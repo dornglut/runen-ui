@@ -1,18 +1,26 @@
 use std::collections::HashMap;
 
+mod explicit_groups;
+mod groups;
+mod image_mapping;
+
 use crate::MountedNodeId;
 use crate::mounted::SurfaceCapabilityPlan;
 use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneItem, SceneClip};
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
-    Color, ContributionClip, ElementId, HitContributionContext, LayoutStyle, LogicalPoint,
-    LogicalTransform, PaintContributionContext, PaintContributionItem, StyleEffects,
+    __runtime::transform_rect_aabb, Color, ContributionClip, ElementId, HitContributionContext,
+    LayoutStyle, LogicalPoint, LogicalRect, LogicalTransform, PaintContribution,
+    PaintContributionContext, PaintContributionItem, Radius, SceneShape, StyleEffects,
     StyleEnvironment, StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetTypeId,
     resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::TextSystem;
 
-use super::SurfaceInteractionProjection;
+use super::{
+    SurfaceInteractionProjection,
+    cache::{CachedLayoutFacts, CachedPresentationFacts, PresentationNodeFacts},
+};
 
 /// Topology and publication-alignment facts for one mounted preorder.
 ///
@@ -191,7 +199,7 @@ impl ResolvedSurfaceNode {
 }
 
 pub(super) fn paint_contexts(
-    layout: &super::cache::CachedLayoutFacts,
+    layout: &CachedLayoutFacts,
     styles: &CachedStyleFacts,
 ) -> Vec<PaintContributionContext> {
     layout
@@ -204,14 +212,46 @@ pub(super) fn paint_contexts(
         .collect()
 }
 
-pub(super) fn hit_contexts(
-    layout: &super::cache::CachedLayoutFacts,
-) -> Vec<HitContributionContext> {
+pub(super) fn hit_contexts(layout: &CachedLayoutFacts) -> Vec<HitContributionContext> {
     layout
         .bounds
         .iter()
         .map(|bounds| HitContributionContext::__runtime_new(bounds.size()))
         .collect()
+}
+
+/// Recoverable failure to derive a finite node-presentation publication product.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct PresentationGeometryError;
+
+pub(super) fn resolve_presentation(
+    layout: &CachedLayoutFacts,
+    styles: &CachedStyleFacts,
+) -> Result<CachedPresentationFacts, PresentationGeometryError> {
+    if layout.bounds.len() != styles.resolutions.len() {
+        return Err(PresentationGeometryError);
+    }
+    let mut nodes = Vec::with_capacity(layout.bounds.len());
+    for (bounds, style) in layout.bounds.iter().zip(&styles.resolutions) {
+        let node_presentation = style
+            .computed_style()
+            .presentation()
+            .map_or(Ok(LogicalTransform::IDENTITY), |presentation| {
+                presentation.resolve_in_box(bounds.size())
+            })
+            .map_err(|_| PresentationGeometryError)?;
+        let placement = LogicalTransform::translation(bounds.x(), bounds.y())
+            .map_err(|_| PresentationGeometryError)?;
+        let owner_to_surface = node_presentation
+            .then(placement)
+            .map_err(|_| PresentationGeometryError)?;
+        let local_bounds = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
+            .unwrap_or_else(|_| unreachable!("published layout size is valid"));
+        let owner_bounds =
+            transform_rect_aabb(owner_to_surface, local_bounds).ok_or(PresentationGeometryError)?;
+        nodes.push(PresentationNodeFacts::new(owner_to_surface, owner_bounds));
+    }
+    Ok(CachedPresentationFacts { nodes })
 }
 
 #[derive(Clone, Copy)]
@@ -298,7 +338,7 @@ fn compose_scene_clips(
                 false,
             ));
         }
-        composed.push(SceneClip::new(clip.shape(), clip_to_surface));
+        composed.push(SceneClip::new(clip.shape().clone(), clip_to_surface));
     }
     Some(composed)
 }
@@ -324,9 +364,110 @@ fn text_run_item(run: &runenui_text::TextRun, style: &StyleResolution) -> PaintC
     .unwrap_or_else(|_| unreachable!("logical text artifacts issue shaped-text resource refs"))
 }
 
+fn node_decoration_shape(bounds: LogicalRect, style: &StyleResolution) -> SceneShape {
+    let rect = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
+        .unwrap_or_else(|_| unreachable!("published layout size is valid"));
+    match style.computed_style().radius() {
+        Some(radius) if radius != Radius::ZERO => SceneShape::rounded_rect(rect, radius),
+        Some(_) | None => SceneShape::rect(rect),
+    }
+}
+
+fn append_runtime_paint_item(
+    item: &PaintContributionItem,
+    mounted_preorder: usize,
+    contribution_local_order: usize,
+    owner_to_surface: LogicalTransform,
+    ordered: &mut Vec<groups::OrderedPaintItem>,
+) {
+    ordered.push(groups::OrderedPaintItem::new(
+        item.layer(),
+        mounted_preorder,
+        contribution_local_order,
+        None,
+        PaintSceneItem::new(
+            item.primitive().clone(),
+            owner_to_surface,
+            Vec::new(),
+            item.opacity(),
+            item.layer(),
+        ),
+    ));
+}
+
+fn append_paint_contribution(
+    contribution: &PaintContribution,
+    mounted_preorder: usize,
+    local_order_base: usize,
+    owner_to_surface: LogicalTransform,
+    diagnostics: &mut Vec<WidgetDiagnostic>,
+    explicit_groups: &mut Vec<groups::ResolvedExplicitGroup>,
+    ordered: &mut Vec<groups::OrderedPaintItem>,
+) -> usize {
+    let local_groups = explicit_groups::append_resolved_explicit_groups(
+        contribution,
+        mounted_preorder,
+        owner_to_surface,
+        diagnostics,
+        explicit_groups,
+    );
+    for (contribution_local_order, item) in contribution.items().iter().enumerate() {
+        let explicit_group = match contribution.__runtime_item_group(contribution_local_order) {
+            Some(local_group) => {
+                let Some(group) = local_groups.get(local_group).copied().flatten() else {
+                    continue;
+                };
+                Some(group)
+            }
+            None => None,
+        };
+        let Ok(local_to_surface) = item.local_transform().then(owner_to_surface) else {
+            diagnostics.push(scene_transform_diagnostic(
+                SceneContributionFamily::Paint,
+                contribution_local_order,
+                None,
+                true,
+            ));
+            continue;
+        };
+        if local_to_surface.inverse().is_none() {
+            diagnostics.push(scene_transform_diagnostic(
+                SceneContributionFamily::Paint,
+                contribution_local_order,
+                None,
+                false,
+            ));
+        }
+        let Some(clips) = compose_scene_clips(
+            item.clips(),
+            owner_to_surface,
+            SceneContributionFamily::Paint,
+            contribution_local_order,
+            diagnostics,
+        ) else {
+            continue;
+        };
+        ordered.push(groups::OrderedPaintItem::new(
+            item.layer(),
+            mounted_preorder,
+            local_order_base + contribution_local_order,
+            explicit_group,
+            PaintSceneItem::new(
+                image_mapping::publication_primitive(item),
+                local_to_surface,
+                clips,
+                item.opacity(),
+                item.layer(),
+            ),
+        ));
+    }
+    contribution.items().len()
+}
+
 pub(super) fn resolve_paint(
     topology: &SurfaceTopologySnapshot,
-    layout: &super::cache::CachedLayoutFacts,
+    layout: &CachedLayoutFacts,
+    presentation: &CachedPresentationFacts,
     styles: &CachedStyleFacts,
     capabilities: &SurfaceCapabilityPlan,
     text_system: &mut TextSystem,
@@ -335,54 +476,38 @@ pub(super) fn resolve_paint(
     super::cache::note_paint_phase_execution();
     let mut diagnostics = empty_scene_diagnostics(topology);
     let mut ordered = Vec::new();
+    let mut explicit_groups = Vec::new();
     let mut shaped_text_leases = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
-        let bounds = layout.bounds[mounted_preorder];
-        let owner_to_surface = LogicalTransform::translation(bounds.x(), bounds.y())
-            .unwrap_or_else(|_| unreachable!("published layout origin is finite"));
+        let owner_to_surface = presentation.node(mounted_preorder).owner_to_surface();
+        let style = &styles.resolutions[mounted_preorder];
+        let computed = style.computed_style();
+        let decoration_shape = (computed.background().is_some() || computed.outline().is_some())
+            .then(|| node_decoration_shape(layout.bounds[mounted_preorder], style));
         let mut next_local_order = 0;
+
+        if let (Some(shape), Some(background)) = (decoration_shape.as_ref(), computed.background())
+        {
+            append_runtime_paint_item(
+                &PaintContributionItem::fill(shape.clone(), background.clone()),
+                mounted_preorder,
+                next_local_order,
+                owner_to_surface,
+                &mut ordered,
+            );
+            next_local_order += 1;
+        }
+
         if let Some(contribution) = capabilities.paint_at(mounted_preorder, &node.id) {
-            for (contribution_local_order, item) in contribution.items().iter().enumerate() {
-                next_local_order = contribution_local_order + 1;
-                let Ok(local_to_surface) = item.local_transform().then(owner_to_surface) else {
-                    diagnostics[mounted_preorder].push(scene_transform_diagnostic(
-                        SceneContributionFamily::Paint,
-                        contribution_local_order,
-                        None,
-                        true,
-                    ));
-                    continue;
-                };
-                if local_to_surface.inverse().is_none() {
-                    diagnostics[mounted_preorder].push(scene_transform_diagnostic(
-                        SceneContributionFamily::Paint,
-                        contribution_local_order,
-                        None,
-                        false,
-                    ));
-                }
-                let Some(clips) = compose_scene_clips(
-                    item.clips(),
-                    owner_to_surface,
-                    SceneContributionFamily::Paint,
-                    contribution_local_order,
-                    &mut diagnostics[mounted_preorder],
-                ) else {
-                    continue;
-                };
-                ordered.push((
-                    item.layer(),
-                    mounted_preorder,
-                    contribution_local_order,
-                    PaintSceneItem::new(
-                        item.primitive().clone(),
-                        local_to_surface,
-                        clips,
-                        item.opacity(),
-                        item.layer(),
-                    ),
-                ));
-            }
+            next_local_order += append_paint_contribution(
+                &contribution,
+                mounted_preorder,
+                next_local_order,
+                owner_to_surface,
+                &mut diagnostics[mounted_preorder],
+                &mut explicit_groups,
+                &mut ordered,
+            );
         }
 
         if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact() {
@@ -397,31 +522,37 @@ pub(super) fn resolve_paint(
                         });
                     shaped_text_leases.push(lease);
                     let item = text_run_item(run, &styles.resolutions[mounted_preorder]);
-                    ordered.push((
-                        item.layer(),
+                    append_runtime_paint_item(
+                        &item,
                         mounted_preorder,
                         next_local_order,
-                        PaintSceneItem::new(
-                            item.primitive().clone(),
-                            owner_to_surface,
-                            Vec::new(),
-                            item.opacity(),
-                            item.layer(),
-                        ),
-                    ));
+                        owner_to_surface,
+                        &mut ordered,
+                    );
                     next_local_order += 1;
                 }
             }
         }
+
+        if let (Some(shape), Some(outline)) = (decoration_shape.as_ref(), computed.outline()) {
+            append_runtime_paint_item(
+                &PaintContributionItem::stroke(
+                    shape.clone(),
+                    outline.brush().clone(),
+                    outline.style(),
+                ),
+                mounted_preorder,
+                next_local_order,
+                owner_to_surface,
+                &mut ordered,
+            );
+        }
     }
-    ordered.sort_by_key(|(layer, mounted_preorder, contribution_local_order, _)| {
-        (*layer, *mounted_preorder, *contribution_local_order)
-    });
+    ordered.sort_by_key(groups::OrderedPaintItem::ordering_key);
+    let (items, composition) =
+        groups::derive_composition_groups(topology, styles, &explicit_groups, ordered);
     ResolvedPaint {
-        scene: PaintScene::with_shaped_text_leases(
-            ordered.into_iter().map(|(_, _, _, item)| item).collect(),
-            shaped_text_leases,
-        ),
+        scene: PaintScene::with_composition(items, shaped_text_leases, composition),
         diagnostics,
     }
 }
@@ -433,7 +564,7 @@ pub(super) struct ResolvedHitTest {
 
 pub(super) fn resolve_hit_test(
     topology: &SurfaceTopologySnapshot,
-    layout: &super::cache::CachedLayoutFacts,
+    presentation: &CachedPresentationFacts,
     capabilities: &SurfaceCapabilityPlan,
 ) -> ResolvedHitTest {
     #[cfg(test)]
@@ -445,9 +576,7 @@ pub(super) fn resolve_hit_test(
         let Some(contribution) = capabilities.hit_test_at(mounted_preorder, &node.id) else {
             continue;
         };
-        let bounds = layout.bounds[mounted_preorder];
-        let owner_to_surface = LogicalTransform::translation(bounds.x(), bounds.y())
-            .unwrap_or_else(|_| unreachable!("published layout origin is finite"));
+        let owner_to_surface = presentation.node(mounted_preorder).owner_to_surface();
         for (contribution_local_order, region) in contribution.regions().iter().enumerate() {
             let Ok(local_to_surface) = region.local_transform().then(owner_to_surface) else {
                 diagnostics[mounted_preorder].push(scene_transform_diagnostic(
@@ -481,7 +610,7 @@ pub(super) fn resolve_hit_test(
                 contribution_local_order,
                 HitTestRegion::new(
                     node.id.clone(),
-                    region.shape(),
+                    region.shape().clone(),
                     local_to_surface,
                     clips,
                     region.layer(),

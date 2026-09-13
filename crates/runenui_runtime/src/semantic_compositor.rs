@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use runenui_core::{
-    ElementId, Focusability, LogicalPoint, LogicalRect, MountedNodeId, SemanticAction,
-    SemanticBounds, SemanticContribution, SemanticItem, SemanticKey, SemanticNodeContribution,
-    SemanticReference, SemanticRelationshipKind, SemanticRole, SemanticText, SemanticValue,
-    WidgetActivation,
+    __runtime::transform_rect_aabb, ElementId, Focusability, LogicalRect, LogicalTransform,
+    MountedNodeId, SemanticAction, SemanticBounds, SemanticContribution, SemanticItem, SemanticKey,
+    SemanticNodeContribution, SemanticReference, SemanticRelationshipKind, SemanticRole,
+    SemanticText, SemanticValue, WidgetActivation,
 };
 
 use crate::SemanticNodeId;
@@ -67,6 +67,9 @@ pub enum SemanticCompositionDiagnostic {
         element_id: ElementId,
         key: SemanticKey,
     },
+    UnrepresentableBounds {
+        source: SemanticNodeId,
+    },
     FocusedOwnerMissingVisiblePrimary,
 }
 
@@ -80,10 +83,11 @@ pub struct SemanticCandidate {
 
 pub fn compose_semantics(
     owners: &[SemanticOwnerFacts],
+    owner_transforms: &[LogicalTransform],
     root: Option<&MountedNodeId>,
     focused_owner: Option<&MountedNodeId>,
 ) -> SemanticCandidate {
-    let mut compositor = SemanticCompositor::new(owners);
+    let mut compositor = SemanticCompositor::new(owners, owner_transforms);
     let roots = match root.and_then(|id| compositor.owner_index(id)) {
         Some(root_index) => compositor.compose_owner(root_index, None),
         None if root.is_some() => {
@@ -118,6 +122,7 @@ pub fn compose_semantics(
 
 struct SemanticCompositor<'a> {
     owners: &'a [SemanticOwnerFacts],
+    owner_transforms: &'a [LogicalTransform],
     owner_indices: HashMap<MountedNodeId, usize>,
     binding_ids: HashMap<MountedNodeId, HashMap<SemanticKey, SemanticNodeId>>,
     visible_ids: HashMap<MountedNodeId, HashMap<SemanticKey, SemanticNodeId>>,
@@ -139,7 +144,12 @@ struct SemanticNodeDraft {
 }
 
 impl<'a> SemanticCompositor<'a> {
-    fn new(owners: &'a [SemanticOwnerFacts]) -> Self {
+    fn new(owners: &'a [SemanticOwnerFacts], owner_transforms: &'a [LogicalTransform]) -> Self {
+        assert_eq!(
+            owners.len(),
+            owner_transforms.len(),
+            "semantic owner geometry remains publication-aligned"
+        );
         let mut owner_indices = HashMap::with_capacity(owners.len());
         let mut binding_ids = HashMap::with_capacity(owners.len());
         let mut authored_owner_indices = HashMap::new();
@@ -168,6 +178,7 @@ impl<'a> SemanticCompositor<'a> {
         }
         Self {
             owners,
+            owner_transforms,
             owner_indices,
             binding_ids,
             visible_ids: HashMap::new(),
@@ -237,6 +248,15 @@ impl<'a> SemanticCompositor<'a> {
                 });
             return Vec::new();
         };
+        let Some(bounds) = resolve_bounds(
+            owner.bounds,
+            self.owner_transforms[owner_index],
+            authored.bounds(),
+        ) else {
+            self.diagnostics
+                .push(SemanticCompositionDiagnostic::UnrepresentableBounds { source: id });
+            return Vec::new();
+        };
         let node = SemanticCandidateNode {
             id: id.clone(),
             parent: parent.cloned(),
@@ -249,7 +269,7 @@ impl<'a> SemanticCompositor<'a> {
             inert: authored.state().inert(),
             supported_actions: supported_actions(authored, owner),
             relationships: Vec::new(),
-            bounds: resolve_bounds(owner.bounds, authored.bounds()),
+            bounds,
             text: authored.text().cloned(),
         };
         if self
@@ -413,28 +433,14 @@ fn supported_actions(
         .collect()
 }
 
-fn resolve_bounds(owner: LogicalRect, bounds: SemanticBounds) -> LogicalRect {
+fn resolve_bounds(
+    owner: LogicalRect,
+    owner_to_surface: LogicalTransform,
+    bounds: SemanticBounds,
+) -> Option<LogicalRect> {
     match bounds {
-        SemanticBounds::Owner => owner,
-        SemanticBounds::OwnerLocal(local) => LogicalRect::new(
-            LogicalPoint::new(
-                finite_saturating_add(owner.x(), local.x()),
-                finite_saturating_add(owner.y(), local.y()),
-            )
-            .unwrap_or_else(|_| unreachable!("saturating semantic translation remains finite")),
-            local.size(),
-        ),
-    }
-}
-
-fn finite_saturating_add(left: f32, right: f32) -> f32 {
-    let sum = left + right;
-    if sum.is_finite() {
-        sum
-    } else if left.is_sign_negative() && right.is_sign_negative() {
-        -f32::MAX
-    } else {
-        f32::MAX
+        SemanticBounds::Owner => Some(owner),
+        SemanticBounds::OwnerLocal(local) => transform_rect_aabb(owner_to_surface, local),
     }
 }
 
@@ -442,12 +448,15 @@ fn finite_saturating_add(left: f32, right: f32) -> f32 {
 mod tests {
     use runenui_core::{
         __runtime::RuntimeNamespace, ElementId, Focusability, LogicalPoint, LogicalRect,
-        LogicalSize, SemanticAction, SemanticBounds, SemanticContribution, SemanticItem,
-        SemanticKey, SemanticNodeContribution, SemanticReference, SemanticRelationship,
-        SemanticRelationshipKind, SemanticRole, SemanticState, WidgetActivation,
+        LogicalSize, LogicalTransform, SemanticAction, SemanticBounds, SemanticContribution,
+        SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
+        SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState,
+        WidgetActivation,
     };
 
-    use super::{SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics};
+    use super::{
+        SemanticCandidate, SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics,
+    };
 
     fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
         LogicalRect::new(
@@ -463,6 +472,21 @@ mod tests {
 
     fn element_id(value: &'static str) -> ElementId {
         ElementId::from_static(value).unwrap_or_else(|_| unreachable!("test id is valid"))
+    }
+
+    fn compose(
+        owners: &[SemanticOwnerFacts],
+        root: Option<&runenui_core::MountedNodeId>,
+        focused_owner: Option<&runenui_core::MountedNodeId>,
+    ) -> SemanticCandidate {
+        let transforms = owners
+            .iter()
+            .map(|owner| {
+                LogicalTransform::translation(owner.bounds.x(), owner.bounds.y())
+                    .unwrap_or_else(|_| unreachable!("test owner origin is finite"))
+            })
+            .collect::<Vec<_>>();
+        compose_semantics(owners, &transforms, root, focused_owner)
     }
 
     #[test]
@@ -530,7 +554,7 @@ mod tests {
             },
         ];
 
-        let candidate = compose_semantics(&owners, Some(&root), None);
+        let candidate = compose(&owners, Some(&root), None);
         assert!(candidate.diagnostics.is_empty());
         assert_eq!(candidate.roots, vec![control_primary.clone()]);
         assert_eq!(
@@ -587,7 +611,7 @@ mod tests {
             },
         ];
 
-        let candidate = compose_semantics(&owners, Some(&owner), Some(&owner));
+        let candidate = compose(&owners, Some(&owner), Some(&owner));
         assert!(candidate.roots.is_empty());
         assert!(candidate.nodes.is_empty());
         assert!(candidate.focused.is_none());
@@ -630,7 +654,7 @@ mod tests {
             focusability: Focusability::Focusable,
         }];
 
-        let candidate = compose_semantics(&owners, Some(&owner), None);
+        let candidate = compose(&owners, Some(&owner), None);
         let primary = &candidate.nodes[0];
         let virtual_node = &candidate.nodes[1];
         assert!(primary.disabled);
@@ -646,6 +670,31 @@ mod tests {
         );
         assert_eq!(virtual_node.id, virtual_id);
         assert_eq!(primary.id, primary_id);
+    }
+
+    #[test]
+    fn owner_local_bounds_follow_full_presentation_affine_before_aabb_projection() {
+        let runtime = RuntimeNamespace::__runtime_new();
+        let owner = runtime.__runtime_mounted_id(0, 1);
+        let primary_id = runtime.__runtime_semantic_id(0, 1);
+        let owners = vec![SemanticOwnerFacts {
+            id: owner.clone(),
+            authored_id: None,
+            mounted_children: Vec::new(),
+            contribution: SemanticContribution::single(
+                SemanticNodeContribution::primary(SemanticRole::Button)
+                    .with_bounds(SemanticBounds::OwnerLocal(rect(1.0, 2.0, 3.0, 4.0))),
+            ),
+            bindings: vec![(SemanticKey::PRIMARY, primary_id)],
+            bounds: rect(4.0, 10.0, 8.0, 12.0),
+            activation: WidgetActivation::NONE,
+            focusability: Focusability::NotFocusable,
+        }];
+        let transform = LogicalTransform::try_new(0.0, 2.0, -1.0, 0.0, 10.0, 10.0)
+            .unwrap_or_else(|_| unreachable!("test affine is finite"));
+
+        let candidate = compose_semantics(&owners, &[transform], Some(&owner), None);
+        assert_eq!(candidate.nodes[0].bounds, rect(4.0, 12.0, 4.0, 6.0));
     }
 
     #[test]
@@ -715,7 +764,7 @@ mod tests {
             },
         ];
 
-        let candidate = compose_semantics(&owners, Some(&root), Some(&source_owner));
+        let candidate = compose(&owners, Some(&root), Some(&source_owner));
         assert!(candidate.diagnostics.is_empty());
         assert_eq!(candidate.focused, Some(source_primary));
         assert_eq!(candidate.nodes[0].relationships.len(), 2);
@@ -797,7 +846,7 @@ mod tests {
             },
         ];
 
-        let candidate = compose_semantics(&owners, Some(&root), None);
+        let candidate = compose(&owners, Some(&root), None);
         assert!(candidate.diagnostics.is_empty());
         assert_eq!(candidate.nodes[0].relationships.len(), 2);
         assert_eq!(candidate.nodes[0].relationships[0].target, source_shared);
@@ -877,7 +926,7 @@ mod tests {
             },
         ];
 
-        let candidate = compose_semantics(&owners, Some(&root), None);
+        let candidate = compose(&owners, Some(&root), None);
         assert!(candidate.nodes[0].relationships.is_empty());
         assert_eq!(
             candidate.diagnostics,

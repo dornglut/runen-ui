@@ -114,6 +114,11 @@ impl From<SemanticCompositionDiagnostic> for SemanticDiagnostic {
             SemanticCompositionDiagnostic::FocusedOwnerMissingVisiblePrimary => {
                 Self::FocusedOwnerMissingVisiblePrimary
             }
+            SemanticCompositionDiagnostic::UnrepresentableBounds { .. } => {
+                unreachable!(
+                    "unrepresentable semantic bounds reject the staged surface before diagnostics"
+                )
+            }
         }
     }
 }

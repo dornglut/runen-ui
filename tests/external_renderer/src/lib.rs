@@ -71,17 +71,21 @@ impl PaintRecord {
         self.layer
     }
 
-    /// Maps one normalized image-domain point into surface-logical coordinates.
+    /// Maps one normalized point across a single resolved image destination patch.
     ///
-    /// The complete closed normalized coordinate square is accepted so callers can
-    /// inspect exact destination edges even though rectangle coverage itself is half-open.
+    /// This helper intentionally applies only to a publication image with exactly
+    /// one runtime-resolved patch. Multi-patch images such as nine-slice require a
+    /// patch-explicit consumer rather than reconstructing authored mapping policy.
     #[must_use]
     pub fn image_surface_point(&self, normalized: LogicalPoint) -> Option<LogicalPoint> {
         if !(0.0..=1.0).contains(&normalized.x()) || !(0.0..=1.0).contains(&normalized.y()) {
             return None;
         }
         let image = self.primitive.as_image()?;
-        let destination = image.destination();
+        if image.resolved_patch_count()? != 1 {
+            return None;
+        }
+        let (_, destination) = image.resolved_patch(0)?;
         let local = LogicalPoint::new(
             destination.width().mul_add(normalized.x(), destination.x()),
             destination
@@ -120,8 +124,8 @@ impl HitRecord {
 
     /// Returns the exact logical region shape.
     #[must_use]
-    pub const fn shape(&self) -> SceneShape {
-        self.shape
+    pub const fn shape(&self) -> &SceneShape {
+        &self.shape
     }
 
     /// Returns the exact region-local to surface-logical transform.
@@ -351,7 +355,7 @@ impl SceneConsumer {
                 .iter()
                 .map(|region| HitRecord {
                     target: region.target().clone(),
-                    shape: region.shape(),
+                    shape: region.shape().clone(),
                     local_to_surface: region.local_to_surface(),
                     clips: region.clips().to_vec(),
                     layer: region.layer(),
@@ -378,7 +382,7 @@ fn region_contains_surface_point(region: &HitRecord, point: LogicalPoint) -> boo
     else {
         return false;
     };
-    if !shape_contains(region.shape, region_point) {
+    if !shape_contains(&region.shape, region_point) {
         return false;
     }
     region.clips.iter().all(|clip| {
@@ -389,14 +393,19 @@ fn region_contains_surface_point(region: &HitRecord, point: LogicalPoint) -> boo
     })
 }
 
-fn shape_contains(shape: SceneShape, point: LogicalPoint) -> bool {
-    let rect = shape.outer_rect();
+fn shape_contains(shape: &SceneShape, point: LogicalPoint) -> bool {
+    match shape {
+        SceneShape::Rect(rect) => rect_contains(*rect, point),
+        SceneShape::RoundedRect { rect, radius } => rounded_rect_contains(*rect, *radius, point),
+        SceneShape::Ellipse(rect) => ellipse_contains(*rect, point),
+        SceneShape::Path(path) => path.contains_fill(point),
+    }
+}
+
+fn rounded_rect_contains(rect: LogicalRect, radius: Radius, point: LogicalPoint) -> bool {
     if !rect_contains(rect, point) {
         return false;
     }
-    let Some(radius) = shape.radius() else {
-        return true;
-    };
 
     let radii = normalized_radii(rect, radius);
     let left = f64::from(rect.x());
@@ -410,6 +419,19 @@ fn shape_contains(shape: SceneShape, point: LogicalPoint) -> bool {
         && !outside_rounded_corner(x, y, right, top, radii[1], Corner::TopRight)
         && !outside_rounded_corner(x, y, right, bottom, radii[2], Corner::BottomRight)
         && !outside_rounded_corner(x, y, left, bottom, radii[3], Corner::BottomLeft)
+}
+
+fn ellipse_contains(rect: LogicalRect, point: LogicalPoint) -> bool {
+    if rect.width() == 0.0 || rect.height() == 0.0 {
+        return false;
+    }
+    let radius_x = f64::from(rect.width()) / 2.0;
+    let radius_y = f64::from(rect.height()) / 2.0;
+    let center_x = f64::from(rect.x()) + radius_x;
+    let center_y = f64::from(rect.y()) + radius_y;
+    let normalized_x = (f64::from(point.x()) - center_x) / radius_x;
+    let normalized_y = (f64::from(point.y()) - center_y) / radius_y;
+    normalized_x.mul_add(normalized_x, normalized_y * normalized_y) <= 1.0
 }
 
 fn rect_contains(rect: LogicalRect, point: LogicalPoint) -> bool {

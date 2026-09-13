@@ -10,15 +10,13 @@ use bymsdfgen_core::{
 use runenui_core::{Color, LogicalPoint, LogicalRect, LogicalTransform, ResourceRef, SceneOpacity};
 use runenui_runtime::RasterScale;
 use runenui_text::{ShapedTextResource, TextGlyph};
-use skrifa::raw::TableProvider;
-use skrifa::{
-    FontRef, MetadataProvider,
-    color::ColorGlyphFormat,
-    instance::{LocationRef, NormalizedCoord, Size},
-    outline::{DrawSettings, OutlinePen},
-};
 
 use crate::scene_subset::SupportedFillRect;
+
+use super::shaped_outline::{
+    GlyphOutline, OutlineResolveFailure, OutlineVerb, UnsupportedOutlineKind,
+    resolve_unique_outlines,
+};
 
 const SHAPED_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const SHAPED_VERTEX_STRIDE: u64 = 36;
@@ -583,89 +581,134 @@ fn rasterize_unique_glyphs(
     resource: &ShapedTextResource,
     quality: QualityTier,
 ) -> Result<Vec<GlyphRaster>, ShapedRunResolveFailure> {
-    let font = FontRef::from_index(resource.font().bytes(), resource.font().face_index())
-        .map_err(|_| ShapedRunResolveFailure::InvalidFont)?;
-    let normalized: Vec<NormalizedCoord> = resource
-        .font()
-        .normalized_coords()
-        .iter()
-        .copied()
-        .map(NormalizedCoord::from_bits)
-        .collect();
-    let location = LocationRef::new(&normalized);
-    let outlines = font.outline_glyphs();
-    let colors = font.color_glyphs();
-    let bitmaps = font.bitmap_strikes();
-    let svg = font.svg().ok();
-    let mut seen = HashSet::new();
+    let outlines = resolve_unique_outlines(resource).map_err(shaped_outline_failure)?;
     let mut rasters = Vec::new();
-    for glyph in resource.glyphs() {
-        if !seen.insert(glyph.id()) {
-            continue;
-        }
-        if resource.font().faux_bold() {
-            return Err(ShapedRunResolveFailure::UnsupportedGlyph {
-                glyph_id: glyph.id(),
-                kind: UnsupportedGlyphKind::FauxBold,
-            });
-        }
-        let glyph_id = skrifa::GlyphId::new(glyph.id());
-        if svg
-            .as_ref()
-            .and_then(|svg| svg.glyph_data(glyph_id).ok().flatten())
-            .is_some()
-        {
-            return Err(ShapedRunResolveFailure::UnsupportedGlyph {
-                glyph_id: glyph.id(),
-                kind: UnsupportedGlyphKind::Svg,
-            });
-        }
-        if let Some(color) = colors.get(glyph_id) {
-            let kind = match color.format() {
-                ColorGlyphFormat::ColrV0 => UnsupportedGlyphKind::ColrV0,
-                ColorGlyphFormat::ColrV1 => UnsupportedGlyphKind::ColrV1,
-            };
-            return Err(ShapedRunResolveFailure::UnsupportedGlyph {
-                glyph_id: glyph.id(),
-                kind,
-            });
-        }
-        if bitmaps
-            .glyph_for_size(Size::new(resource.font_size()), glyph_id)
-            .is_some()
-        {
-            return Err(ShapedRunResolveFailure::UnsupportedGlyph {
-                glyph_id: glyph.id(),
-                kind: UnsupportedGlyphKind::Bitmap,
-            });
-        }
-        let Some(outline) = outlines.get(glyph_id) else {
-            // A glyph without a scalable outline is valid non-painting content until an intrinsic
-            // representation above proves that it is unsupported color/bitmap content.
+    for resolved in outlines {
+        let glyph_id = resolved.glyph_id();
+        let Some(outline) = resolved.outline() else {
             continue;
         };
-        let mut shape = Shape::new();
-        let mut pen = ShapePen::new(&mut shape, resource.font().faux_skew());
-        outline
-            .draw(DrawSettings::unhinted(Size::new(1.0), location), &mut pen)
-            .map_err(|_| ShapedRunResolveFailure::InvalidOutline {
-                glyph_id: glyph.id(),
-            })?;
-        pen.finish();
+        let mut shape = msdf_shape(outline).map_err(|()| invalid_outline(glyph_id))?;
         if shape.contours.is_empty() {
             continue;
         }
         if !shape.validate() {
-            return Err(ShapedRunResolveFailure::InvalidOutline {
-                glyph_id: glyph.id(),
-            });
+            return Err(invalid_outline(glyph_id));
         }
         shape.normalize();
         shape.orient_contours();
         edge_coloring_simple(&mut shape, 3.0, 0);
-        rasters.push(generate_msdf_raster(shape, quality, glyph.id())?);
+        rasters.push(generate_msdf_raster(shape, quality, glyph_id)?);
     }
     Ok(rasters)
+}
+
+const fn shaped_outline_failure(failure: OutlineResolveFailure) -> ShapedRunResolveFailure {
+    match failure {
+        OutlineResolveFailure::UnsupportedGlyph { glyph_id, kind } => {
+            ShapedRunResolveFailure::UnsupportedGlyph {
+                glyph_id,
+                kind: match kind {
+                    UnsupportedOutlineKind::ColrV0 => UnsupportedGlyphKind::ColrV0,
+                    UnsupportedOutlineKind::ColrV1 => UnsupportedGlyphKind::ColrV1,
+                    UnsupportedOutlineKind::Bitmap => UnsupportedGlyphKind::Bitmap,
+                    UnsupportedOutlineKind::Svg => UnsupportedGlyphKind::Svg,
+                    UnsupportedOutlineKind::FauxBold => UnsupportedGlyphKind::FauxBold,
+                },
+            }
+        }
+        OutlineResolveFailure::InvalidFont => ShapedRunResolveFailure::InvalidFont,
+        OutlineResolveFailure::InvalidOutline { glyph_id } => invalid_outline(glyph_id),
+    }
+}
+
+const fn invalid_outline(glyph_id: u32) -> ShapedRunResolveFailure {
+    ShapedRunResolveFailure::InvalidOutline { glyph_id }
+}
+
+fn msdf_shape(outline: &GlyphOutline) -> Result<Shape, ()> {
+    let mut shape = Shape::new();
+    let mut contour = None::<Contour>;
+    let mut current = None::<Vector2>;
+    let mut start = None::<Vector2>;
+
+    for verb in outline.verbs() {
+        match *verb {
+            OutlineVerb::MoveTo(point) => {
+                finish_msdf_contour(&mut shape, &mut contour, &mut current, &mut start);
+                let point = Vector2::new(point.x(), point.y());
+                contour = Some(Contour::new());
+                current = Some(point);
+                start = Some(point);
+            }
+            OutlineVerb::LineTo(point) => {
+                let Some(from) = current else {
+                    return Err(());
+                };
+                let Some(active) = contour.as_mut() else {
+                    return Err(());
+                };
+                let to = Vector2::new(point.x(), point.y());
+                active.add_edge(EdgeSegment::line(from, to));
+                current = Some(to);
+            }
+            OutlineVerb::QuadraticTo { control, to } => {
+                let Some(from) = current else {
+                    return Err(());
+                };
+                let Some(active) = contour.as_mut() else {
+                    return Err(());
+                };
+                let control = Vector2::new(control.x(), control.y());
+                let to = Vector2::new(to.x(), to.y());
+                active.add_edge(EdgeSegment::quadratic(from, control, to));
+                current = Some(to);
+            }
+            OutlineVerb::CubicTo {
+                control1,
+                control2,
+                to,
+            } => {
+                let Some(from) = current else {
+                    return Err(());
+                };
+                let Some(active) = contour.as_mut() else {
+                    return Err(());
+                };
+                let control1 = Vector2::new(control1.x(), control1.y());
+                let control2 = Vector2::new(control2.x(), control2.y());
+                let to = Vector2::new(to.x(), to.y());
+                active.add_edge(EdgeSegment::cubic(from, control1, control2, to));
+                current = Some(to);
+            }
+            OutlineVerb::Close => {
+                finish_msdf_contour(&mut shape, &mut contour, &mut current, &mut start);
+            }
+        }
+    }
+    finish_msdf_contour(&mut shape, &mut contour, &mut current, &mut start);
+    Ok(shape)
+}
+
+fn finish_msdf_contour(
+    shape: &mut Shape,
+    contour: &mut Option<Contour>,
+    current: &mut Option<Vector2>,
+    start: &mut Option<Vector2>,
+) {
+    let Some(mut finished) = contour.take() else {
+        *current = None;
+        *start = None;
+        return;
+    };
+    if let (Some(current), Some(start)) = (current.take(), start.take())
+        && current != start
+    {
+        finished.add_edge(EdgeSegment::line(current, start));
+    }
+    if !finished.is_empty() {
+        shape.add_contour(finished);
+    }
 }
 
 #[derive(Debug)]
@@ -858,98 +901,6 @@ fn generate_msdf_raster(
         height: height_u32,
         rgba8: rgba8.into(),
     })
-}
-
-struct ShapePen<'a> {
-    shape: &'a mut Shape,
-    contour: Option<Contour>,
-    current: Option<Vector2>,
-    start: Option<Vector2>,
-    skew: f64,
-}
-
-impl<'a> ShapePen<'a> {
-    fn new(shape: &'a mut Shape, faux_skew: Option<f32>) -> Self {
-        Self {
-            shape,
-            contour: None,
-            current: None,
-            start: None,
-            skew: faux_skew.map_or(0.0, f64::from).tan(),
-        }
-    }
-
-    fn point(&self, x: f32, y: f32) -> Vector2 {
-        let y = -f64::from(y);
-        Vector2::new(self.skew.mul_add(y, f64::from(x)), y)
-    }
-
-    fn finish_contour(&mut self) {
-        let Some(mut contour) = self.contour.take() else {
-            return;
-        };
-        if let (Some(current), Some(start)) = (self.current, self.start)
-            && current != start
-        {
-            contour.add_edge(EdgeSegment::line(current, start));
-        }
-        if !contour.is_empty() {
-            self.shape.add_contour(contour);
-        }
-        self.current = None;
-        self.start = None;
-    }
-
-    fn finish(&mut self) {
-        self.finish_contour();
-    }
-}
-
-impl OutlinePen for ShapePen<'_> {
-    fn move_to(&mut self, x: f32, y: f32) {
-        self.finish_contour();
-        let point = self.point(x, y);
-        self.contour = Some(Contour::new());
-        self.current = Some(point);
-        self.start = Some(point);
-    }
-
-    fn line_to(&mut self, x: f32, y: f32) {
-        let next = self.point(x, y);
-        if let Some(current) = self.current
-            && let Some(contour) = self.contour.as_mut()
-        {
-            contour.add_edge(EdgeSegment::line(current, next));
-        }
-        self.current = Some(next);
-    }
-
-    fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
-        let control = self.point(cx, cy);
-        let next = self.point(x, y);
-        if let Some(current) = self.current
-            && let Some(contour) = self.contour.as_mut()
-        {
-            contour.add_edge(EdgeSegment::quadratic(current, control, next));
-        }
-        self.current = Some(next);
-    }
-
-    fn curve_to(&mut self, c0x: f32, c0y: f32, c1x: f32, c1y: f32, x: f32, y: f32) {
-        let control0 = self.point(c0x, c0y);
-        let control1 = self.point(c1x, c1y);
-        let next = self.point(x, y);
-        if let Some(current) = self.current
-            && let Some(contour) = self.contour.as_mut()
-        {
-            contour.add_edge(EdgeSegment::cubic(current, control0, control1, next));
-        }
-        self.current = Some(next);
-    }
-
-    fn close(&mut self) {
-        self.finish_contour();
-    }
 }
 
 #[allow(

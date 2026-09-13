@@ -1,12 +1,17 @@
-use runenui_core::{Color, LogicalPoint, LogicalRect, PaintPrimitive};
+use runenui_core::{
+    Brush, Color, LogicalPoint, LogicalRect, PaintPrimitive, SceneShape, StrokeJoin,
+};
 
 use crate::{ConsumerSnapshot, PaintRecord, rect_contains, shape_contains};
 
-/// Independently evaluates literal fill/stroke coverage and source-over color.
+/// Independently evaluates the legacy literal rectangular fill/stroke subset and
+/// source-over color through the current generic public paint vocabulary.
 ///
 /// Resource-backed image and shaped-run payload coverage is intentionally not
 /// invented here. M6 exposes their symbolic resource identity and placement,
-/// while provider payloads and realization remain outside the protocol.
+/// while provider payloads and realization remain outside the protocol. Generic
+/// non-rectangular shapes, non-solid brushes, and stroke styles whose 90-degree
+/// rectangle corners would bevel are deliberately outside this narrow sampler.
 #[must_use]
 pub fn sample_literal_paint(snapshot: &ConsumerSnapshot, point: LogicalPoint) -> [f32; 4] {
     snapshot
@@ -31,9 +36,17 @@ fn literal_source(item: &PaintRecord, surface_point: LogicalPoint) -> Option<(Co
     }
 
     let color = match &item.primitive {
-        PaintPrimitive::FillRect { rect, color } if fill_covers(*rect, local_point) => *color,
-        PaintPrimitive::StrokeRect { rect, color, width }
-            if stroke_covers(*rect, width.get(), local_point) =>
+        PaintPrimitive::Fill {
+            shape: SceneShape::Rect(rect),
+            brush: Brush::Solid(color),
+        } if fill_covers(*rect, local_point) => *color,
+        PaintPrimitive::Stroke {
+            shape: SceneShape::Rect(rect),
+            brush: Brush::Solid(color),
+            style,
+        } if matches!(style.join(), StrokeJoin::Miter)
+            && style.miter_limit() >= core::f32::consts::SQRT_2
+            && stroke_covers(*rect, style.width().get(), local_point) =>
         {
             *color
         }

@@ -3,12 +3,13 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Color, CommandOrigin, Element, LogicalLength, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PaintPrimitive, SemanticAction,
-    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticNodeContribution,
-    SemanticRole, StyleEnvironment, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
-    WidgetActivationOutput, WidgetDiagnostic, WidgetInvalidation, WidgetMeasure,
-    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, column,
+    Brush, Color, CommandOrigin, Element, LogicalLength, LogicalRect, NoHostProtocol,
+    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive, SceneShape,
+    SemanticAction, SemanticCommand, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticRole, StyleEnvironment, UiApp, View, Widget,
+    WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetDiagnostic,
+    WidgetInvalidation, WidgetMeasure, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext, column,
 };
 use runenui_runtime::{
     AppRuntime, FocusReason, LayoutConstraints, MountedNodeId, PumpBudget, SubmitCommandErrorKind,
@@ -142,9 +143,9 @@ impl Widget<()> for StatefulPulse {
             .unwrap_or_else(|_| unreachable!("validated local size yields a valid rectangle"));
         let activation_channel =
             u8::try_from(state.activations.min(u16::from(u8::MAX))).unwrap_or(u8::MAX);
-        PaintContribution::single(PaintContributionItem::fill_rect(
-            rect,
-            Color::rgba(activation_channel, 0, 0, 255),
+        PaintContribution::single(PaintContributionItem::fill(
+            SceneShape::rect(rect),
+            Brush::solid(Color::rgba(activation_channel, 0, 0, 255)),
         ))
     }
     fn semantics(
@@ -254,9 +255,11 @@ fn keyed_reorder_preserves_mounted_state_focus_and_slots() {
     assert!(publication.paint_scene().items().iter().any(|item| {
         matches!(
             item.primitive(),
-            PaintPrimitive::FillRect { rect, color }
-                if (rect.width() - 21.0).abs() <= f32::EPSILON
-                    && *color == Color::rgba(1, 0, 0, 255)
+            PaintPrimitive::Fill {
+                shape: SceneShape::Rect(rect),
+                brush: Brush::Solid(color),
+            } if (rect.width() - 21.0).abs() <= f32::EPSILON
+                && *color == Color::rgba(1, 0, 0, 255)
         )
     }));
     assert_eq!(runtime.reconciliation_report().moved_count(), 2);

@@ -12,8 +12,8 @@ use crate::style_debug::SurfaceStyleReport;
 
 use super::cache::{CachedLayoutFacts, context_key};
 use super::resolve::{
-    ResolvedSurfaceTree, collect_topology, hit_contexts, paint_contexts, resolve_diagnostics,
-    resolve_hit_test, resolve_paint, resolve_styles,
+    PresentationGeometryError, ResolvedSurfaceTree, collect_topology, hit_contexts, paint_contexts,
+    resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::PlannedSurfacePublication;
@@ -26,6 +26,7 @@ use super::{
 pub(crate) enum SurfacePlanningError {
     SemanticIntegrity,
     TextLayout(TextLayoutError),
+    PresentationGeometry,
 }
 
 impl From<SemanticReconcileError> for SurfacePlanningError {
@@ -37,6 +38,12 @@ impl From<SemanticReconcileError> for SurfacePlanningError {
 impl From<TextLayoutError> for SurfacePlanningError {
     fn from(error: TextLayoutError) -> Self {
         Self::TextLayout(error)
+    }
+}
+
+impl From<PresentationGeometryError> for SurfacePlanningError {
+    fn from(_: PresentationGeometryError) -> Self {
+        Self::PresentationGeometry
     }
 }
 
@@ -61,9 +68,14 @@ fn initial_surface_capability_plan<Action>(
     tree.plan_surface_publication_capabilities(phases)
 }
 
-const fn semantic_product_is_dirty(pending: DirtyPhases, layout_dirty: bool) -> bool {
+const fn semantic_product_is_dirty(
+    pending: DirtyPhases,
+    layout_dirty: bool,
+    presentation_dirty: bool,
+) -> bool {
     pending.contains(DirtyPhases::SEMANTICS)
         || layout_dirty
+        || presentation_dirty
         || pending.contains(DirtyPhases::FOCUS_VALIDATION)
 }
 
@@ -120,7 +132,7 @@ fn resolve_contribution_phases<Action>(
 
     let mut scene_diagnostics_changed = false;
     if publication_phases.contains(DirtyPhases::HIT_TEST) {
-        let resolved = resolve_hit_test(&current.topology, &current.layout, capability_plan);
+        let resolved = resolve_hit_test(&current.topology, &current.presentation, capability_plan);
         current.hit_test = resolved.scene;
         scene_diagnostics_changed |= replace_scene_diagnostics_if_changed(
             &mut current.hit_diagnostics,
@@ -133,6 +145,7 @@ fn resolve_contribution_phases<Action>(
         let resolved = resolve_paint(
             &current.topology,
             &current.layout,
+            &current.presentation,
             &current.styles,
             capability_plan,
             text_system,
@@ -188,6 +201,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let style_dirty = style_product_is_dirty(pending, &current, &next_context, interaction);
     let mut layout_dirty =
         pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
+    let mut presentation_dirty = layout_dirty;
     let mut hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
     let mut paint_dirty = pending.contains(DirtyPhases::PAINT);
     let diagnostics_dirty = pending.contains(DirtyPhases::DIAGNOSTICS);
@@ -205,6 +219,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         );
         let effects = current.styles.effects_against(&next_styles);
         layout_dirty |= effects.layout();
+        presentation_dirty |= effects.presentation();
         paint_dirty |= effects.paint();
         current.interaction = Arc::new(interaction.clone());
         current.styles = Arc::new(next_styles);
@@ -212,12 +227,14 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         completed.insert(DirtyPhases::STYLE);
     }
 
-    if layout_dirty {
+    presentation_dirty |= layout_dirty;
+    if presentation_dirty {
         hit_dirty = true;
         paint_dirty = true;
     }
 
-    let semantic_product_dirty = semantic_product_is_dirty(pending, layout_dirty);
+    let semantic_product_dirty =
+        semantic_product_is_dirty(pending, layout_dirty, presentation_dirty);
     let publication_phases = surface_capability_phases([
         (layout_dirty, DirtyPhases::LAYOUT),
         (hit_dirty, DirtyPhases::HIT_TEST),
@@ -233,6 +250,9 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         current.layout = Arc::new(resolve_layout_phase(tree, &current, context, text_system)?);
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
+    }
+    if presentation_dirty {
+        current.presentation = Arc::new(resolve_presentation(&current.layout, &current.styles)?);
     }
 
     let scene_diagnostics_changed = resolve_contribution_phases(
@@ -313,6 +333,7 @@ fn plan_structural_surface<'tree, Action>(
         text_layouts,
     };
     report.record(SurfacePhase::Layout);
+    let presentation = resolve_presentation(&layout, &styles)?;
 
     let paint_contexts = paint_contexts(&layout, &styles);
     let hit_contexts = hit_contexts(&layout);
@@ -321,11 +342,18 @@ fn plan_structural_surface<'tree, Action>(
         &paint_contexts,
         &hit_contexts,
     );
-    let resolved_hit_test = resolve_hit_test(&topology, &layout, &capability_plan);
+    let resolved_hit_test = resolve_hit_test(&topology, &presentation, &capability_plan);
     let hit_test = resolved_hit_test.scene;
     let hit_diagnostics = Arc::new(resolved_hit_test.diagnostics);
     report.record(SurfacePhase::HitTesting);
-    let resolved_paint = resolve_paint(&topology, &layout, &styles, &capability_plan, text_system);
+    let resolved_paint = resolve_paint(
+        &topology,
+        &layout,
+        &presentation,
+        &styles,
+        &capability_plan,
+        text_system,
+    );
     let paint = resolved_paint.scene;
     let paint_diagnostics = Arc::new(resolved_paint.diagnostics);
     report.record(SurfacePhase::Paint);
@@ -349,6 +377,7 @@ fn plan_structural_surface<'tree, Action>(
         interaction: Arc::new(interaction.clone()),
         styles: Arc::new(styles),
         layout: Arc::new(layout),
+        presentation: Arc::new(presentation),
         hit_test,
         paint,
         diagnostics: Arc::new(diagnostics),
@@ -478,6 +507,7 @@ fn validate_cache_alignment(cache: &SurfaceCache) -> Result<(), &'static str> {
         || cache.layout.bounds.len() != expected
         || cache.layout.report.nodes().len() != expected
         || cache.layout.text_layouts.len() != expected
+        || cache.presentation.nodes.len() != expected
         || cache.hit_test.membership().len() != expected
         || cache.diagnostics.len() != expected
         || cache.hit_diagnostics.len() != expected

@@ -1,13 +1,14 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, EdgeInsets, Element, FontFamilyName, GenericFontFamily, LayoutDimension, LayoutStyle,
-    LogicalLength, NoHostProtocol, Radius, StyleEnvironment, StyleTokens, UiApp, View, button,
-    children, color_token, column, radius_token, row, spacing_token, text,
+    Brush, Color, EdgeInsets, Element, FontFamilyName, GenericFontFamily, LayoutDimension,
+    LayoutStyle, LogicalLength, NoHostProtocol, PaintPrimitive, Radius, StyleEnvironment,
+    StyleTokens, UiApp, View, button, children, color_token, column, radius_token, row,
+    spacing_token, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
-    SurfaceBuildContext, SurfacePhase, SurfacePublication, render_debug_surface_frame,
+    AppRuntime, LayoutConstraints, LogicalPoint, LogicalSize, MountedNodeId, PaintSceneBounds,
+    PumpBudget, SurfaceBuildContext, SurfacePhase, SurfacePublication, render_debug_surface_frame,
 };
 
 const CANTARELL: &[u8] = include_bytes!(concat!(
@@ -484,6 +485,46 @@ fn assert_common_phases(runtime: &AppRuntime<CommonFieldsApp>, expected: &[Surfa
     );
 }
 
+#[test]
+fn public_surface_publication_exposes_finite_shaped_text_item_bounds() {
+    let mut runtime = AppRuntime::<CommonFieldsApp>::mount(CommonFields::Padding4);
+    runtime
+        .register_text_font_bytes(CANTARELL.to_vec())
+        .unwrap_or_else(|_| unreachable!("controlled text fixture is registerable"));
+    let family = FontFamilyName::new("Cantarell")
+        .unwrap_or_else(|_| unreachable!("controlled family name is canonical"));
+    runtime
+        .set_text_generic_family_mapping(GenericFontFamily::SansSerif, &[family])
+        .unwrap_or_else(|_| unreachable!("controlled generic mapping is valid"));
+
+    let environment = StyleEnvironment::default();
+    let publication = publish(
+        &mut runtime,
+        &SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded()),
+    );
+    let scene = publication.paint_scene();
+    let (item_index, run) = scene
+        .items()
+        .iter()
+        .enumerate()
+        .find_map(|(index, item)| match item.primitive() {
+            PaintPrimitive::ShapedTextRun(run) => Some((index, run)),
+            _ => None,
+        })
+        .unwrap_or_else(|| unreachable!("public text reaches the paint scene as a shaped run"));
+    let resource = scene
+        .shaped_text_resource(run.resource_ref())
+        .unwrap_or_else(|| unreachable!("published shaped run retains its resource binding"));
+    assert_eq!(resource.resource_ref(), run.resource_ref());
+    let Some(PaintSceneBounds::Finite(bounds)) = scene.item_bounds(item_index) else {
+        unreachable!("ordinary published Cantarell text must have finite logical item bounds");
+    };
+    assert!(bounds.width() > 0.0);
+    assert!(bounds.height() > 0.0);
+    assert!(run.origin().x() > 0.0);
+    assert!(bounds.x() >= run.origin().x());
+}
+
 fn root_style(publication: &runenui_runtime::SurfacePublication) -> runenui_core::ComputedStyle {
     publication
         .frame()
@@ -517,7 +558,10 @@ fn warmed_literal_background_change_reads_current_mounted_style() {
         LayoutConstraints::unbounded(),
     );
     assert_common_phases(&runtime, &[SurfacePhase::Style, SurfacePhase::Paint]);
-    assert_eq!(root_style(&after).background(), Some(Color::WHITE));
+    assert_eq!(
+        root_style(&after).background(),
+        Some(&Brush::solid(Color::WHITE))
+    );
     assert_mounted_identities(&mut runtime, &identities);
 }
 

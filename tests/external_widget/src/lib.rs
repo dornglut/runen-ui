@@ -94,17 +94,18 @@ use std::{
 };
 
 use runenui_core::{
-    ChildBearingWidget, Color, CompositionCancelReason, CompositionEvent, Container, EdgeInsets,
-    Element, EventContext, EventPhase, FlexContainerStyle, FlexDirection, FocusEventKind,
-    FocusReason, HitContribution, HitContributionContext, IntoEffects, ItemAlignment,
-    KeyboardPhase, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, LogicalRect,
-    LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionItem, SemanticAction, SemanticContribution, SemanticContributionContext,
-    SemanticNodeContribution, SemanticRole, SemanticState, SubscriptionSet, UiApp, UiEvent, View,
-    Views, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
-    WidgetAvailableSpace, WidgetDiagnostic, WidgetEventOutput, WidgetInvalidation, WidgetMeasure,
-    WidgetMeasureInput, WidgetMeasuredSize, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext, WorkKey, button, children, column, container, row, text,
+    Brush, ChildBearingWidget, Color, CompositionCancelReason, CompositionEvent, Container,
+    EdgeInsets, Element, EventContext, EventPhase, FlexContainerStyle, FlexDirection,
+    FocusEventKind, FocusReason, HitContribution, HitContributionContext, IntoEffects,
+    ItemAlignment, KeyboardPhase, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength,
+    LogicalRect, LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
+    PaintContributionItem, SceneShape, SemanticAction, SemanticContribution,
+    SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
+    StrokeStyle, SubscriptionSet, UiApp, UiEvent, View, Views, Widget, WidgetActivation,
+    WidgetActivationContext, WidgetActivationOutput, WidgetAvailableSpace, WidgetDiagnostic,
+    WidgetEventOutput, WidgetInvalidation, WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
+    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkKey, button, children,
+    column, container, row, text,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -637,11 +638,14 @@ impl Widget<ChildAction> for PulseButton {
     fn paint(&self, _state: &Self::State, context: PaintContributionContext) -> PaintContribution {
         let rect = external_local_rect(context.local_size());
         PaintContribution::new(vec![
-            PaintContributionItem::fill_rect(rect, Color::rgba(32, 64, 96, 255)),
-            PaintContributionItem::stroke_rect(
-                rect,
-                Color::rgba(224, 224, 224, 255),
-                LogicalLength::from(1_u16),
+            PaintContributionItem::fill(
+                SceneShape::rect(rect),
+                Brush::solid(Color::rgba(32, 64, 96, 255)),
+            ),
+            PaintContributionItem::stroke(
+                SceneShape::rect(rect),
+                Brush::solid(Color::rgba(224, 224, 224, 255)),
+                StrokeStyle::new(LogicalLength::from(1_u16)),
             ),
         ])
     }

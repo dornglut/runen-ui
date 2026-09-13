@@ -24,12 +24,12 @@ use mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
 };
 use runenui_core::{
-    Color, CommandOrigin, CommittedTextEvent, Element, InputDeviceId, IntoEffects, KeyModifiers,
-    KeyboardEvent, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PointerEvent, SemanticAction, SemanticCommand,
-    SemanticContribution, SemanticKey, SemanticNodeContribution, SemanticRole, SemanticText,
-    StyleEnvironment, SurfaceInputContext, UiApp, View, Widget, WidgetActivation, WidgetMeasure,
-    WidgetTextInput,
+    Brush, Color, CommandOrigin, CommittedTextEvent, Element, InputDeviceId, IntoEffects,
+    KeyModifiers, KeyboardEvent, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
+    PaintContribution, PaintContributionContext, PaintContributionItem, PointerEvent, SceneShape,
+    SemanticAction, SemanticCommand, SemanticContribution, SemanticKey, SemanticNodeContribution,
+    SemanticRole, SemanticText, StyleEnvironment, SurfaceInputContext, UiApp, View, Widget,
+    WidgetActivation, WidgetMeasure, WidgetTextInput,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -109,9 +109,9 @@ impl Widget<()> for DemoSurface {
         let origin = LogicalPoint::new(0.0, 0.0)
             .unwrap_or_else(|_| unreachable!("the literal demo origin is finite"));
         let rect = LogicalRect::new(origin, context.local_size());
-        PaintContribution::single(PaintContributionItem::fill_rect(
-            rect,
-            Color::rgb(28, 32, 40),
+        PaintContribution::single(PaintContributionItem::fill(
+            SceneShape::rect(rect),
+            Brush::solid(Color::rgb(28, 32, 40)),
         ))
     }
 

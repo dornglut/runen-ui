@@ -98,7 +98,9 @@ pub struct HitRegion {
 }
 
 impl HitRegion {
-    const fn from_shape(shape: SceneShape) -> Self {
+    /// Creates one owner-local region from any accepted renderer-neutral scene shape.
+    #[must_use]
+    pub const fn from_shape(shape: SceneShape) -> Self {
         Self {
             shape,
             local_transform: LogicalTransform::IDENTITY,
@@ -148,10 +150,10 @@ impl HitRegion {
         self
     }
 
-    /// Returns the owner-local logical shape.
+    /// Returns the owner-local logical shape without manufacturing another owned copy.
     #[must_use]
-    pub const fn shape(&self) -> SceneShape {
-        self.shape
+    pub const fn shape(&self) -> &SceneShape {
+        &self.shape
     }
 
     /// Returns region-local to owner-local transform.
@@ -198,7 +200,10 @@ mod tests {
         let rect = LogicalRect::try_new(1.0, 2.0, 3.0, 4.0)
             .unwrap_or_else(|_| unreachable!("test rectangle is valid"));
         let contribution = HitContribution::new(vec![HitRegion::rect(rect)]);
-        assert_eq!(contribution.regions()[0].shape(), SceneShape::rect(rect));
+        assert_eq!(contribution.regions()[0].shape(), &SceneShape::rect(rect));
+
+        let ellipse = HitRegion::from_shape(SceneShape::ellipse(rect));
+        assert_eq!(ellipse.shape(), &SceneShape::ellipse(rect));
     }
 
     #[test]
@@ -206,7 +211,7 @@ mod tests {
         let rect = LogicalRect::try_new(0.0, 0.0, 10.0, 12.0)
             .unwrap_or_else(|_| unreachable!("test rectangle is valid"));
         let default_region = HitRegion::rect(rect);
-        assert_eq!(default_region.shape(), SceneShape::rect(rect));
+        assert_eq!(default_region.shape(), &SceneShape::rect(rect));
         assert_eq!(default_region.local_transform(), LogicalTransform::IDENTITY);
         assert!(default_region.clips().is_empty());
         assert_eq!(default_region.layer(), SceneLayer::ZERO);
@@ -220,11 +225,11 @@ mod tests {
         );
         let region = HitRegion::rounded_rect(rect, radius)
             .with_transform(transform)
-            .with_clip(clip)
+            .with_clip(clip.clone())
             .with_layer(SceneLayer::new(-4))
             .with_pointer_policy(PointerPolicy::Block);
 
-        assert_eq!(region.shape(), SceneShape::rounded_rect(rect, radius));
+        assert_eq!(region.shape(), &SceneShape::rounded_rect(rect, radius));
         assert_eq!(region.local_transform(), transform);
         assert_eq!(region.clips(), &[clip]);
         assert_eq!(region.layer(), SceneLayer::new(-4));

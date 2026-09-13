@@ -2,10 +2,11 @@ use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 
 use runenui_core::{
-    Color, ColorToken, ComputedStyle, DuplicateTokenDefinition, EdgeInsets, FontFamily,
-    GenericFontFamily, IdentifierError, LogicalLength, Radius, RadiusToken, SpacingToken,
-    StyleEnvironment, StyleIntent, StyleInteractionFacts, StyleTokens, TokenId, Typography,
-    TypographyToken, UnresolvedStyleToken, color_token, radius_token, resolve_style_in_environment,
+    Brush, BrushToken, Color, ColorToken, ComputedStyle, DuplicateTokenDefinition, EdgeInsets,
+    FontFamily, GenericFontFamily, GradientStop, GradientStops, IdentifierError, LinearGradient,
+    LogicalLength, LogicalPoint, Radius, RadiusToken, SpacingToken, StyleEnvironment, StyleIntent,
+    StyleInteractionFacts, StyleTokens, TokenId, Typography, TypographyToken, UnitInterval,
+    UnresolvedStyleToken, brush_token, color_token, radius_token, resolve_style_in_environment,
     spacing_token, token_id, typography_token,
 };
 
@@ -22,6 +23,18 @@ fn typography(size: u8) -> Typography {
     )
 }
 
+fn gradient_brush() -> Result<Brush, Box<dyn std::error::Error>> {
+    let stops = GradientStops::new(vec![
+        GradientStop::new(UnitInterval::ZERO, Color::BLACK),
+        GradientStop::new(UnitInterval::ONE, Color::WHITE),
+    ])?;
+    Ok(Brush::Linear(LinearGradient::new(
+        LogicalPoint::new(0.0, 0.0)?,
+        LogicalPoint::new(10.0, 0.0)?,
+        stops,
+    )?))
+}
+
 #[test]
 fn token_definitions_do_not_silently_overwrite() -> Result<(), Box<dyn std::error::Error>> {
     let token = color_token!("color.text.primary");
@@ -33,6 +46,32 @@ fn token_definitions_do_not_silently_overwrite() -> Result<(), Box<dyn std::erro
     };
     assert_eq!(duplicate.token().as_str(), "color.text.primary");
     assert_eq!(tokens.color(&token), Some(Color::WHITE));
+    Ok(())
+}
+
+#[test]
+fn brush_tokens_preserve_complete_background_brushes() -> Result<(), Box<dyn std::error::Error>> {
+    let token = brush_token!("brush.surface.primary");
+    let brush = gradient_brush()?;
+    let mut tokens = StyleTokens::new();
+    tokens.define_brush(token.clone(), brush.clone())?;
+
+    let duplicate = match tokens.define_brush(token.clone(), Brush::solid(Color::BLACK)) {
+        Ok(()) => return Err("expected duplicate brush token error".into()),
+        Err(error) => error,
+    };
+    assert_eq!(duplicate.token().as_str(), "brush.surface.primary");
+    assert_eq!(tokens.brush(&token), Some(&brush));
+
+    let environment = StyleEnvironment::from_tokens(tokens);
+    let resolution = resolve_style_in_environment(
+        &StyleIntent::EMPTY.with_background(token),
+        &environment,
+        StyleInteractionFacts::NONE,
+        None,
+    );
+    assert_eq!(resolution.computed_style().background(), Some(&brush));
+    assert!(resolution.is_fully_resolved());
     Ok(())
 }
 
@@ -54,6 +93,10 @@ fn token_identity_and_lookup_are_textual_across_constructor_forms()
     let dynamic_color = ColorToken::new(dynamic);
     let static_color = color_token!("color.primary");
     assert_eq!(dynamic_color, static_color);
+    assert_eq!(
+        BrushToken::new(TokenId::new("brush.surface")?),
+        brush_token!("brush.surface")
+    );
     assert_eq!(
         SpacingToken::new(TokenId::new("space.content")?),
         spacing_token!("space.content")
@@ -169,7 +212,7 @@ fn typography_tokens_resolve_through_the_production_style_environment()
 #[test]
 fn missing_tokens_diagnose_every_current_property() {
     let foreground = color_token!("color.missing.foreground");
-    let background = color_token!("color.missing.background");
+    let background = brush_token!("brush.missing.background");
     let padding = spacing_token!("space.missing.padding");
     let radius = radius_token!("radius.missing");
     let typography = typography_token!("type.missing");

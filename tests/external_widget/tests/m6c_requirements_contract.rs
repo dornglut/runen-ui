@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 
 use runenui_core::{
-    Color, Element, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, ResourceKind, ResourceRef, StyleEnvironment,
-    UiApp, Widget, WidgetMeasure,
+    Brush, Color, Element, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
+    PaintContribution, PaintContributionContext, PaintContributionItem, ResourceKind, ResourceRef,
+    SceneShape, StyleEnvironment, UiApp, Widget, WidgetMeasure,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, SceneCapabilities, SurfaceBuildContext,
@@ -40,9 +40,20 @@ impl Widget<()> for RequirementsOwner {
         PaintContribution::new(vec![
             PaintContributionItem::shaped_text_run(self.shaped.clone(), origin(), Color::WHITE)
                 .unwrap_or_else(|_| unreachable!("fixture shaped ref has shaped-run kind")),
-            PaintContributionItem::fill_rect(rect(), Color::BLACK),
-            PaintContributionItem::image(self.image.clone(), rect())
-                .unwrap_or_else(|_| unreachable!("fixture image ref has image kind")),
+            PaintContributionItem::fill(SceneShape::rect(rect()), Brush::solid(Color::BLACK)),
+            PaintContributionItem::image(
+                runenui_core::ImagePaintDescriptor::new(
+                    runenui_core::ImageDescriptor::new(
+                        self.image.clone(),
+                        runenui_core::ImageIntrinsicSize::new(1, 1)
+                            .unwrap_or_else(|| unreachable!("fixture image extent is non-zero")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("fixture image ref has image kind")),
+                    rect(),
+                    runenui_core::ImageMapping::default(),
+                )
+                .unwrap_or_else(|_| unreachable!("fixture image mapping is valid")),
+            ),
             PaintContributionItem::shaped_text_run(self.shaped.clone(), origin(), Color::BLACK)
                 .unwrap_or_else(|_| unreachable!("fixture shaped ref has shaped-run kind")),
         ])

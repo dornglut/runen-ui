@@ -1,7 +1,7 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    Color, Element, LogicalLength, SemanticContribution, SemanticContributionContext,
+    Brush, Color, Element, LogicalLength, SemanticContribution, SemanticContributionContext,
     SemanticNodeContribution, SemanticRole, StyleEnvironment, StyleIntent, StyleInteractionState,
     StyleProperties, StyleRecipe, StyleRecipeId, StyleTheme, StyleTokens, View, Widget,
     WidgetActivation, WidgetInvalidation, WidgetMeasure, children, column, text,
@@ -272,7 +272,7 @@ fn disabled_style_uses_shared_activation_and_interaction_invalidation() {
             .unwrap_or_else(|| unreachable!("initial publication has root"))
             .computed_style()
             .background(),
-        Some(Color::BLACK)
+        Some(&Brush::solid(Color::BLACK))
     );
 
     enabled.set(false);
@@ -297,7 +297,7 @@ fn disabled_style_uses_shared_activation_and_interaction_invalidation() {
             .unwrap_or_else(|| unreachable!("disabled publication has root"))
             .computed_style()
             .background(),
-        Some(Color::WHITE)
+        Some(&Brush::solid(Color::WHITE))
     );
 }
 

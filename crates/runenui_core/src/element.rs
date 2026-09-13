@@ -6,13 +6,13 @@ use std::rc::Rc;
 use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAdapter};
 use crate::widget_mapping::MappedWidget;
 use crate::{
-    ColorValue, ElementId, ElementKey, EventContext, FocusScope, Focusability, HitContribution,
-    HitContributionContext, IdentifierError, IntoElementId, IntoElementKey, LayoutStyle,
-    LogicalLength, LogicalSize, PaintContribution, PaintContributionContext, RadiusValue,
-    SemanticContribution, SemanticContributionContext, SpacingValue, StyleIntent, StyleRecipeId,
-    StyleVariantId, SubscriptionSet, TypographyValue, UiEvent, WidgetActivationContext,
-    WidgetEventOutput, WidgetInvalidation, WidgetMountContext, WidgetUnmountContext,
-    WidgetUpdateContext,
+    BrushValue, ColorValue, ElementId, ElementKey, EventContext, FocusScope, Focusability,
+    HitContribution, HitContributionContext, IdentifierError, IntoElementId, IntoElementKey,
+    LayoutStyle, LogicalLength, LogicalSize, OpacityValue, OutlineValue, PaintContribution,
+    PaintContributionContext, RadiusValue, SemanticContribution, SemanticContributionContext,
+    ShadowValue, SpacingValue, StyleIntent, StyleRecipeId, StyleVariantId, SubscriptionSet,
+    TypographyValue, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetInvalidation,
+    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -601,7 +601,7 @@ impl<Action> Element<Action> {
     }
 
     #[must_use]
-    pub fn background(mut self, value: impl Into<ColorValue>) -> Self {
+    pub fn background(mut self, value: impl Into<BrushValue>) -> Self {
         self.style = self.style.with_background(value);
         self
     }
@@ -621,6 +621,24 @@ impl<Action> Element<Action> {
     #[must_use]
     pub fn typography(mut self, value: impl Into<TypographyValue>) -> Self {
         self.style = self.style.with_typography(value);
+        self
+    }
+
+    #[must_use]
+    pub fn outline(mut self, value: impl Into<OutlineValue>) -> Self {
+        self.style = self.style.with_outline(value);
+        self
+    }
+
+    #[must_use]
+    pub fn shadows(mut self, value: impl Into<ShadowValue>) -> Self {
+        self.style = self.style.with_shadows(value);
+        self
+    }
+
+    #[must_use]
+    pub fn opacity(mut self, value: impl Into<OpacityValue>) -> Self {
+        self.style = self.style.with_opacity(value);
         self
     }
 

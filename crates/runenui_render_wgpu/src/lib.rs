@@ -22,6 +22,11 @@ mod resource;
     reason = "the private scene-subset module exposes explicit crate-internal sibling seams without widening the public API"
 )]
 mod scene_subset;
+#[allow(
+    clippy::redundant_pub_crate,
+    reason = "the private tessellation module exposes only explicit sibling realization seams without widening the public API"
+)]
+mod tessellation;
 
 pub use backend::clipped::{
     PublicationRenderError, ResourceRenderer as Renderer, UnsupportedShapedGlyphKind,

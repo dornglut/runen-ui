@@ -206,6 +206,13 @@ pub enum ResourceResolveError {
         expected: ResourceKind,
         actual: ResourceKind,
     },
+    /// Image payload extent disagrees with intrinsic metadata attached to the same `ResourceRef`.
+    ImageExtentMismatch {
+        expected_width: u32,
+        expected_height: u32,
+        actual_width: u32,
+        actual_height: u32,
+    },
     Provider(ResourceProviderError),
 }
 
@@ -220,6 +227,15 @@ impl fmt::Display for ResourceResolveError {
                 formatter,
                 "resource payload kind mismatch: expected {expected:?}, got {actual:?}"
             ),
+            Self::ImageExtentMismatch {
+                expected_width,
+                expected_height,
+                actual_width,
+                actual_height,
+            } => write!(
+                formatter,
+                "image intrinsic extent mismatch: descriptor requires {expected_width}x{expected_height}, provider/cache has {actual_width}x{actual_height}"
+            ),
             Self::Provider(error) => error.fmt(formatter),
         }
     }
@@ -229,7 +245,9 @@ impl Error for ResourceResolveError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Provider(error) => Some(error),
-            Self::ReferenceKindMismatch { .. } | Self::PayloadKindMismatch { .. } => None,
+            Self::ReferenceKindMismatch { .. }
+            | Self::PayloadKindMismatch { .. }
+            | Self::ImageExtentMismatch { .. } => None,
         }
     }
 }
@@ -383,5 +401,19 @@ mod tests {
             resolve_resource(&provider, &image, ResourceRequest::Image),
             Ok(ResourcePayload::Image(_))
         ));
+    }
+
+    #[test]
+    fn image_extent_mismatch_is_a_structured_resource_contract_failure() {
+        let error = ResourceResolveError::ImageExtentMismatch {
+            expected_width: 64,
+            expected_height: 32,
+            actual_width: 32,
+            actual_height: 32,
+        };
+        assert_eq!(
+            error.to_string(),
+            "image intrinsic extent mismatch: descriptor requires 64x32, provider/cache has 32x32"
+        );
     }
 }

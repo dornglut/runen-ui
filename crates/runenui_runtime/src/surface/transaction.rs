@@ -3,7 +3,9 @@ use crate::mounted::{
     SurfaceCapabilityPlan,
 };
 use crate::scene::{HitTestSceneContent, PaintScene};
-use crate::semantic_compositor::{SemanticCandidate, SemanticOwnerFacts, compose_semantics};
+use crate::semantic_compositor::{
+    SemanticCandidate, SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics,
+};
 use crate::{MountedNodeId, SemanticDiagnostic};
 
 use super::{SurfaceCache, SurfacePhaseReport, SurfacePlanningError, SurfacePublication};
@@ -77,10 +79,14 @@ impl<'a> PlannedSurfacePublication<'a> {
         };
         let finalized = finalized.owner_facts().collect::<Vec<_>>();
         let expected = self.cache.topology.nodes.len();
-        if finalized.len() != expected || self.cache.layout.bounds.len() != expected {
+        if finalized.len() != expected
+            || self.cache.layout.bounds.len() != expected
+            || self.cache.presentation.nodes.len() != expected
+        {
             return Err(SurfacePlanningError::SemanticIntegrity);
         }
         let mut owners = Vec::with_capacity(expected);
+        let mut owner_transforms = Vec::with_capacity(expected);
         let mut diagnostics = Vec::new();
         for (position, (topology, semantic)) in
             self.cache.topology.nodes.iter().zip(finalized).enumerate()
@@ -94,22 +100,30 @@ impl<'a> PlannedSurfacePublication<'a> {
                     reason,
                 });
             }
+            let presentation = self.cache.presentation.node(position);
             owners.push(SemanticOwnerFacts {
                 id: semantic.owner,
                 authored_id: topology.authored_id.clone(),
                 mounted_children: topology.children.clone(),
                 contribution: semantic.contribution,
                 bindings: semantic.bindings,
-                bounds: self.cache.layout.bounds[position],
+                bounds: presentation.owner_bounds(),
                 activation: semantic.activation,
                 focusability: semantic.focusability,
             });
+            owner_transforms.push(presentation.owner_to_surface());
         }
         let root = self.cache.topology.nodes.first().map(|node| &node.id);
-        Ok(Some((
-            compose_semantics(&owners, root, focused_owner),
-            diagnostics,
-        )))
+        let candidate = compose_semantics(&owners, &owner_transforms, root, focused_owner);
+        if candidate.diagnostics.iter().any(|diagnostic| {
+            matches!(
+                diagnostic,
+                SemanticCompositionDiagnostic::UnrepresentableBounds { .. }
+            )
+        }) {
+            return Err(SurfacePlanningError::PresentationGeometry);
+        }
+        Ok(Some((candidate, diagnostics)))
     }
 
     /// Begins the final commit by consuming the borrow-protected semantic-store

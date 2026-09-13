@@ -1,10 +1,10 @@
 use runenui_core::{
-    Color, ColorToken, ComputedStyle, EdgeInsets, FontFamily, GenericFontFamily, IdentifierError,
-    LogicalLength, Radius, StyleEffects, StyleEnvironment, StyleFieldProvenance, StyleIntent,
-    StyleInteractionFacts, StyleInteractionState, StylePreferenceKind, StylePreferencePolicy,
-    StylePreferences, StyleProperties, StyleRecipe, StyleRecipeId, StyleResolutionDiagnostic,
-    StyleResolutionLayer, StyleTheme, StyleTokens, StyleVariantId, TokenId, Typography,
-    resolve_style_in_environment, style_effects_between,
+    Brush, Color, ColorToken, ComputedStyle, EdgeInsets, FontFamily, GenericFontFamily,
+    IdentifierError, LogicalLength, Radius, StyleEffects, StyleEnvironment, StyleFieldProvenance,
+    StyleIntent, StyleInteractionFacts, StyleInteractionState, StylePreferenceKind,
+    StylePreferencePolicy, StylePreferences, StyleProperties, StyleRecipe, StyleRecipeId,
+    StyleResolutionDiagnostic, StyleResolutionLayer, StyleTheme, StyleTokens, StyleVariantId,
+    TokenId, Typography, resolve_style_in_environment, style_effects_between,
 };
 
 fn recipe_id(value: &str) -> Result<StyleRecipeId, IdentifierError> {
@@ -148,7 +148,7 @@ fn precedence_and_provenance_are_property_local_and_deterministic()
     );
     assert_eq!(
         resolution.computed_style().background(),
-        Some(Color::rgb(20, 20, 20))
+        Some(&Brush::solid(Color::rgb(20, 20, 20)))
     );
     Ok(())
 }

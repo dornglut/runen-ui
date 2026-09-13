@@ -31,6 +31,13 @@
 //! };
 //! ```
 //!
+//! Snapshot-local paint group references are runtime-issued and cannot be forged:
+//!
+//! ```compile_fail
+//! use runenui_runtime::PaintSceneGroupId;
+//! let _ = PaintSceneGroupId(0);
+//! ```
+//!
 //! Displayed-surface ingress remains logical and host-neutral:
 //!
 //! ```compile_fail
@@ -189,6 +196,7 @@ mod debug;
 mod focus;
 mod input;
 mod mounted;
+mod paint_bounds;
 mod pointer;
 pub mod prelude;
 mod pump;
@@ -235,6 +243,7 @@ pub use mounted::{
     AutomationMatchDiagnostic, DuplicateIdentityKind, IdentityDiagnostic, InteractionStateRef,
     MountedNodeId, MountedNodeRef, MountedTreeIndex, SemanticNodeId,
 };
+pub use paint_bounds::PaintSceneBounds;
 pub use pointer::{PointerSubmission, SubmitPointerError, SubmitPointerErrorKind};
 pub use pump::{PumpBudget, PumpBudgetExhaustion, PumpOutcome, PumpReport};
 pub use queue::{SubmitActionError, SubmitActionErrorKind, SubmitActionResult, WorkSequence};
@@ -264,7 +273,7 @@ pub use runtime::{
 };
 pub use scene::{
     HitTestRegion, HitTestScene, PaintDamage, PaintPublication, PaintRevision, PaintScene,
-    PaintSceneItem, SceneClip,
+    PaintSceneEntry, PaintSceneGroup, PaintSceneGroupId, PaintSceneItem, SceneClip,
 };
 pub use scene_requirements::{SceneCapabilities, SceneRequirements, UnsupportedSceneRequirement};
 pub use semantic_action::{SubmitSemanticActionError, SubmitSemanticActionErrorKind};

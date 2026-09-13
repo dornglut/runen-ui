@@ -1,13 +1,13 @@
 use core::fmt;
 
 use crate::{
-    ColorValue, ElementId, ElementKey, FlexContainerStyle, FlexDirection, HitContribution,
-    HitContributionContext, IntoElementId, IntoElementKey, LayoutContainer, LayoutStyle,
-    LogicalLength, LogicalRect, LogicalSize, PaintContribution, PaintContributionContext,
-    PaintContributionItem, RadiusValue, SemanticAction, SemanticContribution,
+    BrushValue, ColorValue, ElementId, ElementKey, FlexContainerStyle, FlexDirection,
+    HitContribution, HitContributionContext, IntoElementId, IntoElementKey, LayoutContainer,
+    LayoutStyle, LogicalLength, LogicalRect, LogicalSize, OpacityValue, OutlineValue,
+    PresentationValue, RadiusValue, SemanticAction, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
-    SemanticText, SpacingValue, StyleIntent, StyleRecipeId, StyleVariantId, TypographyValue,
-    WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
+    SemanticText, ShadowValue, SpacingValue, StyleIntent, StyleRecipeId, StyleVariantId,
+    TypographyValue, WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
     element::{
         AuthoredElementFields, AuthoringDiagnostic, ChildBearingWidget, Element, View, Views,
         Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetMeasureInput,
@@ -48,7 +48,7 @@ macro_rules! common_builder_methods {
             self
         }
         #[must_use]
-        pub fn background(mut self, value: impl Into<ColorValue>) -> Self {
+        pub fn background(mut self, value: impl Into<BrushValue>) -> Self {
             self.style = self.style.with_background(value);
             self
         }
@@ -65,6 +65,26 @@ macro_rules! common_builder_methods {
         #[must_use]
         pub fn typography(mut self, value: impl Into<TypographyValue>) -> Self {
             self.style = self.style.with_typography(value);
+            self
+        }
+        #[must_use]
+        pub fn outline(mut self, value: impl Into<OutlineValue>) -> Self {
+            self.style = self.style.with_outline(value);
+            self
+        }
+        #[must_use]
+        pub fn shadows(mut self, value: impl Into<ShadowValue>) -> Self {
+            self.style = self.style.with_shadows(value);
+            self
+        }
+        #[must_use]
+        pub fn opacity(mut self, value: impl Into<OpacityValue>) -> Self {
+            self.style = self.style.with_opacity(value);
+            self
+        }
+        #[must_use]
+        pub fn presentation(mut self, value: impl Into<PresentationValue>) -> Self {
+            self.style = self.style.with_presentation(value);
             self
         }
     };
@@ -123,9 +143,6 @@ impl<Action> Widget<Action> for TextWidget {
         WidgetMeasure::Text {
             content: self.content.clone(),
         }
-    }
-    fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        background_paint(&context)
     }
     fn semantics(
         &self,
@@ -315,9 +332,6 @@ impl<Action> Widget<Action> for ButtonWidget<Action> {
             content: self.label.clone(),
         }
     }
-    fn paint(&self, _: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        background_paint(&context)
-    }
     fn hit_test(&self, state: &Self::State, context: HitContributionContext) -> HitContribution {
         if state.actionable {
             HitContribution::single_rect(local_rect(context.local_size()))
@@ -418,9 +432,6 @@ struct GroupWidget;
 impl<Action> Widget<Action> for GroupWidget {
     type State = ();
     fn create_state(&self) -> Self::State {}
-    fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
-        background_paint(&context)
-    }
     fn semantics(
         &self,
         (): &Self::State,
@@ -483,18 +494,6 @@ pub fn row<Action>(children: impl Views<Action>) -> Container<Action> {
     Container::new(GroupWidget, children).with_layout(LayoutStyle::default().with_container(
         LayoutContainer::Flex(FlexContainerStyle::default().with_direction(FlexDirection::Row)),
     ))
-}
-
-fn background_paint(context: &PaintContributionContext) -> PaintContribution {
-    context
-        .computed_style()
-        .background()
-        .map_or_else(PaintContribution::empty, |color| {
-            PaintContribution::single(PaintContributionItem::fill_rect(
-                local_rect(context.local_size()),
-                color,
-            ))
-        })
 }
 
 fn local_rect(size: LogicalSize) -> LogicalRect {

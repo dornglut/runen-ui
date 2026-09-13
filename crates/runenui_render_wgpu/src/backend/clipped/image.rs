@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use runenui_core::{Color, LogicalRect, LogicalTransform, ResourceRef, SceneOpacity};
+use runenui_core::{
+    Color, ImageIntrinsicSize, LogicalRect, LogicalTransform, ResourceRef, SceneOpacity,
+};
 use runenui_runtime::RasterScale;
 
 use crate::{
@@ -63,11 +65,18 @@ const IMAGE_ATTRIBUTES: [wgpu::VertexAttribute; 3] = [
     },
 ];
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct SupportedImagePatch {
+    pub(super) source: [f64; 4],
+    pub(super) destination: LogicalRect,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SupportedImage {
     pub(super) item_index: usize,
     pub(super) resource: ResourceRef,
-    pub(super) destination: LogicalRect,
+    pub(super) intrinsic_size: ImageIntrinsicSize,
+    pub(super) patches: Vec<SupportedImagePatch>,
     pub(super) opacity: SceneOpacity,
     pub(super) local_to_surface: LogicalTransform,
 }
@@ -83,12 +92,18 @@ impl ResolvedImage {
     pub(super) const fn resource(&self) -> &ResourceRef {
         &self.resource
     }
+
+    pub(super) const fn extent(&self) -> (u32, u32) {
+        (self.payload.width(), self.payload.height())
+    }
 }
 
 #[derive(Debug)]
 struct ImageRealization {
     _texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
+    width: u32,
+    height: u32,
 }
 
 #[derive(Debug)]
@@ -148,6 +163,12 @@ impl ImageRenderer {
 
     pub(super) fn contains(&self, resource: &ResourceRef) -> bool {
         self.cache.contains_key(resource)
+    }
+
+    pub(super) fn extent(&self, resource: &ResourceRef) -> Option<(u32, u32)> {
+        self.cache
+            .get(resource)
+            .map(|realization| (realization.width, realization.height))
     }
 
     pub(super) fn ensure_pipelines(
@@ -240,6 +261,8 @@ impl ImageRenderer {
                 ImageRealization {
                     _texture: texture,
                     bind_group,
+                    width: payload.width(),
+                    height: payload.height(),
                 },
             );
         }
@@ -323,6 +346,16 @@ pub(super) fn resolve_image(
         Ok(ResourcePayload::Image(payload)) => payload,
         Err(error) => return Err(ImageResolveFailure::Resource(error)),
     };
+    let expected = (image.intrinsic_size.width(), image.intrinsic_size.height());
+    let actual = (payload.width(), payload.height());
+    if expected != actual {
+        return Err(ImageResolveFailure::IntrinsicExtentMismatch {
+            expected_width: expected.0,
+            expected_height: expected.1,
+            actual_width: actual.0,
+            actual_height: actual.1,
+        });
+    }
     if payload.width() > max_texture_dimension_2d || payload.height() > max_texture_dimension_2d {
         return Err(ImageResolveFailure::ExtentExceedsDeviceLimit {
             width: payload.width(),
@@ -345,6 +378,12 @@ pub(super) fn resolve_image(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum ImageResolveFailure {
     Resource(ResourceResolveError),
+    IntrinsicExtentMismatch {
+        expected_width: u32,
+        expected_height: u32,
+        actual_width: u32,
+        actual_height: u32,
+    },
     ExtentExceedsDeviceLimit {
         width: u32,
         height: u32,
@@ -355,34 +394,80 @@ pub(super) enum ImageResolveFailure {
     },
 }
 
+pub(super) const fn extent_matches(
+    intrinsic: ImageIntrinsicSize,
+    actual: (u32, u32),
+) -> Result<(), ImageResolveFailure> {
+    let expected = (intrinsic.width(), intrinsic.height());
+    if expected.0 == actual.0 && expected.1 == actual.1 {
+        Ok(())
+    } else {
+        Err(ImageResolveFailure::IntrinsicExtentMismatch {
+            expected_width: expected.0,
+            expected_height: expected.1,
+            actual_width: actual.0,
+            actual_height: actual.1,
+        })
+    }
+}
+
 pub(super) fn vertex_bytes(
     image: &SupportedImage,
     extent: super::super::OffscreenExtent,
     canvas_extent: super::super::RasterCanvasExtent,
     raster_scale: RasterScale,
 ) -> Vec<u8> {
-    if image.destination.width() == 0.0 || image.destination.height() == 0.0 {
-        return Vec::new();
+    let mut bytes = Vec::new();
+    for patch in &image.patches {
+        append_patch_vertices(
+            &mut bytes,
+            image,
+            *patch,
+            extent,
+            canvas_extent,
+            raster_scale,
+        );
+    }
+    bytes
+}
+
+#[allow(
+    clippy::suboptimal_flops,
+    reason = "resolved image UV reconstruction preserves explicit multiply-then-add evaluation order across renderer backends"
+)]
+fn append_patch_vertices(
+    bytes: &mut Vec<u8>,
+    image: &SupportedImage,
+    patch: SupportedImagePatch,
+    extent: super::super::OffscreenExtent,
+    canvas_extent: super::super::RasterCanvasExtent,
+    raster_scale: RasterScale,
+) {
+    if patch.destination.width() == 0.0 || patch.destination.height() == 0.0 {
+        return;
     }
     let fill = SupportedFillRect {
-        rect: image.destination,
+        rect: patch.destination,
         color: Color::WHITE,
         opacity: image.opacity,
         local_to_surface: image.local_to_surface,
     };
     let polygon = super::super::transformed_fill_polygon(&fill, canvas_extent, raster_scale);
     if polygon.len() < 3 {
-        return Vec::new();
+        return;
     }
     let Some(surface_to_local) = image.local_to_surface.inverse() else {
-        return Vec::new();
+        return;
     };
     let [m11, m12, m21, m22, tx, ty] = surface_to_local.components().map(f64::from);
     let scale = f64::from(raster_scale.get());
-    let destination_x = f64::from(image.destination.x());
-    let destination_y = f64::from(image.destination.y());
-    let destination_width = f64::from(image.destination.width());
-    let destination_height = f64::from(image.destination.height());
+    let destination_x = f64::from(patch.destination.x());
+    let destination_y = f64::from(patch.destination.y());
+    let destination_width = f64::from(patch.destination.width());
+    let destination_height = f64::from(patch.destination.height());
+    let [source_x, source_y, source_width, source_height] = patch.source;
+    let intrinsic_width = f64::from(image.intrinsic_size.width());
+    let intrinsic_height = f64::from(image.intrinsic_size.height());
     let vertices = polygon
         .into_iter()
         .map(|point| {
@@ -390,9 +475,13 @@ pub(super) fn vertex_bytes(
             let surface_y = point[1] / scale;
             let local_x = m11.mul_add(surface_x, m21.mul_add(surface_y, tx));
             let local_y = m12.mul_add(surface_x, m22.mul_add(surface_y, ty));
+            let source_u =
+                source_x + ((local_x - destination_x) / destination_width) * source_width;
+            let source_v =
+                source_y + ((local_y - destination_y) / destination_height) * source_height;
             let uv = [
-                narrow_uv((local_x - destination_x) / destination_width),
-                narrow_uv((local_y - destination_y) / destination_height),
+                narrow_uv(source_u / intrinsic_width),
+                narrow_uv(source_v / intrinsic_height),
             ];
             (
                 super::super::physical_point_to_ndc(point, extent),
@@ -401,18 +490,17 @@ pub(super) fn vertex_bytes(
             )
         })
         .collect::<Vec<_>>();
-    let mut bytes = Vec::with_capacity(vertices.len().saturating_mul(3 * 20));
+    bytes.reserve(vertices.len().saturating_mul(3 * 20));
     for index in 1..vertices.len() - 1 {
         for (position, uv, opacity) in [vertices[0], vertices[index], vertices[index + 1]] {
-            push_image_vertex(&mut bytes, position, uv, opacity);
+            push_image_vertex(bytes, position, uv, opacity);
         }
     }
-    bytes
 }
 
 #[allow(
     clippy::cast_possible_truncation,
-    reason = "exact-canvas clipping plus canonical inverse reconstruction bounds normalized image coordinates to the finite unit resource domain before the f32 GPU ABI"
+    reason = "runtime-resolved source geometry plus exact-canvas clipping bounds normalized image coordinates to the finite unit resource domain before the f32 GPU ABI"
 )]
 const fn narrow_uv(value: f64) -> f32 {
     value.clamp(0.0, 1.0) as f32
@@ -480,21 +568,32 @@ fn create_image_pipeline(
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{LogicalRect, LogicalTransform, ResourceKind, ResourceRef, SceneOpacity};
+    use runenui_core::{
+        ImageIntrinsicSize, LogicalRect, LogicalTransform, ResourceKind, ResourceRef, SceneOpacity,
+    };
     use runenui_runtime::RasterScale;
 
-    use super::{SupportedImage, vertex_bytes};
+    use super::{SupportedImage, SupportedImagePatch, vertex_bytes};
 
     fn rect(x: f32, y: f32, width: f32, height: f32) -> LogicalRect {
         LogicalRect::try_new(x, y, width, height)
             .unwrap_or_else(|_| unreachable!("fixture rectangle is valid"))
     }
 
-    fn image(destination: LogicalRect, transform: LogicalTransform) -> SupportedImage {
+    fn image(
+        source: [f64; 4],
+        destination: LogicalRect,
+        transform: LogicalTransform,
+    ) -> SupportedImage {
         SupportedImage {
             item_index: 0,
             resource: ResourceRef::new(ResourceKind::Image),
-            destination,
+            intrinsic_size: ImageIntrinsicSize::new(20, 10)
+                .unwrap_or_else(|| unreachable!("fixture intrinsic extent is non-zero")),
+            patches: vec![SupportedImagePatch {
+                source,
+                destination,
+            }],
             opacity: SceneOpacity::OPAQUE,
             local_to_surface: transform,
         }
@@ -522,10 +621,14 @@ mod tests {
     }
 
     #[test]
-    fn exact_canvas_clipping_reconstructs_normalized_image_domain()
+    fn exact_canvas_clipping_reconstructs_resolved_source_domain()
     -> Result<(), Box<dyn std::error::Error>> {
         let transform = LogicalTransform::try_new(1.0, 0.0, 0.0, 1.0, -10.0, 0.0)?;
-        let image = image(rect(0.0, 0.0, 20.0, 10.0), transform);
+        let image = image(
+            [0.0, 0.0, 20.0, 10.0],
+            rect(0.0, 0.0, 20.0, 10.0),
+            transform,
+        );
         let extent = super::super::super::OffscreenExtent::new(64, 48)?;
         let canvas = super::super::super::RasterCanvasExtent::new(64.0, 48.0);
         let bytes = vertex_bytes(&image, extent, canvas, RasterScale::ONE);
@@ -535,14 +638,48 @@ mod tests {
         let max_u = vertices.iter().map(|uv| uv[0]).fold(0.0_f32, f32::max);
         assert!((min_u - 0.5).abs() <= f32::EPSILON);
         assert!((max_u - 1.0).abs() <= f32::EPSILON);
-        assert!(vertices.iter().all(|uv| (0.0..=1.0).contains(&uv[1])));
+        Ok(())
+    }
+
+    #[test]
+    fn resolved_source_subrect_maps_directly_to_uv_domain() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let image = image(
+            [5.0, 2.5, 10.0, 5.0],
+            rect(0.0, 0.0, 20.0, 10.0),
+            LogicalTransform::IDENTITY,
+        );
+        let extent = super::super::super::OffscreenExtent::new(64, 48)?;
+        let canvas = super::super::super::RasterCanvasExtent::new(64.0, 48.0);
+        let vertices = uv_vertices(&vertex_bytes(&image, extent, canvas, RasterScale::ONE));
+        assert!(vertices.iter().all(|uv| (0.25..=0.75).contains(&uv[0])));
+        assert!(vertices.iter().all(|uv| (0.25..=0.75).contains(&uv[1])));
+        Ok(())
+    }
+
+    #[test]
+    fn multiple_resolved_patches_share_one_image_draw_stream()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut image = image(
+            [0.0, 0.0, 10.0, 10.0],
+            rect(0.0, 0.0, 10.0, 10.0),
+            LogicalTransform::IDENTITY,
+        );
+        image.patches.push(SupportedImagePatch {
+            source: [10.0, 0.0, 10.0, 10.0],
+            destination: rect(10.0, 0.0, 10.0, 10.0),
+        });
+        let extent = super::super::super::OffscreenExtent::new(64, 48)?;
+        let canvas = super::super::super::RasterCanvasExtent::new(64.0, 48.0);
+        let bytes = vertex_bytes(&image, extent, canvas, RasterScale::ONE);
+        assert!(bytes.len() >= 12 * 20);
         Ok(())
     }
 
     #[test]
     fn singular_image_transform_produces_no_vertices() -> Result<(), Box<dyn std::error::Error>> {
         let singular = LogicalTransform::try_new(1.0, 0.0, 0.0, 0.0, 2.0, 1.0)?;
-        let image = image(rect(2.0, 3.0, 20.0, 10.0), singular);
+        let image = image([0.0, 0.0, 20.0, 10.0], rect(2.0, 3.0, 20.0, 10.0), singular);
         let extent = super::super::super::OffscreenExtent::new(64, 48)?;
         let canvas = super::super::super::RasterCanvasExtent::new(64.0, 48.0);
         assert!(vertex_bytes(&image, extent, canvas, RasterScale::ONE).is_empty());

@@ -1,9 +1,9 @@
 #![allow(refining_impl_trait)]
 
 use runenui_core::{
-    Color, Element, HitContribution, HitContributionContext, HitRegion, LogicalLength,
+    Brush, Color, Element, HitContribution, HitContributionContext, HitRegion, LogicalLength,
     LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, StyleEnvironment, UiApp, Widget,
+    PaintContributionContext, PaintContributionItem, SceneShape, StyleEnvironment, UiApp, Widget,
     WidgetInvalidation, WidgetMeasure, WidgetUpdateContext,
 };
 use runenui_runtime::{
@@ -53,7 +53,10 @@ impl Widget<Action> for MetadataProbe {
     }
 
     fn paint(&self, state: &Self::State, _: PaintContributionContext) -> PaintContribution {
-        PaintContribution::single(PaintContributionItem::fill_rect(rect(), *state))
+        PaintContribution::single(PaintContributionItem::fill(
+            SceneShape::rect(rect()),
+            Brush::solid(*state),
+        ))
     }
 
     fn hit_test(&self, _: &Self::State, _: HitContributionContext) -> HitContribution {
