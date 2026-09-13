@@ -7,9 +7,9 @@ use crate::{
     EdgeInsets, MotionTarget, OpacityToken, OpacityValue, Outline, OutlineToken, OutlineValue,
     PresentationToken, PresentationTransform, PresentationValue, Radius, RadiusToken, RadiusValue,
     SceneOpacity, ShadowToken, ShadowValue, SpacingToken, SpacingValue, StyleEnvironment,
-    StyleIntent, StyleInteractionFacts, StyleInteractionState, StylePreferenceKind, StyleProperties,
-    StyleRecipeId, StyleTokens, StyleVariantId, TransitionPolicy, Typography, TypographyToken,
-    TypographyValue,
+    StyleIntent, StyleInteractionFacts, StyleInteractionState, StylePreferenceKind,
+    StyleProperties, StyleRecipeId, StyleTokens, StyleVariantId, TransitionPolicy, Typography,
+    TypographyToken, TypographyValue,
 };
 
 /// Exact precedence layer that last attempted to define one property.
@@ -262,7 +262,9 @@ impl StyleResolution {
     /// Returns the exact cascade layer that supplied the winning transition policy.
     #[must_use]
     pub fn transition_policy_layer(&self, target: MotionTarget) -> Option<&StyleResolutionLayer> {
-        self.transition_policies.get(&target).map(|(_, layer)| layer)
+        self.transition_policies
+            .get(&target)
+            .map(|(_, layer)| layer)
     }
     /// Iterates resolved transition policies in canonical target order.
     pub fn transition_policies(
