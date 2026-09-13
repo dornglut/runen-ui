@@ -225,7 +225,8 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     }
 
     if style_dirty || target_layout_dirty {
-        let next_effective = CachedEffectiveFacts::identity(tree, &current.topology, &current.styles);
+        let next_effective =
+            CachedEffectiveFacts::identity(tree, &current.topology, &current.styles);
         let effects = current.effective.effects_against(&next_effective);
         layout_dirty |= effects.layout();
         presentation_dirty |= effects.presentation();
