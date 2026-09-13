@@ -432,7 +432,7 @@ mod tests {
     use crate::{
         Color, CubicBezier, LayoutDimension, LogicalLength, MotionEasing, MotionValue,
         PresentationOrigin, PresentationRotation, PresentationScale, PresentationTransform,
-        PresentationTranslation, UnitInterval,
+        PresentationTranslation, Typography, UnitInterval,
     };
 
     fn unit(value: f32) -> UnitInterval {
@@ -467,6 +467,20 @@ mod tests {
         assert_eq!(
             sampled,
             MotionValue::Foreground(Some(Color::rgb(188, 188, 188)))
+        );
+    }
+
+    #[test]
+    fn typography_absence_is_discrete_until_terminal_boundary() {
+        let start = MotionValue::Typography(Some(Typography::default()));
+        let end = MotionValue::Typography(None);
+        assert_eq!(
+            interpolate_motion_value(&start, &end, UnitInterval::HALF),
+            Some(start.clone())
+        );
+        assert_eq!(
+            interpolate_motion_value(&start, &end, UnitInterval::ONE),
+            Some(end)
         );
     }
 
