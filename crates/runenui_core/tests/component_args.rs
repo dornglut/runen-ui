@@ -16,8 +16,7 @@ fn typed_builders_use_the_open_widget_protocol() {
         .disabled()
         .on_activate(|| Action::Save)
         .into_element();
-    let (_, _, _, _, _, _, _, _, text_widget, _) =
-        text_element.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, _, text_widget, _) = text_element.into_runtime_parts().into_parts();
     let text_state = text_widget.create_state();
     assert!(matches!(
         text_widget.measure(
