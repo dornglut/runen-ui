@@ -228,7 +228,7 @@ pub struct StyleResolution {
 }
 
 impl StyleResolution {
-    fn new(
+    const fn new(
         computed_style: ComputedStyle,
         provenance: StyleProvenance,
         transition_policies: BTreeMap<MotionTarget, (TransitionPolicy, StyleResolutionLayer)>,
@@ -327,7 +327,7 @@ impl ResolutionBuilder {
     fn apply(
         &mut self,
         properties: &StyleProperties,
-        layer: StyleResolutionLayer,
+        layer: &StyleResolutionLayer,
         tokens: &StyleTokens,
     ) {
         if let Some(value) = properties.foreground() {
@@ -674,7 +674,7 @@ pub fn resolve_style_in_environment(
 
     builder.apply(
         environment.framework_defaults(),
-        StyleResolutionLayer::FrameworkDefault,
+        &StyleResolutionLayer::FrameworkDefault,
         tokens,
     );
 
@@ -682,14 +682,14 @@ pub fn resolve_style_in_environment(
         if let Some(recipe) = environment.theme().recipe(recipe_id) {
             builder.apply(
                 recipe.base(),
-                StyleResolutionLayer::ThemeRecipe(recipe_id.clone()),
+                &StyleResolutionLayer::ThemeRecipe(recipe_id.clone()),
                 tokens,
             );
             for variant_id in intent.variants() {
                 if let Some(properties) = recipe.variant(variant_id) {
                     builder.apply(
                         properties,
-                        StyleResolutionLayer::Variant(variant_id.clone()),
+                        &StyleResolutionLayer::Variant(variant_id.clone()),
                         tokens,
                     );
                 } else {
@@ -704,7 +704,11 @@ pub fn resolve_style_in_environment(
                 if state.is_active(interaction)
                     && let Some(properties) = recipe.interaction(state)
                 {
-                    builder.apply(properties, StyleResolutionLayer::Interaction(state), tokens);
+                    builder.apply(
+                        properties,
+                        &StyleResolutionLayer::Interaction(state),
+                        tokens,
+                    );
                 }
             }
         } else {
@@ -731,14 +735,14 @@ pub fn resolve_style_in_environment(
 
     builder.apply(
         intent.overrides(),
-        StyleResolutionLayer::AuthoredOverride,
+        &StyleResolutionLayer::AuthoredOverride,
         tokens,
     );
 
     if environment.preferences().high_contrast() {
         builder.apply(
             environment.preference_policy().high_contrast(),
-            StyleResolutionLayer::Preference(StylePreferenceKind::HighContrast),
+            &StyleResolutionLayer::Preference(StylePreferenceKind::HighContrast),
             tokens,
         );
     }
