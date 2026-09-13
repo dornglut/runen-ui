@@ -1,7 +1,10 @@
 //! Validated host-neutral authored style vocabulary.
 
+use std::collections::BTreeMap;
+
 use crate::{
-    Brush, IdentifierError, LogicalLength, Typography,
+    Brush, IdentifierError, LogicalLength, MotionTarget, TransitionPolicy, TransitionSpec,
+    Typography,
     identity::{IdentifierText, validate_identifier},
     visual_style::{
         OpacityValue, OutlineValue, PresentationValue, ShadowValue, VisualStyleProperties,
@@ -521,7 +524,8 @@ impl From<TypographyToken> for TypographyValue {
 /// One partial set of typed style properties.
 ///
 /// A property set has no precedence by itself. Resolution assigns precedence
-/// from the layer that contributes it.
+/// from the layer that contributes it. Transition policy is target-keyed,
+/// non-inherited style policy; absence means this layer makes no contribution.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StyleProperties {
     foreground: Option<ColorValue>,
@@ -530,6 +534,7 @@ pub struct StyleProperties {
     radius: Option<RadiusValue>,
     typography: Option<TypographyValue>,
     visual: VisualStyleProperties,
+    transitions: BTreeMap<MotionTarget, TransitionPolicy>,
 }
 
 impl StyleProperties {
@@ -540,16 +545,18 @@ impl StyleProperties {
         radius: None,
         typography: None,
         visual: VisualStyleProperties::EMPTY,
+        transitions: BTreeMap::new(),
     };
 
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.foreground.is_none()
             && self.background.is_none()
             && self.padding.is_none()
             && self.radius.is_none()
             && self.typography.is_none()
             && self.visual.is_empty()
+            && self.transitions.is_empty()
     }
     #[must_use]
     pub fn with_foreground(mut self, value: impl Into<ColorValue>) -> Self {
@@ -596,6 +603,19 @@ impl StyleProperties {
         self.visual = self.visual.with_presentation(value);
         self
     }
+    /// Contributes one transition specification for an exact motion target.
+    #[must_use]
+    pub fn with_transition(mut self, target: MotionTarget, spec: TransitionSpec) -> Self {
+        self.transitions
+            .insert(target, TransitionPolicy::Enabled(spec));
+        self
+    }
+    /// Explicitly disables transition for an exact target at this style layer.
+    #[must_use]
+    pub fn with_transition_disabled(mut self, target: MotionTarget) -> Self {
+        self.transitions.insert(target, TransitionPolicy::Disabled);
+        self
+    }
     #[must_use]
     pub const fn foreground(&self) -> Option<&ColorValue> {
         self.foreground.as_ref()
@@ -632,6 +652,16 @@ impl StyleProperties {
     pub const fn presentation(&self) -> Option<&PresentationValue> {
         self.visual.presentation()
     }
+    /// Returns this layer's contribution for one exact transition target.
+    #[must_use]
+    pub fn transition_policy(&self, target: MotionTarget) -> Option<&TransitionPolicy> {
+        self.transitions.get(&target)
+    }
+    pub(crate) fn transition_policies(
+        &self,
+    ) -> impl Iterator<Item = (MotionTarget, &TransitionPolicy)> {
+        self.transitions.iter().map(|(target, policy)| (*target, policy))
+    }
 }
 
 /// Authored style selection for one element.
@@ -654,7 +684,7 @@ impl StyleIntent {
     };
 
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.recipe.is_none() && self.variants.is_empty() && self.overrides.is_empty()
     }
     #[must_use]
@@ -713,6 +743,16 @@ impl StyleIntent {
         self
     }
     #[must_use]
+    pub fn with_transition(mut self, target: MotionTarget, spec: TransitionSpec) -> Self {
+        self.overrides = self.overrides.with_transition(target, spec);
+        self
+    }
+    #[must_use]
+    pub fn with_transition_disabled(mut self, target: MotionTarget) -> Self {
+        self.overrides = self.overrides.with_transition_disabled(target);
+        self
+    }
+    #[must_use]
     pub const fn recipe(&self) -> Option<&StyleRecipeId> {
         self.recipe.as_ref()
     }
@@ -759,5 +799,9 @@ impl StyleIntent {
     #[must_use]
     pub const fn presentation(&self) -> Option<&PresentationValue> {
         self.overrides.presentation()
+    }
+    #[must_use]
+    pub fn transition_policy(&self, target: MotionTarget) -> Option<&TransitionPolicy> {
+        self.overrides.transition_policy(target)
     }
 }
