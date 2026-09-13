@@ -12,9 +12,9 @@ use crate::style_debug::SurfaceStyleReport;
 
 use super::cache::{CachedLayoutFacts, context_key};
 use super::resolve::{
-    CachedEffectiveFacts, PresentationGeometryError, ResolvedSurfaceTree, collect_topology,
-    hit_contexts, paint_contexts, resolve_diagnostics, resolve_hit_test, resolve_paint,
-    resolve_presentation, resolve_styles,
+    CachedEffectiveFacts, EffectiveEffects, PresentationGeometryError, ResolvedSurfaceTree,
+    collect_topology, hit_contexts, paint_contexts, resolve_diagnostics, resolve_hit_test,
+    resolve_paint, resolve_presentation, resolve_styles,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::PlannedSurfacePublication;
@@ -184,6 +184,18 @@ fn resolve_layout_phase<Action>(
     })
 }
 
+fn refresh_effective_facts<Action>(
+    tree: &crate::mounted::MountedTree<Action>,
+    current: &mut SurfaceCache,
+) -> EffectiveEffects {
+    let next_effective = CachedEffectiveFacts::identity(tree, &current.topology, &current.styles);
+    let effects = current.effective.effects_against(&next_effective);
+    if current.effective.as_ref() != &next_effective {
+        current.effective = Arc::new(next_effective);
+    }
+    effects
+}
+
 pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
@@ -225,15 +237,10 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     }
 
     if style_dirty || target_layout_dirty {
-        let next_effective =
-            CachedEffectiveFacts::identity(tree, &current.topology, &current.styles);
-        let effects = current.effective.effects_against(&next_effective);
+        let effects = refresh_effective_facts(tree, &mut current);
         layout_dirty |= effects.layout();
         presentation_dirty |= effects.presentation();
         paint_dirty |= effects.paint();
-        if current.effective.as_ref() != &next_effective {
-            current.effective = Arc::new(next_effective);
-        }
     }
 
     presentation_dirty |= layout_dirty;
