@@ -106,10 +106,17 @@ fn repeated_same_layer_target_replaces_without_duplicate_policy() {
         .with_transition(MotionTarget::Opacity, transition(100))
         .with_transition(MotionTarget::Foreground, transition(200))
         .with_transition(MotionTarget::Opacity, replacement.clone());
+    let environment = StyleEnvironment::default().with_framework_defaults(properties);
+    let resolution = resolve_style_in_environment(
+        &StyleIntent::EMPTY,
+        &environment,
+        StyleInteractionFacts::NONE,
+        None,
+    );
 
     assert_eq!(
-        properties.transition_policy(MotionTarget::Opacity),
+        resolution.transition_policy(MotionTarget::Opacity),
         Some(&TransitionPolicy::Enabled(replacement))
     );
-    assert_eq!(properties.transition_policies().count(), 2);
+    assert_eq!(resolution.transition_policies().count(), 2);
 }
