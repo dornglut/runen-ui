@@ -8,9 +8,8 @@ use core::{error::Error, fmt, num::NonZeroU64};
 use std::{sync::Arc, time::Duration};
 
 use crate::{
-    Brush, Color, DropShadow, EdgeInsets, FlexBasis, IdentifierError, LayoutBound,
-    LayoutDimension, LayoutFactor, LayoutGap, PresentationTransform, Radius, SceneOpacity,
-    Typography, UnitInterval,
+    Brush, Color, DropShadow, EdgeInsets, FlexBasis, IdentifierError, LayoutBound, LayoutDimension,
+    LayoutFactor, LayoutGap, PresentationTransform, Radius, SceneOpacity, Typography, UnitInterval,
     identity::{IdentifierText, validate_identifier},
 };
 
@@ -251,24 +250,27 @@ pub enum MotionSpecError {
     TooFewKeyframes,
     FirstKeyframeNotZero,
     LastKeyframeNotOne,
-    KeyframeOffsetsNotIncreasing { index: usize },
+    KeyframeOffsetsNotIncreasing {
+        index: usize,
+    },
     KeyframeTargetMismatch {
         index: usize,
         expected: MotionTarget,
         actual: MotionTarget,
     },
-    EasingCountMismatch { expected: usize, actual: usize },
+    EasingCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
 }
 
 impl fmt::Display for MotionSpecError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DurationOutOfRange => formatter.write_str(
-                "motion duration must fit the runtime-relative u64 nanosecond domain",
-            ),
-            Self::DelayOutOfRange => formatter.write_str(
-                "motion delay must fit the runtime-relative u64 nanosecond domain",
-            ),
+            Self::DurationOutOfRange => formatter
+                .write_str("motion duration must fit the runtime-relative u64 nanosecond domain"),
+            Self::DelayOutOfRange => formatter
+                .write_str("motion delay must fit the runtime-relative u64 nanosecond domain"),
             Self::RelativeScheduleOverflow => formatter.write_str(
                 "finite motion schedule exceeds the runtime-relative u64 nanosecond domain",
             ),
@@ -341,8 +343,7 @@ impl TransitionSpec {
         easing: MotionEasing,
         reduced_motion: Option<ReducedMotionStrategy>,
     ) -> Result<Self, MotionSpecError> {
-        let duration_nanos =
-            checked_duration_nanos(duration, MotionSpecError::DurationOutOfRange)?;
+        let duration_nanos = checked_duration_nanos(duration, MotionSpecError::DurationOutOfRange)?;
         let delay_nanos = checked_duration_nanos(delay, MotionSpecError::DelayOutOfRange)?;
         delay_nanos
             .checked_add(duration_nanos)
@@ -480,8 +481,7 @@ impl TimelineSpec {
             });
         }
 
-        let duration_nanos =
-            checked_duration_nanos(duration, MotionSpecError::DurationOutOfRange)?;
+        let duration_nanos = checked_duration_nanos(duration, MotionSpecError::DurationOutOfRange)?;
         let delay_nanos = checked_duration_nanos(delay, MotionSpecError::DelayOutOfRange)?;
         let reduced_motion = match repeat {
             MotionRepeat::Finite(iterations) => {
