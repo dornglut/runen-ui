@@ -4,8 +4,8 @@ use core::fmt;
 
 use runenui_core::{
     __runtime::{MountedWidget, MountedWidgetState},
-    AuthoringDiagnostic, ElementId, ElementKey, FocusScope, Focusability, LayoutStyle, StyleIntent,
-    WidgetActivation, WidgetStateTypeId, WidgetTypeId,
+    AuthoringDiagnostic, ElementId, ElementKey, ExplicitTimeline, FocusScope, Focusability,
+    LayoutStyle, StyleIntent, WidgetActivation, WidgetStateTypeId, WidgetTypeId,
 };
 
 use super::{
@@ -22,6 +22,7 @@ pub(crate) struct MountedNode<Action> {
     pub(crate) key: Option<ElementKey>,
     pub(crate) layout: LayoutStyle,
     pub(crate) style: StyleIntent,
+    pub(crate) timelines: Vec<ExplicitTimeline>,
     pub(crate) focusability: Focusability,
     pub(crate) focus_scope: Option<FocusScope>,
     pub(crate) authoring_diagnostics: Vec<AuthoringDiagnostic>,
@@ -54,6 +55,7 @@ impl<Action> fmt::Debug for MountedNode<Action> {
             .field("children", &self.children)
             .field("authored_id", &self.authored_id)
             .field("key", &self.key)
+            .field("timeline_count", &self.timelines.len())
             .field("widget", &self.widget)
             .finish_non_exhaustive()
     }
