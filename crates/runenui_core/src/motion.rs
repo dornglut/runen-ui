@@ -105,7 +105,7 @@ pub enum MotionValue {
     Background(Option<Brush>),
     Padding(Option<EdgeInsets>),
     Radius(Option<Radius>),
-    Typography(Typography),
+    Typography(Option<Typography>),
     Shadows(Vec<DropShadow>),
     Opacity(SceneOpacity),
     Presentation(Option<PresentationTransform>),
@@ -589,6 +589,14 @@ mod tests {
 
     fn color_keyframe(offset: UnitInterval, color: Color) -> MotionKeyframe {
         MotionKeyframe::new(offset, MotionValue::Foreground(Some(color)))
+    }
+
+    #[test]
+    fn motion_value_preserves_absent_typography_endpoint() {
+        assert_eq!(
+            MotionValue::Typography(None).target(),
+            MotionTarget::Typography
+        );
     }
 
     #[test]
