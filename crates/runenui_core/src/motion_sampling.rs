@@ -254,12 +254,7 @@ fn interpolate_color(
     end: crate::Color,
     progress: UnitInterval,
 ) -> crate::Color {
-    let stops = GradientStops::new(vec![
-        GradientStop::new(UnitInterval::ZERO, start),
-        GradientStop::new(UnitInterval::ONE, end),
-    ])
-    .unwrap_or_else(|_| unreachable!("two ordered endpoint stops are always valid"));
-    stops.sample(progress)
+    GradientStops::interpolate_color_pair(start, end, progress)
 }
 
 fn compatible_stop_colors(
