@@ -2,7 +2,7 @@
 //!
 //! This module owns no clock, live lifetime, reconciliation, redraw, or publication
 //! state. It only applies the exact M9 value/easing semantics to already-validated
-//! neutral RunenUI values. The runtime remains the sole owner of when and why a
+//! neutral `RunenUI` values. The runtime remains the sole owner of when and why a
 //! sample is taken.
 
 use crate::{
@@ -55,23 +55,18 @@ pub fn interpolate_motion_value(
         (MotionValue::Foreground(Some(start)), MotionValue::Foreground(Some(end))) => Some(
             MotionValue::Foreground(Some(interpolate_color(*start, *end, progress))),
         ),
-        (MotionValue::Foreground(_), MotionValue::Foreground(_)) => discrete(),
         (MotionValue::Background(Some(start)), MotionValue::Background(Some(end))) => {
             interpolate_brush(start, end, progress)
                 .map(|brush| MotionValue::Background(Some(brush)))
                 .or_else(discrete)
         }
-        (MotionValue::Background(_), MotionValue::Background(_)) => discrete(),
         (MotionValue::Padding(Some(start)), MotionValue::Padding(Some(end))) => {
             interpolate_edge_insets(*start, *end, progress)
                 .map(|value| MotionValue::Padding(Some(value)))
         }
-        (MotionValue::Padding(_), MotionValue::Padding(_)) => discrete(),
         (MotionValue::Radius(Some(start)), MotionValue::Radius(Some(end))) => {
             interpolate_radius(*start, *end, progress).map(|value| MotionValue::Radius(Some(value)))
         }
-        (MotionValue::Radius(_), MotionValue::Radius(_)) => discrete(),
-        (MotionValue::Typography(_), MotionValue::Typography(_)) => discrete(),
         (MotionValue::Shadows(start), MotionValue::Shadows(end)) => {
             interpolate_shadows(start, end, progress)
                 .map(MotionValue::Shadows)
@@ -84,7 +79,6 @@ pub fn interpolate_motion_value(
             interpolate_presentation(*start, *end, progress)
                 .map(|value| MotionValue::Presentation(Some(value)))
         }
-        (MotionValue::Presentation(_), MotionValue::Presentation(_)) => discrete(),
         (MotionValue::Width(start), MotionValue::Width(end)) => Some(MotionValue::Width(
             interpolate_dimension(*start, *end, progress)?,
         )),
@@ -118,6 +112,12 @@ pub fn interpolate_motion_value(
         (MotionValue::FlexBasis(start), MotionValue::FlexBasis(end)) => Some(
             MotionValue::FlexBasis(interpolate_flex_basis(*start, *end, progress)?),
         ),
+        (MotionValue::Foreground(_), MotionValue::Foreground(_))
+        | (MotionValue::Background(_), MotionValue::Background(_))
+        | (MotionValue::Padding(_), MotionValue::Padding(_))
+        | (MotionValue::Radius(_), MotionValue::Radius(_))
+        | (MotionValue::Typography(_), MotionValue::Typography(_))
+        | (MotionValue::Presentation(_), MotionValue::Presentation(_)) => discrete(),
         _ => None,
     }
 }
@@ -400,7 +400,8 @@ fn de_casteljau(p0: f64, p1: f64, p2: f64, p3: f64, u: f64) -> f64 {
 
 #[allow(
     clippy::cast_possible_truncation,
-    reason = "the accepted easing result is clamped to [0,1] before the single f64-to-f32 conversion"
+    clippy::manual_midpoint,
+    reason = "ADR 0016 freezes both the final f64-to-f32 conversion and the exact `(lo + hi) / 2` bisection operation"
 )]
 fn cubic_bezier_ease(curve: CubicBezier, progress: UnitInterval) -> UnitInterval {
     if progress == UnitInterval::ZERO || progress == UnitInterval::ONE {
@@ -457,7 +458,7 @@ mod tests {
     fn scalar_rule_avoids_false_opposite_sign_overflow() {
         let sample = interpolate_f32(f32::MAX, f32::MIN, UnitInterval::HALF);
         assert!(sample.is_finite());
-        assert_eq!(sample, 0.0);
+        assert_eq!(sample.to_bits(), 0.0_f32.to_bits());
     }
 
     #[test]
