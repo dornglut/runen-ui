@@ -68,8 +68,7 @@ pub fn interpolate_motion_value(
         }
         (MotionValue::Padding(_), MotionValue::Padding(_)) => discrete(),
         (MotionValue::Radius(Some(start)), MotionValue::Radius(Some(end))) => {
-            interpolate_radius(*start, *end, progress)
-                .map(|value| MotionValue::Radius(Some(value)))
+            interpolate_radius(*start, *end, progress).map(|value| MotionValue::Radius(Some(value)))
         }
         (MotionValue::Radius(_), MotionValue::Radius(_)) => discrete(),
         (MotionValue::Typography(_), MotionValue::Typography(_)) => discrete(),
@@ -86,21 +85,21 @@ pub fn interpolate_motion_value(
                 .map(|value| MotionValue::Presentation(Some(value)))
         }
         (MotionValue::Presentation(_), MotionValue::Presentation(_)) => discrete(),
-        (MotionValue::Width(start), MotionValue::Width(end)) => {
-            Some(MotionValue::Width(interpolate_dimension(*start, *end, progress)?))
-        }
-        (MotionValue::Height(start), MotionValue::Height(end)) => {
-            Some(MotionValue::Height(interpolate_dimension(*start, *end, progress)?))
-        }
-        (MotionValue::MinWidth(start), MotionValue::MinWidth(end)) => Some(
-            MotionValue::MinWidth(interpolate_bound(*start, *end, progress)?),
-        ),
+        (MotionValue::Width(start), MotionValue::Width(end)) => Some(MotionValue::Width(
+            interpolate_dimension(*start, *end, progress)?,
+        )),
+        (MotionValue::Height(start), MotionValue::Height(end)) => Some(MotionValue::Height(
+            interpolate_dimension(*start, *end, progress)?,
+        )),
+        (MotionValue::MinWidth(start), MotionValue::MinWidth(end)) => Some(MotionValue::MinWidth(
+            interpolate_bound(*start, *end, progress)?,
+        )),
         (MotionValue::MinHeight(start), MotionValue::MinHeight(end)) => Some(
             MotionValue::MinHeight(interpolate_bound(*start, *end, progress)?),
         ),
-        (MotionValue::MaxWidth(start), MotionValue::MaxWidth(end)) => Some(
-            MotionValue::MaxWidth(interpolate_bound(*start, *end, progress)?),
-        ),
+        (MotionValue::MaxWidth(start), MotionValue::MaxWidth(end)) => Some(MotionValue::MaxWidth(
+            interpolate_bound(*start, *end, progress)?,
+        )),
         (MotionValue::MaxHeight(start), MotionValue::MaxHeight(end)) => Some(
             MotionValue::MaxHeight(interpolate_bound(*start, *end, progress)?),
         ),
@@ -116,9 +115,9 @@ pub fn interpolate_motion_value(
         (MotionValue::FlexShrink(start), MotionValue::FlexShrink(end)) => {
             interpolate_layout_factor(*start, *end, progress).map(MotionValue::FlexShrink)
         }
-        (MotionValue::FlexBasis(start), MotionValue::FlexBasis(end)) => {
-            Some(MotionValue::FlexBasis(interpolate_flex_basis(*start, *end, progress)?))
-        }
+        (MotionValue::FlexBasis(start), MotionValue::FlexBasis(end)) => Some(
+            MotionValue::FlexBasis(interpolate_flex_basis(*start, *end, progress)?),
+        ),
         _ => None,
     }
 }
@@ -469,7 +468,10 @@ mod tests {
             UnitInterval::HALF,
         )
         .unwrap_or_else(|| unreachable!("matching color target is sampleable"));
-        assert_eq!(sampled, MotionValue::Foreground(Some(Color::rgb(188, 188, 188))));
+        assert_eq!(
+            sampled,
+            MotionValue::Foreground(Some(Color::rgb(188, 188, 188)))
+        );
     }
 
     #[test]
