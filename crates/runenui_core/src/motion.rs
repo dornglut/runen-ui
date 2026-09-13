@@ -193,16 +193,11 @@ impl CubicBezier {
 
 /// Initial deterministic timing functions.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum MotionEasing {
+    #[default]
     Linear,
     CubicBezier(CubicBezier),
-}
-
-impl Default for MotionEasing {
-    fn default() -> Self {
-        Self::Linear
-    }
 }
 
 /// Explicit reduced-motion strategy retained by one authored motion source.
@@ -398,7 +393,7 @@ pub struct MotionKeyframe {
 
 impl MotionKeyframe {
     #[must_use]
-    pub fn new(offset: UnitInterval, value: MotionValue) -> Self {
+    pub const fn new(offset: UnitInterval, value: MotionValue) -> Self {
         Self { offset, value }
     }
 
@@ -561,7 +556,7 @@ pub struct ExplicitTimeline {
 
 impl ExplicitTimeline {
     #[must_use]
-    pub fn new(id: AnimationId, spec: TimelineSpec) -> Self {
+    pub const fn new(id: AnimationId, spec: TimelineSpec) -> Self {
         Self { id, spec }
     }
 
