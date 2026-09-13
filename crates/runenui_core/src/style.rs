@@ -1,7 +1,5 @@
 //! Validated host-neutral authored style vocabulary.
 
-use std::collections::BTreeMap;
-
 use crate::{
     Brush, IdentifierError, LogicalLength, MotionTarget, TransitionPolicy, TransitionSpec,
     Typography,
@@ -534,7 +532,7 @@ pub struct StyleProperties {
     radius: Option<RadiusValue>,
     typography: Option<TypographyValue>,
     visual: VisualStyleProperties,
-    transitions: BTreeMap<MotionTarget, TransitionPolicy>,
+    transitions: Vec<(MotionTarget, TransitionPolicy)>,
 }
 
 impl StyleProperties {
@@ -545,11 +543,11 @@ impl StyleProperties {
         radius: None,
         typography: None,
         visual: VisualStyleProperties::EMPTY,
-        transitions: BTreeMap::new(),
+        transitions: Vec::new(),
     };
 
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.foreground.is_none()
             && self.background.is_none()
             && self.padding.is_none()
@@ -606,15 +604,23 @@ impl StyleProperties {
     /// Contributes one transition specification for an exact motion target.
     #[must_use]
     pub fn with_transition(mut self, target: MotionTarget, spec: TransitionSpec) -> Self {
-        self.transitions
-            .insert(target, TransitionPolicy::Enabled(spec));
+        self.set_transition_policy(target, TransitionPolicy::Enabled(spec));
         self
     }
     /// Explicitly disables transition for an exact target at this style layer.
     #[must_use]
     pub fn with_transition_disabled(mut self, target: MotionTarget) -> Self {
-        self.transitions.insert(target, TransitionPolicy::Disabled);
+        self.set_transition_policy(target, TransitionPolicy::Disabled);
         self
+    }
+    fn set_transition_policy(&mut self, target: MotionTarget, policy: TransitionPolicy) {
+        match self
+            .transitions
+            .binary_search_by_key(&target, |(candidate, _)| *candidate)
+        {
+            Ok(index) => self.transitions[index].1 = policy,
+            Err(index) => self.transitions.insert(index, (target, policy)),
+        }
     }
     #[must_use]
     pub const fn foreground(&self) -> Option<&ColorValue> {
@@ -655,7 +661,10 @@ impl StyleProperties {
     /// Returns this layer's contribution for one exact transition target.
     #[must_use]
     pub fn transition_policy(&self, target: MotionTarget) -> Option<&TransitionPolicy> {
-        self.transitions.get(&target)
+        self.transitions
+            .binary_search_by_key(&target, |(candidate, _)| *candidate)
+            .ok()
+            .map(|index| &self.transitions[index].1)
     }
     pub(crate) fn transition_policies(
         &self,
@@ -684,7 +693,7 @@ impl StyleIntent {
     };
 
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.recipe.is_none() && self.variants.is_empty() && self.overrides.is_empty()
     }
     #[must_use]
