@@ -9,11 +9,11 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use runenui_core::{
-    AnimationId, BrushToken, ColorToken, ComputedStyle, ExplicitTimeline, LayoutStyle,
-    MonotonicInstant, MotionRepeat, MotionTarget, MotionValue, OpacityToken, PresentationToken,
-    RadiusToken, ReducedMotionStrategy, ShadowToken, SpacingToken, StyleFieldProvenance,
-    StylePreferenceKind, StylePreferences, StyleResolution, StyleResolutionLayer, TransitionPolicy,
-    TransitionSpec, TypographyToken, UnitInterval,
+    BrushToken, ColorToken, ComputedStyle, ExplicitTimeline, LayoutStyle, MonotonicInstant,
+    MotionRepeat, MotionTarget, MotionValue, OpacityToken, PresentationToken, RadiusToken,
+    ReducedMotionStrategy, ShadowToken, SpacingToken, StyleFieldProvenance, StylePreferenceKind,
+    StylePreferences, StyleResolution, StyleResolutionLayer, TransitionPolicy, TransitionSpec,
+    TypographyToken, UnitInterval,
     __runtime::{apply_motion_value, ease_motion, interpolate_motion_value, motion_value_for_target},
 };
 
@@ -21,7 +21,9 @@ use crate::{MountedNodeId, mounted::MountedTree};
 
 use super::{
     SurfaceCache,
-    resolve::{CachedEffectiveFacts, CachedStyleFacts, SurfaceTopologySnapshot},
+    resolve::{
+        CachedEffectiveFacts, CachedStyleFacts, EffectiveNodeFacts, SurfaceTopologySnapshot,
+    },
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -306,6 +308,9 @@ fn plan_owner(
             instant,
         )?);
     }
+    next_store
+        .explicit
+        .extend(explicit_evaluations.iter().map(|candidate| candidate.record.clone()));
 
     let mut targets = BTreeSet::new();
     targets.extend(declarations.iter().map(ExplicitTimeline::target));
@@ -318,11 +323,7 @@ fn plan_owner(
     );
 
     for target in targets {
-        let target_value = motion_value_for_target(
-            resolution.computed_style(),
-            target_layout,
-            target,
-        );
+        let target_value = motion_value_for_target(resolution.computed_style(), target_layout, target);
         let provenance = target_provenance(resolution, target);
         let suppressed = provenance.high_contrast();
         let policy = resolved_transition_policy(resolution, target);
@@ -353,10 +354,6 @@ fn plan_owner(
             _ => None,
         };
 
-        if let Some(candidate) = new_explicit {
-            next_store.explicit.push(candidate.record.clone());
-        }
-
         let explicit_sample = new_explicit.and_then(|candidate| candidate.candidate_sample.clone());
         let explicit_terminal_commit = new_explicit.is_some_and(|candidate| candidate.terminal_commit);
 
@@ -377,22 +374,21 @@ fn plan_owner(
             if let Some(sample) = explicit_sample.as_ref()
                 && !suppressed
             {
-                effective.apply_motion_value(position, sample);
+                apply_effective_sample(effective, position, sample);
             }
             if !suppressed
                 && new_explicit
                     .is_some_and(|candidate| explicit_requires_group(&candidate.record.declaration))
             {
-                effective.retain_motion_group(position);
+                retain_effective_group(effective, position);
             }
             continue;
         }
 
         let removed_or_replaced_explicit = old_explicit_for_target.is_some_and(|old| {
-            !declarations
-                .iter()
-                .any(|declaration| declaration.id() == old.declaration.id()
-                    && declaration == &old.declaration)
+            !declarations.iter().any(|declaration| {
+                declaration.id() == old.declaration.id() && declaration == &old.declaration
+            })
         });
         let explicit_exit_source = if explicit_terminal_commit {
             explicit_sample.clone()
@@ -424,42 +420,66 @@ fn plan_owner(
 
         if let Some(transition) = staged_transition.as_ref() {
             let live = sample_transition(transition, instant)?;
-            note_live_activity(&live, suppressed, activity);
-            next_store.transitions.push(transition.clone());
-            if !suppressed && transition_requires_group(transition) {
-                effective.retain_motion_group(position);
+            let transition_is_live = !matches!(live.phase, LivePhase::Completed);
+            if transition_is_live {
+                note_live_activity(&live, suppressed, activity);
+                next_store.transitions.push(transition.clone());
+                if !suppressed && transition_requires_group(transition) {
+                    retain_effective_group(effective, position);
+                }
             }
-            if !explicit_terminal_commit && !suppressed {
-                effective.apply_motion_value(position, &live.value);
+            if explicit_terminal_commit {
+                if !suppressed
+                    && explicit_sample.as_ref().is_some_and(|sample| sample != &target_value)
+                    && !transition_is_live
+                {
+                    activity.followup_publication = true;
+                }
+            } else if !suppressed {
+                apply_effective_sample(effective, position, &live.value);
             }
         } else if explicit_terminal_commit {
             if let Some(sample) = explicit_sample.as_ref()
                 && !suppressed
             {
-                effective.apply_motion_value(position, sample);
+                apply_effective_sample(effective, position, sample);
             }
-            if explicit_sample.as_ref().is_some_and(|sample| sample != &target_value) {
+            if !suppressed
+                && explicit_sample
+                    .as_ref()
+                    .is_some_and(|sample| sample != &target_value)
+            {
                 activity.followup_publication = true;
             }
-        } else if let Some(old) = old_transition_sample.as_ref()
-            && matches!(old.phase, LivePhase::Completed)
-        {
-            // The completed transition no longer owns sampled authority.
-        }
-    }
-
-    for candidate in explicit_evaluations {
-        if !next_store
-            .explicit
-            .iter()
-            .any(|record| record.owner == candidate.record.owner
-                && record.declaration.id() == candidate.record.declaration.id())
-        {
-            next_store.explicit.push(candidate.record);
         }
     }
 
     Ok(())
+}
+
+fn apply_effective_sample(
+    effective: &mut CachedEffectiveFacts,
+    position: usize,
+    sample: &MotionValue,
+) {
+    let current = effective.node(position);
+    let mut computed = current.computed_style().clone();
+    let mut layout = current.layout().clone();
+    let retain = current.retain_node_effect_group();
+    apply_motion_value(&mut computed, &mut layout, sample);
+    effective.nodes[position] = EffectiveNodeFacts::new(layout, computed, retain);
+}
+
+fn retain_effective_group(effective: &mut CachedEffectiveFacts, position: usize) {
+    let current = effective.node(position);
+    if current.retain_node_effect_group() {
+        return;
+    }
+    effective.nodes[position] = EffectiveNodeFacts::new(
+        current.layout().clone(),
+        current.computed_style().clone(),
+        true,
+    );
 }
 
 fn reconcile_explicit(
@@ -471,20 +491,28 @@ fn reconcile_explicit(
 ) -> Result<ExplicitEvaluation, MotionPlanningError> {
     let mut terminal_commit = false;
     let lifecycle = match retained {
-        Some(record) if record.declaration == *declaration => match (&record.lifecycle, preferences.reduced_motion()) {
-            (ExplicitLifecycle::Completed, _) => ExplicitLifecycle::Completed,
-            (ExplicitLifecycle::HoldInitial, true) => ExplicitLifecycle::HoldInitial,
-            (ExplicitLifecycle::HoldInitial, false) => checked_active(declaration, instant)?,
-            (ExplicitLifecycle::Active { start }, false) => ExplicitLifecycle::Active { start: *start },
-            (ExplicitLifecycle::Active { start }, true) => match declaration.spec().reduced_motion() {
-                ReducedMotionStrategy::SnapToEnd => {
-                    terminal_commit = true;
-                    ExplicitLifecycle::Completed
+        Some(record) if record.declaration == *declaration => {
+            match (&record.lifecycle, preferences.reduced_motion()) {
+                (ExplicitLifecycle::Completed, _) => ExplicitLifecycle::Completed,
+                (ExplicitLifecycle::HoldInitial, true) => ExplicitLifecycle::HoldInitial,
+                (ExplicitLifecycle::HoldInitial, false) => checked_active(declaration, instant)?,
+                (ExplicitLifecycle::Active { start }, false) => {
+                    ExplicitLifecycle::Active { start: *start }
                 }
-                ReducedMotionStrategy::HoldInitial => ExplicitLifecycle::HoldInitial,
-                ReducedMotionStrategy::PreserveEssential => ExplicitLifecycle::Active { start: *start },
-            },
-        },
+                (ExplicitLifecycle::Active { start }, true) => {
+                    match declaration.spec().reduced_motion() {
+                        ReducedMotionStrategy::SnapToEnd => {
+                            terminal_commit = true;
+                            ExplicitLifecycle::Completed
+                        }
+                        ReducedMotionStrategy::HoldInitial => ExplicitLifecycle::HoldInitial,
+                        ReducedMotionStrategy::PreserveEssential => {
+                            ExplicitLifecycle::Active { start: *start }
+                        }
+                    }
+                }
+            }
+        }
         Some(_) | None => {
             if preferences.reduced_motion() {
                 match declaration.spec().reduced_motion() {
@@ -503,9 +531,7 @@ fn reconcile_explicit(
 
     let mut live_sample = None;
     let candidate_sample = match lifecycle {
-        ExplicitLifecycle::Completed if terminal_commit => {
-            Some(terminal_keyframe(declaration).clone())
-        }
+        ExplicitLifecycle::Completed if terminal_commit => Some(terminal_keyframe(declaration).clone()),
         ExplicitLifecycle::Completed => None,
         ExplicitLifecycle::HoldInitial => Some(initial_keyframe(declaration).clone()),
         ExplicitLifecycle::Active { start } => {
@@ -514,7 +540,7 @@ fn reconcile_explicit(
             if matches!(sampled.phase, LivePhase::Completed) {
                 terminal_commit = true;
             } else {
-                live_sample = Some(sampled.clone());
+                live_sample = Some(sampled);
             }
             Some(value)
         }
@@ -537,6 +563,7 @@ fn reconcile_explicit(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn reconcile_transition(
     owner: &MountedNodeId,
     target: MotionTarget,
@@ -771,6 +798,7 @@ fn sample_transition(
     })
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn sample_keyframes(
     declaration: &ExplicitTimeline,
     progress: UnitInterval,
@@ -886,6 +914,11 @@ fn nanos(duration: Duration) -> u64 {
         .unwrap_or_else(|_| unreachable!("validated motion duration fits u64 nanoseconds"))
 }
 
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "timeline progress is a deterministic integer-nanosecond ratio normalized once into the accepted f32 UnitInterval domain"
+)]
 fn normalized_ratio(numerator: u64, denominator: u64) -> UnitInterval {
     debug_assert!(denominator > 0);
     if numerator == 0 {
