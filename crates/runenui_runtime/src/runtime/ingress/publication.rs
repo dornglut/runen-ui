@@ -164,7 +164,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             admission.stationary_rehit,
         );
         if request_followup {
-            let Some(plan) = candidate_trace_plan.checked_add(MandatoryTracePlan::one_fact()) else {
+            let Some(plan) = candidate_trace_plan.checked_add(MandatoryTracePlan::one_fact())
+            else {
                 drop(staged);
                 let reason = RuntimeTerminalReason::TraceSequenceExhausted;
                 self.enter_terminal(reason, 0);
