@@ -39,7 +39,8 @@ impl UiApp for TransitionApp {
         };
         let root = text("transition").key("root").opacity(opacity);
         if state.policy_disabled {
-            root.transition_disabled(MotionTarget::Opacity).into_element()
+            root.transition_disabled(MotionTarget::Opacity)
+                .into_element()
         } else if state.policy_enabled {
             root.transition(MotionTarget::Opacity, linear_transition())
                 .into_element()
