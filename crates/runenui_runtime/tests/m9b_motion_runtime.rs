@@ -143,8 +143,7 @@ fn explicit_timeline_uses_public_manual_time_and_reuses_unaffected_stages() {
 
 #[test]
 fn timeline_completion_hands_off_from_exact_terminal_sample() {
-    let mut runtime =
-        AppRuntime::<TimelineHandoffApp>::mount(Duration::from_millis(100));
+    let mut runtime = AppRuntime::<TimelineHandoffApp>::mount(Duration::from_millis(100));
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
