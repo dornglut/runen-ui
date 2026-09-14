@@ -261,6 +261,17 @@ fn stage_non_structural_motion<Action>(
     })
 }
 
+fn dirty_after_motion(
+    effects: &EffectiveEffects,
+    layout_dirty: bool,
+    paint_dirty: bool,
+) -> (bool, bool, bool) {
+    let layout_dirty = layout_dirty || effects.layout();
+    let presentation_dirty = layout_dirty || effects.presentation();
+    let paint_dirty = paint_dirty || effects.paint();
+    (layout_dirty, presentation_dirty, paint_dirty)
+}
+
 fn publication_needs_recompose(
     effective_changed: bool,
     report: &SurfacePhaseReport,
@@ -324,11 +335,10 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let next_context = context_key(context, text_system.source_snapshot());
     let mut current = stage_non_structural_cache(cache);
     let style_dirty = style_product_is_dirty(pending, &current, &next_context, interaction);
-    let mut layout_dirty =
+    let layout_dirty =
         pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
-    let mut presentation_dirty = layout_dirty;
     let hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
-    let mut paint_dirty = pending.contains(DirtyPhases::PAINT);
+    let paint_dirty = pending.contains(DirtyPhases::PAINT);
     let mut report = SurfacePhaseReport::default();
     let mut completed = DirtyPhases::default();
     let mut capability_plan = initial_surface_capability_plan(tree, style_dirty);
@@ -348,10 +358,8 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let motion =
         stage_non_structural_motion(tree, context, cache, motion_store, instant, &mut current)?;
     completed.insert(DirtyPhases::MOTION);
-    layout_dirty |= motion.effects.layout();
-    presentation_dirty |= motion.effects.presentation();
-    paint_dirty |= motion.effects.paint();
-    presentation_dirty |= layout_dirty;
+    let (layout_dirty, presentation_dirty, paint_dirty) =
+        dirty_after_motion(&motion.effects, layout_dirty, paint_dirty);
 
     let (publication_phases, semantic_dirty) = complete_non_structural_publication_phases(
         pending,
