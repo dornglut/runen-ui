@@ -161,6 +161,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(())
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "surface publication keeps staged admission and the final infallible commit in one linear transaction so mutation order remains directly auditable"
+    )]
     pub(crate) fn publish_surface(
         &mut self,
         context: &crate::SurfaceBuildContext<'_>,
