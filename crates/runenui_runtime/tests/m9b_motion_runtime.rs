@@ -242,7 +242,6 @@ fn duplicate_target_rejection_does_not_advance_or_restart_retained_motion() {
         .unwrap_or_else(|_| unreachable!("bounded test advance is representable"));
     let accepted = publish(&mut runtime, &environment);
     assert!((root_opacity(&accepted) - 0.3).abs() <= f32::EPSILON);
-    let phases_before_rejection = runtime.last_surface_phase_report().clone();
 
     runtime
         .submit_action(CollisionAction::Set(true))
@@ -251,6 +250,7 @@ fn duplicate_target_rejection_does_not_advance_or_restart_retained_motion() {
     runtime
         .advance_time(Duration::from_millis(20))
         .unwrap_or_else(|_| unreachable!("bounded test advance is representable"));
+    let phases_before_rejection = runtime.last_surface_phase_report().clone();
     assert_eq!(
         runtime.publish_surface(&context),
         Err(PublishSurfaceError::Motion)
