@@ -88,40 +88,97 @@ pub enum TraceMotionPlanningRejection {
     Interpolation,
 }
 
-/// Direct invalidation/cache decision derived from one staged sampled target.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct TraceMotionEffectDecision {
-    layout: bool,
-    presentation: bool,
-    paint: bool,
-    retain_node_effect_group: bool,
-    effective_changed: bool,
-}
+/// Direct product families invalidated by one staged sampled target.
+///
+/// The mask is immutable diagnostic projection only. It deliberately preserves
+/// independent effect combinations without introducing a second invalidation authority.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TraceMotionEffects(u8);
 
-impl TraceMotionEffectDecision {
+impl TraceMotionEffects {
+    const LAYOUT: u8 = 1 << 0;
+    const PRESENTATION: u8 = 1 << 1;
+    const PAINT: u8 = 1 << 2;
+
     #[must_use]
     pub const fn layout(self) -> bool {
-        self.layout
+        self.0 & Self::LAYOUT != 0
     }
 
     #[must_use]
     pub const fn presentation(self) -> bool {
-        self.presentation
+        self.0 & Self::PRESENTATION != 0
     }
 
     #[must_use]
     pub const fn paint(self) -> bool {
-        self.paint
+        self.0 & Self::PAINT != 0
+    }
+}
+
+/// Whether sampling requires retaining the node effect-composition group.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceMotionGroupDecision {
+    Unchanged,
+    Retained,
+}
+
+/// Whether the staged effective target value changed from the prior publication.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceMotionEffectiveDecision {
+    Unchanged,
+    Changed,
+}
+
+/// Direct invalidation/cache decision derived from one staged sampled target.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TraceMotionEffectDecision {
+    effects: TraceMotionEffects,
+    group: TraceMotionGroupDecision,
+    effective: TraceMotionEffectiveDecision,
+}
+
+impl TraceMotionEffectDecision {
+    #[must_use]
+    pub const fn effects(self) -> TraceMotionEffects {
+        self.effects
+    }
+
+    #[must_use]
+    pub const fn group(self) -> TraceMotionGroupDecision {
+        self.group
+    }
+
+    #[must_use]
+    pub const fn effective(self) -> TraceMotionEffectiveDecision {
+        self.effective
+    }
+
+    #[must_use]
+    pub const fn layout(self) -> bool {
+        self.effects.layout()
+    }
+
+    #[must_use]
+    pub const fn presentation(self) -> bool {
+        self.effects.presentation()
+    }
+
+    #[must_use]
+    pub const fn paint(self) -> bool {
+        self.effects.paint()
     }
 
     #[must_use]
     pub const fn retain_node_effect_group(self) -> bool {
-        self.retain_node_effect_group
+        matches!(self.group, TraceMotionGroupDecision::Retained)
     }
 
     #[must_use]
     pub const fn effective_changed(self) -> bool {
-        self.effective_changed
+        matches!(self.effective, TraceMotionEffectiveDecision::Changed)
     }
 }
 
