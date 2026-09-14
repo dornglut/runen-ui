@@ -1,4 +1,8 @@
 #![allow(refining_impl_trait)]
+#![allow(
+    clippy::float_cmp,
+    reason = "M9 lifecycle proofs require exact authored endpoint identity at start, accepted absence, re-add, and replacement"
+)]
 
 use std::time::Duration;
 
@@ -101,7 +105,7 @@ fn dispatch(runtime: &mut AppRuntime<LifecycleApp>, action: LifecycleAction) {
     runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
 }
 
-fn advance(runtime: &mut AppRuntime<LifecycleApp>, millis: u64) {
+fn advance(runtime: &AppRuntime<LifecycleApp>, millis: u64) {
     runtime
         .advance_time(Duration::from_millis(millis))
         .unwrap_or_else(|_| unreachable!("bounded lifecycle advance is representable"));
@@ -115,7 +119,7 @@ fn accepted_absence_then_readd_starts_a_new_timeline_lifetime() {
     });
 
     assert_eq!(opacity(&publish(&mut runtime)), 0.0);
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     assert!((opacity(&publish(&mut runtime)) - 0.5).abs() <= f32::EPSILON);
 
     dispatch(&mut runtime, LifecycleAction::SetPresent(false));
@@ -129,7 +133,7 @@ fn accepted_absence_then_readd_starts_a_new_timeline_lifetime() {
         "re-adding after an accepted absence must start a fresh declaration lifetime at keyframe zero"
     );
 
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     assert!(
         (opacity(&publish(&mut runtime)) - 0.5).abs() <= f32::EPSILON,
         "the re-added lifetime must measure progress from its own commit instant"
@@ -144,7 +148,7 @@ fn same_id_changed_spec_is_exact_replacement_from_authored_keyframe_zero() {
     });
 
     assert_eq!(opacity(&publish(&mut runtime)), 0.0);
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     assert!((opacity(&publish(&mut runtime)) - 0.5).abs() <= f32::EPSILON);
 
     dispatch(
@@ -157,7 +161,7 @@ fn same_id_changed_spec_is_exact_replacement_from_authored_keyframe_zero() {
         "changed spec with the same animation id is replacement and begins at authored keyframe zero"
     );
 
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     assert!(
         (opacity(&publish(&mut runtime)) - 0.25).abs() <= f32::EPSILON,
         "replacement progress must use the replacement spec and replacement commit instant"
