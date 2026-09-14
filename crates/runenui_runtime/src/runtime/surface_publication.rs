@@ -1,23 +1,22 @@
 use core::num::NonZeroUsize;
 use std::{collections::VecDeque, sync::Arc};
 
-use runenui_core::{
-    __runtime::RuntimeNamespace, MonotonicInstant, SurfaceId, SurfaceInputContext,
-};
+use runenui_core::{__runtime::RuntimeNamespace, MonotonicInstant, SurfaceId, SurfaceInputContext};
 use runenui_text::{TextLayoutError, TextSystem};
 
 use crate::{
     LogicalPoint, LogicalRect, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
-    SemanticDiagnostic, SemanticPublication, SurfaceBuildContext, SurfacePhase, SurfacePhaseReport,
-    SurfacePublication, SurfacePublicationCounter, TraceSurfaceContext, TraceSurfaceSnapshotKind,
+    SemanticDiagnosticReport, SemanticPublication, SurfaceBuildContext, SurfacePhase,
+    SurfacePhaseReport, SurfacePublication, SurfacePublicationCounter, TraceSurfaceContext,
+    TraceSurfaceSnapshotKind,
     mounted::MountedTree,
     scene::{HitTestScene, PaintPublication, PaintRevision},
     semantic_publication::{
         SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
     },
     surface::{
-        PlannedSurfacePublication, SurfaceCache, SurfaceInteractionProjection, SurfaceMotionActivity,
-        SurfaceMotionStore, SurfacePlanningError, SurfacePublicationCommit,
+        PlannedSurfacePublication, SurfaceCache, SurfaceInteractionProjection,
+        SurfaceMotionActivity, SurfaceMotionStore, SurfacePlanningError, SurfacePublicationCommit,
         plan_mounted_surface_cached_with_text,
     },
 };
@@ -146,7 +145,7 @@ pub(in crate::runtime) struct StagedSurfacePublication<'a> {
     planned: PlannedSurfacePublication<'a>,
     semantic_plan: SemanticPublicationPlan,
     semantic_publication: SemanticPublication,
-    semantic_diagnostics: Vec<SemanticDiagnostic>,
+    semantic_diagnostics: SemanticDiagnosticReport,
     hit_test_scene: HitTestScene,
     paint_publication: PaintPublication,
     allocated_paint_revision: Option<u64>,
@@ -191,7 +190,7 @@ pub(in crate::runtime) struct AdmittedSurfacePublicationCommit {
     surface_commit: SurfacePublicationCommit,
     semantic_plan: SemanticPublicationPlan,
     semantic_publication: SemanticPublication,
-    semantic_diagnostics: Vec<SemanticDiagnostic>,
+    semantic_diagnostics: SemanticDiagnosticReport,
     hit_test_scene: HitTestScene,
     paint_publication: PaintPublication,
     allocated_paint_revision: Option<u64>,
@@ -681,7 +680,7 @@ impl SurfacePublicationState {
         self.motion_deadline
     }
 
-    pub(crate) const fn motion_deadline_is_due(&self, now: MonotonicInstant) -> bool {
+    pub(crate) fn motion_deadline_is_due(&self, now: MonotonicInstant) -> bool {
         match self.motion_deadline {
             Some(deadline) => now >= deadline,
             None => false,
