@@ -22,7 +22,6 @@ pub(crate) use cache::SurfaceCache;
 pub use cache::{SurfacePhase, SurfacePhaseReport};
 pub use context::{RasterScale, RasterScaleError, SurfaceBuildContext};
 pub(crate) use interaction::SurfaceInteractionProjection;
-pub(crate) use motion::{MotionActivity, MotionStore};
 #[cfg(test)]
 use planning::plan_mounted_surface_cached;
 #[cfg(test)]
@@ -37,6 +36,38 @@ use runenui_text::{TextConstraints, TextLayoutDecision};
 
 use crate::style_debug::SurfaceStyleReport;
 use crate::{LayoutConstraints, MountedNodeId};
+
+/// Surface-owned live motion state. Lifecycle details stay private to surface planning.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct SurfaceMotionStore(motion::MotionStore);
+
+impl SurfaceMotionStore {
+    pub(crate) fn retire_owner(&mut self, owner: &MountedNodeId) {
+        self.0.retire_owner(owner);
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
+/// Scheduling facts produced by one accepted motion candidate.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct SurfaceMotionActivity(motion::MotionActivity);
+
+impl SurfaceMotionActivity {
+    pub(crate) const fn continuous_redraw(self) -> bool {
+        self.0.continuous_redraw()
+    }
+
+    pub(crate) const fn followup_publication(self) -> bool {
+        self.0.followup_publication()
+    }
+
+    pub(crate) const fn next_deadline(self) -> Option<runenui_core::MonotonicInstant> {
+        self.0.next_deadline()
+    }
+}
 
 /// One ordered node in the non-renderer layout/debug surface frame.
 #[derive(Clone, Debug, PartialEq)]
@@ -173,7 +204,7 @@ impl LayoutOverflow {
     }
 
     #[must_use]
-    pub const fn any(&self) -> bool {
+    pub const fn any(self) -> bool {
         self.width || self.height
     }
 }
@@ -387,7 +418,6 @@ impl SurfaceLayoutNode {
         self.overflow
     }
 
-    /// Returns the ordered successful text-measurement calls that produced this retained layout.
     #[must_use]
     pub const fn text_measurements(&self) -> &[SurfaceTextMeasurementRecord] {
         self.text_measurements.as_slice()
