@@ -77,6 +77,10 @@ impl<'a> PlannedSurfacePublication<'a> {
         &self.cache.hit_test
     }
 
+    pub(crate) const fn motion_activity(&self) -> SurfaceMotionActivity {
+        self.motion_activity
+    }
+
     /// Composes the renderer-independent semantic candidate and semantic-owner
     /// withdrawal diagnostics from staged publication facts while the semantic-
     /// store plan still protects exact owner/key identity. No live mounted
