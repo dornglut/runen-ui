@@ -333,13 +333,7 @@ fn plan_owner(
     );
 
     for target in owner_targets(context, &retained) {
-        plan_target(
-            context,
-            target,
-            &retained,
-            &explicit_evaluations,
-            outputs,
-        )?;
+        plan_target(context, target, &retained, &explicit_evaluations, outputs)?;
     }
     Ok(())
 }
@@ -430,8 +424,7 @@ fn plan_target(
     }
 
     let explicit_sample = new_explicit.and_then(|candidate| candidate.candidate_sample.clone());
-    let explicit_terminal_commit =
-        new_explicit.is_some_and(|candidate| candidate.terminal_commit);
+    let explicit_terminal_commit = new_explicit.is_some_and(|candidate| candidate.terminal_commit);
     let removed_or_replaced_explicit = old_explicit.is_some_and(|old| {
         !context.declarations.iter().any(|declaration| {
             declaration.id() == old.declaration.id() && declaration == &old.declaration
@@ -702,9 +695,7 @@ fn reconcile_transition(
     match intent.policy {
         ResolvedTransitionPolicy::Absent if !target_changed => Ok(Some(retained.clone())),
         ResolvedTransitionPolicy::Disabled | ResolvedTransitionPolicy::Absent => Ok(None),
-        ResolvedTransitionPolicy::Enabled(spec)
-            if !target_changed && spec == &retained.spec =>
-        {
+        ResolvedTransitionPolicy::Enabled(spec) if !target_changed && spec == &retained.spec => {
             Ok(Some(retained.clone()))
         }
         ResolvedTransitionPolicy::Enabled(_) => start_transition(intent, &retained_sample.value),
