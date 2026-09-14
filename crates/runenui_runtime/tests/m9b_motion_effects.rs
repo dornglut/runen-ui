@@ -175,26 +175,24 @@ fn presentation_motion_republishes_geometry_dependents_without_relayout() {
 fn structural_width_motion_recomputes_layout_and_all_geometry_dependents() {
     let mut runtime = AppRuntime::<LayoutMotionApp>::mount(());
     let initial = publish(&mut runtime);
-    assert_eq!(
-        initial
-            .frame()
-            .root()
-            .unwrap_or_else(|| unreachable!("layout proof has a root"))
-            .bounds()
-            .width(),
-        100.0
-    );
+    let initial_width = initial
+        .frame()
+        .root()
+        .unwrap_or_else(|| unreachable!("layout proof has a root"))
+        .bounds()
+        .width();
+    assert!((initial_width - 100.0).abs() <= f32::EPSILON);
 
     advance(&runtime);
     let middle = publish(&mut runtime);
-    assert_eq!(
-        middle
-            .frame()
-            .root()
-            .unwrap_or_else(|| unreachable!("layout proof has a root"))
-            .bounds()
-            .width(),
-        150.0,
+    let middle_width = middle
+        .frame()
+        .root()
+        .unwrap_or_else(|| unreachable!("layout proof has a root"))
+        .bounds()
+        .width();
+    assert!(
+        (middle_width - 150.0).abs() <= f32::EPSILON,
         "sampled structural width must feed the accepted layout authority"
     );
     assert_eq!(
