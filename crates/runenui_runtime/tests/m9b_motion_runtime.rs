@@ -12,8 +12,9 @@ use runenui_core::{
     StyleEnvironment, TimelineSpec, TransitionSpec, UiApp, UnitInterval, View, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, RuntimeConfig, SurfaceBuildContext, SurfacePhase,
-    SurfacePublication, TraceConfig, TraceMotionFact, TraceMotionPolicy, TraceRecordKind,
+    AppRuntime, LayoutConstraints, PublishSurfaceError, PumpBudget, RuntimeConfig,
+    SurfaceBuildContext, SurfacePhase, SurfacePublication, TraceConfig, TraceMotionFact,
+    TraceMotionPolicy, TraceRecordKind,
 };
 
 struct TimelineApp;
@@ -53,6 +54,36 @@ impl UiApp for TimelineHandoffApp {
     }
 
     fn update(_: &mut Self::State, (): Self::Action) {}
+}
+
+struct CollisionApp;
+
+#[derive(Clone, Copy)]
+enum CollisionAction {
+    Set(bool),
+}
+
+impl UiApp for CollisionApp {
+    type State = bool;
+    type Action = CollisionAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(colliding: &Self::State) -> Element<Self::Action> {
+        let root = text("collision")
+            .key("root")
+            .timeline(opacity_timeline("fade", Duration::from_millis(100)));
+        if *colliding {
+            root.timeline(opacity_timeline("other", Duration::from_millis(100)))
+                .into_element()
+        } else {
+            root.into_element()
+        }
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        let CollisionAction::Set(value) = action;
+        *state = value;
+    }
 }
 
 fn opacity_timeline(id: &'static str, duration: Duration) -> ExplicitTimeline {
@@ -111,6 +142,15 @@ fn root_opacity(publication: &SurfacePublication) -> f32 {
         .computed_style()
         .opacity()
         .get()
+}
+
+fn pump_one_action<App: UiApp>(runtime: &mut AppRuntime<App>) {
+    runtime.pump(PumpBudget::new(
+        2,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
 }
 
 #[test]
@@ -192,6 +232,49 @@ fn zero_duration_handoff_commits_style_target_in_the_same_candidate() {
     let retained = publish(&mut runtime, &environment);
     assert_eq!(root_opacity(&retained), 0.0);
     assert!(runtime.last_surface_phase_report().executed().is_empty());
+}
+
+#[test]
+fn duplicate_target_rejection_does_not_advance_or_restart_retained_motion() {
+    let mut runtime = AppRuntime::<CollisionApp>::mount(false);
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
+
+    let initial = publish(&mut runtime, &environment);
+    assert_eq!(root_opacity(&initial), 0.0);
+    runtime
+        .advance_time(Duration::from_millis(30))
+        .unwrap_or_else(|_| unreachable!("bounded test advance is representable"));
+    let accepted = publish(&mut runtime, &environment);
+    assert!((root_opacity(&accepted) - 0.3).abs() <= f32::EPSILON);
+    let phases_before_rejection = runtime.last_surface_phase_report().clone();
+
+    runtime
+        .submit_action(CollisionAction::Set(true))
+        .unwrap_or_else(|_| unreachable!("bounded collision action is accepted"));
+    pump_one_action(&mut runtime);
+    runtime
+        .advance_time(Duration::from_millis(20))
+        .unwrap_or_else(|_| unreachable!("bounded test advance is representable"));
+    assert_eq!(
+        runtime.publish_surface(&context),
+        Err(PublishSurfaceError::Motion)
+    );
+    assert_eq!(
+        runtime.last_surface_phase_report(),
+        &phases_before_rejection,
+        "rejected collision must not commit staged publication phases"
+    );
+
+    runtime
+        .submit_action(CollisionAction::Set(false))
+        .unwrap_or_else(|_| unreachable!("bounded repair action is accepted"));
+    pump_one_action(&mut runtime);
+    let retry = publish(&mut runtime, &environment);
+    assert!(
+        (root_opacity(&retry) - 0.5).abs() <= f32::EPSILON,
+        "retry at the same clock instant must continue the pre-rejection timeline instead of restarting or advancing it during failure"
+    );
 }
 
 #[test]
