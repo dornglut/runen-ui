@@ -19,6 +19,7 @@ use crate::{
         SurfaceMotionActivity, SurfaceMotionStore, SurfacePlanningError, SurfacePublicationCommit,
         plan_mounted_surface_cached_with_text,
     },
+    trace::StagedMotionTraceFact,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -186,6 +187,10 @@ pub(in crate::runtime) struct StagedSurfacePublication<'a> {
 impl StagedSurfacePublication<'_> {
     pub(in crate::runtime) const fn motion_activity(&self) -> SurfaceMotionActivity {
         self.planned.motion_activity()
+    }
+
+    pub(in crate::runtime) fn motion_trace_facts(&self) -> Vec<StagedMotionTraceFact> {
+        self.planned.motion_trace_facts()
     }
 
     /// Begins the irreversible local commit only after outer candidate-dependent admission.
