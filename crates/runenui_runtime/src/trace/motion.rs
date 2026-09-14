@@ -99,22 +99,6 @@ pub struct TraceMotionEffectDecision {
 }
 
 impl TraceMotionEffectDecision {
-    pub(crate) const fn new(
-        layout: bool,
-        presentation: bool,
-        paint: bool,
-        retain_node_effect_group: bool,
-        effective_changed: bool,
-    ) -> Self {
-        Self {
-            layout,
-            presentation,
-            paint,
-            retain_node_effect_group,
-            effective_changed,
-        }
-    }
-
     #[must_use]
     pub const fn layout(self) -> bool {
         self.layout
