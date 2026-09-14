@@ -223,6 +223,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .timers
             .iter()
             .any(|timer| self.work.is_running(timer.generation) && timer.is_due(now))
+            || self.surface_publication.motion_deadline_is_due(now)
         {
             let _ = self.wake.handle().request();
         }
