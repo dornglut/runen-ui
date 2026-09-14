@@ -15,12 +15,13 @@ use runenui_core::{
     BrushToken, ColorToken, ComputedStyle, ElementId, ExplicitTimeline, LayoutStyle,
     MonotonicInstant, MotionRepeat, MotionTarget, MotionValue, OpacityToken, PresentationToken,
     RadiusToken, ReducedMotionStrategy, ShadowToken, SpacingToken, StyleFieldProvenance,
-    StylePreferenceKind, StylePreferences, StyleResolution, StyleResolutionLayer,
-    TransitionPolicy, TransitionSpec, TypographyToken, UnitInterval,
+    StylePreferenceKind, StylePreferences, StyleResolution, StyleResolutionLayer, TransitionPolicy,
+    TransitionSpec, TypographyToken, UnitInterval,
 };
 
 use crate::{
-    MountedNodeId, mounted::MountedTree,
+    MountedNodeId,
+    mounted::MountedTree,
     trace::{StagedMotionTraceFact, TraceMotionFact, TraceMotionPolicy},
 };
 
@@ -101,12 +102,7 @@ impl PlannedMotion {
         MotionActivity,
         Vec<StagedMotionTraceFact>,
     ) {
-        (
-            self.store,
-            self.effective,
-            self.activity,
-            self.trace_facts,
-        )
+        (self.store, self.effective, self.activity, self.trace_facts)
     }
 }
 
