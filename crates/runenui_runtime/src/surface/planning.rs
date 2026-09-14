@@ -57,7 +57,7 @@ impl From<MotionPlanningError> for SurfacePlanningError {
     }
 }
 
-fn surface_capability_phases(entries: [(bool, DirtyPhases); 5]) -> DirtyPhases {
+fn surface_capability_phases(entries: [(bool, DirtyPhases); 4]) -> DirtyPhases {
     let mut phases = DirtyPhases::default();
     for (is_dirty, phase) in entries {
         if is_dirty {
@@ -78,40 +78,22 @@ fn initial_surface_capability_plan<Action>(
     tree.plan_surface_publication_capabilities(phases)
 }
 
-const fn semantic_product_is_dirty(
+fn complete_non_structural_publication_phases(
     pending: DirtyPhases,
-    layout_dirty: bool,
     presentation_dirty: bool,
+    phases: &mut DirtyPhases,
 ) -> bool {
-    pending.contains(DirtyPhases::SEMANTICS)
-        || layout_dirty
-        || presentation_dirty
-        || pending.contains(DirtyPhases::FOCUS_VALIDATION)
-}
-
-fn non_structural_publication_phases(
-    pending: DirtyPhases,
-    layout_dirty: bool,
-    presentation_dirty: bool,
-    mut hit_dirty: bool,
-    mut paint_dirty: bool,
-) -> (DirtyPhases, bool) {
     if presentation_dirty {
-        hit_dirty = true;
-        paint_dirty = true;
+        phases.insert(DirtyPhases::HIT_TEST);
+        phases.insert(DirtyPhases::PAINT);
     }
-    let semantic_dirty = semantic_product_is_dirty(pending, layout_dirty, presentation_dirty);
-    let phases = surface_capability_phases([
-        (layout_dirty, DirtyPhases::LAYOUT),
-        (hit_dirty, DirtyPhases::HIT_TEST),
-        (paint_dirty, DirtyPhases::PAINT),
-        (semantic_dirty, DirtyPhases::SEMANTICS),
-        (
-            pending.contains(DirtyPhases::DIAGNOSTICS),
-            DirtyPhases::DIAGNOSTICS,
-        ),
-    ]);
-    (phases, semantic_dirty)
+    let semantic_dirty = pending.contains(DirtyPhases::SEMANTICS)
+        || presentation_dirty
+        || pending.contains(DirtyPhases::FOCUS_VALIDATION);
+    if semantic_dirty {
+        phases.insert(DirtyPhases::SEMANTICS);
+    }
+    semantic_dirty
 }
 
 fn style_product_is_dirty(
@@ -371,12 +353,19 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     paint_dirty |= motion.effects.paint();
     presentation_dirty |= layout_dirty;
 
-    let (publication_phases, semantic_dirty) = non_structural_publication_phases(
+    let mut publication_phases = surface_capability_phases([
+        (layout_dirty, DirtyPhases::LAYOUT),
+        (hit_dirty, DirtyPhases::HIT_TEST),
+        (paint_dirty, DirtyPhases::PAINT),
+        (
+            pending.contains(DirtyPhases::DIAGNOSTICS),
+            DirtyPhases::DIAGNOSTICS,
+        ),
+    ]);
+    let semantic_dirty = complete_non_structural_publication_phases(
         pending,
-        layout_dirty,
         presentation_dirty,
-        hit_dirty,
-        paint_dirty,
+        &mut publication_phases,
     );
     tree.extend_surface_publication_capabilities(&mut capability_plan, publication_phases);
     let semantic_capability_plan =
