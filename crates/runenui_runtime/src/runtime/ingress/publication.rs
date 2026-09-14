@@ -127,15 +127,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let interaction = self
             .pointer_registry
             .surface_interaction_projection(focused_owner.as_ref());
-        let publication = match self.surface_publication.publish(
+        let staged = match self.surface_publication.plan_publication(
             &mut self.tree,
             &mut self.text_system,
             context,
             &interaction,
             focused_owner.as_ref(),
             admission.surface,
+            instant,
         ) {
-            Ok(publication) => publication,
+            Ok(staged) => staged,
             Err(SurfacePublicationPlanError::SemanticIntegrity) => {
                 let reason = RuntimeTerminalReason::Poisoned;
                 self.enter_terminal(reason, 0);
@@ -147,12 +148,44 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Err(SurfacePublicationPlanError::PresentationGeometry) => {
                 return Err(PublishSurfaceError::PresentationGeometry);
             }
+            Err(SurfacePublicationPlanError::Motion) => return Err(PublishSurfaceError::Motion),
             Err(SurfacePublicationPlanError::CounterExhausted(counter)) => {
                 let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
                 self.enter_terminal(reason, 0);
                 return Err(PublishSurfaceError::Terminal(reason));
             }
         };
+
+        let motion_activity = staged.motion_activity();
+        let request_followup =
+            motion_activity.continuous_redraw() || motion_activity.followup_publication();
+        let mut candidate_trace_plan = MandatoryTracePlan::surface_publication(
+            self.surface_publication.is_dirty(),
+            admission.stationary_rehit,
+        );
+        if request_followup {
+            let Some(plan) = candidate_trace_plan.checked_add(MandatoryTracePlan::one_fact()) else {
+                drop(staged);
+                let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+                self.enter_terminal(reason, 0);
+                return Err(PublishSurfaceError::Terminal(reason));
+            };
+            candidate_trace_plan = plan;
+        }
+        if !self.trace.can_replace_reservation(
+            self.surface_trace.publication_reservation,
+            candidate_trace_plan,
+        ) {
+            drop(staged);
+            let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
+
+        let commit = staged.commit_store();
+        let publication = self
+            .surface_publication
+            .commit_publication(&mut self.tree, commit);
         let redraw = self.take_redraw_request_at(instant);
         let publication_reservation = mem::replace(
             &mut self.surface_trace.publication_reservation,
@@ -174,6 +207,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .unwrap_or_else(|_| unreachable!("runtime-issued redraw request remains local"));
         }
         self.replenish_surface_publication_reservation();
+        if request_followup {
+            self.request_redraw(published, instant);
+        }
         Ok(publication)
     }
 
