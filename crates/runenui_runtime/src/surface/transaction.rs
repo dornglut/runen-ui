@@ -8,17 +8,22 @@ use crate::semantic_compositor::{
 };
 use crate::{MountedNodeId, SemanticDiagnostic};
 
-use super::{SurfaceCache, SurfacePhaseReport, SurfacePlanningError, SurfacePublication};
+use super::{
+    SurfaceCache, SurfaceMotionActivity, SurfaceMotionStore, SurfacePhaseReport,
+    SurfacePlanningError, SurfacePublication,
+};
 
 /// Move-only candidate for one mounted-surface publication.
 ///
 /// Planning may evaluate contractually read-only widget capabilities and may
 /// retain a borrow-protected semantic-store plan, but it does not mutate the
-/// live surface cache, mounted capability facts, mounted semantic bindings, or
-/// dirty completion. Candidate-dependent admission can inspect this object
-/// before [`Self::commit_store`] begins the final RunenUI-owned commit.
+/// live surface cache, motion store, mounted capability facts, mounted semantic
+/// bindings, or dirty completion. Candidate-dependent admission can inspect this
+/// object before [`Self::commit_store`] begins the final RunenUI-owned commit.
 pub(crate) struct PlannedSurfacePublication<'a> {
     cache: SurfaceCache,
+    motion_store: SurfaceMotionStore,
+    motion_activity: SurfaceMotionActivity,
     report: SurfacePhaseReport,
     completed: DirtyPhases,
     capability_plan: SurfaceCapabilityPlan,
@@ -31,6 +36,8 @@ pub(crate) struct PlannedSurfacePublication<'a> {
 /// work or widget callback may be inserted between construction and [`Self::commit`].
 pub(crate) struct SurfacePublicationCommit {
     cache: SurfaceCache,
+    motion_store: SurfaceMotionStore,
+    motion_activity: SurfaceMotionActivity,
     report: SurfacePhaseReport,
     completed: DirtyPhases,
     capability_plan: SurfaceCapabilityPlan,
@@ -40,6 +47,8 @@ pub(crate) struct SurfacePublicationCommit {
 impl<'a> PlannedSurfacePublication<'a> {
     pub(super) const fn new(
         cache: SurfaceCache,
+        motion_store: SurfaceMotionStore,
+        motion_activity: SurfaceMotionActivity,
         report: SurfacePhaseReport,
         completed: DirtyPhases,
         capability_plan: SurfaceCapabilityPlan,
@@ -47,6 +56,8 @@ impl<'a> PlannedSurfacePublication<'a> {
     ) -> Self {
         Self {
             cache,
+            motion_store,
+            motion_activity,
             report,
             completed,
             capability_plan,
@@ -131,6 +142,8 @@ impl<'a> PlannedSurfacePublication<'a> {
     pub(crate) fn commit_store(self) -> SurfacePublicationCommit {
         let Self {
             cache,
+            motion_store,
+            motion_activity,
             report,
             completed,
             capability_plan,
@@ -139,6 +152,8 @@ impl<'a> PlannedSurfacePublication<'a> {
         let semantic_commit = finalized_semantics.map(FinalizedSemanticPublication::commit_store);
         SurfacePublicationCommit {
             cache,
+            motion_store,
+            motion_activity,
             report,
             completed,
             capability_plan,
@@ -152,9 +167,12 @@ impl SurfacePublicationCommit {
         self,
         tree: &mut MountedTree<Action>,
         live_cache: &mut Option<SurfaceCache>,
-    ) -> (SurfacePublication, SurfacePhaseReport) {
+        live_motion_store: &mut SurfaceMotionStore,
+    ) -> (SurfacePublication, SurfacePhaseReport, SurfaceMotionActivity) {
         let Self {
             cache,
+            motion_store,
+            motion_activity,
             report,
             completed,
             capability_plan,
@@ -167,7 +185,8 @@ impl SurfacePublicationCommit {
         tree.finish_publication(completed);
         let publication = cache.publication.clone();
         *live_cache = Some(cache);
-        (publication, report)
+        *live_motion_store = motion_store;
+        (publication, report, motion_activity)
     }
 }
 
@@ -176,7 +195,8 @@ mod tests {
     use runenui_core::{StyleEnvironment, View, text};
 
     use super::super::{
-        SurfaceBuildContext, SurfaceInteractionProjection, plan_mounted_surface_cached,
+        SurfaceBuildContext, SurfaceInteractionProjection, SurfaceMotionStore,
+        plan_mounted_surface_cached,
     };
     use crate::{
         LayoutConstraints,
@@ -184,11 +204,12 @@ mod tests {
     };
 
     #[test]
-    fn planning_keeps_surface_cache_and_dirty_completion_uncommitted() {
+    fn planning_keeps_surface_cache_motion_and_dirty_completion_uncommitted() {
         let (mut tree, _) = MountedTree::<()>::mount(text("staged").key("root").into_element());
         let environment = StyleEnvironment::default();
         let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
         let mut cache = None;
+        let mut motion_store = SurfaceMotionStore::default();
         let dirty_before = tree.pending_phases();
         let interaction = SurfaceInteractionProjection::default();
 
@@ -198,6 +219,7 @@ mod tests {
         assert!(!planned.publication().frame().is_empty());
         drop(planned);
         assert!(cache.is_none());
+        assert_eq!(motion_store, SurfaceMotionStore::default());
         assert_eq!(tree.pending_phases(), dirty_before);
 
         let planned =
@@ -205,9 +227,11 @@ mod tests {
                 .unwrap_or_else(|_| unreachable!("valid staged surface plan"));
         let commit = planned.commit_store();
         assert!(cache.is_none());
+        assert_eq!(motion_store, SurfaceMotionStore::default());
         assert_eq!(tree.pending_phases(), dirty_before);
 
-        let (publication, report) = commit.commit(&mut tree, &mut cache);
+        let (publication, report, _activity) =
+            commit.commit(&mut tree, &mut cache, &mut motion_store);
         assert!(!publication.frame().is_empty());
         assert!(!report.executed().is_empty());
         assert!(cache.is_some());
