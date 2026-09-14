@@ -206,10 +206,7 @@ fn transition_trace_preserves_start_sampling_replacement_and_disable_order() {
         observed_since(&runtime, started_at),
         [
             ObservedFact::Policy(TraceMotionPolicy::Enabled),
-            ObservedFact::Lifecycle(
-                ObservedSource::Transition,
-                TraceMotionLifecycle::Started,
-            ),
+            ObservedFact::Lifecycle(ObservedSource::Transition, TraceMotionLifecycle::Started,),
             ObservedFact::Sample {
                 source: ObservedSource::Transition,
                 phase: TraceMotionPhase::Running,
@@ -255,14 +252,8 @@ fn transition_trace_preserves_start_sampling_replacement_and_disable_order() {
                 eased_progress_bits: Some(0.4_f32.to_bits()),
                 interpolation: TraceMotionInterpolation::Continuous,
             },
-            ObservedFact::Lifecycle(
-                ObservedSource::Transition,
-                TraceMotionLifecycle::Replaced,
-            ),
-            ObservedFact::Lifecycle(
-                ObservedSource::Transition,
-                TraceMotionLifecycle::Started,
-            ),
+            ObservedFact::Lifecycle(ObservedSource::Transition, TraceMotionLifecycle::Replaced,),
+            ObservedFact::Lifecycle(ObservedSource::Transition, TraceMotionLifecycle::Started,),
             ObservedFact::Sample {
                 source: ObservedSource::Transition,
                 phase: TraceMotionPhase::Running,
@@ -288,10 +279,7 @@ fn transition_trace_preserves_start_sampling_replacement_and_disable_order() {
                 eased_progress_bits: Some(UnitInterval::ZERO.get().to_bits()),
                 interpolation: TraceMotionInterpolation::Endpoint,
             },
-            ObservedFact::Lifecycle(
-                ObservedSource::Transition,
-                TraceMotionLifecycle::Cancelled,
-            ),
+            ObservedFact::Lifecycle(ObservedSource::Transition, TraceMotionLifecycle::Cancelled,),
         ],
         "explicit disable must observe the live transition at the candidate instant before cancelling it"
     );
@@ -321,14 +309,8 @@ fn active_transition_is_cancelled_before_a_new_explicit_timeline_starts() {
                 eased_progress_bits: Some(0.4_f32.to_bits()),
                 interpolation: TraceMotionInterpolation::Continuous,
             },
-            ObservedFact::Lifecycle(
-                ObservedSource::Transition,
-                TraceMotionLifecycle::Cancelled,
-            ),
-            ObservedFact::Lifecycle(
-                ObservedSource::Timeline,
-                TraceMotionLifecycle::Started,
-            ),
+            ObservedFact::Lifecycle(ObservedSource::Transition, TraceMotionLifecycle::Cancelled,),
+            ObservedFact::Lifecycle(ObservedSource::Timeline, TraceMotionLifecycle::Started,),
             ObservedFact::Sample {
                 source: ObservedSource::Timeline,
                 phase: TraceMotionPhase::Running,
