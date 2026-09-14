@@ -1,3 +1,5 @@
+use runenui_core::TransitionPolicy;
+
 use crate::mounted::{
     DirtyPhases, FinalizedSemanticPublication, MountedTree, SemanticMountedCommit,
     SurfaceCapabilityPlan,
@@ -5,6 +7,9 @@ use crate::mounted::{
 use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::semantic_compositor::{
     SemanticCandidate, SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics,
+};
+use crate::trace::{
+    StagedMotionTraceFact, TraceMotionFact, TraceMotionPolicy,
 };
 use crate::{MountedNodeId, SemanticDiagnostic};
 
@@ -79,6 +84,37 @@ impl<'a> PlannedSurfacePublication<'a> {
 
     pub(crate) const fn motion_activity(&self) -> SurfaceMotionActivity {
         self.motion_activity
+    }
+
+    /// Builds bounded candidate-local policy facts from the already-staged style
+    /// authority. These are diagnostic projection only and are never retained as
+    /// a second animation or cache ledger.
+    pub(crate) fn motion_trace_facts(&self) -> Vec<StagedMotionTraceFact> {
+        let mut facts = Vec::new();
+        for (topology, resolution) in self
+            .cache
+            .topology
+            .nodes
+            .iter()
+            .zip(&self.cache.styles.resolutions)
+        {
+            for (target, policy, _) in resolution.transition_policies() {
+                let policy = match policy {
+                    TransitionPolicy::Disabled => TraceMotionPolicy::Disabled,
+                    TransitionPolicy::Enabled(_) => TraceMotionPolicy::Enabled,
+                    _ => unreachable!(
+                        "runtime and core transition-policy vocabularies are version-locked"
+                    ),
+                };
+                facts.push(StagedMotionTraceFact::new(
+                    topology.id.clone(),
+                    topology.authored_id.clone(),
+                    target,
+                    TraceMotionFact::PolicyResolved { policy },
+                ));
+            }
+        }
+        facts
     }
 
     /// Composes the renderer-independent semantic candidate and semantic-owner
