@@ -157,7 +157,7 @@ enum TargetProvenance {
 }
 
 impl TargetProvenance {
-    fn high_contrast(&self) -> bool {
+    const fn high_contrast(&self) -> bool {
         let layer = match self {
             Self::Foreground(_, layer)
             | Self::Background(_, layer)
@@ -206,6 +206,56 @@ enum LivePhase {
     Completed,
 }
 
+struct OwnerMotionContext<'a> {
+    owner: &'a MountedNodeId,
+    declarations: &'a [ExplicitTimeline],
+    resolution: &'a StyleResolution,
+    target_layout: &'a LayoutStyle,
+    prior_computed: Option<&'a ComputedStyle>,
+    prior_layout: Option<&'a LayoutStyle>,
+    preferences: StylePreferences,
+    instant: MonotonicInstant,
+    position: usize,
+}
+
+struct OwnerRetained<'a> {
+    explicit: Vec<&'a ExplicitMotionRecord>,
+    transitions: Vec<&'a TransitionRecord>,
+}
+
+impl<'a> OwnerRetained<'a> {
+    fn new(store: &'a MotionStore, owner: &MountedNodeId) -> Self {
+        Self {
+            explicit: store
+                .explicit
+                .iter()
+                .filter(|record| &record.owner == owner)
+                .collect(),
+            transitions: store
+                .transitions
+                .iter()
+                .filter(|record| &record.owner == owner)
+                .collect(),
+        }
+    }
+}
+
+struct OwnerMotionOutputs<'a> {
+    effective: &'a mut CachedEffectiveFacts,
+    store: &'a mut MotionStore,
+    activity: &'a mut MotionActivity,
+}
+
+struct TransitionIntent<'a> {
+    owner: &'a MountedNodeId,
+    target: MotionTarget,
+    target_value: &'a MotionValue,
+    provenance: &'a TargetProvenance,
+    policy: &'a ResolvedTransitionPolicy,
+    preferences: StylePreferences,
+    instant: MonotonicInstant,
+}
+
 pub(super) fn plan_surface_motion<Action>(
     store: &MotionStore,
     tree: &MountedTree<Action>,
@@ -231,7 +281,6 @@ pub(super) fn plan_surface_motion<Action>(
         let node = tree
             .node(&topology_node.id)
             .unwrap_or_else(|| unreachable!("motion topology remains live"));
-        let resolution = &styles.resolutions[position];
         let prior_position = previous_cache.and_then(|cache| {
             cache
                 .topology
@@ -244,22 +293,23 @@ pub(super) fn plan_surface_motion<Action>(
         });
         let prior_layout = previous_cache
             .and_then(|cache| prior_position.map(|prior| cache.effective.node(prior).layout()));
-
-        plan_owner(
-            store,
-            &topology_node.id,
-            &node.timelines,
-            resolution,
-            &node.layout,
+        let context = OwnerMotionContext {
+            owner: &topology_node.id,
+            declarations: &node.timelines,
+            resolution: &styles.resolutions[position],
+            target_layout: &node.layout,
             prior_computed,
             prior_layout,
             preferences,
             instant,
             position,
-            &mut effective,
-            &mut next_store,
-            &mut activity,
-        )?;
+        };
+        let mut outputs = OwnerMotionOutputs {
+            effective: &mut effective,
+            store: &mut next_store,
+            activity: &mut activity,
+        };
+        plan_owner(store, &context, &mut outputs)?;
     }
 
     Ok(PlannedMotion {
@@ -269,217 +319,240 @@ pub(super) fn plan_surface_motion<Action>(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn plan_owner(
     store: &MotionStore,
-    owner: &MountedNodeId,
-    declarations: &[ExplicitTimeline],
-    resolution: &StyleResolution,
-    target_layout: &LayoutStyle,
-    prior_computed: Option<&ComputedStyle>,
-    prior_layout: Option<&LayoutStyle>,
-    preferences: StylePreferences,
-    instant: MonotonicInstant,
-    position: usize,
-    effective: &mut CachedEffectiveFacts,
-    next_store: &mut MotionStore,
-    activity: &mut MotionActivity,
+    context: &OwnerMotionContext<'_>,
+    outputs: &mut OwnerMotionOutputs<'_>,
 ) -> Result<(), MotionPlanningError> {
-    let old_explicit = store
-        .explicit
-        .iter()
-        .filter(|record| &record.owner == owner)
-        .collect::<Vec<_>>();
-    let old_transitions = store
-        .transitions
-        .iter()
-        .filter(|record| &record.owner == owner)
-        .collect::<Vec<_>>();
-
-    let mut explicit_evaluations = Vec::with_capacity(declarations.len());
-    for declaration in declarations {
-        let retained = old_explicit
-            .iter()
-            .copied()
-            .find(|record| record.declaration.id() == declaration.id());
-        explicit_evaluations.push(reconcile_explicit(
-            owner,
-            declaration,
-            retained,
-            preferences,
-            instant,
-        )?);
-    }
-    next_store.explicit.extend(
+    let retained = OwnerRetained::new(store, context.owner);
+    let explicit_evaluations = reconcile_explicit_declarations(context, &retained.explicit)?;
+    outputs.store.explicit.extend(
         explicit_evaluations
             .iter()
             .map(|candidate| candidate.record.clone()),
     );
 
+    for target in owner_targets(context, &retained) {
+        plan_target(
+            context,
+            target,
+            &retained,
+            &explicit_evaluations,
+            outputs,
+        )?;
+    }
+    Ok(())
+}
+
+fn reconcile_explicit_declarations(
+    context: &OwnerMotionContext<'_>,
+    retained: &[&ExplicitMotionRecord],
+) -> Result<Vec<ExplicitEvaluation>, MotionPlanningError> {
+    context
+        .declarations
+        .iter()
+        .map(|declaration| {
+            let prior = retained
+                .iter()
+                .copied()
+                .find(|record| record.declaration.id() == declaration.id());
+            reconcile_explicit(
+                context.owner,
+                declaration,
+                prior,
+                context.preferences,
+                context.instant,
+            )
+        })
+        .collect()
+}
+
+fn owner_targets(
+    context: &OwnerMotionContext<'_>,
+    retained: &OwnerRetained<'_>,
+) -> BTreeSet<MotionTarget> {
     let mut targets = BTreeSet::new();
-    targets.extend(declarations.iter().map(ExplicitTimeline::target));
+    targets.extend(context.declarations.iter().map(ExplicitTimeline::target));
     targets.extend(
-        old_explicit
+        retained
+            .explicit
             .iter()
             .map(|record| record.declaration.target()),
     );
-    targets.extend(old_transitions.iter().map(|record| record.target));
+    targets.extend(retained.transitions.iter().map(|record| record.target));
     targets.extend(
-        resolution
+        context
+            .resolution
             .transition_policies()
             .map(|(target, _, _)| target),
     );
+    targets
+}
 
-    for target in targets {
-        let target_value =
-            motion_value_for_target(resolution.computed_style(), target_layout, target);
-        let provenance = target_provenance(resolution, target);
-        let suppressed = provenance.high_contrast();
-        let policy = resolved_transition_policy(resolution, target);
+fn plan_target(
+    context: &OwnerMotionContext<'_>,
+    target: MotionTarget,
+    retained: &OwnerRetained<'_>,
+    explicit_evaluations: &[ExplicitEvaluation],
+    outputs: &mut OwnerMotionOutputs<'_>,
+) -> Result<(), MotionPlanningError> {
+    let target_value = motion_value_for_target(
+        context.resolution.computed_style(),
+        context.target_layout,
+        target,
+    );
+    let provenance = target_provenance(context.resolution, target);
+    let suppressed = provenance.high_contrast();
+    let policy = resolved_transition_policy(context.resolution, target);
+    let new_explicit = explicit_evaluations
+        .iter()
+        .find(|candidate| candidate.record.declaration.target() == target);
+    let old_explicit = retained
+        .explicit
+        .iter()
+        .copied()
+        .find(|record| record.declaration.target() == target);
+    let old_transition = retained
+        .transitions
+        .iter()
+        .copied()
+        .find(|record| record.target == target);
+    let old_explicit_sample = old_explicit
+        .map(|record| sample_retained_explicit(record, context.instant))
+        .transpose()?
+        .flatten();
+    let old_transition_sample = old_transition
+        .map(|record| sample_transition(record, context.instant))
+        .transpose()?;
 
-        let new_explicit = explicit_evaluations
-            .iter()
-            .find(|candidate| candidate.record.declaration.target() == target);
-        let old_explicit_for_target = old_explicit
-            .iter()
-            .copied()
-            .find(|record| record.declaration.target() == target);
-        let old_transition = old_transitions
-            .iter()
-            .copied()
-            .find(|record| record.target == target);
-
-        let old_explicit_sample = old_explicit_for_target
-            .map(|record| sample_retained_explicit(record, instant))
-            .transpose()?
-            .flatten();
-        let old_transition_sample = old_transition
-            .map(|record| sample_transition(record, instant))
-            .transpose()?;
-        let prior_value = match (prior_computed, prior_layout) {
-            (Some(computed), Some(layout)) => {
-                Some(motion_value_for_target(computed, layout, target))
-            }
-            _ => None,
-        };
-
-        let explicit_sample = new_explicit.and_then(|candidate| candidate.candidate_sample.clone());
-        let explicit_terminal_commit =
-            new_explicit.is_some_and(|candidate| candidate.terminal_commit);
-
-        if let Some(candidate) = new_explicit
-            && let Some(live) = candidate.live_sample.as_ref()
-        {
-            note_live_activity(live, suppressed, activity);
-        }
-
-        let new_explicit_owns_target = new_explicit.is_some_and(|candidate| {
-            matches!(
-                candidate.record.lifecycle,
-                ExplicitLifecycle::Active { .. } | ExplicitLifecycle::HoldInitial
-            )
-        });
-
-        if new_explicit_owns_target {
-            if let Some(sample) = explicit_sample.as_ref()
-                && !suppressed
-            {
-                apply_effective_sample(effective, position, sample);
-            }
-            let active_unsuppressed = new_explicit.is_some_and(|candidate| {
-                !suppressed
-                    && matches!(candidate.record.lifecycle, ExplicitLifecycle::Active { .. })
-            });
-            if active_unsuppressed
-                && new_explicit
-                    .is_some_and(|candidate| explicit_requires_group(&candidate.record.declaration))
-            {
-                retain_effective_group(effective, position);
-            }
-            continue;
-        }
-
-        if suppressed {
-            if let (Some(retained), Some(sample)) = (old_transition, old_transition_sample.as_ref())
-                && !matches!(sample.phase, LivePhase::Completed)
-            {
-                note_live_activity(sample, true, activity);
-                next_store.transitions.push(retained.clone());
-            }
-            continue;
-        }
-
-        let removed_or_replaced_explicit = old_explicit_for_target.is_some_and(|old| {
-            !declarations.iter().any(|declaration| {
-                declaration.id() == old.declaration.id() && declaration == &old.declaration
-            })
-        });
-        let explicit_exit_source = if explicit_terminal_commit {
-            explicit_sample.clone()
-        } else if removed_or_replaced_explicit {
-            old_explicit_sample.clone()
-        } else {
-            None
-        };
-
-        let source = explicit_exit_source
-            .clone()
-            .or_else(|| {
-                old_transition_sample
-                    .as_ref()
-                    .map(|sample| sample.value.clone())
-            })
-            .or(prior_value)
-            .unwrap_or_else(|| target_value.clone());
-
-        let staged_transition = reconcile_transition(
-            owner,
-            target,
-            &source,
-            &target_value,
-            &provenance,
-            &policy,
-            old_transition,
-            old_transition_sample.as_ref(),
-            explicit_exit_source.is_some(),
-            preferences,
-            instant,
-        )?;
-
-        if let Some(transition) = staged_transition.as_ref() {
-            let live = sample_transition(transition, instant)?;
-            let transition_is_live = !matches!(live.phase, LivePhase::Completed);
-            if transition_is_live {
-                note_live_activity(&live, false, activity);
-                next_store.transitions.push(transition.clone());
-                if transition_requires_group(transition) {
-                    retain_effective_group(effective, position);
-                }
-            }
-            if explicit_terminal_commit {
-                if explicit_sample
-                    .as_ref()
-                    .is_some_and(|sample| sample != &target_value)
-                    && !transition_is_live
-                {
-                    activity.followup_publication = true;
-                }
-            } else {
-                apply_effective_sample(effective, position, &live.value);
-            }
-        } else if explicit_terminal_commit {
-            if let Some(sample) = explicit_sample.as_ref() {
-                apply_effective_sample(effective, position, sample);
-            }
-            if explicit_sample
-                .as_ref()
-                .is_some_and(|sample| sample != &target_value)
-            {
-                activity.followup_publication = true;
-            }
-        }
+    if apply_explicit_candidate(new_explicit, suppressed, context.position, outputs) {
+        return Ok(());
     }
 
+    let explicit_sample = new_explicit.and_then(|candidate| candidate.candidate_sample.clone());
+    let explicit_terminal_commit =
+        new_explicit.is_some_and(|candidate| candidate.terminal_commit);
+    let removed_or_replaced_explicit = old_explicit.is_some_and(|old| {
+        !context.declarations.iter().any(|declaration| {
+            declaration.id() == old.declaration.id() && declaration == &old.declaration
+        })
+    });
+    let explicit_exit_source = if explicit_terminal_commit {
+        explicit_sample.clone()
+    } else if removed_or_replaced_explicit {
+        old_explicit_sample
+    } else {
+        None
+    };
+    let prior_value = context
+        .prior_computed
+        .zip(context.prior_layout)
+        .map(|(computed, layout)| motion_value_for_target(computed, layout, target));
+    let source = explicit_exit_source
+        .clone()
+        .or_else(|| {
+            old_transition_sample
+                .as_ref()
+                .map(|sample| sample.value.clone())
+        })
+        .or(prior_value)
+        .unwrap_or_else(|| target_value.clone());
+    let intent = TransitionIntent {
+        owner: context.owner,
+        target,
+        target_value: &target_value,
+        provenance: &provenance,
+        policy: &policy,
+        preferences: context.preferences,
+        instant: context.instant,
+    };
+    let staged_transition = reconcile_transition(
+        &intent,
+        &source,
+        old_transition,
+        old_transition_sample.as_ref(),
+        explicit_exit_source.is_some(),
+    )?;
+    apply_transition_candidate(
+        staged_transition.as_ref(),
+        explicit_sample.as_ref(),
+        explicit_terminal_commit,
+        &target_value,
+        suppressed,
+        context,
+        outputs,
+    )
+}
+
+fn apply_explicit_candidate(
+    candidate: Option<&ExplicitEvaluation>,
+    suppressed: bool,
+    position: usize,
+    outputs: &mut OwnerMotionOutputs<'_>,
+) -> bool {
+    let Some(candidate) = candidate else {
+        return false;
+    };
+    if let Some(live) = candidate.live_sample.as_ref() {
+        note_live_activity(live, suppressed, outputs.activity);
+    }
+    let owns_target = matches!(
+        candidate.record.lifecycle,
+        ExplicitLifecycle::Active { .. } | ExplicitLifecycle::HoldInitial
+    );
+    if !owns_target {
+        return false;
+    }
+    if !suppressed {
+        if let Some(sample) = candidate.candidate_sample.as_ref() {
+            apply_effective_sample(outputs.effective, position, sample);
+        }
+        if matches!(candidate.record.lifecycle, ExplicitLifecycle::Active { .. })
+            && explicit_requires_group(&candidate.record.declaration)
+        {
+            retain_effective_group(outputs.effective, position);
+        }
+    }
+    true
+}
+
+fn apply_transition_candidate(
+    transition: Option<&TransitionRecord>,
+    explicit_sample: Option<&MotionValue>,
+    explicit_terminal_commit: bool,
+    target_value: &MotionValue,
+    suppressed: bool,
+    context: &OwnerMotionContext<'_>,
+    outputs: &mut OwnerMotionOutputs<'_>,
+) -> Result<(), MotionPlanningError> {
+    if let Some(transition) = transition {
+        let live = sample_transition(transition, context.instant)?;
+        let transition_is_live = !matches!(live.phase, LivePhase::Completed);
+        if transition_is_live {
+            note_live_activity(&live, suppressed, outputs.activity);
+            outputs.store.transitions.push(transition.clone());
+            if !suppressed && transition_requires_group(transition) {
+                retain_effective_group(outputs.effective, context.position);
+            }
+        }
+        if explicit_terminal_commit {
+            if !suppressed
+                && explicit_sample.is_some_and(|sample| sample != target_value)
+                && !transition_is_live
+            {
+                outputs.activity.followup_publication = true;
+            }
+        } else if !suppressed {
+            apply_effective_sample(outputs.effective, context.position, &live.value);
+        }
+    } else if explicit_terminal_commit && !suppressed {
+        if let Some(sample) = explicit_sample {
+            apply_effective_sample(outputs.effective, context.position, sample);
+        }
+        if explicit_sample.is_some_and(|sample| sample != target_value) {
+            outputs.activity.followup_publication = true;
+        }
+    }
     Ok(())
 }
 
@@ -599,116 +672,69 @@ fn reconcile_explicit(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn reconcile_transition(
-    owner: &MountedNodeId,
-    target: MotionTarget,
+    intent: &TransitionIntent<'_>,
     source: &MotionValue,
-    target_value: &MotionValue,
-    provenance: &TargetProvenance,
-    policy: &ResolvedTransitionPolicy,
     retained: Option<&TransitionRecord>,
     retained_sample: Option<&LiveSample>,
     explicit_exit: bool,
-    preferences: StylePreferences,
-    instant: MonotonicInstant,
 ) -> Result<Option<TransitionRecord>, MotionPlanningError> {
     if explicit_exit {
-        return start_transition(
-            owner,
-            target,
-            source,
-            target_value,
-            provenance,
-            policy,
-            preferences,
-            instant,
-        );
+        return start_transition(intent, source);
     }
-
     let Some(retained) = retained else {
-        return start_transition(
-            owner,
-            target,
-            source,
-            target_value,
-            provenance,
-            policy,
-            preferences,
-            instant,
-        );
+        return start_transition(intent, source);
     };
     let Some(retained_sample) = retained_sample else {
         return Ok(None);
     };
     if matches!(retained_sample.phase, LivePhase::Completed) {
-        return start_transition(
-            owner,
-            target,
-            &retained_sample.value,
-            target_value,
-            provenance,
-            policy,
-            preferences,
-            instant,
-        );
+        return start_transition(intent, &retained_sample.value);
     }
-
-    if preferences.reduced_motion()
+    if intent.preferences.reduced_motion()
         && retained.spec.reduced_motion() == ReducedMotionStrategy::SnapToEnd
     {
         return Ok(None);
     }
 
-    let target_changed = retained.to != *target_value || retained.target_provenance != *provenance;
-    match policy {
-        ResolvedTransitionPolicy::Disabled => Ok(None),
+    let target_changed =
+        retained.to != *intent.target_value || retained.target_provenance != *intent.provenance;
+    match intent.policy {
         ResolvedTransitionPolicy::Absent if !target_changed => Ok(Some(retained.clone())),
-        ResolvedTransitionPolicy::Absent => Ok(None),
-        ResolvedTransitionPolicy::Enabled(spec) if !target_changed && spec == &retained.spec => {
+        ResolvedTransitionPolicy::Disabled | ResolvedTransitionPolicy::Absent => Ok(None),
+        ResolvedTransitionPolicy::Enabled(spec)
+            if !target_changed && spec == &retained.spec =>
+        {
             Ok(Some(retained.clone()))
         }
-        ResolvedTransitionPolicy::Enabled(_) => start_transition(
-            owner,
-            target,
-            &retained_sample.value,
-            target_value,
-            provenance,
-            policy,
-            preferences,
-            instant,
-        ),
+        ResolvedTransitionPolicy::Enabled(_) => start_transition(intent, &retained_sample.value),
     }
 }
 
 fn start_transition(
-    owner: &MountedNodeId,
-    target: MotionTarget,
+    intent: &TransitionIntent<'_>,
     source: &MotionValue,
-    target_value: &MotionValue,
-    provenance: &TargetProvenance,
-    policy: &ResolvedTransitionPolicy,
-    preferences: StylePreferences,
-    instant: MonotonicInstant,
 ) -> Result<Option<TransitionRecord>, MotionPlanningError> {
-    let ResolvedTransitionPolicy::Enabled(spec) = policy else {
+    let ResolvedTransitionPolicy::Enabled(spec) = intent.policy else {
         return Ok(None);
     };
-    if source == target_value {
+    if source == intent.target_value {
         return Ok(None);
     }
-    if preferences.reduced_motion() && spec.reduced_motion() == ReducedMotionStrategy::SnapToEnd {
+    if intent.preferences.reduced_motion()
+        && spec.reduced_motion() == ReducedMotionStrategy::SnapToEnd
+    {
         return Ok(None);
     }
-    check_transition_schedule(spec, instant)?;
+    check_transition_schedule(spec, intent.instant)?;
     Ok(Some(TransitionRecord {
-        owner: owner.clone(),
-        target,
+        owner: intent.owner.clone(),
+        target: intent.target,
         from: source.clone(),
-        to: target_value.clone(),
-        target_provenance: provenance.clone(),
+        to: intent.target_value.clone(),
+        target_provenance: intent.provenance.clone(),
         spec: spec.clone(),
-        start: instant,
+        start: intent.instant,
     }))
 }
 
@@ -868,7 +894,7 @@ fn sample_keyframes(
         .unwrap_or_else(|_| unreachable!("contained segment progress remains normalized"));
     let eased = ease_motion(spec.easings()[segment], segment_progress);
     interpolate_motion_value(pair[0].value(), pair[1].value(), eased)
-        .ok_or(MotionPlanningError::Interpolation(spec.target()))
+        .ok_or_else(|| MotionPlanningError::Interpolation(spec.target()))
 }
 
 fn note_live_activity(sample: &LiveSample, suppressed: bool, activity: &mut MotionActivity) {
