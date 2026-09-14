@@ -471,7 +471,6 @@ fn trace_explicit_entry(
             );
         }
         match evaluation.record.lifecycle {
-            ExplicitLifecycle::Active { .. } => {}
             ExplicitLifecycle::HoldInitial => push_explicit_lifecycle(
                 context,
                 declaration,
@@ -484,7 +483,7 @@ fn trace_explicit_entry(
                 TraceMotionLifecycle::Completed,
                 trace_facts,
             ),
-            ExplicitLifecycle::Completed => {}
+            ExplicitLifecycle::Active { .. } | ExplicitLifecycle::Completed => {}
         }
         return;
     };
