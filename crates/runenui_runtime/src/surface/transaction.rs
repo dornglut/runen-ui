@@ -14,6 +14,31 @@ use super::{
     SurfacePlanningError, SurfacePublication,
 };
 
+/// Staged motion products that move through the surface-publication transaction as one unit.
+///
+/// Motion reconciliation remains the authority for the store, activity, and canonical
+/// diagnostic facts. This bundle only preserves their candidate-local transactional
+/// lifetime and introduces no second retained motion state.
+pub(super) struct StagedSurfaceMotion {
+    store: SurfaceMotionStore,
+    activity: SurfaceMotionActivity,
+    trace_facts: Vec<StagedMotionTraceFact>,
+}
+
+impl StagedSurfaceMotion {
+    pub(super) const fn new(
+        store: SurfaceMotionStore,
+        activity: SurfaceMotionActivity,
+        trace_facts: Vec<StagedMotionTraceFact>,
+    ) -> Self {
+        Self {
+            store,
+            activity,
+            trace_facts,
+        }
+    }
+}
+
 /// Move-only candidate for one mounted-surface publication.
 ///
 /// Planning may evaluate contractually read-only widget capabilities and may
@@ -23,9 +48,7 @@ use super::{
 /// object before [`Self::commit_store`] begins the final RunenUI-owned commit.
 pub(crate) struct PlannedSurfacePublication<'a> {
     cache: SurfaceCache,
-    motion_store: SurfaceMotionStore,
-    motion_activity: SurfaceMotionActivity,
-    motion_trace_facts: Vec<StagedMotionTraceFact>,
+    motion: StagedSurfaceMotion,
     report: SurfacePhaseReport,
     completed: DirtyPhases,
     capability_plan: SurfaceCapabilityPlan,
@@ -49,9 +72,7 @@ pub(crate) struct SurfacePublicationCommit {
 impl<'a> PlannedSurfacePublication<'a> {
     pub(super) const fn new(
         cache: SurfaceCache,
-        motion_store: SurfaceMotionStore,
-        motion_activity: SurfaceMotionActivity,
-        motion_trace_facts: Vec<StagedMotionTraceFact>,
+        motion: StagedSurfaceMotion,
         report: SurfacePhaseReport,
         completed: DirtyPhases,
         capability_plan: SurfaceCapabilityPlan,
@@ -59,9 +80,7 @@ impl<'a> PlannedSurfacePublication<'a> {
     ) -> Self {
         Self {
             cache,
-            motion_store,
-            motion_activity,
-            motion_trace_facts,
+            motion,
             report,
             completed,
             capability_plan,
@@ -82,14 +101,14 @@ impl<'a> PlannedSurfacePublication<'a> {
     }
 
     pub(crate) const fn motion_activity(&self) -> SurfaceMotionActivity {
-        self.motion_activity
+        self.motion.activity
     }
 
     /// Returns the bounded candidate-local motion facts projected by the motion
     /// reconciliation authority. The transaction transports them only; it does
     /// not reinterpret style or motion state and retains no second diagnostic ledger.
     pub(crate) fn motion_trace_facts(&self) -> Vec<StagedMotionTraceFact> {
-        self.motion_trace_facts.clone()
+        self.motion.trace_facts.clone()
     }
 
     /// Composes the renderer-independent semantic candidate and semantic-owner
@@ -157,14 +176,17 @@ impl<'a> PlannedSurfacePublication<'a> {
     pub(crate) fn commit_store(self) -> SurfacePublicationCommit {
         let Self {
             cache,
-            motion_store,
-            motion_activity,
-            motion_trace_facts: _,
+            motion,
             report,
             completed,
             capability_plan,
             finalized_semantics,
         } = self;
+        let StagedSurfaceMotion {
+            store: motion_store,
+            activity: motion_activity,
+            trace_facts: _,
+        } = motion;
         let semantic_commit = finalized_semantics.map(FinalizedSemanticPublication::commit_store);
         SurfacePublicationCommit {
             cache,
