@@ -528,14 +528,7 @@ fn apply_transition_candidate(
                 retain_effective_group(outputs.effective, context.position);
             }
         }
-        if explicit_terminal_commit {
-            if !suppressed
-                && explicit_sample.is_some_and(|sample| sample != target_value)
-                && !transition_is_live
-            {
-                outputs.activity.followup_publication = true;
-            }
-        } else if !suppressed {
+        if !suppressed {
             apply_effective_sample(outputs.effective, context.position, &live.value);
         }
     } else if explicit_terminal_commit && !suppressed {
