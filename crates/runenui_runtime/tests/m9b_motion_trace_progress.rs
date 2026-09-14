@@ -19,7 +19,7 @@ impl UiApp for TraceProgressApp {
     type Action = ();
     type HostProtocol = NoHostProtocol;
 
-    fn root(_: &Self::State) -> Element<Self::Action> {
+    fn root((): &Self::State) -> Element<Self::Action> {
         text("trace progress")
             .id("trace-progress-root")
             .key("root")
@@ -27,7 +27,7 @@ impl UiApp for TraceProgressApp {
             .into_element()
     }
 
-    fn update(_: &mut Self::State, (): Self::Action) {}
+    fn update((): &mut Self::State, (): Self::Action) {}
 }
 
 fn opacity(value: f32) -> MotionValue {
