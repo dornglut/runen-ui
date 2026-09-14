@@ -33,7 +33,8 @@ impl UiApp for LifecycleApp {
     fn root(state: &Self::State) -> Element<Self::Action> {
         let root = text("lifecycle").key("root");
         if state.present {
-            root.timeline(opacity_timeline(state.duration)).into_element()
+            root.timeline(opacity_timeline(state.duration))
+                .into_element()
         } else {
             root.into_element()
         }
