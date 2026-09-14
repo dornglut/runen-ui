@@ -1,5 +1,3 @@
-use runenui_core::TransitionPolicy;
-
 use crate::mounted::{
     DirtyPhases, FinalizedSemanticPublication, MountedTree, SemanticMountedCommit,
     SurfaceCapabilityPlan,
@@ -8,7 +6,7 @@ use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::semantic_compositor::{
     SemanticCandidate, SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics,
 };
-use crate::trace::{StagedMotionTraceFact, TraceMotionFact, TraceMotionPolicy};
+use crate::trace::StagedMotionTraceFact;
 use crate::{MountedNodeId, SemanticDiagnostic};
 
 use super::{
@@ -27,6 +25,7 @@ pub(crate) struct PlannedSurfacePublication<'a> {
     cache: SurfaceCache,
     motion_store: SurfaceMotionStore,
     motion_activity: SurfaceMotionActivity,
+    motion_trace_facts: Vec<StagedMotionTraceFact>,
     report: SurfacePhaseReport,
     completed: DirtyPhases,
     capability_plan: SurfaceCapabilityPlan,
@@ -52,6 +51,7 @@ impl<'a> PlannedSurfacePublication<'a> {
         cache: SurfaceCache,
         motion_store: SurfaceMotionStore,
         motion_activity: SurfaceMotionActivity,
+        motion_trace_facts: Vec<StagedMotionTraceFact>,
         report: SurfacePhaseReport,
         completed: DirtyPhases,
         capability_plan: SurfaceCapabilityPlan,
@@ -61,6 +61,7 @@ impl<'a> PlannedSurfacePublication<'a> {
             cache,
             motion_store,
             motion_activity,
+            motion_trace_facts,
             report,
             completed,
             capability_plan,
@@ -84,35 +85,11 @@ impl<'a> PlannedSurfacePublication<'a> {
         self.motion_activity
     }
 
-    /// Builds bounded candidate-local policy facts from the already-staged style
-    /// authority. These are diagnostic projection only and are never retained as
-    /// a second animation or cache ledger.
+    /// Returns the bounded candidate-local motion facts projected by the motion
+    /// reconciliation authority. The transaction transports them only; it does
+    /// not reinterpret style or motion state and retains no second diagnostic ledger.
     pub(crate) fn motion_trace_facts(&self) -> Vec<StagedMotionTraceFact> {
-        let mut facts = Vec::new();
-        for (topology, resolution) in self
-            .cache
-            .topology
-            .nodes
-            .iter()
-            .zip(&self.cache.styles.resolutions)
-        {
-            for (target, policy, _) in resolution.transition_policies() {
-                let policy = match policy {
-                    TransitionPolicy::Disabled => TraceMotionPolicy::Disabled,
-                    TransitionPolicy::Enabled(_) => TraceMotionPolicy::Enabled,
-                    _ => unreachable!(
-                        "runtime and core transition-policy vocabularies are version-locked"
-                    ),
-                };
-                facts.push(StagedMotionTraceFact::new(
-                    topology.id.clone(),
-                    topology.authored_id.clone(),
-                    target,
-                    TraceMotionFact::PolicyResolved { policy },
-                ));
-            }
-        }
-        facts
+        self.motion_trace_facts.clone()
     }
 
     /// Composes the renderer-independent semantic candidate and semantic-owner
@@ -182,6 +159,7 @@ impl<'a> PlannedSurfacePublication<'a> {
             cache,
             motion_store,
             motion_activity,
+            motion_trace_facts: _,
             report,
             completed,
             capability_plan,

@@ -9,6 +9,7 @@ use runenui_text::{TextLayoutError, TextSystem};
 
 use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan};
 use crate::style_debug::SurfaceStyleReport;
+use crate::trace::StagedMotionTraceFact;
 
 use super::cache::{CachedLayoutFacts, context_key};
 use super::motion::{self, MotionPlanningError};
@@ -226,6 +227,7 @@ fn resolve_style_phase_if_dirty<Action>(
 struct NonStructuralMotionStage {
     store: SurfaceMotionStore,
     activity: SurfaceMotionActivity,
+    trace_facts: Vec<StagedMotionTraceFact>,
     effects: EffectiveEffects,
     effective_changed: bool,
 }
@@ -247,7 +249,7 @@ fn stage_non_structural_motion<Action>(
         context.style_environment().preferences(),
         instant,
     )?;
-    let (next_store, next_effective, activity) = planned.into_parts();
+    let (next_store, next_effective, activity, trace_facts) = planned.into_parts();
     let effects = current.effective.effects_against(&next_effective);
     let effective_changed = current.effective.as_ref() != &next_effective;
     if effective_changed {
@@ -256,6 +258,7 @@ fn stage_non_structural_motion<Action>(
     Ok(NonStructuralMotionStage {
         store: SurfaceMotionStore(next_store),
         activity: SurfaceMotionActivity(activity),
+        trace_facts,
         effects,
         effective_changed,
     })
@@ -422,6 +425,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         current,
         motion.store,
         motion.activity,
+        motion.trace_facts,
         report,
         completed,
         capability_plan,
@@ -460,7 +464,8 @@ fn plan_structural_surface<'tree, Action>(
         context.style_environment().preferences(),
         instant,
     )?;
-    let (next_motion_store, effective, motion_activity) = planned_motion.into_parts();
+    let (next_motion_store, effective, motion_activity, motion_trace_facts) =
+        planned_motion.into_parts();
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let semantic_capability_plan = tree.plan_semantic_publication_capabilities(&capability_plan);
     let resolved = ResolvedSurfaceTree::for_layout(&topology, &effective);
@@ -528,6 +533,7 @@ fn plan_structural_surface<'tree, Action>(
         rebuilt,
         SurfaceMotionStore(next_motion_store),
         SurfaceMotionActivity(motion_activity),
+        motion_trace_facts,
         report,
         DirtyPhases::ALL,
         capability_plan,

@@ -12,14 +12,17 @@ use runenui_core::{
     __runtime::{
         apply_motion_value, ease_motion, interpolate_motion_value, motion_value_for_target,
     },
-    BrushToken, ColorToken, ComputedStyle, ExplicitTimeline, LayoutStyle, MonotonicInstant,
-    MotionRepeat, MotionTarget, MotionValue, OpacityToken, PresentationToken, RadiusToken,
-    ReducedMotionStrategy, ShadowToken, SpacingToken, StyleFieldProvenance, StylePreferenceKind,
-    StylePreferences, StyleResolution, StyleResolutionLayer, TransitionPolicy, TransitionSpec,
-    TypographyToken, UnitInterval,
+    BrushToken, ColorToken, ComputedStyle, ElementId, ExplicitTimeline, LayoutStyle,
+    MonotonicInstant, MotionRepeat, MotionTarget, MotionValue, OpacityToken, PresentationToken,
+    RadiusToken, ReducedMotionStrategy, ShadowToken, SpacingToken, StyleFieldProvenance,
+    StylePreferenceKind, StylePreferences, StyleResolution, StyleResolutionLayer,
+    TransitionPolicy, TransitionSpec, TypographyToken, UnitInterval,
 };
 
-use crate::{MountedNodeId, mounted::MountedTree};
+use crate::{
+    MountedNodeId, mounted::MountedTree,
+    trace::{StagedMotionTraceFact, TraceMotionFact, TraceMotionPolicy},
+};
 
 use super::{
     SurfaceCache,
@@ -86,11 +89,24 @@ pub(super) struct PlannedMotion {
     store: MotionStore,
     effective: CachedEffectiveFacts,
     activity: MotionActivity,
+    trace_facts: Vec<StagedMotionTraceFact>,
 }
 
 impl PlannedMotion {
-    pub(super) fn into_parts(self) -> (MotionStore, CachedEffectiveFacts, MotionActivity) {
-        (self.store, self.effective, self.activity)
+    pub(super) fn into_parts(
+        self,
+    ) -> (
+        MotionStore,
+        CachedEffectiveFacts,
+        MotionActivity,
+        Vec<StagedMotionTraceFact>,
+    ) {
+        (
+            self.store,
+            self.effective,
+            self.activity,
+            self.trace_facts,
+        )
     }
 }
 
@@ -208,6 +224,7 @@ enum LivePhase {
 
 struct OwnerMotionContext<'a> {
     owner: &'a MountedNodeId,
+    authored_id: Option<&'a ElementId>,
     declarations: &'a [ExplicitTimeline],
     resolution: &'a StyleResolution,
     target_layout: &'a LayoutStyle,
@@ -244,6 +261,7 @@ struct OwnerMotionOutputs<'a> {
     effective: &'a mut CachedEffectiveFacts,
     store: &'a mut MotionStore,
     activity: &'a mut MotionActivity,
+    trace_facts: &'a mut Vec<StagedMotionTraceFact>,
 }
 
 struct TransitionIntent<'a> {
@@ -276,6 +294,7 @@ pub(super) fn plan_surface_motion<Action>(
     let mut effective = CachedEffectiveFacts::identity(tree, topology, styles);
     let mut next_store = MotionStore::default();
     let mut activity = MotionActivity::default();
+    let mut trace_facts = Vec::new();
 
     for (position, topology_node) in topology.nodes.iter().enumerate() {
         let node = tree
@@ -295,6 +314,7 @@ pub(super) fn plan_surface_motion<Action>(
             .and_then(|cache| prior_position.map(|prior| cache.effective.node(prior).layout()));
         let context = OwnerMotionContext {
             owner: &topology_node.id,
+            authored_id: topology_node.authored_id.as_ref(),
             declarations: &node.timelines,
             resolution: &styles.resolutions[position],
             target_layout: &node.layout,
@@ -308,6 +328,7 @@ pub(super) fn plan_surface_motion<Action>(
             effective: &mut effective,
             store: &mut next_store,
             activity: &mut activity,
+            trace_facts: &mut trace_facts,
         };
         plan_owner(store, &context, &mut outputs)?;
     }
@@ -316,6 +337,7 @@ pub(super) fn plan_surface_motion<Action>(
         store: next_store,
         effective,
         activity,
+        trace_facts,
     })
 }
 
@@ -398,6 +420,14 @@ fn plan_target(
     let provenance = target_provenance(context.resolution, target);
     let suppressed = provenance.high_contrast();
     let policy = resolved_transition_policy(context.resolution, target);
+    outputs.trace_facts.push(StagedMotionTraceFact::new(
+        context.owner.clone(),
+        context.authored_id.cloned(),
+        target,
+        TraceMotionFact::PolicyResolved {
+            policy: trace_transition_policy(&policy),
+        },
+    ));
     let new_explicit = explicit_evaluations
         .iter()
         .find(|candidate| candidate.record.declaration.target() == target);
@@ -1019,6 +1049,14 @@ fn resolved_transition_policy(
         Some(_) => {
             unreachable!("runtime and core transition-policy vocabularies are version-locked")
         }
+    }
+}
+
+const fn trace_transition_policy(policy: &ResolvedTransitionPolicy) -> TraceMotionPolicy {
+    match policy {
+        ResolvedTransitionPolicy::Absent => TraceMotionPolicy::Absent,
+        ResolvedTransitionPolicy::Disabled => TraceMotionPolicy::Disabled,
+        ResolvedTransitionPolicy::Enabled(_) => TraceMotionPolicy::Enabled,
     }
 }
 
