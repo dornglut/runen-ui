@@ -116,9 +116,8 @@ fn delay_holds_keyframe_zero_until_the_active_interval_begins() {
 
 #[test]
 fn exact_non_final_repeat_boundary_restarts_at_keyframe_zero() {
-    let repeat = MotionRepeat::finite(
-        NonZeroU64::new(2).unwrap_or_else(|| unreachable!("two is non-zero")),
-    );
+    let repeat =
+        MotionRepeat::finite(NonZeroU64::new(2).unwrap_or_else(|| unreachable!("two is non-zero")));
     let mut runtime = AppRuntime::<TimingApp>::mount(TimingState {
         duration: Duration::from_millis(100),
         delay: Duration::ZERO,
