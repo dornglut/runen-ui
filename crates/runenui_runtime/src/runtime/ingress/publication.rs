@@ -7,7 +7,7 @@ use super::{
     RuntimeTerminalReason, TraceRecordKind, TraceSequence,
 };
 use crate::runtime::surface_publication::{
-    SurfacePublicationAdmission, SurfacePublicationPlanError,
+    SurfacePublicationAdmission, SurfacePublicationCandidateInputs, SurfacePublicationPlanError,
 };
 use crate::{
     PublishSurfaceError, SurfacePublicationCounter, TracePublicationContext, TraceSurfaceContext,
@@ -127,14 +127,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let interaction = self
             .pointer_registry
             .surface_interaction_projection(focused_owner.as_ref());
-        let staged = match self.surface_publication.plan_publication(
-            &mut self.tree,
-            &mut self.text_system,
-            context,
+        let candidate = SurfacePublicationCandidateInputs::new(
             &interaction,
             focused_owner.as_ref(),
             admission.surface,
             instant,
+        );
+        let staged = match self.surface_publication.plan_publication(
+            &mut self.tree,
+            &mut self.text_system,
+            context,
+            candidate,
         ) {
             Ok(staged) => staged,
             Err(SurfacePublicationPlanError::SemanticIntegrity) => {

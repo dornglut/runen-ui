@@ -120,6 +120,30 @@ impl SurfacePublicationAdmission {
     }
 }
 
+/// One immutable publication candidate context derived at a single runtime instant.
+pub(in crate::runtime) struct SurfacePublicationCandidateInputs<'a> {
+    interaction: &'a SurfaceInteractionProjection,
+    focused_owner: Option<&'a MountedNodeId>,
+    admission: SurfacePublicationAdmission,
+    instant: MonotonicInstant,
+}
+
+impl<'a> SurfacePublicationCandidateInputs<'a> {
+    pub(in crate::runtime) const fn new(
+        interaction: &'a SurfaceInteractionProjection,
+        focused_owner: Option<&'a MountedNodeId>,
+        admission: SurfacePublicationAdmission,
+        instant: MonotonicInstant,
+    ) -> Self {
+        Self {
+            interaction,
+            focused_owner,
+            admission,
+            instant,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::runtime) enum SurfacePublicationPlanError {
     SemanticIntegrity,
@@ -267,11 +291,14 @@ impl SurfacePublicationState {
         tree: &'tree mut MountedTree<Action>,
         text_system: &mut TextSystem,
         context: &SurfaceBuildContext<'_>,
-        interaction: &SurfaceInteractionProjection,
-        focused_owner: Option<&MountedNodeId>,
-        admission: SurfacePublicationAdmission,
-        instant: MonotonicInstant,
+        candidate: SurfacePublicationCandidateInputs<'_>,
     ) -> Result<StagedSurfacePublication<'tree>, SurfacePublicationPlanError> {
+        let SurfacePublicationCandidateInputs {
+            interaction,
+            focused_owner,
+            admission,
+            instant,
+        } = candidate;
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
         let planned = plan_mounted_surface_cached_with_text(
             tree,
@@ -681,10 +708,7 @@ impl SurfacePublicationState {
     }
 
     pub(crate) fn motion_deadline_is_due(&self, now: MonotonicInstant) -> bool {
-        match self.motion_deadline {
-            Some(deadline) => now >= deadline,
-            None => false,
-        }
+        self.motion_deadline.is_some_and(|deadline| now >= deadline)
     }
 
     pub(crate) fn clear_cache(&mut self) {
