@@ -137,11 +137,11 @@ pub fn interpolate_motion_sample(
     let continuous = |value| (value, MotionInterpolationKind::Continuous);
     let discrete = || Some((start.clone(), MotionInterpolationKind::Discrete));
     match (start, end) {
-        (MotionValue::Foreground(Some(start)), MotionValue::Foreground(Some(end))) => Some(
-            continuous(MotionValue::Foreground(Some(interpolate_color(
-                *start, *end, progress,
-            )))),
-        ),
+        (MotionValue::Foreground(Some(start)), MotionValue::Foreground(Some(end))) => {
+            Some(continuous(MotionValue::Foreground(Some(
+                interpolate_color(*start, *end, progress),
+            ))))
+        }
         (MotionValue::Background(Some(start)), MotionValue::Background(Some(end))) => {
             interpolate_brush(start, end, progress)
                 .map(|brush| continuous(MotionValue::Background(Some(brush))))
@@ -197,8 +197,7 @@ pub fn interpolate_motion_sample(
                 .map(|value| continuous(MotionValue::Margin(value)))
         }
         (MotionValue::Gap(start), MotionValue::Gap(end)) => {
-            interpolate_gap(*start, *end, progress)
-                .map(|value| continuous(MotionValue::Gap(value)))
+            interpolate_gap(*start, *end, progress).map(|value| continuous(MotionValue::Gap(value)))
         }
         (MotionValue::FlexGrow(start), MotionValue::FlexGrow(end)) => {
             interpolate_layout_factor(*start, *end, progress)
@@ -317,10 +316,14 @@ fn interpolate_dimension(
     progress: UnitInterval,
 ) -> Option<(LayoutDimension, MotionInterpolationKind)> {
     match (start, end) {
-        (LayoutDimension::Length(start), LayoutDimension::Length(end)) => interpolate_logical_length(
-            start, end, progress,
-        )
-        .map(|value| (LayoutDimension::Length(value), MotionInterpolationKind::Continuous)),
+        (LayoutDimension::Length(start), LayoutDimension::Length(end)) => {
+            interpolate_logical_length(start, end, progress).map(|value| {
+                (
+                    LayoutDimension::Length(value),
+                    MotionInterpolationKind::Continuous,
+                )
+            })
+        }
         (LayoutDimension::Percent(start), LayoutDimension::Percent(end)) => {
             interpolate_layout_factor(start, end, progress).map(|value| {
                 (
