@@ -8,9 +8,7 @@ use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::semantic_compositor::{
     SemanticCandidate, SemanticCompositionDiagnostic, SemanticOwnerFacts, compose_semantics,
 };
-use crate::trace::{
-    StagedMotionTraceFact, TraceMotionFact, TraceMotionPolicy,
-};
+use crate::trace::{StagedMotionTraceFact, TraceMotionFact, TraceMotionPolicy};
 use crate::{MountedNodeId, SemanticDiagnostic};
 
 use super::{
