@@ -8,8 +8,8 @@ use runenui_core::{
     StyleEnvironment, TimelineSpec, UiApp, UnitInterval, View, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, SurfaceBuildContext, TraceMotionFact,
-    TraceMotionInterpolation, TraceMotionPhase, TraceRecordKind,
+    AppRuntime, LayoutConstraints, SurfaceBuildContext, TraceMotionFact, TraceMotionInterpolation,
+    TraceMotionPhase, TraceRecordKind,
 };
 
 struct TraceProgressApp;
@@ -75,7 +75,12 @@ fn publish(runtime: &mut AppRuntime<TraceProgressApp>) {
 fn samples_since(
     runtime: &AppRuntime<TraceProgressApp>,
     start: usize,
-) -> Vec<(TraceMotionPhase, Option<u32>, Option<u32>, TraceMotionInterpolation)> {
+) -> Vec<(
+    TraceMotionPhase,
+    Option<u32>,
+    Option<u32>,
+    TraceMotionInterpolation,
+)> {
     runtime
         .trace()
         .records()
@@ -91,12 +96,7 @@ fn samples_since(
                         interpolation,
                         ..
                     },
-            } => Some((
-                *phase,
-                *progress_bits,
-                *eased_progress_bits,
-                *interpolation,
-            )),
+            } => Some((*phase, *progress_bits, *eased_progress_bits, *interpolation)),
             _ => None,
         })
         .collect()
