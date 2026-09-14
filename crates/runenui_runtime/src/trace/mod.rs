@@ -39,12 +39,12 @@ pub use model::{
     TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
     TraceWorkStartRefusal,
 };
+pub(crate) use motion::StagedMotionTraceFact;
 pub use motion::{
     TraceMotionCollision, TraceMotionEffectDecision, TraceMotionFact, TraceMotionInterpolation,
     TraceMotionLifecycle, TraceMotionPhase, TraceMotionPlanningRejection, TraceMotionPolicy,
     TraceMotionPreferenceDecision, TraceMotionSource,
 };
-pub(crate) use motion::StagedMotionTraceFact;
 pub use replay::{
     TraceReplay, TraceReplayCompleteness, TraceReplayError, TraceReplayKind, TraceReplayRecord,
     TraceReplaySequence, TraceReplayWorkSequence,
