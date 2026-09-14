@@ -7,7 +7,8 @@ use super::{
     RuntimeTerminalReason, TraceRecordKind, TraceSequence,
 };
 use crate::runtime::surface_publication::{
-    SurfacePublicationAdmission, SurfacePublicationCandidateInputs, SurfacePublicationPlanError,
+    RedrawRevisionAdmission, SurfacePublicationAdmission, SurfacePublicationCandidateInputs,
+    SurfacePublicationPlanError,
 };
 use crate::{
     PublishSurfaceError, SurfacePublicationCounter, TracePublicationContext, TraceSurfaceContext,
@@ -18,6 +19,19 @@ use crate::{
 struct PublicationAdmission {
     surface: SurfacePublicationAdmission,
     stationary_rehit: bool,
+}
+
+fn candidate_trace_plan(
+    redraw_pending: bool,
+    stationary_rehit: bool,
+    request_followup: bool,
+) -> Option<MandatoryTracePlan> {
+    let plan = MandatoryTracePlan::surface_publication(redraw_pending, stationary_rehit);
+    if request_followup {
+        plan.checked_add(MandatoryTracePlan::one_fact())
+    } else {
+        Some(plan)
+    }
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -55,6 +69,33 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return;
         }
         self.surface_trace.note_request(next, requested);
+    }
+
+    fn commit_admitted_redraw_request(
+        &mut self,
+        admission: RedrawRevisionAdmission,
+        causal_parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+    ) {
+        let revision = self.surface_publication.commit_redraw_request(admission);
+        let requested = if self.trace.is_enabled() {
+            Some(
+                self.trace
+                    .record_draft(
+                        TraceRecordDraft::redraw_fact(
+                            TraceRecordKind::RedrawRequested { revision },
+                            instant,
+                        )
+                        .with_causal_parent(causal_parent),
+                    )
+                    .unwrap_or_else(|| {
+                        unreachable!("surface publication trace plan admitted follow-up redraw")
+                    }),
+            )
+        } else {
+            None
+        };
+        self.surface_trace.note_request(revision, requested);
     }
 
     pub(crate) fn take_redraw_request(&mut self) -> Option<crate::RedrawRequest> {
@@ -162,20 +203,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let motion_activity = staged.motion_activity();
         let request_followup =
             motion_activity.continuous_redraw() || motion_activity.followup_publication();
-        let mut candidate_trace_plan = MandatoryTracePlan::surface_publication(
+        let Some(candidate_trace_plan) = candidate_trace_plan(
             self.surface_publication.is_dirty(),
             admission.stationary_rehit,
-        );
-        if request_followup {
-            let Some(plan) = candidate_trace_plan.checked_add(MandatoryTracePlan::one_fact())
-            else {
-                drop(staged);
-                let reason = RuntimeTerminalReason::TraceSequenceExhausted;
-                self.enter_terminal(reason, 0);
-                return Err(PublishSurfaceError::Terminal(reason));
-            };
-            candidate_trace_plan = plan;
-        }
+            request_followup,
+        ) else {
+            drop(staged);
+            let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(PublishSurfaceError::Terminal(reason));
+        };
         if !self.trace.can_replace_reservation(
             self.surface_trace.publication_reservation,
             candidate_trace_plan,
@@ -185,6 +222,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.enter_terminal(reason, 0);
             return Err(PublishSurfaceError::Terminal(reason));
         }
+        let followup_redraw = request_followup
+            .then(|| self.surface_publication.admit_redraw_request())
+            .transpose();
+        let followup_redraw = match followup_redraw {
+            Ok(admission) => admission,
+            Err(counter) => {
+                drop(staged);
+                let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
+                self.enter_terminal(reason, 0);
+                return Err(PublishSurfaceError::Terminal(reason));
+            }
+        };
 
         let commit = staged.commit_store();
         let publication = self
@@ -211,8 +260,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .unwrap_or_else(|_| unreachable!("runtime-issued redraw request remains local"));
         }
         self.replenish_surface_publication_reservation();
-        if request_followup {
-            self.request_redraw(published, instant);
+        if let Some(admission) = followup_redraw {
+            self.commit_admitted_redraw_request(admission, published, instant);
         }
         Ok(publication)
     }
@@ -353,5 +402,91 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(crate) const fn last_surface_phase_report(&self) -> &crate::SurfacePhaseReport {
         self.surface_publication.phase_report()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use runenui_core::{
+        AnimationId, Element, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,
+        MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity, StyleEnvironment,
+        TimelineSpec, UnitInterval, Widget,
+    };
+
+    use crate::{LayoutConstraints, RuntimeConfig, SurfaceBuildContext};
+
+    use super::*;
+
+    #[derive(Debug)]
+    struct MotionProbe;
+
+    impl Widget<()> for MotionProbe {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+    }
+
+    fn active_opacity_timeline() -> ExplicitTimeline {
+        let spec = TimelineSpec::new(
+            vec![
+                MotionKeyframe::new(
+                    UnitInterval::ZERO,
+                    MotionValue::Opacity(SceneOpacity::TRANSPARENT),
+                ),
+                MotionKeyframe::new(
+                    UnitInterval::ONE,
+                    MotionValue::Opacity(SceneOpacity::OPAQUE),
+                ),
+            ],
+            vec![MotionEasing::Linear],
+            Duration::from_millis(100),
+            Duration::ZERO,
+            MotionRepeat::ONCE,
+            Some(ReducedMotionStrategy::PreserveEssential),
+        )
+        .unwrap_or_else(|_| unreachable!("test timeline is valid"));
+        ExplicitTimeline::new(
+            AnimationId::from_static("fade")
+                .unwrap_or_else(|_| unreachable!("test animation id is valid")),
+            spec,
+        )
+    }
+
+    fn published_count(runtime: &Runtime<(), (), NoHostProtocol>) -> usize {
+        runtime
+            .trace
+            .records()
+            .filter(|record| matches!(record.kind(), TraceRecordKind::SurfacePublished))
+            .count()
+    }
+
+    #[test]
+    fn motion_followup_redraw_exhaustion_refuses_before_publication_commit() {
+        let mut runtime = Runtime::<(), (), NoHostProtocol>::mount(
+            (),
+            |_| Element::new(MotionProbe).timeline(active_opacity_timeline()),
+            RuntimeConfig::default(),
+        );
+        runtime
+            .surface_publication
+            .seed_redraw_revision_for_test(u64::MAX);
+        assert!(!runtime.surface_publication.is_dirty());
+        let phases_before = runtime.last_surface_phase_report().clone();
+        let published_before = published_count(&runtime);
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
+        let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(
+            SurfacePublicationCounter::RedrawRevision,
+        );
+
+        assert_eq!(
+            runtime.publish_surface(&context),
+            Err(PublishSurfaceError::Terminal(reason))
+        );
+        assert_eq!(runtime.status, RuntimeStatus::Terminal(reason));
+        assert_eq!(published_count(&runtime), published_before);
+        assert_eq!(runtime.last_surface_phase_report(), &phases_before);
     }
 }

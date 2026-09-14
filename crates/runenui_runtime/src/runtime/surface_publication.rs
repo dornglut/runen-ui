@@ -120,6 +120,12 @@ impl SurfacePublicationAdmission {
     }
 }
 
+/// Exact non-mutating reservation for one future redraw revision.
+#[derive(Clone, Copy)]
+pub(in crate::runtime) struct RedrawRevisionAdmission {
+    revision: u64,
+}
+
 /// One immutable publication candidate context derived at a single runtime instant.
 pub(in crate::runtime) struct SurfacePublicationCandidateInputs<'a> {
     interaction: &'a SurfaceInteractionProjection,
@@ -677,6 +683,12 @@ impl SurfacePublicationState {
         self.next_paint_revision = revision;
     }
 
+    #[cfg(test)]
+    pub(in crate::runtime) const fn seed_redraw_revision_for_test(&mut self, revision: u64) {
+        self.redraw_revision = revision;
+        self.redraw_acknowledged = revision;
+    }
+
     pub(crate) fn note_focus_validation(&mut self) {
         self.phase_report = SurfacePhaseReport::one(SurfacePhase::FocusValidation);
     }
@@ -719,10 +731,30 @@ impl SurfacePublicationState {
         self.snapshots.clear();
     }
 
+    pub(in crate::runtime) const fn admit_redraw_request(
+        &self,
+    ) -> Result<RedrawRevisionAdmission, SurfacePublicationCounter> {
+        match self.redraw_revision.checked_add(1) {
+            Some(revision) => Ok(RedrawRevisionAdmission { revision }),
+            None => Err(SurfacePublicationCounter::RedrawRevision),
+        }
+    }
+
+    pub(in crate::runtime) const fn commit_redraw_request(
+        &mut self,
+        admission: RedrawRevisionAdmission,
+    ) -> u64 {
+        debug_assert!(
+            self.redraw_revision.checked_add(1) == Some(admission.revision),
+            "redraw admission names the exact next revision"
+        );
+        self.redraw_revision = admission.revision;
+        admission.revision
+    }
+
     pub(crate) fn request_redraw(&mut self) -> Option<u64> {
-        let next = self.redraw_revision.checked_add(1)?;
-        self.redraw_revision = next;
-        Some(next)
+        let admission = self.admit_redraw_request().ok()?;
+        Some(self.commit_redraw_request(admission))
     }
 
     pub(crate) fn take_redraw_request(&self) -> Option<RedrawRequest> {
