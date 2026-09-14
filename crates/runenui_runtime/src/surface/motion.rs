@@ -25,7 +25,7 @@ use crate::{
     mounted::MountedTree,
     trace::{
         StagedMotionTraceFact, TraceMotionFact, TraceMotionInterpolation, TraceMotionLifecycle,
-        TraceMotionPhase, TraceMotionPolicy, TraceMotionSource,
+        TraceMotionPhase, TraceMotionPolicy, TraceMotionPreferenceDecision, TraceMotionSource,
     },
 };
 
@@ -201,6 +201,14 @@ enum ResolvedTransitionPolicy {
     Enabled(TransitionSpec),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MotionPreferenceMode {
+    Normal,
+    SnapToEnd,
+    HoldInitial,
+    PreserveEssential,
+}
+
 struct ExplicitEvaluation {
     record: ExplicitMotionRecord,
     candidate_sample: Option<MotionValue>,
@@ -225,8 +233,10 @@ enum TransitionRetirement {
 struct TransitionEvaluation {
     record: Option<TransitionRecord>,
     retired_sample: Option<LiveSample>,
+    retired_strategy: Option<ReducedMotionStrategy>,
     retirement: Option<TransitionRetirement>,
     candidate_sample: Option<LiveSample>,
+    candidate_strategy: Option<ReducedMotionStrategy>,
     started_at_candidate: bool,
     terminal_commit: bool,
 }
@@ -236,8 +246,10 @@ impl TransitionEvaluation {
         Self {
             record: None,
             retired_sample: None,
+            retired_strategy: None,
             retirement: None,
             candidate_sample: None,
+            candidate_strategy: None,
             started_at_candidate: false,
             terminal_commit: false,
         }
@@ -531,6 +543,7 @@ fn trace_explicit_entries(
             .iter()
             .copied()
             .find(|record| record.declaration.id() == declaration.id());
+        push_explicit_preference_trace(context, declaration, trace_facts);
         trace_explicit_entry(context, prior, evaluation, trace_facts);
         if let Some(sample) = evaluation.live_sample.as_ref() {
             push_explicit_sample_trace(context, declaration, sample, trace_facts);
@@ -643,6 +656,71 @@ fn trace_explicit_entry(
             ExplicitLifecycle::Active { .. } | ExplicitLifecycle::HoldInitial,
             ExplicitLifecycle::Completed,
         ) => {}
+    }
+}
+
+fn push_explicit_preference_trace(
+    context: &OwnerMotionContext<'_>,
+    declaration: &ExplicitTimeline,
+    trace_facts: &mut Vec<StagedMotionTraceFact>,
+) {
+    push_motion_preference_trace(
+        context,
+        declaration.target(),
+        TraceMotionSource::Timeline {
+            animation_id: declaration.id().clone(),
+        },
+        declaration.spec().reduced_motion(),
+        trace_facts,
+    );
+}
+
+fn push_transition_preference_trace(
+    context: &OwnerMotionContext<'_>,
+    target: MotionTarget,
+    strategy: ReducedMotionStrategy,
+    trace_facts: &mut Vec<StagedMotionTraceFact>,
+) {
+    push_motion_preference_trace(
+        context,
+        target,
+        TraceMotionSource::Transition,
+        strategy,
+        trace_facts,
+    );
+}
+
+fn push_motion_preference_trace(
+    context: &OwnerMotionContext<'_>,
+    target: MotionTarget,
+    source: TraceMotionSource,
+    strategy: ReducedMotionStrategy,
+    trace_facts: &mut Vec<StagedMotionTraceFact>,
+) {
+    let decision = trace_preference_decision(motion_preference_mode(context.preferences, strategy));
+    trace_facts.push(StagedMotionTraceFact::new(
+        context.owner.clone(),
+        context.authored_id.cloned(),
+        target,
+        TraceMotionFact::Preference {
+            source: source.clone(),
+            reduced_motion: context.preferences.reduced_motion(),
+            strategy,
+            decision,
+        },
+    ));
+    if target_provenance(context.resolution, target).high_contrast() {
+        trace_facts.push(StagedMotionTraceFact::new(
+            context.owner.clone(),
+            context.authored_id.cloned(),
+            target,
+            TraceMotionFact::Preference {
+                source,
+                reduced_motion: context.preferences.reduced_motion(),
+                strategy,
+                decision: TraceMotionPreferenceDecision::HighContrastSuppressed,
+            },
+        ));
     }
 }
 
@@ -938,6 +1016,9 @@ fn trace_transition_evaluation(
     evaluation: &TransitionEvaluation,
     trace_facts: &mut Vec<StagedMotionTraceFact>,
 ) {
+    if let Some(strategy) = evaluation.retired_strategy {
+        push_transition_preference_trace(context, target, strategy, trace_facts);
+    }
     match evaluation.retirement {
         Some(TransitionRetirement::Replaced) => {
             if let Some(sample) = evaluation.retired_sample.as_ref() {
@@ -968,6 +1049,9 @@ fn trace_transition_evaluation(
             }
         }
         None => {}
+    }
+    if let Some(strategy) = evaluation.candidate_strategy {
+        push_transition_preference_trace(context, target, strategy, trace_facts);
     }
     if evaluation.started_at_candidate {
         push_transition_lifecycle(context, target, TraceMotionLifecycle::Started, trace_facts);
@@ -1050,58 +1134,49 @@ fn reconcile_explicit(
     preferences: StylePreferences,
     instant: MonotonicInstant,
 ) -> Result<ExplicitEvaluation, MotionPlanningError> {
+    let preference = motion_preference_mode(preferences, declaration.spec().reduced_motion());
     let mut terminal_commit = false;
     let mut started_at_candidate = false;
     let lifecycle = match retained {
-        Some(record) if record.declaration == *declaration => {
-            match (&record.lifecycle, preferences.reduced_motion()) {
-                (ExplicitLifecycle::Completed, _) => ExplicitLifecycle::Completed,
-                (ExplicitLifecycle::HoldInitial, true) => ExplicitLifecycle::HoldInitial,
-                (ExplicitLifecycle::HoldInitial, false) => {
-                    started_at_candidate = true;
-                    checked_active(declaration, instant)?
-                }
-                (ExplicitLifecycle::Active { start }, false) => {
-                    ExplicitLifecycle::Active { start: *start }
-                }
-                (ExplicitLifecycle::Active { start }, true) => {
-                    match declaration.spec().reduced_motion() {
-                        ReducedMotionStrategy::SnapToEnd => {
-                            terminal_commit = true;
-                            ExplicitLifecycle::Completed
-                        }
-                        ReducedMotionStrategy::HoldInitial => ExplicitLifecycle::HoldInitial,
-                        ReducedMotionStrategy::PreserveEssential => {
-                            ExplicitLifecycle::Active { start: *start }
-                        }
-                        _ => unreachable!(
-                            "runtime and core reduced-motion strategy vocabularies are version-locked"
-                        ),
-                    }
-                }
+        Some(record) if record.declaration == *declaration => match (&record.lifecycle, preference) {
+            (ExplicitLifecycle::Completed, _) => ExplicitLifecycle::Completed,
+            (ExplicitLifecycle::HoldInitial, MotionPreferenceMode::HoldInitial) => {
+                ExplicitLifecycle::HoldInitial
             }
-        }
-        Some(_) | None => {
-            if preferences.reduced_motion() {
-                match declaration.spec().reduced_motion() {
-                    ReducedMotionStrategy::SnapToEnd => {
-                        terminal_commit = true;
-                        ExplicitLifecycle::Completed
-                    }
-                    ReducedMotionStrategy::HoldInitial => ExplicitLifecycle::HoldInitial,
-                    ReducedMotionStrategy::PreserveEssential => {
-                        started_at_candidate = true;
-                        checked_active(declaration, instant)?
-                    }
-                    _ => unreachable!(
-                        "runtime and core reduced-motion strategy vocabularies are version-locked"
-                    ),
-                }
-            } else {
+            (
+                ExplicitLifecycle::HoldInitial,
+                MotionPreferenceMode::Normal | MotionPreferenceMode::PreserveEssential,
+            ) => {
                 started_at_candidate = true;
                 checked_active(declaration, instant)?
             }
-        }
+            (ExplicitLifecycle::HoldInitial, MotionPreferenceMode::SnapToEnd) => {
+                terminal_commit = true;
+                ExplicitLifecycle::Completed
+            }
+            (
+                ExplicitLifecycle::Active { start },
+                MotionPreferenceMode::Normal | MotionPreferenceMode::PreserveEssential,
+            ) => ExplicitLifecycle::Active { start: *start },
+            (ExplicitLifecycle::Active { .. }, MotionPreferenceMode::SnapToEnd) => {
+                terminal_commit = true;
+                ExplicitLifecycle::Completed
+            }
+            (ExplicitLifecycle::Active { .. }, MotionPreferenceMode::HoldInitial) => {
+                ExplicitLifecycle::HoldInitial
+            }
+        },
+        Some(_) | None => match preference {
+            MotionPreferenceMode::SnapToEnd => {
+                terminal_commit = true;
+                ExplicitLifecycle::Completed
+            }
+            MotionPreferenceMode::HoldInitial => ExplicitLifecycle::HoldInitial,
+            MotionPreferenceMode::Normal | MotionPreferenceMode::PreserveEssential => {
+                started_at_candidate = true;
+                checked_active(declaration, instant)?
+            }
+        },
     };
 
     let live_sample = match lifecycle {
@@ -1165,51 +1240,73 @@ fn reconcile_transition(
     if matches!(retained_sample.phase, LivePhase::Completed) {
         let mut evaluation = start_transition(intent, &retained_sample.value)?;
         evaluation.retired_sample = Some(retained_sample.clone());
+        evaluation.retired_strategy = Some(retained.spec.reduced_motion());
         evaluation.retirement = Some(TransitionRetirement::Completed);
         return Ok(evaluation);
-    }
-    if intent.preferences.reduced_motion()
-        && retained.spec.reduced_motion() == ReducedMotionStrategy::SnapToEnd
-    {
-        return Ok(TransitionEvaluation::none());
     }
 
     let target_changed =
         retained.to != *intent.target_value || retained.target_provenance != *intent.provenance;
     match intent.policy {
-        ResolvedTransitionPolicy::Absent if !target_changed => Ok(TransitionEvaluation {
-            record: Some(retained.clone()),
-            retired_sample: None,
-            retirement: None,
-            candidate_sample: Some(retained_sample.clone()),
-            started_at_candidate: false,
-            terminal_commit: false,
-        }),
-        ResolvedTransitionPolicy::Disabled | ResolvedTransitionPolicy::Absent => {
+        ResolvedTransitionPolicy::Disabled | ResolvedTransitionPolicy::Absent if target_changed => {
             Ok(TransitionEvaluation {
                 record: None,
                 retired_sample: Some(retained_sample.clone()),
+                retired_strategy: None,
                 retirement: Some(TransitionRetirement::Cancelled),
                 candidate_sample: None,
+                candidate_strategy: None,
                 started_at_candidate: false,
                 terminal_commit: false,
             })
         }
-        ResolvedTransitionPolicy::Enabled(spec) if !target_changed && spec == &retained.spec => {
+        ResolvedTransitionPolicy::Disabled => Ok(TransitionEvaluation {
+            record: None,
+            retired_sample: Some(retained_sample.clone()),
+            retired_strategy: None,
+            retirement: Some(TransitionRetirement::Cancelled),
+            candidate_sample: None,
+            candidate_strategy: None,
+            started_at_candidate: false,
+            terminal_commit: false,
+        }),
+        ResolvedTransitionPolicy::Enabled(spec) if target_changed || spec != &retained.spec => {
+            let mut evaluation = start_transition(intent, &retained_sample.value)?;
+            evaluation.retired_sample = Some(retained_sample.clone());
+            evaluation.retired_strategy = None;
+            evaluation.retirement = Some(TransitionRetirement::Replaced);
+            Ok(evaluation)
+        }
+        ResolvedTransitionPolicy::Absent | ResolvedTransitionPolicy::Enabled(_) => {
+            if motion_preference_mode(intent.preferences, retained.spec.reduced_motion())
+                == MotionPreferenceMode::SnapToEnd
+            {
+                return Ok(TransitionEvaluation {
+                    record: None,
+                    retired_sample: Some(endpoint_live_sample(
+                        retained.to.clone(),
+                        LivePhase::Completed,
+                        None,
+                        Some(UnitInterval::ONE),
+                    )),
+                    retired_strategy: Some(retained.spec.reduced_motion()),
+                    retirement: Some(TransitionRetirement::Completed),
+                    candidate_sample: None,
+                    candidate_strategy: None,
+                    started_at_candidate: false,
+                    terminal_commit: false,
+                });
+            }
             Ok(TransitionEvaluation {
                 record: Some(retained.clone()),
                 retired_sample: None,
+                retired_strategy: None,
                 retirement: None,
                 candidate_sample: Some(retained_sample.clone()),
+                candidate_strategy: Some(retained.spec.reduced_motion()),
                 started_at_candidate: false,
                 terminal_commit: false,
             })
-        }
-        ResolvedTransitionPolicy::Enabled(_) => {
-            let mut evaluation = start_transition(intent, &retained_sample.value)?;
-            evaluation.retired_sample = Some(retained_sample.clone());
-            evaluation.retirement = Some(TransitionRetirement::Replaced);
-            Ok(evaluation)
         }
     }
 }
@@ -1224,10 +1321,28 @@ fn start_transition(
     if source == intent.target_value {
         return Ok(TransitionEvaluation::none());
     }
-    if intent.preferences.reduced_motion()
-        && spec.reduced_motion() == ReducedMotionStrategy::SnapToEnd
-    {
-        return Ok(TransitionEvaluation::none());
+    match motion_preference_mode(intent.preferences, spec.reduced_motion()) {
+        MotionPreferenceMode::SnapToEnd => {
+            return Ok(TransitionEvaluation {
+                record: None,
+                retired_sample: None,
+                retired_strategy: None,
+                retirement: None,
+                candidate_sample: Some(endpoint_live_sample(
+                    intent.target_value.clone(),
+                    LivePhase::Completed,
+                    None,
+                    Some(UnitInterval::ONE),
+                )),
+                candidate_strategy: Some(spec.reduced_motion()),
+                started_at_candidate: false,
+                terminal_commit: true,
+            });
+        }
+        MotionPreferenceMode::HoldInitial => {
+            unreachable!("validated transition cannot use HoldInitial reduced motion")
+        }
+        MotionPreferenceMode::Normal | MotionPreferenceMode::PreserveEssential => {}
     }
     check_transition_schedule(spec, intent.instant)?;
     let record = TransitionRecord {
@@ -1244,11 +1359,37 @@ fn start_transition(
     Ok(TransitionEvaluation {
         record: Some(record),
         retired_sample: None,
+        retired_strategy: None,
         retirement: None,
         candidate_sample: Some(sample),
+        candidate_strategy: Some(spec.reduced_motion()),
         started_at_candidate: true,
         terminal_commit,
     })
+}
+
+fn motion_preference_mode(
+    preferences: StylePreferences,
+    strategy: ReducedMotionStrategy,
+) -> MotionPreferenceMode {
+    if !preferences.reduced_motion() {
+        return MotionPreferenceMode::Normal;
+    }
+    match strategy {
+        ReducedMotionStrategy::SnapToEnd => MotionPreferenceMode::SnapToEnd,
+        ReducedMotionStrategy::HoldInitial => MotionPreferenceMode::HoldInitial,
+        ReducedMotionStrategy::PreserveEssential => MotionPreferenceMode::PreserveEssential,
+        _ => unreachable!("runtime and core reduced-motion strategy vocabularies are version-locked"),
+    }
+}
+
+const fn trace_preference_decision(mode: MotionPreferenceMode) -> TraceMotionPreferenceDecision {
+    match mode {
+        MotionPreferenceMode::Normal => TraceMotionPreferenceDecision::Normal,
+        MotionPreferenceMode::SnapToEnd => TraceMotionPreferenceDecision::SnapToEnd,
+        MotionPreferenceMode::HoldInitial => TraceMotionPreferenceDecision::HoldInitial,
+        MotionPreferenceMode::PreserveEssential => TraceMotionPreferenceDecision::PreserveEssential,
+    }
 }
 
 fn sample_retained_explicit(
