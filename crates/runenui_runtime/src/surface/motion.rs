@@ -805,15 +805,19 @@ fn plan_target(
     let old_transition_sample = old_transition
         .map(|record| sample_transition(record, context.instant))
         .transpose()?;
-    let transition_preempted = new_explicit.is_some_and(explicit_has_candidate_authority)
-        && old_transition.is_some();
+    let transition_preempted =
+        new_explicit.is_some_and(explicit_has_candidate_authority) && old_transition.is_some();
 
     if apply_explicit_candidate(new_explicit, suppressed, context.position, outputs) {
         return Ok(());
     }
 
-    let explicit_exit =
-        explicit_exit_facts(context, old_explicit, old_explicit_sample.as_ref(), new_explicit);
+    let explicit_exit = explicit_exit_facts(
+        context,
+        old_explicit,
+        old_explicit_sample.as_ref(),
+        new_explicit,
+    );
     let prior_value = context
         .prior_computed
         .zip(context.prior_layout)
@@ -939,12 +943,7 @@ fn trace_transition_evaluation(
             if let Some(sample) = evaluation.retired_sample.as_ref() {
                 push_transition_sample_trace(context, target, sample, trace_facts);
             }
-            push_transition_lifecycle(
-                context,
-                target,
-                TraceMotionLifecycle::Replaced,
-                trace_facts,
-            );
+            push_transition_lifecycle(context, target, TraceMotionLifecycle::Replaced, trace_facts);
         }
         Some(TransitionRetirement::Cancelled) => {
             if let Some(sample) = evaluation.retired_sample.as_ref() {
@@ -971,12 +970,7 @@ fn trace_transition_evaluation(
         None => {}
     }
     if evaluation.started_at_candidate {
-        push_transition_lifecycle(
-            context,
-            target,
-            TraceMotionLifecycle::Started,
-            trace_facts,
-        );
+        push_transition_lifecycle(context, target, TraceMotionLifecycle::Started, trace_facts);
     }
     if evaluation.terminal_commit {
         push_transition_lifecycle(
