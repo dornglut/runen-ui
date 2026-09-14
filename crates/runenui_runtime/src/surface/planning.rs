@@ -261,8 +261,8 @@ fn stage_non_structural_motion<Action>(
     })
 }
 
-fn dirty_after_motion(
-    effects: &EffectiveEffects,
+const fn dirty_after_motion(
+    effects: EffectiveEffects,
     layout_dirty: bool,
     paint_dirty: bool,
 ) -> (bool, bool, bool) {
@@ -359,7 +359,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         stage_non_structural_motion(tree, context, cache, motion_store, instant, &mut current)?;
     completed.insert(DirtyPhases::MOTION);
     let (layout_dirty, presentation_dirty, paint_dirty) =
-        dirty_after_motion(&motion.effects, layout_dirty, paint_dirty);
+        dirty_after_motion(motion.effects, layout_dirty, paint_dirty);
 
     let (publication_phases, semantic_dirty) = complete_non_structural_publication_phases(
         pending,
