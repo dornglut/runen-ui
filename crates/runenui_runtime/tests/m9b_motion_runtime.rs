@@ -1,4 +1,8 @@
 #![allow(refining_impl_trait)]
+#![allow(
+    clippy::float_cmp,
+    reason = "M9 motion endpoint proofs require exact accepted 0/1 sample identity"
+)]
 
 use std::time::Duration;
 
