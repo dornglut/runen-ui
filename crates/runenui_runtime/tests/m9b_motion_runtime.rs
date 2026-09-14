@@ -7,12 +7,13 @@
 use std::time::Duration;
 
 use runenui_core::{
-    AnimationId, Element, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,
-    MotionTarget, MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity,
+    AnimationId, Element, ExplicitTimeline, MonotonicInstant, MotionEasing, MotionKeyframe,
+    MotionRepeat, MotionTarget, MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity,
     StyleEnvironment, TimelineSpec, TransitionSpec, UiApp, UnitInterval, View, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, SurfaceBuildContext, SurfacePhase, SurfacePublication,
+    AppRuntime, LayoutConstraints, RuntimeConfig, SurfaceBuildContext, SurfacePhase,
+    SurfacePublication, TraceConfig, TraceMotionFact, TraceMotionPolicy, TraceRecordKind,
 };
 
 struct TimelineApp;
@@ -191,4 +192,43 @@ fn zero_duration_handoff_commits_style_target_in_the_same_candidate() {
     let retained = publish(&mut runtime, &environment);
     assert_eq!(root_opacity(&retained), 0.0);
     assert!(runtime.last_surface_phase_report().executed().is_empty());
+}
+
+#[test]
+fn enabled_transition_policy_is_recorded_in_the_canonical_trace() {
+    let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(128));
+    let mut runtime = AppRuntime::<TimelineHandoffApp>::mount_with_config(
+        Duration::from_millis(100),
+        config,
+    );
+    let environment = StyleEnvironment::default();
+
+    let publication = publish(&mut runtime, &environment);
+    let root = publication
+        .frame()
+        .root()
+        .unwrap_or_else(|| unreachable!("motion trace proof has a root node"));
+    let policy_records = runtime
+        .trace()
+        .records()
+        .filter(|record| {
+            matches!(
+                record.kind(),
+                TraceRecordKind::Motion {
+                    target: MotionTarget::Opacity,
+                    fact: TraceMotionFact::PolicyResolved {
+                        policy: TraceMotionPolicy::Enabled
+                    }
+                }
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(policy_records.len(), 1);
+    let record = policy_records[0];
+    assert_eq!(
+        record.target().map(|target| target.mounted_node_id()),
+        Some(root.id())
+    );
+    assert_eq!(record.instant(), Some(MonotonicInstant::ZERO));
 }
