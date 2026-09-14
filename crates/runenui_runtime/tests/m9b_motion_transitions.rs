@@ -14,12 +14,14 @@ use runenui_runtime::{
 struct TransitionState {
     transparent: bool,
     policy_enabled: bool,
+    policy_disabled: bool,
 }
 
 #[derive(Clone, Copy)]
 enum TransitionAction {
     SetTarget(bool),
     SetPolicy(bool),
+    DisablePolicy,
 }
 
 struct TransitionApp;
@@ -36,7 +38,9 @@ impl UiApp for TransitionApp {
             SceneOpacity::OPAQUE
         };
         let root = text("transition").key("root").opacity(opacity);
-        if state.policy_enabled {
+        if state.policy_disabled {
+            root.transition_disabled(MotionTarget::Opacity).into_element()
+        } else if state.policy_enabled {
             root.transition(MotionTarget::Opacity, linear_transition())
                 .into_element()
         } else {
@@ -47,8 +51,23 @@ impl UiApp for TransitionApp {
     fn update(state: &mut Self::State, action: Self::Action) {
         match action {
             TransitionAction::SetTarget(transparent) => state.transparent = transparent,
-            TransitionAction::SetPolicy(enabled) => state.policy_enabled = enabled,
+            TransitionAction::SetPolicy(enabled) => {
+                state.policy_enabled = enabled;
+                state.policy_disabled = false;
+            }
+            TransitionAction::DisablePolicy => {
+                state.policy_enabled = false;
+                state.policy_disabled = true;
+            }
         }
+    }
+}
+
+fn initial_state() -> TransitionState {
+    TransitionState {
+        transparent: false,
+        policy_enabled: true,
+        policy_disabled: false,
     }
 }
 
@@ -93,10 +112,7 @@ fn dispatch(runtime: &mut AppRuntime<TransitionApp>, action: TransitionAction) {
 
 #[test]
 fn interrupted_transition_reverses_from_the_current_same_clock_sample() {
-    let mut runtime = AppRuntime::<TransitionApp>::mount(TransitionState {
-        transparent: false,
-        policy_enabled: true,
-    });
+    let mut runtime = AppRuntime::<TransitionApp>::mount(initial_state());
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
@@ -128,10 +144,7 @@ fn interrupted_transition_reverses_from_the_current_same_clock_sample() {
 
 #[test]
 fn removing_policy_keeps_an_unchanged_live_transition_until_completion() {
-    let mut runtime = AppRuntime::<TransitionApp>::mount(TransitionState {
-        transparent: false,
-        policy_enabled: true,
-    });
+    let mut runtime = AppRuntime::<TransitionApp>::mount(initial_state());
     let environment = StyleEnvironment::default();
 
     let initial = publish(&mut runtime, &environment);
@@ -159,4 +172,33 @@ fn removing_policy_keeps_an_unchanged_live_transition_until_completion() {
         .unwrap_or_else(|_| unreachable!("bounded retained transition advance is representable"));
     let continued = publish(&mut runtime, &environment);
     assert!((opacity(&continued) - 0.4).abs() <= f32::EPSILON);
+}
+
+#[test]
+fn explicit_disabled_policy_cancels_the_live_transition_at_the_current_target() {
+    let mut runtime = AppRuntime::<TransitionApp>::mount(initial_state());
+    let environment = StyleEnvironment::default();
+
+    assert_eq!(opacity(&publish(&mut runtime, &environment)), 1.0);
+    dispatch(&mut runtime, TransitionAction::SetTarget(true));
+    assert_eq!(opacity(&publish(&mut runtime, &environment)), 1.0);
+
+    runtime
+        .advance_time(Duration::from_millis(40))
+        .unwrap_or_else(|_| unreachable!("bounded transition advance is representable"));
+    let live = publish(&mut runtime, &environment);
+    assert!((opacity(&live) - 0.6).abs() <= f32::EPSILON);
+
+    dispatch(&mut runtime, TransitionAction::DisablePolicy);
+    let disabled = publish(&mut runtime, &environment);
+    assert_eq!(
+        opacity(&disabled),
+        0.0,
+        "an explicit Disabled policy must cancel the live transition and expose the current resolved target"
+    );
+
+    runtime
+        .advance_time(Duration::from_millis(20))
+        .unwrap_or_else(|_| unreachable!("bounded post-disable advance is representable"));
+    assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
 }
