@@ -89,6 +89,31 @@ const fn semantic_product_is_dirty(
         || pending.contains(DirtyPhases::FOCUS_VALIDATION)
 }
 
+fn non_structural_publication_phases(
+    pending: DirtyPhases,
+    layout_dirty: bool,
+    presentation_dirty: bool,
+    mut hit_dirty: bool,
+    mut paint_dirty: bool,
+) -> (DirtyPhases, bool) {
+    if presentation_dirty {
+        hit_dirty = true;
+        paint_dirty = true;
+    }
+    let semantic_dirty = semantic_product_is_dirty(pending, layout_dirty, presentation_dirty);
+    let phases = surface_capability_phases([
+        (layout_dirty, DirtyPhases::LAYOUT),
+        (hit_dirty, DirtyPhases::HIT_TEST),
+        (paint_dirty, DirtyPhases::PAINT),
+        (semantic_dirty, DirtyPhases::SEMANTICS),
+        (
+            pending.contains(DirtyPhases::DIAGNOSTICS),
+            DirtyPhases::DIAGNOSTICS,
+        ),
+    ]);
+    (phases, semantic_dirty)
+}
+
 fn style_product_is_dirty(
     pending: DirtyPhases,
     current: &SurfaceCache,
@@ -320,7 +345,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let mut layout_dirty =
         pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
     let mut presentation_dirty = layout_dirty;
-    let mut hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
+    let hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
     let mut paint_dirty = pending.contains(DirtyPhases::PAINT);
     let mut report = SurfacePhaseReport::default();
     let mut completed = DirtyPhases::default();
@@ -344,24 +369,15 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     layout_dirty |= motion.effects.layout();
     presentation_dirty |= motion.effects.presentation();
     paint_dirty |= motion.effects.paint();
-
     presentation_dirty |= layout_dirty;
-    if presentation_dirty {
-        hit_dirty = true;
-        paint_dirty = true;
-    }
 
-    let semantic_dirty = semantic_product_is_dirty(pending, layout_dirty, presentation_dirty);
-    let publication_phases = surface_capability_phases([
-        (layout_dirty, DirtyPhases::LAYOUT),
-        (hit_dirty, DirtyPhases::HIT_TEST),
-        (paint_dirty, DirtyPhases::PAINT),
-        (semantic_dirty, DirtyPhases::SEMANTICS),
-        (
-            pending.contains(DirtyPhases::DIAGNOSTICS),
-            DirtyPhases::DIAGNOSTICS,
-        ),
-    ]);
+    let (publication_phases, semantic_dirty) = non_structural_publication_phases(
+        pending,
+        layout_dirty,
+        presentation_dirty,
+        hit_dirty,
+        paint_dirty,
+    );
     tree.extend_surface_publication_capabilities(&mut capability_plan, publication_phases);
     let semantic_capability_plan =
         semantic_dirty.then(|| tree.plan_semantic_publication_capabilities(&capability_plan));
