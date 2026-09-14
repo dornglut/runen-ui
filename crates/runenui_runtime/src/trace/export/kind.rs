@@ -250,7 +250,11 @@ fn encode_motion_data(output: &mut String, kind: &TraceRecordKind) -> bool {
             output.push_str(",\"eased_progress_bits\":");
             json::optional_u64(output, eased_progress_bits.map(u64::from));
             output.push(',');
-            field_str(output, "interpolation", motion_interpolation(*interpolation));
+            field_str(
+                output,
+                "interpolation",
+                motion_interpolation(*interpolation),
+            );
             output.push(',');
             field_bool(output, "suppressed", *suppressed);
         }
