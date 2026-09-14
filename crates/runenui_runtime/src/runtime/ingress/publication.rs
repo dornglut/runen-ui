@@ -466,7 +466,7 @@ mod tests {
     fn motion_followup_redraw_exhaustion_refuses_before_publication_commit() {
         let mut runtime = Runtime::<(), (), NoHostProtocol>::mount(
             (),
-            |_| Element::new(MotionProbe).timeline(active_opacity_timeline()),
+            |()| Element::new(MotionProbe).timeline(active_opacity_timeline()),
             RuntimeConfig::default(),
         );
         runtime
