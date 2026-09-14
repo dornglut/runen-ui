@@ -421,8 +421,7 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
     assert!((first.nodes[0].bounds.width() - 10.0).abs() <= f32::EPSILON);
     let semantic_id = first.nodes[0].id.clone();
     let commit = planned.commit_store();
-    let (_, initial_report, _activity) =
-        commit.commit(&mut tree, &mut cache, &mut motion_store);
+    let (_, initial_report, _activity) = commit.commit(&mut tree, &mut cache, &mut motion_store);
     assert!(
         initial_report
             .executed()
