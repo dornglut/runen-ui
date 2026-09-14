@@ -253,3 +253,28 @@ fn explicit_replacement_traces_old_sample_then_replacement_before_new_start() {
         "replacement must resolve policy, observe the old same-clock sample before retiring it, then start and sample the replacement at authored keyframe zero"
     );
 }
+
+#[test]
+fn zero_duration_trace_preserves_start_before_same_candidate_completion() {
+    let mut runtime = AppRuntime::<TraceLifecycleApp>::mount(TraceState {
+        duration: Duration::ZERO,
+    });
+
+    let start = runtime.trace().len();
+    publish(&mut runtime);
+    assert_eq!(
+        observed_since(&runtime, start),
+        [
+            ObservedFact::Policy(TraceMotionPolicy::Absent),
+            ObservedFact::Started,
+            ObservedFact::Completed,
+            ObservedFact::Sample {
+                phase: TraceMotionPhase::Completed,
+                progress_bits: Some(UnitInterval::ONE.get().to_bits()),
+                eased_progress_bits: None,
+                interpolation: TraceMotionInterpolation::Endpoint,
+            },
+        ],
+        "a zero-duration ordinary timeline starts and completes atomically in one successful candidate without losing the start observation"
+    );
+}

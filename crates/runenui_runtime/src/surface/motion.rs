@@ -205,6 +205,7 @@ struct ExplicitEvaluation {
     record: ExplicitMotionRecord,
     candidate_sample: Option<MotionValue>,
     terminal_commit: bool,
+    started_at_candidate: bool,
     live_sample: Option<LiveSample>,
 }
 
@@ -461,13 +462,16 @@ fn trace_explicit_entry(
 ) {
     let declaration = &evaluation.record.declaration;
     let Some(prior) = prior.filter(|record| record.declaration == *declaration) else {
-        match evaluation.record.lifecycle {
-            ExplicitLifecycle::Active { .. } => push_explicit_lifecycle(
+        if evaluation.started_at_candidate {
+            push_explicit_lifecycle(
                 context,
                 declaration,
                 TraceMotionLifecycle::Started,
                 trace_facts,
-            ),
+            );
+        }
+        match evaluation.record.lifecycle {
+            ExplicitLifecycle::Active { .. } => {}
             ExplicitLifecycle::HoldInitial => push_explicit_lifecycle(
                 context,
                 declaration,
@@ -547,11 +551,15 @@ fn trace_explicit_entry(
             );
         }
         (ExplicitLifecycle::Active { .. }, ExplicitLifecycle::Active { .. })
-        | (ExplicitLifecycle::HoldInitial, ExplicitLifecycle::HoldInitial)
+        | (
+            ExplicitLifecycle::HoldInitial | ExplicitLifecycle::Completed,
+            ExplicitLifecycle::HoldInitial,
+        )
         | (ExplicitLifecycle::Completed, ExplicitLifecycle::Active { .. })
-        | (ExplicitLifecycle::Completed, ExplicitLifecycle::HoldInitial)
-        | (ExplicitLifecycle::Active { .. }, ExplicitLifecycle::Completed)
-        | (ExplicitLifecycle::HoldInitial, ExplicitLifecycle::Completed) => {}
+        | (
+            ExplicitLifecycle::Active { .. } | ExplicitLifecycle::HoldInitial,
+            ExplicitLifecycle::Completed,
+        ) => {}
     }
 }
 
@@ -832,12 +840,16 @@ fn reconcile_explicit(
     instant: MonotonicInstant,
 ) -> Result<ExplicitEvaluation, MotionPlanningError> {
     let mut terminal_commit = false;
+    let mut started_at_candidate = false;
     let lifecycle = match retained {
         Some(record) if record.declaration == *declaration => {
             match (&record.lifecycle, preferences.reduced_motion()) {
                 (ExplicitLifecycle::Completed, _) => ExplicitLifecycle::Completed,
                 (ExplicitLifecycle::HoldInitial, true) => ExplicitLifecycle::HoldInitial,
-                (ExplicitLifecycle::HoldInitial, false) => checked_active(declaration, instant)?,
+                (ExplicitLifecycle::HoldInitial, false) => {
+                    started_at_candidate = true;
+                    checked_active(declaration, instant)?
+                }
                 (ExplicitLifecycle::Active { start }, false) => {
                     ExplicitLifecycle::Active { start: *start }
                 }
@@ -867,6 +879,7 @@ fn reconcile_explicit(
                     }
                     ReducedMotionStrategy::HoldInitial => ExplicitLifecycle::HoldInitial,
                     ReducedMotionStrategy::PreserveEssential => {
+                        started_at_candidate = true;
                         checked_active(declaration, instant)?
                     }
                     _ => unreachable!(
@@ -874,6 +887,7 @@ fn reconcile_explicit(
                     ),
                 }
             } else {
+                started_at_candidate = true;
                 checked_active(declaration, instant)?
             }
         }
@@ -916,6 +930,7 @@ fn reconcile_explicit(
         },
         candidate_sample,
         terminal_commit,
+        started_at_candidate,
         live_sample,
     })
 }
@@ -1002,7 +1017,7 @@ fn sample_retained_explicit(
     }
 }
 
-fn endpoint_value_sample(value: MotionValue, progress: UnitInterval) -> ValueSample {
+const fn endpoint_value_sample(value: MotionValue, progress: UnitInterval) -> ValueSample {
     ValueSample {
         value,
         progress: Some(progress),
@@ -1011,7 +1026,7 @@ fn endpoint_value_sample(value: MotionValue, progress: UnitInterval) -> ValueSam
     }
 }
 
-fn endpoint_live_sample(
+const fn endpoint_live_sample(
     value: MotionValue,
     phase: LivePhase,
     terminal_deadline: Option<MonotonicInstant>,
