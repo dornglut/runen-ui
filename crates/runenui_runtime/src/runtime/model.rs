@@ -104,16 +104,17 @@ pub enum RuntimeStatus {
 
 /// Refusal from one explicit surface publication attempt.
 ///
-/// `Full`, `TextLayout`, and `PresentationGeometry` are recoverable publication
-/// refusals: the previous publication remains authoritative and redraw/dirty state
-/// stays pending for a later retry. Terminal failures expose the exact runtime
-/// reason that prevented publication.
+/// `Full`, `TextLayout`, `PresentationGeometry`, and `Motion` are recoverable
+/// publication refusals: the previous publication remains authoritative and
+/// redraw/dirty state stays pending for a later retry. Terminal failures expose
+/// the exact runtime reason that prevented publication.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PublishSurfaceError {
     Full,
     TextLayout(runenui_text::TextLayoutError),
     PresentationGeometry,
+    Motion,
     Closed,
     Terminal(RuntimeTerminalReason),
 }
