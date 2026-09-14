@@ -13,8 +13,9 @@ use crate::style_debug::SurfaceStyleReport;
 use super::cache::{CachedLayoutFacts, context_key};
 use super::motion::{self, MotionPlanningError};
 use super::resolve::{
-    PresentationGeometryError, ResolvedSurfaceTree, collect_topology, hit_contexts, paint_contexts,
-    resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
+    EffectiveEffects, PresentationGeometryError, ResolvedSurfaceTree, collect_topology, hit_contexts,
+    paint_contexts, resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation,
+    resolve_styles,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::PlannedSurfacePublication;
@@ -218,10 +219,8 @@ fn resolve_style_phase_if_dirty<Action>(
 struct NonStructuralMotionStage {
     store: SurfaceMotionStore,
     activity: SurfaceMotionActivity,
+    effects: EffectiveEffects,
     effective_changed: bool,
-    layout_dirty: bool,
-    presentation_dirty: bool,
-    paint_dirty: bool,
 }
 
 fn stage_non_structural_motion<Action>(
@@ -250,11 +249,21 @@ fn stage_non_structural_motion<Action>(
     Ok(NonStructuralMotionStage {
         store: SurfaceMotionStore(next_store),
         activity: SurfaceMotionActivity(activity),
+        effects,
         effective_changed,
-        layout_dirty: effects.layout(),
-        presentation_dirty: effects.presentation(),
-        paint_dirty: effects.paint(),
     })
+}
+
+fn publication_needs_recompose(
+    effective_changed: bool,
+    report: &SurfacePhaseReport,
+    scene_diagnostics_changed: bool,
+) -> bool {
+    effective_changed
+        || report.contains(SurfacePhase::Style)
+        || report.contains(SurfacePhase::Layout)
+        || report.contains(SurfacePhase::Diagnostics)
+        || scene_diagnostics_changed
 }
 
 fn placeholder_publication() -> SurfacePublication {
@@ -278,8 +287,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     instant: MonotonicInstant,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let pending = tree.pending_phases();
-    let tree_dirty = cache.is_none() || pending.contains(DirtyPhases::TREE);
-    if tree_dirty {
+    if cache.is_none() || pending.contains(DirtyPhases::TREE) {
         return plan_structural_surface(
             tree,
             context,
@@ -294,12 +302,11 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let next_context = context_key(context, text_system.source_snapshot());
     let mut current = stage_non_structural_cache(cache);
     let style_dirty = style_product_is_dirty(pending, &current, &next_context, interaction);
-    let target_layout_dirty = pending.contains(DirtyPhases::LAYOUT);
-    let mut layout_dirty = target_layout_dirty || layout_context_changed(&current, &next_context);
+    let mut layout_dirty =
+        pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
     let mut presentation_dirty = layout_dirty;
     let mut hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
     let mut paint_dirty = pending.contains(DirtyPhases::PAINT);
-    let diagnostics_dirty = pending.contains(DirtyPhases::DIAGNOSTICS);
     let mut report = SurfacePhaseReport::default();
     let mut completed = DirtyPhases::default();
     let mut capability_plan = initial_surface_capability_plan(tree, style_dirty);
@@ -319,9 +326,9 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let motion =
         stage_non_structural_motion(tree, context, cache, motion_store, instant, &mut current)?;
     completed.insert(DirtyPhases::MOTION);
-    layout_dirty |= motion.layout_dirty;
-    presentation_dirty |= motion.presentation_dirty;
-    paint_dirty |= motion.paint_dirty;
+    layout_dirty |= motion.effects.layout();
+    presentation_dirty |= motion.effects.presentation();
+    paint_dirty |= motion.effects.paint();
 
     presentation_dirty |= layout_dirty;
     if presentation_dirty {
@@ -329,18 +336,20 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         paint_dirty = true;
     }
 
-    let semantic_product_dirty =
-        semantic_product_is_dirty(pending, layout_dirty, presentation_dirty);
+    let semantic_dirty = semantic_product_is_dirty(pending, layout_dirty, presentation_dirty);
     let publication_phases = surface_capability_phases([
         (layout_dirty, DirtyPhases::LAYOUT),
         (hit_dirty, DirtyPhases::HIT_TEST),
         (paint_dirty, DirtyPhases::PAINT),
-        (semantic_product_dirty, DirtyPhases::SEMANTICS),
-        (diagnostics_dirty, DirtyPhases::DIAGNOSTICS),
+        (semantic_dirty, DirtyPhases::SEMANTICS),
+        (
+            pending.contains(DirtyPhases::DIAGNOSTICS),
+            DirtyPhases::DIAGNOSTICS,
+        ),
     ]);
     tree.extend_surface_publication_capabilities(&mut capability_plan, publication_phases);
-    let semantic_capability_plan = semantic_product_dirty
-        .then(|| tree.plan_semantic_publication_capabilities(&capability_plan));
+    let semantic_capability_plan =
+        semantic_dirty.then(|| tree.plan_semantic_publication_capabilities(&capability_plan));
 
     if layout_dirty {
         current.layout = Arc::new(resolve_layout_phase(tree, &current, context, text_system)?);
@@ -370,19 +379,18 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         report.record(SurfacePhase::Semantics);
         completed.insert(DirtyPhases::SEMANTICS);
     }
-    if diagnostics_dirty {
+    if pending.contains(DirtyPhases::DIAGNOSTICS) {
         current.diagnostics = Arc::new(resolve_diagnostics(&current.topology, &capability_plan));
         report.record(SurfacePhase::Diagnostics);
         completed.insert(DirtyPhases::DIAGNOSTICS);
     }
 
     current.context_key = Arc::new(next_context);
-    if motion.effective_changed
-        || report.contains(SurfacePhase::Style)
-        || report.contains(SurfacePhase::Layout)
-        || report.contains(SurfacePhase::Diagnostics)
-        || scene_diagnostics_changed
-    {
+    if publication_needs_recompose(
+        motion.effective_changed,
+        &report,
+        scene_diagnostics_changed,
+    ) {
         current.publication = compose_publication(&current);
     }
     Ok(PlannedSurfacePublication::new(
