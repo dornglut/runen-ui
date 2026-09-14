@@ -1,4 +1,8 @@
 #![allow(refining_impl_trait)]
+#![allow(
+    clippy::float_cmp,
+    reason = "M9 transition proofs require exact accepted endpoint identity at start and explicit disable"
+)]
 
 use std::time::Duration;
 
