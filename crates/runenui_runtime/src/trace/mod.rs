@@ -41,7 +41,8 @@ pub use model::{
 };
 pub(crate) use motion::StagedMotionTraceFact;
 pub use motion::{
-    TraceMotionCollision, TraceMotionEffectDecision, TraceMotionFact, TraceMotionInterpolation,
+    TraceMotionCollision, TraceMotionEffectDecision, TraceMotionEffectiveDecision,
+    TraceMotionEffects, TraceMotionFact, TraceMotionGroupDecision, TraceMotionInterpolation,
     TraceMotionLifecycle, TraceMotionPhase, TraceMotionPlanningRejection, TraceMotionPolicy,
     TraceMotionPreferenceDecision, TraceMotionSource,
 };
