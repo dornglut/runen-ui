@@ -47,6 +47,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     pub(crate) fn scheduler_observation(&self) -> SchedulerObservation {
         let now = self.now();
+        let timer_deadline = self
+            .timers
+            .iter()
+            .filter(|timer| self.work.is_running(timer.generation))
+            .map(|timer| timer.deadline)
+            .min();
+        let motion_deadline = self.surface_publication.motion_deadline();
+        let next_deadline = match (timer_deadline, motion_deadline) {
+            (Some(timer), Some(motion)) => Some(timer.min(motion)),
+            (Some(timer), None) => Some(timer),
+            (None, Some(motion)) => Some(motion),
+            (None, None) => None,
+        };
         SchedulerObservation {
             completion_imports_pending: self.completion_ingress.len() > 0,
             due_timers_pending: self
@@ -63,13 +76,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         && subscription.is_local_eligible()
                 }),
             mandatory_derived_work_pending: !self.mounted_subscription_reconcile_pending.is_empty(),
-            next_deadline: self
-                .timers
-                .iter()
-                .filter(|timer| self.work.is_running(timer.generation))
-                .map(|timer| timer.deadline)
-                .min(),
-            publication_dirty: self.surface_publication.is_dirty(),
+            next_deadline,
+            publication_dirty: self.surface_publication.is_dirty()
+                || self.surface_publication.motion_deadline_is_due(now),
         }
     }
 
