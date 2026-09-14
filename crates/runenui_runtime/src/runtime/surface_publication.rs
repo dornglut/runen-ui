@@ -1,7 +1,9 @@
 use core::num::NonZeroUsize;
 use std::{collections::VecDeque, sync::Arc};
 
-use runenui_core::{__runtime::RuntimeNamespace, SurfaceId, SurfaceInputContext};
+use runenui_core::{
+    __runtime::RuntimeNamespace, MonotonicInstant, SurfaceId, SurfaceInputContext,
+};
 use runenui_text::{TextLayoutError, TextSystem};
 
 use crate::{
@@ -14,8 +16,8 @@ use crate::{
         SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
     },
     surface::{
-        SurfaceCache, SurfaceInteractionProjection, SurfacePlanningError,
-        plan_mounted_surface_cached_with_text,
+        SurfaceCache, SurfaceInteractionProjection, SurfaceMotionActivity, SurfaceMotionStore,
+        SurfacePlanningError, plan_mounted_surface_cached_with_text,
     },
 };
 
@@ -123,6 +125,7 @@ pub(in crate::runtime) enum SurfacePublicationPlanError {
     SemanticIntegrity,
     TextLayout(TextLayoutError),
     PresentationGeometry,
+    Motion,
     CounterExhausted(SurfacePublicationCounter),
 }
 
@@ -132,14 +135,17 @@ impl From<SurfacePlanningError> for SurfacePublicationPlanError {
             SurfacePlanningError::SemanticIntegrity => Self::SemanticIntegrity,
             SurfacePlanningError::TextLayout(error) => Self::TextLayout(error),
             SurfacePlanningError::PresentationGeometry => Self::PresentationGeometry,
+            SurfacePlanningError::Motion => Self::Motion,
         }
     }
 }
 
 /// Sole runtime-owned state for current surface publication, renderer revision,
-/// redraw revision, and bounded displayed hit-test generations.
+/// redraw revision, live motion, and bounded displayed hit-test generations.
 pub(crate) struct SurfacePublicationState {
     cache: Option<SurfaceCache>,
+    motion_store: SurfaceMotionStore,
+    motion_deadline: Option<MonotonicInstant>,
     current_paint: Option<PaintPublication>,
     semantic_publication: SemanticPublicationState,
     phase_report: SurfacePhaseReport,
@@ -164,6 +170,8 @@ impl SurfacePublicationState {
         let surface_id = runtime_namespace.__runtime_surface_id(0, 1);
         Self {
             cache: None,
+            motion_store: SurfaceMotionStore::default(),
+            motion_deadline: None,
             current_paint: None,
             semantic_publication: SemanticPublicationState::default(),
             phase_report: SurfacePhaseReport::default(),
@@ -204,7 +212,8 @@ impl SurfacePublicationState {
         interaction: &SurfaceInteractionProjection,
         focused_owner: Option<&MountedNodeId>,
         admission: SurfacePublicationAdmission,
-    ) -> Result<SurfacePublication, SurfacePublicationPlanError> {
+        instant: MonotonicInstant,
+    ) -> Result<(SurfacePublication, SurfaceMotionActivity), SurfacePublicationPlanError> {
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
         let planned = plan_mounted_surface_cached_with_text(
             tree,
@@ -212,6 +221,8 @@ impl SurfacePublicationState {
             interaction,
             text_system,
             self.cache.as_ref(),
+            &self.motion_store,
+            instant,
         )?;
         let semantic_candidate = planned.semantic_candidate(focused_owner)?;
         let semantic_plan: SemanticPublicationPlan = self
@@ -281,24 +292,29 @@ impl SurfacePublicationState {
         };
 
         let commit = planned.commit_store();
-        let (products, report) = commit.commit(tree, &mut self.cache);
+        let (products, report, motion_activity) =
+            commit.commit(tree, &mut self.cache, &mut self.motion_store);
         self.semantic_publication.commit(semantic_plan);
         if let Some(revision) = allocated_paint_revision {
             self.next_paint_revision = revision.checked_add(1);
             self.current_paint = Some(paint_publication.clone());
         }
         self.phase_report = report;
+        self.motion_deadline = motion_activity.next_deadline();
         self.retain_new_snapshot(
             hit_test_scene.clone(),
             hit_test_generation,
             coordinate_revision,
         );
-        Ok(SurfacePublication::new(
-            paint_publication,
-            hit_test_scene,
-            products,
-            semantic_publication,
-            semantic_diagnostics,
+        Ok((
+            SurfacePublication::new(
+                paint_publication,
+                hit_test_scene,
+                products,
+                semantic_publication,
+                semantic_diagnostics,
+            ),
+            motion_activity,
         ))
     }
 
@@ -565,6 +581,27 @@ impl SurfacePublicationState {
             .as_ref()
             .map(SurfaceCache::current_focus_geometry)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn retire_motion_owner(&mut self, owner: &MountedNodeId) {
+        self.motion_store.retire_owner(owner);
+        self.motion_deadline = None;
+    }
+
+    pub(crate) fn clear_motion_for_shutdown(&mut self) {
+        self.motion_store.clear();
+        self.motion_deadline = None;
+    }
+
+    pub(crate) const fn motion_deadline(&self) -> Option<MonotonicInstant> {
+        self.motion_deadline
+    }
+
+    pub(crate) const fn motion_deadline_is_due(&self, now: MonotonicInstant) -> bool {
+        match self.motion_deadline {
+            Some(deadline) => now >= deadline,
+            None => false,
+        }
     }
 
     pub(crate) fn clear_cache(&mut self) {
