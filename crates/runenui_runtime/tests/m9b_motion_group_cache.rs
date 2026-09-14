@@ -123,7 +123,7 @@ fn root_opacity(publication: &SurfacePublication) -> f32 {
         .get()
 }
 
-fn advance<App: UiApp>(runtime: &mut AppRuntime<App>, millis: u64) {
+fn advance<App: UiApp>(runtime: &AppRuntime<App>, millis: u64) {
     runtime
         .advance_time(Duration::from_millis(millis))
         .unwrap_or_else(|_| unreachable!("bounded group/cache advance is representable"));
@@ -150,12 +150,12 @@ fn active_spec_retains_group_at_identity_sample_and_drops_it_at_terminal_identit
         "an active spec with a non-identity opacity keyframe must retain isolation even when the current sample is identity"
     );
 
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     let middle = publish(&mut runtime, &environment);
     assert_eq!(root_opacity(&middle), 0.5);
     assert!(!middle.paint_scene().groups().is_empty());
 
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     let completed = publish(&mut runtime, &environment);
     assert_eq!(root_opacity(&completed), 1.0);
     assert!(
@@ -173,7 +173,7 @@ fn mandatory_suppression_removes_motion_group_until_the_same_clock_sample_is_rev
     assert_eq!(root_opacity(&initial), 1.0);
     assert!(initial.paint_scene().groups().is_empty());
 
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     let suppressed = publish(&mut runtime, &high_contrast);
     assert_eq!(root_opacity(&suppressed), 1.0);
     assert!(suppressed.paint_scene().groups().is_empty());
@@ -199,7 +199,7 @@ fn equal_sample_reuses_paint_revision_while_active_motion_keeps_redraw_live() {
         "active motion must request a future redraw even when its current effective sample equals accepted content"
     );
 
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     let middle = publish(&mut runtime, &environment);
     assert_eq!(root_opacity(&middle), 1.0);
     assert_eq!(
