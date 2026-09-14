@@ -68,7 +68,7 @@ impl UiApp for TransitionApp {
     }
 }
 
-fn initial_state() -> TransitionState {
+const fn initial_state() -> TransitionState {
     TransitionState {
         transparent: false,
         policy_enabled: true,
