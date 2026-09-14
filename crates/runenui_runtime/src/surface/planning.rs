@@ -192,6 +192,82 @@ fn resolve_layout_phase<Action>(
     })
 }
 
+fn resolve_style_phase_if_dirty<Action>(
+    tree: &crate::mounted::MountedTree<Action>,
+    context: &SurfaceBuildContext<'_>,
+    interaction: &SurfaceInteractionProjection,
+    current: &mut SurfaceCache,
+    capability_plan: &SurfaceCapabilityPlan,
+    style_dirty: bool,
+) -> bool {
+    if !style_dirty {
+        return false;
+    }
+    let next_styles = resolve_styles(
+        tree,
+        &current.topology,
+        context.style_environment(),
+        interaction,
+        capability_plan,
+    );
+    current.interaction = Arc::new(interaction.clone());
+    current.styles = Arc::new(next_styles);
+    true
+}
+
+struct NonStructuralMotionStage {
+    store: SurfaceMotionStore,
+    activity: SurfaceMotionActivity,
+    effective_changed: bool,
+    layout_dirty: bool,
+    presentation_dirty: bool,
+    paint_dirty: bool,
+}
+
+fn stage_non_structural_motion<Action>(
+    tree: &crate::mounted::MountedTree<Action>,
+    context: &SurfaceBuildContext<'_>,
+    cache: Option<&SurfaceCache>,
+    motion_store: &SurfaceMotionStore,
+    instant: MonotonicInstant,
+    current: &mut SurfaceCache,
+) -> Result<NonStructuralMotionStage, SurfacePlanningError> {
+    let planned = motion::plan_surface_motion(
+        &motion_store.0,
+        tree,
+        &current.topology,
+        &current.styles,
+        cache,
+        context.style_environment().preferences(),
+        instant,
+    )?;
+    let (next_store, next_effective, activity) = planned.into_parts();
+    let effects = current.effective.effects_against(&next_effective);
+    let effective_changed = current.effective.as_ref() != &next_effective;
+    if effective_changed {
+        current.effective = Arc::new(next_effective);
+    }
+    Ok(NonStructuralMotionStage {
+        store: SurfaceMotionStore(next_store),
+        activity: SurfaceMotionActivity(activity),
+        effective_changed,
+        layout_dirty: effects.layout(),
+        presentation_dirty: effects.presentation(),
+        paint_dirty: effects.paint(),
+    })
+}
+
+fn placeholder_publication() -> SurfacePublication {
+    SurfacePublication::new(
+        SurfaceFrame::new(
+            LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO),
+            Vec::new(),
+        ),
+        SurfaceStyleReport::default(),
+        SurfaceLayoutReport::default(),
+    )
+}
+
 pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
@@ -201,7 +277,6 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     motion_store: &SurfaceMotionStore,
     instant: MonotonicInstant,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
-    let next_context = context_key(context, text_system.source_snapshot());
     let pending = tree.pending_phases();
     let tree_dirty = cache.is_none() || pending.contains(DirtyPhases::TREE);
     if tree_dirty {
@@ -210,13 +285,13 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
             context,
             interaction,
             text_system,
-            next_context,
             cache,
             motion_store,
             instant,
         );
     }
 
+    let next_context = context_key(context, text_system.source_snapshot());
     let mut current = stage_non_structural_cache(cache);
     let style_dirty = style_product_is_dirty(pending, &current, &next_context, interaction);
     let target_layout_dirty = pending.contains(DirtyPhases::LAYOUT);
@@ -229,39 +304,30 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let mut completed = DirtyPhases::default();
     let mut capability_plan = initial_surface_capability_plan(tree, style_dirty);
 
-    if style_dirty {
-        let next_styles = resolve_styles(
-            tree,
-            &current.topology,
-            context.style_environment(),
-            interaction,
-            &capability_plan,
-        );
-        current.interaction = Arc::new(interaction.clone());
-        current.styles = Arc::new(next_styles);
+    if resolve_style_phase_if_dirty(
+        tree,
+        context,
+        interaction,
+        &mut current,
+        &capability_plan,
+        style_dirty,
+    ) {
         report.record(SurfacePhase::Style);
         completed.insert(DirtyPhases::STYLE);
     }
 
-    let planned_motion = motion::plan_surface_motion(
-        &motion_store.0,
+    let motion = stage_non_structural_motion(
         tree,
-        &current.topology,
-        &current.styles,
+        context,
         cache,
-        context.style_environment().preferences(),
+        motion_store,
         instant,
+        &mut current,
     )?;
-    let (next_motion_store, next_effective, motion_activity) = planned_motion.into_parts();
-    let effective_effects = current.effective.effects_against(&next_effective);
-    let effective_changed = current.effective.as_ref() != &next_effective;
-    if effective_changed {
-        current.effective = Arc::new(next_effective);
-    }
     completed.insert(DirtyPhases::MOTION);
-    layout_dirty |= effective_effects.layout();
-    presentation_dirty |= effective_effects.presentation();
-    paint_dirty |= effective_effects.paint();
+    layout_dirty |= motion.layout_dirty;
+    presentation_dirty |= motion.presentation_dirty;
+    paint_dirty |= motion.paint_dirty;
 
     presentation_dirty |= layout_dirty;
     if presentation_dirty {
@@ -317,7 +383,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     }
 
     current.context_key = Arc::new(next_context);
-    if effective_changed
+    if motion.effective_changed
         || report.contains(SurfacePhase::Style)
         || report.contains(SurfacePhase::Layout)
         || report.contains(SurfacePhase::Diagnostics)
@@ -327,8 +393,8 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     }
     Ok(PlannedSurfacePublication::new(
         current,
-        SurfaceMotionStore(next_motion_store),
-        SurfaceMotionActivity(motion_activity),
+        motion.store,
+        motion.activity,
         report,
         completed,
         capability_plan,
@@ -336,17 +402,16 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn plan_structural_surface<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     interaction: &SurfaceInteractionProjection,
     text_system: &mut TextSystem,
-    context_key: super::cache::SurfaceContextKey,
     previous_cache: Option<&SurfaceCache>,
     motion_store: &SurfaceMotionStore,
     instant: MonotonicInstant,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
+    let context_key = context_key(context, text_system.source_snapshot());
     let mut report = SurfacePhaseReport::default();
     let topology = collect_topology(tree);
     report.record(SurfacePhase::Tree);
@@ -416,14 +481,6 @@ fn plan_structural_surface<'tree, Action>(
     report.record(SurfacePhase::Semantics);
     let diagnostics = resolve_diagnostics(&topology, &capability_plan);
     report.record(SurfacePhase::Diagnostics);
-    let placeholder = SurfacePublication::new(
-        SurfaceFrame::new(
-            LogicalSize::new(LogicalLength::ZERO, LogicalLength::ZERO),
-            Vec::new(),
-        ),
-        SurfaceStyleReport::default(),
-        SurfaceLayoutReport::default(),
-    );
     let mut rebuilt = SurfaceCache {
         context_key: Arc::new(context_key),
         topology: Arc::new(topology),
@@ -437,7 +494,7 @@ fn plan_structural_surface<'tree, Action>(
         diagnostics: Arc::new(diagnostics),
         hit_diagnostics,
         paint_diagnostics,
-        publication: placeholder,
+        publication: placeholder_publication(),
     };
     rebuilt.publication = compose_publication(&rebuilt);
     Ok(PlannedSurfacePublication::new(
