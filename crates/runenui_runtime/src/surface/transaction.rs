@@ -172,7 +172,11 @@ impl SurfacePublicationCommit {
         tree: &mut MountedTree<Action>,
         live_cache: &mut Option<SurfaceCache>,
         live_motion_store: &mut SurfaceMotionStore,
-    ) -> (SurfacePublication, SurfacePhaseReport, SurfaceMotionActivity) {
+    ) -> (
+        SurfacePublication,
+        SurfacePhaseReport,
+        SurfaceMotionActivity,
+    ) {
         let Self {
             cache,
             motion_store,
