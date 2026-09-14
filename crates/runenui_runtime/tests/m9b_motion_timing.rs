@@ -88,7 +88,7 @@ fn opacity(publication: &SurfacePublication) -> f32 {
         .get()
 }
 
-fn advance(runtime: &mut AppRuntime<TimingApp>, millis: u64) {
+fn advance(runtime: &AppRuntime<TimingApp>, millis: u64) {
     runtime
         .advance_time(Duration::from_millis(millis))
         .unwrap_or_else(|_| unreachable!("bounded timing proof advance is representable"));
@@ -104,13 +104,13 @@ fn delay_holds_keyframe_zero_until_the_active_interval_begins() {
     let environment = StyleEnvironment::default();
 
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
-    advance(&mut runtime, 49);
+    advance(&runtime, 49);
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
-    advance(&mut runtime, 1);
+    advance(&runtime, 1);
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     assert!((opacity(&publish(&mut runtime, &environment)) - 0.5).abs() <= f32::EPSILON);
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 1.0);
 }
 
@@ -126,15 +126,15 @@ fn exact_non_final_repeat_boundary_restarts_at_keyframe_zero() {
     let environment = StyleEnvironment::default();
 
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
-    advance(&mut runtime, 100);
+    advance(&runtime, 100);
     assert_eq!(
         opacity(&publish(&mut runtime, &environment)),
         0.0,
         "an exact non-final iteration boundary starts the next iteration at keyframe zero"
     );
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     assert!((opacity(&publish(&mut runtime, &environment)) - 0.5).abs() <= f32::EPSILON);
-    advance(&mut runtime, 50);
+    advance(&runtime, 50);
     assert_eq!(
         opacity(&publish(&mut runtime, &environment)),
         1.0,
@@ -156,9 +156,9 @@ fn zero_duration_positive_delay_completes_atomically_at_the_deadline() {
     let environment = StyleEnvironment::default();
 
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
-    advance(&mut runtime, 49);
+    advance(&runtime, 49);
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
-    advance(&mut runtime, 1);
+    advance(&runtime, 1);
     assert_eq!(
         opacity(&publish(&mut runtime, &environment)),
         1.0,
@@ -180,9 +180,9 @@ fn forever_timeline_restarts_each_exact_iteration_boundary_without_completion() 
     let environment = StyleEnvironment::default();
 
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
-    advance(&mut runtime, 100);
+    advance(&runtime, 100);
     assert_eq!(opacity(&publish(&mut runtime, &environment)), 0.0);
-    advance(&mut runtime, 150);
+    advance(&runtime, 150);
     assert!((opacity(&publish(&mut runtime, &environment)) - 0.5).abs() <= f32::EPSILON);
     assert_eq!(
         runtime.last_surface_phase_report().executed(),
