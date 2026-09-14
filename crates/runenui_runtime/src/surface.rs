@@ -27,6 +27,7 @@ use planning::plan_mounted_surface_cached;
 #[cfg(test)]
 use planning::publish_mounted_surface_cached;
 pub(crate) use planning::{SurfacePlanningError, plan_mounted_surface_cached_with_text};
+pub(crate) use transaction::{PlannedSurfacePublication, SurfacePublicationCommit};
 
 use runenui_core::{
     ComputedStyle, ElementId, LogicalRect, LogicalSize, ResourceRef, WidgetDiagnostic,
@@ -204,7 +205,7 @@ impl LayoutOverflow {
     }
 
     #[must_use]
-    pub const fn any(self) -> bool {
+    pub const fn any(&self) -> bool {
         self.width || self.height
     }
 }
@@ -418,6 +419,7 @@ impl SurfaceLayoutNode {
         self.overflow
     }
 
+    /// Returns the ordered successful text-measurement calls that produced this retained layout.
     #[must_use]
     pub const fn text_measurements(&self) -> &[SurfaceTextMeasurementRecord] {
         self.text_measurements.as_slice()
