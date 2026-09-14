@@ -86,6 +86,15 @@ fn publish(runtime: &mut AppRuntime<RetirementApp>) -> SurfacePublication {
         .unwrap_or_else(|_| unreachable!("owner-retirement publication is admitted"))
 }
 
+fn settle(runtime: &mut AppRuntime<RetirementApp>) -> runenui_runtime::PumpReport {
+    runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ))
+}
+
 fn observe(runtime: &mut AppRuntime<RetirementApp>) -> runenui_runtime::PumpReport {
     runtime.pump(PumpBudget::new(0, 0, 0, 0))
 }
@@ -102,12 +111,16 @@ fn retiring_one_owner_preserves_another_owners_delayed_motion_deadline() {
     let late_deadline = MonotonicInstant::ZERO
         .checked_add(Duration::from_millis(100))
         .unwrap_or_else(|_| unreachable!("bounded late deadline is representable"));
-    assert_eq!(observe(&mut runtime).next_deadline(), Some(early_deadline));
+    let initially_settled = settle(&mut runtime);
+    assert!(initially_settled.is_quiescent());
+    assert_eq!(initially_settled.next_deadline(), Some(early_deadline));
 
     runtime
         .submit_action(())
         .unwrap_or_else(|_| unreachable!("owner-retirement action is admitted"));
-    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
+    let action_pump = settle(&mut runtime);
+    assert!(action_pump.processed_envelopes() >= 1);
+    assert!(action_pump.is_quiescent());
 
     let reconciliation = runtime.reconciliation_report();
     assert_eq!(
