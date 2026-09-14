@@ -13,9 +13,9 @@ use crate::style_debug::SurfaceStyleReport;
 use super::cache::{CachedLayoutFacts, context_key};
 use super::motion::{self, MotionPlanningError};
 use super::resolve::{
-    EffectiveEffects, PresentationGeometryError, ResolvedSurfaceTree, collect_topology, hit_contexts,
-    paint_contexts, resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation,
-    resolve_styles,
+    EffectiveEffects, PresentationGeometryError, ResolvedSurfaceTree, collect_topology,
+    hit_contexts, paint_contexts, resolve_diagnostics, resolve_hit_test, resolve_paint,
+    resolve_presentation, resolve_styles,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::PlannedSurfacePublication;
@@ -386,11 +386,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     }
 
     current.context_key = Arc::new(next_context);
-    if publication_needs_recompose(
-        motion.effective_changed,
-        &report,
-        scene_diagnostics_changed,
-    ) {
+    if publication_needs_recompose(motion.effective_changed, &report, scene_diagnostics_changed) {
         current.publication = compose_publication(&current);
     }
     Ok(PlannedSurfacePublication::new(
