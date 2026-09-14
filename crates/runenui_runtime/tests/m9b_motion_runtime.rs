@@ -303,7 +303,9 @@ fn enabled_transition_policy_is_recorded_in_the_canonical_trace() {
     assert_eq!(policy_records.len(), 1);
     let record = policy_records[0];
     assert_eq!(
-        record.target().map(|target| target.mounted_node_id()),
+        record
+            .target()
+            .map(runenui_runtime::TraceTarget::mounted_node_id),
         Some(root.id())
     );
     assert_eq!(record.instant(), Some(MonotonicInstant::ZERO));
