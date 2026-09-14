@@ -12,8 +12,8 @@ use crate::runtime::surface_publication::{
 };
 use crate::{
     PublishSurfaceError, SurfacePublicationCounter, TracePublicationContext, TraceSurfaceContext,
-    TraceSurfaceSnapshotKind,
-    trace::{TraceRecordDraft, TraceReservation},
+    TraceSurfaceSnapshotKind, TraceTarget,
+    trace::{StagedMotionTraceFact, TraceRecordDraft, TraceReservation},
 };
 
 struct PublicationAdmission {
@@ -25,8 +25,11 @@ fn candidate_trace_plan(
     redraw_pending: bool,
     stationary_rehit: bool,
     request_followup: bool,
+    motion_trace_count: usize,
 ) -> Option<MandatoryTracePlan> {
-    let plan = MandatoryTracePlan::surface_publication(redraw_pending, stationary_rehit);
+    let motion = MandatoryTracePlan::one_fact().checked_mul(motion_trace_count)?;
+    let plan = MandatoryTracePlan::surface_publication(redraw_pending, stationary_rehit)
+        .checked_add(motion)?;
     if request_followup {
         plan.checked_add(MandatoryTracePlan::one_fact())
     } else {
@@ -200,6 +203,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
         };
 
+        let motion_trace_facts = staged.motion_trace_facts();
         let motion_activity = staged.motion_activity();
         let request_followup =
             motion_activity.continuous_redraw() || motion_activity.followup_publication();
@@ -207,6 +211,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.surface_publication.is_dirty(),
             admission.stationary_rehit,
             request_followup,
+            motion_trace_facts.len(),
         ) else {
             drop(staged);
             let reason = RuntimeTerminalReason::TraceSequenceExhausted;
@@ -239,6 +244,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let publication = self
             .surface_publication
             .commit_publication(&mut self.tree, commit);
+        self.record_motion_trace_facts(motion_trace_facts, instant);
         let redraw = self.take_redraw_request_at(instant);
         let publication_reservation = mem::replace(
             &mut self.surface_trace.publication_reservation,
@@ -264,6 +270,32 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.commit_admitted_redraw_request(admission, published, instant);
         }
         Ok(publication)
+    }
+
+    fn record_motion_trace_facts(
+        &mut self,
+        facts: Vec<StagedMotionTraceFact>,
+        instant: MonotonicInstant,
+    ) {
+        if !self.trace.is_enabled() {
+            return;
+        }
+        for staged in facts {
+            self.trace
+                .record_draft(
+                    TraceRecordDraft::lifecycle_fact(
+                        TraceRecordKind::Motion {
+                            target: staged.target,
+                            fact: staged.fact,
+                        },
+                        instant,
+                    )
+                    .with_target(Some(TraceTarget::new(staged.owner, staged.authored_id))),
+                )
+                .unwrap_or_else(|| {
+                    unreachable!("candidate-dependent motion trace admission was preflighted")
+                });
+        }
     }
 
     fn admit_surface_publication(&mut self) -> Result<PublicationAdmission, PublishSurfaceError> {
