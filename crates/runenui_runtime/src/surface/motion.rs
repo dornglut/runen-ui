@@ -10,7 +10,8 @@ use std::time::Duration;
 
 use runenui_core::{
     __runtime::{
-        apply_motion_value, ease_motion, interpolate_motion_value, motion_value_for_target,
+        MotionInterpolationKind, apply_motion_value, ease_motion, interpolate_motion_sample,
+        motion_value_for_target,
     },
     BrushToken, ColorToken, ComputedStyle, ElementId, ExplicitTimeline, LayoutStyle,
     MonotonicInstant, MotionRepeat, MotionTarget, MotionValue, OpacityToken, PresentationToken,
@@ -22,7 +23,10 @@ use runenui_core::{
 use crate::{
     MountedNodeId,
     mounted::MountedTree,
-    trace::{StagedMotionTraceFact, TraceMotionFact, TraceMotionPolicy},
+    trace::{
+        StagedMotionTraceFact, TraceMotionFact, TraceMotionInterpolation, TraceMotionLifecycle,
+        TraceMotionPhase, TraceMotionPolicy, TraceMotionSource,
+    },
 };
 
 use super::{
@@ -205,10 +209,21 @@ struct ExplicitEvaluation {
 }
 
 #[derive(Clone)]
+struct ValueSample {
+    value: MotionValue,
+    progress: Option<UnitInterval>,
+    eased_progress: Option<UnitInterval>,
+    interpolation: MotionInterpolationKind,
+}
+
+#[derive(Clone)]
 struct LiveSample {
     value: MotionValue,
     phase: LivePhase,
     terminal_deadline: Option<MonotonicInstant>,
+    progress: Option<UnitInterval>,
+    eased_progress: Option<UnitInterval>,
+    interpolation: MotionInterpolationKind,
 }
 
 #[derive(Clone, Copy)]
@@ -216,6 +231,7 @@ enum LivePhase {
     Delayed { deadline: MonotonicInstant },
     Running,
     Completed,
+    HeldInitial,
 }
 
 struct OwnerMotionContext<'a> {
@@ -343,14 +359,24 @@ fn plan_owner(
     outputs: &mut OwnerMotionOutputs<'_>,
 ) -> Result<(), MotionPlanningError> {
     let retained = OwnerRetained::new(store, context.owner);
+    let targets = owner_targets(context, &retained);
+    for target in &targets {
+        trace_resolved_policy(context, *target, outputs.trace_facts);
+    }
     let explicit_evaluations = reconcile_explicit_declarations(context, &retained.explicit)?;
+    trace_explicit_reconciliation(
+        context,
+        &retained.explicit,
+        &explicit_evaluations,
+        outputs.trace_facts,
+    )?;
     outputs.store.explicit.extend(
         explicit_evaluations
             .iter()
             .map(|candidate| candidate.record.clone()),
     );
 
-    for target in owner_targets(context, &retained) {
+    for target in targets {
         plan_target(context, target, &retained, &explicit_evaluations, outputs)?;
     }
     Ok(())
@@ -379,6 +405,201 @@ fn reconcile_explicit_declarations(
         .collect()
 }
 
+fn trace_explicit_reconciliation(
+    context: &OwnerMotionContext<'_>,
+    retained: &[&ExplicitMotionRecord],
+    evaluations: &[ExplicitEvaluation],
+    trace_facts: &mut Vec<StagedMotionTraceFact>,
+) -> Result<(), MotionPlanningError> {
+    for record in retained {
+        let current = context
+            .declarations
+            .iter()
+            .find(|declaration| declaration.id() == record.declaration.id());
+        if current.is_some_and(|declaration| declaration == &record.declaration) {
+            continue;
+        }
+        if let Some(sample) = sample_retained_explicit(record, context.instant)? {
+            push_explicit_sample_trace(context, &record.declaration, &sample, trace_facts);
+        }
+        if current.is_some() {
+            push_explicit_lifecycle(
+                context,
+                &record.declaration,
+                TraceMotionLifecycle::Replaced,
+                trace_facts,
+            );
+        } else if !matches!(record.lifecycle, ExplicitLifecycle::Completed) {
+            push_explicit_lifecycle(
+                context,
+                &record.declaration,
+                TraceMotionLifecycle::Cancelled,
+                trace_facts,
+            );
+        }
+    }
+
+    for evaluation in evaluations {
+        let declaration = &evaluation.record.declaration;
+        let prior = retained
+            .iter()
+            .copied()
+            .find(|record| record.declaration.id() == declaration.id());
+        trace_explicit_entry(context, prior, evaluation, trace_facts);
+        if let Some(sample) = evaluation.live_sample.as_ref() {
+            push_explicit_sample_trace(context, declaration, sample, trace_facts);
+        }
+    }
+    Ok(())
+}
+
+fn trace_explicit_entry(
+    context: &OwnerMotionContext<'_>,
+    prior: Option<&ExplicitMotionRecord>,
+    evaluation: &ExplicitEvaluation,
+    trace_facts: &mut Vec<StagedMotionTraceFact>,
+) {
+    let declaration = &evaluation.record.declaration;
+    let Some(prior) = prior.filter(|record| record.declaration == *declaration) else {
+        match evaluation.record.lifecycle {
+            ExplicitLifecycle::Active { .. } => push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::Started,
+                trace_facts,
+            ),
+            ExplicitLifecycle::HoldInitial => push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::HoldInitialEntered,
+                trace_facts,
+            ),
+            ExplicitLifecycle::Completed if evaluation.terminal_commit => push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::Completed,
+                trace_facts,
+            ),
+            ExplicitLifecycle::Completed => {}
+        }
+        return;
+    };
+
+    match (&prior.lifecycle, &evaluation.record.lifecycle) {
+        (ExplicitLifecycle::Completed, ExplicitLifecycle::Completed) => push_explicit_lifecycle(
+            context,
+            declaration,
+            TraceMotionLifecycle::CompletedRetained,
+            trace_facts,
+        ),
+        (ExplicitLifecycle::HoldInitial, ExplicitLifecycle::Active { .. }) => {
+            push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::HoldInitialReleased,
+                trace_facts,
+            );
+            push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::Restarted,
+                trace_facts,
+            );
+        }
+        (ExplicitLifecycle::HoldInitial, ExplicitLifecycle::Completed)
+            if evaluation.terminal_commit =>
+        {
+            push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::HoldInitialReleased,
+                trace_facts,
+            );
+            push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::Restarted,
+                trace_facts,
+            );
+            push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::Completed,
+                trace_facts,
+            );
+        }
+        (ExplicitLifecycle::Active { .. }, ExplicitLifecycle::HoldInitial) => {
+            push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::HoldInitialEntered,
+                trace_facts,
+            );
+        }
+        (ExplicitLifecycle::Active { .. }, ExplicitLifecycle::Completed)
+            if evaluation.terminal_commit =>
+        {
+            push_explicit_lifecycle(
+                context,
+                declaration,
+                TraceMotionLifecycle::Completed,
+                trace_facts,
+            );
+        }
+        (ExplicitLifecycle::Active { .. }, ExplicitLifecycle::Active { .. })
+        | (ExplicitLifecycle::HoldInitial, ExplicitLifecycle::HoldInitial)
+        | (ExplicitLifecycle::Completed, ExplicitLifecycle::Active { .. })
+        | (ExplicitLifecycle::Completed, ExplicitLifecycle::HoldInitial)
+        | (ExplicitLifecycle::Active { .. }, ExplicitLifecycle::Completed)
+        | (ExplicitLifecycle::HoldInitial, ExplicitLifecycle::Completed) => {}
+    }
+}
+
+fn push_explicit_lifecycle(
+    context: &OwnerMotionContext<'_>,
+    declaration: &ExplicitTimeline,
+    lifecycle: TraceMotionLifecycle,
+    trace_facts: &mut Vec<StagedMotionTraceFact>,
+) {
+    trace_facts.push(StagedMotionTraceFact::new(
+        context.owner.clone(),
+        context.authored_id.cloned(),
+        declaration.target(),
+        TraceMotionFact::Lifecycle {
+            source: TraceMotionSource::Timeline {
+                animation_id: declaration.id().clone(),
+            },
+            lifecycle,
+        },
+    ));
+}
+
+fn push_explicit_sample_trace(
+    context: &OwnerMotionContext<'_>,
+    declaration: &ExplicitTimeline,
+    sample: &LiveSample,
+    trace_facts: &mut Vec<StagedMotionTraceFact>,
+) {
+    let suppressed = target_provenance(context.resolution, declaration.target()).high_contrast();
+    trace_facts.push(StagedMotionTraceFact::new(
+        context.owner.clone(),
+        context.authored_id.cloned(),
+        declaration.target(),
+        TraceMotionFact::Sampled {
+            source: TraceMotionSource::Timeline {
+                animation_id: declaration.id().clone(),
+            },
+            phase: trace_live_phase(sample.phase),
+            progress_bits: sample.progress.map(|progress| progress.get().to_bits()),
+            eased_progress_bits: sample
+                .eased_progress
+                .map(|progress| progress.get().to_bits()),
+            interpolation: trace_interpolation(sample.interpolation),
+            suppressed,
+        },
+    ));
+}
+
 fn owner_targets(
     context: &OwnerMotionContext<'_>,
     retained: &OwnerRetained<'_>,
@@ -401,6 +622,22 @@ fn owner_targets(
     targets
 }
 
+fn trace_resolved_policy(
+    context: &OwnerMotionContext<'_>,
+    target: MotionTarget,
+    trace_facts: &mut Vec<StagedMotionTraceFact>,
+) {
+    let policy = resolved_transition_policy(context.resolution, target);
+    trace_facts.push(StagedMotionTraceFact::new(
+        context.owner.clone(),
+        context.authored_id.cloned(),
+        target,
+        TraceMotionFact::PolicyResolved {
+            policy: trace_transition_policy(&policy),
+        },
+    ));
+}
+
 fn plan_target(
     context: &OwnerMotionContext<'_>,
     target: MotionTarget,
@@ -416,14 +653,6 @@ fn plan_target(
     let provenance = target_provenance(context.resolution, target);
     let suppressed = provenance.high_contrast();
     let policy = resolved_transition_policy(context.resolution, target);
-    outputs.trace_facts.push(StagedMotionTraceFact::new(
-        context.owner.clone(),
-        context.authored_id.cloned(),
-        target,
-        TraceMotionFact::PolicyResolved {
-            policy: trace_transition_policy(&policy),
-        },
-    ));
     let new_explicit = explicit_evaluations
         .iter()
         .find(|candidate| candidate.record.declaration.target() == target);
@@ -460,6 +689,8 @@ fn plan_target(
         explicit_sample.clone()
     } else if removed_or_replaced_explicit {
         old_explicit_sample
+            .as_ref()
+            .map(|sample| sample.value.clone())
     } else {
         None
     };
@@ -648,24 +879,29 @@ fn reconcile_explicit(
         }
     };
 
-    let mut live_sample = None;
-    let candidate_sample = match lifecycle {
-        ExplicitLifecycle::Completed if terminal_commit => {
-            Some(terminal_keyframe(declaration).clone())
-        }
+    let live_sample = match lifecycle {
+        ExplicitLifecycle::Completed if terminal_commit => Some(endpoint_live_sample(
+            terminal_keyframe(declaration).clone(),
+            LivePhase::Completed,
+            None,
+            Some(UnitInterval::ONE),
+        )),
         ExplicitLifecycle::Completed => None,
-        ExplicitLifecycle::HoldInitial => Some(initial_keyframe(declaration).clone()),
-        ExplicitLifecycle::Active { start } => {
-            let sampled = sample_explicit(declaration, start, instant)?;
-            let value = sampled.value.clone();
-            if matches!(sampled.phase, LivePhase::Completed) {
-                terminal_commit = true;
-            } else {
-                live_sample = Some(sampled);
-            }
-            Some(value)
-        }
+        ExplicitLifecycle::HoldInitial => Some(endpoint_live_sample(
+            initial_keyframe(declaration).clone(),
+            LivePhase::HeldInitial,
+            None,
+            Some(UnitInterval::ZERO),
+        )),
+        ExplicitLifecycle::Active { start } => Some(sample_explicit(declaration, start, instant)?),
     };
+    if live_sample
+        .as_ref()
+        .is_some_and(|sample| matches!(sample.phase, LivePhase::Completed))
+    {
+        terminal_commit = true;
+    }
+    let candidate_sample = live_sample.as_ref().map(|sample| sample.value.clone());
 
     let lifecycle = if terminal_commit {
         ExplicitLifecycle::Completed
@@ -751,13 +987,43 @@ fn start_transition(
 fn sample_retained_explicit(
     record: &ExplicitMotionRecord,
     instant: MonotonicInstant,
-) -> Result<Option<MotionValue>, MotionPlanningError> {
+) -> Result<Option<LiveSample>, MotionPlanningError> {
     match record.lifecycle {
         ExplicitLifecycle::Completed => Ok(None),
-        ExplicitLifecycle::HoldInitial => Ok(Some(initial_keyframe(&record.declaration).clone())),
+        ExplicitLifecycle::HoldInitial => Ok(Some(endpoint_live_sample(
+            initial_keyframe(&record.declaration).clone(),
+            LivePhase::HeldInitial,
+            None,
+            Some(UnitInterval::ZERO),
+        ))),
         ExplicitLifecycle::Active { start } => {
-            sample_explicit(&record.declaration, start, instant).map(|sample| Some(sample.value))
+            sample_explicit(&record.declaration, start, instant).map(Some)
         }
+    }
+}
+
+fn endpoint_value_sample(value: MotionValue, progress: UnitInterval) -> ValueSample {
+    ValueSample {
+        value,
+        progress: Some(progress),
+        eased_progress: None,
+        interpolation: MotionInterpolationKind::Endpoint,
+    }
+}
+
+fn endpoint_live_sample(
+    value: MotionValue,
+    phase: LivePhase,
+    terminal_deadline: Option<MonotonicInstant>,
+    progress: Option<UnitInterval>,
+) -> LiveSample {
+    LiveSample {
+        value,
+        phase,
+        terminal_deadline,
+        progress,
+        eased_progress: None,
+        interpolation: MotionInterpolationKind::Endpoint,
     }
 }
 
@@ -787,29 +1053,32 @@ fn sample_explicit(
     };
 
     if instant < delay_deadline {
-        return Ok(LiveSample {
-            value: initial_keyframe(declaration).clone(),
-            phase: LivePhase::Delayed {
+        return Ok(endpoint_live_sample(
+            initial_keyframe(declaration).clone(),
+            LivePhase::Delayed {
                 deadline: delay_deadline,
             },
             terminal_deadline,
-        });
+            Some(UnitInterval::ZERO),
+        ));
     }
     if terminal_deadline.is_some_and(|deadline| instant >= deadline) {
-        return Ok(LiveSample {
-            value: terminal_keyframe(declaration).clone(),
-            phase: LivePhase::Completed,
+        return Ok(endpoint_live_sample(
+            terminal_keyframe(declaration).clone(),
+            LivePhase::Completed,
             terminal_deadline,
-        });
+            Some(UnitInterval::ONE),
+        ));
     }
 
     let duration_nanos = nanos(spec.duration());
     if duration_nanos == 0 {
-        return Ok(LiveSample {
-            value: terminal_keyframe(declaration).clone(),
-            phase: LivePhase::Completed,
+        return Ok(endpoint_live_sample(
+            terminal_keyframe(declaration).clone(),
+            LivePhase::Completed,
             terminal_deadline,
-        });
+            Some(UnitInterval::ONE),
+        ));
     }
     let active_nanos = instant
         .as_nanos()
@@ -817,11 +1086,14 @@ fn sample_explicit(
         .unwrap_or_else(|| unreachable!("sample at/after delay never precedes active start"));
     let iteration_nanos = active_nanos % duration_nanos;
     let progress = normalized_ratio(iteration_nanos, duration_nanos);
-    let value = sample_keyframes(declaration, progress)?;
+    let sampled = sample_keyframes(declaration, progress)?;
     Ok(LiveSample {
-        value,
+        value: sampled.value,
         phase: LivePhase::Running,
         terminal_deadline,
+        progress: sampled.progress,
+        eased_progress: sampled.eased_progress,
+        interpolation: sampled.interpolation,
     })
 }
 
@@ -839,20 +1111,22 @@ fn sample_transition(
             .unwrap_or_else(|| unreachable!("validated transition schedule remains representable")),
     )?;
     if instant < delay_deadline {
-        return Ok(LiveSample {
-            value: transition.from.clone(),
-            phase: LivePhase::Delayed {
+        return Ok(endpoint_live_sample(
+            transition.from.clone(),
+            LivePhase::Delayed {
                 deadline: delay_deadline,
             },
-            terminal_deadline: Some(terminal_deadline),
-        });
+            Some(terminal_deadline),
+            Some(UnitInterval::ZERO),
+        ));
     }
     if instant >= terminal_deadline || duration_nanos == 0 {
-        return Ok(LiveSample {
-            value: transition.to.clone(),
-            phase: LivePhase::Completed,
-            terminal_deadline: Some(terminal_deadline),
-        });
+        return Ok(endpoint_live_sample(
+            transition.to.clone(),
+            LivePhase::Completed,
+            Some(terminal_deadline),
+            Some(UnitInterval::ONE),
+        ));
     }
     let active_nanos = instant
         .as_nanos()
@@ -860,12 +1134,15 @@ fn sample_transition(
         .unwrap_or_else(|| unreachable!("transition sample is at/after active start"));
     let progress = normalized_ratio(active_nanos, duration_nanos);
     let eased = ease_motion(transition.spec.easing(), progress);
-    let value = interpolate_motion_value(&transition.from, &transition.to, eased)
+    let (value, interpolation) = interpolate_motion_sample(&transition.from, &transition.to, eased)
         .ok_or(MotionPlanningError::Interpolation(transition.target))?;
     Ok(LiveSample {
         value,
         phase: LivePhase::Running,
         terminal_deadline: Some(terminal_deadline),
+        progress: Some(progress),
+        eased_progress: Some(eased),
+        interpolation,
     })
 }
 
@@ -873,20 +1150,26 @@ fn sample_transition(
 fn sample_keyframes(
     declaration: &ExplicitTimeline,
     progress: UnitInterval,
-) -> Result<MotionValue, MotionPlanningError> {
+) -> Result<ValueSample, MotionPlanningError> {
     let spec = declaration.spec();
     if progress == UnitInterval::ZERO {
-        return Ok(initial_keyframe(declaration).clone());
+        return Ok(endpoint_value_sample(
+            initial_keyframe(declaration).clone(),
+            progress,
+        ));
     }
     if progress == UnitInterval::ONE {
-        return Ok(terminal_keyframe(declaration).clone());
+        return Ok(endpoint_value_sample(
+            terminal_keyframe(declaration).clone(),
+            progress,
+        ));
     }
     if let Some(keyframe) = spec
         .keyframes()
         .iter()
         .find(|keyframe| keyframe.offset() == progress)
     {
-        return Ok(keyframe.value().clone());
+        return Ok(endpoint_value_sample(keyframe.value().clone(), progress));
     }
     let (segment, pair) = spec
         .keyframes()
@@ -898,26 +1181,31 @@ fn sample_keyframes(
         .unwrap_or_else(|| unreachable!("strict keyframes contain normalized interior progress"));
     let left = f64::from(pair[0].offset().get());
     let right = f64::from(pair[1].offset().get());
-    let progress = f64::from(progress.get());
-    let segment_progress = ((progress - left) / (right - left)) as f32;
+    let overall_progress = f64::from(progress.get());
+    let segment_progress = ((overall_progress - left) / (right - left)) as f32;
     let segment_progress = UnitInterval::new(segment_progress)
         .unwrap_or_else(|_| unreachable!("contained segment progress remains normalized"));
     let eased = ease_motion(spec.easings()[segment], segment_progress);
-    interpolate_motion_value(pair[0].value(), pair[1].value(), eased)
-        .ok_or_else(|| MotionPlanningError::Interpolation(spec.target()))
+    let (value, interpolation) = interpolate_motion_sample(pair[0].value(), pair[1].value(), eased)
+        .ok_or_else(|| MotionPlanningError::Interpolation(spec.target()))?;
+    Ok(ValueSample {
+        value,
+        progress: Some(progress),
+        eased_progress: Some(eased),
+        interpolation,
+    })
 }
 
 fn note_live_activity(sample: &LiveSample, suppressed: bool, activity: &mut MotionActivity) {
-    if suppressed {
-        if let Some(deadline) = sample.terminal_deadline {
-            activity.note_deadline(deadline);
+    match (suppressed, sample.phase) {
+        (_, LivePhase::Completed | LivePhase::HeldInitial) => {}
+        (false, LivePhase::Delayed { deadline }) => activity.note_deadline(deadline),
+        (false, LivePhase::Running) => activity.continuous_redraw = true,
+        (true, LivePhase::Delayed { .. } | LivePhase::Running) => {
+            if let Some(deadline) = sample.terminal_deadline {
+                activity.note_deadline(deadline);
+            }
         }
-        return;
-    }
-    match sample.phase {
-        LivePhase::Delayed { deadline } => activity.note_deadline(deadline),
-        LivePhase::Running => activity.continuous_redraw = true,
-        LivePhase::Completed => {}
     }
 }
 
@@ -1053,6 +1341,23 @@ const fn trace_transition_policy(policy: &ResolvedTransitionPolicy) -> TraceMoti
         ResolvedTransitionPolicy::Absent => TraceMotionPolicy::Absent,
         ResolvedTransitionPolicy::Disabled => TraceMotionPolicy::Disabled,
         ResolvedTransitionPolicy::Enabled(_) => TraceMotionPolicy::Enabled,
+    }
+}
+
+const fn trace_live_phase(phase: LivePhase) -> TraceMotionPhase {
+    match phase {
+        LivePhase::Delayed { .. } => TraceMotionPhase::Delayed,
+        LivePhase::Running => TraceMotionPhase::Running,
+        LivePhase::Completed => TraceMotionPhase::Completed,
+        LivePhase::HeldInitial => TraceMotionPhase::HeldInitial,
+    }
+}
+
+const fn trace_interpolation(kind: MotionInterpolationKind) -> TraceMotionInterpolation {
+    match kind {
+        MotionInterpolationKind::Endpoint => TraceMotionInterpolation::Endpoint,
+        MotionInterpolationKind::Continuous => TraceMotionInterpolation::Continuous,
+        MotionInterpolationKind::Discrete => TraceMotionInterpolation::Discrete,
     }
 }
 
@@ -1232,6 +1537,7 @@ mod tests {
         )
         .unwrap_or_else(|_| unreachable!("valid sample is representable"));
         assert_eq!(sample.value, MotionValue::Opacity(SceneOpacity::OPAQUE));
+        assert_eq!(sample.progress, Some(UnitInterval::ONE));
         assert!(matches!(sample.phase, super::LivePhase::Completed));
     }
 
