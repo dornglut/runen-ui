@@ -145,12 +145,7 @@ fn root_opacity(publication: &SurfacePublication) -> f32 {
 }
 
 fn pump_one_action<App: UiApp>(runtime: &mut AppRuntime<App>) {
-    runtime.pump(PumpBudget::new(
-        2,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
+    runtime.pump(PumpBudget::new(2, usize::MAX, usize::MAX, usize::MAX));
 }
 
 #[test]
@@ -280,10 +275,8 @@ fn duplicate_target_rejection_does_not_advance_or_restart_retained_motion() {
 #[test]
 fn enabled_transition_policy_is_recorded_in_the_canonical_trace() {
     let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(128));
-    let mut runtime = AppRuntime::<TimelineHandoffApp>::mount_with_config(
-        Duration::from_millis(100),
-        config,
-    );
+    let mut runtime =
+        AppRuntime::<TimelineHandoffApp>::mount_with_config(Duration::from_millis(100), config);
     let environment = StyleEnvironment::default();
 
     let publication = publish(&mut runtime, &environment);
