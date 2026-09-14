@@ -316,14 +316,8 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         completed.insert(DirtyPhases::STYLE);
     }
 
-    let motion = stage_non_structural_motion(
-        tree,
-        context,
-        cache,
-        motion_store,
-        instant,
-        &mut current,
-    )?;
+    let motion =
+        stage_non_structural_motion(tree, context, cache, motion_store, instant, &mut current)?;
     completed.insert(DirtyPhases::MOTION);
     layout_dirty |= motion.layout_dirty;
     presentation_dirty |= motion.presentation_dirty;
