@@ -266,6 +266,21 @@ fn publication_needs_recompose(
         || scene_diagnostics_changed
 }
 
+fn resolve_diagnostics_phase(
+    pending: DirtyPhases,
+    current: &mut SurfaceCache,
+    capability_plan: &SurfaceCapabilityPlan,
+    report: &mut SurfacePhaseReport,
+    completed: &mut DirtyPhases,
+) {
+    if !pending.contains(DirtyPhases::DIAGNOSTICS) {
+        return;
+    }
+    current.diagnostics = Arc::new(resolve_diagnostics(&current.topology, capability_plan));
+    report.record(SurfacePhase::Diagnostics);
+    completed.insert(DirtyPhases::DIAGNOSTICS);
+}
+
 fn placeholder_publication() -> SurfacePublication {
     SurfacePublication::new(
         SurfaceFrame::new(
@@ -379,11 +394,13 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         report.record(SurfacePhase::Semantics);
         completed.insert(DirtyPhases::SEMANTICS);
     }
-    if pending.contains(DirtyPhases::DIAGNOSTICS) {
-        current.diagnostics = Arc::new(resolve_diagnostics(&current.topology, &capability_plan));
-        report.record(SurfacePhase::Diagnostics);
-        completed.insert(DirtyPhases::DIAGNOSTICS);
-    }
+    resolve_diagnostics_phase(
+        pending,
+        &mut current,
+        &capability_plan,
+        &mut report,
+        &mut completed,
+    );
 
     current.context_key = Arc::new(next_context);
     if publication_needs_recompose(motion.effective_changed, &report, scene_diagnostics_changed) {
