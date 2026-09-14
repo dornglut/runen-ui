@@ -13,6 +13,14 @@ use crate::{
     RadialGradient, Radius, SceneOpacity, UnitInterval,
 };
 
+/// Framework-owned interpolation decision for one exact sampled value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MotionInterpolationKind {
+    Endpoint,
+    Continuous,
+    Discrete,
+}
+
 /// Applies one accepted easing function to normalized progress.
 ///
 /// This is exported only through the doc-hidden core/runtime bridge. It owns no
@@ -100,7 +108,8 @@ pub fn apply_motion_value(
     };
 }
 
-/// Samples two values for one exact motion target at already-eased progress.
+/// Samples two values for one exact motion target at already-eased progress and
+/// returns the interpolation decision from the same closed dispatch.
 ///
 /// `None` is reserved for an impossible/mismatched target pair. Incompatible
 /// endpoint domains are valid discrete motion: they hold the start value until
@@ -110,83 +119,99 @@ pub fn apply_motion_value(
     clippy::too_many_lines,
     reason = "the closed M9 target vocabulary is intentionally sampled in one auditable dispatch"
 )]
-pub fn interpolate_motion_value(
+pub fn interpolate_motion_sample(
     start: &MotionValue,
     end: &MotionValue,
     progress: UnitInterval,
-) -> Option<MotionValue> {
+) -> Option<(MotionValue, MotionInterpolationKind)> {
     if start.target() != end.target() {
         return None;
     }
     if progress == UnitInterval::ZERO {
-        return Some(start.clone());
+        return Some((start.clone(), MotionInterpolationKind::Endpoint));
     }
     if progress == UnitInterval::ONE {
-        return Some(end.clone());
+        return Some((end.clone(), MotionInterpolationKind::Endpoint));
     }
 
-    let discrete = || Some(start.clone());
+    let continuous = |value| (value, MotionInterpolationKind::Continuous);
+    let discrete = || Some((start.clone(), MotionInterpolationKind::Discrete));
     match (start, end) {
         (MotionValue::Foreground(Some(start)), MotionValue::Foreground(Some(end))) => Some(
-            MotionValue::Foreground(Some(interpolate_color(*start, *end, progress))),
+            continuous(MotionValue::Foreground(Some(interpolate_color(
+                *start, *end, progress,
+            )))),
         ),
         (MotionValue::Background(Some(start)), MotionValue::Background(Some(end))) => {
             interpolate_brush(start, end, progress)
-                .map(|brush| MotionValue::Background(Some(brush)))
+                .map(|brush| continuous(MotionValue::Background(Some(brush))))
                 .or_else(discrete)
         }
         (MotionValue::Padding(Some(start)), MotionValue::Padding(Some(end))) => {
             interpolate_edge_insets(*start, *end, progress)
-                .map(|value| MotionValue::Padding(Some(value)))
+                .map(|value| continuous(MotionValue::Padding(Some(value))))
         }
         (MotionValue::Radius(Some(start)), MotionValue::Radius(Some(end))) => {
-            interpolate_radius(*start, *end, progress).map(|value| MotionValue::Radius(Some(value)))
+            interpolate_radius(*start, *end, progress)
+                .map(|value| continuous(MotionValue::Radius(Some(value))))
         }
         (MotionValue::Shadows(start), MotionValue::Shadows(end)) => {
             interpolate_shadows(start, end, progress)
-                .map(MotionValue::Shadows)
+                .map(|value| continuous(MotionValue::Shadows(value)))
                 .or_else(discrete)
         }
         (MotionValue::Opacity(start), MotionValue::Opacity(end)) => {
-            interpolate_scene_opacity(*start, *end, progress).map(MotionValue::Opacity)
+            interpolate_scene_opacity(*start, *end, progress)
+                .map(|value| continuous(MotionValue::Opacity(value)))
         }
         (MotionValue::Presentation(Some(start)), MotionValue::Presentation(Some(end))) => {
             interpolate_presentation(*start, *end, progress)
-                .map(|value| MotionValue::Presentation(Some(value)))
+                .map(|value| continuous(MotionValue::Presentation(Some(value))))
         }
-        (MotionValue::Width(start), MotionValue::Width(end)) => Some(MotionValue::Width(
-            interpolate_dimension(*start, *end, progress)?,
-        )),
-        (MotionValue::Height(start), MotionValue::Height(end)) => Some(MotionValue::Height(
-            interpolate_dimension(*start, *end, progress)?,
-        )),
-        (MotionValue::MinWidth(start), MotionValue::MinWidth(end)) => Some(MotionValue::MinWidth(
-            interpolate_bound(*start, *end, progress)?,
-        )),
-        (MotionValue::MinHeight(start), MotionValue::MinHeight(end)) => Some(
-            MotionValue::MinHeight(interpolate_bound(*start, *end, progress)?),
-        ),
-        (MotionValue::MaxWidth(start), MotionValue::MaxWidth(end)) => Some(MotionValue::MaxWidth(
-            interpolate_bound(*start, *end, progress)?,
-        )),
-        (MotionValue::MaxHeight(start), MotionValue::MaxHeight(end)) => Some(
-            MotionValue::MaxHeight(interpolate_bound(*start, *end, progress)?),
-        ),
+        (MotionValue::Width(start), MotionValue::Width(end)) => {
+            let (value, kind) = interpolate_dimension(*start, *end, progress)?;
+            Some((MotionValue::Width(value), kind))
+        }
+        (MotionValue::Height(start), MotionValue::Height(end)) => {
+            let (value, kind) = interpolate_dimension(*start, *end, progress)?;
+            Some((MotionValue::Height(value), kind))
+        }
+        (MotionValue::MinWidth(start), MotionValue::MinWidth(end)) => {
+            let (value, kind) = interpolate_bound(*start, *end, progress)?;
+            Some((MotionValue::MinWidth(value), kind))
+        }
+        (MotionValue::MinHeight(start), MotionValue::MinHeight(end)) => {
+            let (value, kind) = interpolate_bound(*start, *end, progress)?;
+            Some((MotionValue::MinHeight(value), kind))
+        }
+        (MotionValue::MaxWidth(start), MotionValue::MaxWidth(end)) => {
+            let (value, kind) = interpolate_bound(*start, *end, progress)?;
+            Some((MotionValue::MaxWidth(value), kind))
+        }
+        (MotionValue::MaxHeight(start), MotionValue::MaxHeight(end)) => {
+            let (value, kind) = interpolate_bound(*start, *end, progress)?;
+            Some((MotionValue::MaxHeight(value), kind))
+        }
         (MotionValue::Margin(start), MotionValue::Margin(end)) => {
-            interpolate_edge_insets(*start, *end, progress).map(MotionValue::Margin)
+            interpolate_edge_insets(*start, *end, progress)
+                .map(|value| continuous(MotionValue::Margin(value)))
         }
         (MotionValue::Gap(start), MotionValue::Gap(end)) => {
-            interpolate_gap(*start, *end, progress).map(MotionValue::Gap)
+            interpolate_gap(*start, *end, progress)
+                .map(|value| continuous(MotionValue::Gap(value)))
         }
         (MotionValue::FlexGrow(start), MotionValue::FlexGrow(end)) => {
-            interpolate_layout_factor(*start, *end, progress).map(MotionValue::FlexGrow)
+            interpolate_layout_factor(*start, *end, progress)
+                .map(|value| continuous(MotionValue::FlexGrow(value)))
         }
         (MotionValue::FlexShrink(start), MotionValue::FlexShrink(end)) => {
-            interpolate_layout_factor(*start, *end, progress).map(MotionValue::FlexShrink)
+            interpolate_layout_factor(*start, *end, progress)
+                .map(|value| continuous(MotionValue::FlexShrink(value)))
         }
-        (MotionValue::FlexBasis(start), MotionValue::FlexBasis(end)) => Some(
-            MotionValue::FlexBasis(interpolate_flex_basis(*start, *end, progress)?),
-        ),
+        (MotionValue::FlexBasis(start), MotionValue::FlexBasis(end)) => {
+            let (value, kind) = interpolate_flex_basis(*start, *end, progress)?;
+            Some((MotionValue::FlexBasis(value), kind))
+        }
         (MotionValue::Foreground(_), MotionValue::Foreground(_))
         | (MotionValue::Background(_), MotionValue::Background(_))
         | (MotionValue::Padding(_), MotionValue::Padding(_))
@@ -195,6 +220,16 @@ pub fn interpolate_motion_value(
         | (MotionValue::Presentation(_), MotionValue::Presentation(_)) => discrete(),
         _ => None,
     }
+}
+
+/// Compatibility wrapper for callers that need only the sampled value.
+#[must_use]
+pub fn interpolate_motion_value(
+    start: &MotionValue,
+    end: &MotionValue,
+    progress: UnitInterval,
+) -> Option<MotionValue> {
+    interpolate_motion_sample(start, end, progress).map(|(value, _)| value)
 }
 
 #[allow(
@@ -280,15 +315,21 @@ fn interpolate_dimension(
     start: LayoutDimension,
     end: LayoutDimension,
     progress: UnitInterval,
-) -> Option<LayoutDimension> {
+) -> Option<(LayoutDimension, MotionInterpolationKind)> {
     match (start, end) {
-        (LayoutDimension::Length(start), LayoutDimension::Length(end)) => {
-            interpolate_logical_length(start, end, progress).map(LayoutDimension::Length)
-        }
+        (LayoutDimension::Length(start), LayoutDimension::Length(end)) => interpolate_logical_length(
+            start, end, progress,
+        )
+        .map(|value| (LayoutDimension::Length(value), MotionInterpolationKind::Continuous)),
         (LayoutDimension::Percent(start), LayoutDimension::Percent(end)) => {
-            interpolate_layout_factor(start, end, progress).map(LayoutDimension::Percent)
+            interpolate_layout_factor(start, end, progress).map(|value| {
+                (
+                    LayoutDimension::Percent(value),
+                    MotionInterpolationKind::Continuous,
+                )
+            })
         }
-        _ => Some(start),
+        _ => Some((start, MotionInterpolationKind::Discrete)),
     }
 }
 
@@ -296,15 +337,25 @@ fn interpolate_bound(
     start: LayoutBound,
     end: LayoutBound,
     progress: UnitInterval,
-) -> Option<LayoutBound> {
+) -> Option<(LayoutBound, MotionInterpolationKind)> {
     match (start, end) {
         (LayoutBound::Length(start), LayoutBound::Length(end)) => {
-            interpolate_logical_length(start, end, progress).map(LayoutBound::Length)
+            interpolate_logical_length(start, end, progress).map(|value| {
+                (
+                    LayoutBound::Length(value),
+                    MotionInterpolationKind::Continuous,
+                )
+            })
         }
         (LayoutBound::Percent(start), LayoutBound::Percent(end)) => {
-            interpolate_layout_factor(start, end, progress).map(LayoutBound::Percent)
+            interpolate_layout_factor(start, end, progress).map(|value| {
+                (
+                    LayoutBound::Percent(value),
+                    MotionInterpolationKind::Continuous,
+                )
+            })
         }
-        _ => Some(start),
+        _ => Some((start, MotionInterpolationKind::Discrete)),
     }
 }
 
@@ -312,15 +363,25 @@ fn interpolate_flex_basis(
     start: FlexBasis,
     end: FlexBasis,
     progress: UnitInterval,
-) -> Option<FlexBasis> {
+) -> Option<(FlexBasis, MotionInterpolationKind)> {
     match (start, end) {
         (FlexBasis::Length(start), FlexBasis::Length(end)) => {
-            interpolate_logical_length(start, end, progress).map(FlexBasis::Length)
+            interpolate_logical_length(start, end, progress).map(|value| {
+                (
+                    FlexBasis::Length(value),
+                    MotionInterpolationKind::Continuous,
+                )
+            })
         }
         (FlexBasis::Percent(start), FlexBasis::Percent(end)) => {
-            interpolate_layout_factor(start, end, progress).map(FlexBasis::Percent)
+            interpolate_layout_factor(start, end, progress).map(|value| {
+                (
+                    FlexBasis::Percent(value),
+                    MotionInterpolationKind::Continuous,
+                )
+            })
         }
-        _ => Some(start),
+        _ => Some((start, MotionInterpolationKind::Discrete)),
     }
 }
 
@@ -504,8 +565,8 @@ mod tests {
     use core::f32::consts::{PI, TAU};
 
     use super::{
-        apply_motion_value, ease_motion, interpolate_f32, interpolate_motion_value,
-        motion_value_for_target,
+        MotionInterpolationKind, apply_motion_value, ease_motion, interpolate_f32,
+        interpolate_motion_sample, interpolate_motion_value, motion_value_for_target,
     };
     use crate::{
         Color, ComputedStyle, CubicBezier, FlexBasis, LayoutDimension, LayoutFactor, LayoutStyle,
@@ -537,12 +598,13 @@ mod tests {
 
     #[test]
     fn color_motion_reuses_accepted_linear_srgb_sampling() {
-        let sampled = interpolate_motion_value(
+        let (sampled, kind) = interpolate_motion_sample(
             &MotionValue::Foreground(Some(Color::BLACK)),
             &MotionValue::Foreground(Some(Color::WHITE)),
             UnitInterval::HALF,
         )
         .unwrap_or_else(|| unreachable!("matching color target is sampleable"));
+        assert_eq!(kind, MotionInterpolationKind::Continuous);
         assert_eq!(
             sampled,
             MotionValue::Foreground(Some(Color::rgb(188, 188, 188)))
@@ -553,13 +615,17 @@ mod tests {
     fn typography_absence_is_discrete_until_terminal_boundary() {
         let start = MotionValue::Typography(Some(Typography::default()));
         let end = MotionValue::Typography(None);
+        let (middle, middle_kind) = interpolate_motion_sample(&start, &end, UnitInterval::HALF)
+            .unwrap_or_else(|| unreachable!("matching typography target is sampleable"));
+        assert_eq!(middle_kind, MotionInterpolationKind::Discrete);
+        assert_eq!(middle, start);
+        let (terminal, terminal_kind) = interpolate_motion_sample(&start, &end, UnitInterval::ONE)
+            .unwrap_or_else(|| unreachable!("matching typography target is sampleable"));
+        assert_eq!(terminal_kind, MotionInterpolationKind::Endpoint);
+        assert_eq!(terminal, end);
         assert_eq!(
             interpolate_motion_value(&start, &end, UnitInterval::HALF),
-            Some(start.clone())
-        );
-        assert_eq!(
-            interpolate_motion_value(&start, &end, UnitInterval::ONE),
-            Some(end)
+            Some(start)
         );
     }
 
@@ -597,14 +663,14 @@ mod tests {
         let end = LayoutDimension::Length(LogicalLength::from(10_u16));
         let start = MotionValue::Width(LayoutDimension::Auto);
         let end = MotionValue::Width(end);
-        assert_eq!(
-            interpolate_motion_value(&start, &end, UnitInterval::HALF),
-            Some(start.clone())
-        );
-        assert_eq!(
-            interpolate_motion_value(&start, &end, UnitInterval::ONE),
-            Some(end)
-        );
+        let (middle, middle_kind) = interpolate_motion_sample(&start, &end, UnitInterval::HALF)
+            .unwrap_or_else(|| unreachable!("matching width target is sampleable"));
+        assert_eq!(middle_kind, MotionInterpolationKind::Discrete);
+        assert_eq!(middle, start);
+        let (terminal, terminal_kind) = interpolate_motion_sample(&start, &end, UnitInterval::ONE)
+            .unwrap_or_else(|| unreachable!("matching width target is sampleable"));
+        assert_eq!(terminal_kind, MotionInterpolationKind::Endpoint);
+        assert_eq!(terminal, end);
     }
 
     #[test]
