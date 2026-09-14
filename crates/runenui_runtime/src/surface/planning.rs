@@ -20,8 +20,8 @@ use super::taffy_layout::layout_resolved_surface;
 use super::transaction::PlannedSurfacePublication;
 use super::{
     SurfaceBuildContext, SurfaceCache, SurfaceFrame, SurfaceInteractionProjection,
-    SurfaceLayoutReport, SurfaceMotionActivity, SurfaceMotionStore, SurfacePhase, SurfacePhaseReport,
-    SurfacePublication, SurfaceWidgetDebug,
+    SurfaceLayoutReport, SurfaceMotionActivity, SurfaceMotionStore, SurfacePhase,
+    SurfacePhaseReport, SurfacePublication, SurfaceWidgetDebug,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
