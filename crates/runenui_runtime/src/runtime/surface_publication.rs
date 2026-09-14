@@ -740,7 +740,7 @@ impl SurfacePublicationState {
         }
     }
 
-    pub(in crate::runtime) const fn commit_redraw_request(
+    pub(in crate::runtime) fn commit_redraw_request(
         &mut self,
         admission: RedrawRevisionAdmission,
     ) -> u64 {
