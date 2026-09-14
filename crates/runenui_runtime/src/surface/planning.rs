@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 #[cfg(test)]
 use runenui_core::{FontFamilyName, GenericFontFamily};
-use runenui_core::{LogicalLength, LogicalSize, WidgetDiagnostic};
+use runenui_core::{LogicalLength, LogicalSize, MonotonicInstant, WidgetDiagnostic};
 #[cfg(test)]
 use runenui_text::FontSourcePolicy;
 use runenui_text::{TextLayoutError, TextSystem};
@@ -11,16 +11,17 @@ use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan}
 use crate::style_debug::SurfaceStyleReport;
 
 use super::cache::{CachedLayoutFacts, context_key};
+use super::motion::{self, MotionPlanningError};
 use super::resolve::{
-    CachedEffectiveFacts, EffectiveEffects, PresentationGeometryError, ResolvedSurfaceTree,
-    collect_topology, hit_contexts, paint_contexts, resolve_diagnostics, resolve_hit_test,
-    resolve_paint, resolve_presentation, resolve_styles,
+    PresentationGeometryError, ResolvedSurfaceTree, collect_topology, hit_contexts, paint_contexts,
+    resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::PlannedSurfacePublication;
 use super::{
     SurfaceBuildContext, SurfaceCache, SurfaceFrame, SurfaceInteractionProjection,
-    SurfaceLayoutReport, SurfacePhase, SurfacePhaseReport, SurfacePublication, SurfaceWidgetDebug,
+    SurfaceLayoutReport, SurfaceMotionActivity, SurfaceMotionStore, SurfacePhase, SurfacePhaseReport,
+    SurfacePublication, SurfaceWidgetDebug,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -28,6 +29,7 @@ pub(crate) enum SurfacePlanningError {
     SemanticIntegrity,
     TextLayout(TextLayoutError),
     PresentationGeometry,
+    Motion,
 }
 
 impl From<SemanticReconcileError> for SurfacePlanningError {
@@ -45,6 +47,12 @@ impl From<TextLayoutError> for SurfacePlanningError {
 impl From<PresentationGeometryError> for SurfacePlanningError {
     fn from(_: PresentationGeometryError) -> Self {
         Self::PresentationGeometry
+    }
+}
+
+impl From<MotionPlanningError> for SurfacePlanningError {
+    fn from(_: MotionPlanningError) -> Self {
+        Self::Motion
     }
 }
 
@@ -184,30 +192,29 @@ fn resolve_layout_phase<Action>(
     })
 }
 
-fn refresh_effective_facts<Action>(
-    tree: &crate::mounted::MountedTree<Action>,
-    current: &mut SurfaceCache,
-) -> EffectiveEffects {
-    let next_effective = CachedEffectiveFacts::identity(tree, &current.topology, &current.styles);
-    let effects = current.effective.effects_against(&next_effective);
-    if current.effective.as_ref() != &next_effective {
-        current.effective = Arc::new(next_effective);
-    }
-    effects
-}
-
 pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     interaction: &SurfaceInteractionProjection,
     text_system: &mut TextSystem,
     cache: Option<&SurfaceCache>,
+    motion_store: &SurfaceMotionStore,
+    instant: MonotonicInstant,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let next_context = context_key(context, text_system.source_snapshot());
     let pending = tree.pending_phases();
     let tree_dirty = cache.is_none() || pending.contains(DirtyPhases::TREE);
     if tree_dirty {
-        return plan_structural_surface(tree, context, interaction, text_system, next_context);
+        return plan_structural_surface(
+            tree,
+            context,
+            interaction,
+            text_system,
+            next_context,
+            cache,
+            motion_store,
+            instant,
+        );
     }
 
     let mut current = stage_non_structural_cache(cache);
@@ -236,12 +243,25 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         completed.insert(DirtyPhases::STYLE);
     }
 
-    if style_dirty || target_layout_dirty {
-        let effects = refresh_effective_facts(tree, &mut current);
-        layout_dirty |= effects.layout();
-        presentation_dirty |= effects.presentation();
-        paint_dirty |= effects.paint();
+    let planned_motion = motion::plan_surface_motion(
+        &motion_store.0,
+        tree,
+        &current.topology,
+        &current.styles,
+        cache,
+        context.style_environment().preferences(),
+        instant,
+    )?;
+    let (next_motion_store, next_effective, motion_activity) = planned_motion.into_parts();
+    let effective_effects = current.effective.effects_against(&next_effective);
+    let effective_changed = current.effective.as_ref() != &next_effective;
+    if effective_changed {
+        current.effective = Arc::new(next_effective);
     }
+    completed.insert(DirtyPhases::MOTION);
+    layout_dirty |= effective_effects.layout();
+    presentation_dirty |= effective_effects.presentation();
+    paint_dirty |= effective_effects.paint();
 
     presentation_dirty |= layout_dirty;
     if presentation_dirty {
@@ -297,7 +317,8 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     }
 
     current.context_key = Arc::new(next_context);
-    if report.contains(SurfacePhase::Style)
+    if effective_changed
+        || report.contains(SurfacePhase::Style)
         || report.contains(SurfacePhase::Layout)
         || report.contains(SurfacePhase::Diagnostics)
         || scene_diagnostics_changed
@@ -306,6 +327,8 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     }
     Ok(PlannedSurfacePublication::new(
         current,
+        SurfaceMotionStore(next_motion_store),
+        SurfaceMotionActivity(motion_activity),
         report,
         completed,
         capability_plan,
@@ -313,12 +336,16 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn plan_structural_surface<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     interaction: &SurfaceInteractionProjection,
     text_system: &mut TextSystem,
     context_key: super::cache::SurfaceContextKey,
+    previous_cache: Option<&SurfaceCache>,
+    motion_store: &SurfaceMotionStore,
+    instant: MonotonicInstant,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let mut report = SurfacePhaseReport::default();
     let topology = collect_topology(tree);
@@ -331,8 +358,17 @@ fn plan_structural_surface<'tree, Action>(
         interaction,
         &capability_plan,
     );
-    let effective = CachedEffectiveFacts::identity(tree, &topology, &styles);
     report.record(SurfacePhase::Style);
+    let planned_motion = motion::plan_surface_motion(
+        &motion_store.0,
+        tree,
+        &topology,
+        &styles,
+        previous_cache,
+        context.style_environment().preferences(),
+        instant,
+    )?;
+    let (next_motion_store, effective, motion_activity) = planned_motion.into_parts();
     tree.extend_surface_publication_capabilities(&mut capability_plan, DirtyPhases::ALL);
     let semantic_capability_plan = tree.plan_semantic_publication_capabilities(&capability_plan);
     let resolved = ResolvedSurfaceTree::for_layout(&topology, &effective);
@@ -406,6 +442,8 @@ fn plan_structural_surface<'tree, Action>(
     rebuilt.publication = compose_publication(&rebuilt);
     Ok(PlannedSurfacePublication::new(
         rebuilt,
+        SurfaceMotionStore(next_motion_store),
+        SurfaceMotionActivity(motion_activity),
         report,
         DirtyPhases::ALL,
         capability_plan,
@@ -446,12 +484,15 @@ pub(super) fn plan_mounted_surface_cached_with_test_text<'tree, Action>(
     cache: Option<&SurfaceCache>,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     TEST_TEXT_SYSTEM.with(|text_system| {
+        let motion_store = SurfaceMotionStore::default();
         plan_mounted_surface_cached_with_text(
             tree,
             context,
             interaction,
             &mut text_system.borrow_mut(),
             cache,
+            &motion_store,
+            MonotonicInstant::ZERO,
         )
     })
 }
@@ -475,7 +516,9 @@ pub(super) fn publish_mounted_surface_cached<Action>(
     let interaction = SurfaceInteractionProjection::default();
     let planned = plan_mounted_surface_cached(tree, context, &interaction, cache.as_ref())?;
     let commit = planned.commit_store();
-    Ok(commit.commit(tree, cache))
+    let mut motion_store = SurfaceMotionStore::default();
+    let (publication, report, _activity) = commit.commit(tree, cache, &mut motion_store);
+    Ok((publication, report))
 }
 
 fn combined_node_diagnostics(cache: &SurfaceCache, index: usize) -> Vec<WidgetDiagnostic> {
