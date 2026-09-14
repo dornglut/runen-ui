@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use runenui_core::{
-    AnimationId, Element, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,
+    AnimationId, Color, Element, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,
     MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity, StyleEnvironment,
     StylePreferencePolicy, StylePreferences, StyleProperties, TimelineSpec, UiApp, UnitInterval,
     View, text,
@@ -25,6 +25,7 @@ impl UiApp for GroupLifetimeApp {
     fn root((): &Self::State) -> Element<Self::Action> {
         text("group lifetime")
             .key("root")
+            .background(Color::WHITE)
             .timeline(group_lifetime_timeline())
             .into_element()
     }
