@@ -1138,7 +1138,8 @@ fn reconcile_explicit(
     let mut terminal_commit = false;
     let mut started_at_candidate = false;
     let lifecycle = match retained {
-        Some(record) if record.declaration == *declaration => match (&record.lifecycle, preference) {
+        Some(record) if record.declaration == *declaration => match (&record.lifecycle, preference)
+        {
             (ExplicitLifecycle::Completed, _) => ExplicitLifecycle::Completed,
             (ExplicitLifecycle::HoldInitial, MotionPreferenceMode::HoldInitial) => {
                 ExplicitLifecycle::HoldInitial
@@ -1379,7 +1380,9 @@ fn motion_preference_mode(
         ReducedMotionStrategy::SnapToEnd => MotionPreferenceMode::SnapToEnd,
         ReducedMotionStrategy::HoldInitial => MotionPreferenceMode::HoldInitial,
         ReducedMotionStrategy::PreserveEssential => MotionPreferenceMode::PreserveEssential,
-        _ => unreachable!("runtime and core reduced-motion strategy vocabularies are version-locked"),
+        _ => {
+            unreachable!("runtime and core reduced-motion strategy vocabularies are version-locked")
+        }
     }
 }
 
