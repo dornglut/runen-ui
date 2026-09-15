@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use runenui_core::{
-    Color, EdgeInsets, Element, LogicalLength, View, button, children, column, row, text,
+    Color, EdgeInsets, Element, LogicalLength, MotionEasing, MotionTarget, TransitionSpec, View,
+    button, children, column, row, text,
 };
 
 use crate::app::{Counter, CounterAction};
@@ -19,6 +22,16 @@ fn count_background(count: i32) -> Color {
     Color::rgb(40_u8.saturating_add(step.saturating_mul(12)), 56, 104)
 }
 
+fn count_transition() -> TransitionSpec {
+    TransitionSpec::new(
+        Duration::from_millis(200),
+        Duration::ZERO,
+        MotionEasing::Linear,
+        None,
+    )
+    .unwrap_or_else(|_| unreachable!("Counter uses a bounded valid transition"))
+}
+
 struct CounterScreen;
 
 impl CounterScreen {
@@ -27,7 +40,9 @@ impl CounterScreen {
             text("Counter").id("counter.title"),
             text(counter.count.to_string())
                 .id("counter.value")
+                .key("counter.value")
                 .background(count_background(counter.count))
+                .transition(MotionTarget::Background, count_transition())
                 .padding(padding(8)),
             row(children![
                 button("-")
