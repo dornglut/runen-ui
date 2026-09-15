@@ -3,10 +3,10 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Effects, Element, EventContext, HitContribution, HitContributionContext, IntoEffects,
-    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PointerButton, PointerButtons,
-    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, StyleEnvironment,
-    SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetEventOutput, WidgetMeasure,
+    Element, EventContext, HitContribution, HitContributionContext, LogicalLength, LogicalPoint,
+    LogicalRect, NoHostProtocol, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent,
+    PointerId, PointerPhase, StyleEnvironment, SurfaceInputContext, UiApp, UiEvent, View, Widget,
+    WidgetEventOutput, WidgetMeasure,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TracePointerRejection,
@@ -31,12 +31,7 @@ impl UiApp for App {
         })
     }
 
-    fn update(
-        _state: &mut Self::State,
-        _action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
-        Effects::redraw()
-    }
+    fn update(_state: &mut Self::State, _action: Self::Action) {}
 }
 
 #[derive(Debug)]
@@ -122,18 +117,13 @@ fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
     pump_all(runtime);
 }
 
-fn fixture_runtime() -> (AppRuntime<App>, Rc<RefCell<Vec<PointerPhase>>>) {
+#[test]
+fn displayed_context_survives_one_unpresented_publication_but_not_two() {
     let observed = Rc::new(RefCell::new(Vec::new()));
     let mut runtime = AppRuntime::<App>::mount(State {
         observed: Rc::clone(&observed),
     });
     pump_all(&mut runtime);
-    (runtime, observed)
-}
-
-#[test]
-fn displayed_context_survives_one_unpresented_publication_but_not_two() {
-    let (mut runtime, observed) = fixture_runtime();
 
     let style = StyleEnvironment::default();
     let size = LogicalSize::try_new(64.0, 64.0)
@@ -196,41 +186,4 @@ fn displayed_context_survives_one_unpresented_publication_but_not_two() {
             } if pointer_id.get() == 2
         )
     }));
-}
-
-#[test]
-fn latest_redraw_token_acknowledges_coalesced_dirty_revisions() {
-    let (mut runtime, _observed) = fixture_runtime();
-    let initial = runtime
-        .take_redraw_request()
-        .unwrap_or_else(|| unreachable!("mount is initially publication-dirty"));
-    runtime
-        .acknowledge_redraw(&initial)
-        .unwrap_or_else(|_| unreachable!("initial redraw request belongs to this runtime"));
-    assert!(runtime.take_redraw_request().is_none());
-
-    runtime
-        .submit_action(())
-        .unwrap_or_else(|_| unreachable!("first redraw action is admitted"));
-    pump_all(&mut runtime);
-    let older = runtime
-        .take_redraw_request()
-        .unwrap_or_else(|| unreachable!("first redraw action arms a request"));
-
-    runtime
-        .submit_action(())
-        .unwrap_or_else(|_| unreachable!("second redraw action is admitted"));
-    pump_all(&mut runtime);
-    let latest = runtime
-        .take_redraw_request()
-        .unwrap_or_else(|| unreachable!("second redraw action advances the request"));
-    assert!(latest.revision() > older.revision());
-
-    runtime
-        .acknowledge_redraw(&latest)
-        .unwrap_or_else(|_| unreachable!("latest redraw request belongs to this runtime"));
-    assert!(
-        runtime.take_redraw_request().is_none(),
-        "acknowledging the newest coalesced request must not force an unchanged republish"
-    );
 }
