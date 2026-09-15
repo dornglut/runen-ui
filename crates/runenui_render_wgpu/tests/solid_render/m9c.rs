@@ -361,6 +361,17 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
     assert!(report.is_quiescent());
     let transition_start = publish(&mut runtime);
     assert!((sampled_opacity(&transition_start) - 1.0).abs() <= f32::EPSILON);
+    let transition_start_readback = render(&mut renderer, &transition_start, &provider)?;
+    assert_eq!(
+        transition_start_readback.update_plan().mode(),
+        PublicationUpdateMode::ExactBaseMatch
+    );
+    assert_eq!(provider.loads(), 1);
+    assert_eq!(
+        transition_start_readback.readback().rgba8_srgb(),
+        initial.readback().rgba8_srgb(),
+        "starting the transition at the current endpoint must preserve realized pixels"
+    );
 
     runtime
         .advance_time(Duration::from_millis(50))
