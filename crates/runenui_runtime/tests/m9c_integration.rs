@@ -122,7 +122,7 @@ fn translation(x: f32, y: f32) -> LogicalTransform {
         .unwrap_or_else(|_| unreachable!("controlled translation is finite"))
 }
 
-fn identity_presentation() -> PresentationTransform {
+const fn identity_presentation() -> PresentationTransform {
     PresentationTransform::new(
         PresentationTranslation::ZERO,
         PresentationScale::IDENTITY,
@@ -531,7 +531,7 @@ fn canonical_hover_focus_and_active_facts_retarget_one_transition_path() {
 
     runtime
         .submit_command(
-            target.clone(),
+            target,
             SemanticCommand::RequestFocus,
             CommandOrigin::programmatic(),
         )
