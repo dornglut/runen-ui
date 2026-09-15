@@ -7,7 +7,7 @@ use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceContext, TraceEventContext, TraceEventFamily,
     TracePointerContext, TracePointerPath, TraceRecordKind, TraceSequence, TraceSurfaceContext,
     TraceTargetTransition,
-    mounted::TargetStatus,
+    mounted::{RouteBuildError, TargetStatus},
     runtime::{MandatoryTracePlan, ProcessApplicationActionOutcome, Runtime},
     trace::TraceRecordDraft,
 };
@@ -134,17 +134,46 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let snapshot = super::rejection::map_snapshot_kind(resolution.snapshot_kind());
         let physical_target = resolution.into_target();
         let physical_path = match physical_target.as_ref() {
-            Some(target) => {
-                let Ok(path) = self.tree.event_route(target) else {
+            Some(target) => match self.tree.event_route(target) {
+                Ok(path) => path,
+                Err(RouteBuildError::Target(TargetStatus::Stale)) => {
+                    // A retained runtime-authored hit scene may outlive the mounted target it
+                    // names. That is an expected historical-display rejection, not topology
+                    // corruption. Foreign or missing scene targets remain integrity failures.
+                    let outcome = crate::trace::TracePointerRejection::NoTarget;
+                    if matches!(work.event.phase(), PointerPhase::Up) {
+                        return Err(self.settle_rejected_pointer_up(
+                            work,
+                            outcome,
+                            stream.clone(),
+                        ));
+                    }
+                    return Err(
+                        self.reject_pointer(super::rejection::RejectedPointerFacts::new(
+                            work.sequence,
+                            work.causal_parent,
+                            work.trace_reservation,
+                            work.event.pointer_id(),
+                            work.event.phase(),
+                            outcome,
+                        )),
+                    );
+                }
+                Err(
+                    RouteBuildError::Target(
+                        TargetStatus::Live | TargetStatus::Missing | TargetStatus::Foreign,
+                    )
+                    | RouteBuildError::BrokenTopology
+                    | RouteBuildError::BridgeMismatch,
+                ) => {
                     self.trace.release_reservation(work.trace_reservation);
                     let cancelled = self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
                     return Err(ProcessApplicationActionOutcome::Terminal {
                         reason: RuntimeTerminalReason::Poisoned,
                         cancelled,
                     });
-                };
-                path
-            }
+                }
+            },
             None => Vec::new(),
         };
         Ok(PointerGeometry {
