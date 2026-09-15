@@ -10,7 +10,7 @@ use runenui_core::{
     LogicalPoint, LogicalRect, NoHostProtocol, PointerButton, PointerButtons, PointerDeviceKind,
     PointerEvent, PointerId, PointerPhase, StyleEnvironment, SurfaceInputContext, UiApp, UiEvent,
     View, Widget, WidgetActivation, WidgetActivationContext, WidgetActivationOutput,
-    WidgetEventOutput, WidgetMeasure, children, row,
+    WidgetEventOutput, WidgetMeasure, WorkSequence, children, row,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, RuntimeStatus, SurfaceBuildContext, TracePointerRejection,
@@ -227,11 +227,12 @@ fn pump_all(runtime: &mut AppRuntime<App>) {
     );
 }
 
-fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) {
-    runtime
+fn submit_and_pump(runtime: &mut AppRuntime<App>, event: PointerEvent) -> WorkSequence {
+    let submission = runtime
         .submit_pointer(event)
         .unwrap_or_else(|_| unreachable!("fixture pointer ingress is accepted"));
     pump_all(runtime);
+    submission.sequence()
 }
 
 fn replace_target_without_publishing(harness: &mut Harness) {
@@ -406,7 +407,7 @@ fn stale_physical_hit_preserves_distinct_live_capture_routing_without_retarget()
     replace_target_without_publishing(&mut harness);
     let trace_start = harness.runtime.trace().len();
 
-    submit_and_pump(
+    let move_sequence = submit_and_pump(
         &mut harness.runtime,
         pointer_event(89, PointerPhase::Move, &harness.context, harness.old_point),
     );
@@ -419,6 +420,23 @@ fn stale_physical_hit_preserves_distinct_live_capture_routing_without_retarget()
     assert!(harness.old_observations.borrow().is_empty());
     assert!(harness.replacement_observations.borrow().is_empty());
     assert_eq!(harness.activations.get(), 0);
+    let physical = harness
+        .runtime
+        .trace()
+        .records()
+        .skip(trace_start)
+        .find(|record| {
+            record.work_sequence() == Some(move_sequence)
+                && matches!(record.kind(), TraceRecordKind::PointerPhysicalTargetResolved)
+        })
+        .unwrap_or_else(|| unreachable!("stale captured move records physical resolution"));
+    assert_eq!(physical.target(), None);
+    assert!(
+        physical
+            .context()
+            .physical_path()
+            .is_some_and(|path| path.targets().is_empty())
+    );
     assert!(!harness.runtime.trace().records().skip(trace_start).any(|record| {
         matches!(
             record.kind(),
