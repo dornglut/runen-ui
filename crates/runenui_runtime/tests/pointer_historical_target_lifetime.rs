@@ -280,12 +280,7 @@ fn stale_displayed_hit_down_rejects_without_poison_or_current_geometry_retarget(
 
     submit_and_pump(
         &mut harness.runtime,
-        pointer_event(
-            81,
-            PointerPhase::Down,
-            &harness.context,
-            harness.old_point,
-        ),
+        pointer_event(81, PointerPhase::Down, &harness.context, harness.old_point),
     );
 
     assert_eq!(harness.runtime.status(), RuntimeStatus::Running);
@@ -300,13 +295,20 @@ fn stale_displayed_hit_down_rejects_without_poison_or_current_geometry_retarget(
         PointerPhase::Down,
         TracePointerRejection::NoTarget,
     ));
-    assert!(!harness.runtime.trace().records().skip(trace_start).any(|record| {
-        matches!(
-            record.kind(),
-            TraceRecordKind::PointerStreamRegistered { pointer_id, .. }
-                if pointer_id.get() == 81
-        )
-    }));
+    assert!(
+        !harness
+            .runtime
+            .trace()
+            .records()
+            .skip(trace_start)
+            .any(|record| {
+                matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerStreamRegistered { pointer_id, .. }
+                        if pointer_id.get() == 81
+                )
+            })
+    );
 
     submit_and_pump(
         &mut harness.runtime,
@@ -331,24 +333,14 @@ fn stale_displayed_hit_up_closes_existing_stream_without_route_or_activation() {
     let mut harness = harness();
     submit_and_pump(
         &mut harness.runtime,
-        pointer_event(
-            83,
-            PointerPhase::Down,
-            &harness.context,
-            harness.old_point,
-        ),
+        pointer_event(83, PointerPhase::Down, &harness.context, harness.old_point),
     );
     replace_target_without_publishing(&mut harness);
     let trace_start = harness.runtime.trace().len();
 
     submit_and_pump(
         &mut harness.runtime,
-        pointer_event(
-            83,
-            PointerPhase::Up,
-            &harness.context,
-            harness.old_point,
-        ),
+        pointer_event(83, PointerPhase::Up, &harness.context, harness.old_point),
     );
 
     assert_eq!(harness.runtime.status(), RuntimeStatus::Running);
@@ -363,12 +355,19 @@ fn stale_displayed_hit_up_closes_existing_stream_without_route_or_activation() {
         PointerPhase::Up,
         TracePointerRejection::NoTarget,
     ));
-    assert!(harness.runtime.trace().records().skip(trace_start).any(|record| {
-        matches!(
-            record.kind(),
-            TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id.get() == 83
-        )
-    }));
+    assert!(
+        harness
+            .runtime
+            .trace()
+            .records()
+            .skip(trace_start)
+            .any(|record| {
+                matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerStreamClosed { pointer_id } if pointer_id.get() == 83
+                )
+            })
+    );
 
     submit_and_pump(
         &mut harness.runtime,
@@ -402,24 +401,14 @@ fn stale_physical_hit_preserves_distinct_live_capture_routing_without_retarget()
     );
     submit_and_pump(
         &mut harness.runtime,
-        pointer_event(
-            89,
-            PointerPhase::Move,
-            &harness.context,
-            harness.old_point,
-        ),
+        pointer_event(89, PointerPhase::Move, &harness.context, harness.old_point),
     );
     replace_target_without_publishing(&mut harness);
     let trace_start = harness.runtime.trace().len();
 
     submit_and_pump(
         &mut harness.runtime,
-        pointer_event(
-            89,
-            PointerPhase::Move,
-            &harness.context,
-            harness.old_point,
-        ),
+        pointer_event(89, PointerPhase::Move, &harness.context, harness.old_point),
     );
 
     assert_eq!(harness.runtime.status(), RuntimeStatus::Running);
