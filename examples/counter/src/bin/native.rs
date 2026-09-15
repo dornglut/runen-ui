@@ -391,6 +391,19 @@ impl CounterHost {
         }
     }
 
+    fn refresh_redraw_request(&mut self) {
+        let Some(request) = self.runtime.take_redraw_request() else {
+            return;
+        };
+        if self
+            .pending_redraw
+            .as_ref()
+            .is_none_or(|pending| request.revision() > pending.revision())
+        {
+            self.pending_redraw = Some(request);
+        }
+    }
+
     fn ensure_counter_focus(&mut self, event_loop: &ActiveEventLoop) -> bool {
         if !self.window_focused || self.runtime.focus().focused_node().is_some() {
             return true;
@@ -426,7 +439,7 @@ impl CounterHost {
         if !self.renderer_addresses_mapping(mapping) {
             return Ok(false);
         }
-        self.collect_redraw_request();
+        self.refresh_redraw_request();
         if self.pending_redraw.is_none() && !self.mapping_publication_needed {
             return Ok(false);
         }

@@ -609,11 +609,27 @@ impl ReferenceHost {
     }
 
     fn collect_redraw_request(&mut self) {
-        if self.pending_redraw.is_none() {
-            self.pending_redraw = self.runtime.take_redraw_request();
-            if self.pending_redraw.is_some() {
-                proof!("stage=redraw_taken");
-            }
+        if self.pending_redraw.is_none()
+            && let Some(request) = self.runtime.take_redraw_request()
+        {
+            let revision = request.revision();
+            self.pending_redraw = Some(request);
+            proof!("stage=redraw_taken revision={revision}");
+        }
+    }
+
+    fn refresh_redraw_request(&mut self) {
+        let Some(request) = self.runtime.take_redraw_request() else {
+            return;
+        };
+        let revision = request.revision();
+        if self
+            .pending_redraw
+            .as_ref()
+            .is_none_or(|pending| revision > pending.revision())
+        {
+            self.pending_redraw = Some(request);
+            proof!("stage=redraw_coalesced revision={revision}");
         }
     }
 
@@ -659,7 +675,7 @@ impl ReferenceHost {
             return Ok(false);
         }
 
-        self.collect_redraw_request();
+        self.refresh_redraw_request();
         if self.pending_redraw.is_none() && !self.mapping_publication_needed {
             return Ok(false);
         }
@@ -699,7 +715,7 @@ impl ReferenceHost {
             self.runtime
                 .acknowledge_redraw(&request)
                 .map_err(|error| format!("redraw acknowledgement failed: {error:?}"))?;
-            proof!("stage=redraw_acknowledged");
+            proof!("stage=redraw_acknowledged revision={}", request.revision());
         }
         self.drain_runtime_trace();
         self.mapping_publication_needed = false;
