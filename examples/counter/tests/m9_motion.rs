@@ -8,7 +8,7 @@ use std::time::Duration;
 use app::{Counter, CounterAction, CounterApp};
 use runenui_core::{Brush, Color, StyleEnvironment};
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, SurfacePublication,
+    AppRuntime, LogicalSize, ManualClock, PumpBudget, SurfaceBuildContext, SurfacePublication,
 };
 
 fn surface_size() -> LogicalSize {
@@ -41,8 +41,10 @@ fn count_background(publication: &SurfacePublication) -> Brush {
 }
 
 #[test]
-fn count_background_transition_uses_public_logical_time() {
+fn count_background_transition_uses_host_provided_monotonic_time() {
+    let host_clock = ManualClock::new();
     let mut runtime = AppRuntime::<CounterApp>::mount(Counter::new());
+    runtime.set_monotonic_clock(host_clock.clone());
     pump_all(&mut runtime);
 
     let style_environment = StyleEnvironment::default();
@@ -67,9 +69,10 @@ fn count_background_transition_uses_public_logical_time() {
         "the accepted transition starts from the previously presented count background"
     );
 
-    runtime
-        .advance_time(Duration::from_millis(100))
-        .unwrap_or_else(|_| unreachable!("Counter midpoint advance is bounded"));
+    host_clock
+        .advance(Duration::from_millis(100))
+        .unwrap_or_else(|_| unreachable!("Counter host-clock midpoint advance is bounded"));
+    pump_all(&mut runtime);
     let middle = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("Counter transition midpoint is admitted"));
@@ -78,9 +81,10 @@ fn count_background_transition_uses_public_logical_time() {
     assert_ne!(middle_background, initial_background);
     assert_ne!(middle_background, target_background);
 
-    runtime
-        .advance_time(Duration::from_millis(100))
-        .unwrap_or_else(|_| unreachable!("Counter terminal advance is bounded"));
+    host_clock
+        .advance(Duration::from_millis(100))
+        .unwrap_or_else(|_| unreachable!("Counter host-clock terminal advance is bounded"));
+    pump_all(&mut runtime);
     let terminal = runtime
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("Counter transition terminal sample is admitted"));
