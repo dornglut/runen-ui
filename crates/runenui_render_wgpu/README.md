@@ -4,7 +4,7 @@
 
 `runenui_render_wgpu` is RunenUI's reusable concrete wgpu renderer edge over ordinary public paint publications. It owns disposable GPU realization and target state; it does not own widget behavior, semantic identity, mounted/runtime authority, text shaping, logical layout, logical visual/composition semantics, deterministic motion, or a native event loop.
 
-The public `Renderer` consumes the accepted `runenui_core`, `runenui_runtime`, and exact retained `runenui_text` shaped-resource contracts required by paint realization. Native hosts such as `reference_winit` and Counter keep window/event-loop policy outside this crate while using the same renderer for real native presentation. M9B motion reaches this crate only after runtime has sampled and committed immutable publication products.
+The public `Renderer` consumes the accepted `runenui_core`, `runenui_runtime`, and exact retained `runenui_text` shaped-resource contracts required by paint realization. Native hosts such as `reference_winit` and Counter keep window/event-loop policy outside this crate while using the same renderer for real native presentation. M9 motion reaches this crate only after runtime has sampled and committed immutable publication products.
 
 ## Ownership
 
@@ -30,7 +30,7 @@ The renderer does **not** own native event loops, application lifecycle policy, 
 A native host then explicitly drives the retained target:
 
 1. `configure_surface` establishes a non-zero physical extent and renderer-local target generation;
-2. the runtime publishes one ordinary `PaintPublication` for the host's exact logical surface and raster scale; any M9B motion in that publication has already been sampled at runtime's single candidate monotonic instant;
+2. the runtime publishes one ordinary `PaintPublication` for the host's exact logical surface and raster scale; any M9 motion in that publication has already been sampled at runtime's single candidate monotonic instant;
 3. `render_surface_publication` performs validation/resource/effect preflight, acquires the native surface texture, encodes the same accepted mixed scene used by the offscreen path, submits GPU work, invokes the caller-owned pre-present boundary, presents, and only then commits successful surface lineage;
 4. timeout, occlusion, outdated/suboptimal configuration, or surface loss are returned as structured host-visible errors so the host can retry, reconfigure, or recreate the renderer without moving UI or motion authority into this crate.
 
@@ -40,7 +40,7 @@ Surface creation follows wgpu platform requirements, including main-thread creat
 
 ## Supported scene and resource path
 
-The implementation fails closed before target mutation or GPU submission when a publication cannot be represented by the current renderer subset. Supported production realization includes accepted generic `SceneShape` fills/strokes for rectangle, rounded rectangle, ellipse, and path geometry; solid, linear-gradient, and concentric-radial brushes; runtime-resolved image fit/crop/alignment/nine-slice patches; retained shaped-text runs; finite affine transforms; conjunctive generic clips; snapshot-local atomic composition groups; ordinary shadows; scene/group opacity; and ordered source-over composition. M9B can change those already-published values over time, but the renderer sees each publication as one immutable sampled scene. Unknown or unsupported primitives/effects remain explicit failures rather than being reinterpreted by the renderer.
+The implementation fails closed before target mutation or GPU submission when a publication cannot be represented by the current renderer subset. Supported production realization includes accepted generic `SceneShape` fills/strokes for rectangle, rounded rectangle, ellipse, and path geometry; solid, linear-gradient, and concentric-radial brushes; runtime-resolved image fit/crop/alignment/nine-slice patches; retained shaped-text runs; finite affine transforms; conjunctive generic clips; snapshot-local atomic composition groups; ordinary shadows; scene/group opacity; and ordered source-over composition. M9 motion can change those already-published values over time, but the renderer sees each publication as one immutable sampled scene. Unknown or unsupported primitives/effects remain explicit failures rather than being reinterpreted by the renderer.
 
 Canonical `SceneRequirements` / `SceneCapabilities` remain renderer-neutral runtime contracts. Narrow renderer implementation checks and detailed rejection reasons stay renderer-local and do not become a second scene vocabulary.
 
@@ -50,11 +50,11 @@ The caller-owned `ResourceProvider` resolves external resources such as images. 
 
 ## Shaped text
 
-RunenUI logical text authority remains outside the renderer. Runtime publication retains the exact scale-independent `ResourceRef -> ShapedTextResource` binding produced by the accepted text/layout path. The renderer consumes that already-shaped resource, resolves one renderer-private exact scalable outline interpretation with Skrifa, generates per-glyph MSDF fields with `bymsdfgen-core`, packs deterministic renderer-local atlas pages, and reconstructs coverage in the GPU shader.
+RunenUI logical text authority remains outside the renderer. Runtime publication retains the exact scale-independent `ResourceRef -> ShapedTextResource` binding produced by the accepted text/layout path. The renderer consumes that already-shaped resource, resolves one renderer-private exact scalable outline interpretation with Skrifa, generates per-glyph MSDF fields with `bymsdfgen-core`, packs deterministic renderer-local atlas pages, textures, pipelines, and shaders.
 
 That same exact outline interpretation may be projected into disposable neutral-support geometry when an ordinary shadow actually consumes shaped-text support. Shadow support never derives from text foreground alpha, MSDF samples, atlas coverage, raster scale, or cache/device state.
 
-Raster scale and renderer quality affect only disposable realization. They do not change text content, line breaking, glyph selection, logical metrics, `ResourceRef` identity, runtime layout, M9B motion timing/sampling, or shadow-support semantics. Resource/atlas cache loss can therefore be reconstructed from the retained logical publication without a runtime republish, provider lookup, reshaping, re-line-breaking, motion resample, or resource remint.
+Raster scale and renderer quality affect only disposable realization. They do not change text content, line breaking, glyph selection, logical metrics, `ResourceRef` identity, runtime layout, M9 motion timing/sampling, or shadow-support semantics. Resource/atlas cache loss can therefore be reconstructed from the retained logical publication without a runtime republish, provider lookup, reshaping, re-line-breaking, motion resample, or resource remint.
 
 Supported outline glyphs never silently fall back to alpha-raster text. COLR, SVG, bitmap/intrinsic-color glyphs, faux-bold requirements, invalid font data, and invalid outlines produce explicit structured diagnostics unless a future separately accepted resource/paint contract represents them truthfully.
 
@@ -66,9 +66,9 @@ Non-invertible item geometry contributes no paint coverage rather than falling b
 
 The exact continuous raster canvas is `logical_size * RasterScale`; integer texture extents are ceil-rounded storage/readback extents only. Fractional-scale padding does not become logical paint coverage.
 
-Solid and gradient inputs retain RunenUI's accepted straight-alpha sRGB8 / premultiplied-linear interpolation contract. Gradient stop order, hard-stop side semantics, endpoint extension, linear/radial logical geometry, and brush selection are framework semantics; the renderer only realizes the already-accepted brush/sample. M9B interpolation compatibility and discrete switching are resolved before publication. One logical fill/stroke item remains one compositing source even when private tessellation triangles overlap internally.
+Solid and gradient inputs retain RunenUI's accepted straight-alpha sRGB8 / premultiplied-linear interpolation contract. Gradient stop order, hard-stop side semantics, endpoint extension, linear/radial logical geometry, and brush selection are framework semantics; the renderer only realizes the already-accepted brush/sample. M9 interpolation compatibility and discrete switching are resolved before publication. One logical fill/stroke item remains one compositing source even when private tessellation triangles overlap internally.
 
-Clipped fills, strokes, images, shaped runs, groups, and shadows use renderer-owned stencil/offscreen/mask resources while preserving runtime-authored transforms, exact M6-derived painter order, conjunctive clip semantics, group nesting/first-member contraction, authored shadow order, exact-once group opacity, and parent source-over. M9B opacity/shadow group lifetime is likewise runtime-published structure, not a renderer optimization or cache decision.
+Clipped fills, strokes, images, shaped runs, groups, and shadows use renderer-owned stencil/offscreen/mask resources while preserving runtime-authored transforms, exact M6-derived painter order, conjunctive clip semantics, group nesting/first-member contraction, authored shadow order, exact-once group opacity, and parent source-over. M9 opacity/shadow group lifetime is likewise runtime-published structure, not a renderer optimization or cache decision.
 
 ## Ordinary shadows and neutral support
 
@@ -76,7 +76,7 @@ Ordinary shadows are realized from ADR 0015 neutral effect support, not accumula
 
 Renderer realization applies the accepted Euclidean signed spread (disk dilation/erosion), then offset, then finite `3 * sigma` Gaussian support. Off-surface source/support is retained until downstream effect derivation and final-canvas cropping, so an effect that reaches the target is not lost merely because its source did not initially intersect it. Shadows paint in authored order behind composed child color; group clips constrain the completed group result/effects; group opacity is applied once before parent source-over.
 
-Mask storage/work is private disposable state. Admission accounts deterministic requested live payloads and inherited recursive residency rather than a scalar bytes-per-pixel approximation; distance-transform and morphology/blur scratch are bounded/reused; transformed support geometry is streamed; final masks own exact tight `Vec<u8>` storage. Allocation-policy rejection is structured and occurs before resource loading, render observation/transaction start, target allocation/mutation, or final-canvas crop. Those limits are renderer implementation policy and do not become public shadow semantics, M9B group-lifetime authority, or a scene-wide memory authority.
+Mask storage/work is private disposable state. Admission accounts deterministic requested live payloads and inherited recursive residency rather than a scalar bytes-per-pixel approximation; distance-transform and morphology/blur scratch are bounded/reused; transformed support geometry is streamed; final masks own exact tight `Vec<u8>` storage. Allocation-policy rejection is structured and occurs before resource loading, render observation/transaction start, target allocation/mutation, or final-canvas crop. Those limits are renderer implementation policy and do not become public shadow semantics, M9 group-lifetime authority, or a scene-wide memory authority.
 
 ## Target lineage, retry, and cache loss
 
@@ -86,20 +86,19 @@ Native surface reconfiguration similarly creates a new renderer-local target gen
 
 `discard_offscreen_target` explicitly drops offscreen target realization. `discard_resource_cache` drops renderer-owned external-image and shaped-text realizations and invalidates successful target lineage so the next complete publication reconstructs resources through the ordinary production path. Generic geometry, clip, group, gradient, and shadow realization is likewise reconstructible from the complete neutral publication and retained/caller-owned resource bindings rather than a retained renderer scene tree.
 
-Renderer observations are evidence of renderer-local work only; they do not replace runtime trace/publication/motion authority. A retained publication retry uses the exact already-sampled M9B products; renderer retry cannot advance timeline time, restart/cancel motion, emit completion, or mint a new framework publication revision.
+Renderer observations are evidence of renderer-local work only; they do not replace runtime trace/publication/motion authority. A retained publication retry uses the exact already-sampled M9 products; renderer retry cannot advance timeline time, restart/cancel motion, emit completion, or mint a new framework publication revision. Accepted M9C evidence additionally proves that the same retained sampled publication can be re-realized after resource-cache loss and through a fresh renderer/device with identical sampled pixels, so cache/device lifetime is not motion or resource-identity authority.
 
 ## Evidence
 
 Repository tests exercise the real wgpu path rather than a software expected renderer. Current evidence includes:
 
 - real offscreen readback and checked-in PNG/golden coverage for accepted scene/resource behavior;
-- generic shape/path fill/stroke, degenerate geometry, gradient, image mapping, generic clip, transform, opacity/source-over, fractional raster-scale, target-lineage, and reconstruction regressions;
+- generic shape/path fill/stroke, degenerate geometry, gradient, image mapping/nine-slice, generic clip, transform, opacity/source-over, fractional raster-scale, target-lineage, and reconstruction regressions;
 - atomic/nested composition-group proof covering runtime-published order, group clips, exact-once opacity, resources, and rebuild;
 - ordinary-shadow proof covering neutral alpha-independent support, transparent child/image/text cases, authored sibling painter order, Euclidean-vs-square spread, quarter-turn invariance, nested effect support, complete erosion, off-surface reach, bounded mask allocation, and deterministic zero-blur coverage;
 - shaped-text SDF/MSDF realization, raster-scale changes, retained-publication retry, resource-cache re-realization, and explicit intrinsic-format diagnostics;
-- the M8D responsive multiscript corpus, which regenerates a compact human-inspectable contact sheet when a real wgpu adapter is available while keeping automated logical/resource assertions authoritative.
-
-M9B's implementation-local proof remains renderer-neutral/headless and validates that retained renderer retry reuses sampled publication without moving motion authority here. M9C still owns representative integrated real-wgpu motion/contact-sheet/re-realization closure over those same neutral samples.
+- the M8D responsive multiscript corpus, which regenerates a compact human-inspectable contact sheet when a real wgpu adapter is available while keeping automated logical/resource assertions authoritative;
+- the accepted M9C integrated motion corpus, which renders runtime-sampled nine-slice transition publications through the real-wgpu path, proves contiguous lineage and same-publication retry, reconstructs after cache loss, then drops the original renderer and reproduces the retained final sample through a fresh renderer/device with identical pixels and recorded contact-sheet evidence.
 
 Adapter-independent tests may exercise the same production geometry/effect helpers for deterministic edge cases; they supplement rather than replace real-wgpu evidence.
 
@@ -107,6 +106,6 @@ Adapter-independent tests may exercise the same production geometry/effect helpe
 
 The package must not become UI or motion behavior authority. It must not depend on concrete widgets, semantic-tree behavior, mounted/layout storage, private runtime mutation seams, winit, or AccessKit. Renderer caches, masks, intermediate targets, tessellation and device resources remain disposable derived state.
 
-M9A static visual/composition realization and M9B deterministic runtime motion semantics are accepted current behavior. M9C still owns final integrated visual-motion closure, including representative real-wgpu motion evidence; this renderer must not invent a timeline or alternate sampling path to satisfy it. Current supported text realization is outline SDF/MSDF; intrinsic COLR/SVG/bitmap rendering remains unsupported with explicit diagnostics. Broader device-loss/platform breadth belongs to later platform work, not to alternate visual/text/layout/semantic/motion authority inside this renderer.
+M9 visual/composition realization, deterministic runtime motion semantics, and integrated real-wgpu motion/retry/re-realization closure are accepted current behavior. Current supported text realization is outline SDF/MSDF; intrinsic COLR/SVG/bitmap rendering remains unsupported with explicit diagnostics. Broader device-loss/platform breadth belongs to later platform work, not to alternate visual/text/layout/semantic/motion authority inside this renderer.
 
-Exact public signatures and error variants are authoritative in source/Rustdoc. Conceptual cross-crate ownership is summarized in [`docs/architecture/public-api.md`](../../docs/architecture/public-api.md), and current accepted maturity is owned by [`docs/status.md`](../../docs/status.md).
+Exact public signatures and error variants are authoritative in source/Rustdoc; conceptual cross-crate ownership is summarized in [`docs/architecture/public-api.md`](../../docs/architecture/public-api.md), and current accepted maturity is owned by [`docs/status.md`](../../docs/status.md).
