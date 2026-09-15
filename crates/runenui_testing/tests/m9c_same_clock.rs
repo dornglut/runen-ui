@@ -97,7 +97,16 @@ fn repeated_publication_at_one_manual_clock_instant_reuses_the_same_motion_sampl
         first.renderer_products_eq(&second),
         "same-clock publication retry must not mint a different sampled renderer product"
     );
-    assert_eq!(first.hit_test_scene(), second.hit_test_scene());
+    assert_eq!(
+        first.hit_test_scene().regions(),
+        second.hit_test_scene().regions(),
+        "same-clock publication retry must preserve sampled hit geometry"
+    );
+    assert_eq!(
+        first.hit_test_scene().mounted_targets(),
+        second.hit_test_scene().mounted_targets(),
+        "same-clock publication retry must preserve displayed mounted membership"
+    );
     assert_eq!(
         first.semantic_publication().snapshot(),
         second.semantic_publication().snapshot()
