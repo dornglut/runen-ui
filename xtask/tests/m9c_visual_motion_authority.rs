@@ -3,6 +3,8 @@
 use std::{fs, path::Path};
 
 const PAINT: &str = "crates/runenui_core/src/paint.rs";
+const HIT: &str = "crates/runenui_core/src/hit.rs";
+const SCENE_GEOMETRY: &str = "crates/runenui_core/src/scene_geometry.rs";
 const COMPUTED_STYLE: &str = "crates/runenui_core/src/computed_style.rs";
 const IMAGE: &str = "crates/runenui_core/src/visual/image.rs";
 const PRESENTATION: &str = "crates/runenui_core/src/visual/presentation.rs";
@@ -46,6 +48,55 @@ fn generic_visual_primitives_and_brush_background_remain_the_only_public_core_au
     }
     if computed.contains("background: Option<Color>") {
         return Err("M9C forbids restoring color-only computed background authority".to_owned());
+    }
+    Ok(())
+}
+
+#[test]
+fn scene_shape_is_one_non_copy_authority_shared_by_paint_clips_and_hit() -> Result<(), String> {
+    let root = workspace_root()?;
+    let scene = read(&root.join(SCENE_GEOMETRY))?;
+    let paint = read(&root.join(PAINT))?;
+    let hit = read(&root.join(HIT))?;
+
+    for required in [
+        "#[derive(Clone, Debug, PartialEq)]\npub enum SceneShape",
+        "pub struct ContributionClip {\n    shape: SceneShape,",
+        "pub const fn new(shape: SceneShape, local_to_owner: LogicalTransform) -> Self",
+        "pub const fn shape(&self) -> &SceneShape",
+    ] {
+        if !scene.contains(required) {
+            return Err(format!(
+                "M9C shared non-Copy scene-shape authority lost required seam `{required}` in {SCENE_GEOMETRY}"
+            ));
+        }
+    }
+    if scene.contains("#[derive(Clone, Copy, Debug, PartialEq)]\npub enum SceneShape") {
+        return Err(
+            "M9C forbids restoring Copy semantics to path-capable SceneShape authority".to_owned(),
+        );
+    }
+
+    for required in [
+        "pub const fn fill(shape: SceneShape, brush: Brush) -> Self",
+        "pub const fn stroke(shape: SceneShape, brush: Brush, style: StrokeStyle) -> Self",
+    ] {
+        if !paint.contains(required) {
+            return Err(format!(
+                "M9C paint must consume the shared SceneShape authority through `{required}`"
+            ));
+        }
+    }
+    for required in [
+        "pub struct HitRegion {\n    shape: SceneShape,",
+        "pub const fn from_shape(shape: SceneShape) -> Self",
+        "pub const fn shape(&self) -> &SceneShape",
+    ] {
+        if !hit.contains(required) {
+            return Err(format!(
+                "M9C physical hit must consume the shared SceneShape authority through `{required}`"
+            ));
+        }
     }
     Ok(())
 }
