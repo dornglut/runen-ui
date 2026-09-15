@@ -194,6 +194,16 @@ fn publish(runtime: &mut AppRuntime<MotionImageApp>) -> SurfacePublication {
         .unwrap_or_else(|_| unreachable!("M9C visual publication is admitted"))
 }
 
+fn advance_and_publish(
+    runtime: &mut AppRuntime<MotionImageApp>,
+    duration: Duration,
+) -> SurfacePublication {
+    runtime
+        .advance_time(duration)
+        .unwrap_or_else(|_| unreachable!("bounded M9C visual advance is valid"));
+    publish(runtime)
+}
+
 fn sampled_opacity(publication: &SurfacePublication) -> f32 {
     publication
         .frame()
@@ -210,7 +220,7 @@ fn resolved_patch_count(publication: &SurfacePublication) -> usize {
         .items()
         .iter()
         .find_map(|item| item.primitive().as_image())
-        .and_then(|image| image.resolved_patch_count())
+        .and_then(runenui_core::ImagePrimitive::resolved_patch_count)
         .unwrap_or_else(|| unreachable!("M9C publication contains one resolved image"))
 }
 
@@ -244,16 +254,27 @@ fn evidence_dir() -> Option<std::path::PathBuf> {
     std::env::var_os("RUNENUI_M8D_EVIDENCE_DIR").map(std::path::PathBuf::from)
 }
 
+struct EvidencePanels<'a> {
+    initial: &'a OffscreenPublicationReadback,
+    middle: &'a OffscreenPublicationReadback,
+    retry: &'a OffscreenPublicationReadback,
+    final_readback: &'a OffscreenPublicationReadback,
+    reconstructed: &'a OffscreenPublicationReadback,
+}
+
 fn write_evidence(
     directory: &Path,
     renderer: &Renderer,
-    initial: &OffscreenPublicationReadback,
-    middle: &OffscreenPublicationReadback,
-    retry: &OffscreenPublicationReadback,
-    final_readback: &OffscreenPublicationReadback,
-    reconstructed: &OffscreenPublicationReadback,
+    evidence: EvidencePanels<'_>,
     provider_loads: usize,
 ) -> Result<(), Box<dyn Error>> {
+    let EvidencePanels {
+        initial,
+        middle,
+        retry,
+        final_readback,
+        reconstructed,
+    } = evidence;
     fs::create_dir_all(directory)?;
     let panels = [initial, middle, retry, final_readback, reconstructed];
     let width = panels
@@ -317,6 +338,29 @@ fn write_evidence(
     Ok(())
 }
 
+fn reconstruct_on_fresh_renderer(
+    publication: &SurfacePublication,
+    provider: &CountingProvider,
+    expected_pixels: &[u8],
+) -> Result<Option<(Renderer, OffscreenPublicationReadback)>, Box<dyn Error>> {
+    let Some(mut renderer) = renderer_or_skip()? else {
+        return Ok(None);
+    };
+    let reconstructed = render(&mut renderer, publication, provider)?;
+    assert_eq!(
+        reconstructed.update_plan().mode(),
+        PublicationUpdateMode::FullResync,
+        "a fresh renderer/device must reconstruct from retained neutral publication authority"
+    );
+    assert_eq!(provider.loads(), 3);
+    assert_eq!(
+        reconstructed.readback().rgba8_srgb(),
+        expected_pixels,
+        "renderer/device reconstruction must preserve the already-sampled final publication"
+    );
+    Ok(Some((renderer, reconstructed)))
+}
+
 #[test]
 fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
 -> Result<(), Box<dyn Error>> {
@@ -375,10 +419,7 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
         "starting the transition at the current endpoint must preserve realized pixels"
     );
 
-    runtime
-        .advance_time(Duration::from_millis(50))
-        .unwrap_or_else(|_| unreachable!("bounded M9C visual advance is valid"));
-    let middle_publication = publish(&mut runtime);
+    let middle_publication = advance_and_publish(&mut runtime, Duration::from_millis(50));
     assert_eq!(resolved_patch_count(&middle_publication), 9);
     assert!((sampled_opacity(&middle_publication) - 0.75).abs() <= f32::EPSILON);
     let middle = render(&mut renderer, &middle_publication, &provider)?;
@@ -406,10 +447,7 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
         "retained publication retry must re-realize resources without resampling motion"
     );
 
-    runtime
-        .advance_time(Duration::from_millis(50))
-        .unwrap_or_else(|_| unreachable!("bounded M9C visual advance is valid"));
-    let final_publication = publish(&mut runtime);
+    let final_publication = advance_and_publish(&mut runtime, Duration::from_millis(50));
     assert!((sampled_opacity(&final_publication) - 0.5).abs() <= f32::EPSILON);
     let final_readback = render(&mut renderer, &final_publication, &provider)?;
     assert_eq!(
@@ -423,31 +461,25 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
     );
 
     drop(renderer);
-    let Some(mut reconstructed_renderer) = renderer_or_skip()? else {
+    let Some((reconstructed_renderer, reconstructed)) = reconstruct_on_fresh_renderer(
+        &final_publication,
+        &provider,
+        final_readback.readback().rgba8_srgb(),
+    )? else {
         return Ok(());
     };
-    let reconstructed = render(&mut reconstructed_renderer, &final_publication, &provider)?;
-    assert_eq!(
-        reconstructed.update_plan().mode(),
-        PublicationUpdateMode::FullResync,
-        "a fresh renderer/device must reconstruct from retained neutral publication authority"
-    );
-    assert_eq!(provider.loads(), 3);
-    assert_eq!(
-        reconstructed.readback().rgba8_srgb(),
-        final_readback.readback().rgba8_srgb(),
-        "renderer/device reconstruction must preserve the already-sampled final publication"
-    );
 
     if let Some(directory) = evidence_dir() {
         write_evidence(
             &directory,
             &reconstructed_renderer,
-            &initial,
-            &middle,
-            &retry,
-            &final_readback,
-            &reconstructed,
+            EvidencePanels {
+                initial: &initial,
+                middle: &middle,
+                retry: &retry,
+                final_readback: &final_readback,
+                reconstructed: &reconstructed,
+            },
             provider.loads(),
         )?;
     }
