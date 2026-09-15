@@ -51,10 +51,7 @@ fn count_background_transition_uses_public_logical_time() {
         .publish_surface(&context)
         .unwrap_or_else(|_| unreachable!("initial Counter publication is admitted"));
     let initial_background = count_background(&initial);
-    assert_eq!(
-        initial_background,
-        Brush::Solid(Color::rgb(40, 56, 104))
-    );
+    assert_eq!(initial_background, Brush::Solid(Color::rgb(40, 56, 104)));
 
     runtime
         .submit_action(CounterAction::Increment)
