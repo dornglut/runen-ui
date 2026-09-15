@@ -38,9 +38,7 @@ fn register_controlled_text<App: UiApp>(harness: &mut TestHarness<App>) {
 }
 
 fn finite_repeat_two() -> MotionRepeat {
-    MotionRepeat::finite(
-        NonZeroU64::new(2).unwrap_or_else(|| unreachable!("two is non-zero")),
-    )
+    MotionRepeat::finite(NonZeroU64::new(2).unwrap_or_else(|| unreachable!("two is non-zero")))
 }
 
 fn opacity_timeline() -> runenui_core::ExplicitTimeline {
@@ -172,9 +170,10 @@ impl UiApp for StructuralHarnessApp {
     fn root((): &Self::State) -> impl View<Self::Action> {
         text("deterministic structural motion must re-enter ordinary text layout")
             .key("structural")
-            .with_layout(LayoutStyle::default().with_width(LayoutDimension::length(
-                LogicalLength::from(180_u16),
-            )))
+            .with_layout(
+                LayoutStyle::default()
+                    .with_width(LayoutDimension::length(LogicalLength::from(180_u16))),
+            )
             .timeline(width_timeline())
     }
 
@@ -289,9 +288,8 @@ fn pump_actions(harness: &mut TestHarness<TransitionHarnessApp>) {
 
 #[test]
 fn public_harness_transition_replacement_and_preference_change_use_the_same_runtime_clock() {
-    let mut harness = TestHarness::<TransitionHarnessApp>::mount(TransitionState {
-        transparent: false,
-    });
+    let mut harness =
+        TestHarness::<TransitionHarnessApp>::mount(TransitionState { transparent: false });
     register_controlled_text(&mut harness);
     let normal = StyleEnvironment::default();
     let normal_context = SurfaceBuildContext::new(&normal, LayoutConstraints::unbounded());
@@ -301,7 +299,9 @@ fn public_harness_transition_replacement_and_preference_change_use_the_same_runt
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(harness_opacity(&harness), 1.0);
 
-    harness.submit_action(true).unwrap_or_else(|_| unreachable!());
+    harness
+        .submit_action(true)
+        .unwrap_or_else(|_| unreachable!());
     pump_actions(&mut harness);
     harness
         .publish_with_context(&normal_context)
@@ -316,7 +316,9 @@ fn public_harness_transition_replacement_and_preference_change_use_the_same_runt
         .unwrap_or_else(|_| unreachable!());
     assert!((harness_opacity(&harness) - 0.6).abs() <= f32::EPSILON);
 
-    harness.submit_action(false).unwrap_or_else(|_| unreachable!());
+    harness
+        .submit_action(false)
+        .unwrap_or_else(|_| unreachable!());
     pump_actions(&mut harness);
     harness
         .publish_with_context(&normal_context)
@@ -325,7 +327,9 @@ fn public_harness_transition_replacement_and_preference_change_use_the_same_runt
 
     let reduced = StyleEnvironment::default().with_preferences(StylePreferences::new(false, true));
     let reduced_context = SurfaceBuildContext::new(&reduced, LayoutConstraints::unbounded());
-    harness.submit_action(true).unwrap_or_else(|_| unreachable!());
+    harness
+        .submit_action(true)
+        .unwrap_or_else(|_| unreachable!());
     pump_actions(&mut harness);
     harness
         .publish_with_context(&reduced_context)

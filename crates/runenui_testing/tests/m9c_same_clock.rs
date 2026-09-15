@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use runenui_core::{
     AnimationId, Element, ExplicitTimeline, LogicalLength, MotionEasing, MotionKeyframe,
-    MotionRepeat, MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity,
-    TimelineSpec, UiApp, UnitInterval, Widget, WidgetMeasure, WidgetMeasureInput,
+    MotionRepeat, MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity, TimelineSpec,
+    UiApp, UnitInterval, Widget, WidgetMeasure, WidgetMeasureInput,
 };
 use runenui_testing::TestHarness;
 
@@ -30,7 +30,9 @@ impl UiApp for SameClockApp {
     type HostProtocol = NoHostProtocol;
 
     fn root((): &Self::State) -> Element<Self::Action> {
-        Element::new(Probe).key("probe").timeline(opacity_timeline())
+        Element::new(Probe)
+            .key("probe")
+            .timeline(opacity_timeline())
     }
 
     fn update((): &mut Self::State, (): Self::Action) {}

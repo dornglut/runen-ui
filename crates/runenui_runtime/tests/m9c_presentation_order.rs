@@ -120,7 +120,10 @@ fn sampled_origin_scale_rotate_translate_order_correlates_paint_hit_and_semantic
         .root()
         .unwrap_or_else(|| unreachable!("presentation-order app has a root"))
         .bounds();
-    assert_eq!(layout, initial_layout, "presentation motion must not mutate structural layout");
+    assert_eq!(
+        layout, initial_layout,
+        "presentation motion must not mutate structural layout"
+    );
 
     let paint = terminal
         .paint_scene()

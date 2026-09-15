@@ -10,11 +10,11 @@ use runenui_core::{
     PaintContributionItem, PaintPrimitive, PointerButton, PointerButtons, PointerDeviceKind,
     PointerEvent, PointerId, PointerPhase, PresentationOrigin, PresentationRotation,
     PresentationScale, PresentationTransform, PresentationTranslation, ReducedMotionStrategy,
-    SceneOpacity, SceneShape, SemanticCommand, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
-    StyleInteractionState, StyleProperties, StyleRecipe, StyleRecipeId, StyleTheme, StyleTokens,
-    TimelineSpec, TransitionSpec, UiApp, UnitInterval, View, Widget, WidgetActivation,
-    WidgetMeasure, WidgetMeasureInput, children, row,
+    SceneOpacity, SceneShape, SemanticCommand, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticRole, StyleEnvironment, StyleInteractionState,
+    StyleProperties, StyleRecipe, StyleRecipeId, StyleTheme, StyleTokens, TimelineSpec,
+    TransitionSpec, UiApp, UnitInterval, View, Widget, WidgetActivation, WidgetMeasure,
+    WidgetMeasureInput, children, row,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, LogicalSize, MountedNodeId, PumpBudget, SurfaceBuildContext,
@@ -69,11 +69,7 @@ impl Widget<()> for Probe {
         ])
     }
 
-    fn semantics(
-        &self,
-        (): &Self::State,
-        _: SemanticContributionContext,
-    ) -> SemanticContribution {
+    fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
         SemanticContribution::single(
             SemanticNodeContribution::primary(SemanticRole::Button).with_name(self.name),
         )
@@ -295,8 +291,7 @@ fn sampled_presentation_correlates_paint_hit_focus_semantics_and_clips() {
     assert_near(paint_x, 73.0);
     assert_near(paint_y, 0.0);
     assert_eq!(paint.clips().len(), 1);
-    let [_, _, _, _, paint_clip_x, paint_clip_y] =
-        paint.clips()[0].clip_to_surface().components();
+    let [_, _, _, _, paint_clip_x, paint_clip_y] = paint.clips()[0].clip_to_surface().components();
     assert_near(paint_clip_x, 72.0);
     assert_near(paint_clip_y, 0.0);
 
@@ -361,10 +356,7 @@ fn singular_timeline() -> ExplicitTimeline {
                 UnitInterval::ZERO,
                 MotionValue::Presentation(Some(identity_presentation())),
             ),
-            MotionKeyframe::new(
-                UnitInterval::ONE,
-                MotionValue::Presentation(Some(singular)),
-            ),
+            MotionKeyframe::new(UnitInterval::ONE, MotionValue::Presentation(Some(singular))),
         ],
         vec![MotionEasing::Linear],
         Duration::from_millis(100),

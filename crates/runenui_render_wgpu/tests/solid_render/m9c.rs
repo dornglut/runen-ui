@@ -16,8 +16,8 @@ use runenui_core::{
     Element, ImageCrop, ImageDescriptor, ImageDestinationInsets, ImageIntrinsicSize, ImageMapping,
     ImagePaintDescriptor, ImageSourceInsets, LogicalLength, LogicalRect, MotionEasing,
     MotionTarget, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionItem, ReducedMotionStrategy, ResourceKind, ResourceRef, SceneOpacity,
-    UiApp, Widget, WidgetMeasure, WidgetMeasureInput,
+    PaintContributionItem, ReducedMotionStrategy, ResourceKind, ResourceRef, SceneOpacity, UiApp,
+    Widget, WidgetMeasure, WidgetMeasureInput,
 };
 use runenui_render_wgpu::{
     BackendSelection, ImagePayload, OffscreenPublicationReadback, PublicationUpdateMode, Renderer,
@@ -105,13 +105,8 @@ impl Widget<Action> for ImageProbe {
         };
         let descriptor = ImagePaintDescriptor::new(
             image,
-            LogicalRect::try_new(
-                0.0,
-                0.0,
-                f32::from(LOGICAL_SIZE),
-                f32::from(LOGICAL_SIZE),
-            )
-            .unwrap_or_else(|_| unreachable!("fixture destination is valid")),
+            LogicalRect::try_new(0.0, 0.0, f32::from(LOGICAL_SIZE), f32::from(LOGICAL_SIZE))
+                .unwrap_or_else(|_| unreachable!("fixture destination is valid")),
             mapping,
         )
         .unwrap_or_else(|_| unreachable!("fixture nine-slice mapping is valid"));
@@ -296,7 +291,9 @@ fn write_evidence(
 
     let mut manifest = String::new();
     manifest.push_str("M9C real-wgpu sampled-motion evidence\n\n");
-    manifest.push_str("Panel order: initial | midpoint | midpoint retry after cache discard | final.\n");
+    manifest.push_str(
+        "Panel order: initial | midpoint | midpoint retry after cache discard | final.\n",
+    );
     manifest.push_str(
         "Runtime owns transition sampling and nine-slice resolution; renderer consumes immutable publications only.\n",
     );
@@ -335,7 +332,10 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
     assert_eq!(resolved_patch_count(&initial_publication), 9);
     assert!((sampled_opacity(&initial_publication) - 1.0).abs() <= f32::EPSILON);
     let initial = render(&mut renderer, &initial_publication, &provider)?;
-    assert_eq!(initial.update_plan().mode(), PublicationUpdateMode::FullResync);
+    assert_eq!(
+        initial.update_plan().mode(),
+        PublicationUpdateMode::FullResync
+    );
     assert_eq!(provider.loads(), 1);
 
     let already_current = render(&mut renderer, &initial_publication, &provider)?;
@@ -382,7 +382,10 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
 
     assert!(renderer.discard_resource_cache());
     let retry = render(&mut renderer, &middle_publication, &provider)?;
-    assert_eq!(retry.update_plan().mode(), PublicationUpdateMode::FullResync);
+    assert_eq!(
+        retry.update_plan().mode(),
+        PublicationUpdateMode::FullResync
+    );
     assert_eq!(provider.loads(), 2);
     assert_eq!(
         retry.readback().rgba8_srgb(),

@@ -45,9 +45,7 @@ fn generic_visual_primitives_and_brush_background_remain_the_only_public_core_au
         ));
     }
     if computed.contains("background: Option<Color>") {
-        return Err(
-            "M9C forbids restoring color-only computed background authority".to_owned(),
-        );
+        return Err("M9C forbids restoring color-only computed background authority".to_owned());
     }
     Ok(())
 }
@@ -72,12 +70,12 @@ fn image_and_shaped_text_publication_paths_have_no_retired_exact_mapping_or_pain
             ));
         }
     }
-    if paint.contains("pub fn image(\n        resource: ResourceRef,\n        destination: LogicalRect")
+    if paint
+        .contains("pub fn image(\n        resource: ResourceRef,\n        destination: LogicalRect")
         || paint.contains("ImagePrimitive::new(resource, destination)")
     {
         return Err(
-            "M9C retired exact resource/destination image constructor must not reappear"
-                .to_owned(),
+            "M9C retired exact resource/destination image constructor must not reappear".to_owned(),
         );
     }
 
@@ -137,7 +135,11 @@ fn presentation_composition_keeps_one_core_resolver_and_one_runtime_application_
             ));
         }
     }
-    if resolve.matches("presentation.resolve_in_box(bounds.size())").count() != 1 {
+    if resolve
+        .matches("presentation.resolve_in_box(bounds.size())")
+        .count()
+        != 1
+    {
         return Err(
             "M9C requires one reviewed runtime application of the sampled node presentation"
                 .to_owned(),
