@@ -282,10 +282,7 @@ fn hold_initial_trace_restarts_from_the_preference_change_instant() {
                 ObservedSource::Timeline,
                 TraceMotionLifecycle::HoldInitialReleased,
             ),
-            ObservedFact::Lifecycle(
-                ObservedSource::Timeline,
-                TraceMotionLifecycle::Restarted,
-            ),
+            ObservedFact::Lifecycle(ObservedSource::Timeline, TraceMotionLifecycle::Restarted,),
             ObservedFact::Sample {
                 source: ObservedSource::Timeline,
                 phase: TraceMotionPhase::Running,
@@ -416,9 +413,8 @@ fn high_contrast_trace_is_independent_from_same_clock_motion_preference() {
 
 #[test]
 fn transition_snap_to_end_traces_terminal_value_and_completion_atomically() {
-    let mut runtime = AppRuntime::<TransitionSnapTraceApp>::mount(TransitionState {
-        transparent: false,
-    });
+    let mut runtime =
+        AppRuntime::<TransitionSnapTraceApp>::mount(TransitionState { transparent: false });
     publish(&mut runtime, &StyleEnvironment::default());
     dispatch_transition(&mut runtime);
 
