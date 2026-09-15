@@ -9,7 +9,8 @@ use runenui_core::{
     WidgetEventOutput, WidgetMeasure,
 };
 use runenui_runtime::{
-    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TracePointerRejection, TraceRecordKind,
+    AppRuntime, LogicalSize, PumpBudget, SurfaceBuildContext, TracePointerRejection,
+    TraceRecordKind,
 };
 
 #[derive(Clone)]
