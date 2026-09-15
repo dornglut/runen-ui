@@ -16,7 +16,7 @@ fn typed_builders_use_the_open_widget_protocol() {
         .disabled()
         .on_activate(|| Action::Save)
         .into_element();
-    let (_, _, _, _, _, _, _, text_widget, _) = text_element.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, _, text_widget, _) = text_element.into_runtime_parts().into_parts();
     let text_state = text_widget.create_state();
     assert!(matches!(
         text_widget.measure(
@@ -30,7 +30,8 @@ fn typed_builders_use_the_open_widget_protocol() {
         ),
         Ok(WidgetMeasure::Text { .. })
     ));
-    let (_, _, _, _, _, _, _, button_widget, _) = button_element.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, _, button_widget, _) =
+        button_element.into_runtime_parts().into_parts();
     let button_state = button_widget.create_state();
     let semantics = button_widget
         .semantics(&button_state, SemanticContributionContext::default())
@@ -57,7 +58,7 @@ fn typed_builders_use_the_open_widget_protocol() {
         container.layout().container(),
         runenui_core::LayoutContainer::Flex(_)
     ));
-    let (_, _, _, _, _, _, _, widget, _) = container.into_runtime_parts().into_parts();
+    let (_, _, _, _, _, _, _, _, widget, _) = container.into_runtime_parts().into_parts();
     let state = widget.create_state();
     assert_eq!(
         widget

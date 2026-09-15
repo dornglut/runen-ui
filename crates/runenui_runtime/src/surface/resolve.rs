@@ -9,9 +9,9 @@ use crate::mounted::SurfaceCapabilityPlan;
 use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneItem, SceneClip};
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
-    __runtime::transform_rect_aabb, Color, ContributionClip, ElementId, HitContributionContext,
-    LayoutStyle, LogicalPoint, LogicalRect, LogicalTransform, PaintContribution,
-    PaintContributionContext, PaintContributionItem, Radius, SceneShape, StyleEffects,
+    __runtime::transform_rect_aabb, Color, ComputedStyle, ContributionClip, ElementId,
+    HitContributionContext, LayoutStyle, LogicalPoint, LogicalRect, LogicalTransform,
+    PaintContribution, PaintContributionContext, PaintContributionItem, Radius, SceneShape,
     StyleEnvironment, StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetTypeId,
     resolve_style_in_environment, style_effects_between,
 };
@@ -65,23 +65,133 @@ pub(super) fn collect_topology<Action>(
 
 #[derive(Clone, Debug)]
 pub(super) struct CachedStyleFacts {
-    // Style-phase facts aligned to the topology snapshot. They are refreshed
-    // whenever mounted style intent or exact style-environment content changes.
+    // Target style/provenance facts aligned to the topology snapshot. They are
+    // refreshed whenever mounted style intent or exact style-environment content changes.
     pub(super) resolutions: Vec<StyleResolution>,
     pub(super) report: SurfaceStyleReport,
 }
 
-impl CachedStyleFacts {
-    pub(super) fn effects_against(&self, other: &Self) -> StyleEffects {
-        self.resolutions.iter().zip(&other.resolutions).fold(
-            StyleEffects::NONE,
-            |effects, (old, new)| {
-                effects.union(style_effects_between(
-                    old.computed_style(),
-                    new.computed_style(),
-                ))
+/// Direct downstream invalidation caused by changing one accepted effective snapshot.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct EffectiveEffects {
+    layout: bool,
+    paint: bool,
+    presentation: bool,
+}
+
+impl EffectiveEffects {
+    pub(super) const fn layout(self) -> bool {
+        self.layout
+    }
+
+    pub(super) const fn paint(self) -> bool {
+        self.paint
+    }
+
+    pub(super) const fn presentation(self) -> bool {
+        self.presentation
+    }
+}
+
+/// One topology-aligned effective publication input.
+///
+/// Target style provenance and authored layout remain owned by their existing
+/// authorities. This snapshot is the sole downstream value projection that motion
+/// may replace during staged publication.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct EffectiveNodeFacts {
+    layout: LayoutStyle,
+    computed_style: ComputedStyle,
+    retain_node_effect_group: bool,
+}
+
+impl EffectiveNodeFacts {
+    pub(super) const fn new(
+        layout: LayoutStyle,
+        computed_style: ComputedStyle,
+        retain_node_effect_group: bool,
+    ) -> Self {
+        Self {
+            layout,
+            computed_style,
+            retain_node_effect_group,
+        }
+    }
+
+    pub(super) const fn layout(&self) -> &LayoutStyle {
+        &self.layout
+    }
+
+    pub(super) const fn computed_style(&self) -> &ComputedStyle {
+        &self.computed_style
+    }
+
+    pub(super) const fn retain_node_effect_group(&self) -> bool {
+        self.retain_node_effect_group
+    }
+
+    pub(super) fn requires_node_effect_group(&self) -> bool {
+        self.retain_node_effect_group
+            || self.computed_style.opacity() != runenui_core::SceneOpacity::OPAQUE
+            || !self.computed_style.shadows().is_empty()
+    }
+}
+
+/// Accepted effective values aligned exactly with the retained topology.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct CachedEffectiveFacts {
+    pub(super) nodes: Vec<EffectiveNodeFacts>,
+}
+
+impl CachedEffectiveFacts {
+    /// Builds the behavior-preserving projection used before a motion source overrides
+    /// any target. No authored state is mutated or transferred into runtime authority.
+    pub(super) fn identity<Action>(
+        tree: &crate::mounted::MountedTree<Action>,
+        topology: &SurfaceTopologySnapshot,
+        styles: &CachedStyleFacts,
+    ) -> Self {
+        debug_assert_eq!(topology.nodes.len(), styles.resolutions.len());
+        let nodes = topology
+            .nodes
+            .iter()
+            .zip(&styles.resolutions)
+            .map(|(topology, resolution)| {
+                let mounted = tree
+                    .node(&topology.id)
+                    .unwrap_or_else(|| unreachable!("effective topology remains live"));
+                EffectiveNodeFacts::new(
+                    mounted.layout.clone(),
+                    resolution.computed_style().clone(),
+                    false,
+                )
+            })
+            .collect();
+        Self { nodes }
+    }
+
+    pub(super) fn effects_against(&self, other: &Self) -> EffectiveEffects {
+        debug_assert_eq!(self.nodes.len(), other.nodes.len());
+        self.nodes.iter().zip(&other.nodes).fold(
+            EffectiveEffects::default(),
+            |mut effects, (old, new)| {
+                if old.layout != new.layout {
+                    effects.layout = true;
+                }
+                let style = style_effects_between(old.computed_style(), new.computed_style());
+                effects.layout |= style.layout();
+                effects.paint |= style.paint();
+                effects.presentation |= style.presentation();
+                effects.paint |= old.retain_node_effect_group != new.retain_node_effect_group;
+                effects
             },
         )
+    }
+
+    pub(super) fn node(&self, position: usize) -> &EffectiveNodeFacts {
+        self.nodes
+            .get(position)
+            .unwrap_or_else(|| unreachable!("effective facts remain topology-aligned"))
     }
 }
 
@@ -139,24 +249,18 @@ pub(super) struct ResolvedSurfaceTree {
 }
 
 impl ResolvedSurfaceTree {
-    pub(super) fn for_layout<Action>(
-        tree: &crate::mounted::MountedTree<Action>,
+    pub(super) fn for_layout(
         topology: &SurfaceTopologySnapshot,
-        styles: &CachedStyleFacts,
+        effective: &CachedEffectiveFacts,
     ) -> Self {
+        debug_assert_eq!(topology.nodes.len(), effective.nodes.len());
         let nodes = topology
             .nodes
             .iter()
-            .zip(&styles.resolutions)
-            .map(|(topology, resolution)| {
-                let mounted = tree
-                    .node(&topology.id)
-                    .unwrap_or_else(|| unreachable!("layout topology remains live"));
-                ResolvedSurfaceNode {
-                    topology: topology.clone(),
-                    layout: mounted.layout.clone(),
-                    resolution: resolution.clone(),
-                }
+            .zip(&effective.nodes)
+            .map(|(topology, effective)| ResolvedSurfaceNode {
+                topology: topology.clone(),
+                effective: effective.clone(),
             })
             .collect();
         Self { nodes }
@@ -173,8 +277,7 @@ impl ResolvedSurfaceTree {
 
 pub(super) struct ResolvedSurfaceNode {
     topology: SurfaceTopologyNode,
-    layout: LayoutStyle,
-    resolution: StyleResolution,
+    effective: EffectiveNodeFacts,
 }
 
 impl ResolvedSurfaceNode {
@@ -191,23 +294,23 @@ impl ResolvedSurfaceNode {
         self.topology.children.as_slice()
     }
     pub(super) const fn layout(&self) -> &LayoutStyle {
-        &self.layout
+        self.effective.layout()
     }
-    pub(super) const fn resolution(&self) -> &StyleResolution {
-        &self.resolution
+    pub(super) const fn computed_style(&self) -> &ComputedStyle {
+        self.effective.computed_style()
     }
 }
 
 pub(super) fn paint_contexts(
     layout: &CachedLayoutFacts,
-    styles: &CachedStyleFacts,
+    effective: &CachedEffectiveFacts,
 ) -> Vec<PaintContributionContext> {
     layout
         .bounds
         .iter()
-        .zip(&styles.resolutions)
-        .map(|(bounds, style)| {
-            PaintContributionContext::__runtime_new(bounds.size(), style.computed_style().clone())
+        .zip(&effective.nodes)
+        .map(|(bounds, node)| {
+            PaintContributionContext::__runtime_new(bounds.size(), node.computed_style().clone())
         })
         .collect()
 }
@@ -226,14 +329,14 @@ pub(crate) struct PresentationGeometryError;
 
 pub(super) fn resolve_presentation(
     layout: &CachedLayoutFacts,
-    styles: &CachedStyleFacts,
+    effective: &CachedEffectiveFacts,
 ) -> Result<CachedPresentationFacts, PresentationGeometryError> {
-    if layout.bounds.len() != styles.resolutions.len() {
+    if layout.bounds.len() != effective.nodes.len() {
         return Err(PresentationGeometryError);
     }
     let mut nodes = Vec::with_capacity(layout.bounds.len());
-    for (bounds, style) in layout.bounds.iter().zip(&styles.resolutions) {
-        let node_presentation = style
+    for (bounds, effective) in layout.bounds.iter().zip(&effective.nodes) {
+        let node_presentation = effective
             .computed_style()
             .presentation()
             .map_or(Ok(LogicalTransform::IDENTITY), |presentation| {
@@ -348,8 +451,7 @@ pub(super) struct ResolvedPaint {
     pub(super) diagnostics: Vec<Vec<WidgetDiagnostic>>,
 }
 
-fn text_run_item(run: &runenui_text::TextRun, style: &StyleResolution) -> PaintContributionItem {
-    let computed = style.computed_style();
+fn text_run_item(run: &runenui_text::TextRun, computed: &ComputedStyle) -> PaintContributionItem {
     let padding = computed.padding().unwrap_or_default();
     let origin = LogicalPoint::new(
         padding.left().get() + run.origin_x(),
@@ -364,10 +466,10 @@ fn text_run_item(run: &runenui_text::TextRun, style: &StyleResolution) -> PaintC
     .unwrap_or_else(|_| unreachable!("logical text artifacts issue shaped-text resource refs"))
 }
 
-fn node_decoration_shape(bounds: LogicalRect, style: &StyleResolution) -> SceneShape {
+fn node_decoration_shape(bounds: LogicalRect, computed: &ComputedStyle) -> SceneShape {
     let rect = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
         .unwrap_or_else(|_| unreachable!("published layout size is valid"));
-    match style.computed_style().radius() {
+    match computed.radius() {
         Some(radius) if radius != Radius::ZERO => SceneShape::rounded_rect(rect, radius),
         Some(_) | None => SceneShape::rect(rect),
     }
@@ -468,7 +570,7 @@ pub(super) fn resolve_paint(
     topology: &SurfaceTopologySnapshot,
     layout: &CachedLayoutFacts,
     presentation: &CachedPresentationFacts,
-    styles: &CachedStyleFacts,
+    effective: &CachedEffectiveFacts,
     capabilities: &SurfaceCapabilityPlan,
     text_system: &mut TextSystem,
 ) -> ResolvedPaint {
@@ -480,10 +582,9 @@ pub(super) fn resolve_paint(
     let mut shaped_text_leases = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
         let owner_to_surface = presentation.node(mounted_preorder).owner_to_surface();
-        let style = &styles.resolutions[mounted_preorder];
-        let computed = style.computed_style();
+        let computed = effective.node(mounted_preorder).computed_style();
         let decoration_shape = (computed.background().is_some() || computed.outline().is_some())
-            .then(|| node_decoration_shape(layout.bounds[mounted_preorder], style));
+            .then(|| node_decoration_shape(layout.bounds[mounted_preorder], computed));
         let mut next_local_order = 0;
 
         if let (Some(shape), Some(background)) = (decoration_shape.as_ref(), computed.background())
@@ -521,7 +622,7 @@ pub(super) fn resolve_paint(
                             )
                         });
                     shaped_text_leases.push(lease);
-                    let item = text_run_item(run, &styles.resolutions[mounted_preorder]);
+                    let item = text_run_item(run, computed);
                     append_runtime_paint_item(
                         &item,
                         mounted_preorder,
@@ -550,7 +651,7 @@ pub(super) fn resolve_paint(
     }
     ordered.sort_by_key(groups::OrderedPaintItem::ordering_key);
     let (items, composition) =
-        groups::derive_composition_groups(topology, styles, &explicit_groups, ordered);
+        groups::derive_composition_groups(topology, effective, &explicit_groups, ordered);
     ResolvedPaint {
         scene: PaintScene::with_composition(items, shaped_text_leases, composition),
         diagnostics,

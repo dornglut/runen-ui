@@ -53,13 +53,20 @@ fn production_text_measurement_and_paint_share_one_retained_artifact_path() -> R
     for required in [
         "if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact()",
         ".lease_shaped_run(run.resource_ref())",
-        "let item = text_run_item(run, &styles.resolutions[mounted_preorder]);",
+        "let computed = effective.node(mounted_preorder).computed_style();",
+        "let item = text_run_item(run, computed);",
     ] {
         if !resolve.contains(required) {
             return Err(format!(
-                "M8D paint correlation lost required retained-artifact seam `{required}` in {RESOLVE}"
+                "M8D paint correlation lost required retained-artifact/effective-style seam `{required}` in {RESOLVE}"
             ));
         }
+    }
+    if resolve.contains("let item = text_run_item(run, &styles.resolutions[mounted_preorder]);") {
+        return Err(
+            "M8D text paint must consume the accepted effective style rather than bypassing motion through target style resolution"
+                .to_owned(),
+        );
     }
     if resolve.contains("layout_text(") {
         return Err(

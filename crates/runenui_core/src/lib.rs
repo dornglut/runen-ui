@@ -234,6 +234,8 @@ mod hit;
 mod identity;
 mod input;
 mod layout;
+mod motion;
+mod motion_sampling;
 mod paint;
 mod paint_group;
 mod path;
@@ -293,6 +295,11 @@ pub use input::{
     CompositionRangeError, CompositionStart, CompositionUpdate, KeyLocation,
     KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey, PhysicalKey,
 };
+pub use motion::{
+    AnimationId, CubicBezier, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,
+    MotionSpecError, MotionTarget, MotionValue, ReducedMotionStrategy, TimelineSpec,
+    TransitionPolicy, TransitionSpec,
+};
 pub use paint::{
     ImagePrimitive, PaintContribution, PaintContributionContext, PaintContributionItem,
     PaintPrimitive, ShapedTextRunPrimitive,
@@ -308,6 +315,10 @@ pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
 pub mod __runtime {
     pub use crate::effects::{Effect, HostRequestEffect, MountedEffect};
     pub use crate::event_context::{EventContextOutput, PointerCaptureRequest, RoutedEventOutput};
+    pub use crate::motion_sampling::{
+        MotionInterpolationKind, apply_motion_value, ease_motion, interpolate_motion_sample,
+        interpolate_motion_value, motion_value_for_target,
+    };
     pub use crate::presentation_geometry::transform_rect_aabb;
     pub use crate::runtime_protocol::RuntimeNamespace;
     pub use crate::subscription::{ErasedSendSubscriptionSource, Subscription, SubscriptionSource};

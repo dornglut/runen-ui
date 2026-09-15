@@ -4,9 +4,9 @@ use crate::element::{
     WidgetTextInput, WidgetTypeId,
 };
 use crate::{
-    CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, FocusScope, Focusability,
-    HitContribution, HitContributionContext, LayoutStyle, MonotonicInstant, MountedNodeId,
-    PaintContribution, PaintContributionContext, PointerId, SemanticContribution,
+    CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, ExplicitTimeline, FocusScope,
+    Focusability, HitContribution, HitContributionContext, LayoutStyle, MonotonicInstant,
+    MountedNodeId, PaintContribution, PaintContributionContext, PointerId, SemanticContribution,
     SemanticContributionContext, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
     WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
 };
@@ -478,6 +478,7 @@ pub struct ElementParts<Action> {
     key: Option<ElementKey>,
     layout: LayoutStyle,
     style: StyleIntent,
+    timelines: Vec<ExplicitTimeline>,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
     widget: MountedWidget<Action>,
@@ -491,6 +492,7 @@ pub type ElementRuntimeParts<Action> = (
     Option<ElementKey>,
     LayoutStyle,
     StyleIntent,
+    Vec<ExplicitTimeline>,
     Focusability,
     Option<FocusScope>,
     Vec<AuthoringDiagnostic>,
@@ -510,6 +512,7 @@ impl<Action> ElementParts<Action> {
             key: fields.key,
             layout: fields.layout,
             style: fields.style,
+            timelines: fields.timelines,
             focusability: fields.focusability,
             focus_scope: fields.focus_scope,
             widget,
@@ -532,6 +535,10 @@ impl<Action> ElementParts<Action> {
     #[must_use]
     pub const fn style(&self) -> &StyleIntent {
         &self.style
+    }
+    #[must_use]
+    pub const fn timelines(&self) -> &[ExplicitTimeline] {
+        self.timelines.as_slice()
     }
     #[must_use]
     pub const fn focusability(&self) -> Focusability {
@@ -560,6 +567,7 @@ impl<Action> ElementParts<Action> {
             self.key,
             self.layout,
             self.style,
+            self.timelines,
             self.focusability,
             self.focus_scope,
             self.authoring_diagnostics,
@@ -595,7 +603,7 @@ mod tests {
     fn corrupted_erased_payload_never_invokes_typed_callback() {
         let calls = Rc::new(Cell::new(0));
         let parts = Element::new(Probe(Rc::clone(&calls))).into_runtime_parts();
-        let (_, _, _, _, _, _, _, widget, _) = parts.into_parts();
+        let (_, _, _, _, _, _, _, _, widget, _) = parts.into_parts();
         let mut state = widget.create_state();
         state.value = Box::new(String::from("wrong"));
         assert_eq!(

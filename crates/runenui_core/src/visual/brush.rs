@@ -149,6 +149,15 @@ impl GradientStops {
     pub fn sample(&self, coordinate: UnitInterval) -> Color {
         sample_gradient_stops(self.as_slice(), f64::from(coordinate.get()))
     }
+
+    #[must_use]
+    pub(crate) fn interpolate_color_pair(
+        start: Color,
+        end: Color,
+        coordinate: UnitInterval,
+    ) -> Color {
+        interpolate_color(start, end, f64::from(coordinate.get()))
+    }
 }
 
 /// Geometry failure for an accepted gradient.
@@ -358,11 +367,12 @@ fn sample_gradient_stops(stops: &[GradientStop], coordinate: f64) -> Color {
 fn interpolate_color(start: Color, end: Color, progress: f64) -> Color {
     let start = premultiplied_linear(start);
     let end = premultiplied_linear(end);
-    let interpolated = start
-        .into_iter()
-        .zip(end)
-        .map(|(start, end)| (end - start).mul_add(progress, start))
-        .collect::<Vec<_>>();
+    let interpolated = [
+        (end[0] - start[0]).mul_add(progress, start[0]),
+        (end[1] - start[1]).mul_add(progress, start[1]),
+        (end[2] - start[2]).mul_add(progress, start[2]),
+        (end[3] - start[3]).mul_add(progress, start[3]),
+    ];
     let alpha = interpolated[3].clamp(0.0, 1.0);
     if alpha <= 0.0 {
         return Color::TRANSPARENT;

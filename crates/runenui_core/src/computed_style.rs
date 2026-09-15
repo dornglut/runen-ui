@@ -1,8 +1,8 @@
 //! Runtime-resolved host-neutral style data.
 
 use crate::{
-    Brush, Color, DropShadow, EdgeInsets, Outline, PresentationTransform, Radius, SceneOpacity,
-    Typography,
+    Brush, Color, DropShadow, EdgeInsets, MotionValue, Outline, PresentationTransform, Radius,
+    SceneOpacity, Typography,
 };
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -122,5 +122,34 @@ impl ComputedStyle {
     #[must_use]
     pub const fn presentation(&self) -> Option<PresentationTransform> {
         self.presentation
+    }
+
+    /// Applies one style-family motion value without inventing optional endpoints.
+    ///
+    /// Returns `false` for structural-layout targets, which are owned by
+    /// [`crate::LayoutStyle`] instead.
+    pub(crate) fn apply_style_motion_value(&mut self, value: &MotionValue) -> bool {
+        match value {
+            MotionValue::Foreground(value) => self.foreground = *value,
+            MotionValue::Background(value) => self.background.clone_from(value),
+            MotionValue::Padding(value) => self.padding = *value,
+            MotionValue::Radius(value) => self.radius = *value,
+            MotionValue::Typography(value) => self.typography.clone_from(value),
+            MotionValue::Shadows(value) => self.shadows.clone_from(value),
+            MotionValue::Opacity(value) => self.opacity = *value,
+            MotionValue::Presentation(value) => self.presentation = *value,
+            MotionValue::Width(_)
+            | MotionValue::Height(_)
+            | MotionValue::MinWidth(_)
+            | MotionValue::MinHeight(_)
+            | MotionValue::MaxWidth(_)
+            | MotionValue::MaxHeight(_)
+            | MotionValue::Margin(_)
+            | MotionValue::Gap(_)
+            | MotionValue::FlexGrow(_)
+            | MotionValue::FlexShrink(_)
+            | MotionValue::FlexBasis(_) => return false,
+        }
+        true
     }
 }

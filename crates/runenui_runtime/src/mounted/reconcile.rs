@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use runenui_core::{
-    __runtime::MountedWidget, Element, ElementId, ElementKey, FocusScope, Focusability,
-    LayoutStyle, StyleIntent, WidgetInvalidation, WidgetMountContext, WidgetUnmountReason,
-    WidgetUpdateContext,
+    __runtime::MountedWidget, Element, ElementId, ElementKey, ExplicitTimeline, FocusScope,
+    Focusability, LayoutStyle, StyleIntent, WidgetInvalidation, WidgetMountContext,
+    WidgetUnmountReason, WidgetUpdateContext,
 };
 
 use crate::ReconciliationDiagnostic;
@@ -67,6 +67,7 @@ pub(super) struct IncomingNode<Action> {
     key: Option<ElementKey>,
     layout: LayoutStyle,
     style: StyleIntent,
+    timelines: Vec<ExplicitTimeline>,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
     authoring_diagnostics: Vec<runenui_core::AuthoringDiagnostic>,
@@ -81,6 +82,7 @@ impl<Action> IncomingNode<Action> {
             key,
             layout,
             style,
+            timelines,
             focusability,
             focus_scope,
             authoring_diagnostics,
@@ -92,6 +94,7 @@ impl<Action> IncomingNode<Action> {
             key,
             layout,
             style,
+            timelines,
             focusability,
             focus_scope,
             authoring_diagnostics,
@@ -210,6 +213,7 @@ impl<Action> MountedTree<Action> {
             key,
             layout,
             style,
+            timelines,
             focusability,
             focus_scope,
             authoring_diagnostics,
@@ -226,6 +230,7 @@ impl<Action> MountedTree<Action> {
                 key,
                 layout,
                 style,
+                timelines,
                 focusability,
                 focus_scope,
                 authoring_diagnostics,
@@ -460,6 +465,7 @@ impl<Action> MountedTree<Action> {
             key,
             layout,
             style,
+            timelines,
             focusability,
             focus_scope,
             authoring_diagnostics,
@@ -491,6 +497,7 @@ impl<Action> MountedTree<Action> {
                 .unwrap_or_else(|| unreachable!("planned retained node remains live"));
             let tree_metadata_changed = node.authored_id != authored_id;
             let style_changed = node.style != style;
+            let timelines_changed = node.timelines != timelines;
             common_invalidation = common_field_invalidation(
                 node,
                 authored_id.as_ref(),
@@ -504,6 +511,7 @@ impl<Action> MountedTree<Action> {
             node.key = key;
             node.layout = layout;
             node.style = style;
+            node.timelines = timelines;
             node.focusability = focusability;
             node.focus_scope = focus_scope;
             node.authoring_diagnostics = authoring_diagnostics;
@@ -522,6 +530,9 @@ impl<Action> MountedTree<Action> {
             }
             if style_changed {
                 node.dirty_phases.insert(DirtyPhases::STYLE);
+            }
+            if timelines_changed {
+                node.dirty_phases.insert(DirtyPhases::MOTION);
             }
         }
         if update_context.__runtime_take_subscription_invalidation() {
@@ -546,6 +557,7 @@ impl<Action> MountedTree<Action> {
             key,
             layout,
             style,
+            timelines,
             focusability,
             focus_scope,
             authoring_diagnostics,
@@ -569,6 +581,7 @@ impl<Action> MountedTree<Action> {
                     key,
                     layout,
                     style,
+                    timelines,
                     focusability,
                     focus_scope,
                     authoring_diagnostics,

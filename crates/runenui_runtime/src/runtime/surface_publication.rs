@@ -1,22 +1,25 @@
 use core::num::NonZeroUsize;
 use std::{collections::VecDeque, sync::Arc};
 
-use runenui_core::{__runtime::RuntimeNamespace, SurfaceId, SurfaceInputContext};
+use runenui_core::{__runtime::RuntimeNamespace, MonotonicInstant, SurfaceId, SurfaceInputContext};
 use runenui_text::{TextLayoutError, TextSystem};
 
 use crate::{
     LogicalPoint, LogicalRect, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
-    SurfaceBuildContext, SurfacePhase, SurfacePhaseReport, SurfacePublication,
-    SurfacePublicationCounter, TraceSurfaceContext, TraceSurfaceSnapshotKind,
+    SemanticDiagnosticReport, SemanticPublication, SurfaceBuildContext, SurfacePhase,
+    SurfacePhaseReport, SurfacePublication, SurfacePublicationCounter, TraceSurfaceContext,
+    TraceSurfaceSnapshotKind,
     mounted::MountedTree,
     scene::{HitTestScene, PaintPublication, PaintRevision},
     semantic_publication::{
         SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
     },
     surface::{
-        SurfaceCache, SurfaceInteractionProjection, SurfacePlanningError,
-        plan_mounted_surface_cached_with_text,
+        MotionPlanningFailure, PlannedSurfacePublication, SurfaceCache,
+        SurfaceInteractionProjection, SurfaceMotionActivity, SurfaceMotionStore,
+        SurfacePlanningError, SurfacePublicationCommit, plan_mounted_surface_cached_with_text,
     },
+    trace::StagedMotionTraceFact,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -118,11 +121,42 @@ impl SurfacePublicationAdmission {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Exact non-mutating reservation for one future redraw revision.
+#[derive(Clone, Copy)]
+pub(in crate::runtime) struct RedrawRevisionAdmission {
+    revision: u64,
+}
+
+/// One immutable publication candidate context derived at a single runtime instant.
+pub(in crate::runtime) struct SurfacePublicationCandidateInputs<'a> {
+    interaction: &'a SurfaceInteractionProjection,
+    focused_owner: Option<&'a MountedNodeId>,
+    admission: SurfacePublicationAdmission,
+    instant: MonotonicInstant,
+}
+
+impl<'a> SurfacePublicationCandidateInputs<'a> {
+    pub(in crate::runtime) const fn new(
+        interaction: &'a SurfaceInteractionProjection,
+        focused_owner: Option<&'a MountedNodeId>,
+        admission: SurfacePublicationAdmission,
+        instant: MonotonicInstant,
+    ) -> Self {
+        Self {
+            interaction,
+            focused_owner,
+            admission,
+            instant,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::runtime) enum SurfacePublicationPlanError {
     SemanticIntegrity,
     TextLayout(TextLayoutError),
     PresentationGeometry,
+    Motion(MotionPlanningFailure),
     CounterExhausted(SurfacePublicationCounter),
 }
 
@@ -132,14 +166,79 @@ impl From<SurfacePlanningError> for SurfacePublicationPlanError {
             SurfacePlanningError::SemanticIntegrity => Self::SemanticIntegrity,
             SurfacePlanningError::TextLayout(error) => Self::TextLayout(error),
             SurfacePlanningError::PresentationGeometry => Self::PresentationGeometry,
+            SurfacePlanningError::Motion(error) => Self::Motion(error),
         }
     }
 }
 
+/// Fully staged surface candidate. Holding this value mutates no live publication state.
+pub(in crate::runtime) struct StagedSurfacePublication<'a> {
+    planned: PlannedSurfacePublication<'a>,
+    semantic_plan: SemanticPublicationPlan,
+    semantic_publication: SemanticPublication,
+    semantic_diagnostics: SemanticDiagnosticReport,
+    hit_test_scene: HitTestScene,
+    paint_publication: PaintPublication,
+    allocated_paint_revision: Option<u64>,
+    hit_test_generation: u64,
+    coordinate_revision: u64,
+}
+
+impl StagedSurfacePublication<'_> {
+    pub(in crate::runtime) const fn motion_activity(&self) -> SurfaceMotionActivity {
+        self.planned.motion_activity()
+    }
+
+    pub(in crate::runtime) fn motion_trace_facts(&self) -> Vec<StagedMotionTraceFact> {
+        self.planned.motion_trace_facts()
+    }
+
+    /// Begins the irreversible local commit only after outer candidate-dependent admission.
+    pub(in crate::runtime) fn commit_store(self) -> AdmittedSurfacePublicationCommit {
+        let Self {
+            planned,
+            semantic_plan,
+            semantic_publication,
+            semantic_diagnostics,
+            hit_test_scene,
+            paint_publication,
+            allocated_paint_revision,
+            hit_test_generation,
+            coordinate_revision,
+        } = self;
+        AdmittedSurfacePublicationCommit {
+            surface_commit: planned.commit_store(),
+            semantic_plan,
+            semantic_publication,
+            semantic_diagnostics,
+            hit_test_scene,
+            paint_publication,
+            allocated_paint_revision,
+            hit_test_generation,
+            coordinate_revision,
+        }
+    }
+}
+
+/// Infallible runtime-level remainder after candidate-dependent admission.
+pub(in crate::runtime) struct AdmittedSurfacePublicationCommit {
+    surface_commit: SurfacePublicationCommit,
+    semantic_plan: SemanticPublicationPlan,
+    semantic_publication: SemanticPublication,
+    semantic_diagnostics: SemanticDiagnosticReport,
+    hit_test_scene: HitTestScene,
+    paint_publication: PaintPublication,
+    allocated_paint_revision: Option<u64>,
+    hit_test_generation: u64,
+    coordinate_revision: u64,
+}
+
 /// Sole runtime-owned state for current surface publication, renderer revision,
-/// redraw revision, and bounded displayed hit-test generations.
+/// redraw revision, live motion, and bounded displayed hit-test generations.
 pub(crate) struct SurfacePublicationState {
     cache: Option<SurfaceCache>,
+    motion_store: SurfaceMotionStore,
+    motion_deadline: Option<MonotonicInstant>,
     current_paint: Option<PaintPublication>,
     semantic_publication: SemanticPublicationState,
     phase_report: SurfacePhaseReport,
@@ -164,6 +263,8 @@ impl SurfacePublicationState {
         let surface_id = runtime_namespace.__runtime_surface_id(0, 1);
         Self {
             cache: None,
+            motion_store: SurfaceMotionStore::default(),
+            motion_deadline: None,
             current_paint: None,
             semantic_publication: SemanticPublicationState::default(),
             phase_report: SurfacePhaseReport::default(),
@@ -196,15 +297,19 @@ impl SurfacePublicationState {
         })
     }
 
-    pub(crate) fn publish<Action>(
-        &mut self,
-        tree: &mut MountedTree<Action>,
+    pub(crate) fn plan_publication<'tree, Action>(
+        &self,
+        tree: &'tree mut MountedTree<Action>,
         text_system: &mut TextSystem,
         context: &SurfaceBuildContext<'_>,
-        interaction: &SurfaceInteractionProjection,
-        focused_owner: Option<&MountedNodeId>,
-        admission: SurfacePublicationAdmission,
-    ) -> Result<SurfacePublication, SurfacePublicationPlanError> {
+        candidate: SurfacePublicationCandidateInputs<'_>,
+    ) -> Result<StagedSurfacePublication<'tree>, SurfacePublicationPlanError> {
+        let SurfacePublicationCandidateInputs {
+            interaction,
+            focused_owner,
+            admission,
+            instant,
+        } = candidate;
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
         let planned = plan_mounted_surface_cached_with_text(
             tree,
@@ -212,6 +317,8 @@ impl SurfacePublicationState {
             interaction,
             text_system,
             self.cache.as_ref(),
+            &self.motion_store,
+            instant,
         )?;
         let semantic_candidate = planned.semantic_candidate(focused_owner)?;
         let semantic_plan: SemanticPublicationPlan = self
@@ -280,26 +387,56 @@ impl SurfacePublicationState {
             )
         };
 
-        let commit = planned.commit_store();
-        let (products, report) = commit.commit(tree, &mut self.cache);
+        Ok(StagedSurfacePublication {
+            planned,
+            semantic_plan,
+            semantic_publication,
+            semantic_diagnostics,
+            hit_test_scene,
+            paint_publication,
+            allocated_paint_revision,
+            hit_test_generation,
+            coordinate_revision,
+        })
+    }
+
+    pub(crate) fn commit_publication<Action>(
+        &mut self,
+        tree: &mut MountedTree<Action>,
+        commit: AdmittedSurfacePublicationCommit,
+    ) -> SurfacePublication {
+        let AdmittedSurfacePublicationCommit {
+            surface_commit,
+            semantic_plan,
+            semantic_publication,
+            semantic_diagnostics,
+            hit_test_scene,
+            paint_publication,
+            allocated_paint_revision,
+            hit_test_generation,
+            coordinate_revision,
+        } = commit;
+        let (products, report, motion_activity) =
+            surface_commit.commit(tree, &mut self.cache, &mut self.motion_store);
         self.semantic_publication.commit(semantic_plan);
         if let Some(revision) = allocated_paint_revision {
             self.next_paint_revision = revision.checked_add(1);
             self.current_paint = Some(paint_publication.clone());
         }
         self.phase_report = report;
+        self.motion_deadline = motion_activity.next_deadline();
         self.retain_new_snapshot(
             hit_test_scene.clone(),
             hit_test_generation,
             coordinate_revision,
         );
-        Ok(SurfacePublication::new(
+        SurfacePublication::new(
             paint_publication,
             hit_test_scene,
             products,
             semantic_publication,
             semantic_diagnostics,
-        ))
+        )
     }
 
     fn retain_new_snapshot(
@@ -551,6 +688,12 @@ impl SurfacePublicationState {
         self.next_paint_revision = revision;
     }
 
+    #[cfg(test)]
+    pub(in crate::runtime) const fn seed_redraw_revision_for_test(&mut self, revision: u64) {
+        self.redraw_revision = revision;
+        self.redraw_acknowledged = revision;
+    }
+
     pub(crate) fn note_focus_validation(&mut self) {
         self.phase_report = SurfacePhaseReport::one(SurfacePhase::FocusValidation);
     }
@@ -567,6 +710,24 @@ impl SurfacePublicationState {
             .unwrap_or_default()
     }
 
+    pub(crate) fn retire_motion_owner(&mut self, owner: &MountedNodeId) {
+        self.motion_store.retire_owner(owner);
+        self.motion_deadline = None;
+    }
+
+    pub(crate) fn clear_motion_for_shutdown(&mut self) {
+        self.motion_store.clear();
+        self.motion_deadline = None;
+    }
+
+    pub(crate) const fn motion_deadline(&self) -> Option<MonotonicInstant> {
+        self.motion_deadline
+    }
+
+    pub(crate) fn motion_deadline_is_due(&self, now: MonotonicInstant) -> bool {
+        self.motion_deadline.is_some_and(|deadline| now >= deadline)
+    }
+
     pub(crate) fn clear_cache(&mut self) {
         self.cache = None;
         if let Some(latest) = self.snapshots.back() {
@@ -575,10 +736,30 @@ impl SurfacePublicationState {
         self.snapshots.clear();
     }
 
+    pub(in crate::runtime) const fn admit_redraw_request(
+        &self,
+    ) -> Result<RedrawRevisionAdmission, SurfacePublicationCounter> {
+        match self.redraw_revision.checked_add(1) {
+            Some(revision) => Ok(RedrawRevisionAdmission { revision }),
+            None => Err(SurfacePublicationCounter::RedrawRevision),
+        }
+    }
+
+    pub(in crate::runtime) fn commit_redraw_request(
+        &mut self,
+        admission: RedrawRevisionAdmission,
+    ) -> u64 {
+        debug_assert!(
+            self.redraw_revision.checked_add(1) == Some(admission.revision),
+            "redraw admission names the exact next revision"
+        );
+        self.redraw_revision = admission.revision;
+        admission.revision
+    }
+
     pub(crate) fn request_redraw(&mut self) -> Option<u64> {
-        let next = self.redraw_revision.checked_add(1)?;
-        self.redraw_revision = next;
-        Some(next)
+        let admission = self.admit_redraw_request().ok()?;
+        Some(self.commit_redraw_request(admission))
     }
 
     pub(crate) fn take_redraw_request(&self) -> Option<RedrawRequest> {

@@ -2,13 +2,13 @@ use core::num::{NonZeroU64, NonZeroUsize};
 
 use runenui_core::{
     CommandOrigin, ElementId, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason,
-    MonotonicInstant, PointerBoundaryKind, PointerCaptureKind, PointerId, PointerPhase,
-    SemanticActionTarget, SemanticCommand, WidgetInvalidation, WorkKey,
+    MonotonicInstant, MotionTarget, PointerBoundaryKind, PointerCaptureKind, PointerId,
+    PointerPhase, SemanticActionTarget, SemanticCommand, WidgetInvalidation, WorkKey,
 };
 
 use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
 
-use super::TraceContext;
+use super::{TraceContext, TraceMotionFact};
 
 /// Non-wrapping identity of one canonical trace record.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -263,6 +263,10 @@ pub enum TraceRecordKind {
         outcome: TraceSurfaceRejection,
     },
     SurfacePublished,
+    Motion {
+        target: MotionTarget,
+        fact: TraceMotionFact,
+    },
     CommandProcessingRejected {
         outcome: TraceTargetRejection,
     },

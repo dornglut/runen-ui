@@ -8,9 +8,9 @@ use runenui_core::{
 };
 
 use super::{
-    SurfaceBuildContext, SurfacePhaseReport, SurfacePublication, cache::SurfaceCache,
-    cache::phase_function_counts, cache::reset_phase_function_counts, plan_mounted_surface_cached,
-    publish_mounted_surface_cached,
+    SurfaceBuildContext, SurfaceMotionStore, SurfacePhaseReport, SurfacePublication,
+    cache::SurfaceCache, cache::phase_function_counts, cache::reset_phase_function_counts,
+    plan_mounted_surface_cached, publish_mounted_surface_cached,
 };
 use crate::{LayoutConstraints, mounted::MountedTree, mounted::apply_invalidation};
 
@@ -408,6 +408,7 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
     let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
     let mut cache = None;
     let interaction = super::SurfaceInteractionProjection::default();
+    let mut motion_store = SurfaceMotionStore::default();
 
     let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
         .unwrap_or_else(|_| unreachable!("initial semantic layout plan is valid"));
@@ -420,7 +421,7 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
     assert!((first.nodes[0].bounds.width() - 10.0).abs() <= f32::EPSILON);
     let semantic_id = first.nodes[0].id.clone();
     let commit = planned.commit_store();
-    let (_, initial_report) = commit.commit(&mut tree, &mut cache);
+    let (_, initial_report, _activity) = commit.commit(&mut tree, &mut cache, &mut motion_store);
     assert!(
         initial_report
             .executed()
@@ -445,7 +446,7 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
     assert_eq!(second.nodes[0].id, semantic_id);
     assert!((second.nodes[0].bounds.width() - 20.0).abs() <= f32::EPSILON);
     let commit = planned.commit_store();
-    let (_, report) = commit.commit(&mut tree, &mut cache);
+    let (_, report, _activity) = commit.commit(&mut tree, &mut cache, &mut motion_store);
     assert_eq!(
         report.executed(),
         &[

@@ -10,6 +10,7 @@ mod context;
 mod export;
 mod input_context;
 mod model;
+mod motion;
 mod replay;
 mod sink;
 mod store;
@@ -37,6 +38,13 @@ pub use model::{
     TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
     TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
     TraceWorkStartRefusal,
+};
+pub(crate) use motion::StagedMotionTraceFact;
+pub use motion::{
+    TraceMotionCollision, TraceMotionEffectDecision, TraceMotionEffectiveDecision,
+    TraceMotionEffects, TraceMotionFact, TraceMotionGroupDecision, TraceMotionInterpolation,
+    TraceMotionLifecycle, TraceMotionPhase, TraceMotionPlanningRejection, TraceMotionPolicy,
+    TraceMotionPreferenceDecision, TraceMotionSource,
 };
 pub use replay::{
     TraceReplay, TraceReplayCompleteness, TraceReplayError, TraceReplayKind, TraceReplayRecord,

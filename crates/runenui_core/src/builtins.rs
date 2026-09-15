@@ -1,13 +1,14 @@
 use core::fmt;
 
 use crate::{
-    BrushValue, ColorValue, ElementId, ElementKey, FlexContainerStyle, FlexDirection,
-    HitContribution, HitContributionContext, IntoElementId, IntoElementKey, LayoutContainer,
-    LayoutStyle, LogicalLength, LogicalRect, LogicalSize, OpacityValue, OutlineValue,
-    PresentationValue, RadiusValue, SemanticAction, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
-    SemanticText, ShadowValue, SpacingValue, StyleIntent, StyleRecipeId, StyleVariantId,
-    TypographyValue, WidgetActivationContext, WidgetInvalidation, WidgetUpdateContext,
+    BrushValue, ColorValue, ElementId, ElementKey, ExplicitTimeline, FlexContainerStyle,
+    FlexDirection, HitContribution, HitContributionContext, IntoElementId, IntoElementKey,
+    LayoutContainer, LayoutStyle, LogicalLength, LogicalRect, LogicalSize, MotionTarget,
+    OpacityValue, OutlineValue, PresentationValue, RadiusValue, SemanticAction,
+    SemanticContribution, SemanticContributionContext, SemanticNodeContribution, SemanticRole,
+    SemanticState, SemanticText, ShadowValue, SpacingValue, StyleIntent, StyleRecipeId,
+    StyleVariantId, TransitionSpec, TypographyValue, WidgetActivationContext, WidgetInvalidation,
+    WidgetUpdateContext,
     element::{
         AuthoredElementFields, AuthoringDiagnostic, ChildBearingWidget, Element, View, Views,
         Widget, WidgetActivation, WidgetActivationOutput, WidgetMeasure, WidgetMeasureInput,
@@ -87,6 +88,21 @@ macro_rules! common_builder_methods {
             self.style = self.style.with_presentation(value);
             self
         }
+        #[must_use]
+        pub fn transition(mut self, target: MotionTarget, spec: TransitionSpec) -> Self {
+            self.style = self.style.with_transition(target, spec);
+            self
+        }
+        #[must_use]
+        pub fn transition_disabled(mut self, target: MotionTarget) -> Self {
+            self.style = self.style.with_transition_disabled(target);
+            self
+        }
+        #[must_use]
+        pub fn timeline(mut self, timeline: ExplicitTimeline) -> Self {
+            self.timelines.push(timeline);
+            self
+        }
     };
 }
 
@@ -97,6 +113,7 @@ pub struct Text {
     key: Option<ElementKey>,
     layout: LayoutStyle,
     style: StyleIntent,
+    timelines: Vec<ExplicitTimeline>,
     diagnostics: Vec<AuthoringDiagnostic>,
 }
 
@@ -109,6 +126,7 @@ impl Text {
             key: None,
             layout: LayoutStyle::default(),
             style: StyleIntent::EMPTY,
+            timelines: Vec::new(),
             diagnostics: Vec::new(),
         }
     }
@@ -165,6 +183,7 @@ impl<Action: 'static> View<Action> for Text {
                 self.key,
                 self.layout,
                 self.style,
+                self.timelines,
                 crate::Focusability::Automatic,
                 None,
             ),
@@ -186,6 +205,7 @@ pub struct Button<Action> {
     activation_factory: Option<Box<dyn FnMut() -> Action>>,
     actionable: bool,
     style: StyleIntent,
+    timelines: Vec<ExplicitTimeline>,
     diagnostics: Vec<AuthoringDiagnostic>,
 }
 
@@ -201,6 +221,7 @@ impl<Action> fmt::Debug for Button<Action> {
             .field("actionable", &self.actionable)
             .field("has_callback", &self.activation_factory.is_some())
             .field("style", &self.style)
+            .field("timelines", &self.timelines)
             .field("diagnostics", &self.diagnostics)
             .finish()
     }
@@ -218,6 +239,7 @@ impl<Action> Button<Action> {
             activation_factory: None,
             actionable: false,
             style: StyleIntent::EMPTY,
+            timelines: Vec::new(),
             diagnostics: Vec::new(),
         }
     }
@@ -362,6 +384,7 @@ impl<Action: 'static> View<Action> for Button<Action> {
                 self.key,
                 self.layout,
                 self.style,
+                self.timelines,
                 crate::Focusability::Automatic,
                 None,
             ),
@@ -384,6 +407,7 @@ pub struct Container<Action> {
     key: Option<ElementKey>,
     layout: LayoutStyle,
     style: StyleIntent,
+    timelines: Vec<ExplicitTimeline>,
     diagnostics: Vec<AuthoringDiagnostic>,
 }
 
@@ -397,6 +421,7 @@ impl<Action> fmt::Debug for Container<Action> {
             .field("key", &self.key)
             .field("layout", &self.layout)
             .field("style", &self.style)
+            .field("timelines", &self.timelines)
             .field("diagnostics", &self.diagnostics)
             .finish()
     }
@@ -415,6 +440,7 @@ impl<Action> Container<Action> {
             key: None,
             layout: LayoutStyle::default(),
             style: StyleIntent::EMPTY,
+            timelines: Vec::new(),
             diagnostics: Vec::new(),
         }
     }
@@ -455,6 +481,7 @@ impl<Action: 'static> View<Action> for Container<Action> {
                 self.key,
                 self.layout,
                 self.style,
+                self.timelines,
                 crate::Focusability::Automatic,
                 None,
             ),

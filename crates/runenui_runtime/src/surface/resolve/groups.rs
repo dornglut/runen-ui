@@ -7,7 +7,7 @@ use crate::scene::{
     SceneClip,
 };
 
-use super::{CachedStyleFacts, SurfaceTopologySnapshot};
+use super::{CachedEffectiveFacts, EffectiveNodeFacts, SurfaceTopologySnapshot};
 
 /// Runtime-private staging reference to one resolved explicit owner-local group.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -137,19 +137,16 @@ const fn nearest_node_group(
 
 fn derive_group_plan(
     topology: &SurfaceTopologySnapshot,
-    styles: &CachedStyleFacts,
+    effective: &CachedEffectiveFacts,
     explicit_groups: &[ResolvedExplicitGroup],
     item_owners: &[usize],
     item_explicit_groups: &[Option<ExplicitGroupId>],
 ) -> GroupPlan {
     let topology_parent = topology_parents(topology);
-    let requires_node_group = styles
-        .resolutions
+    let requires_node_group = effective
+        .nodes
         .iter()
-        .map(|resolution| {
-            let computed = resolution.computed_style();
-            computed.opacity() != SceneOpacity::OPAQUE || !computed.shadows().is_empty()
-        })
+        .map(EffectiveNodeFacts::requires_node_effect_group)
         .collect::<Vec<_>>();
 
     let mut sources = Vec::new();
@@ -269,7 +266,7 @@ fn build_composition_entries(
 }
 
 fn publish_groups(
-    styles: &CachedStyleFacts,
+    effective: &CachedEffectiveFacts,
     explicit_groups: &[ResolvedExplicitGroup],
     sources: Vec<GroupSource>,
     parents: &[Option<usize>],
@@ -288,7 +285,7 @@ fn publish_groups(
             .collect();
         let published = match source {
             GroupSource::Node(node) => {
-                let computed = styles.resolutions[node].computed_style();
+                let computed = effective.node(node).computed_style();
                 PaintSceneGroup::new(
                     parent,
                     entries,
@@ -321,11 +318,11 @@ fn publish_groups(
 /// runtime node-effect groups share one runtime-issued snapshot-local group table.
 pub(super) fn derive_composition_groups(
     topology: &SurfaceTopologySnapshot,
-    styles: &CachedStyleFacts,
+    effective: &CachedEffectiveFacts,
     explicit_groups: &[ResolvedExplicitGroup],
     ordered: Vec<OrderedPaintItem>,
 ) -> (Vec<PaintSceneItem>, PaintSceneComposition) {
-    debug_assert_eq!(topology.nodes.len(), styles.resolutions.len());
+    debug_assert_eq!(topology.nodes.len(), effective.nodes.len());
 
     let item_owners = ordered
         .iter()
@@ -351,7 +348,7 @@ pub(super) fn derive_composition_groups(
         item_groups,
     } = derive_group_plan(
         topology,
-        styles,
+        effective,
         explicit_groups,
         &item_owners,
         &item_explicit_groups,
@@ -368,7 +365,7 @@ pub(super) fn derive_composition_groups(
     let CompositionEntries { grouped, root } =
         build_composition_entries(&item_groups, &parents, &anchors, &candidate_to_scene);
     let groups = publish_groups(
-        styles,
+        effective,
         explicit_groups,
         sources,
         &parents,

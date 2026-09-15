@@ -184,6 +184,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let (cancelled_queued_envelopes, cancelled_live_work, final_parent) =
             self.close_scheduling_authority(shutdown_parent);
         let stats = self.tree.shutdown();
+        self.surface_publication.clear_motion_for_shutdown();
         self.surface_publication.clear_cache();
         self.trace.record_draft(
             TraceRecordDraft::lifecycle_fact(

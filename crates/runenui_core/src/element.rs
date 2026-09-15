@@ -6,13 +6,14 @@ use std::rc::Rc;
 use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAdapter};
 use crate::widget_mapping::MappedWidget;
 use crate::{
-    BrushValue, ColorValue, ElementId, ElementKey, EventContext, FocusScope, Focusability,
-    HitContribution, HitContributionContext, IdentifierError, IntoElementId, IntoElementKey,
-    LayoutStyle, LogicalLength, LogicalSize, OpacityValue, OutlineValue, PaintContribution,
-    PaintContributionContext, RadiusValue, SemanticContribution, SemanticContributionContext,
-    ShadowValue, SpacingValue, StyleIntent, StyleRecipeId, StyleVariantId, SubscriptionSet,
-    TypographyValue, UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetInvalidation,
-    WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext,
+    BrushValue, ColorValue, ElementId, ElementKey, EventContext, ExplicitTimeline, FocusScope,
+    Focusability, HitContribution, HitContributionContext, IdentifierError, IntoElementId,
+    IntoElementKey, LayoutStyle, LogicalLength, LogicalSize, MotionTarget, OpacityValue,
+    OutlineValue, PaintContribution, PaintContributionContext, RadiusValue, SemanticContribution,
+    SemanticContributionContext, ShadowValue, SpacingValue, StyleIntent, StyleRecipeId,
+    StyleVariantId, SubscriptionSet, TransitionSpec, TypographyValue, UiEvent,
+    WidgetActivationContext, WidgetEventOutput, WidgetInvalidation, WidgetMountContext,
+    WidgetUnmountContext, WidgetUpdateContext,
 };
 
 /// Process-local identity of a concrete widget implementation type.
@@ -466,6 +467,7 @@ pub struct Element<Action> {
     key: Option<ElementKey>,
     layout: LayoutStyle,
     style: StyleIntent,
+    timelines: Vec<ExplicitTimeline>,
     focusability: Focusability,
     focus_scope: Option<FocusScope>,
     widget: Box<dyn ErasedWidget<Action>>,
@@ -478,6 +480,7 @@ pub struct AuthoredElementFields {
     pub key: Option<ElementKey>,
     pub layout: LayoutStyle,
     pub style: StyleIntent,
+    pub timelines: Vec<ExplicitTimeline>,
     pub focusability: Focusability,
     pub focus_scope: Option<FocusScope>,
 }
@@ -488,6 +491,7 @@ impl AuthoredElementFields {
         key: Option<ElementKey>,
         layout: LayoutStyle,
         style: StyleIntent,
+        timelines: Vec<ExplicitTimeline>,
         focusability: Focusability,
         focus_scope: Option<FocusScope>,
     ) -> Self {
@@ -496,6 +500,7 @@ impl AuthoredElementFields {
             key,
             layout,
             style,
+            timelines,
             focusability,
             focus_scope,
         }
@@ -510,6 +515,7 @@ impl<Action> fmt::Debug for Element<Action> {
             .field("key", &self.key)
             .field("layout", &self.layout)
             .field("style", &self.style)
+            .field("timelines", &self.timelines)
             .field("focusability", &self.focusability)
             .field("focus_scope", &self.focus_scope)
             .field("widget_type", &self.widget.widget_type_name())
@@ -536,6 +542,7 @@ impl<Action> Element<Action> {
                 None,
                 LayoutStyle::default(),
                 StyleIntent::EMPTY,
+                Vec::new(),
                 Focusability::Automatic,
                 None,
             ),
@@ -556,6 +563,7 @@ impl<Action> Element<Action> {
             key: fields.key,
             layout: fields.layout,
             style: fields.style,
+            timelines: fields.timelines,
             focusability: fields.focusability,
             focus_scope: fields.focus_scope,
             widget,
@@ -642,6 +650,30 @@ impl<Action> Element<Action> {
         self
     }
 
+    /// Contributes transition policy through the ordinary style cascade.
+    #[must_use]
+    pub fn transition(mut self, target: MotionTarget, spec: TransitionSpec) -> Self {
+        self.style = self.style.with_transition(target, spec);
+        self
+    }
+
+    /// Explicitly disables transition for one motion target at the authored layer.
+    #[must_use]
+    pub fn transition_disabled(mut self, target: MotionTarget) -> Self {
+        self.style = self.style.with_transition_disabled(target);
+        self
+    }
+
+    /// Adds one owner-local declarative explicit timeline.
+    ///
+    /// Duplicate animation IDs and duplicate targets are retained here and
+    /// rejected transactionally by runtime candidate planning.
+    #[must_use]
+    pub fn timeline(mut self, timeline: ExplicitTimeline) -> Self {
+        self.timelines.push(timeline);
+        self
+    }
+
     /// Declares explicit participation in mounted focus selection.
     #[must_use]
     pub const fn focusable(mut self, focusable: bool) -> Self {
@@ -700,6 +732,7 @@ impl<Action> Element<Action> {
             key: self.key,
             layout: self.layout,
             style: self.style,
+            timelines: self.timelines,
             focusability: self.focusability,
             focus_scope: self.focus_scope,
             widget: Box::new(MappedWidget {
@@ -732,6 +765,10 @@ impl<Action> Element<Action> {
         &self.style
     }
     #[must_use]
+    pub const fn timelines(&self) -> &[ExplicitTimeline] {
+        self.timelines.as_slice()
+    }
+    #[must_use]
     pub const fn focusability(&self) -> Focusability {
         self.focusability
     }
@@ -757,6 +794,7 @@ impl<Action> Element<Action> {
                 self.key,
                 self.layout,
                 self.style,
+                self.timelines,
                 self.focusability,
                 self.focus_scope,
             ),

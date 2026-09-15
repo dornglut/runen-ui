@@ -8,7 +8,7 @@ use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId}
 
 use super::{
     SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport, SurfacePublication,
-    resolve::{CachedStyleFacts, SurfaceTopologySnapshot},
+    resolve::{CachedEffectiveFacts, CachedStyleFacts, SurfaceTopologySnapshot},
 };
 
 #[cfg(test)]
@@ -206,11 +206,14 @@ pub(crate) struct SurfaceCache {
     // Last runtime-derived interaction projection consumed by the style phase.
     // This is cache compatibility only, never pointer/focus authority.
     pub(super) interaction: Arc<SurfaceInteractionProjection>,
-    // Style-phase facts.
+    // Target style/provenance facts. Motion never rewrites these.
     pub(super) styles: Arc<CachedStyleFacts>,
+    // Accepted effective style/layout values consumed by downstream phases.
+    // This is a derived publication snapshot, never authored-state authority.
+    pub(super) effective: Arc<CachedEffectiveFacts>,
     // Layout-phase facts: logical layout authority only.
     pub(super) layout: Arc<CachedLayoutFacts>,
-    // Runtime-owned presentation geometry derived from final layout + computed style.
+    // Runtime-owned presentation geometry derived from final layout + effective style.
     pub(super) presentation: Arc<CachedPresentationFacts>,
     // Canonical physical-hit content; displayed context is added only by the
     // runtime-owned publication state when a generation is committed.
@@ -224,8 +227,8 @@ pub(crate) struct SurfaceCache {
     // Paint-composition diagnostics are owned and replaced with the paint phase.
     pub(super) paint_diagnostics: Arc<Vec<Vec<WidgetDiagnostic>>>,
     // Derived layout/debug materialization of aligned phase facts above, never
-    // renderer or pointer authority. Its clone is cheap immutable sharing.
-    // No authored StyleIntent or LayoutStyle is retained here.
+    // renderer, pointer, authored-style, or authored-layout authority. Its clone
+    // is cheap immutable sharing.
     pub(super) publication: SurfacePublication,
 }
 
@@ -239,6 +242,7 @@ impl SurfaceCache {
             topology: Arc::clone(&self.topology),
             interaction: Arc::clone(&self.interaction),
             styles: Arc::clone(&self.styles),
+            effective: Arc::clone(&self.effective),
             layout: Arc::clone(&self.layout),
             presentation: Arc::clone(&self.presentation),
             hit_test: self.hit_test.clone(),
@@ -323,6 +327,8 @@ pub(super) fn context_key(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use runenui_core::{StyleEnvironment, View, WidgetInvalidation, text};
 
     use super::{SurfaceCache, SurfacePhase};
@@ -330,7 +336,7 @@ mod tests {
         LayoutConstraints,
         mounted::{DirtyPhases, MountedTree, apply_invalidation},
         surface::{
-            SurfaceBuildContext, SurfaceInteractionProjection,
+            SurfaceBuildContext, SurfaceInteractionProjection, SurfaceMotionStore,
             planning::plan_mounted_surface_cached_with_test_text,
         },
     };
@@ -345,7 +351,8 @@ mod tests {
             plan_mounted_surface_cached_with_test_text(tree, context, &interaction, cache.as_ref())
                 .unwrap_or_else(|_| unreachable!("reuse proof has valid semantic planning"));
         let commit = planned.commit_store();
-        let (_, report) = commit.commit(tree, cache);
+        let mut motion_store = SurfaceMotionStore::default();
+        let (_, report, _activity) = commit.commit(tree, cache, &mut motion_store);
         report
     }
 
@@ -356,6 +363,32 @@ mod tests {
     }
 
     #[test]
+    fn effective_facts_start_as_exact_target_projection() {
+        let (mut tree, _) = MountedTree::<()>::mount(text("effective").key("root").into_element());
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
+        let mut cache = None;
+        let _ = publish(&mut tree, &context, &mut cache);
+        let cache = cache
+            .as_ref()
+            .unwrap_or_else(|| unreachable!("initial publication retains a cache"));
+
+        assert_eq!(cache.effective.nodes.len(), cache.topology.nodes.len());
+        for (index, topology) in cache.topology.nodes.iter().enumerate() {
+            let mounted = tree
+                .node(&topology.id)
+                .unwrap_or_else(|| unreachable!("published topology remains mounted"));
+            let effective = cache.effective.node(index);
+            assert_eq!(effective.layout(), &mounted.layout);
+            assert_eq!(
+                effective.computed_style(),
+                cache.styles.resolutions[index].computed_style()
+            );
+            assert!(!effective.retain_node_effect_group());
+        }
+    }
+
+    #[test]
     fn focus_only_publication_reuses_all_renderer_products() {
         let (mut tree, _) = MountedTree::<()>::mount(text("focus").key("root").into_element());
         let environment = StyleEnvironment::default();
@@ -363,6 +396,7 @@ mod tests {
         let mut cache = None;
         let _ = publish(&mut tree, &context, &mut cache);
         let before = retained(cache.as_ref());
+        let effective_before = Arc::clone(&before.effective);
 
         tree.mark_semantic_focus_product_dirty();
         let report = publish(&mut tree, &context, &mut cache);
@@ -372,6 +406,7 @@ mod tests {
 
         assert_eq!(report.executed(), &[SurfacePhase::Semantics]);
         assert_eq!(before.retained_product_reuse(after), [true; 7]);
+        assert!(Arc::ptr_eq(&effective_before, &after.effective));
     }
 
     #[test]

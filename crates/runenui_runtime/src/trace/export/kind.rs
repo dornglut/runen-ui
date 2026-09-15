@@ -1,6 +1,10 @@
 use runenui_core::__runtime::RuntimeNamespace;
 
-use crate::TraceRecordKind;
+use crate::{
+    TraceMotionCollision, TraceMotionFact, TraceMotionInterpolation, TraceMotionLifecycle,
+    TraceMotionPhase, TraceMotionPlanningRejection, TraceMotionPolicy,
+    TraceMotionPreferenceDecision, TraceMotionSource, TraceRecordKind,
+};
 
 use super::{json, tokens, value};
 
@@ -94,6 +98,7 @@ macro_rules! trace_kind_name {
             TraceRecordKind::SurfaceTargetBound => "surface_target_bound",
             TraceRecordKind::SurfaceCommandRejected { .. } => "surface_command_rejected",
             TraceRecordKind::SurfacePublished => "surface_published",
+            TraceRecordKind::Motion { .. } => "motion",
             TraceRecordKind::CommandProcessingRejected { .. } => "command_processing_rejected",
             TraceRecordKind::RoutedEventStarted => "routed_event_started",
             TraceRecordKind::RouteSnapshotCreated { .. } => "route_snapshot_created",
@@ -188,7 +193,8 @@ pub(super) fn data(output: &mut String, runtime: &RuntimeNamespace, kind: &Trace
 }
 
 fn encode_data_fields(output: &mut String, runtime: &RuntimeNamespace, kind: &TraceRecordKind) {
-    if encode_semantic_data(output, runtime, kind)
+    if encode_motion_data(output, kind)
+        || encode_semantic_data(output, runtime, kind)
         || encode_input_data(output, kind)
         || encode_pointer_data(output, kind)
     {
@@ -198,6 +204,218 @@ fn encode_data_fields(output: &mut String, runtime: &RuntimeNamespace, kind: &Tr
         return;
     }
     let _ = encode_runtime_data(output, kind);
+}
+
+fn encode_motion_data(output: &mut String, kind: &TraceRecordKind) -> bool {
+    let TraceRecordKind::Motion { target, fact } = kind else {
+        return false;
+    };
+    field_str(output, "target", motion_target(*target));
+    output.push(',');
+    match fact {
+        TraceMotionFact::PolicyResolved { policy } => {
+            field_str(output, "fact", "policy_resolved");
+            output.push(',');
+            field_str(output, "policy", motion_policy(*policy));
+        }
+        TraceMotionFact::CollisionRejected { source, collision } => {
+            field_str(output, "fact", "collision_rejected");
+            output.push(',');
+            encode_motion_source(output, source);
+            output.push(',');
+            field_str(output, "collision", motion_collision(*collision));
+        }
+        TraceMotionFact::Lifecycle { source, lifecycle } => {
+            field_str(output, "fact", "lifecycle");
+            output.push(',');
+            encode_motion_source(output, source);
+            output.push(',');
+            field_str(output, "lifecycle", motion_lifecycle(*lifecycle));
+        }
+        TraceMotionFact::Sampled {
+            source,
+            phase,
+            progress_bits,
+            eased_progress_bits,
+            interpolation,
+            suppressed,
+        } => {
+            field_str(output, "fact", "sampled");
+            output.push(',');
+            encode_motion_source(output, source);
+            output.push(',');
+            field_str(output, "phase", motion_phase(*phase));
+            output.push_str(",\"progress_bits\":");
+            json::optional_u64(output, progress_bits.map(u64::from));
+            output.push_str(",\"eased_progress_bits\":");
+            json::optional_u64(output, eased_progress_bits.map(u64::from));
+            output.push(',');
+            field_str(
+                output,
+                "interpolation",
+                motion_interpolation(*interpolation),
+            );
+            output.push(',');
+            field_bool(output, "suppressed", *suppressed);
+        }
+        TraceMotionFact::Preference {
+            source,
+            reduced_motion,
+            strategy,
+            decision,
+        } => {
+            field_str(output, "fact", "preference");
+            output.push(',');
+            encode_motion_source(output, source);
+            output.push(',');
+            field_bool(output, "reduced_motion", *reduced_motion);
+            output.push(',');
+            field_str(output, "strategy", reduced_motion_strategy(*strategy));
+            output.push(',');
+            field_str(output, "decision", motion_preference(*decision));
+        }
+        TraceMotionFact::Effect { decision } => {
+            field_str(output, "fact", "effect");
+            output.push(',');
+            field_bool(output, "layout", decision.layout());
+            output.push(',');
+            field_bool(output, "presentation", decision.presentation());
+            output.push(',');
+            field_bool(output, "paint", decision.paint());
+            output.push(',');
+            field_bool(
+                output,
+                "retain_node_effect_group",
+                decision.retain_node_effect_group(),
+            );
+            output.push(',');
+            field_bool(output, "effective_changed", decision.effective_changed());
+        }
+        TraceMotionFact::PlanningRejected { source, rejection } => {
+            field_str(output, "fact", "planning_rejected");
+            output.push(',');
+            if let Some(source) = source {
+                encode_motion_source(output, source);
+            } else {
+                json::name(output, "source");
+                output.push_str("null");
+                output.push_str(",\"animation_id\":null");
+            }
+            output.push(',');
+            field_str(output, "rejection", motion_planning_rejection(*rejection));
+        }
+    }
+    true
+}
+
+fn encode_motion_source(output: &mut String, source: &TraceMotionSource) {
+    match source {
+        TraceMotionSource::Transition => {
+            field_str(output, "source", "transition");
+            output.push_str(",\"animation_id\":null");
+        }
+        TraceMotionSource::Timeline { animation_id } => {
+            field_str(output, "source", "timeline");
+            output.push_str(",\"animation_id\":");
+            json::string(output, animation_id.as_str());
+        }
+    }
+}
+
+fn motion_target(target: runenui_core::MotionTarget) -> &'static str {
+    match target {
+        runenui_core::MotionTarget::Foreground => "foreground",
+        runenui_core::MotionTarget::Background => "background",
+        runenui_core::MotionTarget::Padding => "padding",
+        runenui_core::MotionTarget::Radius => "radius",
+        runenui_core::MotionTarget::Typography => "typography",
+        runenui_core::MotionTarget::Shadows => "shadows",
+        runenui_core::MotionTarget::Opacity => "opacity",
+        runenui_core::MotionTarget::Presentation => "presentation",
+        runenui_core::MotionTarget::Width => "width",
+        runenui_core::MotionTarget::Height => "height",
+        runenui_core::MotionTarget::MinWidth => "min_width",
+        runenui_core::MotionTarget::MinHeight => "min_height",
+        runenui_core::MotionTarget::MaxWidth => "max_width",
+        runenui_core::MotionTarget::MaxHeight => "max_height",
+        runenui_core::MotionTarget::Margin => "margin",
+        runenui_core::MotionTarget::Gap => "gap",
+        runenui_core::MotionTarget::FlexGrow => "flex_grow",
+        runenui_core::MotionTarget::FlexShrink => "flex_shrink",
+        runenui_core::MotionTarget::FlexBasis => "flex_basis",
+        _ => unreachable!("runtime and core motion-target vocabularies are version-locked"),
+    }
+}
+
+const fn motion_policy(policy: TraceMotionPolicy) -> &'static str {
+    match policy {
+        TraceMotionPolicy::Absent => "absent",
+        TraceMotionPolicy::Disabled => "disabled",
+        TraceMotionPolicy::Enabled => "enabled",
+    }
+}
+
+const fn motion_collision(collision: TraceMotionCollision) -> &'static str {
+    match collision {
+        TraceMotionCollision::DuplicateAnimationId => "duplicate_animation_id",
+        TraceMotionCollision::DuplicateTarget => "duplicate_target",
+    }
+}
+
+const fn motion_lifecycle(lifecycle: TraceMotionLifecycle) -> &'static str {
+    match lifecycle {
+        TraceMotionLifecycle::Started => "started",
+        TraceMotionLifecycle::Replaced => "replaced",
+        TraceMotionLifecycle::Cancelled => "cancelled",
+        TraceMotionLifecycle::Restarted => "restarted",
+        TraceMotionLifecycle::Completed => "completed",
+        TraceMotionLifecycle::CompletedRetained => "completed_retained",
+        TraceMotionLifecycle::HoldInitialEntered => "hold_initial_entered",
+        TraceMotionLifecycle::HoldInitialReleased => "hold_initial_released",
+    }
+}
+
+const fn motion_phase(phase: TraceMotionPhase) -> &'static str {
+    match phase {
+        TraceMotionPhase::Delayed => "delayed",
+        TraceMotionPhase::Running => "running",
+        TraceMotionPhase::Completed => "completed",
+        TraceMotionPhase::HeldInitial => "held_initial",
+    }
+}
+
+const fn motion_interpolation(interpolation: TraceMotionInterpolation) -> &'static str {
+    match interpolation {
+        TraceMotionInterpolation::Endpoint => "endpoint",
+        TraceMotionInterpolation::Continuous => "continuous",
+        TraceMotionInterpolation::Discrete => "discrete",
+    }
+}
+
+const fn motion_preference(decision: TraceMotionPreferenceDecision) -> &'static str {
+    match decision {
+        TraceMotionPreferenceDecision::Normal => "normal",
+        TraceMotionPreferenceDecision::SnapToEnd => "snap_to_end",
+        TraceMotionPreferenceDecision::HoldInitial => "hold_initial",
+        TraceMotionPreferenceDecision::PreserveEssential => "preserve_essential",
+        TraceMotionPreferenceDecision::HighContrastSuppressed => "high_contrast_suppressed",
+    }
+}
+
+const fn motion_planning_rejection(rejection: TraceMotionPlanningRejection) -> &'static str {
+    match rejection {
+        TraceMotionPlanningRejection::ScheduleOverflow => "schedule_overflow",
+        TraceMotionPlanningRejection::Interpolation => "interpolation",
+    }
+}
+
+fn reduced_motion_strategy(strategy: runenui_core::ReducedMotionStrategy) -> &'static str {
+    match strategy {
+        runenui_core::ReducedMotionStrategy::SnapToEnd => "snap_to_end",
+        runenui_core::ReducedMotionStrategy::HoldInitial => "hold_initial",
+        runenui_core::ReducedMotionStrategy::PreserveEssential => "preserve_essential",
+        _ => unreachable!("runtime and core reduced-motion vocabularies are version-locked"),
+    }
 }
 
 fn encode_semantic_data(

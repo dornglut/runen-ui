@@ -14,7 +14,9 @@ impl DirtyPhases {
     pub(crate) const SEMANTICS: Self = Self(1 << 5);
     pub(crate) const DIAGNOSTICS: Self = Self(1 << 6);
     pub(crate) const FOCUS_VALIDATION: Self = Self(1 << 7);
-    pub(crate) const ALL: Self = Self((1 << 8) - 1);
+    /// Authored motion declarations changed and require runtime reconciliation.
+    pub(crate) const MOTION: Self = Self(1 << 8);
+    pub(crate) const ALL: Self = Self((1 << 9) - 1);
 
     pub(crate) const fn insert(&mut self, phases: Self) {
         self.0 |= phases.0;

@@ -125,6 +125,7 @@ pub(crate) fn process_application_action<App: UiApp>(
     let reconcile_stats = {
         let (
             tree,
+            surface_publication,
             work,
             completion_ingress,
             local_tasks,
@@ -134,6 +135,7 @@ pub(crate) fn process_application_action<App: UiApp>(
             host_requests,
         ) = (
             &mut runtime.tree,
+            &mut runtime.surface_publication,
             &mut runtime.work,
             &runtime.completion_ingress,
             &mut runtime.local_tasks,
@@ -143,6 +145,7 @@ pub(crate) fn process_application_action<App: UiApp>(
             &mut runtime.host_requests,
         );
         tree.apply_reconciliation(reconciliation_plan, &mut |owner| {
+            surface_publication.retire_motion_owner(owner);
             let owner = WorkOwner::Mounted(owner.clone());
             let generations = work.generations_for_owner(&owner);
             for generation in &generations {
