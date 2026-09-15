@@ -465,7 +465,8 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
         &final_publication,
         &provider,
         final_readback.readback().rgba8_srgb(),
-    )? else {
+    )?
+    else {
         return Ok(());
     };
 
