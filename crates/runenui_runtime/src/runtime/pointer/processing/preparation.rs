@@ -133,31 +133,28 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         };
         let snapshot = super::rejection::map_snapshot_kind(resolution.snapshot_kind());
         let physical_target = resolution.into_target();
-        let physical_path = match physical_target.as_ref() {
-            Some(target) => match self.tree.event_route(target) {
-                Ok(path) => path,
+        let (physical_target, physical_path) = match physical_target {
+            Some(target) => match self.tree.event_route(&target) {
+                Ok(path) => (Some(target), path),
                 Err(RouteBuildError::Target(TargetStatus::Stale)) => {
-                    // A retained runtime-authored hit scene may outlive the mounted target it
-                    // names. That is an expected historical-display rejection, not topology
-                    // corruption. Foreign or missing scene targets remain integrity failures.
-                    let outcome = crate::trace::TracePointerRejection::NoTarget;
-                    if matches!(work.event.phase(), PointerPhase::Up) {
-                        return Err(self.settle_rejected_pointer_up(
-                            work,
-                            outcome,
-                            stream.clone(),
+                    // A runtime-authored displayed snapshot may legally outlive the mounted
+                    // generation it names. Down has no pre-existing routing authority, so reject
+                    // it without committing a stream. Existing-stream phases retain their own
+                    // live capture/pressed routing authority while the stale physical hit becomes
+                    // no live physical target; never retarget through current geometry.
+                    if matches!(work.event.phase(), PointerPhase::Down) {
+                        return Err(self.reject_pointer(
+                            super::rejection::RejectedPointerFacts::new(
+                                work.sequence,
+                                work.causal_parent,
+                                work.trace_reservation,
+                                work.event.pointer_id(),
+                                work.event.phase(),
+                                crate::trace::TracePointerRejection::NoTarget,
+                            ),
                         ));
                     }
-                    return Err(
-                        self.reject_pointer(super::rejection::RejectedPointerFacts::new(
-                            work.sequence,
-                            work.causal_parent,
-                            work.trace_reservation,
-                            work.event.pointer_id(),
-                            work.event.phase(),
-                            outcome,
-                        )),
-                    );
+                    (None, Vec::new())
                 }
                 Err(
                     RouteBuildError::Target(
@@ -174,7 +171,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     });
                 }
             },
-            None => Vec::new(),
+            None => (None, Vec::new()),
         };
         Ok(PointerGeometry {
             physical_target,

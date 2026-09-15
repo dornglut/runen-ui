@@ -95,27 +95,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         error: super::SurfaceSnapshotError,
         stream: PointerStreamState,
     ) -> ProcessApplicationActionOutcome {
-        self.settle_rejected_pointer_up(work, map_surface_error(error), stream)
-    }
-
-    pub(super) fn settle_rejected_pointer_up(
-        &mut self,
-        work: &PointerWork,
-        outcome: TracePointerRejection,
-        stream: PointerStreamState,
-    ) -> ProcessApplicationActionOutcome {
         debug_assert_eq!(work.event.phase(), PointerPhase::Up);
         if work.event.buttons().is_empty() {
-            self.close_unavailable_terminal_pointer(work, outcome)
+            self.close_unavailable_terminal_pointer(work, error)
         } else {
-            self.settle_unavailable_partial_pointer_up(work, outcome, stream)
+            self.settle_unavailable_partial_pointer_up(work, error, stream)
         }
     }
 
     fn settle_unavailable_partial_pointer_up(
         &mut self,
         work: &PointerWork,
-        outcome: TracePointerRejection,
+        error: super::SurfaceSnapshotError,
         mut stream: PointerStreamState,
     ) -> ProcessApplicationActionOutcome {
         if !self.trace.can_replace_reservation(
@@ -135,7 +126,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TraceRecordKind::PointerIngressRejected {
                 pointer_id,
                 phase: PointerPhase::Up,
-                outcome,
+                outcome: map_surface_error(error),
             },
             work.sequence,
             work.causal_parent,
@@ -297,7 +288,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     fn close_unavailable_terminal_pointer(
         &mut self,
         work: &PointerWork,
-        outcome: TracePointerRejection,
+        error: super::SurfaceSnapshotError,
     ) -> ProcessApplicationActionOutcome {
         if !self.trace.can_replace_reservation(
             work.trace_reservation,
@@ -321,7 +312,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             TraceRecordKind::PointerIngressRejected {
                 pointer_id,
                 phase: work.event.phase(),
-                outcome,
+                outcome: map_surface_error(error),
             },
             work.sequence,
             work.causal_parent,

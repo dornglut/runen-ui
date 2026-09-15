@@ -20,6 +20,7 @@ use runenui_runtime::{
 #[derive(Clone)]
 struct State {
     show_old: bool,
+    capture_observations: Rc<RefCell<Vec<PointerPhase>>>,
     old_observations: Rc<RefCell<Vec<PointerPhase>>>,
     replacement_observations: Rc<RefCell<Vec<PointerPhase>>>,
     activations: Rc<Cell<usize>>,
@@ -39,24 +40,29 @@ impl UiApp for App {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> impl View<Self::Action> {
-        let children = if state.show_old {
-            children![
-                Element::new(Probe {
-                    observations: Rc::clone(&state.old_observations),
-                })
-                .id("old.target")
-                .key("old.target"),
-            ]
+        let switching = if state.show_old {
+            Element::new(Probe {
+                observations: Rc::clone(&state.old_observations),
+            })
+            .id("old.target")
+            .key("old.target")
         } else {
-            children![
-                Element::new(Probe {
-                    observations: Rc::clone(&state.replacement_observations),
-                })
-                .id("replacement.target")
-                .key("replacement.target"),
-            ]
+            Element::new(Probe {
+                observations: Rc::clone(&state.replacement_observations),
+            })
+            .id("replacement.target")
+            .key("replacement.target")
         };
-        row(children).id("root").key("root")
+        row(children![
+            Element::new(Probe {
+                observations: Rc::clone(&state.capture_observations),
+            })
+            .id("capture.target")
+            .key("capture.target"),
+            switching,
+        ])
+        .id("root")
+        .key("root")
     }
 
     fn update(state: &mut Self::State, action: Self::Action) {
@@ -123,18 +129,22 @@ impl Widget<Action> for Probe {
 struct Harness {
     runtime: AppRuntime<App>,
     context: SurfaceInputContext,
-    point: LogicalPoint,
+    capture_point: LogicalPoint,
+    old_point: LogicalPoint,
+    capture_observations: Rc<RefCell<Vec<PointerPhase>>>,
     old_observations: Rc<RefCell<Vec<PointerPhase>>>,
     replacement_observations: Rc<RefCell<Vec<PointerPhase>>>,
     activations: Rc<Cell<usize>>,
 }
 
 fn harness() -> Harness {
+    let capture_observations = Rc::new(RefCell::new(Vec::new()));
     let old_observations = Rc::new(RefCell::new(Vec::new()));
     let replacement_observations = Rc::new(RefCell::new(Vec::new()));
     let activations = Rc::new(Cell::new(0));
     let mut runtime = AppRuntime::<App>::mount(State {
         show_old: true,
+        capture_observations: Rc::clone(&capture_observations),
         old_observations: Rc::clone(&old_observations),
         replacement_observations: Rc::clone(&replacement_observations),
         activations: Rc::clone(&activations),
@@ -142,34 +152,44 @@ fn harness() -> Harness {
     pump_all(&mut runtime);
 
     let environment = StyleEnvironment::default();
-    let size = LogicalSize::try_new(64.0, 64.0)
+    let size = LogicalSize::try_new(64.0, 32.0)
         .unwrap_or_else(|_| unreachable!("fixture surface size is finite"));
     let publication = runtime
         .publish_surface(&SurfaceBuildContext::tight(&environment, size))
         .unwrap_or_else(|error| unreachable!("fixture publication is valid: {error:?}"));
-    let old_authored =
-        ElementId::new("old.target").unwrap_or_else(|_| unreachable!("fixture id is valid"));
-    let old = publication
-        .frame()
-        .nodes()
-        .iter()
-        .find(|node| node.authored_id() == Some(&old_authored))
-        .unwrap_or_else(|| unreachable!("old target is published"));
-    let bounds = old.bounds();
-    let point = LogicalPoint::new(
-        bounds.x() + bounds.width() / 2.0,
-        bounds.y() + bounds.height() / 2.0,
-    )
-    .unwrap_or_else(|_| unreachable!("published bounds are finite"));
+    let capture_point = authored_center(&publication, "capture.target");
+    let old_point = authored_center(&publication, "old.target");
 
     Harness {
         runtime,
         context: publication.input_context().clone(),
-        point,
+        capture_point,
+        old_point,
+        capture_observations,
         old_observations,
         replacement_observations,
         activations,
     }
+}
+
+fn authored_center(
+    publication: &runenui_runtime::SurfacePublication,
+    authored_id: &str,
+) -> LogicalPoint {
+    let authored = ElementId::new(authored_id)
+        .unwrap_or_else(|_| unreachable!("fixture authored id is valid"));
+    let node = publication
+        .frame()
+        .nodes()
+        .iter()
+        .find(|node| node.authored_id() == Some(&authored))
+        .unwrap_or_else(|| unreachable!("fixture target is published"));
+    let bounds = node.bounds();
+    LogicalPoint::new(
+        bounds.x() + bounds.width() / 2.0,
+        bounds.y() + bounds.height() / 2.0,
+    )
+    .unwrap_or_else(|_| unreachable!("published bounds are finite"))
 }
 
 fn pointer_event(
@@ -221,6 +241,11 @@ fn replace_target_without_publishing(harness: &mut Harness) {
         .unwrap_or_else(|_| unreachable!("replacement action is accepted"));
     pump_all(&mut harness.runtime);
     assert!(!harness.runtime.state().show_old);
+    clear_observations(harness);
+}
+
+fn clear_observations(harness: &Harness) {
+    harness.capture_observations.borrow_mut().clear();
     harness.old_observations.borrow_mut().clear();
     harness.replacement_observations.borrow_mut().clear();
     harness.activations.set(0);
@@ -255,10 +280,16 @@ fn stale_displayed_hit_down_rejects_without_poison_or_current_geometry_retarget(
 
     submit_and_pump(
         &mut harness.runtime,
-        pointer_event(81, PointerPhase::Down, &harness.context, harness.point),
+        pointer_event(
+            81,
+            PointerPhase::Down,
+            &harness.context,
+            harness.old_point,
+        ),
     );
 
     assert_eq!(harness.runtime.status(), RuntimeStatus::Running);
+    assert!(harness.capture_observations.borrow().is_empty());
     assert!(harness.old_observations.borrow().is_empty());
     assert!(harness.replacement_observations.borrow().is_empty());
     assert_eq!(harness.activations.get(), 0);
@@ -283,7 +314,7 @@ fn stale_displayed_hit_down_rejects_without_poison_or_current_geometry_retarget(
             81,
             PointerPhase::Cancel,
             &harness.context,
-            harness.point,
+            harness.old_point,
         ),
     );
     assert!(has_pointer_rejection(
@@ -300,33 +331,38 @@ fn stale_displayed_hit_up_closes_existing_stream_without_route_or_activation() {
     let mut harness = harness();
     submit_and_pump(
         &mut harness.runtime,
-        pointer_event(83, PointerPhase::Down, &harness.context, harness.point),
+        pointer_event(
+            83,
+            PointerPhase::Down,
+            &harness.context,
+            harness.old_point,
+        ),
     );
     replace_target_without_publishing(&mut harness);
     let trace_start = harness.runtime.trace().len();
 
     submit_and_pump(
         &mut harness.runtime,
-        pointer_event(83, PointerPhase::Up, &harness.context, harness.point),
+        pointer_event(
+            83,
+            PointerPhase::Up,
+            &harness.context,
+            harness.old_point,
+        ),
     );
 
     assert_eq!(harness.runtime.status(), RuntimeStatus::Running);
+    assert!(harness.capture_observations.borrow().is_empty());
     assert!(harness.old_observations.borrow().is_empty());
     assert!(harness.replacement_observations.borrow().is_empty());
     assert_eq!(harness.activations.get(), 0);
-    assert!(has_pointer_rejection(
+    assert!(!has_pointer_rejection(
         &harness.runtime,
         trace_start,
         83,
         PointerPhase::Up,
         TracePointerRejection::NoTarget,
     ));
-    assert!(harness.runtime.trace().records().skip(trace_start).any(|record| {
-        matches!(
-            record.kind(),
-            TraceRecordKind::PointerIntegrityCleanupCommitted
-        )
-    }));
     assert!(harness.runtime.trace().records().skip(trace_start).any(|record| {
         matches!(
             record.kind(),
@@ -340,7 +376,7 @@ fn stale_displayed_hit_up_closes_existing_stream_without_route_or_activation() {
             83,
             PointerPhase::Cancel,
             &harness.context,
-            harness.point,
+            harness.old_point,
         ),
     );
     assert!(has_pointer_rejection(
@@ -350,4 +386,54 @@ fn stale_displayed_hit_up_closes_existing_stream_without_route_or_activation() {
         PointerPhase::Cancel,
         TracePointerRejection::MissingStream,
     ));
+}
+
+#[test]
+fn stale_physical_hit_preserves_distinct_live_capture_routing_without_retarget() {
+    let mut harness = harness();
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(
+            89,
+            PointerPhase::Down,
+            &harness.context,
+            harness.capture_point,
+        ),
+    );
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(
+            89,
+            PointerPhase::Move,
+            &harness.context,
+            harness.old_point,
+        ),
+    );
+    replace_target_without_publishing(&mut harness);
+    let trace_start = harness.runtime.trace().len();
+
+    submit_and_pump(
+        &mut harness.runtime,
+        pointer_event(
+            89,
+            PointerPhase::Move,
+            &harness.context,
+            harness.old_point,
+        ),
+    );
+
+    assert_eq!(harness.runtime.status(), RuntimeStatus::Running);
+    assert_eq!(
+        harness.capture_observations.borrow().as_slice(),
+        [PointerPhase::Move]
+    );
+    assert!(harness.old_observations.borrow().is_empty());
+    assert!(harness.replacement_observations.borrow().is_empty());
+    assert_eq!(harness.activations.get(), 0);
+    assert!(!harness.runtime.trace().records().skip(trace_start).any(|record| {
+        matches!(
+            record.kind(),
+            TraceRecordKind::PointerIngressRejected { pointer_id, .. } if pointer_id.get() == 89
+        )
+    }));
 }
