@@ -2,17 +2,17 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M9A and M9B owner-accepted; M9C remains blocked
+> **Status:** M9A, M9B, and M9C owner-accepted; M9 complete
 >
 > **Milestone:** M9
 >
 > **Reviewed baseline:** `68808fb1dd5bfbd644a74fcfe916870428bcdd59`
 >
 > The accepted M9 target contract remains normative. M9A is normative for its ten
-> owner-accepted visual/composition rows and M9B is normative for its ten
-> owner-accepted deterministic-motion rows after their accepted implementations and
-> bounded current-truth reconciliations. M9C remains blocked until its own accepted
-> implementation and proof obligations land.
+> owner-accepted visual/composition rows, M9B is normative for its ten owner-accepted
+> deterministic-motion rows, and M9C is normative for its five owner-accepted
+> integrated-production rows after their accepted implementations and bounded
+> current-truth reconciliations.
 
 [ADR 0010](../adr/0010-visual-composition-and-animation.md) owns M9 architecture.
 [ADR 0011](../adr/0011-m9-path-fill-shadow-spread-clarification.md) narrowly amends
@@ -48,10 +48,10 @@ property-effect classification. This matrix adds only new M9 observations.
 
 ```text
 25 total unique rows
-20 owner-accepted
+25 owner-accepted
 0 implementation-complete
 0 proof-complete
-5 blocked
+0 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -100,11 +100,11 @@ or compatibility shim preserving replaced pre-1.0 visual authority cannot satisf
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| M9INTEG-01 | One runtime-sampled node presentation transform uses the frozen scale -> rotate -> presentation-translate order about normalized origin, followed by layout owner placement, and is composed consistently into visible paint, physical hit testing, directional-focus geometry, semantic bounds, and presentation-relative clips. Item-local transforms remain paint-local; clip-local transforms remain independently owner-local. Hit uses exact transformed shape, focus/semantics use deterministic axis-aligned bounds of transformed authoritative geometry, and singular transforms have inherited empty-hit behavior rather than stale layout fallback. | Transform-order/paint-hit-focus-semantic/clip correlation corpus | Component-order drift, item-transform-to-clip leakage, paint-only presentation transform, stale hit/accessibility, and untransformed fallback audit | Node/sample/transform/geometry correlation records | M9C | blocked | Required |
-| M9INTEG-02 | Deterministic public/headless proof advances `ManualClock` explicitly and observes exact intermediate/end/delay/repeat/replacement/preference/cache/layout/text/semantic results through ordinary public runtime contracts without sleeps, private expected runtime, alternate scene engine, or software expected renderer. | Public manual-time integration corpus | Sleep/wall-clock/private-model/alternate-engine audit | Fixture/time/cache/publication diagnostics | M9C | blocked | Required |
-| M9INTEG-03 | Real-wgpu proof renders the same accepted neutral paths/strokes/gradients/images/nine-slice/groups/shadows and representative transition samples, including retained-publication retry and disposable cache/device re-realization, without renderer-owned style/timeline/hit/semantic authority or resource rebinding by raster/device state. | Real-wgpu visual/motion/contact-sheet/re-realization corpus | Vello/second-renderer, software expected renderer, renderer timeline, resource-rebinding, and retained-cache-authority audit | Runtime/scene/resource/renderer correlation records | M9C | blocked | Required |
-| M9INTEG-04 | Representative canonical hover/focus/active transitions visibly and deterministically exercise the M8 interaction/style path plus M9 transition path; no application-maintained hover state, widget timer, or showcase-only animation authority is required. | Interactive-state transition corpus | Duplicate hover state/showcase timer/direct renderer animation audit | Interaction-style-motion provenance | M9C | blocked | Required |
-| M9INTEG-05 | Final M9 authority cleanup removes/revises bounded M6/M8 assumptions superseded by accepted M9 production visuals/motion: color-only background, specialized public `FillRect`/`StrokeRect` primitive authority, the old exact-mapped image variant kept as a parallel path, duplicate shape APIs retained only for `Copy`, and any competing composition/motion path are removed/reconciled; `ShapedTextRun` remains the sole production text-paint authority. Current docs/API expose one truthful path with no compatibility alias, hidden renderer fallback, or obsolete proof authority preserved for convenience. | Source/API/current-truth cleanup corpus | Duplicate background/rectangle/image/shape/text/composition/motion/compatibility-authority audit | Repository authority/deprecation audit | M9C | blocked | Required |
+| M9INTEG-01 | One runtime-sampled node presentation transform uses the frozen scale -> rotate -> presentation-translate order about normalized origin, followed by layout owner placement, and is composed consistently into visible paint, physical hit testing, directional-focus geometry, semantic bounds, and presentation-relative clips. Item-local transforms remain paint-local; clip-local transforms remain independently owner-local. Hit uses exact transformed shape, focus/semantics use deterministic axis-aligned bounds of transformed authoritative geometry, and singular transforms have inherited empty-hit behavior rather than stale layout fallback. | Transform-order/paint-hit-focus-semantic/clip correlation corpus | Component-order drift, item-transform-to-clip leakage, paint-only presentation transform, stale hit/accessibility, and untransformed fallback audit | Node/sample/transform/geometry correlation records | M9C | owner-accepted | Required |
+| M9INTEG-02 | Deterministic public/headless proof advances `ManualClock` explicitly and observes exact intermediate/end/delay/repeat/replacement/preference/cache/layout/text/semantic results through ordinary public runtime contracts without sleeps, private expected runtime, alternate scene engine, or software expected renderer. | Public manual-time integration corpus | Sleep/wall-clock/private-model/alternate-engine audit | Fixture/time/cache/publication diagnostics | M9C | owner-accepted | Required |
+| M9INTEG-03 | Real-wgpu proof renders the same accepted neutral paths/strokes/gradients/images/nine-slice/groups/shadows and representative transition samples, including retained-publication retry and disposable cache/device re-realization, without renderer-owned style/timeline/hit/semantic authority or resource rebinding by raster/device state. | Real-wgpu visual/motion/contact-sheet/re-realization corpus | Vello/second-renderer, software expected renderer, renderer timeline, resource-rebinding, and retained-cache-authority audit | Runtime/scene/resource/renderer correlation records | M9C | owner-accepted | Required |
+| M9INTEG-04 | Representative canonical hover/focus/active transitions visibly and deterministically exercise the M8 interaction/style path plus M9 transition path; no application-maintained hover state, widget timer, or showcase-only animation authority is required. | Interactive-state transition corpus | Duplicate hover state/showcase timer/direct renderer animation audit | Interaction-style-motion provenance | M9C | owner-accepted | Required |
+| M9INTEG-05 | Final M9 authority cleanup removes/revises bounded M6/M8 assumptions superseded by accepted M9 production visuals/motion: color-only background, specialized public `FillRect`/`StrokeRect` primitive authority, the old exact-mapped image variant kept as a parallel path, duplicate shape APIs retained only for `Copy`, and any competing composition/motion path are removed/reconciled; `ShapedTextRun` remains the sole production text-paint authority. Current docs/API expose one truthful path with no compatibility alias, hidden renderer fallback, or obsolete proof authority preserved for convenience. | Source/API/current-truth cleanup corpus | Duplicate background/rectangle/image/shape/text/composition/motion/compatibility-authority audit | Repository authority/deprecation audit | M9C | owner-accepted | Required |
 
 ## Closure rule
 
