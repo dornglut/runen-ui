@@ -254,6 +254,7 @@ fn evidence_dir() -> Option<std::path::PathBuf> {
     std::env::var_os("RUNENUI_M8D_EVIDENCE_DIR").map(std::path::PathBuf::from)
 }
 
+#[derive(Clone, Copy)]
 struct EvidencePanels<'a> {
     initial: &'a OffscreenPublicationReadback,
     middle: &'a OffscreenPublicationReadback,
@@ -338,6 +339,58 @@ fn write_evidence(
     Ok(())
 }
 
+fn render_initial_and_start_transition(
+    renderer: &mut Renderer,
+    runtime: &mut AppRuntime<MotionImageApp>,
+    provider: &CountingProvider,
+) -> Result<OffscreenPublicationReadback, Box<dyn Error>> {
+    let initial_publication = publish(runtime);
+    assert_eq!(resolved_patch_count(&initial_publication), 9);
+    assert!((sampled_opacity(&initial_publication) - 1.0).abs() <= f32::EPSILON);
+    let initial = render(renderer, &initial_publication, provider)?;
+    assert_eq!(
+        initial.update_plan().mode(),
+        PublicationUpdateMode::FullResync
+    );
+    assert_eq!(provider.loads(), 1);
+
+    let already_current = render(renderer, &initial_publication, provider)?;
+    assert_eq!(
+        already_current.update_plan().mode(),
+        PublicationUpdateMode::AlreadyCurrent
+    );
+    assert_eq!(provider.loads(), 1);
+    assert_eq!(
+        already_current.readback().rgba8_srgb(),
+        initial.readback().rgba8_srgb()
+    );
+
+    runtime
+        .submit_action(Action::SetDimmed(true))
+        .unwrap_or_else(|_| unreachable!("M9C transition action is admitted"));
+    let report = runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert!(report.is_quiescent());
+    let transition_start = publish(runtime);
+    assert!((sampled_opacity(&transition_start) - 1.0).abs() <= f32::EPSILON);
+    let transition_start_readback = render(renderer, &transition_start, provider)?;
+    assert_eq!(
+        transition_start_readback.update_plan().mode(),
+        PublicationUpdateMode::ExactBaseMatch
+    );
+    assert_eq!(provider.loads(), 1);
+    assert_eq!(
+        transition_start_readback.readback().rgba8_srgb(),
+        initial.readback().rgba8_srgb(),
+        "starting the transition at the current endpoint must preserve realized pixels"
+    );
+    Ok(initial)
+}
+
 fn reconstruct_on_fresh_renderer(
     publication: &SurfacePublication,
     provider: &CountingProvider,
@@ -373,51 +426,7 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
         resource,
         dimmed: false,
     });
-
-    let initial_publication = publish(&mut runtime);
-    assert_eq!(resolved_patch_count(&initial_publication), 9);
-    assert!((sampled_opacity(&initial_publication) - 1.0).abs() <= f32::EPSILON);
-    let initial = render(&mut renderer, &initial_publication, &provider)?;
-    assert_eq!(
-        initial.update_plan().mode(),
-        PublicationUpdateMode::FullResync
-    );
-    assert_eq!(provider.loads(), 1);
-
-    let already_current = render(&mut renderer, &initial_publication, &provider)?;
-    assert_eq!(
-        already_current.update_plan().mode(),
-        PublicationUpdateMode::AlreadyCurrent
-    );
-    assert_eq!(provider.loads(), 1);
-    assert_eq!(
-        already_current.readback().rgba8_srgb(),
-        initial.readback().rgba8_srgb()
-    );
-
-    runtime
-        .submit_action(Action::SetDimmed(true))
-        .unwrap_or_else(|_| unreachable!("M9C transition action is admitted"));
-    let report = runtime.pump(PumpBudget::new(
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-        usize::MAX,
-    ));
-    assert!(report.is_quiescent());
-    let transition_start = publish(&mut runtime);
-    assert!((sampled_opacity(&transition_start) - 1.0).abs() <= f32::EPSILON);
-    let transition_start_readback = render(&mut renderer, &transition_start, &provider)?;
-    assert_eq!(
-        transition_start_readback.update_plan().mode(),
-        PublicationUpdateMode::ExactBaseMatch
-    );
-    assert_eq!(provider.loads(), 1);
-    assert_eq!(
-        transition_start_readback.readback().rgba8_srgb(),
-        initial.readback().rgba8_srgb(),
-        "starting the transition at the current endpoint must preserve realized pixels"
-    );
+    let initial = render_initial_and_start_transition(&mut renderer, &mut runtime, &provider)?;
 
     let middle_publication = advance_and_publish(&mut runtime, Duration::from_millis(50));
     assert_eq!(resolved_patch_count(&middle_publication), 9);
