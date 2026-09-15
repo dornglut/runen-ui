@@ -7,7 +7,7 @@ use crate::scene::{
     SceneClip,
 };
 
-use super::{CachedEffectiveFacts, SurfaceTopologySnapshot};
+use super::{CachedEffectiveFacts, EffectiveNodeFacts, SurfaceTopologySnapshot};
 
 /// Runtime-private staging reference to one resolved explicit owner-local group.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -146,12 +146,7 @@ fn derive_group_plan(
     let requires_node_group = effective
         .nodes
         .iter()
-        .map(|node| {
-            let computed = node.computed_style();
-            node.retain_node_effect_group()
-                || computed.opacity() != SceneOpacity::OPAQUE
-                || !computed.shadows().is_empty()
-        })
+        .map(EffectiveNodeFacts::requires_node_effect_group)
         .collect::<Vec<_>>();
 
     let mut sources = Vec::new();

@@ -15,9 +15,9 @@ use crate::{
         SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
     },
     surface::{
-        PlannedSurfacePublication, SurfaceCache, SurfaceInteractionProjection,
-        SurfaceMotionActivity, SurfaceMotionStore, SurfacePlanningError, SurfacePublicationCommit,
-        plan_mounted_surface_cached_with_text,
+        MotionPlanningFailure, PlannedSurfacePublication, SurfaceCache,
+        SurfaceInteractionProjection, SurfaceMotionActivity, SurfaceMotionStore,
+        SurfacePlanningError, SurfacePublicationCommit, plan_mounted_surface_cached_with_text,
     },
     trace::StagedMotionTraceFact,
 };
@@ -151,12 +151,12 @@ impl<'a> SurfacePublicationCandidateInputs<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::runtime) enum SurfacePublicationPlanError {
     SemanticIntegrity,
     TextLayout(TextLayoutError),
     PresentationGeometry,
-    Motion,
+    Motion(MotionPlanningFailure),
     CounterExhausted(SurfacePublicationCounter),
 }
 
@@ -166,7 +166,7 @@ impl From<SurfacePlanningError> for SurfacePublicationPlanError {
             SurfacePlanningError::SemanticIntegrity => Self::SemanticIntegrity,
             SurfacePlanningError::TextLayout(error) => Self::TextLayout(error),
             SurfacePlanningError::PresentationGeometry => Self::PresentationGeometry,
-            SurfacePlanningError::Motion => Self::Motion,
+            SurfacePlanningError::Motion(error) => Self::Motion(error),
         }
     }
 }

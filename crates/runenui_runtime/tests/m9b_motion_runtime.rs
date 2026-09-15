@@ -12,9 +12,9 @@ use runenui_core::{
     StyleEnvironment, TimelineSpec, TransitionSpec, UiApp, UnitInterval, View, text,
 };
 use runenui_runtime::{
-    AppRuntime, LayoutConstraints, PublishSurfaceError, PumpBudget, RuntimeConfig,
-    SurfaceBuildContext, SurfacePhase, SurfacePublication, TraceConfig, TraceMotionFact,
-    TraceMotionPolicy, TraceRecordKind,
+    AppRuntime, LayoutConstraints, PublishSurfaceError, PumpBudget, RuntimeConfig, RuntimeStatus,
+    SurfaceBuildContext, SurfacePhase, SurfacePublication, TraceConfig, TraceMotionCollision,
+    TraceMotionFact, TraceMotionPolicy, TraceMotionSource, TraceRecordKind,
 };
 
 struct TimelineApp;
@@ -57,6 +57,8 @@ impl UiApp for TimelineHandoffApp {
 }
 
 struct CollisionApp;
+struct DuplicateIdApp;
+struct OverflowApp;
 
 #[derive(Clone, Copy)]
 enum CollisionAction {
@@ -70,10 +72,56 @@ impl UiApp for CollisionApp {
 
     fn root(colliding: &Self::State) -> Element<Self::Action> {
         let root = text("collision")
+            .id("collision-root")
             .key("root")
             .timeline(opacity_timeline("fade", Duration::from_millis(100)));
         if *colliding {
             root.timeline(opacity_timeline("other", Duration::from_millis(100)))
+                .into_element()
+        } else {
+            root.into_element()
+        }
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        let CollisionAction::Set(value) = action;
+        *state = value;
+    }
+}
+
+impl UiApp for DuplicateIdApp {
+    type State = bool;
+    type Action = CollisionAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(colliding: &Self::State) -> Element<Self::Action> {
+        let root = text("duplicate id")
+            .id("duplicate-id-root")
+            .key("root")
+            .timeline(opacity_timeline("fade", Duration::from_millis(100)));
+        if *colliding {
+            root.timeline(opacity_timeline("fade", Duration::from_millis(100)))
+                .into_element()
+        } else {
+            root.into_element()
+        }
+    }
+
+    fn update(state: &mut Self::State, action: Self::Action) {
+        let CollisionAction::Set(value) = action;
+        *state = value;
+    }
+}
+
+impl UiApp for OverflowApp {
+    type State = bool;
+    type Action = CollisionAction;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(enabled: &Self::State) -> Element<Self::Action> {
+        let root = text("overflow").id("overflow-root").key("root");
+        if *enabled {
+            root.timeline(opacity_timeline("late", Duration::from_nanos(2)))
                 .into_element()
         } else {
             root.into_element()
@@ -251,6 +299,7 @@ fn duplicate_target_rejection_does_not_advance_or_restart_retained_motion() {
         .advance_time(Duration::from_millis(20))
         .unwrap_or_else(|_| unreachable!("bounded test advance is representable"));
     let phases_before_rejection = runtime.last_surface_phase_report().clone();
+    let trace_before_rejection = runtime.trace().len();
     assert_eq!(
         runtime.publish_surface(&context),
         Err(PublishSurfaceError::Motion)
@@ -260,6 +309,46 @@ fn duplicate_target_rejection_does_not_advance_or_restart_retained_motion() {
         &phases_before_rejection,
         "rejected collision must not commit staged publication phases"
     );
+    let collision_records = runtime
+        .trace()
+        .records()
+        .skip(trace_before_rejection)
+        .filter_map(|record| match record.kind() {
+            TraceRecordKind::Motion {
+                target: MotionTarget::Opacity,
+                fact: TraceMotionFact::CollisionRejected { source, collision },
+            } => Some((record, source, collision)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(collision_records.len(), 1);
+    let (record, source, collision) = collision_records[0];
+    assert_eq!(
+        source,
+        &TraceMotionSource::Timeline {
+            animation_id: AnimationId::from_static("other")
+                .unwrap_or_else(|_| unreachable!("test animation identifier is valid")),
+        }
+    );
+    assert_eq!(*collision, TraceMotionCollision::DuplicateTarget);
+    assert_eq!(
+        record.target().and_then(|target| target.authored_id()),
+        Some(
+            &runenui_core::ElementId::new("collision-root")
+                .unwrap_or_else(|_| unreachable!("test authored identifier is valid")),
+        )
+    );
+    assert_eq!(
+        record.instant(),
+        Some(
+            MonotonicInstant::ZERO
+                .checked_add(Duration::from_millis(50))
+                .unwrap_or_else(|_| unreachable!("test candidate instant is representable")),
+        )
+    );
+    assert!(runtime.trace().export_jsonl().contains(
+        "\"fact\":\"collision_rejected\",\"source\":\"timeline\",\"animation_id\":\"other\",\"collision\":\"duplicate_target\""
+    ));
 
     runtime
         .submit_action(CollisionAction::Set(false))
@@ -269,6 +358,165 @@ fn duplicate_target_rejection_does_not_advance_or_restart_retained_motion() {
     assert!(
         (root_opacity(&retry) - 0.5).abs() <= f32::EPSILON,
         "retry at the same clock instant must continue the pre-rejection timeline instead of restarting or advancing it during failure"
+    );
+}
+
+#[test]
+fn duplicate_animation_id_rejection_is_canonically_attributed_and_atomic() {
+    let mut runtime = AppRuntime::<DuplicateIdApp>::mount(false);
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
+
+    let initial = publish(&mut runtime, &environment);
+    runtime
+        .submit_action(CollisionAction::Set(true))
+        .unwrap_or_else(|_| unreachable!("bounded duplicate-id action is accepted"));
+    pump_one_action(&mut runtime);
+    let initial_phase_report = runtime.last_surface_phase_report().clone();
+    let trace_before_rejection = runtime.trace().len();
+
+    assert_eq!(
+        runtime.publish_surface(&context),
+        Err(PublishSurfaceError::Motion)
+    );
+    assert_eq!(runtime.last_surface_phase_report(), &initial_phase_report);
+    let collision_records = runtime
+        .trace()
+        .records()
+        .skip(trace_before_rejection)
+        .filter_map(|record| match record.kind() {
+            TraceRecordKind::Motion {
+                target: MotionTarget::Opacity,
+                fact: TraceMotionFact::CollisionRejected { source, collision },
+            } => Some((record, source, collision)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(collision_records.len(), 1);
+    let (record, source, collision) = collision_records[0];
+    assert_eq!(
+        source,
+        &TraceMotionSource::Timeline {
+            animation_id: AnimationId::from_static("fade")
+                .unwrap_or_else(|_| unreachable!("test animation identifier is valid")),
+        }
+    );
+    assert_eq!(*collision, TraceMotionCollision::DuplicateAnimationId);
+    assert_eq!(
+        record.target().and_then(|target| target.authored_id()),
+        Some(
+            &runenui_core::ElementId::new("duplicate-id-root")
+                .unwrap_or_else(|_| unreachable!("test authored identifier is valid")),
+        )
+    );
+
+    runtime
+        .submit_action(CollisionAction::Set(false))
+        .unwrap_or_else(|_| unreachable!("bounded duplicate-id repair is accepted"));
+    pump_one_action(&mut runtime);
+    let retry = publish(&mut runtime, &environment);
+    assert_eq!(root_opacity(&retry), root_opacity(&initial));
+}
+
+#[test]
+fn late_candidate_start_overflow_is_a_canonical_recoverable_planning_rejection() {
+    let mut runtime = AppRuntime::<OverflowApp>::mount(false);
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
+    let initial = publish(&mut runtime, &environment);
+
+    runtime
+        .submit_action(CollisionAction::Set(true))
+        .unwrap_or_else(|_| unreachable!("bounded overflow action is accepted"));
+    pump_one_action(&mut runtime);
+    runtime
+        .advance_time(Duration::from_nanos(u64::MAX - 1))
+        .unwrap_or_else(|_| unreachable!("candidate instant remains representable"));
+    let phases_before_rejection = runtime.last_surface_phase_report().clone();
+    let candidate = MonotonicInstant::__runtime_from_nanos(u64::MAX - 1);
+    let trace_before_rejection = runtime.trace().len();
+
+    assert_eq!(
+        runtime.publish_surface(&context),
+        Err(PublishSurfaceError::Motion)
+    );
+    assert_eq!(
+        runtime.last_surface_phase_report(),
+        &phases_before_rejection
+    );
+    assert_eq!(
+        runtime
+            .trace()
+            .records()
+            .skip(trace_before_rejection)
+            .filter_map(|record| match record.kind() {
+                TraceRecordKind::Motion {
+                    target: MotionTarget::Opacity,
+                    fact:
+                        TraceMotionFact::PlanningRejected {
+                            source: Some(source),
+                            rejection,
+                        },
+                } => Some((record, source, rejection)),
+                _ => None,
+            })
+            .map(|(record, source, rejection)| {
+                (
+                    record.instant(),
+                    source,
+                    rejection,
+                    record.target().and_then(|target| target.authored_id()),
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![(
+            Some(candidate),
+            &TraceMotionSource::Timeline {
+                animation_id: AnimationId::from_static("late")
+                    .unwrap_or_else(|_| unreachable!("test animation identifier is valid")),
+            },
+            &runenui_runtime::TraceMotionPlanningRejection::ScheduleOverflow,
+            Some(
+                &runenui_core::ElementId::new("overflow-root")
+                    .unwrap_or_else(|_| unreachable!("test authored identifier is valid")),
+            ),
+        ),]
+    );
+    assert_eq!(root_opacity(&initial), 1.0);
+    assert!(runtime.trace().export_jsonl().contains(
+        "\"fact\":\"planning_rejected\",\"source\":\"timeline\",\"animation_id\":\"late\",\"rejection\":\"schedule_overflow\""
+    ));
+}
+
+#[cfg(feature = "internal-test-seams")]
+#[test]
+fn planning_rejection_diagnostic_does_not_consume_publication_reservation() {
+    let mut runtime = AppRuntime::<OverflowApp>::mount(false);
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::new(&environment, LayoutConstraints::unbounded());
+    let _ = publish(&mut runtime, &environment);
+
+    runtime
+        .submit_action(CollisionAction::Set(true))
+        .unwrap_or_else(|_| unreachable!("bounded overflow action is accepted"));
+    pump_one_action(&mut runtime);
+    runtime
+        .advance_time(Duration::from_nanos(u64::MAX - 1))
+        .unwrap_or_else(|_| unreachable!("candidate instant remains representable"));
+    runtime.__seed_next_trace_sequence_for_test(u64::MAX - 3);
+
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
+    assert_eq!(
+        runtime.publish_surface(&context),
+        Err(PublishSurfaceError::Motion)
+    );
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+    assert!(runtime.__surface_publication_trace_reserved_for_test());
+    assert_eq!(runtime.__routed_trace_reservations_for_test(), 0);
+    assert_eq!(
+        runtime.__routed_sequence_state_for_test().1,
+        Some(u64::MAX - 2)
     );
 }
 

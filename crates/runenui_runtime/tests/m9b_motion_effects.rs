@@ -6,14 +6,17 @@ use runenui_core::{
     AnimationId, Color, ExplicitTimeline, LayoutDimension, LayoutStyle, LogicalLength,
     MotionEasing, MotionKeyframe, MotionRepeat, MotionValue, NoHostProtocol, PresentationOrigin,
     PresentationRotation, PresentationScale, PresentationTransform, PresentationTranslation,
-    ReducedMotionStrategy, StyleEnvironment, TimelineSpec, UiApp, UnitInterval, View, button,
+    ReducedMotionStrategy, SceneOpacity, StyleEnvironment, TimelineSpec, UiApp, UnitInterval, View,
+    button, text,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, SurfaceBuildContext, SurfacePhase, SurfacePublication,
+    TraceMotionEffectiveDecision, TraceMotionFact, TraceMotionGroupDecision, TraceRecordKind,
 };
 
 struct PresentationMotionApp;
 struct LayoutMotionApp;
+struct OpacityMotionApp;
 
 impl UiApp for PresentationMotionApp {
     type State = ();
@@ -52,6 +55,18 @@ impl UiApp for LayoutMotionApp {
             )
             .timeline(width_timeline())
             .key("root")
+    }
+
+    fn update((): &mut Self::State, (): Self::Action) {}
+}
+
+impl UiApp for OpacityMotionApp {
+    type State = ();
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root((): &Self::State) -> impl View<Self::Action> {
+        text("opacity").key("root").timeline(opacity_timeline())
     }
 
     fn update((): &mut Self::State, (): Self::Action) {}
@@ -116,6 +131,22 @@ fn width_timeline() -> ExplicitTimeline {
     )
 }
 
+fn opacity_timeline() -> ExplicitTimeline {
+    timeline(
+        "opacity-motion",
+        vec![
+            MotionKeyframe::new(
+                UnitInterval::ZERO,
+                MotionValue::Opacity(SceneOpacity::TRANSPARENT),
+            ),
+            MotionKeyframe::new(
+                UnitInterval::ONE,
+                MotionValue::Opacity(SceneOpacity::OPAQUE),
+            ),
+        ],
+    )
+}
+
 fn publish<App: UiApp>(runtime: &mut AppRuntime<App>) -> SurfacePublication {
     let environment = StyleEnvironment::default();
     runtime
@@ -130,6 +161,23 @@ fn advance<App: UiApp>(runtime: &AppRuntime<App>) {
     runtime
         .advance_time(Duration::from_millis(50))
         .unwrap_or_else(|_| unreachable!("bounded differential-effect advance is representable"));
+}
+
+fn effect_decision<App: UiApp>(
+    runtime: &AppRuntime<App>,
+    target: runenui_core::MotionTarget,
+) -> runenui_runtime::TraceMotionEffectDecision {
+    runtime
+        .trace()
+        .records()
+        .find_map(|record| match record.kind() {
+            TraceRecordKind::Motion {
+                target: candidate,
+                fact: TraceMotionFact::Effect { decision },
+            } if *candidate == target => Some(*decision),
+            _ => None,
+        })
+        .unwrap_or_else(|| unreachable!("effect decision is emitted for the retained target"))
 }
 
 #[test]
@@ -160,6 +208,11 @@ fn presentation_motion_republishes_geometry_dependents_without_relayout() {
         ],
         "presentation motion must update presentation-derived products without entering layout"
     );
+    let effects = effect_decision(&runtime, runenui_core::MotionTarget::Presentation);
+    assert!(!effects.layout());
+    assert!(!effects.paint());
+    assert!(effects.presentation());
+    assert_eq!(effects.effective(), TraceMotionEffectiveDecision::Changed);
 
     let semantic = middle
         .semantic_publication()
@@ -205,4 +258,30 @@ fn structural_width_motion_recomputes_layout_and_all_geometry_dependents() {
         ],
         "layout motion must recompute layout and every dependent geometry product"
     );
+    let effects = effect_decision(&runtime, runenui_core::MotionTarget::Width);
+    assert!(effects.layout());
+    assert!(!effects.presentation());
+    assert!(!effects.paint());
+    assert_eq!(effects.effective(), TraceMotionEffectiveDecision::Changed);
+    assert!(
+        runtime
+            .trace()
+            .export_jsonl()
+            .contains("\"fact\":\"effect\"")
+    );
+}
+
+#[test]
+fn opacity_motion_records_paint_only_effects_and_group_retention() {
+    let mut runtime = AppRuntime::<OpacityMotionApp>::mount(());
+    publish(&mut runtime);
+    advance(&runtime);
+    publish(&mut runtime);
+
+    let effects = effect_decision(&runtime, runenui_core::MotionTarget::Opacity);
+    assert!(!effects.layout());
+    assert!(!effects.presentation());
+    assert!(effects.paint());
+    assert_eq!(effects.group(), TraceMotionGroupDecision::Retained);
+    assert_eq!(effects.effective(), TraceMotionEffectiveDecision::Changed);
 }

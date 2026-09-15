@@ -8,11 +8,14 @@ use std::time::Duration;
 
 use runenui_core::{
     AnimationId, Color, Element, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,
-    MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity, StyleEnvironment,
-    StylePreferencePolicy, StylePreferences, StyleProperties, TimelineSpec, UiApp, UnitInterval,
-    View, text,
+    MotionTarget, MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity,
+    StyleEnvironment, StylePreferencePolicy, StylePreferences, StyleProperties, TimelineSpec,
+    UiApp, UnitInterval, View, text,
 };
-use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext, SurfacePublication};
+use runenui_runtime::{
+    AppRuntime, LayoutConstraints, SurfaceBuildContext, SurfacePublication,
+    TraceMotionEffectiveDecision, TraceMotionFact, TraceRecordKind,
+};
 
 struct GroupLifetimeApp;
 struct EqualSampleApp;
@@ -211,4 +214,17 @@ fn equal_sample_reuses_paint_revision_while_active_motion_keeps_redraw_live() {
         runtime.take_redraw_request().is_some(),
         "equal sampled content does not cancel scheduling authority while motion remains active"
     );
+    let effect = runtime
+        .trace()
+        .records()
+        .find_map(|record| match record.kind() {
+            TraceRecordKind::Motion {
+                target: MotionTarget::Opacity,
+                fact: TraceMotionFact::Effect { decision },
+            } => Some(decision),
+            _ => None,
+        })
+        .unwrap_or_else(|| unreachable!("equal active motion records an effect decision"));
+    assert_eq!(effect.effective(), TraceMotionEffectiveDecision::Unchanged);
+    assert!(!effect.paint());
 }

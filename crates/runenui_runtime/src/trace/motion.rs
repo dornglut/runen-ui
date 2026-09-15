@@ -114,6 +114,14 @@ impl TraceMotionEffects {
     pub const fn paint(self) -> bool {
         self.0 & Self::PAINT != 0
     }
+
+    pub(crate) const fn from_flags(layout: bool, presentation: bool, paint: bool) -> Self {
+        Self(
+            ((layout as u8) * Self::LAYOUT)
+                | ((presentation as u8) * Self::PRESENTATION)
+                | ((paint as u8) * Self::PAINT),
+        )
+    }
 }
 
 /// Whether sampling requires retaining the node effect-composition group.
@@ -141,6 +149,18 @@ pub struct TraceMotionEffectDecision {
 }
 
 impl TraceMotionEffectDecision {
+    pub(crate) const fn new(
+        effects: TraceMotionEffects,
+        group: TraceMotionGroupDecision,
+        effective: TraceMotionEffectiveDecision,
+    ) -> Self {
+        Self {
+            effects,
+            group,
+            effective,
+        }
+    }
+
     #[must_use]
     pub const fn effects(self) -> TraceMotionEffects {
         self.effects

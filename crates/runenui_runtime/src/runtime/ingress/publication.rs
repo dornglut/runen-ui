@@ -199,7 +199,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             Err(SurfacePublicationPlanError::PresentationGeometry) => {
                 return Err(PublishSurfaceError::PresentationGeometry);
             }
-            Err(SurfacePublicationPlanError::Motion) => return Err(PublishSurfaceError::Motion),
+            Err(SurfacePublicationPlanError::Motion(failure)) => {
+                self.record_motion_planning_rejection(&failure, instant)?;
+                return Err(PublishSurfaceError::Motion);
+            }
             Err(SurfacePublicationPlanError::CounterExhausted(counter)) => {
                 let reason = RuntimeTerminalReason::SurfacePublicationCounterExhausted(counter);
                 self.enter_terminal(reason, 0);
@@ -300,6 +303,39 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     unreachable!("candidate-dependent motion trace admission was preflighted")
                 });
         }
+    }
+
+    fn record_motion_planning_rejection(
+        &mut self,
+        failure: &crate::surface::MotionPlanningFailure,
+        instant: MonotonicInstant,
+    ) -> Result<(), PublishSurfaceError> {
+        if !self.trace.is_enabled() {
+            return Ok(());
+        }
+        if !self.trace.can_admit(MandatoryTracePlan::one_fact()) {
+            let reason = RuntimeTerminalReason::TraceSequenceExhausted;
+            self.enter_terminal(reason, 0);
+            return Err(PublishSurfaceError::Terminal(reason));
+        }
+        self.trace
+            .record_draft(
+                TraceRecordDraft::lifecycle_fact(
+                    TraceRecordKind::Motion {
+                        target: failure.target,
+                        fact: failure.fact.clone(),
+                    },
+                    instant,
+                )
+                .with_target(Some(TraceTarget::new(
+                    failure.owner.clone(),
+                    failure.authored_id.clone(),
+                ))),
+            )
+            .unwrap_or_else(|| {
+                unreachable!("motion planning rejection trace admission was preflighted")
+            });
+        Ok(())
     }
 
     fn admit_surface_publication(&mut self) -> Result<PublicationAdmission, PublishSurfaceError> {

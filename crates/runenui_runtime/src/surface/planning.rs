@@ -11,7 +11,7 @@ use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan}
 use crate::style_debug::SurfaceStyleReport;
 
 use super::cache::{CachedLayoutFacts, context_key};
-use super::motion::{self, MotionPlanningError};
+use super::motion::{self, MotionPlanningFailure};
 use super::resolve::{
     EffectiveEffects, PresentationGeometryError, ResolvedSurfaceTree, collect_topology,
     hit_contexts, paint_contexts, resolve_diagnostics, resolve_hit_test, resolve_paint,
@@ -25,12 +25,12 @@ use super::{
     SurfacePhaseReport, SurfacePublication, SurfaceWidgetDebug,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum SurfacePlanningError {
     SemanticIntegrity,
     TextLayout(TextLayoutError),
     PresentationGeometry,
-    Motion,
+    Motion(MotionPlanningFailure),
 }
 
 impl From<SemanticReconcileError> for SurfacePlanningError {
@@ -51,9 +51,9 @@ impl From<PresentationGeometryError> for SurfacePlanningError {
     }
 }
 
-impl From<MotionPlanningError> for SurfacePlanningError {
-    fn from(_: MotionPlanningError) -> Self {
-        Self::Motion
+impl From<MotionPlanningFailure> for SurfacePlanningError {
+    fn from(error: MotionPlanningFailure) -> Self {
+        Self::Motion(error)
     }
 }
 

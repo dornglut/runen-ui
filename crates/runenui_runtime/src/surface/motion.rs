@@ -17,15 +17,18 @@ use runenui_core::{
     MonotonicInstant, MotionRepeat, MotionTarget, MotionValue, OpacityToken, PresentationToken,
     RadiusToken, ReducedMotionStrategy, ShadowToken, SpacingToken, StyleFieldProvenance,
     StylePreferenceKind, StylePreferences, StyleResolution, StyleResolutionLayer, TransitionPolicy,
-    TransitionSpec, TypographyToken, UnitInterval,
+    TransitionSpec, TypographyToken, UnitInterval, style_effects_between,
 };
 
 use crate::{
     MountedNodeId,
     mounted::MountedTree,
     trace::{
-        StagedMotionTraceFact, TraceMotionFact, TraceMotionInterpolation, TraceMotionLifecycle,
-        TraceMotionPhase, TraceMotionPolicy, TraceMotionPreferenceDecision, TraceMotionSource,
+        StagedMotionTraceFact, TraceMotionCollision, TraceMotionEffectDecision,
+        TraceMotionEffectiveDecision, TraceMotionEffects, TraceMotionFact,
+        TraceMotionGroupDecision, TraceMotionInterpolation, TraceMotionLifecycle, TraceMotionPhase,
+        TraceMotionPlanningRejection, TraceMotionPolicy, TraceMotionPreferenceDecision,
+        TraceMotionSource,
     },
 };
 
@@ -36,12 +39,99 @@ use super::{
     },
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum MotionPlanningError {
-    DuplicateAnimationId,
-    DuplicateTarget(MotionTarget),
-    ScheduleOverflow,
-    Interpolation(MotionTarget),
+    Collision {
+        target: MotionTarget,
+        source: TraceMotionSource,
+        collision: TraceMotionCollision,
+    },
+    Planning {
+        target: MotionTarget,
+        source: Option<TraceMotionSource>,
+        rejection: TraceMotionPlanningRejection,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct MotionPlanningFailure {
+    pub(crate) owner: MountedNodeId,
+    pub(crate) authored_id: Option<ElementId>,
+    pub(crate) target: MotionTarget,
+    pub(crate) fact: TraceMotionFact,
+}
+
+impl MotionPlanningError {
+    const fn collision(
+        target: MotionTarget,
+        source: TraceMotionSource,
+        collision: TraceMotionCollision,
+    ) -> Self {
+        Self::Collision {
+            target,
+            source,
+            collision,
+        }
+    }
+
+    const fn planning(
+        target: MotionTarget,
+        source: Option<TraceMotionSource>,
+        rejection: TraceMotionPlanningRejection,
+    ) -> Self {
+        Self::Planning {
+            target,
+            source,
+            rejection,
+        }
+    }
+
+    const fn schedule_overflow(target: MotionTarget, source: TraceMotionSource) -> Self {
+        Self::planning(
+            target,
+            Some(source),
+            TraceMotionPlanningRejection::ScheduleOverflow,
+        )
+    }
+
+    const fn interpolation(target: MotionTarget, source: TraceMotionSource) -> Self {
+        Self::planning(
+            target,
+            Some(source),
+            TraceMotionPlanningRejection::Interpolation,
+        )
+    }
+
+    fn into_failure(
+        self,
+        owner: &MountedNodeId,
+        authored_id: Option<&ElementId>,
+    ) -> MotionPlanningFailure {
+        let (target, fact) = match self {
+            Self::Collision {
+                target,
+                source,
+                collision,
+            } => (
+                target,
+                TraceMotionFact::CollisionRejected { source, collision },
+            ),
+            Self::Planning {
+                target,
+                source,
+                rejection,
+            } => (
+                target,
+                TraceMotionFact::PlanningRejected { source, rejection },
+            ),
+        };
+        MotionPlanningFailure {
+            owner: owner.clone(),
+            authored_id: authored_id.cloned(),
+            target,
+            fact,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -290,6 +380,7 @@ struct OwnerMotionContext<'a> {
     target_layout: &'a LayoutStyle,
     prior_computed: Option<&'a ComputedStyle>,
     prior_layout: Option<&'a LayoutStyle>,
+    prior_effective: Option<&'a EffectiveNodeFacts>,
     preferences: StylePreferences,
     instant: MonotonicInstant,
     position: usize,
@@ -342,13 +433,15 @@ pub(super) fn plan_surface_motion<Action>(
     previous_cache: Option<&SurfaceCache>,
     preferences: StylePreferences,
     instant: MonotonicInstant,
-) -> Result<PlannedMotion, MotionPlanningError> {
+) -> Result<PlannedMotion, MotionPlanningFailure> {
     debug_assert_eq!(topology.nodes.len(), styles.resolutions.len());
     for topology_node in &topology.nodes {
         let node = tree
             .node(&topology_node.id)
             .unwrap_or_else(|| unreachable!("motion topology remains live"));
-        validate_owner_declarations(&node.timelines)?;
+        validate_owner_declarations(&node.timelines).map_err(|error| {
+            error.into_failure(&topology_node.id, topology_node.authored_id.as_ref())
+        })?;
     }
 
     let mut effective = CachedEffectiveFacts::identity(tree, topology, styles);
@@ -372,6 +465,8 @@ pub(super) fn plan_surface_motion<Action>(
         });
         let prior_layout = previous_cache
             .and_then(|cache| prior_position.map(|prior| cache.effective.node(prior).layout()));
+        let prior_effective = previous_cache
+            .and_then(|cache| prior_position.map(|prior| cache.effective.node(prior)));
         let context = OwnerMotionContext {
             owner: &topology_node.id,
             authored_id: topology_node.authored_id.as_ref(),
@@ -380,6 +475,7 @@ pub(super) fn plan_surface_motion<Action>(
             target_layout: &node.layout,
             prior_computed,
             prior_layout,
+            prior_effective,
             preferences,
             instant,
             position,
@@ -390,7 +486,8 @@ pub(super) fn plan_surface_motion<Action>(
             activity: &mut activity,
             trace_facts: &mut trace_facts,
         };
-        plan_owner(store, &context, &mut outputs)?;
+        plan_owner(store, &context, &mut outputs)
+            .map_err(|error| error.into_failure(context.owner, context.authored_id))?;
     }
 
     Ok(PlannedMotion {
@@ -433,8 +530,55 @@ fn plan_owner(
 
     for target in targets {
         plan_target(context, target, &retained, &explicit_evaluations, outputs)?;
+        push_effect_trace(context, target, outputs);
     }
     Ok(())
+}
+
+fn push_effect_trace(
+    context: &OwnerMotionContext<'_>,
+    target: MotionTarget,
+    outputs: &mut OwnerMotionOutputs<'_>,
+) {
+    let Some(prior) = context.prior_effective else {
+        return;
+    };
+
+    let candidate = outputs.effective.node(context.position);
+    let prior_value = motion_value_for_target(prior.computed_style(), prior.layout(), target);
+    let candidate_value =
+        motion_value_for_target(candidate.computed_style(), candidate.layout(), target);
+
+    let mut candidate_computed = prior.computed_style().clone();
+    let mut candidate_layout = prior.layout().clone();
+    apply_motion_value(
+        &mut candidate_computed,
+        &mut candidate_layout,
+        &candidate_value,
+    );
+    let style_effects = style_effects_between(prior.computed_style(), &candidate_computed);
+    let effects = TraceMotionEffects::from_flags(
+        prior.layout() != &candidate_layout || style_effects.layout(),
+        style_effects.presentation(),
+        style_effects.paint(),
+    );
+    let group = if candidate.requires_node_effect_group() {
+        TraceMotionGroupDecision::Retained
+    } else {
+        TraceMotionGroupDecision::Unchanged
+    };
+    let effective = if prior_value == candidate_value {
+        TraceMotionEffectiveDecision::Unchanged
+    } else {
+        TraceMotionEffectiveDecision::Changed
+    };
+    let decision = TraceMotionEffectDecision::new(effects, group, effective);
+    outputs.trace_facts.push(StagedMotionTraceFact::new(
+        context.owner.clone(),
+        context.authored_id.cloned(),
+        target,
+        TraceMotionFact::Effect { decision },
+    ));
 }
 
 fn reconcile_explicit_declarations(
@@ -1342,7 +1486,7 @@ fn start_transition(
         }
         MotionPreferenceMode::Normal | MotionPreferenceMode::PreserveEssential => {}
     }
-    check_transition_schedule(spec, intent.instant)?;
+    check_transition_schedule(spec, intent.instant, intent.target)?;
     let record = TransitionRecord {
         owner: intent.owner.clone(),
         target: intent.target,
@@ -1442,19 +1586,29 @@ fn sample_explicit(
 ) -> Result<LiveSample, MotionPlanningError> {
     let spec = declaration.spec();
     let delay_nanos = nanos(spec.delay());
-    let delay_deadline = checked_add_nanos(start, delay_nanos)?;
+    let delay_deadline = checked_add_nanos(start, delay_nanos).ok_or_else(|| {
+        MotionPlanningError::schedule_overflow(spec.target(), timeline_source(declaration))
+    })?;
     let terminal_deadline = match spec.repeat() {
         MotionRepeat::Finite(iterations) => {
             let duration_nanos = nanos(spec.duration());
             let active_nanos = duration_nanos
                 .checked_mul(iterations.get())
                 .unwrap_or_else(|| unreachable!("validated finite schedule remains representable"));
-            Some(checked_add_nanos(
-                start,
-                delay_nanos.checked_add(active_nanos).unwrap_or_else(|| {
-                    unreachable!("validated finite schedule remains representable")
-                }),
-            )?)
+            Some(
+                checked_add_nanos(
+                    start,
+                    delay_nanos.checked_add(active_nanos).unwrap_or_else(|| {
+                        unreachable!("validated finite schedule remains representable")
+                    }),
+                )
+                .ok_or_else(|| {
+                    MotionPlanningError::schedule_overflow(
+                        spec.target(),
+                        timeline_source(declaration),
+                    )
+                })?,
+            )
         }
         MotionRepeat::Forever => None,
         _ => unreachable!("runtime and core repeat vocabularies are version-locked"),
@@ -1511,13 +1665,18 @@ fn sample_transition(
 ) -> Result<LiveSample, MotionPlanningError> {
     let delay_nanos = nanos(transition.spec.delay());
     let duration_nanos = nanos(transition.spec.duration());
-    let delay_deadline = checked_add_nanos(transition.start, delay_nanos)?;
+    let delay_deadline = checked_add_nanos(transition.start, delay_nanos).ok_or_else(|| {
+        MotionPlanningError::schedule_overflow(transition.target, TraceMotionSource::Transition)
+    })?;
     let terminal_deadline = checked_add_nanos(
         transition.start,
         delay_nanos
             .checked_add(duration_nanos)
             .unwrap_or_else(|| unreachable!("validated transition schedule remains representable")),
-    )?;
+    )
+    .ok_or_else(|| {
+        MotionPlanningError::schedule_overflow(transition.target, TraceMotionSource::Transition)
+    })?;
     if instant < delay_deadline {
         return Ok(endpoint_live_sample(
             transition.from.clone(),
@@ -1543,7 +1702,9 @@ fn sample_transition(
     let progress = normalized_ratio(active_nanos, duration_nanos);
     let eased = ease_motion(transition.spec.easing(), progress);
     let (value, interpolation) = interpolate_motion_sample(&transition.from, &transition.to, eased)
-        .ok_or(MotionPlanningError::Interpolation(transition.target))?;
+        .ok_or_else(|| {
+            MotionPlanningError::interpolation(transition.target, TraceMotionSource::Transition)
+        })?;
     Ok(LiveSample {
         value,
         phase: LivePhase::Running,
@@ -1595,7 +1756,14 @@ fn sample_keyframes(
         .unwrap_or_else(|_| unreachable!("contained segment progress remains normalized"));
     let eased = ease_motion(spec.easings()[segment], segment_progress);
     let (value, interpolation) = interpolate_motion_sample(pair[0].value(), pair[1].value(), eased)
-        .ok_or_else(|| MotionPlanningError::Interpolation(spec.target()))?;
+        .ok_or_else(|| {
+            MotionPlanningError::interpolation(
+                spec.target(),
+                TraceMotionSource::Timeline {
+                    animation_id: declaration.id().clone(),
+                },
+            )
+        })?;
     Ok(ValueSample {
         value,
         progress: Some(progress),
@@ -1641,10 +1809,15 @@ fn check_timeline_schedule(
                 delay_nanos.checked_add(active_nanos).unwrap_or_else(|| {
                     unreachable!("validated finite schedule remains representable")
                 }),
-            )?;
+            )
+            .ok_or_else(|| {
+                MotionPlanningError::schedule_overflow(spec.target(), timeline_source(declaration))
+            })?;
         }
         MotionRepeat::Forever => {
-            checked_add_nanos(instant, delay_nanos)?;
+            checked_add_nanos(instant, delay_nanos).ok_or_else(|| {
+                MotionPlanningError::schedule_overflow(spec.target(), timeline_source(declaration))
+            })?;
         }
         _ => unreachable!("runtime and core repeat vocabularies are version-locked"),
     }
@@ -1654,28 +1827,31 @@ fn check_timeline_schedule(
 fn check_transition_schedule(
     spec: &TransitionSpec,
     instant: MonotonicInstant,
+    target: MotionTarget,
 ) -> Result<(), MotionPlanningError> {
     checked_add_nanos(
         instant,
         nanos(spec.delay())
             .checked_add(nanos(spec.duration()))
             .unwrap_or_else(|| unreachable!("validated transition schedule remains representable")),
-    )?;
+    )
+    .ok_or_else(|| MotionPlanningError::schedule_overflow(target, TraceMotionSource::Transition))?;
     Ok(())
 }
 
-fn checked_add_nanos(
-    instant: MonotonicInstant,
-    nanos: u64,
-) -> Result<MonotonicInstant, MotionPlanningError> {
-    instant
-        .checked_add(Duration::from_nanos(nanos))
-        .map_err(|_| MotionPlanningError::ScheduleOverflow)
+fn checked_add_nanos(instant: MonotonicInstant, nanos: u64) -> Option<MonotonicInstant> {
+    instant.checked_add(Duration::from_nanos(nanos)).ok()
 }
 
 fn nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos())
         .unwrap_or_else(|_| unreachable!("validated motion duration fits u64 nanoseconds"))
+}
+
+fn timeline_source(declaration: &ExplicitTimeline) -> TraceMotionSource {
+    TraceMotionSource::Timeline {
+        animation_id: declaration.id().clone(),
+    }
 }
 
 #[allow(
@@ -1720,10 +1896,18 @@ fn validate_owner_declarations(
     for (index, declaration) in declarations.iter().enumerate() {
         for previous in &declarations[..index] {
             if previous.id() == declaration.id() {
-                return Err(MotionPlanningError::DuplicateAnimationId);
+                return Err(MotionPlanningError::collision(
+                    declaration.target(),
+                    timeline_source(declaration),
+                    TraceMotionCollision::DuplicateAnimationId,
+                ));
             }
             if previous.target() == declaration.target() {
-                return Err(MotionPlanningError::DuplicateTarget(declaration.target()));
+                return Err(MotionPlanningError::collision(
+                    declaration.target(),
+                    timeline_source(declaration),
+                    TraceMotionCollision::DuplicateTarget,
+                ));
             }
         }
     }
@@ -1866,8 +2050,8 @@ mod tests {
     };
 
     use super::{
-        ExplicitLifecycle, ExplicitMotionRecord, MotionPlanningError, sample_explicit,
-        validate_owner_declarations,
+        ExplicitLifecycle, ExplicitMotionRecord, MotionPlanningError, TraceMotionCollision,
+        sample_explicit, validate_owner_declarations,
     };
 
     fn timeline(
@@ -1914,20 +2098,45 @@ mod tests {
             Duration::from_millis(100),
             ReducedMotionStrategy::PreserveEssential,
         );
-        assert_eq!(
-            validate_owner_declarations(&[first.clone(), first.clone()]),
-            Err(MotionPlanningError::DuplicateAnimationId)
-        );
+        let duplicate_id = validate_owner_declarations(&[first.clone(), first.clone()]);
+        let Err(duplicate_id) = duplicate_id else {
+            unreachable!("duplicate animation IDs must be rejected");
+        };
+        assert!(matches!(
+            &duplicate_id,
+            MotionPlanningError::Collision {
+                target: MotionTarget::Opacity,
+                collision: TraceMotionCollision::DuplicateAnimationId,
+                ..
+            }
+        ));
+        let MotionPlanningError::Collision { source, .. } = duplicate_id else {
+            unreachable!("duplicate animation IDs must collide");
+        };
+        assert_eq!(source.animation_id(), Some(first.id()));
         let second = timeline(
             "other",
             MotionTarget::Opacity,
             Duration::from_millis(100),
             ReducedMotionStrategy::PreserveEssential,
         );
-        assert_eq!(
-            validate_owner_declarations(&[first, second]),
-            Err(MotionPlanningError::DuplicateTarget(MotionTarget::Opacity))
-        );
+        let second_id = second.id().clone();
+        let duplicate_target = validate_owner_declarations(&[first, second]);
+        let Err(duplicate_target) = duplicate_target else {
+            unreachable!("duplicate targets must be rejected");
+        };
+        assert!(matches!(
+            &duplicate_target,
+            MotionPlanningError::Collision {
+                target: MotionTarget::Opacity,
+                collision: TraceMotionCollision::DuplicateTarget,
+                ..
+            }
+        ));
+        let MotionPlanningError::Collision { source, .. } = duplicate_target else {
+            unreachable!("duplicate targets must collide");
+        };
+        assert_eq!(source.animation_id(), Some(&second_id));
     }
 
     #[test]

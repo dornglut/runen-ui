@@ -129,6 +129,12 @@ impl EffectiveNodeFacts {
     pub(super) const fn retain_node_effect_group(&self) -> bool {
         self.retain_node_effect_group
     }
+
+    pub(super) fn requires_node_effect_group(&self) -> bool {
+        self.retain_node_effect_group
+            || self.computed_style.opacity() != runenui_core::SceneOpacity::OPAQUE
+            || !self.computed_style.shadows().is_empty()
+    }
 }
 
 /// Accepted effective values aligned exactly with the retained topology.
