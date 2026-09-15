@@ -251,10 +251,11 @@ fn write_evidence(
     middle: &OffscreenPublicationReadback,
     retry: &OffscreenPublicationReadback,
     final_readback: &OffscreenPublicationReadback,
+    reconstructed: &OffscreenPublicationReadback,
     provider_loads: usize,
 ) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(directory)?;
-    let panels = [initial, middle, retry, final_readback];
+    let panels = [initial, middle, retry, final_readback, reconstructed];
     let width = panels
         .iter()
         .map(|panel| panel.readback().extent().width())
@@ -292,7 +293,7 @@ fn write_evidence(
     let mut manifest = String::new();
     manifest.push_str("M9C real-wgpu sampled-motion evidence\n\n");
     manifest.push_str(
-        "Panel order: initial | midpoint | midpoint retry after cache discard | final.\n",
+        "Panel order: initial | midpoint | midpoint retry after cache discard | final | final after renderer/device reconstruction.\n",
     );
     manifest.push_str(
         "Runtime owns transition sampling and nine-slice resolution; renderer consumes immutable publications only.\n",
@@ -305,11 +306,12 @@ fn write_evidence(
     writeln!(manifest, "provider_loads={provider_loads}")?;
     writeln!(
         manifest,
-        "initial_mode={:?} middle_mode={:?} retry_mode={:?} final_mode={:?}",
+        "initial_mode={:?} middle_mode={:?} retry_mode={:?} final_mode={:?} reconstructed_mode={:?}",
         initial.update_plan().mode(),
         middle.update_plan().mode(),
         retry.update_plan().mode(),
-        final_readback.update_plan().mode()
+        final_readback.update_plan().mode(),
+        reconstructed.update_plan().mode()
     )?;
     fs::write(directory.join("m9c-motion-evidence.txt"), manifest)?;
     Ok(())
@@ -420,14 +422,32 @@ fn real_wgpu_consumes_runtime_sampled_nine_slice_transition_and_retained_retry()
         middle.readback().rgba8_srgb()
     );
 
+    drop(renderer);
+    let Some(mut reconstructed_renderer) = renderer_or_skip()? else {
+        return Ok(());
+    };
+    let reconstructed = render(&mut reconstructed_renderer, &final_publication, &provider)?;
+    assert_eq!(
+        reconstructed.update_plan().mode(),
+        PublicationUpdateMode::FullResync,
+        "a fresh renderer/device must reconstruct from retained neutral publication authority"
+    );
+    assert_eq!(provider.loads(), 3);
+    assert_eq!(
+        reconstructed.readback().rgba8_srgb(),
+        final_readback.readback().rgba8_srgb(),
+        "renderer/device reconstruction must preserve the already-sampled final publication"
+    );
+
     if let Some(directory) = evidence_dir() {
         write_evidence(
             &directory,
-            &renderer,
+            &reconstructed_renderer,
             &initial,
             &middle,
             &retry,
             &final_readback,
+            &reconstructed,
             provider.loads(),
         )?;
     }
