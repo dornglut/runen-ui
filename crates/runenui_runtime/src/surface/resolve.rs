@@ -12,8 +12,8 @@ use runenui_core::{
     __runtime::transform_rect_aabb, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalPoint, LogicalRect, LogicalTransform,
     PaintContribution, PaintContributionContext, PaintContributionItem, Radius, SceneShape,
-    StyleEnvironment, StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetTypeId,
-    resolve_style_in_environment, style_effects_between,
+    StyleEnvironment, StyleInteractionState, StylePreferences, StyleResolution, WidgetDiagnostic,
+    WidgetTypeId, resolve_style_in_environment, style_effects_between,
 };
 use runenui_text::TextSystem;
 
@@ -65,9 +65,13 @@ pub(super) fn collect_topology<Action>(
 
 #[derive(Clone, Debug)]
 pub(super) struct CachedStyleFacts {
-    // Target style/provenance facts aligned to the topology snapshot. They are
+    // Final target style/provenance facts aligned to the topology snapshot. They are
     // refreshed whenever mounted style intent or exact style-environment content changes.
     pub(super) resolutions: Vec<StyleResolution>,
+    // The same canonical resolver projected without the high-contrast overlay. Motion
+    // consumes this normal-cascade target/policy view while final effective values remain
+    // masked by `resolutions` whenever mandatory high contrast owns the target.
+    pub(super) motion_resolutions: Vec<StyleResolution>,
     pub(super) report: SurfaceStyleReport,
 }
 
@@ -198,8 +202,16 @@ pub(super) fn resolve_styles<Action>(
 ) -> CachedStyleFacts {
     #[cfg(test)]
     super::cache::note_style_phase_execution();
+    let preferences = environment.preferences();
+    let motion_environment = preferences.high_contrast().then(|| {
+        environment
+            .clone()
+            .with_preferences(StylePreferences::new(false, preferences.reduced_motion()))
+    });
     let mut computed_by_id = HashMap::with_capacity(topology.nodes.len());
+    let mut motion_computed_by_id = HashMap::with_capacity(topology.nodes.len());
     let mut resolutions = Vec::with_capacity(topology.nodes.len());
+    let mut motion_resolutions = Vec::with_capacity(topology.nodes.len());
     for (position, node) in topology.nodes.iter().enumerate() {
         let mounted = tree
             .node(&node.id)
@@ -214,8 +226,23 @@ pub(super) fn resolve_styles<Action>(
         );
         let resolution =
             resolve_style_in_environment(&mounted.style, environment, interaction, parent);
+        let motion_resolution = motion_environment.as_ref().map_or_else(
+            || resolution.clone(),
+            |environment| {
+                let parent = node
+                    .parent
+                    .as_ref()
+                    .and_then(|parent| motion_computed_by_id.get(parent));
+                resolve_style_in_environment(&mounted.style, environment, interaction, parent)
+            },
+        );
         computed_by_id.insert(node.id.clone(), resolution.computed_style().clone());
+        motion_computed_by_id.insert(
+            node.id.clone(),
+            motion_resolution.computed_style().clone(),
+        );
         resolutions.push(resolution);
+        motion_resolutions.push(motion_resolution);
     }
     let report = SurfaceStyleReport::new(
         topology
@@ -234,6 +261,7 @@ pub(super) fn resolve_styles<Action>(
     );
     CachedStyleFacts {
         resolutions,
+        motion_resolutions,
         report,
     }
 }
