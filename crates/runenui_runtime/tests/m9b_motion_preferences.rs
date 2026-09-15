@@ -8,15 +8,18 @@ use std::time::Duration;
 
 use runenui_core::{
     AnimationId, Element, ExplicitTimeline, MotionEasing, MotionKeyframe, MotionRepeat,
-    MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity, StyleEnvironment,
-    StylePreferencePolicy, StylePreferences, StyleProperties, TimelineSpec, UiApp, UnitInterval,
-    View, text,
+    MotionTarget, MotionValue, NoHostProtocol, ReducedMotionStrategy, SceneOpacity,
+    StyleEnvironment, StylePreferencePolicy, StylePreferences, StyleProperties, TimelineSpec,
+    TransitionSpec, UiApp, UnitInterval, View, text,
 };
-use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext, SurfacePublication};
+use runenui_runtime::{
+    AppRuntime, LayoutConstraints, PumpBudget, SurfaceBuildContext, SurfacePublication,
+};
 
 struct HoldInitialApp;
 struct SnapToEndApp;
 struct PreservedApp;
+struct TransitionPreservedApp;
 
 macro_rules! timeline_app {
     ($app:ty, $strategy:expr) => {
@@ -40,6 +43,34 @@ macro_rules! timeline_app {
 timeline_app!(HoldInitialApp, ReducedMotionStrategy::HoldInitial);
 timeline_app!(SnapToEndApp, ReducedMotionStrategy::SnapToEnd);
 timeline_app!(PreservedApp, ReducedMotionStrategy::PreserveEssential);
+
+#[derive(Clone, Copy)]
+struct TransitionState {
+    transparent: bool,
+}
+
+impl UiApp for TransitionPreservedApp {
+    type State = TransitionState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        let opacity = if state.transparent {
+            SceneOpacity::TRANSPARENT
+        } else {
+            SceneOpacity::OPAQUE
+        };
+        text("transition preference motion")
+            .key("root")
+            .opacity(opacity)
+            .transition(MotionTarget::Opacity, transition_spec())
+            .into_element()
+    }
+
+    fn update(state: &mut Self::State, (): Self::Action) {
+        state.transparent = true;
+    }
+}
 
 fn opacity_timeline(strategy: ReducedMotionStrategy) -> ExplicitTimeline {
     let spec = TimelineSpec::new(
@@ -67,6 +98,16 @@ fn opacity_timeline(strategy: ReducedMotionStrategy) -> ExplicitTimeline {
     )
 }
 
+fn transition_spec() -> TransitionSpec {
+    TransitionSpec::new(
+        Duration::from_millis(100),
+        Duration::ZERO,
+        MotionEasing::Linear,
+        Some(ReducedMotionStrategy::PreserveEssential),
+    )
+    .unwrap_or_else(|_| unreachable!("preference proof transition is valid"))
+}
+
 fn publish<App: UiApp>(
     runtime: &mut AppRuntime<App>,
     environment: &StyleEnvironment,
@@ -87,6 +128,20 @@ fn root_opacity(publication: &SurfacePublication) -> f32 {
         .computed_style()
         .opacity()
         .get()
+}
+
+fn dispatch_transition(runtime: &mut AppRuntime<TransitionPreservedApp>) {
+    runtime
+        .submit_action(())
+        .unwrap_or_else(|_| unreachable!("transition preference action is admitted"));
+    let report = runtime.pump(PumpBudget::new(
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+        usize::MAX,
+    ));
+    assert!(report.processed_envelopes() >= 1);
+    assert!(report.is_quiescent());
 }
 
 fn reduced_motion() -> StyleEnvironment {
@@ -173,5 +228,38 @@ fn high_contrast_suppression_keeps_the_underlying_timeline_on_the_same_clock() {
     assert!(
         (root_opacity(&revealed) - 0.5).abs() <= f32::EPSILON,
         "lifting high contrast must reveal the current same-clock sample rather than restart the timeline"
+    );
+}
+
+#[test]
+fn high_contrast_suppression_keeps_a_live_transition_on_the_same_clock() {
+    let mut runtime = AppRuntime::<TransitionPreservedApp>::mount(TransitionState {
+        transparent: false,
+    });
+    let normal = StyleEnvironment::default();
+    publish(&mut runtime, &normal);
+    dispatch_transition(&mut runtime);
+    publish(&mut runtime, &normal);
+
+    runtime
+        .advance_time(Duration::from_millis(40))
+        .unwrap_or_else(|_| unreachable!("bounded transition advance is representable"));
+    let before_suppression = publish(&mut runtime, &normal);
+    assert!((root_opacity(&before_suppression) - 0.6).abs() <= f32::EPSILON);
+
+    let high_contrast = high_contrast_opacity_override();
+    let suppressed = publish(&mut runtime, &high_contrast);
+    assert_eq!(root_opacity(&suppressed), 1.0);
+
+    runtime
+        .advance_time(Duration::from_millis(20))
+        .unwrap_or_else(|_| unreachable!("bounded suppressed transition advance is representable"));
+    let still_suppressed = publish(&mut runtime, &high_contrast);
+    assert_eq!(root_opacity(&still_suppressed), 1.0);
+
+    let revealed = publish(&mut runtime, &normal);
+    assert!(
+        (root_opacity(&revealed) - 0.4).abs() <= f32::EPSILON,
+        "lifting high contrast must reveal the 60% same-clock transition sample rather than a replacement started at either preference boundary"
     );
 }
