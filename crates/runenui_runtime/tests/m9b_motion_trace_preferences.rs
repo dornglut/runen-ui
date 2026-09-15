@@ -18,6 +18,7 @@ struct HoldTraceApp;
 struct SnapTraceApp;
 struct SuppressedTraceApp;
 struct TransitionSnapTraceApp;
+struct TransitionSuppressedTraceApp;
 
 macro_rules! timeline_trace_app {
     ($app:ty, $strategy:expr) => {
@@ -53,21 +54,42 @@ impl UiApp for TransitionSnapTraceApp {
     type HostProtocol = NoHostProtocol;
 
     fn root(state: &Self::State) -> Element<Self::Action> {
-        let opacity = if state.transparent {
-            SceneOpacity::TRANSPARENT
-        } else {
-            SceneOpacity::OPAQUE
-        };
-        text("transition preference trace")
-            .key("root")
-            .opacity(opacity)
-            .transition(MotionTarget::Opacity, transition_spec())
-            .into_element()
+        transition_root(state, transition_spec(ReducedMotionStrategy::SnapToEnd))
     }
 
     fn update(state: &mut Self::State, (): Self::Action) {
         state.transparent = true;
     }
+}
+
+impl UiApp for TransitionSuppressedTraceApp {
+    type State = TransitionState;
+    type Action = ();
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        transition_root(
+            state,
+            transition_spec(ReducedMotionStrategy::PreserveEssential),
+        )
+    }
+
+    fn update(state: &mut Self::State, (): Self::Action) {
+        state.transparent = true;
+    }
+}
+
+fn transition_root<Action>(state: &TransitionState, spec: TransitionSpec) -> Element<Action> {
+    let opacity = if state.transparent {
+        SceneOpacity::TRANSPARENT
+    } else {
+        SceneOpacity::OPAQUE
+    };
+    text("transition preference trace")
+        .key("root")
+        .opacity(opacity)
+        .transition(MotionTarget::Opacity, spec)
+        .into_element()
 }
 
 fn opacity_timeline(strategy: ReducedMotionStrategy) -> ExplicitTimeline {
@@ -96,14 +118,14 @@ fn opacity_timeline(strategy: ReducedMotionStrategy) -> ExplicitTimeline {
     )
 }
 
-fn transition_spec() -> TransitionSpec {
+fn transition_spec(strategy: ReducedMotionStrategy) -> TransitionSpec {
     TransitionSpec::new(
         Duration::from_millis(100),
         Duration::ZERO,
         MotionEasing::Linear,
-        Some(ReducedMotionStrategy::SnapToEnd),
+        Some(strategy),
     )
-    .unwrap_or_else(|_| unreachable!("SnapToEnd transition trace spec is valid"))
+    .unwrap_or_else(|_| unreachable!("preference transition trace spec is valid"))
 }
 
 fn reduced_motion() -> StyleEnvironment {
@@ -128,7 +150,10 @@ fn publish<App: UiApp>(runtime: &mut AppRuntime<App>, environment: &StyleEnviron
         .unwrap_or_else(|_| unreachable!("preference trace publication is admitted"));
 }
 
-fn dispatch_transition(runtime: &mut AppRuntime<TransitionSnapTraceApp>) {
+fn dispatch_transition<App>(runtime: &mut AppRuntime<App>)
+where
+    App: UiApp<State = TransitionState, Action = ()>,
+{
     runtime
         .submit_action(())
         .unwrap_or_else(|_| unreachable!("transition preference action is admitted"));
@@ -441,5 +466,108 @@ fn transition_snap_to_end_traces_terminal_value_and_completion_atomically() {
             },
         ],
         "transition SnapToEnd must diagnose the terminal sample and completed lifecycle in the same accepted candidate"
+    );
+}
+
+#[test]
+fn high_contrast_masks_a_live_transition_without_replacing_its_clock() {
+    let mut runtime = AppRuntime::<TransitionSuppressedTraceApp>::mount(TransitionState {
+        transparent: false,
+    });
+    let normal = StyleEnvironment::default();
+    publish(&mut runtime, &normal);
+    dispatch_transition(&mut runtime);
+    publish(&mut runtime, &normal);
+
+    runtime
+        .advance_time(Duration::from_millis(40))
+        .unwrap_or_else(|_| unreachable!("bounded transition trace advance is valid"));
+    publish(&mut runtime, &normal);
+
+    let high_contrast = high_contrast();
+    let suppressed_at = runtime.trace().len();
+    publish(&mut runtime, &high_contrast);
+    assert_eq!(
+        observed_since(&runtime, suppressed_at),
+        [
+            ObservedFact::Policy(TraceMotionPolicy::Enabled),
+            ObservedFact::Preference {
+                source: ObservedSource::Transition,
+                reduced_motion: false,
+                strategy: ReducedMotionStrategy::PreserveEssential,
+                decision: TraceMotionPreferenceDecision::Normal,
+            },
+            ObservedFact::Preference {
+                source: ObservedSource::Transition,
+                reduced_motion: false,
+                strategy: ReducedMotionStrategy::PreserveEssential,
+                decision: TraceMotionPreferenceDecision::HighContrastSuppressed,
+            },
+            ObservedFact::Sample {
+                source: ObservedSource::Transition,
+                phase: TraceMotionPhase::Running,
+                progress_bits: Some(0.4_f32.to_bits()),
+                eased_progress_bits: Some(0.4_f32.to_bits()),
+                interpolation: TraceMotionInterpolation::Continuous,
+                suppressed: true,
+            },
+        ],
+        "enabling high contrast must mask the existing transition sample without replacement or restart"
+    );
+
+    runtime
+        .advance_time(Duration::from_millis(20))
+        .unwrap_or_else(|_| unreachable!("bounded suppressed transition trace advance is valid"));
+    let continued_at = runtime.trace().len();
+    publish(&mut runtime, &high_contrast);
+    assert_eq!(
+        observed_since(&runtime, continued_at),
+        [
+            ObservedFact::Policy(TraceMotionPolicy::Enabled),
+            ObservedFact::Preference {
+                source: ObservedSource::Transition,
+                reduced_motion: false,
+                strategy: ReducedMotionStrategy::PreserveEssential,
+                decision: TraceMotionPreferenceDecision::Normal,
+            },
+            ObservedFact::Preference {
+                source: ObservedSource::Transition,
+                reduced_motion: false,
+                strategy: ReducedMotionStrategy::PreserveEssential,
+                decision: TraceMotionPreferenceDecision::HighContrastSuppressed,
+            },
+            ObservedFact::Sample {
+                source: ObservedSource::Transition,
+                phase: TraceMotionPhase::Running,
+                progress_bits: Some(0.6_f32.to_bits()),
+                eased_progress_bits: Some(0.6_f32.to_bits()),
+                interpolation: TraceMotionInterpolation::Continuous,
+                suppressed: true,
+            },
+        ]
+    );
+
+    let revealed_at = runtime.trace().len();
+    publish(&mut runtime, &normal);
+    assert_eq!(
+        observed_since(&runtime, revealed_at),
+        [
+            ObservedFact::Policy(TraceMotionPolicy::Enabled),
+            ObservedFact::Preference {
+                source: ObservedSource::Transition,
+                reduced_motion: false,
+                strategy: ReducedMotionStrategy::PreserveEssential,
+                decision: TraceMotionPreferenceDecision::Normal,
+            },
+            ObservedFact::Sample {
+                source: ObservedSource::Transition,
+                phase: TraceMotionPhase::Running,
+                progress_bits: Some(0.6_f32.to_bits()),
+                eased_progress_bits: Some(0.6_f32.to_bits()),
+                interpolation: TraceMotionInterpolation::Continuous,
+                suppressed: false,
+            },
+        ],
+        "lifting high contrast must reveal the same-clock transition without replacement or restart"
     );
 }
