@@ -1141,9 +1141,10 @@ fn reconcile_explicit(
         Some(record) if record.declaration == *declaration => match (&record.lifecycle, preference)
         {
             (ExplicitLifecycle::Completed, _) => ExplicitLifecycle::Completed,
-            (ExplicitLifecycle::HoldInitial, MotionPreferenceMode::HoldInitial) => {
-                ExplicitLifecycle::HoldInitial
-            }
+            (
+                ExplicitLifecycle::HoldInitial | ExplicitLifecycle::Active { .. },
+                MotionPreferenceMode::HoldInitial,
+            ) => ExplicitLifecycle::HoldInitial,
             (
                 ExplicitLifecycle::HoldInitial,
                 MotionPreferenceMode::Normal | MotionPreferenceMode::PreserveEssential,
@@ -1151,7 +1152,10 @@ fn reconcile_explicit(
                 started_at_candidate = true;
                 checked_active(declaration, instant)?
             }
-            (ExplicitLifecycle::HoldInitial, MotionPreferenceMode::SnapToEnd) => {
+            (
+                ExplicitLifecycle::HoldInitial | ExplicitLifecycle::Active { .. },
+                MotionPreferenceMode::SnapToEnd,
+            ) => {
                 terminal_commit = true;
                 ExplicitLifecycle::Completed
             }
@@ -1159,13 +1163,6 @@ fn reconcile_explicit(
                 ExplicitLifecycle::Active { start },
                 MotionPreferenceMode::Normal | MotionPreferenceMode::PreserveEssential,
             ) => ExplicitLifecycle::Active { start: *start },
-            (ExplicitLifecycle::Active { .. }, MotionPreferenceMode::SnapToEnd) => {
-                terminal_commit = true;
-                ExplicitLifecycle::Completed
-            }
-            (ExplicitLifecycle::Active { .. }, MotionPreferenceMode::HoldInitial) => {
-                ExplicitLifecycle::HoldInitial
-            }
         },
         Some(_) | None => match preference {
             MotionPreferenceMode::SnapToEnd => {
