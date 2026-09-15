@@ -427,7 +427,10 @@ fn stale_physical_hit_preserves_distinct_live_capture_routing_without_retarget()
         .skip(trace_start)
         .find(|record| {
             record.work_sequence() == Some(move_sequence)
-                && matches!(record.kind(), TraceRecordKind::PointerPhysicalTargetResolved)
+                && matches!(
+                    record.kind(),
+                    TraceRecordKind::PointerPhysicalTargetResolved
+                )
         })
         .unwrap_or_else(|| unreachable!("stale captured move records physical resolution"));
     assert_eq!(physical.target(), None);
