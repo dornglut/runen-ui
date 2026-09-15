@@ -503,7 +503,7 @@ fn canonical_hover_focus_and_active_facts_retarget_one_transition_path() {
 
     let target = authored_node(&initial, "interactive").id().clone();
     let point = point(5.0, 5.0);
-    let input_context = initial.input_context().clone();
+    let hover_input_context = initial.input_context().clone();
     let pointer_id = PointerId::new(1).unwrap_or_else(|| unreachable!("pointer id is non-zero"));
 
     runtime
@@ -512,29 +512,22 @@ fn canonical_hover_focus_and_active_facts_retarget_one_transition_path() {
             PointerDeviceKind::Mouse,
             PointerPhase::Move,
             point,
-            input_context.clone(),
+            hover_input_context,
         ))
         .unwrap_or_else(|_| unreachable!("hover ingress is admitted"));
     pump_all(&mut runtime);
-    assert_near(
-        interaction_opacity(
-            &runtime
-                .publish_surface(&context)
-                .unwrap_or_else(|_| unreachable!("hover start publication is admitted")),
-        ),
-        1.0,
-    );
+    let hover_start = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("hover start publication is admitted"));
+    assert_near(interaction_opacity(&hover_start), 1.0);
+
     runtime
         .advance_time(Duration::from_millis(50))
         .unwrap_or_else(|_| unreachable!("hover midpoint advance is valid"));
-    assert_near(
-        interaction_opacity(
-            &runtime
-                .publish_surface(&context)
-                .unwrap_or_else(|_| unreachable!("hover midpoint publication is admitted")),
-        ),
-        0.9,
-    );
+    let hover_midpoint = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("hover midpoint publication is admitted"));
+    assert_near(interaction_opacity(&hover_midpoint), 0.9);
 
     runtime
         .submit_command(
@@ -544,32 +537,26 @@ fn canonical_hover_focus_and_active_facts_retarget_one_transition_path() {
         )
         .unwrap_or_else(|_| unreachable!("focus request is admitted"));
     pump_all(&mut runtime);
-    assert_near(
-        interaction_opacity(
-            &runtime
-                .publish_surface(&context)
-                .unwrap_or_else(|_| unreachable!("focus replacement publication is admitted")),
-        ),
-        0.9,
-    );
+    let focus_start = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("focus replacement publication is admitted"));
+    assert_near(interaction_opacity(&focus_start), 0.9);
+
     runtime
         .advance_time(Duration::from_millis(50))
         .unwrap_or_else(|_| unreachable!("focus midpoint advance is valid"));
-    assert_near(
-        interaction_opacity(
-            &runtime
-                .publish_surface(&context)
-                .unwrap_or_else(|_| unreachable!("focus midpoint publication is admitted")),
-        ),
-        0.75,
-    );
+    let focus_midpoint = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("focus midpoint publication is admitted"));
+    assert_near(interaction_opacity(&focus_midpoint), 0.75);
+    let down_input_context = focus_midpoint.input_context().clone();
 
     let down = PointerEvent::new(
         pointer_id,
         PointerDeviceKind::Mouse,
         PointerPhase::Down,
         point,
-        input_context.clone(),
+        down_input_context,
     )
     .with_buttons(PointerButtons::new([PointerButton::Primary]))
     .with_changed_button(PointerButton::Primary);
@@ -577,44 +564,34 @@ fn canonical_hover_focus_and_active_facts_retarget_one_transition_path() {
         .submit_pointer(down)
         .unwrap_or_else(|_| unreachable!("active ingress is admitted"));
     pump_all(&mut runtime);
-    assert_near(
-        interaction_opacity(
-            &runtime
-                .publish_surface(&context)
-                .unwrap_or_else(|_| unreachable!("active replacement publication is admitted")),
-        ),
-        0.75,
-    );
+    let active_start = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("active replacement publication is admitted"));
+    assert_near(interaction_opacity(&active_start), 0.75);
+
     runtime
         .advance_time(Duration::from_millis(50))
         .unwrap_or_else(|_| unreachable!("active midpoint advance is valid"));
-    assert_near(
-        interaction_opacity(
-            &runtime
-                .publish_surface(&context)
-                .unwrap_or_else(|_| unreachable!("active midpoint publication is admitted")),
-        ),
-        0.475,
-    );
+    let active_midpoint = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("active midpoint publication is admitted"));
+    assert_near(interaction_opacity(&active_midpoint), 0.475);
+    let up_input_context = active_midpoint.input_context().clone();
 
     let up = PointerEvent::new(
         pointer_id,
         PointerDeviceKind::Mouse,
         PointerPhase::Up,
         point,
-        input_context,
+        up_input_context,
     )
     .with_changed_button(PointerButton::Primary);
     runtime
         .submit_pointer(up)
         .unwrap_or_else(|_| unreachable!("active release ingress is admitted"));
     pump_all(&mut runtime);
-    assert_near(
-        interaction_opacity(
-            &runtime
-                .publish_surface(&context)
-                .unwrap_or_else(|_| unreachable!("active release publication is admitted")),
-        ),
-        0.475,
-    );
+    let release_start = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|_| unreachable!("active release publication is admitted"));
+    assert_near(interaction_opacity(&release_start), 0.475);
 }
