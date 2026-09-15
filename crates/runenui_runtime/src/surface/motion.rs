@@ -287,6 +287,7 @@ struct OwnerMotionContext<'a> {
     authored_id: Option<&'a ElementId>,
     declarations: &'a [ExplicitTimeline],
     resolution: &'a StyleResolution,
+    motion_resolution: &'a StyleResolution,
     target_layout: &'a LayoutStyle,
     prior_computed: Option<&'a ComputedStyle>,
     prior_layout: Option<&'a LayoutStyle>,
@@ -344,6 +345,7 @@ pub(super) fn plan_surface_motion<Action>(
     instant: MonotonicInstant,
 ) -> Result<PlannedMotion, MotionPlanningError> {
     debug_assert_eq!(topology.nodes.len(), styles.resolutions.len());
+    debug_assert_eq!(topology.nodes.len(), styles.motion_resolutions.len());
     for topology_node in &topology.nodes {
         let node = tree
             .node(&topology_node.id)
@@ -377,6 +379,7 @@ pub(super) fn plan_surface_motion<Action>(
             authored_id: topology_node.authored_id.as_ref(),
             declarations: &node.timelines,
             resolution: &styles.resolutions[position],
+            motion_resolution: &styles.motion_resolutions[position],
             target_layout: &node.layout,
             prior_computed,
             prior_layout,
@@ -825,7 +828,7 @@ fn owner_targets(
     targets.extend(retained.transitions.iter().map(|record| record.target));
     targets.extend(
         context
-            .resolution
+            .motion_resolution
             .transition_policies()
             .map(|(target, _, _)| target),
     );
@@ -837,7 +840,7 @@ fn trace_resolved_policy(
     target: MotionTarget,
     trace_facts: &mut Vec<StagedMotionTraceFact>,
 ) {
-    let policy = resolved_transition_policy(context.resolution, target);
+    let policy = resolved_transition_policy(context.motion_resolution, target);
     trace_facts.push(StagedMotionTraceFact::new(
         context.owner.clone(),
         context.authored_id.cloned(),
@@ -856,13 +859,13 @@ fn plan_target(
     outputs: &mut OwnerMotionOutputs<'_>,
 ) -> Result<(), MotionPlanningError> {
     let target_value = motion_value_for_target(
-        context.resolution.computed_style(),
+        context.motion_resolution.computed_style(),
         context.target_layout,
         target,
     );
-    let provenance = target_provenance(context.resolution, target);
-    let suppressed = provenance.high_contrast();
-    let policy = resolved_transition_policy(context.resolution, target);
+    let provenance = target_provenance(context.motion_resolution, target);
+    let suppressed = target_provenance(context.resolution, target).high_contrast();
+    let policy = resolved_transition_policy(context.motion_resolution, target);
     let new_explicit = explicit_evaluations
         .iter()
         .find(|candidate| candidate.record.declaration.target() == target);
@@ -1141,9 +1144,10 @@ fn reconcile_explicit(
         Some(record) if record.declaration == *declaration => match (&record.lifecycle, preference)
         {
             (ExplicitLifecycle::Completed, _) => ExplicitLifecycle::Completed,
-            (ExplicitLifecycle::HoldInitial, MotionPreferenceMode::HoldInitial) => {
-                ExplicitLifecycle::HoldInitial
-            }
+            (
+                ExplicitLifecycle::HoldInitial | ExplicitLifecycle::Active { .. },
+                MotionPreferenceMode::HoldInitial,
+            ) => ExplicitLifecycle::HoldInitial,
             (
                 ExplicitLifecycle::HoldInitial,
                 MotionPreferenceMode::Normal | MotionPreferenceMode::PreserveEssential,
@@ -1151,7 +1155,10 @@ fn reconcile_explicit(
                 started_at_candidate = true;
                 checked_active(declaration, instant)?
             }
-            (ExplicitLifecycle::HoldInitial, MotionPreferenceMode::SnapToEnd) => {
+            (
+                ExplicitLifecycle::HoldInitial | ExplicitLifecycle::Active { .. },
+                MotionPreferenceMode::SnapToEnd,
+            ) => {
                 terminal_commit = true;
                 ExplicitLifecycle::Completed
             }
@@ -1159,13 +1166,6 @@ fn reconcile_explicit(
                 ExplicitLifecycle::Active { start },
                 MotionPreferenceMode::Normal | MotionPreferenceMode::PreserveEssential,
             ) => ExplicitLifecycle::Active { start: *start },
-            (ExplicitLifecycle::Active { .. }, MotionPreferenceMode::SnapToEnd) => {
-                terminal_commit = true;
-                ExplicitLifecycle::Completed
-            }
-            (ExplicitLifecycle::Active { .. }, MotionPreferenceMode::HoldInitial) => {
-                ExplicitLifecycle::HoldInitial
-            }
         },
         Some(_) | None => match preference {
             MotionPreferenceMode::SnapToEnd => {
