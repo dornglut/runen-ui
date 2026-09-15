@@ -1304,6 +1304,20 @@ impl ReferenceHost {
         }
     }
 
+    fn record_presented_frame(&mut self, event_loop: &ActiveEventLoop, pending: &PendingFrame) {
+        self.displayed_frame = Some(DisplayedFrame::from_pending(pending));
+        self.pending_frame = None;
+        proof!(
+            "stage=presented input_context={:?} physical={}x{} native_scale={}",
+            pending.publication.input_context(),
+            pending.mapping.physical_size.width,
+            pending.mapping.physical_size.height,
+            pending.mapping.native_scale_factor
+        );
+        self.drive_runtime(event_loop);
+        self.request_pending_redraw();
+    }
+
     fn render_pending(&mut self, event_loop: &ActiveEventLoop) {
         self.pump_runtime_once();
         if let Err(error) = self.publish_if_needed() {
@@ -1358,17 +1372,7 @@ impl ReferenceHost {
                     );
                     return;
                 }
-                self.displayed_frame = Some(DisplayedFrame::from_pending(&pending));
-                self.pending_frame = None;
-                proof!(
-                    "stage=presented input_context={:?} physical={}x{} native_scale={}",
-                    pending.publication.input_context(),
-                    pending.mapping.physical_size.width,
-                    pending.mapping.physical_size.height,
-                    pending.mapping.native_scale_factor
-                );
-                self.drive_runtime(event_loop);
-                self.request_pending_redraw();
+                self.record_presented_frame(event_loop, &pending);
             }
             Err(
                 error @ (PublicationRenderError::SurfaceTimeout
@@ -1416,7 +1420,7 @@ impl ReferenceHost {
 impl ReferenceHost {
     fn handle_accessibility_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
         event: AccessibilityEvent,
     ) {
         match event {
