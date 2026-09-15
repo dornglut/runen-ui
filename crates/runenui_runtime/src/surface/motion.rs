@@ -370,7 +370,9 @@ pub(super) fn plan_surface_motion<Action>(
                 .position(|candidate| candidate.id == topology_node.id)
         });
         let prior_computed = previous_cache.and_then(|cache| {
-            prior_position.map(|prior| cache.effective.node(prior).computed_style())
+            prior_position.map(|prior| {
+                cache.styles.motion_resolutions[prior].computed_style()
+            })
         });
         let prior_layout = previous_cache
             .and_then(|cache| prior_position.map(|prior| cache.effective.node(prior).layout()));
