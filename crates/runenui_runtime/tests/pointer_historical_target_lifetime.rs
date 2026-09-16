@@ -209,6 +209,7 @@ fn pointer_event(
         PointerPhase::Down => event
             .with_buttons(PointerButtons::new([PointerButton::Primary]))
             .with_changed_button(PointerButton::Primary),
+        PointerPhase::Move => event.with_buttons(PointerButtons::new([PointerButton::Primary])),
         PointerPhase::Up => event.with_changed_button(PointerButton::Primary),
         _ => event,
     }
