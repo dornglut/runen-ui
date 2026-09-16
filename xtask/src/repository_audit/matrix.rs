@@ -172,11 +172,10 @@ fn validate_inventory(index: &str, on_disk: &BTreeSet<String>, findings: &mut Ve
     let indexed = index
         .lines()
         .filter_map(|line| {
-            let (label, link) = line.trim().strip_prefix("- [")?.split_once("](")?;
-            if !label.ends_with(" conformance matrix") {
-                return None;
-            }
-            link.strip_suffix(')').map(str::to_owned)
+            let (_, link) = line.trim().strip_prefix("- [")?.split_once("](")?;
+            link.strip_suffix(')')
+                .filter(|path| path.ends_with("-conformance-matrix.md"))
+                .map(str::to_owned)
         })
         .collect::<BTreeSet<_>>();
 
@@ -747,7 +746,9 @@ mod tests {
         let indexed = MATRIX_SPECS
             .iter()
             .map(|spec| {
-                let name = spec.path.strip_prefix("docs/conformance/").unwrap();
+                let name = spec.path.strip_prefix("docs/conformance/").unwrap_or_else(|| {
+                    unreachable!("all matrix specifications are under docs/conformance")
+                });
                 format!("- [M conformance matrix]({name})")
             })
             .collect::<Vec<_>>()
@@ -757,7 +758,9 @@ mod tests {
             .map(|spec| {
                 spec.path
                     .strip_prefix("docs/conformance/")
-                    .unwrap()
+                    .unwrap_or_else(|| {
+                        unreachable!("all matrix specifications are under docs/conformance")
+                    })
                     .to_owned()
             })
             .collect::<BTreeSet<_>>();
@@ -791,20 +794,31 @@ mod tests {
                 .iter()
                 .any(|finding| finding.code == "matrix.unindexed")
         );
+        findings.clear();
+        validate_inventory(
+            &format!("{indexed}\n- [M10 matrix](m10-conformance-matrix.md)"),
+            &files,
+            &mut findings,
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == "matrix.unregistered")
+        );
     }
 
     #[test]
-    fn accepted_repository_matrices_are_registered_and_parse_cleanly() {
+    fn accepted_repository_matrices_are_registered_and_parse_cleanly() -> Result<(), String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .expect("xtask has a repository root");
+            .ok_or_else(|| "xtask has no repository root".to_owned())?;
         let mut findings = Vec::new();
-        audit_inventory(root, &mut findings).expect("conformance inventory is readable");
+        audit_inventory(root, &mut findings)?;
         let mut seen = BTreeSet::new();
         let mut total = 0;
         for spec in MATRIX_SPECS {
-            let contents =
-                std::fs::read_to_string(root.join(spec.path)).expect("matrix is readable");
+            let contents = std::fs::read_to_string(root.join(spec.path))
+                .map_err(|error| format!("failed to read {}: {error}", spec.path))?;
             let summary = parse_summary(&contents);
             let analysis = analyze_contents(*spec, &contents, &mut seen, &mut findings);
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
@@ -812,5 +826,6 @@ mod tests {
         }
         assert_eq!(total, 405);
         assert!(findings.is_empty(), "{findings:?}");
+        Ok(())
     }
 }
