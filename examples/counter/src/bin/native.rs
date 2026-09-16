@@ -410,6 +410,12 @@ impl CounterHost {
         let _ = self.runtime.pump(HOST_PUMP_BUDGET);
     }
 
+    fn collect_redraw_request(&mut self) {
+        if self.pending_redraw.is_none() {
+            self.pending_redraw = self.runtime.take_redraw_request();
+        }
+    }
+
     fn ensure_counter_focus(&mut self, event_loop: &ActiveEventLoop) -> bool {
         if !self.window_focused || self.runtime.focus().focused_node().is_some() {
             return true;
@@ -436,15 +442,16 @@ impl CounterHost {
     }
 
     fn publish_if_needed(&mut self) -> Result<bool, String> {
+        if self.pending_frame.is_some() {
+            return Ok(false);
+        }
         let Some(mapping) = self.mapping else {
             return Ok(false);
         };
         if !self.renderer_addresses_mapping(mapping) {
             return Ok(false);
         }
-        if self.pending_redraw.is_none() {
-            self.pending_redraw = self.runtime.take_redraw_request();
-        }
+        self.collect_redraw_request();
         if self.pending_redraw.is_none() && !self.mapping_publication_needed {
             return Ok(false);
         }
@@ -485,9 +492,7 @@ impl CounterHost {
         if !self.ensure_counter_focus(event_loop) {
             return;
         }
-        if let Err(error) = self.publish_if_needed() {
-            self.fail(event_loop, &error);
-        }
+        self.collect_redraw_request();
     }
 
     fn request_pending_redraw(&self) {
@@ -798,6 +803,8 @@ impl CounterHost {
                 }
                 self.displayed_frame = Some(DisplayedFrame::from_pending(&pending));
                 self.pending_frame = None;
+                self.drive_runtime(event_loop);
+                self.request_pending_redraw();
             }
             Err(
                 PublicationRenderError::SurfaceTimeout | PublicationRenderError::SurfaceOccluded,
@@ -851,9 +858,7 @@ impl CounterHost {
                 }
             }
         }
-        if let Err(error) = self.publish_if_needed() {
-            self.fail(event_loop, &error);
-        }
+        self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
 }

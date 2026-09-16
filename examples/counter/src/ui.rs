@@ -18,8 +18,14 @@ fn padding(value: u16) -> EdgeInsets {
 }
 
 fn count_background(count: i32) -> Color {
-    let step = u8::try_from(count.rem_euclid(10)).unwrap_or_default();
-    Color::rgb(40_u8.saturating_add(step.saturating_mul(12)), 56, 104)
+    let step = u8::try_from(count.unsigned_abs().min(9))
+        .unwrap_or_else(|_| unreachable!("clamped color step fits u8"));
+    let offset = step * 12;
+    if count < 0 {
+        Color::rgb(40, 56, 104 + offset)
+    } else {
+        Color::rgb(40 + offset, 56, 104)
+    }
 }
 
 fn count_transition() -> TransitionSpec {
