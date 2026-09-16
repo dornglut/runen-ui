@@ -11,6 +11,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll, Wake, Waker},
     thread,
+    time::Instant,
 };
 
 use app::{Counter, CounterApp};
@@ -23,8 +24,9 @@ use runenui_render_wgpu::{
     ResourceProviderError, ResourceProviderErrorKind, ResourceRequest,
 };
 use runenui_runtime::{
-    AppRuntime, FontSourcePolicy, LogicalSize, PumpBudget, RasterScale, RedrawRequest,
-    RuntimeConfig, SubmitKeyboardErrorKind, SurfaceBuildContext, SurfacePublication,
+    AppRuntime, FontSourcePolicy, LogicalSize, MonotonicClock, MonotonicInstant, PumpBudget,
+    RasterScale, RedrawRequest, RuntimeConfig, SubmitKeyboardErrorKind, SurfaceBuildContext,
+    SurfacePublication,
 };
 use runenui_winit::{
     accessibility::{AccessibilityEvent, SemanticAdapter},
@@ -224,6 +226,28 @@ fn block_on<FutureType: Future>(future: FutureType) -> FutureType::Output {
     }
 }
 
+struct NativeMonotonicClock {
+    origin: Instant,
+}
+
+impl NativeMonotonicClock {
+    fn new() -> Self {
+        Self {
+            origin: Instant::now(),
+        }
+    }
+}
+
+impl MonotonicClock for NativeMonotonicClock {
+    fn now(&self) -> MonotonicInstant {
+        MonotonicInstant::ZERO
+            .checked_add(self.origin.elapsed())
+            .unwrap_or_else(|_| {
+                unreachable!("native host lifetime fits RunenUI monotonic nanosecond range")
+            })
+    }
+}
+
 struct CounterHost {
     runtime: AppRuntime<CounterApp>,
     style_environment: StyleEnvironment,
@@ -247,11 +271,12 @@ struct CounterHost {
 
 impl CounterHost {
     fn new(proxy: EventLoopProxy<HostEvent>) -> Self {
-        let runtime = AppRuntime::<CounterApp>::mount_with_config(
+        let mut runtime = AppRuntime::<CounterApp>::mount_with_config(
             Counter::new(),
             RuntimeConfig::default()
                 .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
         );
+        runtime.set_monotonic_clock(NativeMonotonicClock::new());
         let wake_proxy = proxy.clone();
         runtime.set_wake_transport(move || {
             let _ = wake_proxy.send_event(HostEvent::Wake);

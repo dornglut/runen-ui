@@ -51,6 +51,13 @@ runenui_testing     -> runenui_core + runenui_runtime
 
 See [workspace structure](docs/architecture/workspace-structure.md) for the enforced ownership/dependency contract.
 
+## Examples
+
+- [Counter](examples/counter/README.md) is the compact application-level showcase. Run the native application with `cargo run --package counter`, or the deterministic headless walkthrough with `cargo run --package counter --bin counter`.
+- [`reference_winit`](examples/reference_winit/README.md) is the specialized standalone host/integration reference. Run it with `cargo run -p reference_winit --release`; its package guide documents the optional structured native proof logging mode.
+
+These examples consume ordinary public framework contracts. They are demonstrations and integration references, not separate runtime, renderer, or conformance authorities.
+
 ## Validation
 
 ```text
