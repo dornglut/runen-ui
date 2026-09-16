@@ -40,15 +40,15 @@ This protects the single-owner model without erasing useful historical evidence.
 
 ## Conformance audit
 
-Configured M4/M5/M6 matrices are loaded from `docs/conformance/`. The audit validates:
+Configured M4–M9 matrices are loaded from `docs/conformance/`. The audit fails closed if the indexed, registered, and on-disk matrix inventories disagree. It validates:
 
-- permanent ID format and uniqueness across configured matrices;
+- permanent ID format and uniqueness across all configured matrices;
 - exact row schema;
 - allowed accepted-state vocabulary;
-- allowed delivery-slice/gate policy;
+- milestone-specific delivery-slice/gate policy;
 - declared summary counts versus parsed rows.
 
-Matrix status describes accepted default-branch conformance state. The audit does not model in-flight GitHub issue/PR state.
+Matrix status describes accepted default-branch conformance state. The audit does not model in-flight GitHub issue/PR state or infer semantic correctness from structural validity.
 
 ## Workspace and source audit
 

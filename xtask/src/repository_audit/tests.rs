@@ -84,7 +84,10 @@ impl Fixture {
             ("docs/status.md", "# Status\n"),
             ("docs/architecture/README.md", "# Architecture\n"),
             ("docs/architecture/public-api.md", "# Public API\n"),
-            ("docs/conformance/README.md", "# Conformance\n"),
+            (
+                "docs/conformance/README.md",
+                "# Conformance\n\n- [M4 conformance matrix](m4-conformance-matrix.md)\n- [M5 conformance matrix](m5-conformance-matrix.md)\n- [M6 conformance matrix](m6-conformance-matrix.md)\n- [M7 conformance matrix](m7-conformance-matrix.md)\n- [M8 conformance matrix](m8-conformance-matrix.md)\n- [M9 conformance matrix](m9-conformance-matrix.md)\n",
+            ),
         ] {
             self.write(path, contents)?;
         }
@@ -192,6 +195,16 @@ impl Fixture {
                 "docs/conformance/m7-conformance-matrix.md",
                 "RENDER-01",
                 "M7A",
+            ),
+            (
+                "docs/conformance/m8-conformance-matrix.md",
+                "M8STYLE-01",
+                "M8A",
+            ),
+            (
+                "docs/conformance/m9-conformance-matrix.md",
+                "M9VIS-01",
+                "M9A",
             ),
         ] {
             self.write(

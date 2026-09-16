@@ -19,6 +19,8 @@ const M4_DELIVERY_SLICES: &[&str] = &[
 const M5_DELIVERY_SLICES: &[&str] = &["M5A0", "M5A", "M5B", "M5C", "M5D", "M5E"];
 const M6_DELIVERY_SLICES: &[&str] = &["M6A", "M6B", "M6C", "M6D"];
 const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
+const M8_DELIVERY_SLICES: &[&str] = &["M8A", "M8B", "M8C", "M8D"];
+const M9_DELIVERY_SLICES: &[&str] = &["M9A", "M9B", "M9C"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
@@ -62,7 +64,17 @@ const M7_SPEC: MatrixSpec = MatrixSpec {
     allowed_delivery_slices: M7_DELIVERY_SLICES,
     gate_policy: GatePolicy::Required,
 };
-const MATRIX_SPECS: &[MatrixSpec] = &[M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC];
+const M8_SPEC: MatrixSpec = MatrixSpec {
+    path: "docs/conformance/m8-conformance-matrix.md",
+    allowed_delivery_slices: M8_DELIVERY_SLICES,
+    gate_policy: GatePolicy::Required,
+};
+const M9_SPEC: MatrixSpec = MatrixSpec {
+    path: "docs/conformance/m9-conformance-matrix.md",
+    allowed_delivery_slices: M9_DELIVERY_SLICES,
+    gate_policy: GatePolicy::Required,
+};
+const MATRIX_SPECS: &[MatrixSpec] = &[M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct MatrixMetrics {
@@ -116,6 +128,7 @@ struct RowState {
 }
 
 pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<MatrixMetrics, String> {
+    audit_inventory(root, findings)?;
     let mut aggregate = MatrixMetrics::default();
     let mut seen_ids = BTreeSet::new();
 
@@ -125,6 +138,75 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<MatrixMe
     }
 
     Ok(aggregate)
+}
+
+fn audit_inventory(root: &Path, findings: &mut Vec<Finding>) -> Result<(), String> {
+    const INDEX: &str = "docs/conformance/README.md";
+    let index = fs::read_to_string(root.join(INDEX))
+        .map_err(|error| format!("failed to read {INDEX}: {error}"))?;
+    let directory = root.join("docs/conformance");
+    let mut on_disk = BTreeSet::new();
+    for entry in fs::read_dir(&directory)
+        .map_err(|error| format!("failed to read docs/conformance: {error}"))?
+    {
+        let name = entry
+            .map_err(|error| format!("failed to read conformance directory entry: {error}"))?
+            .file_name()
+            .into_string()
+            .map_err(|_| "conformance directory contains a non-UTF-8 file name".to_owned())?;
+        if name.ends_with("-conformance-matrix.md") {
+            on_disk.insert(name);
+        }
+    }
+    validate_inventory(&index, &on_disk, findings);
+    Ok(())
+}
+
+fn validate_inventory(index: &str, on_disk: &BTreeSet<String>, findings: &mut Vec<Finding>) {
+    const INDEX: &str = "docs/conformance/README.md";
+    let registered = MATRIX_SPECS
+        .iter()
+        .filter_map(|spec| spec.path.strip_prefix("docs/conformance/"))
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+    let indexed = index
+        .lines()
+        .filter_map(|line| {
+            let (_, link) = line.trim().strip_prefix("- [")?.split_once("](")?;
+            link.strip_suffix(')')
+                .filter(|path| path.ends_with("-conformance-matrix.md"))
+                .map(str::to_owned)
+        })
+        .collect::<BTreeSet<_>>();
+
+    for path in indexed.difference(&registered) {
+        findings.push(Finding::fatal(
+            "matrix.unregistered",
+            Some(INDEX.to_owned()),
+            format!("indexed conformance matrix `{path}` is missing an audit specification"),
+        ));
+    }
+    for path in registered.difference(&indexed) {
+        findings.push(Finding::fatal(
+            "matrix.unindexed",
+            Some(INDEX.to_owned()),
+            format!("configured conformance matrix `{path}` is missing from the index"),
+        ));
+    }
+    for path in on_disk.difference(&registered) {
+        findings.push(Finding::fatal(
+            "matrix.unregistered",
+            Some(format!("docs/conformance/{path}")),
+            format!("conformance matrix `{path}` is missing an audit specification"),
+        ));
+    }
+    for path in registered.difference(on_disk) {
+        findings.push(Finding::fatal(
+            "matrix.missing_file",
+            Some(format!("docs/conformance/{path}")),
+            format!("configured conformance matrix `{path}` is absent from the directory"),
+        ));
+    }
 }
 
 fn audit_matrix(
@@ -481,7 +563,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, analyze_contents, declared_metric, parse_rows, valid_id,
+        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, MATRIX_SPECS, analyze_contents,
+        audit_inventory, compare_declared_summary, declared_metric, parse_rows, parse_summary,
+        valid_id, validate_inventory,
     };
 
     #[test]
@@ -586,5 +670,165 @@ mod tests {
         assert_eq!(first.duplicate_ids, 0);
         assert_eq!(second.duplicate_ids, 1);
         assert_eq!(findings.len(), 1);
+    }
+
+    #[test]
+    fn m8_and_m9_contracts_reject_invalid_slices_gates_statuses_and_schemas() {
+        for (spec, slice) in [(M8_SPEC, "M8A"), (M9_SPEC, "M9A")] {
+            let valid = format!(
+                "| ID | A | B | C | D | E | F | G |\n|---|---|---|---|---|---|---|---|\n| TEST-01 | A | B | C | D | {slice} | owner-accepted | Required |\n"
+            );
+            let mut findings = Vec::new();
+            let mut seen = BTreeSet::new();
+            let analysis = analyze_contents(spec, &valid, &mut seen, &mut findings);
+            assert_eq!(analysis.metrics.total_rows, 1);
+            assert!(findings.is_empty());
+
+            for (mutant, expected_code) in [
+                (
+                    valid.replace(&format!("| {slice} |"), "| M7D |"),
+                    "matrix.invalid_schema",
+                ),
+                (
+                    valid.replace("| Required |", "| M5 gate |"),
+                    "matrix.invalid_schema",
+                ),
+                (
+                    valid.replace("| owner-accepted |", "| unknown |"),
+                    "matrix.invalid_status",
+                ),
+                (
+                    valid.replace("| owner-accepted | Required |", "| owner-accepted |"),
+                    "matrix.invalid_schema",
+                ),
+            ] {
+                let mut findings = Vec::new();
+                let mut seen = BTreeSet::new();
+                analyze_contents(spec, &mutant, &mut seen, &mut findings);
+                assert!(findings.iter().any(|finding| finding.code == expected_code));
+            }
+            let mut findings = Vec::new();
+            compare_declared_summary(
+                spec.path,
+                &parse_summary(
+                    "2 total unique rows\n0 owner-accepted\n0 proof-complete\n0 blocked\n0 duplicate IDs\n0 invalid statuses\n0 invalid schemas\n",
+                ),
+                &analysis,
+                &mut findings,
+            );
+            assert!(
+                findings
+                    .iter()
+                    .any(|finding| finding.code == "matrix.inconsistent_summary")
+            );
+        }
+    }
+
+    #[test]
+    fn m8_and_m9_ids_cannot_duplicate_earlier_or_each_other() {
+        let mut seen = BTreeSet::new();
+        let mut findings = Vec::new();
+        for (spec, slice) in [(M7_SPEC, "M7A"), (M8_SPEC, "M8A"), (M9_SPEC, "M9A")] {
+            let row = format!("| SAME-01 | A | B | C | D | {slice} | blocked | Required |\n");
+            analyze_contents(spec, &row, &mut seen, &mut findings);
+        }
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|finding| finding.code == "matrix.duplicate_id")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn index_and_directory_cannot_silently_omit_a_matrix() {
+        let indexed = MATRIX_SPECS
+            .iter()
+            .map(|spec| {
+                let name = spec
+                    .path
+                    .strip_prefix("docs/conformance/")
+                    .unwrap_or_else(|| {
+                        unreachable!("all matrix specifications are under docs/conformance")
+                    });
+                format!("- [M conformance matrix]({name})")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let files = MATRIX_SPECS
+            .iter()
+            .map(|spec| {
+                spec.path
+                    .strip_prefix("docs/conformance/")
+                    .unwrap_or_else(|| {
+                        unreachable!("all matrix specifications are under docs/conformance")
+                    })
+                    .to_owned()
+            })
+            .collect::<BTreeSet<_>>();
+        let mut findings = Vec::new();
+        validate_inventory(&indexed, &files, &mut findings);
+        assert!(findings.is_empty());
+
+        validate_inventory(
+            &format!("{indexed}\n- [M10 conformance matrix](m10-conformance-matrix.md)"),
+            &files,
+            &mut findings,
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == "matrix.unregistered")
+        );
+        findings.clear();
+        let mut new_file = files.clone();
+        new_file.insert("m10-conformance-matrix.md".to_owned());
+        validate_inventory(&indexed, &new_file, &mut findings);
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == "matrix.unregistered")
+        );
+        findings.clear();
+        validate_inventory("", &files, &mut findings);
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == "matrix.unindexed")
+        );
+        findings.clear();
+        validate_inventory(
+            &format!("{indexed}\n- [M10 matrix](m10-conformance-matrix.md)"),
+            &files,
+            &mut findings,
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == "matrix.unregistered")
+        );
+    }
+
+    #[test]
+    fn accepted_repository_matrices_are_registered_and_parse_cleanly() -> Result<(), String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask has no repository root".to_owned())?;
+        let mut findings = Vec::new();
+        audit_inventory(root, &mut findings)?;
+        let mut seen = BTreeSet::new();
+        let mut total = 0;
+        for spec in MATRIX_SPECS {
+            let contents = std::fs::read_to_string(root.join(spec.path))
+                .map_err(|error| format!("failed to read {}: {error}", spec.path))?;
+            let summary = parse_summary(&contents);
+            let analysis = analyze_contents(*spec, &contents, &mut seen, &mut findings);
+            compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
+            total += analysis.metrics.total_rows;
+        }
+        assert_eq!(total, 405);
+        assert!(findings.is_empty(), "{findings:?}");
+        Ok(())
     }
 }
