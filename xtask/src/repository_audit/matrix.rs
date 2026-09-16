@@ -746,9 +746,12 @@ mod tests {
         let indexed = MATRIX_SPECS
             .iter()
             .map(|spec| {
-                let name = spec.path.strip_prefix("docs/conformance/").unwrap_or_else(|| {
-                    unreachable!("all matrix specifications are under docs/conformance")
-                });
+                let name = spec
+                    .path
+                    .strip_prefix("docs/conformance/")
+                    .unwrap_or_else(|| {
+                        unreachable!("all matrix specifications are under docs/conformance")
+                    });
                 format!("- [M conformance matrix]({name})")
             })
             .collect::<Vec<_>>()
