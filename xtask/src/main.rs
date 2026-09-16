@@ -124,6 +124,14 @@ fn check_links() -> ExitCode {
         Ok(root) => root,
         Err(error) => {
             eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match check_repository_links(&root) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
             ExitCode::FAILURE
         }
     }
