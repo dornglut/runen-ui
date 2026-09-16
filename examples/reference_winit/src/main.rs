@@ -608,6 +608,15 @@ impl ReferenceHost {
         self.sync_runtime_text_input();
     }
 
+    fn collect_redraw_request(&mut self) {
+        if self.pending_redraw.is_none() {
+            self.pending_redraw = self.runtime.take_redraw_request();
+            if self.pending_redraw.is_some() {
+                proof!("stage=redraw_taken");
+            }
+        }
+    }
+
     fn establish_initial_runtime_focus(&mut self, event_loop: &ActiveEventLoop) -> bool {
         if self.initial_focus_requested || self.runtime.focus().focused_node().is_some() {
             return true;
@@ -640,6 +649,9 @@ impl ReferenceHost {
     }
 
     fn publish_if_needed(&mut self) -> Result<bool, String> {
+        if self.pending_frame.is_some() {
+            return Ok(false);
+        }
         let Some(mapping) = self.mapping else {
             return Ok(false);
         };
@@ -647,12 +659,7 @@ impl ReferenceHost {
             return Ok(false);
         }
 
-        if self.pending_redraw.is_none() {
-            self.pending_redraw = self.runtime.take_redraw_request();
-            if self.pending_redraw.is_some() {
-                proof!("stage=redraw_taken");
-            }
-        }
+        self.collect_redraw_request();
         if self.pending_redraw.is_none() && !self.mapping_publication_needed {
             return Ok(false);
         }
@@ -706,11 +713,9 @@ impl ReferenceHost {
         Ok(true)
     }
 
-    fn drive_runtime(&mut self, event_loop: &ActiveEventLoop) {
+    fn drive_runtime(&mut self, _event_loop: &ActiveEventLoop) {
         self.pump_runtime_once();
-        if let Err(error) = self.publish_if_needed() {
-            self.fail(event_loop, &error);
-        }
+        self.collect_redraw_request();
     }
 
     fn submit_pointer_event(
@@ -1299,6 +1304,20 @@ impl ReferenceHost {
         }
     }
 
+    fn record_presented_frame(&mut self, event_loop: &ActiveEventLoop, pending: &PendingFrame) {
+        self.displayed_frame = Some(DisplayedFrame::from_pending(pending));
+        self.pending_frame = None;
+        proof!(
+            "stage=presented input_context={:?} physical={}x{} native_scale={}",
+            pending.publication.input_context(),
+            pending.mapping.physical_size.width,
+            pending.mapping.physical_size.height,
+            pending.mapping.native_scale_factor
+        );
+        self.drive_runtime(event_loop);
+        self.request_pending_redraw();
+    }
+
     fn render_pending(&mut self, event_loop: &ActiveEventLoop) {
         self.pump_runtime_once();
         if let Err(error) = self.publish_if_needed() {
@@ -1353,15 +1372,7 @@ impl ReferenceHost {
                     );
                     return;
                 }
-                self.displayed_frame = Some(DisplayedFrame::from_pending(&pending));
-                self.pending_frame = None;
-                proof!(
-                    "stage=presented input_context={:?} physical={}x{} native_scale={}",
-                    pending.publication.input_context(),
-                    pending.mapping.physical_size.width,
-                    pending.mapping.physical_size.height,
-                    pending.mapping.native_scale_factor
-                );
+                self.record_presented_frame(event_loop, &pending);
             }
             Err(
                 error @ (PublicationRenderError::SurfaceTimeout
@@ -1409,7 +1420,7 @@ impl ReferenceHost {
 impl ReferenceHost {
     fn handle_accessibility_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
         event: AccessibilityEvent,
     ) {
         match event {
@@ -1453,9 +1464,7 @@ impl ReferenceHost {
             }
         }
         self.drain_runtime_trace();
-        if let Err(error) = self.publish_if_needed() {
-            self.fail(event_loop, &error);
-        }
+        self.collect_redraw_request();
     }
 }
 
