@@ -754,7 +754,12 @@ mod tests {
             .join("\n");
         let files = MATRIX_SPECS
             .iter()
-            .map(|spec| spec.path.strip_prefix("docs/conformance/").unwrap().to_owned())
+            .map(|spec| {
+                spec.path
+                    .strip_prefix("docs/conformance/")
+                    .unwrap()
+                    .to_owned()
+            })
             .collect::<BTreeSet<_>>();
         let mut findings = Vec::new();
         validate_inventory(&indexed, &files, &mut findings);
