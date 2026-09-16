@@ -73,14 +73,27 @@ fn validate_private_seam_isolation(root: &Path) -> Result<(), String> {
     let prepared = run_probe_cargo(
         root,
         &probe.manifest(),
-        &["metadata", "--offline", "--format-version", "1", "--no-deps"],
+        &[
+            "metadata",
+            "--offline",
+            "--format-version",
+            "1",
+            "--no-deps",
+        ],
     )?;
     require_success("prepare offline probe lockfile", &prepared)?;
 
     let enabled = run_probe_cargo(
         root,
         &probe.manifest(),
-        &["check", "--lib", "--offline", "--locked", "--features", "seam-enabled"],
+        &[
+            "check",
+            "--lib",
+            "--offline",
+            "--locked",
+            "--features",
+            "seam-enabled",
+        ],
     )?;
     require_success("compile positive feature-enabled seam control", &enabled)?;
 
@@ -101,7 +114,11 @@ fn validate_private_seam_isolation(root: &Path) -> Result<(), String> {
 }
 
 fn run_probe_cargo(root: &Path, manifest: &Path, arguments: &[&str]) -> Result<Output, String> {
-    eprintln!("> cargo +stable {} --manifest-path {}", arguments.join(" "), manifest.display());
+    eprintln!(
+        "> cargo +stable {} --manifest-path {}",
+        arguments.join(" "),
+        manifest.display()
+    );
     Command::new("rustup")
         .args(["run", "stable", "cargo"])
         .args(arguments)
@@ -157,7 +174,9 @@ mod tests {
         assert!(is_expected_private_seam_rejection(
             "error[E0599]: no method named `__seed_next_work_sequence_for_test` found"
         ));
-        assert!(!is_expected_private_seam_rejection("error: dependency unavailable"));
+        assert!(!is_expected_private_seam_rejection(
+            "error: dependency unavailable"
+        ));
         assert!(!is_expected_private_seam_rejection(
             "error[E0599]: no method named `other_method` found"
         ));
