@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod public_consumer;
 mod repository_audit;
 
 use std::{
@@ -95,6 +96,11 @@ fn validate() -> ExitCode {
         }
     }
 
+    if let Err(error) = public_consumer::validate(&root) {
+        eprintln!("{error}");
+        return ExitCode::FAILURE;
+    }
+
     if let Err(error) = validate_current_licensing(&root) {
         eprintln!("{error}");
         return ExitCode::FAILURE;
@@ -116,14 +122,6 @@ fn validate() -> ExitCode {
 fn check_links() -> ExitCode {
     let root = match workspace_root() {
         Ok(root) => root,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    match check_repository_links(&root) {
-        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error}");
             ExitCode::FAILURE
