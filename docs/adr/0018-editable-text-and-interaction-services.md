@@ -86,15 +86,27 @@ session-local grouping metadata, but never record speculative or rejected edits
 as committed history. No universal cross-document history, editor product model,
 private mutation bridge, or alternate action dispatch is introduced.
 
-One editing ingress produces an exact-owner provisional edit intent. Preflight
-checks target/surface/revision/range validity and reserved output capacity before
-callback or application mutation where possible. Successful application update,
-reconciliation and the existing staged publication atomically establish the
-resulting document/session view; failure before commit exposes neither a new
-caret/selection nor external host request. An unsupported callback panic remains
-outside the transaction's recoverable contract, as in M4. A committed app edit
-may require later surface publication, but no renderer/device success is required
-to make the app's already committed durable document change real.
+One editing ingress produces an exact-owner provisional edit intent. The routed
+input transaction first validates its target, surface, document revision and
+ranges and preflights the required output capacity. A successful routed event
+commits only its provisional interaction changes and enqueues a typed application
+edit action; **it does not synchronously call `UiApp::update`**. At that action's
+later queue position, ADR 0006 separately preflights, invokes `update`, builds
+and reconciles the root, validates/rebases or resets the mounted editing session,
+commits the resulting application/interaction state and effects, and marks
+surface publication dirty. The next successful publication stages correlated
+layout, caret, paint, hit and semantics together; it is **not atomic with** the
+application action transaction. An unchanged or rejected application edit must
+not advance document revision, selection or undo history or start host work.
+
+Recoverable rejection before mutation exposes no speculative document/session
+change or host request. If an unexpected integrity failure occurs **after**
+application-state mutation, the inherited ADR 0006 terminal `Poisoned` policy
+applies: do not claim arbitrary application mutation was rolled back, do not
+publish a partial new surface or start provisional external work, and reject
+further callbacks. Callback panics remain unsupported. A successfully committed
+app edit needs subsequent surface publication for presentation but never a
+renderer/device success to establish durable application state.
 
 ### Exact text coordinates, boundaries and geometry
 
@@ -248,7 +260,10 @@ and confidentiality; semantic range/action correlation; pointer text selection;
 scroll/capture/drag/cursor; controller/touch profile contracts; public downstream
 widget/host proof; and real native/renderer evidence. It must not recopy M4–M9
 observations or claim current production behavior. All implementation rows start
-`blocked` until their scoped implementations and proofs are accepted.
+`blocked` until their scoped implementations and proofs are accepted. Editing
+proof must distinguish event intent commit, later app action commit, subsequent
+publication, recoverable pre-mutation rejection and post-mutation terminal poison;
+it must not assert rollback of arbitrary application state.
 
 Dependency-derived implementation sequence *after* accepted architecture and
 matrix registration:
