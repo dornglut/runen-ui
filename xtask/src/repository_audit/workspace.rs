@@ -47,6 +47,33 @@ pub(super) struct WorkspaceMetrics {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeclaredWorkspaceMember {
+    pub relative: PathBuf,
+    pub manifest_relative: PathBuf,
+    pub manifest: String,
+    pub package: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorkspaceInventoryIssueKind {
+    MissingManifest,
+    MissingPackageName,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WorkspaceInventoryIssue {
+    relative: PathBuf,
+    manifest_relative: PathBuf,
+    kind: WorkspaceInventoryIssueKind,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct WorkspaceInventory {
+    members: Vec<DeclaredWorkspaceMember>,
+    issues: Vec<WorkspaceInventoryIssue>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct WorkspaceMember {
     relative: PathBuf,
     package: String,
@@ -61,55 +88,52 @@ enum DependencySection {
 }
 
 pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<WorkspaceMetrics, String> {
-    let root_manifest = read(root, ROOT_MANIFEST)?;
-    let member_paths = parse_workspace_members(&root_manifest)
-        .ok_or_else(|| format!("failed to parse [workspace].members from {ROOT_MANIFEST}"))?;
+    let inventory = inspect_declared_workspace_members(root)?;
+    for issue in inventory.issues {
+        let (code, path, message) = match issue.kind {
+            WorkspaceInventoryIssueKind::MissingManifest => (
+                "workspace.member_missing_manifest",
+                path_text(&issue.relative),
+                "workspace member does not contain Cargo.toml",
+            ),
+            WorkspaceInventoryIssueKind::MissingPackageName => (
+                "workspace.member_missing_package_name",
+                path_text(&issue.manifest_relative),
+                "workspace member manifest does not define [package].name",
+            ),
+        };
+        findings.push(Finding::fatal(code, Some(path), message));
+    }
 
     let mut members = Vec::new();
     let mut package_names = BTreeSet::new();
 
-    for relative in member_paths {
-        let manifest_relative = relative.join("Cargo.toml");
-        let manifest_path = root.join(&manifest_relative);
-        if !manifest_path.is_file() {
-            findings.push(Finding::fatal(
-                "workspace.member_missing_manifest",
-                Some(path_text(&relative)),
-                "workspace member does not contain Cargo.toml",
-            ));
-            continue;
-        }
-
-        let manifest = fs::read_to_string(&manifest_path).map_err(|error| {
-            format!(
-                "failed to read workspace member manifest {}: {error}",
-                manifest_relative.display()
-            )
-        })?;
-        let Some(package) = parse_package_name(&manifest) else {
-            findings.push(Finding::fatal(
-                "workspace.member_missing_package_name",
-                Some(path_text(&manifest_relative)),
-                "workspace member manifest does not define [package].name",
-            ));
-            continue;
-        };
-        if !package_names.insert(package.clone()) {
+    for declared in inventory.members {
+        if !package_names.insert(declared.package.clone()) {
             findings.push(Finding::fatal(
                 "workspace.duplicate_package_name",
-                Some(path_text(&manifest_relative)),
-                format!("workspace package name `{package}` is duplicated"),
+                Some(path_text(&declared.manifest_relative)),
+                format!(
+                    "workspace package name `{}` is duplicated",
+                    declared.package
+                ),
             ));
         }
 
-        let (dependencies, dev_dependencies) = parse_dependency_names(&manifest);
+        let (dependencies, dev_dependencies) = parse_dependency_names(&declared.manifest);
         let member = WorkspaceMember {
-            relative,
-            package,
+            relative: declared.relative,
+            package: declared.package,
             dependencies,
             dev_dependencies,
         };
-        validate_member_boundaries(root, &member, &manifest, &manifest_relative, findings)?;
+        validate_member_boundaries(
+            root,
+            &member,
+            &declared.manifest,
+            &declared.manifest_relative,
+            findings,
+        )?;
         members.push(member);
     }
 
@@ -154,30 +178,14 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
 }
 
 pub(super) fn public_consumer_policy(root: &Path) -> Result<PublicConsumerPolicy, String> {
-    let root_manifest = read(root, ROOT_MANIFEST)?;
-    let member_paths = parse_workspace_members(&root_manifest)
-        .ok_or_else(|| format!("failed to parse [workspace].members from {ROOT_MANIFEST}"))?;
     let mut packages = BTreeSet::new();
     let mut private_features = BTreeSet::new();
 
-    for relative in member_paths {
-        let manifest_relative = relative.join("Cargo.toml");
-        let manifest = fs::read_to_string(root.join(&manifest_relative)).map_err(|error| {
-            format!(
-                "failed to read workspace member manifest {}: {error}",
-                manifest_relative.display()
-            )
-        })?;
-        let package = parse_package_name(&manifest).ok_or_else(|| {
-            format!(
-                "workspace member manifest {} does not define [package].name",
-                manifest_relative.display()
-            )
-        })?;
-        if is_public_consumer(&relative, &package) {
-            packages.insert(package);
+    for member in declared_workspace_members(root)? {
+        if is_public_consumer(&member.relative, &member.package) {
+            packages.insert(member.package);
         }
-        private_features.extend(private_feature_names(&manifest));
+        private_features.extend(private_feature_names(&member.manifest));
     }
 
     if packages.is_empty() {
@@ -193,6 +201,75 @@ pub(super) fn public_consumer_policy(root: &Path) -> Result<PublicConsumerPolicy
         packages: packages.into_iter().collect(),
         private_features: private_features.into_iter().collect(),
     })
+}
+
+pub fn declared_workspace_members(root: &Path) -> Result<Vec<DeclaredWorkspaceMember>, String> {
+    let inventory = inspect_declared_workspace_members(root)?;
+    if inventory.issues.is_empty() {
+        return Ok(inventory.members);
+    }
+
+    let details = inventory
+        .issues
+        .iter()
+        .map(|issue| match issue.kind {
+            WorkspaceInventoryIssueKind::MissingManifest => format!(
+                "workspace member {} does not contain Cargo.toml",
+                issue.relative.display()
+            ),
+            WorkspaceInventoryIssueKind::MissingPackageName => format!(
+                "workspace member manifest {} does not define [package].name",
+                issue.manifest_relative.display()
+            ),
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    Err(format!(
+        "invalid declared workspace member inventory: {details}"
+    ))
+}
+
+fn inspect_declared_workspace_members(root: &Path) -> Result<WorkspaceInventory, String> {
+    let root_manifest = read(root, ROOT_MANIFEST)?;
+    let member_paths = parse_workspace_members(&root_manifest)
+        .ok_or_else(|| format!("failed to parse [workspace].members from {ROOT_MANIFEST}"))?;
+    let mut inventory = WorkspaceInventory::default();
+
+    for relative in member_paths {
+        let manifest_relative = relative.join("Cargo.toml");
+        let manifest_path = root.join(&manifest_relative);
+        if !manifest_path.is_file() {
+            inventory.issues.push(WorkspaceInventoryIssue {
+                relative,
+                manifest_relative,
+                kind: WorkspaceInventoryIssueKind::MissingManifest,
+            });
+            continue;
+        }
+
+        let manifest = fs::read_to_string(&manifest_path).map_err(|error| {
+            format!(
+                "failed to read workspace member manifest {}: {error}",
+                manifest_relative.display()
+            )
+        })?;
+        let Some(package) = parse_package_name(&manifest) else {
+            inventory.issues.push(WorkspaceInventoryIssue {
+                relative,
+                manifest_relative,
+                kind: WorkspaceInventoryIssueKind::MissingPackageName,
+            });
+            continue;
+        };
+        inventory.members.push(DeclaredWorkspaceMember {
+            relative,
+            manifest_relative,
+            manifest,
+            package,
+        });
+    }
+
+    Ok(inventory)
 }
 
 fn is_public_consumer(relative: &Path, package: &str) -> bool {
