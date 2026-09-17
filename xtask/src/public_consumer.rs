@@ -98,13 +98,7 @@ fn validate_private_seam_isolation(root: &Path) -> Result<(), String> {
     let prepared = run_probe_cargo(
         root,
         &probe.manifest(),
-        &[
-            "metadata",
-            "--offline",
-            "--format-version",
-            "1",
-            "--no-deps",
-        ],
+        &["metadata", "--offline", "--format-version", "1"],
     )?;
     require_success("prepare offline probe lockfile", &prepared)?;
 
