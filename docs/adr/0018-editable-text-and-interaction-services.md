@@ -84,15 +84,16 @@ contract rejection, and revision reuse must never make an old request current.
 An exact mounted text-editing owner may retain *ephemeral session state*: caret
 anchor/active selection and affinity, preferred inline position for vertical
 movement, pointer-selection gesture, current IME preedit, and pending service
-request tokens. These states end on exact generation removal or replacement;
-compatible reconciliation preserves them only after validating document revision,
-text identity and configured session policy. Application-controlled document
-replacement must deterministically rebase a session through a supplied validated
-change mapping or reset it; it must never guess offsets in unrelated text.
-Runtime also issues a non-wrapping editing-session generation. Document identity
-change, incompatible revision movement, explicit reset or exact owner replacement
-retires that generation, so an application-authored identity/revision pair is
-never by itself sufficient to admit a late edit or service completion.
+request tokens. Live authority for these states ends on exact generation removal
+or replacement; compatible reconciliation preserves them only after validating
+document revision, text identity and configured session policy. Application-
+controlled document replacement must deterministically rebase a session through
+a supplied validated change mapping or reset it; it must never guess offsets in
+unrelated text. Runtime also issues a non-wrapping editing-session generation.
+Document identity change, incompatible revision movement, explicit reset or exact
+owner replacement retires that generation, so an application-authored identity/
+revision pair is never by itself sufficient to admit a late edit or service
+completion.
 
 The same application document identity may be presented by multiple mounted
 owners. Each owner retains an independent editing-session generation, selection,
@@ -109,15 +110,24 @@ session-local grouping metadata, but never record speculative or rejected edits
 as committed history. No universal cross-document history, editor product model,
 private mutation bridge, or alternate action dispatch is introduced.
 
-One editing ingress produces a runtime-issued, exact-session `EditRequestId` and
-one provisional `EditIntent`. The intent names its document identity, base
-revision, predecessor request when one exists, checked replacement range,
-replacement text, proposed selection and edit kind. The routed input transaction
-first validates its target, surface, editing-session generation, document
-revision and ranges and preflights the required output capacity. A successful
+One editing ingress produces a runtime-issued, non-wrapping exact-session
+`EditRequestId` and one provisional `EditIntent`. The intent names its document
+identity, base revision, predecessor request when one exists, checked replacement
+range, replacement text, proposed selection and edit kind. The routed input
+transaction first validates its target, surface, editing-session generation,
+document revision and ranges and preflights request identity plus required output
+capacity. Identity exhaustion or saturation rejects before mutation. A successful
 routed event commits only bounded provisional session state and enqueues the
 application action produced by the widget's mapper; **it does not synchronously
-call `UiApp::update`**.
+call `UiApp::update`**. That commit pairs the mapped opaque `Action` with an
+immutable private ordinary/edit origin in the existing canonical application-
+action envelope. Edit origin binds the exact request ID, mounted-owner generation,
+editing-session generation and authoritative pending-chain record/document facts.
+Recursive public action mapping changes only the `Action`; it cannot erase or
+forge this private binding. Direct submission, application effects and ordinary
+routed callbacks always create ordinary origin, even when their application action
+value happens to equal one produced by an editing mapper. Runtime never reflects
+on, downcasts or compares `Action` to recover origin.
 
 The bounded provisional state is a pending edit projection, not a second durable
 document or undo journal. It exists because the global FIFO may already contain
@@ -126,34 +136,58 @@ the first event. Each later intent therefore names the exact predecessor and is
 derived from the same owner-local pending projection rather than pretending that
 the application revision has already advanced. Saturation rejects before the
 routed callback/default commits; it never drops the oldest request or silently
-falls back to the stale application text.
+falls back to the stale application text. Exact owner removal/replacement or
+session reset immediately retires live selection, preedit, input and service
+authority and admits no new edit ingress. It does not erase the minimum pending-
+chain facts required by already committed edit-origin envelopes: those facts enter
+a non-interactive retired/draining state until every referenced immutable envelope
+resolves or terminal shutdown cancels the queue. Draining grants no mounted
+identity, focus, input, publication or service authority and cannot revive a
+session through document/revision reuse or arena-slot reuse.
 
-At an edit action's later queue position, ADR 0006 separately preflights and
-invokes `update`. An edit-origin action must return exactly one transaction-local
-framework resolution alongside its ordinary update effects; the resolution is
-not an effect, queued action or persistent widget contribution. It echoes the
-opaque request ID and classifies the proposal as accepted, rejected or
+At an action's later queue position, ADR 0006 separately preflights and invokes
+`update`; the processor derives the response obligation only from the dequeued
+private origin. An edit-origin action must return exactly one transaction-local
+framework resolution alongside its ordinary update effects, while an ordinary-
+origin action must return none. The resolution is not an effect, queued action,
+task, subscription, host completion or persistent widget contribution. It echoes
+the opaque request ID and classifies the proposal as accepted, rejected or
 transformed, with the resulting document identity/revision and any required
-validated change/selection mapping. The exact API may extend the existing
-`IntoEffects` result into a compatible update-output conversion, but `()` must
-remain the no-effects result for ordinary non-edit actions and no second update
-callback or queue is introduced.
+validated change/selection mapping.
 
-Runtime then builds and reconciles the root and verifies the transaction-local
-resolution against the resulting authoritative editable contribution. An exact
-proposed text/revision result may use the ordinary accepted shorthand, but
-absence of a matching result is not guessed acceptance. Because response
-validation occurs after `update` may have mutated application state, a missing,
-foreign, duplicate or internally inconsistent resolution is an unexpected
-post-mutation integrity failure governed by ADR 0006's terminal `Poisoned`
-policy; runtime must not silently reinterpret it as rejection.
+`UiApp::update` therefore requires a distinct immediate update-output conversion,
+separate from effect semantics. The exact API spelling may be `IntoUpdateOutput`,
+implemented for `()`, `Effects` and a resolution-bearing `UpdateOutput`. `()` and
+`Effects` remain ordinary no-resolution results; an edit-capable application uses
+one concrete update-output type for all action branches, with an empty/effects-only
+ordinary branch and a resolution-bearing edit branch. `UiApp::initial_effects`
+and effect composition remain `IntoEffects`-only and cannot carry a resolution.
+No second update callback or queue is introduced.
+
+Runtime checks origin-driven resolution cardinality, then builds and reconciles
+the root and verifies an edit resolution against the exact pending chain and
+resulting authoritative editable contribution before committing any resulting
+effect or framework-service work. An exact proposed text/revision result may use
+the ordinary accepted shorthand, but absence of a matching result is not guessed
+acceptance. A retired/draining request may be accepted or transformed only when
+the rebuilt tree still supplies a matching authoritative presentation whose
+document result can be verified; otherwise the application must reject it without
+claiming a live owner-local session result. A replacement presentation never
+inherits the retired owner's selection, preedit, pending or service authority.
+Because response validation occurs after `update` may have mutated application
+state, a missing, foreign, duplicate or internally inconsistent edit resolution,
+or any resolution returned for an ordinary-origin envelope, is an unexpected
+post-mutation integrity failure governed by ADR 0006's terminal `Poisoned` policy;
+runtime must not silently ignore it or reinterpret it as rejection.
 Accepted resolution commits the authoritative application document and matching
-session update; rejection restores/rebases the pre-request session state;
-transformation validates the supplied mapping. Exact acceptance preserves a
-causally valid dependent projection. Rejection, or transformation without a
-mapping that can validate the whole suffix, removes that suffix from the
-displayed projection but does not delete its queued actions or request identities;
-new edit ingress rejects before mutation until the invalid suffix drains.
+live session update when that exact session remains compatible; rejection
+restores/rebases the pre-request live session state when one remains;
+transformation validates the supplied mapping. A retired/draining chain receives
+no session mutation. Exact acceptance preserves a causally valid dependent
+projection. Rejection, or transformation without a mapping that can validate the
+whole suffix, removes that suffix from the displayed projection but does not
+delete its queued actions, origins or request identities; new edit ingress rejects
+before mutation until the invalid suffix drains.
 Dependent pending intents remain causally bound to their original predecessor
 and immutable application action; runtime does not rewrite an already queued
 `Action`. When each dependent action reaches its FIFO position, the application
@@ -162,7 +196,11 @@ validated mapping, or rejects it as a superseded suffix. Runtime validates that
 response against the pending chain and never retargets it to unrelated text.
 The application owns the policy decision; runtime owns request identity,
 pending-chain integrity and resolution validation. A request can resolve once
-only.
+only. Canonical trace correlates the application-action sequence with redacted
+ordinary/edit origin, request/session identity, live-versus-draining state,
+resolution outcome and poison reason without requiring `Action: Debug` or
+capturing document/replacement text. It remains observation over the canonical
+queue and pending chain, not a second mutable ledger.
 
 The action transaction commits resulting application/interaction state and
 effects and marks surface publication dirty. The next successful publication
@@ -358,9 +396,12 @@ it must not assert rollback of arbitrary application state. It must also cover
 multiple queued edit ingresses ahead of their actions, exact request acknowledgement,
 accepted/rejected/transformed prefix resolution, dependent-suffix rebase or
 rejection, invalid-suffix ingress refusal and drain, missing/foreign/duplicate
-resolution poisoning, document-revision reuse, retired editing-session
-generations and late service completion after an apparent application identity/
-revision ABA.
+resolution poisoning, resolution on an ordinary envelope, attempted resolution
+through a delayed effect, equal opaque action values with distinct origins,
+owner removal/replacement and arena-slot reuse before queue-front processing,
+non-interactive retired-chain drain, document-revision reuse, retired editing-
+session generations and late service completion after an apparent application
+identity/revision ABA.
 
 Dependency-derived implementation sequence *after* accepted architecture and
 matrix registration:
