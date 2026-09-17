@@ -13,6 +13,7 @@ const PUBLIC_PACKAGES: &[&str] = &[
     "runenui_external_renderer_conformance",
     "runenui_external_host_conformance",
 ];
+const PRIVATE_FEATURE: &str = "internal-test-seams";
 const PRIVATE_METHOD: &str = "__seed_next_work_sequence_for_test";
 const PROBE_MANIFEST: &str = "[package]\nname = \"runenui-public-feature-probe\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[workspace]\nresolver = \"3\"\n\n[dependencies]\nrunenui_runtime = { path = \"../../crates/runenui_runtime\" }\nrunenui_core = { path = \"../../crates/runenui_core\" }\n\n[features]\nseam-enabled = [\"runenui_runtime/internal-test-seams\"]\n";
 const PROBE_SOURCE: &str = "use runenui_core::UiApp;\nuse runenui_runtime::AppRuntime;\n\npub fn probe<App: UiApp>(runtime: &mut AppRuntime<App>) {\n    runtime.__seed_next_work_sequence_for_test(1);\n}\n";
@@ -21,6 +22,7 @@ static NEXT_PROBE: AtomicUsize = AtomicUsize::new(0);
 pub fn validate(root: &Path) -> Result<(), String> {
     let arguments = public_test_arguments();
     super::run_cargo_step(root, "stable", &arguments)?;
+    validate_public_feature_graph(root)?;
     validate_private_seam_isolation(root)
 }
 
@@ -30,6 +32,29 @@ fn public_test_arguments() -> Vec<&'static str> {
         arguments.extend(["--package", package]);
     }
     arguments
+}
+
+fn validate_public_feature_graph(root: &Path) -> Result<(), String> {
+    let mut arguments = vec!["tree", "--locked", "--offline", "--edges", "features"];
+    for package in PUBLIC_PACKAGES {
+        arguments.extend(["--package", package]);
+    }
+    eprintln!("> cargo +stable {}", arguments.join(" "));
+    let output = Command::new("rustup")
+        .args(["run", "stable", "cargo"])
+        .args(&arguments)
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("failed to inspect public-consumer Cargo features: {error}"))?;
+    require_success("inspect public-consumer Cargo feature graph", &output)?;
+    let graph = String::from_utf8_lossy(&output.stdout);
+    if graph.contains(PRIVATE_FEATURE) {
+        return Err(format!(
+            "public-consumer Cargo feature graph activates `{PRIVATE_FEATURE}`:\n{graph}"
+        ));
+    }
+    eprintln!("> public-consumer Cargo feature graph excludes `{PRIVATE_FEATURE}`");
+    Ok(())
 }
 
 struct ProbeDirectory(PathBuf);
