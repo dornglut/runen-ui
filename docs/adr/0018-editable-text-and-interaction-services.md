@@ -10,12 +10,12 @@
 >
 > **Reviewed baseline:** `36b779f700eb3c0ca4eafad0bf4a582339cec661`
 >
-> **Acceptance:** this is a decision candidate, not current implementation or an
-> independently sufficient M10 architecture gate. It becomes accepted target
-> architecture only after owner review, the corresponding permanent M10
-> conformance inventory and its fail-closed audit registration are accepted on
-> `main`, and accepted-main validation is green. No M10 production implementation
-> or new production dependency follows from publishing this draft alone.
+> **Acceptance:** owner acceptance of this ADR establishes target architecture
+> but is not independently sufficient to complete M10A0. Before merge, the
+> status and acceptance provenance must record that owner decision; a proposed
+> ADR must not land as accepted default-branch authority. M10 implementation
+> remains prohibited until the corresponding permanent conformance inventory,
+> fail-closed audit registration and accepted-main validation are also accepted.
 
 ## Context and inherited authority
 
@@ -70,6 +70,17 @@ selection intentions and grouping hints, but may not silently mutate a second
 persisted document. The application accepts or rejects document changes through
 its ordinary typed `UiApp::update` transaction.
 
+An editable contribution supplies a stable application document identity, its
+current revision, current text and an owner-local public mapper from one neutral
+`EditIntent` into the application's `Action`. The exact API spelling may be a
+widget callback rather than a stored closure, but recursive action mapping must
+map it like every other widget-produced action. Runtime never fabricates an
+application action or invokes `UiApp::update` from a widget callback. Within one
+live editing session, equal document identity and revision require equal source
+text. Editing-policy changes explicitly preserve or reset the runtime session;
+they do not masquerade as document edits. Same-revision content drift is a
+contract rejection, and revision reuse must never make an old request current.
+
 An exact mounted text-editing owner may retain *ephemeral session state*: caret
 anchor/active selection and affinity, preferred inline position for vertical
 movement, pointer-selection gesture, current IME preedit, and pending service
@@ -78,6 +89,10 @@ compatible reconciliation preserves them only after validating document revision
 text identity and configured session policy. Application-controlled document
 replacement must deterministically rebase a session through a supplied validated
 change mapping or reset it; it must never guess offsets in unrelated text.
+Runtime also issues a non-wrapping editing-session generation. Document identity
+change, incompatible revision movement, explicit reset or exact owner replacement
+retires that generation, so an application-authored identity/revision pair is
+never by itself sufficient to admit a late edit or service completion.
 
 Undo/redo is a reusable transaction protocol, not a second hidden document.
 Applications own the journal and grouping policy needed to reverse committed
@@ -86,18 +101,69 @@ session-local grouping metadata, but never record speculative or rejected edits
 as committed history. No universal cross-document history, editor product model,
 private mutation bridge, or alternate action dispatch is introduced.
 
-One editing ingress produces an exact-owner provisional edit intent. The routed
-input transaction first validates its target, surface, document revision and
-ranges and preflights the required output capacity. A successful routed event
-commits only its provisional interaction changes and enqueues a typed application
-edit action; **it does not synchronously call `UiApp::update`**. At that action's
-later queue position, ADR 0006 separately preflights, invokes `update`, builds
-and reconciles the root, validates/rebases or resets the mounted editing session,
-commits the resulting application/interaction state and effects, and marks
-surface publication dirty. The next successful publication stages correlated
-layout, caret, paint, hit and semantics together; it is **not atomic with** the
-application action transaction. An unchanged or rejected application edit must
-not advance document revision, selection or undo history or start host work.
+One editing ingress produces a runtime-issued, exact-session `EditRequestId` and
+one provisional `EditIntent`. The intent names its document identity, base
+revision, predecessor request when one exists, checked replacement range,
+replacement text, proposed selection and edit kind. The routed input transaction
+first validates its target, surface, editing-session generation, document
+revision and ranges and preflights the required output capacity. A successful
+routed event commits only bounded provisional session state and enqueues the
+application action produced by the widget's mapper; **it does not synchronously
+call `UiApp::update`**.
+
+The bounded provisional state is a pending edit projection, not a second durable
+document or undo journal. It exists because the global FIFO may already contain
+multiple committed-text/key events ahead of the application action emitted by
+the first event. Each later intent therefore names the exact predecessor and is
+derived from the same owner-local pending projection rather than pretending that
+the application revision has already advanced. Saturation rejects before the
+routed callback/default commits; it never drops the oldest request or silently
+falls back to the stale application text.
+
+At an edit action's later queue position, ADR 0006 separately preflights and
+invokes `update`. An edit-origin action must return exactly one transaction-local
+framework resolution alongside its ordinary update effects; the resolution is
+not an effect, queued action or persistent widget contribution. It echoes the
+opaque request ID and classifies the proposal as accepted, rejected or
+transformed, with the resulting document identity/revision and any required
+validated change/selection mapping. The exact API may extend the existing
+`IntoEffects` result into a compatible update-output conversion, but `()` must
+remain the no-effects result for ordinary non-edit actions and no second update
+callback or queue is introduced.
+
+Runtime then builds and reconciles the root and verifies the transaction-local
+resolution against the resulting authoritative editable contribution. An exact
+proposed text/revision result may use the ordinary accepted shorthand, but
+absence of a matching result is not guessed acceptance. Because response
+validation occurs after `update` may have mutated application state, a missing,
+foreign, duplicate or internally inconsistent resolution is an unexpected
+post-mutation integrity failure governed by ADR 0006's terminal `Poisoned`
+policy; runtime must not silently reinterpret it as rejection.
+Accepted resolution commits the authoritative application document and matching
+session update; rejection restores/rebases the pre-request session state;
+transformation validates the supplied mapping. Exact acceptance preserves a
+causally valid dependent projection. Rejection, or transformation without a
+mapping that can validate the whole suffix, removes that suffix from the
+displayed projection but does not delete its queued actions or request identities;
+new edit ingress rejects before mutation until the invalid suffix drains.
+Dependent pending intents remain causally bound to their original predecessor
+and immutable application action; runtime does not rewrite an already queued
+`Action`. When each dependent action reaches its FIFO position, the application
+explicitly accepts it against the then-current revision, transforms it with a
+validated mapping, or rejects it as a superseded suffix. Runtime validates that
+response against the pending chain and never retargets it to unrelated text.
+The application owns the policy decision; runtime owns request identity,
+pending-chain integrity and resolution validation. A request can resolve once
+only.
+
+The action transaction commits resulting application/interaction state and
+effects and marks surface publication dirty. The next successful publication
+stages correlated layout, caret, paint, hit and semantics together; it is **not
+atomic with** the application action transaction. An unchanged or rejected edit
+must not advance authoritative document revision, committed selection or undo
+history or start host work. Burst input requires permanent proof for accepted,
+rejected and transformed prefixes; hosts are not allowed to make this correct
+merely by pumping every input action to completion before accepting the next.
 
 Recoverable rejection before mutation exposes no speculative document/session
 change or host request. If an unexpected integrity failure occurs **after**
@@ -167,10 +233,15 @@ semantic contribution/publication and exact semantic-action admission. Runtime
 issues semantic identities; the native adapter projects them to AccessKit and
 translates actions back. Semantic offsets are validated against the same
 identified source revision and caret map used by visual selection, and bounds
-use the same final layout/presentation correlation. Sensitive/password content
-requires an explicit redaction policy: never expose literal secret content in
-trace, diagnostic export, clipboard by default or semantic text where the
-privacy contract forbids it. No second native/AccessKit text-model authority.
+use the same final layout/presentation correlation. Each editable contribution
+declares public or secret sensitivity. Secret sensitivity is fail-closed: literal
+content is absent from ordinary trace/diagnostic export and semantic value/range
+text, copy/cut defaults are unavailable, and an adapter cannot downgrade the
+classification. Paste may still produce a secret-classified edit intent whose
+literal payload remains absent from trace and diagnostics. Product-specific
+controlled disclosure requires an explicit application action outside the
+ordinary editing default; no implicit clipboard or semantic opt-out exists. No
+second native/AccessKit text-model authority.
 
 ### Framework services with host-owned execution
 
@@ -184,10 +255,12 @@ activation/permission decisions, actual clipboard contents and OS handles.
 Adapters translate only neutral facts and platform formats. Renderer and text
 shaper acquire no native service authority.
 
-Service requests bind exact mounted generation, surface and relevant document/
-composition revision; late completion after removal, focus change, revision
-replacement or shutdown is rejected or discarded without leaking payload into
-another owner. Clipboard read may fail, be unavailable or require a user
+Service requests bind exact mounted generation, editing-session generation,
+surface and relevant document/composition revision; late completion after
+removal, focus change, session reset, revision replacement or shutdown is
+rejected or discarded without leaking payload into another owner. Reusing an
+application-authored document identity or revision cannot revive the retired
+runtime session token. Clipboard read may fail, be unavailable or require a user
 activation; such outcomes are typed and never silently treated as empty text.
 Cut removes text only after the configured copy-success policy commits;
 paste validates the clipboard result, insertion limits and revision again at
@@ -204,11 +277,15 @@ M4 `PointerId`/capture/physical-hit and logical wheel events remain canonical.
 M10 adds scroll-container state, viewport-to-content offset, clipping, bounded
 extent/overscroll policy and scroll-to-target commands through runtime-owned
 layout/publication invalidation. One transform of final logical geometry
-correlates scrolled paint, hit, focus and semantics. Wheel default routes to
-the closest eligible scroll owner through the ordinary route and bubbles or
-propagates remaining delta only under an explicit deterministic policy;
-no renderer clipping, private widget scroll tree, synthetic per-frame action
-queue or auto-scroll during a failed transaction.
+correlates scrolled paint, hit, focus and semantics. Wheel default routes to the
+closest eligible scroll owner through the ordinary route. That owner consumes
+only the clamped delta that changes its logical offset; the exact unconsumed
+remainder continues to the next eligible ancestor in route order. A prevented
+default suppresses the complete default chain. Visual overscroll does not count
+as logical consumption, and axis conversion, epsilon guessing or renderer-
+observed position cannot alter the remainder. There is no renderer clipping,
+private widget scroll tree, synthetic per-frame action queue or auto-scroll
+during a failed transaction.
 
 Pointer text selection obtains exact position from the retained displayed
 snapshot and caret map; capture follows the existing exact-owner lifetime and
@@ -225,7 +302,13 @@ uses existing independent pointer streams and exact multi-pointer ownership,
 with primary tap, move, drag/scroll and cancellation defined and tested; richer
 pinch/rotation/gesture families require an explicit profile/consumer contract,
 not automatic import of every platform event. Competing touch-scroll and text-
-selection gestures resolve through one capture/default arbitration policy.
+selection gestures remain provisional until deterministic movement thresholds
+resolve them. An explicit capture claim wins at its committed route position;
+otherwise the nearest eligible default owner wins when its threshold is crossed,
+cancels the losing provisional gesture once, and owns that pointer stream until
+release/cancel. Threshold values are validated neutral configuration, not ambient
+platform guesses, and arbitration never replays one physical stream into a new
+owner after commitment.
 
 ## Dependency assessment and adoption boundary
 
@@ -263,7 +346,13 @@ observations or claim current production behavior. All implementation rows start
 `blocked` until their scoped implementations and proofs are accepted. Editing
 proof must distinguish event intent commit, later app action commit, subsequent
 publication, recoverable pre-mutation rejection and post-mutation terminal poison;
-it must not assert rollback of arbitrary application state.
+it must not assert rollback of arbitrary application state. It must also cover
+multiple queued edit ingresses ahead of their actions, exact request acknowledgement,
+accepted/rejected/transformed prefix resolution, dependent-suffix rebase or
+rejection, invalid-suffix ingress refusal and drain, missing/foreign/duplicate
+resolution poisoning, document-revision reuse, retired editing-session
+generations and late service completion after an apparent application identity/
+revision ABA.
 
 Dependency-derived implementation sequence *after* accepted architecture and
 matrix registration:
