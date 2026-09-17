@@ -2,20 +2,22 @@
 
 > **Category:** ADR
 >
-> **Status:** Proposed target architecture; not owner-accepted
+> **Status:** Accepted target architecture on exact-head owner acceptance
 >
 > **Decision date:** 2026-09-17
 >
 > **Milestone:** M10
 >
-> **Reviewed baseline:** `36b779f700eb3c0ca4eafad0bf4a582339cec661`
+> **Reviewed baseline:** `14ca1cd6361cf686975c9debb3576016f350c8b4`
 >
-> **Acceptance:** owner acceptance of this ADR establishes target architecture
-> but is not independently sufficient to complete M10A0. Before merge, the
-> status and acceptance provenance must record that owner decision; a proposed
-> ADR must not land as accepted default-branch authority. M10 implementation
-> remains prohibited until the corresponding permanent conformance inventory,
-> fail-closed audit registration and accepted-main validation are also accepted.
+> **Acceptance:** this ADR is the accepted M10 target architecture after the exact
+> M10A0 architecture package containing it was explicitly accepted by the
+> repository owner, squash-merged, and accepted-main validated. Acceptance freezes
+> the target decisions below but is not independently sufficient to complete
+> M10A0 and does not claim any M10 implementation. Implementation remains
+> prohibited until the corresponding permanent conformance inventory and
+> fail-closed audit registration are also owner-accepted, squash-merged, and
+> accepted-main validated.
 
 ## Context and inherited authority
 
