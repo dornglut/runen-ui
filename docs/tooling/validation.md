@@ -14,7 +14,7 @@ Run the complete repository baseline with:
 cargo validate
 ```
 
-The Cargo alias executes `cargo run --locked --package xtask -- validate`. The locked outer invocation and every nested Cargo check use `--locked`; validation must not update `Cargo.lock`, manifests, formatting, or source. The task is the single implementation used locally and by CI.
+The Cargo alias executes `cargo run --locked --package xtask -- validate`. The locked outer invocation and every checked-in workspace Cargo check use `--locked`; validation must not update the repository's `Cargo.lock`, manifests, formatting, or source. The task is the single implementation used locally and by CI.
 
 `xtask` derives the RunenUI workspace root from its compile-time `CARGO_MANIFEST_DIR`, verifies the root `Cargo.toml`, runs Cargo subprocesses from that root, and scans repository documentation from that root. Calling `cargo validate` within a workspace package therefore cannot reduce validation to that package subtree.
 
@@ -25,9 +25,14 @@ cargo +stable fmt --all --check
 cargo +stable test --workspace --all-features --locked
 cargo +stable clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo +1.93.0 test --workspace --all-features --locked
+cargo +stable test --locked --package runenui_testing --package runenui_external_widget_conformance --package runenui_external_renderer_conformance --package runenui_external_host_conformance
+# locked, offline Cargo feature-graph inspection for the four public-consumer packages
+# isolated default-feature and feature-enabled private-seam compile probes
 # repository-relative Markdown links from the resolved workspace root
 # deterministic fatal repository structure and authority audit
 ```
+
+The package-selected public-consumer lane deliberately omits `--workspace` and `--all-features`. It derives `runenui_testing` plus every workspace member under `tests/` from the canonical workspace inventory and tests them with ordinary dependency features rather than inheriting internal test seams enabled elsewhere in the all-features lane. The same inventory derives every declared `internal-*` feature from workspace member manifests; a matching locked, offline `cargo tree --edges features` inspection rejects any of them in the public consumers' resolved feature graph. Adding a conformance fixture or private feature therefore expands the proof automatically rather than relying on a second hand-maintained list. A separate, disposable standalone Cargo workspace under ignored `target/` compiles a known runtime `__..._for_test` method successfully with `internal-test-seams` explicitly enabled, then requires that same method to be unavailable under default features. The probe copies the lockfile into its temporary directory, resolves that copy offline, and runs both compiler checks offline and locked; it does not change tracked repository files. The positive control prevents unrelated compilation failures from masquerading as proof of isolation. Existing stable/MSRV all-feature lanes remain mandatory.
 
 The fatal repository audit reuses the checked-in matrix, workspace, authority,
 license, and canonical-runtime ownership contracts. It is network-free and

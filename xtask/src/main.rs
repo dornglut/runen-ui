@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod public_consumer;
 mod repository_audit;
 
 use std::{
@@ -93,6 +94,11 @@ fn validate() -> ExitCode {
             eprintln!("{error}");
             return ExitCode::FAILURE;
         }
+    }
+
+    if let Err(error) = public_consumer::validate(&root) {
+        eprintln!("{error}");
+        return ExitCode::FAILURE;
     }
 
     if let Err(error) = validate_current_licensing(&root) {
