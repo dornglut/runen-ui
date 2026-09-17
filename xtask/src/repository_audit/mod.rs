@@ -15,6 +15,16 @@ use std::{
 
 use self::{matrix::MatrixMetrics, source::SourceMetrics, workspace::WorkspaceMetrics};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublicConsumerPolicy {
+    pub packages: Vec<String>,
+    pub private_features: Vec<String>,
+}
+
+pub fn public_consumer_policy(root: &Path) -> Result<PublicConsumerPolicy, String> {
+    workspace::public_consumer_policy(root)
+}
+
 const SCHEMA_VERSION: u32 = 2;
 const PRIVATE_ARCHIVE_URL: &str = "github.com/Crystonix/runen-ui-private-archive";
 const HISTORICAL_OWNER_TOKEN: &str = "Crystonix/runen-ui";

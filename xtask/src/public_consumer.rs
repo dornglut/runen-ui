@@ -7,37 +7,44 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-const PUBLIC_PACKAGES: &[&str] = &[
-    "runenui_testing",
-    "runenui_external_widget_conformance",
-    "runenui_external_renderer_conformance",
-    "runenui_external_host_conformance",
-];
-const PRIVATE_FEATURE: &str = "internal-test-seams";
+use super::repository_audit::{PublicConsumerPolicy, public_consumer_policy};
+
+const PROBED_PRIVATE_FEATURE: &str = "internal-test-seams";
 const PRIVATE_METHOD: &str = "__seed_next_work_sequence_for_test";
 const PROBE_MANIFEST: &str = "[package]\nname = \"runenui-public-feature-probe\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[workspace]\nresolver = \"3\"\n\n[dependencies]\nrunenui_runtime = { path = \"../../crates/runenui_runtime\" }\nrunenui_core = { path = \"../../crates/runenui_core\" }\n\n[features]\nseam-enabled = [\"runenui_runtime/internal-test-seams\"]\n";
 const PROBE_SOURCE: &str = "use runenui_core::UiApp;\nuse runenui_runtime::AppRuntime;\n\npub fn probe<App: UiApp>(runtime: &mut AppRuntime<App>) {\n    runtime.__seed_next_work_sequence_for_test(1);\n}\n";
 static NEXT_PROBE: AtomicUsize = AtomicUsize::new(0);
 
 pub fn validate(root: &Path) -> Result<(), String> {
-    let arguments = public_test_arguments();
-    super::run_cargo_step(root, "stable", &arguments)?;
-    validate_public_feature_graph(root)?;
+    let policy = public_consumer_policy(root)?;
+    if !policy
+        .private_features
+        .iter()
+        .any(|feature| feature == PROBED_PRIVATE_FEATURE)
+    {
+        return Err(format!(
+            "private seam probe feature `{PROBED_PRIVATE_FEATURE}` is missing from the workspace private-feature inventory"
+        ));
+    }
+    let arguments = public_test_arguments(&policy.packages);
+    let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
+    super::run_cargo_step(root, "stable", &argument_refs)?;
+    validate_public_feature_graph(root, &policy)?;
     validate_private_seam_isolation(root)
 }
 
-fn public_test_arguments() -> Vec<&'static str> {
-    let mut arguments = vec!["test", "--locked"];
-    for package in PUBLIC_PACKAGES {
-        arguments.extend(["--package", package]);
+fn public_test_arguments(packages: &[String]) -> Vec<String> {
+    let mut arguments = vec!["test".to_owned(), "--locked".to_owned()];
+    for package in packages {
+        arguments.extend(["--package".to_owned(), package.clone()]);
     }
     arguments
 }
 
-fn validate_public_feature_graph(root: &Path) -> Result<(), String> {
+fn validate_public_feature_graph(root: &Path, policy: &PublicConsumerPolicy) -> Result<(), String> {
     let mut arguments = vec!["tree", "--locked", "--offline", "--edges", "features"];
-    for package in PUBLIC_PACKAGES {
-        arguments.extend(["--package", package]);
+    for package in &policy.packages {
+        arguments.extend(["--package", package.as_str()]);
     }
     eprintln!("> cargo +stable {}", arguments.join(" "));
     let output = Command::new("rustup")
@@ -48,12 +55,17 @@ fn validate_public_feature_graph(root: &Path) -> Result<(), String> {
         .map_err(|error| format!("failed to inspect public-consumer Cargo features: {error}"))?;
     require_success("inspect public-consumer Cargo feature graph", &output)?;
     let graph = String::from_utf8_lossy(&output.stdout);
-    if graph.contains(PRIVATE_FEATURE) {
-        return Err(format!(
-            "public-consumer Cargo feature graph activates `{PRIVATE_FEATURE}`:\n{graph}"
-        ));
+    for feature in &policy.private_features {
+        if graph.contains(feature) {
+            return Err(format!(
+                "public-consumer Cargo feature graph activates private feature `{feature}`:\n{graph}"
+            ));
+        }
     }
-    eprintln!("> public-consumer Cargo feature graph excludes `{PRIVATE_FEATURE}`");
+    eprintln!(
+        "> public-consumer Cargo feature graph excludes private features: {}",
+        policy.private_features.join(", ")
+    );
     Ok(())
 }
 
@@ -171,19 +183,19 @@ mod tests {
 
     #[test]
     fn public_lane_selects_only_downstream_packages_without_all_features() {
+        let packages = [
+            "runenui_external_host_conformance".to_owned(),
+            "runenui_testing".to_owned(),
+        ];
         assert_eq!(
-            public_test_arguments(),
+            public_test_arguments(&packages),
             [
                 "test",
                 "--locked",
                 "--package",
-                "runenui_testing",
-                "--package",
-                "runenui_external_widget_conformance",
-                "--package",
-                "runenui_external_renderer_conformance",
-                "--package",
                 "runenui_external_host_conformance",
+                "--package",
+                "runenui_testing",
             ]
         );
     }

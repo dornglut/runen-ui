@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::{Finding, path_text};
+use super::{Finding, PublicConsumerPolicy, path_text};
 
 const ROOT_MANIFEST: &str = "Cargo.toml";
 const WORKSPACE_STRUCTURE_PATH: &str = "docs/architecture/workspace-structure.md";
@@ -38,6 +38,7 @@ const EXTERNAL_HOST_FORBIDDEN_SOURCE_PATTERNS: &[(&str, &str)] = &[
     ("winit::", "native host"),
     ("accesskit", "accessibility adapter"),
 ];
+const PRIVATE_FEATURE_PREFIX: &str = "internal-";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct WorkspaceMetrics {
@@ -150,6 +151,58 @@ pub(super) fn audit(root: &Path, findings: &mut Vec<Finding>) -> Result<Workspac
         members: members.len(),
         production_crates,
     })
+}
+
+pub(super) fn public_consumer_policy(root: &Path) -> Result<PublicConsumerPolicy, String> {
+    let root_manifest = read(root, ROOT_MANIFEST)?;
+    let member_paths = parse_workspace_members(&root_manifest)
+        .ok_or_else(|| format!("failed to parse [workspace].members from {ROOT_MANIFEST}"))?;
+    let mut packages = BTreeSet::new();
+    let mut private_features = BTreeSet::new();
+
+    for relative in member_paths {
+        let manifest_relative = relative.join("Cargo.toml");
+        let manifest = fs::read_to_string(root.join(&manifest_relative)).map_err(|error| {
+            format!(
+                "failed to read workspace member manifest {}: {error}",
+                manifest_relative.display()
+            )
+        })?;
+        let package = parse_package_name(&manifest).ok_or_else(|| {
+            format!(
+                "workspace member manifest {} does not define [package].name",
+                manifest_relative.display()
+            )
+        })?;
+        if is_public_consumer(&relative, &package) {
+            packages.insert(package);
+        }
+        private_features.extend(private_feature_names(&manifest));
+    }
+
+    if packages.is_empty() {
+        return Err("workspace defines no public-consumer validation packages".to_owned());
+    }
+    if private_features.is_empty() {
+        return Err(format!(
+            "workspace defines no `{PRIVATE_FEATURE_PREFIX}*` private features to isolate"
+        ));
+    }
+
+    Ok(PublicConsumerPolicy {
+        packages: packages.into_iter().collect(),
+        private_features: private_features.into_iter().collect(),
+    })
+}
+
+fn is_public_consumer(relative: &Path, package: &str) -> bool {
+    package == TESTING_PACKAGE || relative.starts_with("tests")
+}
+
+fn private_feature_names(manifest: &str) -> impl Iterator<Item = String> + '_ {
+    parse_feature_names(manifest)
+        .into_iter()
+        .filter(|feature| feature.starts_with(PRIVATE_FEATURE_PREFIX))
 }
 
 fn validate_member_boundaries(
@@ -562,6 +615,25 @@ fn parse_package_name(contents: &str) -> Option<String> {
     None
 }
 
+fn parse_feature_names(contents: &str) -> BTreeSet<String> {
+    let mut in_features = false;
+    let mut features = BTreeSet::new();
+    for line in contents.lines() {
+        let trimmed = strip_comment(line).trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_features = trimmed == "[features]";
+            continue;
+        }
+        if in_features && let Some((name, _)) = trimmed.split_once('=') {
+            let name = name.trim().trim_matches('"');
+            if !name.is_empty() {
+                features.insert(name.to_owned());
+            }
+        }
+    }
+    features
+}
+
 fn parse_dependency_names(contents: &str) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut production = BTreeSet::new();
     let mut dev = BTreeSet::new();
@@ -705,10 +777,10 @@ mod tests {
         CORE_PACKAGE, EXTERNAL_HOST_PACKAGE, EXTERNAL_WIDGET_PACKAGE, REFERENCE_WINIT_PACKAGE,
         RENDER_WGPU_PACKAGE, RUNTIME_PACKAGE, TESTING_PACKAGE, TEXT_PACKAGE, WINIT_PACKAGE,
         WorkspaceMember, documented_package_names, external_host_forbidden_source_pattern,
-        parse_dependency_names, parse_package_name, parse_workspace_members,
-        validate_dependency_direction, validate_external_host_dependencies,
-        validate_renderer_external_dependencies, validate_text_external_dependencies,
-        validate_winit_external_dependencies,
+        is_public_consumer, parse_dependency_names, parse_feature_names, parse_package_name,
+        parse_workspace_members, private_feature_names, validate_dependency_direction,
+        validate_external_host_dependencies, validate_renderer_external_dependencies,
+        validate_text_external_dependencies, validate_winit_external_dependencies,
     };
 
     fn member(
@@ -743,6 +815,46 @@ mod tests {
                 BTreeSet::from(["core".to_owned()]),
                 BTreeSet::from(["fixture".to_owned()])
             )
+        );
+    }
+
+    #[test]
+    fn manifest_parser_limits_features_to_the_features_table() {
+        assert_eq!(
+            parse_feature_names(
+                "[package]\nname = \"runtime\"\n[features]\ndefault = []\ninternal-test-seams = []\n\"internal-fixture\" = []\n[dependencies]\ninternal-not-a-feature = \"1\"\n",
+            ),
+            BTreeSet::from([
+                "default".to_owned(),
+                "internal-fixture".to_owned(),
+                "internal-test-seams".to_owned(),
+            ])
+        );
+    }
+
+    #[test]
+    fn public_consumer_and_private_feature_policy_expand_from_workspace_shape() {
+        assert!(is_public_consumer(
+            Path::new("crates/runenui_testing"),
+            TESTING_PACKAGE
+        ));
+        assert!(is_public_consumer(
+            Path::new("tests/new_public_fixture"),
+            "new_public_fixture"
+        ));
+        assert!(!is_public_consumer(
+            Path::new("examples/counter"),
+            "counter"
+        ));
+        assert_eq!(
+            private_feature_names(
+                "[features]\ndefault = []\ninternal-test-seams = []\ninternal-new-seam = []\npublic-option = []\n",
+            )
+            .collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                "internal-new-seam".to_owned(),
+                "internal-test-seams".to_owned(),
+            ])
         );
     }
 
