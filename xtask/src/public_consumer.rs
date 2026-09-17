@@ -18,7 +18,7 @@ const PROBE_MANIFEST: &str = "[package]\nname = \"runenui-public-feature-probe\"
 const PROBE_SOURCE: &str = "use runenui_core::UiApp;\nuse runenui_runtime::AppRuntime;\n\npub fn probe<App: UiApp>(runtime: &mut AppRuntime<App>) {\n    runtime.__seed_next_work_sequence_for_test(1);\n}\n";
 static NEXT_PROBE: AtomicUsize = AtomicUsize::new(0);
 
-pub(super) fn validate(root: &Path) -> Result<(), String> {
+pub fn validate(root: &Path) -> Result<(), String> {
     let arguments = public_test_arguments();
     super::run_cargo_step(root, "stable", &arguments)?;
     validate_private_seam_isolation(root)
