@@ -21,6 +21,7 @@ const M6_DELIVERY_SLICES: &[&str] = &["M6A", "M6B", "M6C", "M6D"];
 const M7_DELIVERY_SLICES: &[&str] = &["M7A", "M7B", "M7C", "M7D"];
 const M8_DELIVERY_SLICES: &[&str] = &["M8A", "M8B", "M8C", "M8D"];
 const M9_DELIVERY_SLICES: &[&str] = &["M9A", "M9B", "M9C"];
+const M10_DELIVERY_SLICES: &[&str] = &["M10B", "M10C", "M10D", "M10E", "M10F"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GatePolicy {
@@ -74,7 +75,14 @@ const M9_SPEC: MatrixSpec = MatrixSpec {
     allowed_delivery_slices: M9_DELIVERY_SLICES,
     gate_policy: GatePolicy::Required,
 };
-const MATRIX_SPECS: &[MatrixSpec] = &[M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC];
+const M10_SPEC: MatrixSpec = MatrixSpec {
+    path: "docs/conformance/m10-conformance-matrix.md",
+    allowed_delivery_slices: M10_DELIVERY_SLICES,
+    gate_policy: GatePolicy::Required,
+};
+const MATRIX_SPECS: &[MatrixSpec] = &[
+    M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC,
+];
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct MatrixMetrics {
@@ -563,9 +571,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, MATRIX_SPECS, analyze_contents,
-        audit_inventory, compare_declared_summary, declared_metric, parse_rows, parse_summary,
-        valid_id, validate_inventory,
+        M4_SPEC, M5_SPEC, M6_SPEC, M7_SPEC, M8_SPEC, M9_SPEC, M10_SPEC, MATRIX_SPECS,
+        analyze_contents, audit_inventory, compare_declared_summary, declared_metric, parse_rows,
+        parse_summary, valid_id, validate_inventory,
     };
 
     #[test]
@@ -673,8 +681,8 @@ mod tests {
     }
 
     #[test]
-    fn m8_and_m9_contracts_reject_invalid_slices_gates_statuses_and_schemas() {
-        for (spec, slice) in [(M8_SPEC, "M8A"), (M9_SPEC, "M9A")] {
+    fn m8_m9_and_m10_contracts_reject_invalid_slices_gates_statuses_and_schemas() {
+        for (spec, slice) in [(M8_SPEC, "M8A"), (M9_SPEC, "M9A"), (M10_SPEC, "M10B")] {
             let valid = format!(
                 "| ID | A | B | C | D | E | F | G |\n|---|---|---|---|---|---|---|---|\n| TEST-01 | A | B | C | D | {slice} | owner-accepted | Required |\n"
             );
@@ -725,10 +733,15 @@ mod tests {
     }
 
     #[test]
-    fn m8_and_m9_ids_cannot_duplicate_earlier_or_each_other() {
+    fn m8_m9_and_m10_ids_cannot_duplicate_earlier_or_each_other() {
         let mut seen = BTreeSet::new();
         let mut findings = Vec::new();
-        for (spec, slice) in [(M7_SPEC, "M7A"), (M8_SPEC, "M8A"), (M9_SPEC, "M9A")] {
+        for (spec, slice) in [
+            (M7_SPEC, "M7A"),
+            (M8_SPEC, "M8A"),
+            (M9_SPEC, "M9A"),
+            (M10_SPEC, "M10B"),
+        ] {
             let row = format!("| SAME-01 | A | B | C | D | {slice} | blocked | Required |\n");
             analyze_contents(spec, &row, &mut seen, &mut findings);
         }
@@ -737,8 +750,31 @@ mod tests {
                 .iter()
                 .filter(|finding| finding.code == "matrix.duplicate_id")
                 .count(),
-            2
+            3
         );
+    }
+
+    #[test]
+    fn m10_inventory_starts_blocked_with_every_registered_slice() -> Result<(), String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask has no repository root".to_owned())?;
+        let contents = std::fs::read_to_string(root.join(M10_SPEC.path))
+            .map_err(|error| format!("failed to read {}: {error}", M10_SPEC.path))?;
+        let mut findings = Vec::new();
+        let (rows, parse_schema_errors) = parse_rows(&contents, M10_SPEC.path, &mut findings);
+        assert_eq!(parse_schema_errors, 0);
+        assert_eq!(rows.len(), 28);
+        assert!(rows.iter().all(|row| row.cells[6] == "blocked"));
+        assert!(rows.iter().all(|row| row.cells[7] == "Required"));
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.cells[5].as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["M10B", "M10C", "M10D", "M10E", "M10F"])
+        );
+        assert!(findings.is_empty());
+        Ok(())
     }
 
     #[test]
@@ -772,7 +808,7 @@ mod tests {
         assert!(findings.is_empty());
 
         validate_inventory(
-            &format!("{indexed}\n- [M10 conformance matrix](m10-conformance-matrix.md)"),
+            &format!("{indexed}\n- [M11 conformance matrix](m11-conformance-matrix.md)"),
             &files,
             &mut findings,
         );
@@ -783,7 +819,7 @@ mod tests {
         );
         findings.clear();
         let mut new_file = files.clone();
-        new_file.insert("m10-conformance-matrix.md".to_owned());
+        new_file.insert("m11-conformance-matrix.md".to_owned());
         validate_inventory(&indexed, &new_file, &mut findings);
         assert!(
             findings
@@ -799,7 +835,7 @@ mod tests {
         );
         findings.clear();
         validate_inventory(
-            &format!("{indexed}\n- [M10 matrix](m10-conformance-matrix.md)"),
+            &format!("{indexed}\n- [M11 matrix](m11-conformance-matrix.md)"),
             &files,
             &mut findings,
         );
@@ -827,7 +863,7 @@ mod tests {
             compare_declared_summary(spec.path, &summary, &analysis, &mut findings);
             total += analysis.metrics.total_rows;
         }
-        assert_eq!(total, 405);
+        assert_eq!(total, 433);
         assert!(findings.is_empty(), "{findings:?}");
         Ok(())
     }
