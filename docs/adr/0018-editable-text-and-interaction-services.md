@@ -60,7 +60,7 @@ must not promote it.
 
 ## Decision: ownership and transactional editing
 
-### One document, one mounted editing session
+### One application document, owner-local mounted sessions
 
 Application/product state owns the authoritative document value and revision,
 validation, persistence, access policy and any undo/redo journal whose history
@@ -93,6 +93,14 @@ Runtime also issues a non-wrapping editing-session generation. Document identity
 change, incompatible revision movement, explicit reset or exact owner replacement
 retires that generation, so an application-authored identity/revision pair is
 never by itself sufficient to admit a late edit or service completion.
+
+The same application document identity may be presented by multiple mounted
+owners. Each owner retains an independent editing-session generation, selection,
+preedit, pending edit chain and service tokens. An accepted document change
+reconciles every presentation from the new authoritative revision, using a
+validated mapping where supplied or resetting that owner's incompatible session;
+caret, composition, pending requests and service authority never migrate between
+owners merely because their application document identities match.
 
 Undo/redo is a reusable transaction protocol, not a second hidden document.
 Applications own the journal and grouping policy needed to reverse committed
