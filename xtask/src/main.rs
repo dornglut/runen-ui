@@ -26,15 +26,6 @@ const EXPECTED_POLICY_MARKERS: &[&str] = &[
     "external pull requests contributing tracked repository content",
     "Issue reports, design discussion, reviews, and reproducible cases",
 ];
-const EXPECTED_WORKSPACE_PACKAGE_MANIFESTS: &[&str] = &[
-    "crates/runenui_core/Cargo.toml",
-    "crates/runenui_runtime/Cargo.toml",
-    "crates/runenui_testing/Cargo.toml",
-    "examples/counter/Cargo.toml",
-    "tests/external_widget/Cargo.toml",
-    "tests/external_renderer/Cargo.toml",
-    "xtask/Cargo.toml",
-];
 const VALIDATE_STEPS: &[(&str, &[&str])] = &[
     ("stable", &["metadata", "--locked", "--no-deps"]),
     ("stable", &["fmt", "--all", "--check"]),
@@ -382,22 +373,47 @@ fn validate_current_licensing(root: &Path) -> Result<(), String> {
         return Err("workspace package publication must remain disabled".into());
     }
 
-    for relative in EXPECTED_WORKSPACE_PACKAGE_MANIFESTS {
-        let package_manifest_path = root.join(relative);
-        let package_manifest = fs::read_to_string(&package_manifest_path).map_err(|error| {
-            format!(
-                "failed to read workspace package manifest {}: {error}",
-                package_manifest_path.display()
-            )
-        })?;
-        if !package_manifest.contains("license.workspace = true") {
+    for member in repository_audit::declared_workspace_members(root)? {
+        if package_manifest_field(&member.manifest, "license.workspace") != Some("true") {
             return Err(format!(
-                "workspace package manifest {relative} must retain license.workspace = true"
+                "workspace package `{}` manifest {} must retain license.workspace = true",
+                member.package,
+                member.manifest_relative.display()
+            ));
+        }
+
+        let inherited_non_publishable =
+            package_manifest_field(&member.manifest, "publish.workspace") == Some("true");
+        let explicitly_private =
+            package_manifest_field(&member.manifest, "publish") == Some("false");
+        if inherited_non_publishable == explicitly_private {
+            return Err(format!(
+                "workspace package `{}` manifest {} must use exactly one non-publishable form: publish.workspace = true or publish = false",
+                member.package,
+                member.manifest_relative.display()
             ));
         }
     }
 
     Ok(())
+}
+
+fn package_manifest_field<'a>(manifest: &'a str, field: &str) -> Option<&'a str> {
+    let mut in_package = false;
+    for line in manifest.lines() {
+        let trimmed = line.split('#').next().unwrap_or(line).trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_package = trimmed == "[package]";
+            continue;
+        }
+        if in_package
+            && let Some((key, value)) = trimmed.split_once('=')
+            && key.trim() == field
+        {
+            return Some(value.trim());
+        }
+    }
+    None
 }
 
 fn print_usage() {
@@ -409,6 +425,7 @@ fn print_usage() {
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::BTreeSet,
         fs,
         path::{Path, PathBuf},
         process::{self, Command},
@@ -416,8 +433,9 @@ mod tests {
     };
 
     use super::{
-        local_link_path, markdown_targets, validate_current_licensing, validate_markdown_links,
-        workspace_root,
+        EXPECTED_GPL_MARKERS, EXPECTED_POLICY_MARKERS, local_link_path, markdown_targets,
+        package_manifest_field, repository_audit, validate_current_licensing,
+        validate_markdown_links, workspace_root,
     };
 
     static NEXT_TEMP_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
@@ -450,6 +468,37 @@ mod tests {
             }
             fs::write(&path, contents)
                 .map_err(|error| format!("failed to write {}: {error}", path.display()))
+        }
+
+        fn write_valid_licensing_policy(&self) -> Result<(), String> {
+            self.write("LICENSE", &EXPECTED_GPL_MARKERS.join("\n"))?;
+            self.write("LICENSING.md", &EXPECTED_POLICY_MARKERS.join("\n"))
+        }
+
+        fn write_workspace_manifest(&self, members: &[&str]) -> Result<(), String> {
+            let members = members
+                .iter()
+                .map(|member| format!("    \"{member}\","))
+                .collect::<Vec<_>>()
+                .join("\n");
+            self.write(
+                "Cargo.toml",
+                &format!(
+                    "[workspace]\nmembers = [\n{members}\n]\n\n[workspace.package]\nlicense = \"GPL-3.0-only\"\npublish = false\n"
+                ),
+            )
+        }
+
+        fn write_member_manifest(
+            &self,
+            relative: &str,
+            package: &str,
+            metadata: &str,
+        ) -> Result<(), String> {
+            self.write(
+                &format!("{relative}/Cargo.toml"),
+                &format!("[package]\nname = \"{package}\"\n{metadata}\n"),
+            )
         }
     }
 
@@ -567,7 +616,30 @@ mod tests {
 
     #[test]
     fn repository_metadata_matches_owner_approved_gpl_license() -> Result<(), String> {
-        validate_current_licensing(&workspace_root()?)
+        let root = workspace_root()?;
+        let members = repository_audit::declared_workspace_members(&root)?;
+        assert_eq!(members.len(), 12);
+        assert_eq!(
+            members
+                .iter()
+                .map(|member| member.package.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                "counter",
+                "reference_winit",
+                "runenui_core",
+                "runenui_external_host_conformance",
+                "runenui_external_renderer_conformance",
+                "runenui_external_widget_conformance",
+                "runenui_render_wgpu",
+                "runenui_runtime",
+                "runenui_testing",
+                "runenui_text",
+                "runenui_winit",
+                "xtask",
+            ])
+        );
+        validate_current_licensing(&root)
     }
 
     #[test]
@@ -589,5 +661,140 @@ mod tests {
             assert!(error.contains("stale MIT"));
         }
         Ok(())
+    }
+
+    #[test]
+    fn complete_workspace_inventory_accepts_both_non_publishable_forms() -> Result<(), String> {
+        let directory = TestDirectory::new("complete-licensing-inventory")?;
+        directory.write_valid_licensing_policy()?;
+        directory.write_workspace_manifest(&["crates/public", "tests/private"])?;
+        directory.write_member_manifest(
+            "crates/public",
+            "public",
+            "license.workspace = true\npublish.workspace = true",
+        )?;
+        directory.write_member_manifest(
+            "tests/private",
+            "private",
+            "license.workspace = true\npublish = false",
+        )?;
+
+        validate_current_licensing(directory.path())
+    }
+
+    #[test]
+    fn newly_declared_member_cannot_escape_licensing_validation() -> Result<(), String> {
+        let directory = TestDirectory::new("new-member-licensing")?;
+        directory.write_valid_licensing_policy()?;
+        directory.write_workspace_manifest(&["crates/existing", "crates/new"])?;
+        directory.write_member_manifest(
+            "crates/existing",
+            "existing",
+            "license.workspace = true\npublish.workspace = true",
+        )?;
+        directory.write_member_manifest(
+            "crates/new",
+            "new",
+            "license.workspace = false\npublish.workspace = true",
+        )?;
+
+        let Err(error) = validate_current_licensing(directory.path()) else {
+            return Err("newly declared invalid member unexpectedly passed licensing".to_owned());
+        };
+        assert!(error.contains("crates/new/Cargo.toml"));
+        assert!(error.contains("license.workspace = true"));
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_member_license_inheritance_fails_closed() -> Result<(), String> {
+        for (label, license) in [
+            ("missing-license", ""),
+            ("wrong-license", "license.workspace = false\n"),
+        ] {
+            let directory = TestDirectory::new(label)?;
+            directory.write_valid_licensing_policy()?;
+            directory.write_workspace_manifest(&["crates/member"])?;
+            directory.write_member_manifest(
+                "crates/member",
+                "member",
+                &format!("{license}publish.workspace = true"),
+            )?;
+
+            let Err(error) = validate_current_licensing(directory.path()) else {
+                return Err(format!(
+                    "invalid license inheritance unexpectedly passed for {label}"
+                ));
+            };
+            assert!(error.contains("license.workspace = true"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_member_publication_metadata_fails_closed() -> Result<(), String> {
+        for (label, publication) in [
+            ("missing-publish", ""),
+            ("publish-true", "publish = true"),
+            (
+                "duplicate-publish-authority",
+                "publish.workspace = true\npublish = false",
+            ),
+        ] {
+            let directory = TestDirectory::new(label)?;
+            directory.write_valid_licensing_policy()?;
+            directory.write_workspace_manifest(&["crates/member"])?;
+            directory.write_member_manifest(
+                "crates/member",
+                "member",
+                &format!("license.workspace = true\n{publication}"),
+            )?;
+
+            let Err(error) = validate_current_licensing(directory.path()) else {
+                return Err(format!(
+                    "invalid publication metadata unexpectedly passed for {label}"
+                ));
+            };
+            assert!(error.contains("exactly one non-publishable form"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn incomplete_workspace_member_inventory_fails_closed() -> Result<(), String> {
+        let missing_manifest = TestDirectory::new("missing-member-manifest")?;
+        missing_manifest.write_valid_licensing_policy()?;
+        missing_manifest.write_workspace_manifest(&["crates/missing"])?;
+        let Err(error) = validate_current_licensing(missing_manifest.path()) else {
+            return Err("missing member manifest unexpectedly passed licensing".to_owned());
+        };
+        assert!(error.contains("does not contain Cargo.toml"));
+
+        let missing_name = TestDirectory::new("missing-member-name")?;
+        missing_name.write_valid_licensing_policy()?;
+        missing_name.write_workspace_manifest(&["crates/unnamed"])?;
+        missing_name.write(
+            "crates/unnamed/Cargo.toml",
+            "[package]\nlicense.workspace = true\npublish.workspace = true\n",
+        )?;
+        let Err(error) = validate_current_licensing(missing_name.path()) else {
+            return Err("missing package name unexpectedly passed licensing".to_owned());
+        };
+        assert!(error.contains("does not define [package].name"));
+        Ok(())
+    }
+
+    #[test]
+    fn package_metadata_parser_is_limited_to_the_package_table() {
+        let manifest = "[package]\nname = \"member\"\nlicense.workspace = true # inherited\npublish.workspace = true\n\n[[bin]]\nname = \"tool\"\npublish = false\n";
+        assert_eq!(
+            package_manifest_field(manifest, "license.workspace"),
+            Some("true")
+        );
+        assert_eq!(
+            package_manifest_field(manifest, "publish.workspace"),
+            Some("true")
+        );
+        assert_eq!(package_manifest_field(manifest, "publish"), None);
     }
 }

@@ -15,6 +15,8 @@ use std::{
 
 use self::{matrix::MatrixMetrics, source::SourceMetrics, workspace::WorkspaceMetrics};
 
+pub use self::workspace::DeclaredWorkspaceMember;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublicConsumerPolicy {
     pub packages: Vec<String>,
@@ -23,6 +25,10 @@ pub struct PublicConsumerPolicy {
 
 pub fn public_consumer_policy(root: &Path) -> Result<PublicConsumerPolicy, String> {
     workspace::public_consumer_policy(root)
+}
+
+pub fn declared_workspace_members(root: &Path) -> Result<Vec<DeclaredWorkspaceMember>, String> {
+    workspace::declared_workspace_members(root)
 }
 
 const SCHEMA_VERSION: u32 = 2;
