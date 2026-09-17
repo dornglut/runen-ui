@@ -75,8 +75,8 @@ current revision, current text and an owner-local public mapper from one neutral
 `EditIntent` into the application's `Action`. The exact API spelling may be a
 widget callback rather than a stored closure, but recursive action mapping must
 map it like every other widget-produced action. Runtime never fabricates an
-application action or invokes `UiApp::update` from a widget callback. Within one
-live editing session, equal document identity and revision require equal source
+application action or invokes `UiApp::update` from a widget callback. Across all
+live presentations, equal document identity and revision require equal source
 text. Editing-policy changes explicitly preserve or reset the runtime session;
 they do not masquerade as document edits. Same-revision content drift is a
 contract rejection, and revision reuse must never make an old request current.
