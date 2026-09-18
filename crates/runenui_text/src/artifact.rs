@@ -49,6 +49,16 @@ impl TextArtifact {
     pub fn lines(&self) -> &[TextLine] {
         &self.lines
     }
+
+    /// Returns whether two artifacts retain the exact same immutable layout facts.
+    ///
+    /// This is a correlation observation, not application or runtime identity.
+    #[must_use]
+    pub fn shares_layout_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.lines, &other.lines)
+            && self.size == other.size
+            && self.source_snapshot == other.source_snapshot
+    }
 }
 
 /// One positioned line from a [`TextArtifact`].

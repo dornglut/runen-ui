@@ -254,6 +254,7 @@ mod style_environment;
 mod style_resolution;
 mod style_tokens;
 mod subscription;
+mod text_coordinates;
 mod typography;
 mod value;
 mod visual;
@@ -379,6 +380,11 @@ pub use style_tokens::{DuplicateTokenDefinition, StyleTokens, TokenFamily};
 pub use subscription::{
     LocalSubscriptionSource, SendSubscriptionSink, SendSubscriptionSinkError,
     SendSubscriptionSource, SendSubscriptionStartOutcome, SubscriptionSet,
+};
+pub use text_coordinates::{
+    TextAffinity, TextDisplayPosition, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
+    TextPosition, TextPositionError, TextPreeditPosition, TextRange, TextRangeError, TextSelection,
+    TextSelectionDirection, TextSelectionSnapshotMismatch,
 };
 pub use typography::{
     FontFamily, FontFamilyName, FontFamilyNameError, FontFeature, FontObliqueAngle,
