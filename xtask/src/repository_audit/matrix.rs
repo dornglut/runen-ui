@@ -755,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn m10_inventory_starts_blocked_with_every_registered_slice() -> Result<(), String> {
+    fn m10_inventory_accepts_text_mapping_and_blocks_every_successor_slice() -> Result<(), String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .ok_or_else(|| "xtask has no repository root".to_owned())?;
@@ -765,7 +765,17 @@ mod tests {
         let (rows, parse_schema_errors) = parse_rows(&contents, M10_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
         assert_eq!(rows.len(), 28);
-        assert!(rows.iter().all(|row| row.cells[6] == "blocked"));
+        let (text_mapping, successors): (Vec<_>, Vec<_>) =
+            rows.iter().partition(|row| row.cells[5] == "M10B");
+        assert_eq!(text_mapping.len(), 4);
+        assert!(
+            text_mapping
+                .iter()
+                .all(|row| row.cells[0].starts_with("M10TEXT-")
+                    && row.cells[6] == "owner-accepted")
+        );
+        assert_eq!(successors.len(), 24);
+        assert!(successors.iter().all(|row| row.cells[6] == "blocked"));
         assert!(rows.iter().all(|row| row.cells[7] == "Required"));
         assert_eq!(
             rows.iter()

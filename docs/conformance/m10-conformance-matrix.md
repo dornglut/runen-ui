@@ -2,15 +2,16 @@
 
 > **Category:** Target architecture
 >
-> **Status:** M10B, M10C, M10D, M10E, and M10F blocked; implementation not started
+> **Status:** M10B owner-accepted; M10C, M10D, M10E, and M10F blocked
 >
 > **Milestone:** M10
 >
 > **Reviewed baseline:** `0dfef8bab6f99be6dd6e822e6febaafe57b03485`
 >
-> This matrix freezes target observations only. It does not claim that editable
-> text, framework services, production scrolling, controller normalization, or
-> the supported touch profile exist on the reviewed baseline.
+> The four M10B text-coordinate/caret-map observations are accepted current
+> behavior. The remaining rows freeze target observations only; they do not claim
+> that transactional editing, framework services, production scrolling,
+> controller normalization, or the supported touch profile exist.
 
 [ADR 0018](../adr/0018-editable-text-and-interaction-services.md) owns M10
 architecture. M4 remains authoritative for routed input, composition lifetime,
@@ -23,10 +24,10 @@ scroll, controller, touch, and integrated observations required by M10.
 
 ```text
 28 total unique rows
-0 owner-accepted
+4 owner-accepted
 0 implementation-complete
 0 proof-complete
-28 blocked
+24 blocked
 0 duplicate IDs
 0 invalid statuses
 0 invalid schemas
@@ -44,10 +45,10 @@ cannot satisfy M10.
 
 | ID | Required observation | Positive proof owner | Negative proof owner | Diagnostic / trace proof owner | Delivery slice | Status | Gate |
 |---|---|---|---|---|---|---|---|
-| M10TEXT-01 | Durable text positions name an exact application document identity and revision and use validated UTF-8 byte offsets. Ranges are ordered half-open ranges; selections preserve anchor, active endpoint, direction and visual affinity. Endpoints are scalar boundaries, and ordinary movement/deletion positions additionally respect grapheme and shaping-valid caret stops. Host UTF-16 or other native units convert at the host edge with checked rejection for split scalars, overflow, stale revision, or out-of-range values; native code-unit and glyph indices never become public authority. | UTF-8/scalar/grapheme/range/directional-selection/affinity/host-unit conversion corpus | Split-scalar, stale-revision, unordered-range, affinity-loss, unchecked-cast, native-unit, glyph-index, and document-free-position audit | Position validation, conversion rejection, document/revision, boundary, direction, and affinity diagnostics | M10B | blocked | Required |
-| M10TEXT-02 | `runenui_text` derives one immutable correlated caret/selection map from the same retained private Parley layout and artifact used for measurement and paint. It supplies deterministic legal leading/trailing stops, hit-to-position, position-to-caret, selection rectangles, word/line movement, visual and logical bidi navigation, ligature handling, wrapped-line affinity, and IME candidate geometry through RunenUI-owned neutral values. The retained layout, not reconstructed cluster ranges or a second editor layout, is the geometry authority. | International bidi/ligature/wrap/caret/hit/selection/word/line/visual-logical navigation corpus over one retained layout | Source-range-only geometry, logical-cluster-as-visual-order, second layout, reshaping, dependency-public cursor, guessed glyph caret, and tolerance-defined navigation audit | Layout/artifact/map identity, caret-stop, navigation mode, affinity, hit, and geometry correlation records | M10B | blocked | Required |
-| M10TEXT-03 | IME preedit is an explicitly transient display projection bound to exact document revision, replacement range, preedit-relative checked selection, composition generation, and editing owner/session. Display-to-document mapping distinguishes synthetic preedit positions from durable document positions. Candidate layout, paint, hit, selection and semantics use the same staged projection and caret map. Commit inserts host committed text once through an edit intent and retires the matching generation; cancel, focus transfer, disablement, owner loss, reset, or shutdown removes preedit without document mutation. | Preedit projection/mapping/candidate-geometry/commit-once/cancel/lifecycle corpus | Preedit-as-document, double insertion, stale/foreign/duplicate commit, alternate buffer/layout, re-hit/retarget, invalid relative range, and owner-transfer audit | Composition/document/session generation, projection-map, candidate-geometry, commit/cancel, and rejection diagnostics | M10B | blocked | Required |
-| M10TEXT-04 | The public text boundary exposes only RunenUI-owned validated positions, ranges, selection/caret geometry and immutable correlation facts. Parley and any Unicode helper remain private subordinate algorithms; one text artifact/layout/caret-map lineage owns shaping and editable geometry. No `PlainEditor`, rope, platform-native text object, dependency cursor type, second shaper/layout, renderer text measurement, or editor-owned persistent document becomes framework authority. | Public API/dependency graph/same-artifact correlation and rebuild-compatibility corpus | Dependency-type leakage, duplicate document/layout/shaper, renderer measurement, platform text object, hidden editor store, and cache/revision-as-behavior-authority audit | Text authority, artifact/layout/map provenance, dependency-boundary, and compatibility records | M10B | blocked | Required |
+| M10TEXT-01 | Durable text positions name an exact application document identity and revision and use validated UTF-8 byte offsets. Ranges are ordered half-open ranges; selections preserve anchor, active endpoint, direction and visual affinity. Endpoints are scalar boundaries, and ordinary movement/deletion positions additionally respect grapheme and shaping-valid caret stops. Host UTF-16 or other native units convert at the host edge with checked rejection for split scalars, overflow, stale revision, or out-of-range values; native code-unit and glyph indices never become public authority. | UTF-8/scalar/grapheme/range/directional-selection/affinity/host-unit conversion corpus | Split-scalar, stale-revision, unordered-range, affinity-loss, unchecked-cast, native-unit, glyph-index, and document-free-position audit | Position validation, conversion rejection, document/revision, boundary, direction, and affinity diagnostics | M10B | owner-accepted | Required |
+| M10TEXT-02 | `runenui_text` derives one immutable correlated caret/selection map from the same retained private Parley layout and artifact used for measurement and paint. It supplies deterministic legal leading/trailing stops, hit-to-position, position-to-caret, selection rectangles, word/line movement, visual and logical bidi navigation, ligature handling, wrapped-line affinity, and IME candidate geometry through RunenUI-owned neutral values. The retained layout, not reconstructed cluster ranges or a second editor layout, is the geometry authority. | International bidi/ligature/wrap/caret/hit/selection/word/line/visual-logical navigation corpus over one retained layout | Source-range-only geometry, logical-cluster-as-visual-order, second layout, reshaping, dependency-public cursor, guessed glyph caret, and tolerance-defined navigation audit | Layout/artifact/map identity, caret-stop, navigation mode, affinity, hit, and geometry correlation records | M10B | owner-accepted | Required |
+| M10TEXT-03 | IME preedit is an explicitly transient display projection bound to an exact document revision, replacement range, preedit-relative checked selection, and composition generation. Display-to-document mapping distinguishes synthetic preedit positions from durable document positions, while candidate geometry, hit mapping, and selection mapping use the same staged projection and retained-layout caret map. This row owns no mounted editing owner/session or commit/cancel lifecycle: those remain the blocked M10C obligations of `M10EDIT-02` and `M10EDIT-06`. | Preedit projection/mapping/boundary-affinity/candidate-geometry/selection correlation corpus | Preedit-as-document, alternate buffer/layout, invalid relative range, foreign generation, durable/synthetic aliasing, and payload-bearing debug audit | Document/composition generation, projection-map, boundary-affinity, candidate-geometry, and mapping rejection diagnostics | M10B | owner-accepted | Required |
+| M10TEXT-04 | The public text boundary exposes only RunenUI-owned validated positions, ranges, selection/caret geometry and immutable correlation facts. Parley and any Unicode helper remain private subordinate algorithms; one text artifact/layout/caret-map lineage owns shaping and editable geometry. No `PlainEditor`, rope, platform-native text object, dependency cursor type, second shaper/layout, renderer text measurement, or editor-owned persistent document becomes framework authority. | Public API/dependency graph/same-artifact correlation and rebuild-compatibility corpus | Dependency-type leakage, duplicate document/layout/shaper, renderer measurement, platform text object, hidden editor store, and cache/revision-as-behavior-authority audit | Text authority, artifact/layout/map provenance, dependency-boundary, and compatibility records | M10B | owner-accepted | Required |
 
 ## M10C — application-owned transactional editing
 

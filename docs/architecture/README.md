@@ -32,7 +32,7 @@ Application work, routed interaction, scheduling, trace, layout/text orchestrati
 - [Public API contract](public-api.md) — conceptual public ownership/invariants; exact signatures remain in source/Rustdoc.
 - [Events, effects, and scheduling](events-effects-and-scheduling.md) — current interaction/work/runtime ownership and invariants.
 - [Layout and measurement](layout.md) — runtime-owned production layout orchestration, private Taffy algorithms, bounded widget measurement, and exact text feedback.
-- [`runenui_text` package contract](../../crates/runenui_text/README.md) — accepted renderer-neutral production text ownership, artifacts, reuse, and runtime/renderer integration boundary.
+- [`runenui_text` package contract](../../crates/runenui_text/README.md) — accepted renderer-neutral production text ownership, artifacts, retained-layout caret/preedit mapping, reuse, and runtime/renderer integration boundary.
 - [`runenui_render_wgpu` package contract](../../crates/runenui_render_wgpu/README.md) — accepted concrete renderer ownership, resource/text realization, M9 visual/composition realization, and the boundary that keeps deterministic motion authority out of the renderer while allowing retained sampled-publication retry and cache/device reconstruction.
 - [Styling](styling.md) — current accepted production style mechanism, M9 visual property breadth, transition/reduced-motion integration, canonical interaction-driven motion, runtime authority integration, and current limitations.
 
