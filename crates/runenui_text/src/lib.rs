@@ -5,11 +5,13 @@
 //! private implementation dependencies and must not become public API authority.
 
 mod artifact;
+mod caret_map;
 mod font_source_config;
 mod ink_bounds;
 mod layout_extract;
 mod layout_state;
 mod parley_bridge;
+mod preedit;
 mod request;
 mod source_identity;
 
@@ -30,9 +32,14 @@ pub use artifact::{
     TextClusterFlags, TextDirection, TextFontBinding, TextGlyph, TextLine, TextLineMetrics,
     TextRun,
 };
+pub use caret_map::{
+    TextCaretMap, TextCaretMapError, TextDisplaySelection, TextNavigation, TextNavigationMode,
+    TextNavigationResult, TextPreferredInline, TextSelectionRect,
+};
 pub use font_source_config::GenericFamilyMappingError;
 pub use ink_bounds::TextInkBounds;
 pub use layout_state::{TextLayoutDecision, TextLayoutOutcome, TextLayoutState};
+pub use preedit::{TextPreeditProjection, TextPreeditProjectionError};
 pub use request::{
     TextAlignment, TextLanguage, TextLanguageError, TextMetricSpan, TextOverflowWrap,
     TextParagraphStyle, TextRequest, TextRequestError, TextWordBreak, TextWrapMode,

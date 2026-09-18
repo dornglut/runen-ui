@@ -10,6 +10,7 @@ Core owns:
 
 - `UiApp`, host-neutral effects/work/subscription protocols, and validated work keys;
 - validated logical geometry, authored IDs/keys, typed token/style values, normalized production layout values, transient `View`/`Element` authoring, typed built-in views, and the open state-aware widget/child-bearing/measurement contracts;
+- application-authored text document/revision snapshots and checked UTF-8 positions, ordered ranges, directional selections, affinities, transient preedit positions, and checked host UTF-16 conversion values without live editing-session authority;
 - lifecycle, event, activation, invalidation, focusability, pointer/input, semantic-command, and application-work protocol values consumed by runtime;
 - opaque runtime-issued protocol value types for mounted, semantic, surface, time, and work identity without live allocation authority;
 - platform-neutral semantic authoring and action vocabulary, including stable owner-local semantic keys, roles/content/state/actions/relationships/bounds, contribution validation, and read-only semantic-action target metadata.

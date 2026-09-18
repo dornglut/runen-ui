@@ -5,7 +5,12 @@ use std::sync::Arc;
 
 use parley::Layout;
 
-use crate::{FontSourceSnapshot, TextArtifact, TextRequest};
+use runenui_core::TextDocumentSnapshot;
+
+use crate::{
+    FontSourceSnapshot, TextArtifact, TextCaretMap, TextCaretMapError, TextPreeditProjection,
+    TextRequest,
+};
 
 /// Reusable renderer-neutral state for one logical text-layout stream.
 ///
@@ -47,6 +52,41 @@ impl TextLayoutState {
     #[must_use]
     pub fn artifact(&self) -> Option<&TextArtifact> {
         self.cached.as_deref().map(|cached| &cached.artifact)
+    }
+
+    /// Derives an immutable exact-document caret map from the retained layout.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TextCaretMapError::MissingLayout`] when no layout is retained.
+    pub fn caret_map(
+        &self,
+        snapshot: TextDocumentSnapshot,
+    ) -> Result<TextCaretMap, TextCaretMapError> {
+        let cached = self
+            .cached
+            .clone()
+            .ok_or(TextCaretMapError::MissingLayout)?;
+        TextCaretMap::document(cached, snapshot)
+    }
+
+    /// Derives an immutable transient-preedit caret map from the same retained layout.
+    ///
+    /// The retained request must contain the projection's exact `display_text`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured error when layout is absent, display text differs,
+    /// or the retained layout contains unsupported inline boxes.
+    pub fn preedit_caret_map(
+        &self,
+        projection: Arc<TextPreeditProjection>,
+    ) -> Result<TextCaretMap, TextCaretMapError> {
+        let cached = self
+            .cached
+            .clone()
+            .ok_or(TextCaretMapError::MissingLayout)?;
+        TextCaretMap::preedit(cached, projection)
     }
 }
 
