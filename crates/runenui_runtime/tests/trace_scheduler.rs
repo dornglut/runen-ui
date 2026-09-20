@@ -228,7 +228,7 @@ impl UiApp for OrderedTransactionApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         if matches!(action, OrderedAction::Trigger) {
             state.revision += 1;
             return Effects::action(OrderedAction::UpdateOutput)

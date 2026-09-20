@@ -190,6 +190,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 
     #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn seed_next_edit_request_for_test(&mut self, next: Option<u64>) {
+        self.editing.seed_next_request_for_test(next);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) const fn seed_next_editing_session_for_test(&mut self, next: Option<u64>) {
+        self.editing.seed_next_session_for_test(next);
+    }
+
+    #[cfg(feature = "internal-test-seams")]
+    pub(crate) fn editing_session_counts_for_test(&self) -> (usize, usize) {
+        self.editing.session_counts_for_test()
+    }
+
+    #[cfg(feature = "internal-test-seams")]
     pub(crate) fn composition_generation_for_test(
         &self,
         value: u64,

@@ -117,9 +117,7 @@ impl PublicationLineage {
 
 #[cfg(test)]
 mod tests {
-    use runenui_core::{
-        IntoEffects, LogicalSize, NoHostProtocol, StyleEnvironment, UiApp, View, text,
-    };
+    use runenui_core::{LogicalSize, NoHostProtocol, StyleEnvironment, UiApp, View, text};
     use runenui_runtime::{
         AppRuntime, LayoutConstraints, PaintPublication, RasterScale, SurfaceBuildContext,
     };
@@ -140,7 +138,7 @@ mod tests {
         fn update(
             (): &mut Self::State,
             (): Self::Action,
-        ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         }
     }
 

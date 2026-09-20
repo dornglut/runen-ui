@@ -1,7 +1,7 @@
 use runenui_core::{
-    Color, EdgeInsets, IntoEffects, LogicalLength, NoHostProtocol, StyleEnvironment,
-    StylePreferenceKind, StylePreferencePolicy, StylePreferences, StyleProperties,
-    StyleResolutionLayer, UiApp, View, text,
+    Color, EdgeInsets, LogicalLength, NoHostProtocol, StyleEnvironment, StylePreferenceKind,
+    StylePreferencePolicy, StylePreferences, StyleProperties, StyleResolutionLayer, UiApp, View,
+    text,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext, SurfacePhase};
 
@@ -19,7 +19,7 @@ impl UiApp for PreferenceApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

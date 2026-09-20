@@ -3,7 +3,7 @@ use runenui_core::{MonotonicInstant, SemanticActionTarget};
 use crate::{
     TraceActionCategory, TraceActionIdentity, TraceContext, TraceSurfaceContext,
     TraceSurfaceIngressKind,
-    queue::SemanticCommandQueueTarget,
+    queue::{ApplicationActionOrigin, SemanticCommandQueueTarget},
     trace::{TraceRecordDraft, TraceReservation},
 };
 
@@ -169,7 +169,64 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(ActionCommitError::TraceSequenceExhausted(action));
         }
         self.queue
-            .push_preflighted(action, accepted, target)
+            .push_preflighted(action, accepted, target, ApplicationActionOrigin::Ordinary)
+            .map_err(ActionCommitError::Integrity)
+    }
+
+    pub(in crate::runtime) fn commit_preflighted_edit_action(
+        &mut self,
+        action: Action,
+        origin: crate::editing::EditActionOrigin,
+        causal_parent: Option<TraceSequence>,
+        target: Option<TraceTarget>,
+        instant: MonotonicInstant,
+    ) -> Result<WorkSequence, ActionCommitError<Action>> {
+        match self.queue.preflight_commit(1) {
+            Ok(()) => {}
+            Err(QueueCommitError::Full) => return Err(ActionCommitError::QueueFull(action)),
+            Err(QueueCommitError::SequenceExhausted) => {
+                return Err(ActionCommitError::WorkSequenceExhausted(action));
+            }
+        }
+        if !self
+            .trace
+            .can_admit(MandatoryTracePlan::action_acceptance())
+        {
+            return Err(ActionCommitError::TraceSequenceExhausted(action));
+        }
+        let Some(sequence) = self.queue.next_sequence() else {
+            return Err(ActionCommitError::Integrity(action));
+        };
+        let trace_enabled = self.trace.is_enabled();
+        let action_label = if trace_enabled {
+            self.trace_action_labeler
+                .and_then(|labeler| labeler(&action))
+        } else {
+            None
+        };
+        let accepted = self.trace.record_draft(
+            TraceRecordDraft::action_fact(
+                TraceRecordKind::ActionSubmissionAccepted,
+                instant,
+                TraceContext::action_record(TraceActionIdentity::editing::<Action>(
+                    action_label,
+                    &origin,
+                )),
+            )
+            .with_work_sequence(Some(sequence))
+            .with_causal_parent(causal_parent)
+            .with_target(target.clone()),
+        );
+        if trace_enabled && accepted.is_none() {
+            return Err(ActionCommitError::TraceSequenceExhausted(action));
+        }
+        self.queue
+            .push_preflighted(
+                action,
+                accepted,
+                target,
+                ApplicationActionOrigin::Edit(origin),
+            )
             .map_err(ActionCommitError::Integrity)
     }
 

@@ -11,8 +11,8 @@ use core::num::NonZeroU64;
 use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
-    LogicalRect, SemanticAction, SemanticRelationshipKind, SemanticRole, SemanticText,
-    SemanticValue, SurfaceId,
+    LogicalRect, SemanticAction, SemanticEditable, SemanticRelationshipKind, SemanticRole,
+    SemanticText, SemanticValue, SurfaceId,
 };
 
 use crate::SemanticNodeId;
@@ -48,6 +48,7 @@ impl SemanticRevision {
 pub struct SemanticNodeState {
     disabled: bool,
     inert: bool,
+    read_only: bool,
 }
 
 impl SemanticNodeState {
@@ -61,6 +62,12 @@ impl SemanticNodeState {
     #[must_use]
     pub const fn inert(self) -> bool {
         self.inert
+    }
+
+    /// Returns whether text mutation is unavailable for this published node.
+    #[must_use]
+    pub const fn read_only(self) -> bool {
+        self.read_only
     }
 }
 
@@ -104,6 +111,7 @@ pub struct SemanticNode {
     relationships: Vec<SemanticRelationship>,
     bounds: LogicalRect,
     text: Option<SemanticText>,
+    editable: Option<SemanticEditable>,
 }
 
 impl SemanticNode {
@@ -180,6 +188,12 @@ impl SemanticNode {
     #[must_use]
     pub const fn text(&self) -> Option<&SemanticText> {
         self.text.as_ref()
+    }
+
+    /// Returns exact revision-scoped editable text facts when this is an editable node.
+    #[must_use]
+    pub const fn editable(&self) -> Option<&SemanticEditable> {
+        self.editable.as_ref()
     }
 }
 
@@ -456,6 +470,7 @@ mod tests {
             relationships: Vec::new(),
             bounds: rect(),
             text: None,
+            editable: None,
         };
         SemanticSnapshot {
             surface,

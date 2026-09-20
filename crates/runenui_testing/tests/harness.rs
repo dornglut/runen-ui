@@ -1,9 +1,8 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    ElementId, IntoEffects, LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol,
-    PointerButton, PointerButtons, SemanticAction, SemanticRole, UiApp, View, button, children,
-    column,
+    ElementId, LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol, PointerButton,
+    PointerButtons, SemanticAction, SemanticRole, UiApp, View, button, children, column,
 };
 use runenui_runtime::{LogicalPoint, PointerDeviceKind, PointerId, PointerPhase, PumpBudget};
 use runenui_testing::{
@@ -39,7 +38,7 @@ impl UiApp for HarnessApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             Action::Increment => *state += 1,
             Action::Reset => *state = 0,

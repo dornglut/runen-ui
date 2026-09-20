@@ -152,6 +152,13 @@ pub(crate) struct ApplicationActionEnvelope<Action> {
     pub(crate) action: Action,
     pub(crate) causal_parent: Option<TraceSequence>,
     pub(crate) target: Option<TraceTarget>,
+    pub(crate) origin: ApplicationActionOrigin,
+}
+
+#[derive(Clone)]
+pub(crate) enum ApplicationActionOrigin {
+    Ordinary,
+    Edit(crate::editing::EditActionOrigin),
 }
 
 pub(crate) enum WorkEnvelope<Action> {
@@ -250,6 +257,7 @@ impl<Action> WorkQueue<Action> {
         action: Action,
         causal_parent: Option<TraceSequence>,
         target: Option<TraceTarget>,
+        origin: ApplicationActionOrigin,
     ) -> Result<WorkSequence, Action> {
         let Some(next_sequence) = self.next_sequence else {
             return Err(action);
@@ -262,6 +270,7 @@ impl<Action> WorkQueue<Action> {
                 action,
                 causal_parent,
                 target,
+                origin,
             }));
         Ok(sequence)
     }
@@ -445,6 +454,22 @@ impl<Action> WorkQueue<Action> {
         self.waiting
             .iter()
             .any(|envelope| matches!(envelope, WorkEnvelope::Pointer(_)))
+    }
+
+    pub(crate) fn pending_committed_text_for(&self, owner: &MountedNodeId) -> usize {
+        self.waiting
+            .iter()
+            .filter(|envelope| {
+                matches!(
+                    envelope,
+                    WorkEnvelope::Input(InputEnvelope {
+                        target,
+                        payload: InputEnvelopePayload::CommittedText(_),
+                        ..
+                    }) if target == owner
+                )
+            })
+            .count()
     }
 
     pub(crate) fn cancel_all(&mut self) -> CancelledQueue {

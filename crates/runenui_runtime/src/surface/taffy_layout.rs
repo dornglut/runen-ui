@@ -9,7 +9,12 @@ use runenui_core::{
     LogicalRect, LogicalSize, MainAxisAlignment, OverflowPolicy, Typography, WidgetAvailableSpace,
     WidgetMeasure, WidgetMeasureInput, WidgetMeasuredSize,
 };
-use runenui_text::{TextConstraints, TextLayoutError, TextLayoutState, TextRequest, TextSystem};
+use std::{collections::HashMap, sync::Arc};
+
+use runenui_text::{
+    TextConstraints, TextLayoutError, TextLayoutState, TextPreeditProjection, TextRequest,
+    TextSystem,
+};
 use taffy::{
     CacheTree,
     compute::{
@@ -38,6 +43,7 @@ pub(super) fn layout_resolved_surface<Action>(
     mounted_tree: &crate::mounted::MountedTree<Action>,
     root_constraints: LayoutConstraints,
     text_system: &mut TextSystem,
+    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
     prior_text_layouts: Option<&[TextLayoutState]>,
 ) -> Result<
     (
@@ -54,6 +60,7 @@ pub(super) fn layout_resolved_surface<Action>(
         resolved_tree,
         mounted_tree,
         text_system,
+        preedits,
         prior_text_layouts,
         root_constraints,
     );
@@ -66,6 +73,7 @@ struct LayoutKernel<'a, Action> {
     resolved: &'a ResolvedSurfaceTree,
     mounted: &'a crate::mounted::MountedTree<Action>,
     text_system: &'a mut TextSystem,
+    preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
     caches: Vec<Cache>,
     layouts: Vec<Layout>,
     text_layouts: Vec<TextLayoutState>,
@@ -86,6 +94,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         resolved: &'a ResolvedSurfaceTree,
         mounted: &'a crate::mounted::MountedTree<Action>,
         text_system: &'a mut TextSystem,
+        preedits: &'a HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
         prior_text_layouts: Option<&[TextLayoutState]>,
         root_constraints: LayoutConstraints,
     ) -> Self {
@@ -128,6 +137,7 @@ impl<'a, Action> LayoutKernel<'a, Action> {
             resolved,
             mounted,
             text_system,
+            preedits,
             caches: vec![Cache::new(); count],
             layouts: vec![Layout::default(); count],
             text_layouts,
@@ -186,6 +196,10 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 measured.size()
             }
             Ok(WidgetMeasure::Text { content }) => {
+                let content = self
+                    .preedits
+                    .get(&mounted.id)
+                    .map_or(content, |projection| projection.display_text().to_owned());
                 self.custom_intrinsic_sizes[index] = None;
                 let typography = resolved
                     .computed_style()

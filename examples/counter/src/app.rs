@@ -1,4 +1,4 @@
-use runenui_core::{IntoEffects, NoHostProtocol, UiApp, View};
+use runenui_core::{NoHostProtocol, UiApp, View};
 
 use crate::ui::root;
 
@@ -48,7 +48,7 @@ impl UiApp for CounterApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         update(state, action);
     }
 }

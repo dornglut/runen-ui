@@ -64,8 +64,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if let Some(semantic_target) = semantic_target {
             facts = facts.with_semantic_target(semantic_target);
         }
+        let default_outputs = usize::from(matches!(
+            command,
+            runenui_core::SemanticCommand::DeleteBackward
+                | runenui_core::SemanticCommand::DeleteForward
+                | runenui_core::SemanticCommand::Undo
+                | runenui_core::SemanticCommand::Redo
+                | runenui_core::SemanticCommand::ReplaceSelection
+        ));
         let Some(mut transaction) = (if is_focus_command(command) {
             self.begin_focus_routed_transaction(facts)
+        } else if default_outputs != 0 {
+            self.try_begin_routed_transaction_with_trace_and_default_commands(
+                facts,
+                MandatoryTracePlan::none(),
+                default_outputs,
+            )
+            .ok()
         } else {
             self.begin_routed_transaction(facts)
         }) else {
@@ -251,6 +266,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let pointer_callback_targets = route.clone();
         Some(self.start_routed_transaction(facts, route, pointer_callback_targets, admission))
     }
+}
+
+pub(super) const fn is_editing_command(command: runenui_core::SemanticCommand) -> bool {
+    matches!(
+        command,
+        runenui_core::SemanticCommand::MoveBackward
+            | runenui_core::SemanticCommand::MoveForward
+            | runenui_core::SemanticCommand::ExtendBackward
+            | runenui_core::SemanticCommand::ExtendForward
+            | runenui_core::SemanticCommand::SelectAll
+            | runenui_core::SemanticCommand::DeleteBackward
+            | runenui_core::SemanticCommand::DeleteForward
+            | runenui_core::SemanticCommand::Undo
+            | runenui_core::SemanticCommand::Redo
+            | runenui_core::SemanticCommand::Copy
+            | runenui_core::SemanticCommand::Cut
+            | runenui_core::SemanticCommand::Paste
+            | runenui_core::SemanticCommand::SetSelection
+            | runenui_core::SemanticCommand::ReplaceSelection
+    )
 }
 
 const fn is_focus_command(command: runenui_core::SemanticCommand) -> bool {

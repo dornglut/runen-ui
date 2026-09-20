@@ -28,7 +28,7 @@ impl<App: UiApp> AppRuntime<App> {
 #[cfg(test)]
 mod tests {
     use runenui_core::{
-        CommandOrigin, Element, IntoEffects, NoHostProtocol, SemanticCommand, UiApp, View, Widget,
+        CommandOrigin, Element, NoHostProtocol, SemanticCommand, UiApp, View, Widget,
         WidgetActivation, WidgetTextInput,
     };
 
@@ -71,7 +71,7 @@ mod tests {
         fn update(
             _: &mut Self::State,
             (): Self::Action,
-        ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         }
     }
 

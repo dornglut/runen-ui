@@ -1,8 +1,8 @@
 use runenui_core::{
-    Brush, Color, ContributionClip, DropShadow, Element, IntoEffects, LogicalLength, LogicalPoint,
-    LogicalRect, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionGroup, PaintContributionItem, ResourceKind, ResourceRef, SceneOpacity,
-    SceneShape, StyleEnvironment, UiApp, View, Widget, WidgetMeasure, WidgetMeasureInput,
+    Brush, Color, ContributionClip, DropShadow, Element, LogicalLength, LogicalPoint, LogicalRect,
+    NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionGroup,
+    PaintContributionItem, ResourceKind, ResourceRef, SceneOpacity, SceneShape, StyleEnvironment,
+    UiApp, View, Widget, WidgetMeasure, WidgetMeasureInput,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PaintDamage, PaintSceneBounds, PaintSceneGroupId,
@@ -61,7 +61,7 @@ impl UiApp for App {
     fn update(
         _: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

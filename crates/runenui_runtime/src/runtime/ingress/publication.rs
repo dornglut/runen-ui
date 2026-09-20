@@ -175,9 +175,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let interaction = self
             .pointer_registry
             .surface_interaction_projection(focused_owner.as_ref());
+        let editing = self.editing.semantic_projections();
+        let preedits = self.editing.preedit_projections();
         let candidate = SurfacePublicationCandidateInputs::new(
             &interaction,
             focused_owner.as_ref(),
+            &editing,
+            &preedits,
             admission.surface,
             instant,
         );

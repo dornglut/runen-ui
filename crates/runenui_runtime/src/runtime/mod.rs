@@ -42,7 +42,10 @@ use crate::{
         CompletionIngress, CompletionKind, HostResponseCompletion, SendTaskJob, UnavailableExecutor,
     },
     mounted::{MountedIdentityExhausted, MountedTree, TargetStatus},
-    queue::{ApplicationActionEnvelope, QueueCommitError, WorkEnvelope, WorkQueue},
+    queue::{
+        ApplicationActionEnvelope, ApplicationActionOrigin, QueueCommitError, WorkEnvelope,
+        WorkQueue,
+    },
     transaction::{
         ApplicationTransactionInput, OwnedTransactionLedger, PlannedApplicationTransaction,
         PlannedOutput, PlannedStartPayload, PlannedWorkSemanticEvent, TransactionLedger,
@@ -92,6 +95,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     pointer_registry: PointerRegistry,
     pub(crate) space_ownership: Option<SpaceOwnership>,
     pub(crate) composition: CompositionState,
+    pub(crate) editing: crate::editing::EditingRegistry<Action>,
     pub(crate) next_composition_generation: Option<core::num::NonZeroU64>,
     /// Highest generation successfully committed to the canonical input FIFO.
     ///

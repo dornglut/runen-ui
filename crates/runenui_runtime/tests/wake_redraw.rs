@@ -32,7 +32,7 @@ impl UiApp for App {
     fn update(
         state: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         *state += 1;
         Effects::redraw()
     }
@@ -131,7 +131,7 @@ impl UiApp for RedrawApp {
     fn update(
         state: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         *state += 1;
         Effects::redraw()
     }

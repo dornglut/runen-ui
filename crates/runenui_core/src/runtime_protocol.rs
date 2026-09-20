@@ -129,6 +129,42 @@ impl RuntimeNamespace {
             )
         })
     }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_editing_session_generation(
+        &self,
+        generation: u64,
+    ) -> crate::EditingSessionGeneration {
+        crate::EditingSessionGeneration {
+            namespace: self.clone(),
+            generation,
+        }
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_editing_session_generation_is_local(
+        &self,
+        generation: &crate::EditingSessionGeneration,
+    ) -> bool {
+        self.same_as(&generation.namespace)
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_edit_request_id(&self, request: u64) -> crate::EditRequestId {
+        crate::EditRequestId {
+            namespace: self.clone(),
+            request,
+        }
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_edit_request_id_is_local(&self, request: &crate::EditRequestId) -> bool {
+        self.same_as(&request.namespace)
+    }
 }
 
 impl fmt::Debug for RuntimeNamespace {

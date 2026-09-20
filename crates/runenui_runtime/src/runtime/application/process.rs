@@ -1,12 +1,13 @@
 use runenui_core::CommandOrigin;
 
 use super::{
-    ApplicationActionEnvelope, ApplicationTraceTransaction, ApplicationTransactionInput, HashMap,
-    HashSet, HostProtocol, IntoEffects, MandatoryTracePlan, MountedNodeId, MutationPhase,
-    OwnedTransactionLedger, ProcessApplicationActionOutcome, ReconciliationGeneration,
-    ReconciliationReport, Runtime, RuntimeStatus, RuntimeTerminalReason, SubscriptionDiff,
-    SubscriptionSet, TargetStatus, TraceRecordKind, TransactionLedger, UiApp, View, WorkOwner,
-    mounted_effect_into_effect, public_trace_work_identity, revoke_generation_authority,
+    ApplicationActionEnvelope, ApplicationActionOrigin, ApplicationTraceTransaction,
+    ApplicationTransactionInput, HashMap, HashSet, HostProtocol, IntoUpdateOutput,
+    MandatoryTracePlan, MountedNodeId, MutationPhase, OwnedTransactionLedger,
+    ProcessApplicationActionOutcome, ReconciliationGeneration, ReconciliationReport, Runtime,
+    RuntimeStatus, RuntimeTerminalReason, SubscriptionDiff, SubscriptionSet, TargetStatus,
+    TraceRecordKind, TransactionLedger, UiApp, View, WorkOwner, mounted_effect_into_effect,
+    public_trace_work_identity, revoke_generation_authority,
 };
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
@@ -29,6 +30,7 @@ pub(crate) fn process_application_action<App: UiApp>(
         action,
         causal_parent,
         target,
+        origin,
     } = envelope;
     let before = ReconciliationGeneration(runtime.generation);
     let Some(next) = runtime.next_generation() else {
@@ -41,6 +43,7 @@ pub(crate) fn process_application_action<App: UiApp>(
         .trace
         .can_admit(MandatoryTracePlan::application_action_base(
             runtime.focus.focused_node().is_some(),
+            matches!(&origin, ApplicationActionOrigin::Edit(_)),
         ))
     {
         let reason = mutation_phase.terminal_reason(RuntimeTerminalReason::TraceSequenceExhausted);
@@ -60,8 +63,20 @@ pub(crate) fn process_application_action<App: UiApp>(
         .state
         .as_mut()
         .unwrap_or_else(|| unreachable!("live runtime retains application state"));
-    let effects = App::update(app_state, action).into_effects();
+    let update_output = App::update(app_state, action).into_update_output();
+    let (effects, edit_resolution) = update_output.__runtime_into_parts();
     mutation_phase = MutationPhase::Mutated;
+    let resolution_cardinality_valid = match &origin {
+        ApplicationActionOrigin::Ordinary => edit_resolution.is_none(),
+        ApplicationActionOrigin::Edit(edit_origin) => edit_resolution
+            .as_ref()
+            .is_some_and(|resolution| resolution.request() == &edit_origin.request),
+    };
+    if !resolution_cardinality_valid {
+        let reason = RuntimeTerminalReason::Poisoned;
+        let cancelled = runtime.enter_terminal(reason, 1);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
     let ledger = match TransactionLedger::collect(effects, runtime.limits.transaction_outputs()) {
         Ok(ledger) => ledger,
         Err(_error) => {
@@ -177,6 +192,46 @@ pub(crate) fn process_application_action<App: UiApp>(
     let mounted_outputs = reconcile_stats.mounted_outputs;
     runtime.generation = next;
     let after = ReconciliationGeneration(next);
+    let Ok(contributions) = runtime.tree.editable_contributions() else {
+        let reason = RuntimeTerminalReason::Poisoned;
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    };
+    let namespace = runtime.tree.runtime_namespace();
+    let edit_trace_outcome =
+        edit_resolution
+            .as_ref()
+            .map(|resolution| match resolution.outcome() {
+                runenui_core::EditResolutionOutcome::Accepted => {
+                    crate::TraceEditResolutionOutcome::Accepted
+                }
+                runenui_core::EditResolutionOutcome::Rejected => {
+                    crate::TraceEditResolutionOutcome::Rejected
+                }
+                runenui_core::EditResolutionOutcome::Transformed { .. } => {
+                    crate::TraceEditResolutionOutcome::Transformed
+                }
+                _ => crate::TraceEditResolutionOutcome::Transformed,
+            });
+    if runtime
+        .editing
+        .reconcile(&namespace, contributions, &origin, edit_resolution)
+        .is_err()
+    {
+        let reason = RuntimeTerminalReason::Poisoned;
+        let cancelled = runtime.enter_terminal(reason, 0);
+        return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
+    }
+    if let Some(outcome) = edit_trace_outcome {
+        runtime.trace.record_draft(
+            trace_transaction
+                .fact(TraceRecordKind::EditResolutionVerified { outcome })
+                .with_work_sequence(Some(sequence))
+                .with_causal_parent(causal_parent)
+                .with_reconciliation(Some(before), Some(after))
+                .with_target(target.clone()),
+        );
+    }
     runtime.cleanup_lost_input_capabilities(input_cleanup_cause);
     if let RuntimeStatus::Terminal(reason) = runtime.status {
         return ProcessApplicationActionOutcome::Terminal {

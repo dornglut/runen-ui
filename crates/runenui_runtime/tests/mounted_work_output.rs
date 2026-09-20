@@ -94,7 +94,7 @@ impl UiApp for App {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         state.actions.push(action);
         match action {
             Action::TriggerUpdate => state.emit_update = true,

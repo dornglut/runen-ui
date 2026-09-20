@@ -183,6 +183,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let shutdown_parent = self.clear_focus_for_shutdown(space_parent, logical_time);
         let (cancelled_queued_envelopes, cancelled_live_work, final_parent) =
             self.close_scheduling_authority(shutdown_parent);
+        self.editing.shutdown();
         let stats = self.tree.shutdown();
         self.surface_publication.clear_motion_for_shutdown();
         self.surface_publication.clear_cache();

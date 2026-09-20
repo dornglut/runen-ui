@@ -112,6 +112,7 @@ macro_rules! trace_kind_name {
             TraceRecordKind::MountedSubscriptionInvalidated => "mounted_subscription_invalidated",
             TraceRecordKind::SemanticDefaultApplied { .. } => "semantic_default_applied",
             TraceRecordKind::SemanticDefaultSuppressed { .. } => "semantic_default_suppressed",
+            TraceRecordKind::EditingDefaultUnavailable { .. } => "editing_default_unavailable",
             TraceRecordKind::SemanticDefaultTargetInvalidated { .. } => {
                 "semantic_default_target_invalidated"
             }
@@ -129,6 +130,7 @@ macro_rules! trace_kind_name {
                 "application_action_transaction_started"
             }
             TraceRecordKind::ApplicationStateUpdated => "application_state_updated",
+            TraceRecordKind::EditResolutionVerified { .. } => "edit_resolution_verified",
             TraceRecordKind::TreeReconciled => "tree_reconciled",
             TraceRecordKind::FocusRetained => "focus_retained",
             TraceRecordKind::FocusCommandEvaluated { .. } => "focus_command_evaluated",
@@ -569,7 +571,8 @@ fn encode_routed_focus_data(output: &mut String, kind: &TraceRecordKind) -> bool
         }
         TraceRecordKind::DelegatedCommandCollected { command }
         | TraceRecordKind::SemanticDefaultApplied { command }
-        | TraceRecordKind::SemanticDefaultSuppressed { command } => {
+        | TraceRecordKind::SemanticDefaultSuppressed { command }
+        | TraceRecordKind::EditingDefaultUnavailable { command } => {
             json::name(output, "command");
             value::semantic_command(output, *command);
         }
@@ -632,6 +635,17 @@ fn encode_routed_focus_data(output: &mut String, kind: &TraceRecordKind) -> bool
 
 fn encode_runtime_data(output: &mut String, kind: &TraceRecordKind) -> bool {
     match kind {
+        TraceRecordKind::EditResolutionVerified { outcome } => {
+            field_str(
+                output,
+                "outcome",
+                match outcome {
+                    crate::TraceEditResolutionOutcome::Accepted => "accepted",
+                    crate::TraceEditResolutionOutcome::Rejected => "rejected",
+                    crate::TraceEditResolutionOutcome::Transformed => "transformed",
+                },
+            );
+        }
         TraceRecordKind::InitialEffectsCommitted { count }
         | TraceRecordKind::UpdateEffectsCommitted { count }
         | TraceRecordKind::QueuedWorkCancelled { count } => {

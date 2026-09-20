@@ -134,9 +134,11 @@ fn candidate_node_matches(candidate: &SemanticCandidateNode, published: &Semanti
         && candidate.value == published.value
         && candidate.disabled == published.state.disabled
         && candidate.inert == published.state.inert
+        && candidate.read_only == published.state.read_only
         && candidate.supported_actions == published.supported_actions
         && candidate.bounds == published.bounds
         && candidate.text == published.text
+        && candidate.editable == published.editable
         && candidate.relationships.len() == published.relationships.len()
         && candidate
             .relationships
@@ -167,6 +169,7 @@ fn publication_from_candidate(
             state: SemanticNodeState {
                 disabled: node.disabled,
                 inert: node.inert,
+                read_only: node.read_only,
             },
             supported_actions: node.supported_actions,
             relationships: node
@@ -179,6 +182,7 @@ fn publication_from_candidate(
                 .collect(),
             bounds: node.bounds,
             text: node.text,
+            editable: node.editable,
         })
         .collect::<Vec<_>>();
     let index = nodes
@@ -274,10 +278,12 @@ mod tests {
                 value: None,
                 disabled: false,
                 inert: false,
+                read_only: false,
                 supported_actions: Vec::new(),
                 relationships: Vec::new(),
                 bounds: rect(width),
                 text: None,
+                editable: None,
             }],
             focused: Some(id),
             diagnostics,

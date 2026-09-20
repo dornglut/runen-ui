@@ -1,5 +1,5 @@
 use runenui_core::{
-    Color, IntoEffects, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, NoHostProtocol,
+    Color, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, NoHostProtocol,
     PresentationOrigin, PresentationRotation, PresentationScale, PresentationTransform,
     PresentationTranslation, StyleEnvironment, UiApp, UnitInterval, View, button,
 };
@@ -28,7 +28,7 @@ impl UiApp for PresentationGeometryApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

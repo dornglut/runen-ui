@@ -1,8 +1,8 @@
 use runenui_core::{
-    Element, IntoEffects, LogicalRect, NoHostProtocol, SemanticAction, SemanticBounds,
-    SemanticContribution, SemanticContributionContext, SemanticContributionError, SemanticKey,
-    SemanticNodeContribution, SemanticRole, SemanticText, SemanticValue, StyleEnvironment, UiApp,
-    View, Widget, WidgetActivation, column,
+    Element, LogicalRect, NoHostProtocol, SemanticAction, SemanticBounds, SemanticContribution,
+    SemanticContributionContext, SemanticContributionError, SemanticKey, SemanticNodeContribution,
+    SemanticRole, SemanticText, SemanticValue, StyleEnvironment, UiApp, View, Widget,
+    WidgetActivation, column,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, SemanticDiagnostic, SemanticOwnerWithdrawalReason,
@@ -76,7 +76,7 @@ impl UiApp for MappedSemanticApp {
     fn update(
         (): &mut Self::State,
         _: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -112,7 +112,7 @@ impl UiApp for InvalidSemanticApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

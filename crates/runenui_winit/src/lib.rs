@@ -26,6 +26,6 @@ impl runenui_core::UiApp for DemoApp {
     fn update(
         _state: &mut Self::State,
         _action: Self::Action,
-    ) -> impl runenui_core::IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }

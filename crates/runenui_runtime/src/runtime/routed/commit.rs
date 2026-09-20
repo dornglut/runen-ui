@@ -177,7 +177,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.tree.finish_focus_validation();
         }
         if focus_changed {
-            self.tree.mark_semantic_focus_product_dirty();
+            self.tree.mark_runtime_semantic_product_dirty();
         }
         if focus_changed
             || pointer_style_changed
@@ -204,6 +204,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         causal_parent,
                         Some(self.tree.trace_target(&current_target)),
                         TraceActionCategory::RoutedCommand,
+                        instant,
+                    )
+                    .map_err(|_| ())?;
+                }
+                CollectedRoutedOutput::EditAction {
+                    action,
+                    origin,
+                    causal_parent,
+                    current_target,
+                } => {
+                    self.commit_preflighted_edit_action(
+                        action,
+                        origin,
+                        causal_parent,
+                        Some(self.tree.trace_target(&current_target)),
                         instant,
                     )
                     .map_err(|_| ())?;

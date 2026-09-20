@@ -24,12 +24,12 @@ use mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
 };
 use runenui_core::{
-    Brush, Color, CommandOrigin, CommittedTextEvent, Element, InputDeviceId, IntoEffects,
-    KeyModifiers, KeyboardEvent, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
-    PaintContribution, PaintContributionContext, PaintContributionItem, PointerEvent, SceneShape,
-    SemanticAction, SemanticCommand, SemanticContribution, SemanticKey, SemanticNodeContribution,
-    SemanticRole, SemanticText, StyleEnvironment, SurfaceInputContext, UiApp, View, Widget,
-    WidgetActivation, WidgetMeasure, WidgetTextInput,
+    Brush, Color, CommandOrigin, CommittedTextEvent, Element, InputDeviceId, KeyModifiers,
+    KeyboardEvent, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
+    PaintContributionContext, PaintContributionItem, PointerEvent, SceneShape, SemanticAction,
+    SemanticCommand, SemanticContribution, SemanticKey, SemanticNodeContribution, SemanticRole,
+    SemanticText, StyleEnvironment, SurfaceInputContext, UiApp, View, Widget, WidgetActivation,
+    WidgetMeasure, WidgetTextInput,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -153,7 +153,7 @@ impl UiApp for DemoApp {
     fn update(
         _state: &mut Self::State,
         _action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

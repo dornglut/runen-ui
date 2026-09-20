@@ -2,7 +2,7 @@
 
 use runenui_core::{
     Brush, ChildBearingWidget, Color, ContributionClip, Element, FontFamilyName, GenericFontFamily,
-    IntoEffects, LogicalLength, LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution,
+    LogicalLength, LogicalRect, LogicalTransform, NoHostProtocol, PaintContribution,
     PaintContributionContext, PaintContributionGroup, PaintContributionItem, PaintPrimitive,
     PresentationOrigin, PresentationRotation, PresentationScale, PresentationTransform,
     PresentationTranslation, SceneLayer, SceneOpacity, SceneShape, StyleEnvironment, UiApp,
@@ -133,7 +133,7 @@ impl UiApp for NestedExplicitApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -231,7 +231,7 @@ impl UiApp for ExplicitInsideNodeEffectApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -304,7 +304,7 @@ impl UiApp for TextAndExplicitApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -414,7 +414,7 @@ impl UiApp for ClipGroupApp {
     fn update(
         _: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -532,7 +532,7 @@ impl UiApp for OverflowGroupClipApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

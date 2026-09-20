@@ -1,8 +1,8 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    CommandOrigin, Element, IntoEffects, LayoutDimension, LayoutStyle, LogicalLength,
-    NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp, View, button, row,
+    CommandOrigin, Element, LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol,
+    SemanticCommand, StyleEnvironment, UiApp, View, button, row,
 };
 use runenui_runtime::{
     AppRuntime, CommandSubmission, LogicalPoint, LogicalSize, PumpBudget, RuntimeConfig,
@@ -41,7 +41,7 @@ impl UiApp for RetentionApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             RetentionAction::NextMode => state.mode = (state.mode + 1) % 3,
             RetentionAction::Activate(index) => state.activations[index] += 1,

@@ -36,7 +36,7 @@ impl UiApp for OrderedWorkApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         state.push(action);
         match action {
             Action::Initial => Effects::action(Action::FollowUp),
@@ -76,7 +76,7 @@ impl UiApp for OverflowApp {
     fn update(
         state: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         *state += 1;
         Effects::keyed_local_task(
             WorkKey::new("overflow").unwrap_or_else(|_| unreachable!()),
@@ -142,7 +142,7 @@ impl UiApp for MountedSubscriptionApp {
     fn update(
         _: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

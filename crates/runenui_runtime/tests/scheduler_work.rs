@@ -91,7 +91,7 @@ impl UiApp for LocalTaskApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         if let Action::Label(label) = action {
             state.push(label);
         }
@@ -125,7 +125,7 @@ impl UiApp for PendingTaskApp {
     fn update(
         (): &mut Self::State,
         _: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -161,7 +161,7 @@ impl UiApp for TimerApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         if let Action::Label(label) = action {
             state.push(label);
         }
@@ -205,7 +205,7 @@ impl UiApp for RepeatingTimerApp {
     fn update(
         state: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         *state += 1;
     }
 }
@@ -278,7 +278,7 @@ impl UiApp for OverflowingRepeatingTimerApp {
     fn update(
         state: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         *state += 1;
     }
 }
@@ -332,7 +332,7 @@ impl UiApp for ZeroTimerApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -387,7 +387,7 @@ impl UiApp for SendTaskApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         if let Action::NonSend(value) = action {
             *state += Rc::strong_count(&value);
         }
@@ -453,7 +453,7 @@ impl UiApp for RefusalApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         *state = Some(action);
     }
 }
@@ -638,7 +638,7 @@ impl UiApp for SendMapperIntegrityApp {
     fn update(
         _: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -754,7 +754,7 @@ impl UiApp for SendCancelApp {
     fn update(
         state: &mut Self::State,
         completed: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         if completed {
             state.completed_updates += 1;
             Effects::none()
@@ -901,7 +901,7 @@ impl UiApp for CancelTimerApp {
     fn update(
         state: &mut Self::State,
         fired: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         if fired {
             *state += 1;
             Effects::none()

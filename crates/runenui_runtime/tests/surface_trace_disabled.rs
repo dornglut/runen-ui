@@ -1,6 +1,6 @@
 use runenui_core::{
-    CommandOrigin, IntoEffects, LogicalLength, NoHostProtocol, SemanticCommand, StyleEnvironment,
-    UiApp, View, button,
+    CommandOrigin, LogicalLength, NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp, View,
+    button,
 };
 use runenui_runtime::{
     AppRuntime, LogicalPoint, LogicalSize, PumpBudget, RuntimeConfig, SurfaceBuildContext,
@@ -21,7 +21,7 @@ impl UiApp for TraceDisabledApp {
     fn update(
         state: &mut Self::State,
         _action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         *state += 1;
     }
 }

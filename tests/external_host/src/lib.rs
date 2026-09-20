@@ -18,7 +18,7 @@ mod tests {
 
     use runenui_core::{
         Brush, Color, Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
-        ImagePaintDescriptor, IntoEffects, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
+        ImagePaintDescriptor, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol,
         PaintContribution, PaintContributionContext, PaintContributionItem, ResourceKind,
         ResourceRef, SceneShape, SemanticAction, SemanticActionRequest, SemanticContribution,
         SemanticContributionContext, SemanticNodeContribution, SemanticRole, StyleEnvironment,
@@ -150,7 +150,7 @@ mod tests {
         fn update(
             state: &mut Self::State,
             action: Self::Action,
-        ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
             match action {
                 HostAction::SetActive(active) => state.active = active,
                 HostAction::Toggle => state.active = !state.active,

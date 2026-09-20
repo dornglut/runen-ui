@@ -1,6 +1,6 @@
 use runenui_core::{
-    Brush, Color, GradientStop, GradientStops, IntoEffects, LinearGradient, LogicalPoint,
-    NoHostProtocol, StyleEnvironment, UiApp, UnitInterval, View, text,
+    Brush, Color, GradientStop, GradientStops, LinearGradient, LogicalPoint, NoHostProtocol,
+    StyleEnvironment, UiApp, UnitInterval, View, text,
 };
 use runenui_runtime::{AppRuntime, LayoutConstraints, SurfaceBuildContext};
 
@@ -20,7 +20,7 @@ impl UiApp for BackgroundBrushApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

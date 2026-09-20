@@ -106,6 +106,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             pointer_registry: PointerRegistry::new(limits.pointer_streams()),
             space_ownership: None,
             composition: crate::input::CompositionState::None,
+            editing: crate::editing::EditingRegistry::new(
+                limits.editing_sessions(),
+                limits.pending_edits(),
+            ),
             next_composition_generation: core::num::NonZeroU64::new(1),
             last_issued_composition_generation: None,
             generation,
@@ -148,6 +152,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             #[cfg(feature = "internal-test-seams")]
             routed_commit_failure_for_test: false,
         };
+        if !mount_failed {
+            let contributions = runtime.tree.editable_contributions();
+            let namespace = runtime.tree.runtime_namespace();
+            if contributions.is_err()
+                || runtime
+                    .editing
+                    .initial_reconcile(&namespace, contributions.unwrap_or_else(|_| unreachable!()))
+                    .is_err()
+            {
+                runtime.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+            }
+        }
         if mount_failed {
             runtime.enter_terminal(RuntimeTerminalReason::MountedIdentityExhausted, 0);
         } else if !initial_trace_admitted {

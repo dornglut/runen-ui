@@ -18,6 +18,12 @@ pub(crate) enum CollectedRoutedOutput<Action> {
         causal_parent: Option<TraceSequence>,
         current_target: MountedNodeId,
     },
+    EditAction {
+        action: Action,
+        origin: crate::editing::EditActionOrigin,
+        causal_parent: Option<TraceSequence>,
+        current_target: MountedNodeId,
+    },
     Command {
         target: MountedNodeId,
         command: SemanticCommand,

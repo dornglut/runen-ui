@@ -13,11 +13,12 @@ use std::{
 
 use accesskit::{
     Action, ActionData, ActionRequest, ActivationHandler, CustomAction, Node, NodeId, Rect, Role,
-    Tree, TreeId, TreeUpdate,
+    TextPosition as AccessTextPosition, TextSelection as AccessTextSelection, Tree, TreeId,
+    TreeUpdate,
 };
 use runenui_core::{
     SemanticAction, SemanticNodeId, SemanticRelationshipKind, SemanticRole, SemanticText,
-    SemanticValue, SurfaceId,
+    SemanticValue, SurfaceId, TextAffinity, TextPosition, TextSensitivity,
 };
 use runenui_runtime::{SemanticNode, SemanticPublication, SemanticSnapshot, SemanticUpdateResult};
 
@@ -165,6 +166,7 @@ struct SurfaceProjection {
     current_snapshot: Option<SemanticSnapshot>,
     semantic_to_accesskit: HashMap<SemanticNodeId, NodeId>,
     accesskit_to_semantic: HashMap<NodeId, SemanticNodeId>,
+    editable_text_runs: HashMap<SemanticNodeId, NodeId>,
     retired_semantic: HashSet<SemanticNodeId>,
     retired_accesskit: HashSet<NodeId>,
     current_nodes: BTreeMap<NodeId, Node>,
@@ -181,6 +183,7 @@ impl SurfaceProjection {
             current_snapshot: None,
             semantic_to_accesskit: HashMap::new(),
             accesskit_to_semantic: HashMap::new(),
+            editable_text_runs: HashMap::new(),
             retired_semantic: HashSet::new(),
             retired_accesskit: HashSet::new(),
             current_nodes: BTreeMap::new(),
@@ -205,6 +208,20 @@ impl SurfaceProjection {
             );
         match result {
             SemanticUpdateResult::Delta(delta) => {
+                if snapshot
+                    .nodes()
+                    .iter()
+                    .any(|node| node.editable().is_some())
+                    || previous_snapshot.as_ref().is_some_and(|snapshot| {
+                        snapshot
+                            .nodes()
+                            .iter()
+                            .any(|node| node.editable().is_some())
+                    })
+                {
+                    let (tree_update, diagnostics) = self.full_resync(snapshot);
+                    return (UpdateMode::FullResync, tree_update, diagnostics);
+                }
                 let (tree_update, diagnostics) =
                     self.apply_delta(snapshot, previous_snapshot.as_ref(), delta);
                 (UpdateMode::Delta, tree_update, diagnostics)
@@ -264,10 +281,28 @@ impl SurfaceProjection {
             .cloned()
             .collect();
         for semantic in retired {
+            if let Some(text_run) = self.editable_text_runs.remove(&semantic) {
+                self.retired_accesskit.insert(text_run);
+            }
             if let Some(accesskit) = self.semantic_to_accesskit.remove(&semantic) {
                 self.accesskit_to_semantic.remove(&accesskit);
                 self.retired_accesskit.insert(accesskit);
                 self.retired_semantic.insert(semantic);
+            }
+        }
+        let text_runs_to_retire = self
+            .editable_text_runs
+            .keys()
+            .filter(|semantic| {
+                snapshot
+                    .node(semantic)
+                    .is_none_or(|node| !supports_editable_text_run(node))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        for semantic in text_runs_to_retire {
+            if let Some(text_run) = self.editable_text_runs.remove(&semantic) {
+                self.retired_accesskit.insert(text_run);
             }
         }
     }
@@ -304,6 +339,11 @@ impl SurfaceProjection {
         self.retire_missing(snapshot);
         for node in snapshot.nodes() {
             self.ensure_node_id(node.id());
+            if supports_editable_text_run(node) && !self.editable_text_runs.contains_key(node.id())
+            {
+                let text_run = self.allocate_node_id();
+                self.editable_text_runs.insert(node.id().clone(), text_run);
+            }
         }
         let root = self.root_id(snapshot);
         let (nodes, diagnostics) = self.project_all_nodes(snapshot, root);
@@ -426,6 +466,11 @@ impl SurfaceProjection {
             let (node, node_diagnostics) = self.project_node(semantic);
             diagnostics.extend(node_diagnostics);
             result.push((accesskit_id, node));
+            if let Some(text_run_id) = self.editable_text_runs.get(semantic.id()).copied()
+                && let Some(text_run) = project_editable_text_run(semantic)
+            {
+                result.push((text_run_id, text_run));
+            }
         }
         (result, diagnostics)
     }
@@ -433,7 +478,14 @@ impl SurfaceProjection {
     #[allow(clippy::too_many_lines)]
     fn project_node(&self, semantic: &SemanticNode) -> (Node, Vec<AdapterDiagnostic>) {
         let mut diagnostics = Vec::new();
-        let role = map_role(semantic.role(), semantic.id(), &mut diagnostics);
+        let role = semantic.editable().map_or_else(
+            || map_role(semantic.role(), semantic.id(), &mut diagnostics),
+            |editable| match editable.sensitivity() {
+                TextSensitivity::Public => Role::TextInput,
+                TextSensitivity::Secret => Role::PasswordInput,
+                _ => Role::Unknown,
+            },
+        );
         let mut node = Node::new(role);
         if semantic.state().disabled() {
             node.set_disabled();
@@ -442,6 +494,9 @@ impl SurfaceProjection {
             diagnostics.push(AdapterDiagnostic::UnsupportedInertState(
                 semantic.id().clone(),
             ));
+        }
+        if semantic.state().read_only() {
+            node.set_read_only();
         }
         if let Some(name) = semantic.name() {
             let is_duplicate_text = matches!(role, Role::Label)
@@ -468,6 +523,29 @@ impl SurfaceProjection {
                 _ => diagnostics.push(AdapterDiagnostic::UnsupportedValueType(
                     semantic.id().clone(),
                 )),
+            }
+        }
+        if let Some(editable) = semantic.editable() {
+            if let Some(value) = editable.value() {
+                node.set_value(value);
+            }
+            if let (Some(text_run), Some(offsets)) = (
+                self.editable_text_runs.get(semantic.id()).copied(),
+                editable.caret_offsets(),
+            ) && let (Ok(anchor), Ok(focus)) = (
+                offsets.binary_search(&editable.selection().anchor().byte_offset()),
+                offsets.binary_search(&editable.selection().active().byte_offset()),
+            ) {
+                node.set_text_selection(AccessTextSelection {
+                    anchor: AccessTextPosition {
+                        node: text_run,
+                        character_index: anchor,
+                    },
+                    focus: AccessTextPosition {
+                        node: text_run,
+                        character_index: focus,
+                    },
+                });
             }
         }
         if let Some(text) = semantic.text() {
@@ -518,6 +596,13 @@ impl SurfaceProjection {
                 SemanticAction::RequestFocus => node.add_action(Action::Focus),
                 SemanticAction::OpenContextMenu => node.add_action(Action::ShowContextMenu),
                 SemanticAction::OpenMenu => node.add_action(Action::CustomAction),
+                SemanticAction::SetSelection
+                    if self.editable_text_runs.contains_key(semantic.id()) =>
+                {
+                    node.add_action(Action::SetTextSelection);
+                }
+                SemanticAction::SetSelection => {}
+                SemanticAction::ReplaceSelection => node.add_action(Action::ReplaceSelectedText),
                 #[allow(unreachable_patterns)]
                 _ => diagnostics.push(AdapterDiagnostic::UnsupportedSemanticAction {
                     target: semantic.id().clone(),
@@ -534,13 +619,15 @@ impl SurfaceProjection {
                 description: "Open menu".into(),
             }]);
         }
-        node.set_children(
-            semantic
-                .children()
-                .iter()
-                .filter_map(|id| self.semantic_to_accesskit.get(id).copied())
-                .collect::<Vec<_>>(),
-        );
+        let mut children = semantic
+            .children()
+            .iter()
+            .filter_map(|id| self.semantic_to_accesskit.get(id).copied())
+            .collect::<Vec<_>>();
+        if let Some(text_run) = self.editable_text_runs.get(semantic.id()).copied() {
+            children.insert(0, text_run);
+        }
+        node.set_children(children);
         let bounds = semantic.bounds();
         node.set_bounds(Rect {
             x0: f64::from(bounds.x()),
@@ -591,6 +678,7 @@ impl SurfaceProjection {
             .unwrap_or_else(|| self.root_id_for_snapshot(snapshot))
     }
 
+    #[allow(clippy::too_many_lines)]
     fn action_request(
         &self,
         request: &ActionRequest,
@@ -612,6 +700,85 @@ impl SurfaceProjection {
         let node = snapshot
             .node(semantic)
             .ok_or(AdapterDiagnostic::RetiredNodeId)?;
+        if request.action == Action::SetTextSelection {
+            let Some(ActionData::SetTextSelection(selection)) = request.data.as_ref() else {
+                return Err(AdapterDiagnostic::UnexpectedActionData(request.action));
+            };
+            if !node
+                .supported_actions()
+                .contains(&SemanticAction::SetSelection)
+            {
+                return Err(AdapterDiagnostic::UnsupportedSemanticAction {
+                    target: semantic.clone(),
+                    action: SemanticAction::SetSelection,
+                });
+            }
+            let editable = node
+                .editable()
+                .ok_or(AdapterDiagnostic::UnexpectedActionData(request.action))?;
+            let source = editable
+                .value()
+                .ok_or(AdapterDiagnostic::UnexpectedActionData(request.action))?;
+            let offsets = editable
+                .caret_offsets()
+                .ok_or(AdapterDiagnostic::UnexpectedActionData(request.action))?;
+            let text_run = self
+                .editable_text_runs
+                .get(semantic)
+                .copied()
+                .ok_or(AdapterDiagnostic::UnknownNodeId)?;
+            if selection.anchor.node != text_run || selection.focus.node != text_run {
+                return Err(AdapterDiagnostic::UnknownNodeId);
+            }
+            let anchor_offset = offsets
+                .get(selection.anchor.character_index)
+                .copied()
+                .ok_or(AdapterDiagnostic::UnexpectedActionData(request.action))?;
+            let focus_offset = offsets
+                .get(selection.focus.character_index)
+                .copied()
+                .ok_or(AdapterDiagnostic::UnexpectedActionData(request.action))?;
+            let position = |offset| {
+                TextPosition::new(
+                    editable.snapshot(),
+                    source,
+                    offset,
+                    if !source.is_empty() && offset == source.len() {
+                        TextAffinity::Upstream
+                    } else {
+                        TextAffinity::Downstream
+                    },
+                )
+                .map_err(|_| AdapterDiagnostic::UnexpectedActionData(request.action))
+            };
+            let selection =
+                runenui_core::TextSelection::new(position(anchor_offset)?, position(focus_offset)?)
+                    .map_err(|_| AdapterDiagnostic::UnexpectedActionData(request.action))?;
+            return Ok(runenui_core::SemanticActionRequest::set_selection(
+                snapshot.surface_id().clone(),
+                semantic.clone(),
+                selection,
+            ));
+        }
+        if request.action == Action::ReplaceSelectedText {
+            let Some(ActionData::Value(value)) = request.data.as_ref() else {
+                return Err(AdapterDiagnostic::UnexpectedActionData(request.action));
+            };
+            if !node
+                .supported_actions()
+                .contains(&SemanticAction::ReplaceSelection)
+            {
+                return Err(AdapterDiagnostic::UnsupportedSemanticAction {
+                    target: semantic.clone(),
+                    action: SemanticAction::ReplaceSelection,
+                });
+            }
+            return Ok(runenui_core::SemanticActionRequest::replace_selection(
+                snapshot.surface_id().clone(),
+                semantic.clone(),
+                value.as_ref(),
+            ));
+        }
         let action = match request.action {
             Action::Click => SemanticAction::Activate,
             Action::Focus => SemanticAction::RequestFocus,
@@ -654,6 +821,7 @@ fn map_role(
         SemanticRole::Group => Role::Group,
         SemanticRole::Text => Role::Label,
         SemanticRole::Button => Role::Button,
+        SemanticRole::EditableText => Role::TextInput,
         #[allow(unreachable_patterns)]
         _ => {
             diagnostics.push(AdapterDiagnostic::UnsupportedRole(id.clone()));
@@ -662,18 +830,54 @@ fn map_role(
     }
 }
 
+fn project_editable_text_run(semantic: &SemanticNode) -> Option<Node> {
+    let editable = semantic.editable()?;
+    let value = editable.value()?;
+    let offsets = editable.caret_offsets()?;
+    let lengths = offsets
+        .windows(2)
+        .map(|pair| u8::try_from(pair[1] - pair[0]).ok())
+        .collect::<Option<Vec<_>>>()?;
+    let mut node = Node::new(Role::TextRun);
+    node.set_value(value);
+    node.set_character_lengths(lengths);
+    let bounds = semantic.bounds();
+    node.set_bounds(Rect {
+        x0: f64::from(bounds.x()),
+        y0: f64::from(bounds.y()),
+        x1: f64::from(bounds.x() + bounds.width()),
+        y1: f64::from(bounds.y() + bounds.height()),
+    });
+    Some(node)
+}
+
+fn supports_editable_text_run(semantic: &SemanticNode) -> bool {
+    semantic.editable().is_some_and(|editable| {
+        editable.sensitivity() == TextSensitivity::Public
+            && editable.value().is_some()
+            && editable.caret_offsets().is_some_and(|offsets| {
+                offsets
+                    .windows(2)
+                    .all(|pair| u8::try_from(pair[1] - pair[0]).is_ok())
+            })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use runenui_core::{
-        __runtime::RuntimeNamespace, Element, LogicalSize, NoHostProtocol, SemanticAction,
-        SemanticContribution, SemanticContributionContext, SemanticItem, SemanticKey,
-        SemanticNodeContribution, SemanticReference, SemanticRelationship,
-        SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
-        StyleEnvironment, UiApp, View, Widget, WidgetActivation, WidgetActivationContext,
-        WidgetActivationOutput, WidgetInvalidation,
+        __runtime::RuntimeNamespace, EditIntent, EditResolution, EditableContribution,
+        EditingSessionPolicy, Element, LogicalSize, NoHostProtocol, SemanticAction,
+        SemanticActionData, SemanticContribution, SemanticContributionContext, SemanticEditable,
+        SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
+        SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText,
+        SemanticValue, StyleEnvironment, TextDocumentId, TextDocumentRevision,
+        TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp, UpdateOutput, View, Widget,
+        WidgetActivation, WidgetActivationContext, WidgetActivationOutput, WidgetInvalidation,
+        WidgetMeasure, WidgetMeasureInput,
     };
-    use runenui_runtime::{AppRuntime, SurfaceBuildContext};
+    use runenui_runtime::{AppRuntime, FontFamilyName, GenericFontFamily, SurfaceBuildContext};
 
     #[derive(Clone, Copy, Debug)]
     struct FixtureAction;
@@ -785,7 +989,7 @@ mod tests {
         fn update(
             phase: &mut Self::State,
             FixtureAction: Self::Action,
-        ) -> impl runenui_core::IntoEffects<Self::Action, Self::HostProtocol> {
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
             *phase = phase.saturating_add(1);
         }
     }
@@ -1127,5 +1331,254 @@ mod tests {
         let mut adapter = SemanticAdapter::new();
         let update = adapter.update(&publication);
         assert_eq!(update.tree_update.tree_id, TreeId::ROOT);
+    }
+
+    #[derive(Clone)]
+    struct EditableState {
+        text: String,
+        revision: u64,
+        sensitivity: TextSensitivity,
+        read_only: bool,
+    }
+
+    enum EditableAction {
+        Edit(EditIntent),
+    }
+
+    #[derive(Debug)]
+    struct EditableFixture {
+        snapshot: TextDocumentSnapshot,
+        text: String,
+        sensitivity: TextSensitivity,
+        read_only: bool,
+    }
+
+    impl Widget<EditableAction> for EditableFixture {
+        type State = ();
+
+        fn create_state(&self) -> Self::State {}
+
+        fn activation(&self, (): &Self::State) -> WidgetActivation {
+            WidgetActivation::NONE
+        }
+
+        fn editable(&self, (): &Self::State) -> Option<EditableContribution<EditableAction>> {
+            EditableContribution::new(
+                self.snapshot,
+                self.text.clone(),
+                TextSelection::collapsed(
+                    TextPosition::new(
+                        self.snapshot,
+                        &self.text,
+                        self.text.len(),
+                        TextAffinity::Upstream,
+                    )
+                    .ok()?,
+                ),
+                self.sensitivity,
+                self.read_only,
+                false,
+                EditingSessionPolicy::PreserveExact,
+                EditableAction::Edit,
+            )
+            .ok()
+        }
+
+        fn measure(&self, (): &Self::State, _: WidgetMeasureInput) -> WidgetMeasure {
+            WidgetMeasure::Text {
+                content: self.text.clone(),
+            }
+        }
+
+        fn semantics(
+            &self,
+            (): &Self::State,
+            _: SemanticContributionContext,
+        ) -> SemanticContribution {
+            let selection = TextSelection::collapsed(
+                TextPosition::new(
+                    self.snapshot,
+                    &self.text,
+                    self.text.len(),
+                    TextAffinity::Upstream,
+                )
+                .unwrap(),
+            );
+            let editable = SemanticEditable::new(
+                self.snapshot,
+                &self.text,
+                selection,
+                self.sensitivity,
+                self.read_only,
+            )
+            .unwrap();
+            SemanticContribution::single(
+                SemanticNodeContribution::primary(SemanticRole::EditableText)
+                    .with_state(SemanticState::ENABLED.with_read_only(self.read_only))
+                    .with_editable(editable)
+                    .with_action(SemanticAction::SetSelection)
+                    .with_action(SemanticAction::ReplaceSelection),
+            )
+        }
+    }
+
+    struct EditableApp;
+
+    impl UiApp for EditableApp {
+        type State = EditableState;
+        type Action = EditableAction;
+        type HostProtocol = NoHostProtocol;
+
+        fn root(state: &Self::State) -> impl View<Self::Action> {
+            Element::new(EditableFixture {
+                snapshot: TextDocumentSnapshot::new(
+                    TextDocumentId::new(17),
+                    TextDocumentRevision::new(state.revision),
+                ),
+                text: state.text.clone(),
+                sensitivity: state.sensitivity,
+                read_only: state.read_only,
+            })
+            .id("editable")
+            .key("editable")
+            .focusable(true)
+        }
+
+        fn update(
+            state: &mut Self::State,
+            EditableAction::Edit(intent): Self::Action,
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+            let range = intent.replacement();
+            state
+                .text
+                .replace_range(range.start()..range.end(), intent.replacement_text());
+            state.revision += 1;
+            UpdateOutput::edit(EditResolution::accepted(
+                intent.request().clone(),
+                TextDocumentSnapshot::new(
+                    TextDocumentId::new(17),
+                    TextDocumentRevision::new(state.revision),
+                ),
+            ))
+        }
+    }
+
+    fn editable_publication(
+        sensitivity: TextSensitivity,
+        read_only: bool,
+    ) -> (SemanticPublication, SemanticAdapter) {
+        const FONT: &[u8] = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../runenui_text/tests/fixtures/Cantarell-Regular.ttf"
+        ));
+        let mut runtime = AppRuntime::<EditableApp>::mount(EditableState {
+            text: "ab".to_owned(),
+            revision: 0,
+            sensitivity,
+            read_only,
+        });
+        assert!(runtime.register_text_font_bytes(FONT.to_vec()).unwrap() > 0);
+        assert!(
+            runtime
+                .set_text_generic_family_mapping(
+                    GenericFontFamily::SansSerif,
+                    &[FontFamilyName::new("Cantarell").unwrap()],
+                )
+                .unwrap()
+        );
+        let style = StyleEnvironment::default();
+        let publication = runtime
+            .publish_surface(&SurfaceBuildContext::tight(
+                &style,
+                LogicalSize::try_new(100.0, 40.0).unwrap(),
+            ))
+            .unwrap()
+            .semantic_publication()
+            .clone();
+        let mut adapter = SemanticAdapter::new();
+        adapter.update(&publication);
+        (publication, adapter)
+    }
+
+    #[test]
+    fn editable_projection_translates_checked_selection_and_redacted_replacement_actions() {
+        let (publication, adapter) = editable_publication(TextSensitivity::Public, false);
+        let semantic = &publication.snapshot().nodes()[0];
+        let parent = adapter
+            .active_id(publication.snapshot().surface_id(), semantic.id())
+            .unwrap();
+        let text_run = adapter.projection.editable_text_runs[semantic.id()];
+        let projected = &adapter.projection.current_nodes[&parent];
+        assert_eq!(projected.role(), Role::TextInput);
+        assert!(projected.supports_action(Action::SetTextSelection));
+        assert!(projected.supports_action(Action::ReplaceSelectedText));
+
+        let selection = adapter
+            .action_request(&ActionRequest {
+                action: Action::SetTextSelection,
+                target_tree: TreeId::ROOT,
+                target_node: parent,
+                data: Some(ActionData::SetTextSelection(AccessTextSelection {
+                    anchor: AccessTextPosition {
+                        node: text_run,
+                        character_index: 1,
+                    },
+                    focus: AccessTextPosition {
+                        node: text_run,
+                        character_index: 1,
+                    },
+                })),
+            })
+            .unwrap();
+        let Some(SemanticActionData::Selection(selection)) = selection.data() else {
+            unreachable!("selection action retains checked neutral data");
+        };
+        assert_eq!(selection.active().byte_offset(), 1);
+
+        let replacement = adapter
+            .action_request(&ActionRequest {
+                action: Action::ReplaceSelectedText,
+                target_tree: TreeId::ROOT,
+                target_node: parent,
+                data: Some(ActionData::Value("sensitive replacement".into())),
+            })
+            .unwrap();
+        assert_eq!(replacement.action(), &SemanticAction::ReplaceSelection);
+        assert!(!format!("{replacement:?}").contains("sensitive replacement"));
+    }
+
+    #[test]
+    fn secret_and_read_only_editable_projection_cannot_gain_native_disclosure_or_mutation() {
+        let (secret_publication, secret_adapter) =
+            editable_publication(TextSensitivity::Secret, false);
+        let secret = &secret_publication.snapshot().nodes()[0];
+        let secret_parent = secret_adapter
+            .active_id(secret_publication.snapshot().surface_id(), secret.id())
+            .unwrap();
+        let projected_secret = &secret_adapter.projection.current_nodes[&secret_parent];
+        assert_eq!(projected_secret.role(), Role::PasswordInput);
+        assert_eq!(projected_secret.value(), None);
+        assert!(!projected_secret.supports_action(Action::SetTextSelection));
+        assert!(projected_secret.supports_action(Action::ReplaceSelectedText));
+        assert!(
+            !secret_adapter
+                .projection
+                .editable_text_runs
+                .contains_key(secret.id())
+        );
+
+        let (read_only_publication, read_only_adapter) =
+            editable_publication(TextSensitivity::Public, true);
+        let read_only = &read_only_publication.snapshot().nodes()[0];
+        let read_only_parent = read_only_adapter
+            .active_id(
+                read_only_publication.snapshot().surface_id(),
+                read_only.id(),
+            )
+            .unwrap();
+        let projected_read_only = &read_only_adapter.projection.current_nodes[&read_only_parent];
+        assert!(projected_read_only.is_read_only());
+        assert!(projected_read_only.supports_action(Action::SetTextSelection));
+        assert!(!projected_read_only.supports_action(Action::ReplaceSelectedText));
     }
 }

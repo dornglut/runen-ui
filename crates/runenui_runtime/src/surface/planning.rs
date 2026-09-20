@@ -1,10 +1,11 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 #[cfg(test)]
 use runenui_core::{FontFamilyName, GenericFontFamily};
 use runenui_core::{LogicalLength, LogicalSize, MonotonicInstant, WidgetDiagnostic};
 #[cfg(test)]
 use runenui_text::FontSourcePolicy;
+use runenui_text::TextPreeditProjection;
 use runenui_text::{TextLayoutError, TextSystem};
 
 use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan};
@@ -183,6 +184,7 @@ fn resolve_layout_phase<Action>(
     current: &SurfaceCache,
     context: &SurfaceBuildContext<'_>,
     text_system: &mut TextSystem,
+    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
 ) -> Result<CachedLayoutFacts, SurfacePlanningError> {
     let resolved = ResolvedSurfaceTree::for_layout(&current.topology, &current.effective);
     let (size, bounds, report, text_layouts) = layout_resolved_surface(
@@ -190,6 +192,7 @@ fn resolve_layout_phase<Action>(
         tree,
         context.root_constraints(),
         text_system,
+        preedits,
         Some(current.layout.text_layouts.as_slice()),
     )?;
     Ok(CachedLayoutFacts {
@@ -312,11 +315,13 @@ fn placeholder_publication() -> SurfacePublication {
     )
 }
 
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     interaction: &SurfaceInteractionProjection,
     text_system: &mut TextSystem,
+    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
     cache: Option<&SurfaceCache>,
     motion_store: &SurfaceMotionStore,
     instant: MonotonicInstant,
@@ -328,6 +333,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
             context,
             interaction,
             text_system,
+            preedits,
             cache,
             motion_store,
             instant,
@@ -381,7 +387,13 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         semantic_dirty.then(|| tree.plan_semantic_publication_capabilities(&capability_plan));
 
     if layout_dirty {
-        current.layout = Arc::new(resolve_layout_phase(tree, &current, context, text_system)?);
+        current.layout = Arc::new(resolve_layout_phase(
+            tree,
+            &current,
+            context,
+            text_system,
+            preedits,
+        )?);
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
     }
@@ -430,11 +442,13 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn plan_structural_surface<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     interaction: &SurfaceInteractionProjection,
     text_system: &mut TextSystem,
+    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
     previous_cache: Option<&SurfaceCache>,
     motion_store: &SurfaceMotionStore,
     instant: MonotonicInstant,
@@ -476,6 +490,7 @@ fn plan_structural_surface<'tree, Action>(
         tree,
         context.root_constraints(),
         text_system,
+        preedits,
         None,
     )?;
     let layout = CachedLayoutFacts {
@@ -580,6 +595,7 @@ pub(super) fn plan_mounted_surface_cached_with_test_text<'tree, Action>(
             context,
             interaction,
             &mut text_system.borrow_mut(),
+            &HashMap::new(),
             cache,
             &motion_store,
             MonotonicInstant::ZERO,

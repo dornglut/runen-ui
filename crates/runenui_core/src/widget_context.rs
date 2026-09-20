@@ -452,6 +452,7 @@ mod tests {
             node.clone(),
             key.clone(),
             SemanticAction::Activate,
+            None,
         );
         let context =
             WidgetActivationContext::<()>::__runtime_new_with_semantic_target(Some(target));

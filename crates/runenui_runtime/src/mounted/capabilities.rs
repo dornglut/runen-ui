@@ -1,6 +1,6 @@
 use runenui_core::{
-    __runtime::WidgetBridgeError, SemanticActionTarget, WidgetActivation, WidgetActivationContext,
-    WidgetInvalidation, WidgetTextInput,
+    __runtime::WidgetBridgeError, EditableContribution, SemanticActionTarget, WidgetActivation,
+    WidgetActivationContext, WidgetInvalidation, WidgetTextInput,
 };
 #[cfg(test)]
 use runenui_core::{
@@ -38,6 +38,24 @@ enum SemanticEvaluation {
 }
 
 impl<Action> MountedTree<Action> {
+    pub(crate) fn editable_contributions(
+        &self,
+    ) -> Result<Vec<(MountedNodeId, EditableContribution<Action>)>, WidgetBridgeError> {
+        let mut contributions = Vec::new();
+        for id in self.preorder_ids() {
+            let node = self
+                .node(&id)
+                .ok_or(WidgetBridgeError::StatePayloadMismatch)?;
+            if state_is_corrupted(node) {
+                return Err(WidgetBridgeError::StatePayloadMismatch);
+            }
+            if let Some(contribution) = node.widget.editable(&node.state)? {
+                contributions.push((id, contribution));
+            }
+        }
+        Ok(contributions)
+    }
+
     /// Refreshes the input-facing capability cache after a compatible update.
     /// Reconciliation cannot assume that a widget remembered to invalidate
     /// interaction state when its enablement or text-input declaration changed.

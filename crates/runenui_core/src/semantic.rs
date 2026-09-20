@@ -5,10 +5,12 @@
 //! routing. Nothing in this module is tied to AccessKit or a native host API.
 
 use core::fmt;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use crate::identity::{IdentifierText, validate_identifier};
-use crate::{ElementId, IdentifierError, LogicalRect};
+use crate::{
+    ElementId, IdentifierError, LogicalRect, TextDocumentSnapshot, TextSelection, TextSensitivity,
+};
 
 /// Stable owner-local identity for one contributed semantic node.
 ///
@@ -85,6 +87,107 @@ pub enum SemanticRole {
     Group,
     Text,
     Button,
+    EditableText,
+}
+
+/// Revision-scoped editable text facts projected through the neutral semantic tree.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SemanticEditable {
+    snapshot: TextDocumentSnapshot,
+    selection: TextSelection,
+    sensitivity: TextSensitivity,
+    value: Option<String>,
+    read_only: bool,
+    caret_offsets: Option<Arc<[usize]>>,
+}
+
+impl SemanticEditable {
+    /// Builds a fail-closed semantic projection from an authoritative source.
+    #[must_use]
+    pub fn new(
+        snapshot: TextDocumentSnapshot,
+        source: &str,
+        selection: TextSelection,
+        sensitivity: TextSensitivity,
+        read_only: bool,
+    ) -> Option<Self> {
+        if selection.anchor().snapshot() != snapshot
+            || selection.active().snapshot() != snapshot
+            || selection.anchor().byte_offset() > source.len()
+            || selection.active().byte_offset() > source.len()
+            || !source.is_char_boundary(selection.anchor().byte_offset())
+            || !source.is_char_boundary(selection.active().byte_offset())
+        {
+            return None;
+        }
+        Some(Self {
+            snapshot,
+            selection,
+            sensitivity,
+            value: (sensitivity == TextSensitivity::Public).then(|| source.to_owned()),
+            read_only,
+            caret_offsets: None,
+        })
+    }
+
+    #[must_use]
+    pub const fn snapshot(&self) -> TextDocumentSnapshot {
+        self.snapshot
+    }
+
+    #[must_use]
+    pub const fn selection(&self) -> TextSelection {
+        self.selection
+    }
+
+    #[must_use]
+    pub const fn sensitivity(&self) -> TextSensitivity {
+        self.sensitivity
+    }
+
+    /// Returns public text only; secret text is structurally absent.
+    #[must_use]
+    pub fn value(&self) -> Option<&str> {
+        self.value.as_deref()
+    }
+
+    #[must_use]
+    pub const fn read_only(&self) -> bool {
+        self.read_only
+    }
+
+    /// Returns shaping-validated selectable UTF-8 boundaries when bound by runtime publication.
+    #[must_use]
+    pub fn caret_offsets(&self) -> Option<&[usize]> {
+        self.caret_offsets.as_deref()
+    }
+
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __runtime_with_projection(
+        mut self,
+        source: &str,
+        selection: TextSelection,
+        offsets: Arc<[usize]>,
+    ) -> Option<Self> {
+        if selection.anchor().snapshot() != self.snapshot
+            || selection.active().snapshot() != self.snapshot
+            || selection.anchor().byte_offset() > source.len()
+            || selection.active().byte_offset() > source.len()
+            || !source.is_char_boundary(selection.anchor().byte_offset())
+            || !source.is_char_boundary(selection.active().byte_offset())
+            || offsets.first() != Some(&0)
+            || offsets.last() != Some(&source.len())
+            || offsets
+                .windows(2)
+                .any(|pair| pair[0] >= pair[1] || !source.is_char_boundary(pair[1]))
+        {
+            return None;
+        }
+        self.selection = selection;
+        self.caret_offsets = Some(offsets);
+        Some(self)
+    }
 }
 
 /// Read-only value exposed by a semantic node.
@@ -120,11 +223,13 @@ impl SemanticText {
 }
 
 /// Widget-authored semantic state. Runtime-derived focus is deliberately absent.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SemanticState {
     disabled: bool,
     hidden: bool,
     inert: bool,
+    read_only: bool,
 }
 
 impl SemanticState {
@@ -132,6 +237,7 @@ impl SemanticState {
         disabled: false,
         hidden: false,
         inert: false,
+        read_only: false,
     };
 
     #[must_use]
@@ -153,6 +259,12 @@ impl SemanticState {
     }
 
     #[must_use]
+    pub const fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
+        self
+    }
+
+    #[must_use]
     pub const fn disabled(self) -> bool {
         self.disabled
     }
@@ -166,6 +278,11 @@ impl SemanticState {
     pub const fn inert(self) -> bool {
         self.inert
     }
+
+    #[must_use]
+    pub const fn read_only(self) -> bool {
+        self.read_only
+    }
 }
 
 /// Semantic actions with real `RunenUI` behavior in the accepted M5 design.
@@ -176,6 +293,20 @@ pub enum SemanticAction {
     RequestFocus,
     OpenMenu,
     OpenContextMenu,
+    MoveBackward,
+    MoveForward,
+    ExtendBackward,
+    ExtendForward,
+    SelectAll,
+    DeleteBackward,
+    DeleteForward,
+    Undo,
+    Redo,
+    Copy,
+    Cut,
+    Paste,
+    SetSelection,
+    ReplaceSelection,
 }
 
 /// Relationship category expressed without platform-adapter vocabulary.
@@ -287,6 +418,7 @@ struct SemanticNodeData {
     relationships: Vec<SemanticRelationship>,
     bounds: SemanticBounds,
     text: Option<SemanticText>,
+    editable: Option<SemanticEditable>,
     children: Vec<SemanticItem>,
 }
 
@@ -304,6 +436,7 @@ impl SemanticNodeContribution {
             relationships: Vec::new(),
             bounds: SemanticBounds::Owner,
             text: None,
+            editable: None,
             children: Vec::new(),
         }))
     }
@@ -363,6 +496,12 @@ impl SemanticNodeContribution {
     #[must_use]
     pub fn with_text(mut self, text: SemanticText) -> Self {
         self.0.text = Some(text);
+        self
+    }
+
+    #[must_use]
+    pub fn with_editable(mut self, editable: SemanticEditable) -> Self {
+        self.0.editable = Some(editable);
         self
     }
 
@@ -432,6 +571,11 @@ impl SemanticNodeContribution {
     #[must_use]
     pub const fn text(&self) -> Option<&SemanticText> {
         self.0.text.as_ref()
+    }
+
+    #[must_use]
+    pub const fn editable(&self) -> Option<&SemanticEditable> {
+        self.0.editable.as_ref()
     }
 
     #[must_use]

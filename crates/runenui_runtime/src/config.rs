@@ -16,6 +16,8 @@ pub struct RuntimeLimits {
     waiting_envelopes: usize,
     transaction_outputs: usize,
     pointer_streams: usize,
+    editing_sessions: usize,
+    pending_edits: usize,
     local_tasks: usize,
     send_tasks: usize,
     timers: usize,
@@ -42,6 +44,20 @@ impl RuntimeLimits {
     #[must_use]
     pub const fn with_pointer_streams(mut self, limit: usize) -> Self {
         self.pointer_streams = limit;
+        self
+    }
+
+    /// Returns these limits with a different live-and-draining editing-session capacity.
+    #[must_use]
+    pub const fn with_editing_sessions(mut self, limit: usize) -> Self {
+        self.editing_sessions = limit;
+        self
+    }
+
+    /// Returns these limits with a different per-session pending edit capacity.
+    #[must_use]
+    pub const fn with_pending_edits(mut self, limit: usize) -> Self {
+        self.pending_edits = limit;
         self
     }
 
@@ -104,6 +120,16 @@ impl RuntimeLimits {
     }
 
     #[must_use]
+    pub const fn editing_sessions(self) -> usize {
+        self.editing_sessions
+    }
+
+    #[must_use]
+    pub const fn pending_edits(self) -> usize {
+        self.pending_edits
+    }
+
+    #[must_use]
     pub const fn local_tasks(self) -> usize {
         self.local_tasks
     }
@@ -145,6 +171,8 @@ impl Default for RuntimeLimits {
             waiting_envelopes: DEFAULT_WAITING_ENVELOPE_LIMIT,
             transaction_outputs: DEFAULT_RUNTIME_LIMIT,
             pointer_streams: DEFAULT_RUNTIME_LIMIT,
+            editing_sessions: DEFAULT_RUNTIME_LIMIT,
+            pending_edits: DEFAULT_RUNTIME_LIMIT,
             local_tasks: DEFAULT_RUNTIME_LIMIT * 2,
             send_tasks: DEFAULT_RUNTIME_LIMIT * 2,
             timers: DEFAULT_RUNTIME_LIMIT * 2,

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use runenui_core::{LogicalTransform, StyleEnvironment, WidgetDiagnostic};
-use runenui_text::{FontSourceSnapshot, TextLayoutState};
+use runenui_core::{LogicalTransform, StyleEnvironment, TextDocumentSnapshot, WidgetDiagnostic};
+use runenui_text::{FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextLayoutState};
 
 use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
@@ -233,6 +233,25 @@ pub(crate) struct SurfaceCache {
 }
 
 impl SurfaceCache {
+    pub(crate) fn text_caret_map(
+        &self,
+        owner: &MountedNodeId,
+        snapshot: TextDocumentSnapshot,
+        source: &str,
+    ) -> Result<TextCaretMap, TextCaretMapError> {
+        let position = self
+            .topology
+            .nodes
+            .iter()
+            .position(|node| &node.id == owner)
+            .ok_or(TextCaretMapError::MissingLayout)?;
+        self.layout
+            .text_layouts
+            .get(position)
+            .ok_or(TextCaretMapError::MissingLayout)?
+            .caret_map_for_source(snapshot, source)
+    }
+
     /// Creates a staged non-structural candidate by sharing every retained
     /// product. Dirty phase execution must replace the corresponding product
     /// explicitly before this candidate can commit.
@@ -398,7 +417,7 @@ mod tests {
         let before = retained(cache.as_ref());
         let effective_before = Arc::clone(&before.effective);
 
-        tree.mark_semantic_focus_product_dirty();
+        tree.mark_runtime_semantic_product_dirty();
         let report = publish(&mut tree, &context, &mut cache);
         let after = cache
             .as_ref()

@@ -132,8 +132,8 @@ impl MandatoryTracePlan {
 
     /// Update summary records plus the mandatory redraw request caused by the
     /// committed reconciliation.
-    pub(crate) const fn application_action_base(has_focus: bool) -> Self {
-        Self::exact(if has_focus { 7 } else { 4 })
+    pub(crate) const fn application_action_base(has_focus: bool, edit_resolution: bool) -> Self {
+        Self::exact(if has_focus { 7 } else { 4 } + if edit_resolution { 1 } else { 0 })
     }
 
     pub(crate) fn lifecycle_invalidations(count: usize) -> Option<Self> {

@@ -48,15 +48,29 @@ pub(crate) fn invalidate_semantic_structure<Action>(node: &mut MountedNode<Actio
 }
 
 impl<Action> MountedTree<Action> {
-    /// Marks the surface semantic product dirty after runtime-owned focus changes
+    /// Marks the composed semantic product dirty after runtime-owned projection changes
     /// without invalidating any owner semantic contribution capability.
-    pub(crate) fn mark_semantic_focus_product_dirty(&mut self) {
+    pub(crate) fn mark_runtime_semantic_product_dirty(&mut self) {
         let Some(root) = self.root.clone() else {
             return;
         };
         let Some(root) = self.node_mut(&root) else {
             return;
         };
+        root.dirty_phases.insert(DirtyPhases::SEMANTICS);
+    }
+
+    /// Marks products derived from a runtime-owned transient text projection dirty.
+    pub(crate) fn mark_runtime_text_projection_dirty(&mut self) {
+        let Some(root) = self.root.clone() else {
+            return;
+        };
+        let Some(root) = self.node_mut(&root) else {
+            return;
+        };
+        root.dirty_phases.insert(DirtyPhases::LAYOUT);
+        root.dirty_phases.insert(DirtyPhases::HIT_TEST);
+        root.dirty_phases.insert(DirtyPhases::PAINT);
         root.dirty_phases.insert(DirtyPhases::SEMANTICS);
     }
 }

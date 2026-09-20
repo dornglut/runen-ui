@@ -4,11 +4,12 @@ use crate::element::{
     WidgetTextInput, WidgetTypeId,
 };
 use crate::{
-    CommandOrigin, ElementId, ElementKey, EventContext, EventPhase, ExplicitTimeline, FocusScope,
-    Focusability, HitContribution, HitContributionContext, LayoutStyle, MonotonicInstant,
-    MountedNodeId, PaintContribution, PaintContributionContext, PointerId, SemanticContribution,
-    SemanticContributionContext, StyleIntent, SubscriptionSet, UiEvent, WidgetActivationContext,
-    WidgetEventOutput, WidgetMountContext, WidgetUnmountContext, WidgetUpdateContext, WorkSequence,
+    CommandOrigin, EditableContribution, ElementId, ElementKey, EventContext, EventPhase,
+    ExplicitTimeline, FocusScope, Focusability, HitContribution, HitContributionContext,
+    LayoutStyle, MonotonicInstant, MountedNodeId, PaintContribution, PaintContributionContext,
+    PointerId, SemanticContribution, SemanticContributionContext, StyleIntent, SubscriptionSet,
+    UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
+    WidgetUpdateContext, WorkSequence,
 };
 use core::{any::Any, fmt};
 
@@ -46,6 +47,10 @@ pub trait ErasedWidget<Action>: fmt::Debug {
     ) -> Result<WidgetEventOutput, WidgetBridgeError>;
     fn activation(&self, state: &dyn Any) -> Result<WidgetActivation, WidgetBridgeError>;
     fn text_input(&self, state: &dyn Any) -> Result<WidgetTextInput, WidgetBridgeError>;
+    fn editable(
+        &self,
+        state: &dyn Any,
+    ) -> Result<Option<EditableContribution<Action>>, WidgetBridgeError>;
     fn activate(
         &mut self,
         state: &mut dyn Any,
@@ -157,6 +162,14 @@ where
         Ok(self
             .0
             .text_input(downcast_ref::<Implementation::State>(state)?))
+    }
+    fn editable(
+        &self,
+        state: &dyn Any,
+    ) -> Result<Option<EditableContribution<Action>>, WidgetBridgeError> {
+        Ok(self
+            .0
+            .editable(downcast_ref::<Implementation::State>(state)?))
     }
     fn activate(
         &mut self,
@@ -427,6 +440,12 @@ impl<Action> MountedWidget<Action> {
         state: &MountedWidgetState,
     ) -> Result<WidgetTextInput, WidgetBridgeError> {
         self.inner.text_input(state.value.as_ref())
+    }
+    pub fn editable(
+        &self,
+        state: &MountedWidgetState,
+    ) -> Result<Option<EditableContribution<Action>>, WidgetBridgeError> {
+        self.inner.editable(state.value.as_ref())
     }
     pub fn activate(
         &mut self,
