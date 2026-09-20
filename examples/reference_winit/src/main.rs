@@ -1,6 +1,7 @@
 use std::{
     env, fmt,
     future::Future,
+    path::PathBuf,
     pin::pin,
     sync::{Arc, OnceLock},
     task::{Context, Poll, Wake, Waker},
@@ -9,6 +10,7 @@ use std::{
 
 mod accessibility;
 mod device_identity;
+mod framework_services;
 mod keyboard_input;
 mod mouse_input;
 mod proof_trace;
@@ -17,6 +19,7 @@ mod wheel_input;
 
 use accessibility::{AccessibilityEvent, SemanticAdapter};
 use device_identity::{DeviceIdentityError, DeviceIdentityMap};
+use framework_services::NativeFrameworkServices;
 use keyboard_input::{
     KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition,
 };
@@ -24,11 +27,13 @@ use mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
 };
 use runenui_core::{
-    Brush, Color, CommandOrigin, CommittedTextEvent, Element, InputDeviceId, KeyModifiers,
-    KeyboardEvent, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution,
-    PaintContributionContext, PaintContributionItem, PointerEvent, SceneShape, SemanticAction,
-    SemanticCommand, SemanticContribution, SemanticKey, SemanticNodeContribution, SemanticRole,
-    SemanticText, StyleEnvironment, SurfaceInputContext, UiApp, View, Widget, WidgetActivation,
+    Brush, Color, CommandOrigin, CommittedTextEvent, DragDropEvent, DragDropPayloadKind,
+    DragDropPayloadMetadata, DragDropPhase, Element, EventContext, HitContribution,
+    HitContributionContext, InputDeviceId, KeyModifiers, KeyboardEvent, LogicalLength,
+    LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution, PaintContributionContext,
+    PaintContributionItem, PointerEvent, SceneShape, SemanticAction, SemanticCommand,
+    SemanticContribution, SemanticKey, SemanticNodeContribution, SemanticRole, SemanticText,
+    StyleEnvironment, SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetActivation,
     WidgetMeasure, WidgetTextInput,
 };
 use runenui_render_wgpu::{
@@ -69,6 +74,33 @@ macro_rules! proof {
     };
 }
 
+const fn drag_drop_source(
+    request: &runenui_core::FrameworkServiceRequest,
+) -> Option<runenui_core::WorkSequence> {
+    match request {
+        runenui_core::FrameworkServiceRequest::DragDrop { source, .. } => Some(*source),
+        _ => None,
+    }
+}
+
+fn successful_file_drop_admission(
+    request: &runenui_core::FrameworkServiceRequest,
+    response: &runenui_core::FrameworkServiceResponse,
+) -> Option<runenui_core::WorkSequence> {
+    match (request, response) {
+        (
+            runenui_core::FrameworkServiceRequest::DragDrop {
+                source,
+                phase: DragDropPhase::Drop,
+                payload,
+                accepted: true,
+            },
+            runenui_core::FrameworkServiceResponse::DragDrop(Ok(())),
+        ) if payload.kind() == DragDropPayloadKind::Files => Some(*source),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 enum HostEvent {
     Wake,
@@ -97,12 +129,35 @@ impl Widget<()> for DemoSurface {
         WidgetTextInput::new(true, true)
     }
 
+    fn event(
+        &mut self,
+        _state: &mut Self::State,
+        event: &UiEvent,
+        context: &mut EventContext<'_, ()>,
+    ) -> runenui_core::WidgetEventOutput {
+        if event
+            .as_drag_drop()
+            .is_some_and(|drop| drop.phase() == DragDropPhase::Drop)
+        {
+            // This reference application deliberately admits dropped files only
+            // at the exact physical target and never opens or reads them.
+            context.accept_drag_drop();
+        }
+        runenui_core::WidgetEventOutput::none()
+    }
+
     fn measure(
         &self,
         _state: &Self::State,
         _input: runenui_core::WidgetMeasureInput,
     ) -> WidgetMeasure {
         WidgetMeasure::measured(LogicalLength::from(400_u16), LogicalLength::from(240_u16))
+    }
+
+    fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {
+        let origin = LogicalPoint::new(0.0, 0.0)
+            .unwrap_or_else(|_| unreachable!("the literal demo hit origin is finite"));
+        HitContribution::single_rect(LogicalRect::new(origin, context.local_size()))
     }
 
     fn paint(&self, _state: &Self::State, context: PaintContributionContext) -> PaintContribution {
@@ -362,7 +417,13 @@ struct ReferenceHost {
     mouse: MouseInputState,
     keyboard: KeyboardInputState,
     text_input: TextInputState,
-    applied_ime_allowed: Option<bool>,
+    framework_services: NativeFrameworkServices,
+    deferred_framework_service_completions: Vec<(
+        runenui_runtime::FrameworkServiceToken,
+        runenui_core::FrameworkServiceResponse,
+        Option<runenui_core::WorkSequence>,
+        bool,
+    )>,
     modifiers: KeyModifiers,
     last_point_ingress_diagnostic: Option<PointIngressDiagnostic>,
     last_mouse_ingress_diagnostic: Option<MouseIngressDiagnostic>,
@@ -398,7 +459,8 @@ impl ReferenceHost {
             mouse: MouseInputState::default(),
             keyboard: KeyboardInputState::default(),
             text_input: TextInputState::default(),
-            applied_ime_allowed: None,
+            framework_services: NativeFrameworkServices::new(),
+            deferred_framework_service_completions: Vec::new(),
             modifiers: KeyModifiers::NONE,
             last_point_ingress_diagnostic: None,
             last_mouse_ingress_diagnostic: None,
@@ -419,6 +481,10 @@ impl ReferenceHost {
     fn fail(&mut self, event_loop: &ActiveEventLoop, detail: &str) {
         eprintln!("reference_winit fatal: {detail}");
         let _ = self.runtime.shutdown();
+        self.framework_services
+            .reset_native_window_ime(self.window.as_deref());
+        self.framework_services.shutdown();
+        self.deferred_framework_service_completions.clear();
         self.drain_runtime_trace();
         event_loop.exit();
     }
@@ -484,9 +550,10 @@ impl ReferenceHost {
             self.event_loop_proxy.clone(),
         );
         proof!("stage=accessibility_adapter_installed_before_show");
+        self.framework_services
+            .reset_native_window_ime(Some(&window));
         self.window = Some(Arc::new(window));
         self.accessibility = Some(accessibility);
-        self.applied_ime_allowed = None;
         proof!("stage=window_created");
         Ok(())
     }
@@ -577,35 +644,144 @@ impl ReferenceHost {
             })
     }
 
-    fn apply_native_ime_policy(&mut self, reset_native_ime: bool) {
-        let Some(window) = self.window.as_ref() else {
-            self.applied_ime_allowed = None;
-            return;
-        };
-        if reset_native_ime {
-            window.set_ime_allowed(false);
-            self.applied_ime_allowed = Some(false);
-            proof!("stage=ime_policy reset=true allowed=false");
-        }
-        let desired = self.text_input.ime_allowed();
-        if self.applied_ime_allowed != Some(desired) {
-            window.set_ime_allowed(desired);
-            self.applied_ime_allowed = Some(desired);
-            proof!("stage=ime_policy reset=false allowed={desired}");
-        }
-    }
-
     fn sync_runtime_text_input(&mut self) {
         let focused_owner = self.runtime.focus().focused_node().cloned();
         let capability = self.runtime.focused_text_input_capability();
         let sync = self.text_input.sync_runtime(focused_owner, capability);
-        self.apply_native_ime_policy(sync.reset_native_ime());
+        if sync.reset_native_ime() {
+            proof!("stage=native_composition_generation_retired");
+        }
     }
 
     fn pump_runtime_once(&mut self) {
         let _ = self.runtime.pump(HOST_PUMP_BUDGET);
+        self.retry_deferred_framework_service_completions();
+        let _ = self.runtime.pump(HOST_PUMP_BUDGET);
+        self.execute_pending_framework_services();
+        let _ = self.runtime.pump(HOST_PUMP_BUDGET);
         self.drain_runtime_trace();
         self.sync_runtime_text_input();
+        for (source, paths) in self.framework_services.take_admitted_drop_batches() {
+            proof!(
+                "stage=native_drop_admitted source={} items={}",
+                source.get(),
+                paths.len()
+            );
+        }
+    }
+
+    fn retry_deferred_framework_service_completions(&mut self) {
+        let deferred = core::mem::take(&mut self.deferred_framework_service_completions);
+        for (token, response, drop_source, admit_drop_paths) in deferred {
+            match self.runtime.complete_framework_service(&token, response) {
+                Ok(_) => {
+                    if admit_drop_paths && let Some(source) = drop_source {
+                        self.framework_services.commit_drop_path_admission(source);
+                    }
+                    proof!("stage=framework_service_completion_retry_queued");
+                }
+                Err(runenui_runtime::FrameworkServiceResponseError::Full(response)) => {
+                    self.deferred_framework_service_completions.push((
+                        token,
+                        response,
+                        drop_source,
+                        admit_drop_paths,
+                    ));
+                }
+                Err(runenui_runtime::FrameworkServiceResponseError::Stale(_)) => {
+                    if let Some(source) = drop_source {
+                        self.discard_drop_path_custody(source);
+                    }
+                    proof!("stage=framework_service_completion_discarded reason=stale");
+                }
+                Err(
+                    runenui_runtime::FrameworkServiceResponseError::Closed(_)
+                    | runenui_runtime::FrameworkServiceResponseError::Terminal { .. },
+                ) => {
+                    if let Some(source) = drop_source {
+                        self.discard_drop_path_custody(source);
+                    }
+                    proof!("stage=framework_service_completion_discarded reason=closed");
+                }
+                Err(
+                    runenui_runtime::FrameworkServiceResponseError::ForeignRuntime(_)
+                    | runenui_runtime::FrameworkServiceResponseError::MismatchedKind(_),
+                ) => {
+                    if let Some(source) = drop_source {
+                        self.discard_drop_path_custody(source);
+                    }
+                    proof!("stage=framework_service_completion_discarded reason=invalid");
+                }
+            }
+        }
+    }
+
+    fn execute_pending_framework_services(&mut self) {
+        if !self.deferred_framework_service_completions.is_empty() {
+            return;
+        }
+        let requests = self
+            .runtime
+            .pending_framework_services()
+            .into_iter()
+            .map(|service| (service.token(), service.request().clone()))
+            .collect::<Vec<_>>();
+        for (token, request) in requests {
+            let response = self
+                .framework_services
+                .execute(self.window.as_deref(), &request);
+            let outcome = NativeFrameworkServices::response_outcome(&response);
+            let admitted_drop_source = successful_file_drop_admission(&request, &response);
+            match self.runtime.complete_framework_service(&token, response) {
+                Ok(_) => {
+                    if let Some(source) = admitted_drop_source {
+                        self.framework_services.commit_drop_path_admission(source);
+                    }
+                    proof!("stage=framework_service_completion_queued outcome={outcome}");
+                }
+                Err(runenui_runtime::FrameworkServiceResponseError::Full(response)) => {
+                    proof!(
+                        "stage=framework_service_completion_deferred kind={:?}",
+                        response.kind()
+                    );
+                    self.deferred_framework_service_completions.push((
+                        token,
+                        response,
+                        drag_drop_source(&request),
+                        admitted_drop_source.is_some(),
+                    ));
+                }
+                Err(runenui_runtime::FrameworkServiceResponseError::Stale(_)) => {
+                    if let Some(source) = drag_drop_source(&request) {
+                        self.discard_drop_path_custody(source);
+                    }
+                    proof!("stage=framework_service_completion_discarded reason=stale");
+                }
+                Err(
+                    runenui_runtime::FrameworkServiceResponseError::Closed(_)
+                    | runenui_runtime::FrameworkServiceResponseError::Terminal { .. },
+                ) => {
+                    if let Some(source) = drag_drop_source(&request) {
+                        self.discard_drop_path_custody(source);
+                    }
+                    proof!("stage=framework_service_completion_discarded reason=closed");
+                }
+                Err(
+                    runenui_runtime::FrameworkServiceResponseError::ForeignRuntime(_)
+                    | runenui_runtime::FrameworkServiceResponseError::MismatchedKind(_),
+                ) => {
+                    if let Some(source) = drag_drop_source(&request) {
+                        self.discard_drop_path_custody(source);
+                    }
+                    proof!("stage=framework_service_completion_discarded reason=invalid");
+                }
+            }
+        }
+    }
+
+    fn discard_drop_path_custody(&mut self, source: runenui_core::WorkSequence) {
+        self.framework_services.discard_pending_drop_paths(source);
+        self.framework_services.discard_admitted_drop_paths(source);
     }
 
     fn collect_redraw_request(&mut self) {
@@ -737,6 +913,96 @@ impl ReferenceHost {
         true
     }
 
+    fn handle_native_drag_drop_event(&mut self, event_loop: &ActiveEventLoop, event: WindowEvent) {
+        match event {
+            WindowEvent::HoveredFile(_) => {
+                self.handle_native_drag_drop(event_loop, DragDropPhase::Hover, None);
+            }
+            WindowEvent::HoveredFileCancelled => {
+                self.handle_native_drag_drop(event_loop, DragDropPhase::Cancel, None);
+            }
+            WindowEvent::DroppedFile(path) => {
+                self.handle_native_drag_drop(event_loop, DragDropPhase::Drop, Some(path));
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_native_drag_drop(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        phase: DragDropPhase,
+        path: Option<PathBuf>,
+    ) {
+        let Some(device_id) = self.mouse.active_device_id() else {
+            proof!("stage=native_drop_withheld reason=no_active_pointer_stream phase={phase:?}");
+            return;
+        };
+        let point = match self.translate_latest_cursor() {
+            Ok(point) => point,
+            Err(diagnostic) => {
+                proof!("stage=native_drop_withheld reason={diagnostic:?} phase={phase:?}");
+                return;
+            }
+        };
+        let mut event = match self.mouse.cursor_moved(device_id, point) {
+            Ok(event) => event,
+            Err(diagnostic) => {
+                proof!("stage=native_drop_withheld reason={diagnostic:?} phase={phase:?}");
+                return;
+            }
+        };
+        let payload = DragDropPayloadMetadata::new(
+            DragDropPayloadKind::Files,
+            std::num::NonZeroU32::MIN,
+            None,
+        );
+        event = event.with_drag_drop(DragDropEvent::new(phase, payload));
+
+        self.pump_runtime_once();
+        proof!("stage=native_drop_translated phase={phase:?} payload=files");
+        let submission = match self.runtime.submit_pointer(event) {
+            Ok(submission) => submission,
+            Err(error) => {
+                self.fail(
+                    event_loop,
+                    &format!("native drag/drop could not enter runtime input: {error}"),
+                );
+                return;
+            }
+        };
+        let source = submission.sequence();
+        if let Some(path) = path
+            && let Err(failure) = self.framework_services.stage_drop_paths(source, vec![path])
+        {
+            proof!("stage=native_drop_path_rejected reason={failure:?}");
+        }
+        self.pump_runtime_once();
+        if phase == DragDropPhase::Drop {
+            let service_pending = self
+                .runtime
+                .pending_framework_services()
+                .iter()
+                .any(|service| {
+                    matches!(
+                        service.request(),
+                        runenui_core::FrameworkServiceRequest::DragDrop {
+                            source: pending_source,
+                            ..
+                        } if *pending_source == source
+                    )
+                });
+            let completion_deferred = self
+                .deferred_framework_service_completions
+                .iter()
+                .any(|(_, _, pending_source, _)| *pending_source == Some(source));
+            if !service_pending && !completion_deferred {
+                self.framework_services.discard_pending_drop_paths(source);
+            }
+        }
+        self.request_pending_redraw();
+    }
+
     fn submit_keyboard_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -760,6 +1026,30 @@ impl ReferenceHost {
                 false
             }
         }
+    }
+
+    fn handle_window_focus(&mut self, event_loop: &ActiveEventLoop, focused: bool) {
+        proof!("stage=window_focus focused={focused}");
+        if focused {
+            self.pump_runtime_once();
+            self.text_input.set_window_focused(true);
+            if let Some(window) = self.window.as_ref() {
+                self.framework_services
+                    .set_native_window_focused(window, true);
+            }
+            return;
+        }
+
+        if !self.cancel_focus_sensitive_input(event_loop, "native window lost focus") {
+            return;
+        }
+        self.text_input.set_window_focused(false);
+        if let Some(window) = self.window.as_ref() {
+            self.framework_services
+                .set_native_window_focused(window, false);
+        }
+        self.handle_native_point_authority_loss(event_loop, "native window lost focus");
+        self.modifiers = KeyModifiers::NONE;
     }
 
     fn submit_committed_text(
@@ -859,7 +1149,6 @@ impl ReferenceHost {
         self.text_input.retire_composition();
         proof!("stage=composition_retired reason=stale");
         self.note_text_ingress_diagnostic(TextIngressDiagnostic::CompositionNoLongerActive);
-        self.apply_native_ime_policy(true);
     }
 
     fn cancel_native_composition(&mut self, event_loop: &ActiveEventLoop, reason: &str) -> bool {
@@ -993,18 +1282,12 @@ impl ReferenceHost {
         match ime {
             Ime::Enabled => {
                 proof!("stage=native_ime state=enabled");
-                self.applied_ime_allowed = Some(true);
-                self.apply_native_ime_policy(false);
             }
             Ime::Preedit(preedit, range) => self.handle_ime_preedit(event_loop, preedit, range),
             Ime::Commit(text) => self.handle_ime_commit(event_loop, &text),
             Ime::Disabled => {
                 proof!("stage=native_ime state=disabled");
-                self.applied_ime_allowed = Some(false);
-                if !self.cancel_native_composition(event_loop, "native IME disabled") {
-                    return;
-                }
-                self.apply_native_ime_policy(false);
+                let _ = self.cancel_native_composition(event_loop, "native IME disabled");
             }
         }
     }
@@ -1271,7 +1554,6 @@ impl ReferenceHost {
         self.ensure_renderer(event_loop)?;
         let _ = self.refresh_mapping();
         self.configure_renderer(false)?;
-        self.apply_native_ime_policy(false);
         if let Some(window) = self.window.as_ref() {
             window.set_visible(true);
             proof!("stage=window_shown");
@@ -1489,7 +1771,10 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             return;
         }
         self.text_input.set_window_focused(false);
-        self.apply_native_ime_policy(false);
+        if let Some(window) = self.window.as_ref() {
+            self.framework_services
+                .reset_native_window_ime(Some(window));
+        }
         if !self.invalidate_mouse_point_authority(event_loop, "native host suspended") {
             return;
         }
@@ -1536,6 +1821,10 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                 proof!("stage=window_exit");
                 let _ = self.runtime.shutdown();
+                self.framework_services
+                    .reset_native_window_ime(self.window.as_deref());
+                self.framework_services.shutdown();
+                self.deferred_framework_service_completions.clear();
                 self.drain_runtime_trace();
                 event_loop.exit();
             }
@@ -1549,6 +1838,11 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
                 position,
             } => {
                 self.handle_cursor_moved(event_loop, device_id, position);
+            }
+            drag_event @ (WindowEvent::HoveredFile(_)
+            | WindowEvent::HoveredFileCancelled
+            | WindowEvent::DroppedFile(_)) => {
+                self.handle_native_drag_drop_event(event_loop, drag_event);
             }
             WindowEvent::CursorLeft { .. } => {
                 proof!("stage=cursor_left");
@@ -1578,22 +1872,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
                 self.modifiers = translate_modifiers(modifiers.state());
                 proof!("stage=modifiers_changed modifiers={:?}", self.modifiers);
             }
-            WindowEvent::Focused(false) => {
-                proof!("stage=window_focus focused=false");
-                if !self.cancel_focus_sensitive_input(event_loop, "native window lost focus") {
-                    return;
-                }
-                self.text_input.set_window_focused(false);
-                self.apply_native_ime_policy(false);
-                self.handle_native_point_authority_loss(event_loop, "native window lost focus");
-                self.modifiers = KeyModifiers::NONE;
-            }
-            WindowEvent::Focused(true) => {
-                proof!("stage=window_focus focused=true");
-                self.pump_runtime_once();
-                self.text_input.set_window_focused(true);
-                self.apply_native_ime_policy(false);
-            }
+            WindowEvent::Focused(focused) => self.handle_window_focus(event_loop, focused),
             WindowEvent::Occluded(occluded) => {
                 proof!("stage=window_occluded occluded={occluded}");
                 self.presentation_suppressed = occluded;
@@ -1616,6 +1895,10 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         proof!("stage=host_exiting");
         let _ = self.runtime.shutdown();
+        self.framework_services
+            .reset_native_window_ime(self.window.as_deref());
+        self.framework_services.shutdown();
+        self.deferred_framework_service_completions.clear();
         self.drain_runtime_trace();
     }
 }

@@ -241,16 +241,16 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
 
     #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn fail_routed_callback_bridge_for_test(&mut self) {
-        self.routed_callback_bridge_failure_for_test = true;
+        self.test_seams.routed_callback_bridge_failure = true;
     }
 
     #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn fail_routed_semantic_default_for_test(&mut self) {
-        self.routed_semantic_default_failure_for_test = true;
+        self.test_seams.routed_semantic_default_failure = true;
     }
 
     #[cfg(feature = "internal-test-seams")]
     pub(crate) const fn fail_routed_commit_for_test(&mut self) {
-        self.routed_commit_failure_for_test = true;
+        self.test_seams.routed_commit_failure = true;
     }
 }

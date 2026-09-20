@@ -96,6 +96,7 @@ pub enum WorkFamily {
     SendTask,
     Timer,
     HostRequest,
+    FrameworkService,
 }
 
 /// One-shot or repeating monotonic timer description.

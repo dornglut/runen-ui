@@ -1,9 +1,10 @@
 use core::num::{NonZeroU64, NonZeroUsize};
 
 use runenui_core::{
-    CommandOrigin, ElementId, EventPhase, FocusBoundaryPolicy, FocusEventKind, FocusReason,
-    MonotonicInstant, MotionTarget, PointerBoundaryKind, PointerCaptureKind, PointerId,
-    PointerPhase, SemanticActionTarget, SemanticCommand, WidgetInvalidation, WorkKey,
+    ClipboardClassification, ClipboardWritePurpose, CommandOrigin, ElementId, EventPhase,
+    FocusBoundaryPolicy, FocusEventKind, FocusReason, MonotonicInstant, MotionTarget,
+    PointerBoundaryKind, PointerCaptureKind, PointerId, PointerPhase, SemanticActionTarget,
+    SemanticCommand, WidgetInvalidation, WorkKey,
 };
 
 use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
@@ -390,6 +391,15 @@ pub enum TraceRecordKind {
     HostRequestExposed,
     HostResponseAccepted,
     HostResponseRejected,
+    FrameworkServiceExposed,
+    FrameworkServiceResponseQueued,
+    FrameworkServiceResponseAccepted,
+    FrameworkServiceResponseOutcome {
+        service: TraceFrameworkServiceKind,
+        outcome: TraceFrameworkServiceOutcome,
+    },
+    FrameworkServiceResponseRejected,
+    FrameworkServiceCancelled,
     WakeRequested,
     WakeAcknowledged,
     RedrawRequested {
@@ -566,6 +576,7 @@ pub enum TraceRoutedAdmissionRejection {
     LocalTasks,
     SendTasks,
     Timers,
+    FrameworkServices,
     WorkSequenceExhausted,
     WorkGenerationExhausted,
     ReconciliationGenerationExhausted,
@@ -581,6 +592,7 @@ pub enum TraceWorkFamily {
     Timer,
     Subscription,
     HostRequest,
+    FrameworkService,
 }
 
 /// Public owner classification for opaque scheduler trace identity.
@@ -654,6 +666,8 @@ pub enum TraceWorkStartRefusal {
     SubscriptionRejected,
     TimerZeroInterval,
     TimerDeadlineOverflow,
+    FrameworkServiceBindingMismatch,
+    FrameworkServiceBindingStale,
 }
 
 /// Structured terminal outcome of one timer generation.
@@ -662,6 +676,35 @@ pub enum TraceWorkStartRefusal {
 pub enum TraceTimerTerminalOutcome {
     Completed,
     RepeatDeadlineOverflow,
+}
+
+/// Framework service category recorded without retaining native or payload data.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceFrameworkServiceKind {
+    ClipboardReadText,
+    ClipboardWriteText(ClipboardWritePurpose),
+    InputMethod,
+    Cursor,
+    DragDrop,
+}
+
+/// Redacted result class for one completed framework service.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceFrameworkServiceOutcome {
+    Succeeded,
+    Failed(runenui_core::FrameworkServiceFailure),
+    ClipboardText {
+        classification: ClipboardClassification,
+        bytes: usize,
+    },
+    DragDrop {
+        phase: runenui_core::DragDropPhase,
+        payload: runenui_core::DragDropPayloadKind,
+        items: u32,
+        accepted: bool,
+    },
 }
 
 /// One immutable canonical trace record.

@@ -115,12 +115,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             routed_target.is_some(),
             &boundary_targets,
             &deferred_capture_targets,
-            2,
+            2 + usize::from(work.event.drag_drop().is_some()),
             pointer_commit_trace,
             matches!(work.event.phase(), PointerPhase::Down),
         ) else {
             return self.pointer_runtime_outcome();
         };
+        transaction
+            .pointer_cursor_target
+            .clone_from(&geometry.physical_target);
+        transaction.pointer_surface_context = Some(work.event.surface_context().clone());
+        transaction.drag_drop_offer = work.event.drag_drop();
         if let Err((failure, current)) =
             self.invoke_pointer_boundary_events(&mut transaction, &work, &geometry, &boundary_plan)
         {
@@ -379,7 +384,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             pointer_default_is_cancelable(work.event.phase()),
         );
-        self.invoke_routed_callbacks(transaction, &event, Some(dispatch))
+        self.invoke_routed_callbacks(transaction, &event, Some(dispatch))?;
+        if let Some(drop_event) = work.event.drag_drop() {
+            let event = UiEvent::DragDrop(drop_event);
+            self.invoke_routed_callbacks(transaction, &event, Some(dispatch))?;
+        }
+        Ok(())
     }
 
     fn commit_prepared_pointer_transaction(

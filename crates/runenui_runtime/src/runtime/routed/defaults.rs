@@ -1,10 +1,16 @@
-use runenui_core::{__runtime::MountedEffect, HostProtocol, SemanticActionData, SemanticCommand};
+use runenui_core::{
+    __runtime::{FrameworkServiceBinding, FrameworkServiceEffect, MountedEffect},
+    ClipboardWritePurpose, FrameworkServiceRequest, HostProtocol, SemanticActionData,
+    SemanticCommand, TextSensitivity,
+};
 
 use super::{
     super::{CollectedRoutedOutput, Runtime, ingress::trace_semantic_action_rejection},
     transaction::RoutedTransaction,
 };
 use crate::{TraceRecordKind, TraceRoutedIntegrityFailure, TraceSemanticActionRejection};
+
+const MAX_CLIPBOARD_BYTES: usize = 1_048_576;
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(super) fn apply_semantic_default(
@@ -43,16 +49,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             SemanticCommand::Copy | SemanticCommand::Cut | SemanticCommand::Paste
         ) {
-            transaction.parent = self.trace.record_event(
-                TraceRecordKind::EditingDefaultUnavailable { command },
-                transaction.sequence,
-                transaction.parent,
-                Some(transaction.target_trace.clone()),
-                transaction.instant,
-                &transaction.target,
-                Some(&transaction.target),
-                transaction.origin,
-            );
+            if !self.request_clipboard_default(transaction, command) {
+                transaction.parent = self.trace.record_event(
+                    TraceRecordKind::EditingDefaultUnavailable { command },
+                    transaction.sequence,
+                    transaction.parent,
+                    Some(transaction.target_trace.clone()),
+                    transaction.instant,
+                    &transaction.target,
+                    Some(&transaction.target),
+                    transaction.origin,
+                );
+            }
             return Ok(());
         }
         transaction.parent = self.trace.record_event(
@@ -73,10 +81,69 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         transaction.failure_current_target = Some(transaction.target.clone());
         #[cfg(feature = "internal-test-seams")]
-        if self.routed_semantic_default_failure_for_test {
+        if self.test_seams.routed_semantic_default_failure {
             return Err(TraceRoutedIntegrityFailure::SemanticDefaultFailure);
         }
         self.invoke_activation_default(transaction)
+    }
+
+    fn request_clipboard_default(
+        &self,
+        transaction: &mut RoutedTransaction<Action>,
+        command: SemanticCommand,
+    ) -> bool {
+        let owner = transaction.target.clone();
+        if self.focus.focused_node() != Some(&owner) {
+            return false;
+        }
+        let Some(context) = self.editing.framework_service_context(&owner) else {
+            return false;
+        };
+        let is_write = matches!(command, SemanticCommand::Copy | SemanticCommand::Cut);
+        if is_write
+            && (context.sensitivity != TextSensitivity::Public
+                || context.selection.is_collapsed()
+                || !clipboard_write_payload_is_bounded(&context.selected_text)
+                || (command == SemanticCommand::Cut && (context.read_only || context.disabled)))
+        {
+            return false;
+        }
+        let Some(surface_context) = self.surface_publication.current_surface_input_context() else {
+            return false;
+        };
+        let request = match command {
+            SemanticCommand::Copy => FrameworkServiceRequest::ClipboardWriteText {
+                text: context.selected_text,
+                purpose: ClipboardWritePurpose::Copy,
+            },
+            SemanticCommand::Cut => FrameworkServiceRequest::ClipboardWriteText {
+                text: context.selected_text,
+                purpose: ClipboardWritePurpose::Cut,
+            },
+            SemanticCommand::Paste => FrameworkServiceRequest::ClipboardReadText {
+                max_bytes: MAX_CLIPBOARD_BYTES,
+            },
+            _ => return false,
+        };
+        if transaction.consume_mandatory_default_command().is_err() {
+            return false;
+        }
+        let binding = FrameworkServiceBinding::__runtime_new(
+            owner.clone(),
+            self.surface_publication.surface_id().clone(),
+            Some(surface_context),
+            Some(context.session),
+            Some(context.snapshot),
+            Some(context.selection),
+            self.composition.generation().cloned(),
+        );
+        transaction.mounted_work.push((
+            owner,
+            MountedEffect::FrameworkService(FrameworkServiceEffect::__runtime_new(
+                request, binding,
+            )),
+        ));
+        true
     }
 
     #[allow(clippy::too_many_lines)]
@@ -296,5 +363,23 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
         }
         Ok(())
+    }
+}
+
+const fn clipboard_write_payload_is_bounded(text: &str) -> bool {
+    text.len() <= MAX_CLIPBOARD_BYTES
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_CLIPBOARD_BYTES, clipboard_write_payload_is_bounded};
+
+    #[test]
+    fn native_clipboard_writes_are_bounded_before_host_work_is_staged() {
+        let within_limit = "x".repeat(MAX_CLIPBOARD_BYTES);
+        let over_limit = "x".repeat(MAX_CLIPBOARD_BYTES + 1);
+
+        assert!(clipboard_write_payload_is_bounded(&within_limit));
+        assert!(!clipboard_write_payload_is_bounded(&over_limit));
     }
 }

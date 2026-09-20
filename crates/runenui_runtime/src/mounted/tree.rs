@@ -229,6 +229,10 @@ impl<Action> MountedTree<Action> {
         self.arena.get(slot as usize, generation)
     }
 
+    pub(crate) const fn root_id(&self) -> Option<&MountedNodeId> {
+        self.root.as_ref()
+    }
+
     pub(crate) fn trace_target(&self, id: &MountedNodeId) -> crate::TraceTarget {
         crate::TraceTarget::new(
             id.clone(),

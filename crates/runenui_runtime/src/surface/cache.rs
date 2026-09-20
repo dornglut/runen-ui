@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use runenui_core::{LogicalTransform, StyleEnvironment, TextDocumentSnapshot, WidgetDiagnostic};
-use runenui_text::{FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextLayoutState};
+use runenui_text::{
+    FontSourceSnapshot, TextCaretMap, TextCaretMapError, TextDisplaySelection, TextLayoutState,
+    TextPreeditProjection,
+};
 
 use crate::scene::{HitTestSceneContent, PaintScene};
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
@@ -250,6 +253,54 @@ impl SurfaceCache {
             .get(position)
             .ok_or(TextCaretMapError::MissingLayout)?
             .caret_map_for_source(snapshot, source)
+    }
+
+    pub(crate) fn text_candidate_area(
+        &self,
+        owner: &MountedNodeId,
+        snapshot: TextDocumentSnapshot,
+        source: &str,
+        selection: runenui_core::TextSelection,
+        preedit: Option<Arc<TextPreeditProjection>>,
+    ) -> Result<LogicalRect, TextCaretMapError> {
+        let position = self
+            .topology
+            .nodes
+            .iter()
+            .position(|node| &node.id == owner)
+            .ok_or(TextCaretMapError::MissingLayout)?;
+        let layout = self
+            .layout
+            .text_layouts
+            .get(position)
+            .ok_or(TextCaretMapError::MissingLayout)?;
+        let (map, active) = if let Some(preedit) = preedit {
+            let map = layout.preedit_caret_map(preedit)?;
+            let active = map
+                .preedit_selection()?
+                .map(|display| display.active().clone())
+                .or_else(|| {
+                    let projection = map.preedit_projection()?;
+                    projection
+                        .position_from_display_offset(
+                            projection.display_preedit_end(),
+                            runenui_core::TextAffinity::Upstream,
+                        )
+                        .ok()
+                })
+                .ok_or(TextCaretMapError::DisplayTextMismatch)?;
+            (map, active)
+        } else {
+            let map = layout.caret_map_for_source(snapshot, source)?;
+            let active = TextDisplaySelection::from_document(selection)
+                .active()
+                .clone();
+            (map, active)
+        };
+        let local = map.candidate_rect(&active)?;
+        let presentation = self.presentation.node(position);
+        runenui_core::__runtime::transform_rect_aabb(presentation.owner_to_surface(), local)
+            .ok_or(TextCaretMapError::InvalidGeometry)
     }
 
     /// Creates a staged non-structural candidate by sharing every retained

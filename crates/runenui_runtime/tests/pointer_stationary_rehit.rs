@@ -3,10 +3,11 @@
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    Element, ElementId, EventContext, HitContribution, HitContributionContext, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, PointerBoundaryKind, PointerDeviceKind,
-    PointerEvent, PointerId, PointerPhase, StyleEnvironment, SurfaceInputContext, UiApp, UiEvent,
-    View, Widget, WidgetEventOutput, WidgetMeasure, children, row,
+    Element, ElementId, EventContext, FrameworkServiceRequest, HitContribution,
+    HitContributionContext, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
+    PointerBoundaryKind, PointerDeviceKind, PointerEvent, PointerId, PointerPhase,
+    StyleEnvironment, SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetEventOutput,
+    WidgetMeasure, children, row,
 };
 use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, PumpReport, SurfaceBuildContext, SurfacePublication,
@@ -246,7 +247,18 @@ fn publication_rehits_stationary_streams_in_registration_order_without_move_call
     let report = pump(&mut harness.runtime);
 
     assert!(report.is_quiescent());
-    assert_eq!(report.processed_envelopes(), 1);
+    // The stationary re-hit envelope also commits one cursor-service start
+    // for each pointer whose physical target changed in the new publication.
+    assert_eq!(report.processed_envelopes(), 3);
+    assert_eq!(
+        harness
+            .runtime
+            .pending_framework_services()
+            .iter()
+            .filter(|service| matches!(service.request(), FrameworkServiceRequest::Cursor { .. }))
+            .count(),
+        2
+    );
     assert_eq!(
         harness.observations.borrow().as_slice(),
         [
@@ -339,7 +351,18 @@ fn publication_does_not_rebind_an_older_accepted_pointer_event() {
     let report = pump(&mut harness.runtime);
 
     assert!(report.is_quiescent());
-    assert_eq!(report.processed_envelopes(), older_work + 1);
+    // The old accepted pointer retains its old hit context; only the new
+    // publication's stationary re-hit commits a current cursor request.
+    assert_eq!(report.processed_envelopes(), older_work + 2);
+    assert_eq!(
+        harness
+            .runtime
+            .pending_framework_services()
+            .iter()
+            .filter(|service| matches!(service.request(), FrameworkServiceRequest::Cursor { .. }))
+            .count(),
+        1
+    );
     assert_eq!(
         harness.observations.borrow().as_slice(),
         [

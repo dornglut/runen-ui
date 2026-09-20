@@ -268,6 +268,16 @@ pub(crate) struct SurfacePublicationState {
 }
 
 impl SurfacePublicationState {
+    pub(in crate::runtime) const fn surface_id(&self) -> &SurfaceId {
+        &self.surface_id
+    }
+
+    pub(in crate::runtime) fn current_surface_input_context(&self) -> Option<SurfaceInputContext> {
+        self.snapshots
+            .back()
+            .map(|snapshot| snapshot.input_context().clone())
+    }
+
     pub(in crate::runtime) fn text_caret_map(
         &self,
         owner: &MountedNodeId,
@@ -278,6 +288,20 @@ impl SurfacePublicationState {
             .as_ref()
             .ok_or(TextCaretMapError::MissingLayout)?
             .text_caret_map(owner, snapshot, source)
+    }
+
+    pub(in crate::runtime) fn text_candidate_area(
+        &self,
+        owner: &MountedNodeId,
+        snapshot: TextDocumentSnapshot,
+        source: &str,
+        selection: runenui_core::TextSelection,
+        preedit: Option<std::sync::Arc<runenui_text::TextPreeditProjection>>,
+    ) -> Result<LogicalRect, TextCaretMapError> {
+        self.cache
+            .as_ref()
+            .ok_or(TextCaretMapError::MissingLayout)?
+            .text_candidate_area(owner, snapshot, source, selection, preedit)
     }
 
     pub(crate) fn new(

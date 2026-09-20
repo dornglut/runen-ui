@@ -319,6 +319,56 @@ impl<App: UiApp> AppRuntime<App> {
         self.runtime.cancel_host_request(token)
     }
 
+    /// Returns framework-service requests whose committed start envelopes ran.
+    #[must_use]
+    pub fn pending_framework_services(&self) -> Vec<crate::FrameworkServiceRef<'_>> {
+        self.runtime.pending_framework_services()
+    }
+
+    /// Queues one typed framework-service response for queue-front validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact response when the token is foreign or stale, the
+    /// response kind mismatches, the queue is full, or the runtime is closed.
+    pub fn complete_framework_service(
+        &mut self,
+        token: &crate::FrameworkServiceToken,
+        response: runenui_core::FrameworkServiceResponse,
+    ) -> Result<WorkSequence, crate::FrameworkServiceResponseError> {
+        self.runtime.complete_framework_service(token, response)
+    }
+
+    /// Creates a send-capable service completion for cross-thread delivery.
+    ///
+    /// # Errors
+    ///
+    /// Returns the response when the token is foreign, stale, or has a
+    /// mismatched response kind, or when the runtime is closed or terminal.
+    pub fn framework_service_response_completion(
+        &mut self,
+        token: &crate::FrameworkServiceToken,
+        response: runenui_core::FrameworkServiceResponse,
+    ) -> Result<crate::FrameworkServiceResponseCompletion, crate::FrameworkServiceResponseError>
+    {
+        self.runtime
+            .framework_service_response_completion(token, response)
+    }
+
+    /// Queues cancellation for one exact live framework-service request.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the token is foreign or stale, the runtime is
+    /// closed or terminal, the queue is full, or sequence allocation is
+    /// exhausted.
+    pub fn cancel_framework_service(
+        &mut self,
+        token: &crate::FrameworkServiceToken,
+    ) -> Result<WorkSequence, crate::FrameworkServiceCancelError> {
+        self.runtime.cancel_framework_service(token)
+    }
+
     #[must_use]
     pub fn subscription_diagnostics(&self) -> &[crate::SubscriptionDiagnostic] {
         self.runtime.subscription_diagnostics()

@@ -29,6 +29,7 @@ pub(in crate::runtime) const fn trace_work_family(family: WorkFamily) -> crate::
         WorkFamily::Timer => crate::TraceWorkFamily::Timer,
         WorkFamily::Subscription => crate::TraceWorkFamily::Subscription,
         WorkFamily::HostRequest => crate::TraceWorkFamily::HostRequest,
+        WorkFamily::FrameworkService => crate::TraceWorkFamily::FrameworkService,
     }
 }
 
@@ -62,6 +63,7 @@ pub(in crate::runtime) fn mounted_effect_into_effect<Action, Protocol: HostProto
         MountedEffect::LocalTask(task) => Effect::LocalTask(task),
         MountedEffect::SendTask(task) => Effect::SendTask(task),
         MountedEffect::Timer(timer) => Effect::Timer(timer),
+        MountedEffect::FrameworkService(request) => Effect::FrameworkService(request),
         MountedEffect::Cancel { family, key } => Effect::Cancel { family, key },
     }
 }

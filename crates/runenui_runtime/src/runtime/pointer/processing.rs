@@ -173,11 +173,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         stream.set_surface_context(work.event.surface_context().clone());
         self.clear_non_live_pointer_owners(&mut stream);
-        let routed_target = Self::pointer_routed_target(
-            work.event.phase(),
-            &stream,
-            geometry.physical_target.as_ref(),
-        );
+        let routed_target = if work.event.drag_drop().is_some() {
+            geometry.physical_target.clone()
+        } else {
+            Self::pointer_routed_target(
+                work.event.phase(),
+                &stream,
+                geometry.physical_target.as_ref(),
+            )
+        };
         let parent = match self.record_pointer_prelude(
             &work,
             prepared_stream.is_new,

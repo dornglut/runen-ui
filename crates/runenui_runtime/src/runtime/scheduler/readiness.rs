@@ -48,10 +48,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 CompletionKind::SendTask => WorkFamily::SendTask,
                 CompletionKind::Subscription => WorkFamily::Subscription,
                 CompletionKind::HostResponse => WorkFamily::HostRequest,
+                CompletionKind::FrameworkServiceResponse => WorkFamily::FrameworkService,
             };
             if self.work.is_running_family(generation, family) {
                 let trace_plan = match family {
                     WorkFamily::HostRequest => MandatoryTracePlan::host_completion(),
+                    WorkFamily::FrameworkService => {
+                        MandatoryTracePlan::framework_service_completion()
+                    }
                     WorkFamily::SendTask | WorkFamily::Subscription => {
                         MandatoryTracePlan::send_completion()
                     }
@@ -84,6 +88,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 if completion.kind == CompletionKind::HostResponse {
                     self.completion_ingress
                         .release_host_response(completion.generation);
+                }
+                if completion.kind == CompletionKind::FrameworkServiceResponse {
+                    self.completion_ingress
+                        .release_framework_service_response(completion.generation);
                 }
                 continue;
             }
@@ -139,6 +147,35 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 let mapped = self.record_work_fact(TraceRecordKind::WorkCompletionMapped, identity);
                 self.revoke_generation(completion.generation);
                 self.queue_callback_action(action, mapped);
+                continue;
+            }
+            if completion.kind == CompletionKind::FrameworkServiceResponse {
+                let Ok(response) = completion
+                    .output
+                    .downcast::<runenui_core::FrameworkServiceResponse>()
+                else {
+                    self.completion_ingress
+                        .release_framework_service_response(completion.generation);
+                    self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                    break;
+                };
+                let queued = self.record_work_fact(
+                    TraceRecordKind::FrameworkServiceResponseQueued,
+                    identity.clone(),
+                );
+                if self
+                    .queue
+                    .push_framework_service_response(
+                        completion.generation,
+                        *response,
+                        identity,
+                        queued.or(completion_parent),
+                    )
+                    .is_err()
+                {
+                    self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                    break;
+                }
                 continue;
             }
             let Some(index) = self

@@ -230,6 +230,7 @@ mod element;
 mod event;
 mod event_context;
 mod focus;
+mod framework_service;
 mod geometry;
 mod hit;
 mod identity;
@@ -287,13 +288,18 @@ pub use element::{
     WidgetMeasureInput, WidgetMeasuredSize, WidgetStateTypeId, WidgetTextInput, WidgetTypeId,
 };
 pub use event::{
-    CommandDerivation, CommandOrigin, EventPhase, EventSource, SemanticCommand,
+    CommandDerivation, CommandOrigin, DragDropEvent, EventPhase, EventSource, SemanticCommand,
     SemanticCommandEvent, UiEvent, WidgetEventOutput,
 };
 pub use event_context::EventContext;
 pub use focus::{
     FocusBoundaryPolicy, FocusDirection, FocusEvent, FocusEventKind, FocusReason, FocusScope,
     FocusScopePolicy, Focusability, InputModality,
+};
+pub use framework_service::{
+    ClipboardClassification, ClipboardText, ClipboardWritePurpose, CursorShape,
+    DragDropPayloadKind, DragDropPayloadMetadata, DragDropPhase, FrameworkServiceFailure,
+    FrameworkServiceRequest, FrameworkServiceResponse, FrameworkServiceResponseKind,
 };
 pub use geometry::{LogicalRect, LogicalRectError, LogicalSize};
 pub use hit::{HitContribution, HitContributionContext, HitRegion, PointerPolicy};
@@ -321,8 +327,9 @@ pub use path::{PathFillRule, PathVerb, ScenePath, ScenePathError};
 /// use, semver-exempt before 1.0, and may change without compatibility support.
 #[doc(hidden)]
 pub mod __runtime {
-    pub use crate::effects::{Effect, HostRequestEffect, MountedEffect};
+    pub use crate::effects::{Effect, FrameworkServiceEffect, HostRequestEffect, MountedEffect};
     pub use crate::event_context::{EventContextOutput, PointerCaptureRequest, RoutedEventOutput};
+    pub use crate::framework_service::{FrameworkServiceBinding, FrameworkServiceRequest};
     pub use crate::motion_sampling::{
         MotionInterpolationKind, apply_motion_value, ease_motion, interpolate_motion_sample,
         interpolate_motion_value, motion_value_for_target,

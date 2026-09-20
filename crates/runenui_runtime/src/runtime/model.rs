@@ -5,6 +5,14 @@ use super::{
     WorkCancellationCounts, fmt,
 };
 
+#[cfg(feature = "internal-test-seams")]
+#[derive(Default)]
+pub(crate) struct RuntimeTestSeams {
+    pub(crate) routed_callback_bridge_failure: bool,
+    pub(crate) routed_semantic_default_failure: bool,
+    pub(crate) routed_commit_failure: bool,
+}
+
 pub(in crate::runtime) enum ActionCommitError<Action> {
     QueueFull(Action),
     WorkSequenceExhausted(Action),
@@ -167,6 +175,41 @@ pub enum HostResponseError<Response> {
         response: Response,
         reason: RuntimeTerminalReason,
     },
+}
+
+pub enum FrameworkServiceResponseError {
+    ForeignRuntime(runenui_core::FrameworkServiceResponse),
+    Stale(runenui_core::FrameworkServiceResponse),
+    MismatchedKind(runenui_core::FrameworkServiceResponse),
+    Full(runenui_core::FrameworkServiceResponse),
+    Closed(runenui_core::FrameworkServiceResponse),
+    Terminal {
+        response: runenui_core::FrameworkServiceResponse,
+        reason: RuntimeTerminalReason,
+    },
+}
+
+impl fmt::Debug for FrameworkServiceResponseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::ForeignRuntime(_) => "FrameworkServiceResponseError::ForeignRuntime(..)",
+            Self::Stale(_) => "FrameworkServiceResponseError::Stale(..)",
+            Self::MismatchedKind(_) => "FrameworkServiceResponseError::MismatchedKind(..)",
+            Self::Full(_) => "FrameworkServiceResponseError::Full(..)",
+            Self::Closed(_) => "FrameworkServiceResponseError::Closed(..)",
+            Self::Terminal { .. } => "FrameworkServiceResponseError::Terminal { .. }",
+        })
+    }
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrameworkServiceCancelError {
+    ForeignRuntime,
+    Stale,
+    Full,
+    Closed,
+    Terminal(RuntimeTerminalReason),
 }
 
 impl<Response> fmt::Debug for HostResponseError<Response> {

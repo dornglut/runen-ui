@@ -57,15 +57,6 @@ impl TextInputState {
     }
 
     #[must_use]
-    pub const fn ime_allowed(&self) -> bool {
-        wants_ime(
-            self.window_focused,
-            self.focused_owner.is_some(),
-            self.capability,
-        )
-    }
-
-    #[must_use]
     pub const fn accepts_committed_text(&self) -> bool {
         self.window_focused
             && self.focused_owner.is_some()
@@ -102,17 +93,6 @@ impl TextInputState {
 }
 
 #[must_use]
-const fn wants_ime(
-    window_focused: bool,
-    has_focused_owner: bool,
-    capability: WidgetTextInput,
-) -> bool {
-    window_focused
-        && has_focused_owner
-        && (capability.accepts_committed_text() || capability.accepts_composition())
-}
-
-#[must_use]
 pub fn keyboard_committed_text_candidate(
     state: ElementState,
     synthetic: bool,
@@ -141,9 +121,7 @@ pub fn translate_preedit_range(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        TextInputState, keyboard_committed_text_candidate, translate_preedit_range, wants_ime,
-    };
+    use super::{TextInputState, keyboard_committed_text_candidate, translate_preedit_range};
     use crate::DemoApp;
     use runenui_core::{
         CommandOrigin, CompositionGeneration, KeyboardCompositionState, SemanticCommand,
@@ -183,12 +161,17 @@ mod tests {
     }
 
     #[test]
-    fn native_ime_allowance_follows_text_or_composition_capability() {
-        assert!(!wants_ime(true, false, WidgetTextInput::new(true, true)));
-        assert!(!wants_ime(false, true, WidgetTextInput::new(true, true)));
-        assert!(wants_ime(true, true, WidgetTextInput::new(true, false)));
-        assert!(wants_ime(true, true, WidgetTextInput::new(false, true)));
-        assert!(!wants_ime(true, true, WidgetTextInput::NONE));
+    fn native_text_ingress_gates_follow_focus_and_committed_capability() {
+        let mut state = TextInputState::default();
+        state.sync_runtime(Some(distinct_owner()), WidgetTextInput::new(true, true));
+        assert!(!state.accepts_committed_text());
+        assert!(!state.accepts_composition());
+        state.set_window_focused(true);
+        assert!(state.accepts_committed_text());
+        assert!(state.accepts_composition());
+        state.sync_runtime(None, WidgetTextInput::new(true, true));
+        assert!(!state.accepts_committed_text());
+        assert!(!state.accepts_composition());
     }
 
     #[test]
@@ -211,7 +194,7 @@ mod tests {
             state.keyboard_composition_state(),
             KeyboardCompositionState::Inactive
         );
-        assert!(state.ime_allowed());
+        assert!(state.accepts_composition());
     }
 
     #[test]
@@ -229,7 +212,7 @@ mod tests {
             state.keyboard_composition_state(),
             KeyboardCompositionState::Inactive
         );
-        assert!(state.ime_allowed());
+        assert!(state.accepts_committed_text());
     }
 
     #[test]

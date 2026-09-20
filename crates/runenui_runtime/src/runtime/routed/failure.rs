@@ -48,7 +48,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             | TraceRoutedAdmissionRejection::WaitingEnvelopes
             | TraceRoutedAdmissionRejection::LocalTasks
             | TraceRoutedAdmissionRejection::SendTasks
-            | TraceRoutedAdmissionRejection::Timers => None,
+            | TraceRoutedAdmissionRejection::Timers
+            | TraceRoutedAdmissionRejection::FrameworkServices => None,
         };
         if let Some(reason) = terminal {
             self.enter_terminal_with_parent(reason, 0, failure_parent);

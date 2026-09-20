@@ -172,6 +172,18 @@ macro_rules! trace_kind_name {
             TraceRecordKind::HostRequestExposed => "host_request_exposed",
             TraceRecordKind::HostResponseAccepted => "host_response_accepted",
             TraceRecordKind::HostResponseRejected => "host_response_rejected",
+            TraceRecordKind::FrameworkServiceExposed => "framework_service_exposed",
+            TraceRecordKind::FrameworkServiceResponseQueued => "framework_service_response_queued",
+            TraceRecordKind::FrameworkServiceResponseAccepted => {
+                "framework_service_response_accepted"
+            }
+            TraceRecordKind::FrameworkServiceResponseOutcome { .. } => {
+                "framework_service_response_outcome"
+            }
+            TraceRecordKind::FrameworkServiceResponseRejected => {
+                "framework_service_response_rejected"
+            }
+            TraceRecordKind::FrameworkServiceCancelled => "framework_service_cancelled",
             TraceRecordKind::WakeRequested => "wake_requested",
             TraceRecordKind::WakeAcknowledged => "wake_acknowledged",
             TraceRecordKind::RedrawRequested { .. } => "redraw_requested",
@@ -654,6 +666,9 @@ fn encode_runtime_data(output: &mut String, kind: &TraceRecordKind) -> bool {
         TraceRecordKind::WorkStartRefused { outcome } => {
             field_str(output, "outcome", tokens::work_start_refusal(*outcome));
         }
+        TraceRecordKind::FrameworkServiceResponseOutcome { service, outcome } => {
+            encode_framework_service_response_outcome(output, *service, *outcome);
+        }
         TraceRecordKind::ReadinessCheckpoint {
             imported_completions,
             polled_local_work,
@@ -698,6 +713,72 @@ fn encode_runtime_data(output: &mut String, kind: &TraceRecordKind) -> bool {
         _ => return false,
     }
     true
+}
+
+fn encode_framework_service_response_outcome(
+    output: &mut String,
+    service: crate::TraceFrameworkServiceKind,
+    outcome: crate::TraceFrameworkServiceOutcome,
+) {
+    field_str(output, "service", tokens::framework_service_kind(service));
+    if let crate::TraceFrameworkServiceKind::ClipboardWriteText(purpose) = service {
+        output.push(',');
+        field_str(output, "purpose", tokens::clipboard_write_purpose(purpose));
+    }
+    output.push(',');
+    match outcome {
+        crate::TraceFrameworkServiceOutcome::Succeeded => {
+            field_str(output, "outcome", "succeeded");
+        }
+        crate::TraceFrameworkServiceOutcome::Failed(failure) => {
+            field_str(output, "outcome", "failed");
+            output.push(',');
+            field_str(
+                output,
+                "failure",
+                tokens::framework_service_failure(failure),
+            );
+        }
+        crate::TraceFrameworkServiceOutcome::ClipboardText {
+            classification,
+            bytes,
+        } => {
+            field_str(output, "outcome", "clipboard_text");
+            output.push(',');
+            field_str(
+                output,
+                "classification",
+                match classification {
+                    runenui_core::ClipboardClassification::Unclassified => "unclassified",
+                    runenui_core::ClipboardClassification::Public => "public",
+                    runenui_core::ClipboardClassification::Sensitive => "sensitive",
+                    _ => "unknown",
+                },
+            );
+            output.push(',');
+            field_usize(output, "bytes", bytes);
+        }
+        crate::TraceFrameworkServiceOutcome::DragDrop {
+            phase,
+            payload,
+            items,
+            accepted,
+        } => {
+            field_str(output, "outcome", "drag_drop");
+            output.push(',');
+            field_str(output, "phase", tokens::drag_drop_phase(phase));
+            output.push(',');
+            field_str(
+                output,
+                "payload_kind",
+                tokens::drag_drop_payload_kind(payload),
+            );
+            output.push(',');
+            field_u64(output, "items", u64::from(items));
+            output.push(',');
+            field_bool(output, "accepted", accepted);
+        }
+    }
 }
 
 fn pointer_phase(

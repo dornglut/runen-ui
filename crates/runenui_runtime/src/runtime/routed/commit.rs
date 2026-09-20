@@ -35,7 +35,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         pre_output_commit: impl FnOnce(&mut Self, &mut RoutedTransaction<Action>) -> Result<(), ()>,
     ) -> Result<(), ()> {
         #[cfg(feature = "internal-test-seams")]
-        if self.routed_commit_failure_for_test {
+        if self.test_seams.routed_commit_failure {
             return Err(());
         }
         let pointer_interaction_before = (transaction.origin.source() == EventSource::Pointer)
@@ -58,6 +58,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.commit_focus_transition(&mut transaction, None, FocusReason::Disablement)
                 .map_err(|_| ())?;
         }
+        self.cancel_stale_framework_services();
+        self.stage_committed_framework_services(&mut transaction);
         let plan = self.plan_routed_outputs(&mut transaction)?;
         self.commit_routed_plan(transaction, plan, pointer_style_changed)
     }
@@ -184,6 +186,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             || crate::mounted::publication_is_dirty(invalidation)
         {
             self.request_redraw(causal_parent, instant);
+        }
+        if focus_changed {
+            self.cancel_stale_framework_services();
         }
     }
 

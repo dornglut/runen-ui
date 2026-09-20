@@ -310,5 +310,6 @@ pub fn map_output<ChildAction: 'static, ParentAction: 'static>(
             MountedEffect::Timer(timer_effect)
         }
         MountedEffect::Cancel { family, key } => MountedEffect::Cancel { family, key },
+        MountedEffect::FrameworkService(request) => MountedEffect::FrameworkService(request),
     }
 }

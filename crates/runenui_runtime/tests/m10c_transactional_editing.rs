@@ -9,21 +9,24 @@
 )]
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, EditChangeMap, EditGroupHint, EditIntent, EditKind,
-    EditRequestId, EditResolution, EditableContribution, Effects, Element, EventContext,
-    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
-    NoHostProtocol, PhysicalKey, SemanticAction, SemanticCommand, SemanticContribution,
-    SemanticContributionContext, SemanticEditable, SemanticNodeContribution, SemanticRole,
-    SemanticState, StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision,
-    TextDocumentSnapshot, TextPosition, TextRange, TextSelection, TextSensitivity, UiApp, UiEvent,
-    UpdateOutput, Widget, WidgetActivation, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput,
-    WidgetTextInput,
+    ClipboardClassification, ClipboardText, ClipboardWritePurpose, CommandOrigin,
+    CommittedTextEvent, EditChangeMap, EditGroupHint, EditIntent, EditKind, EditRequestId,
+    EditResolution, EditableContribution, Effects, Element, EventContext, FrameworkServiceFailure,
+    FrameworkServiceRequest, FrameworkServiceResponse, FrameworkServiceResponseKind,
+    HitContribution, HitContributionContext, KeyLocation, KeyModifiers, KeyboardCompositionState,
+    KeyboardEvent, KeyboardPhase, LogicalKey, LogicalPoint, LogicalRect, NoHostProtocol,
+    PhysicalKey, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
+    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticEditable,
+    SemanticNodeContribution, SemanticRole, SemanticState, StyleEnvironment, SurfaceInputContext,
+    TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
+    TextRange, TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, Widget,
+    WidgetActivation, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, WidgetTextInput,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, PumpBudget, RuntimeConfig,
     RuntimeLimits, RuntimeStatus, RuntimeTerminalReason, SubmitSemanticActionErrorKind,
-    SubmitTextErrorKind, SurfaceBuildContext, TraceConfig, TracePayloadCapture, TraceRecordKind,
-    TraceReplay,
+    SubmitTextErrorKind, SurfaceBuildContext, TraceConfig, TraceFrameworkServiceKind,
+    TraceFrameworkServiceOutcome, TracePayloadCapture, TraceRecordKind, TraceReplay,
 };
 
 const CANTARELL: &[u8] = include_bytes!("../../runenui_text/tests/fixtures/Cantarell-Regular.ttf");
@@ -157,6 +160,14 @@ impl Widget<Action> for BoundEditor {
         WidgetMeasure::Text {
             content: self.text.clone(),
         }
+    }
+
+    fn hit_test(&self, (): &Self::State, context: HitContributionContext) -> HitContribution {
+        let size = context.local_size();
+        HitContribution::single_rect(
+            LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
+                .unwrap_or_else(|_| unreachable!("validated local size yields valid hit geometry")),
+        )
     }
 
     fn semantics(&self, (): &Self::State, _: SemanticContributionContext) -> SemanticContribution {
@@ -448,6 +459,80 @@ fn focus(runtime: &mut AppRuntime<App>) {
     focus_generic(runtime);
 }
 
+fn publish_editor(runtime: &mut AppRuntime<App>) -> SurfaceInputContext {
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::try_new(200.0, 40.0)
+            .unwrap_or_else(|_| unreachable!("test surface is finite")),
+    );
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|error| panic!("editable surface publishes: {error:?}"))
+        .input_context()
+        .clone()
+}
+
+fn select_all(runtime: &mut AppRuntime<App>) {
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(
+            owner,
+            SemanticCommand::SelectAll,
+            CommandOrigin::programmatic(),
+        )
+        .unwrap_or_else(|error| panic!("select-all command is queued: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+}
+
+fn pending_service(
+    runtime: &AppRuntime<App>,
+    predicate: impl Fn(&FrameworkServiceRequest) -> bool,
+) -> runenui_runtime::FrameworkServiceRef<'_> {
+    runtime
+        .pending_framework_services()
+        .into_iter()
+        .find(|service| predicate(service.request()))
+        .unwrap_or_else(|| unreachable!("matching framework service is pending"))
+}
+
+fn has_pending_clipboard_service(runtime: &AppRuntime<App>) -> bool {
+    runtime.pending_framework_services().iter().any(|service| {
+        matches!(
+            service.request(),
+            FrameworkServiceRequest::ClipboardReadText { .. }
+                | FrameworkServiceRequest::ClipboardWriteText { .. }
+        )
+    })
+}
+
+fn complete_pending_state_services(runtime: &mut AppRuntime<App>) {
+    let pending = runtime.pending_framework_services();
+    let tokens = pending
+        .iter()
+        .filter_map(|service| match service.request() {
+            FrameworkServiceRequest::InputMethod { .. }
+            | FrameworkServiceRequest::Cursor { .. } => {
+                Some((service.token(), service.request().response_kind()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    for (token, kind) in tokens {
+        let response = match kind {
+            FrameworkServiceResponseKind::InputMethod => {
+                FrameworkServiceResponse::InputMethod(Ok(()))
+            }
+            FrameworkServiceResponseKind::Cursor => FrameworkServiceResponse::Cursor(Ok(())),
+            _ => unreachable!("only state synchronization services are completed"),
+        };
+        runtime
+            .complete_framework_service(&token, response)
+            .unwrap_or_else(|error| panic!("fake host queues state-service result: {error:?}"));
+    }
+    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX));
+}
+
 fn install_controlled_font(runtime: &mut AppRuntime<App>) {
     assert!(
         runtime
@@ -554,6 +639,468 @@ fn logical_character_keys_do_not_insert_and_prevented_committed_text_enqueues_no
     assert!(prevented.state().history.is_empty());
     assert_eq!(prevented.__editing_session_counts_for_test(), (1, 0));
     assert_eq!(prevented.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn clipboard_copy_cut_and_paste_use_typed_fake_host_results_and_queue_front_revalidation() {
+    let mut copy = mounted();
+    install_controlled_font(&mut copy);
+    focus(&mut copy);
+    publish_editor(&mut copy);
+    select_all(&mut copy);
+    let owner = copy.index().nodes()[0].id().clone();
+    copy.submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("copy default is admitted: {error:?}"));
+    copy.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let request = pending_service(&copy, |request| {
+        matches!(
+            request,
+            FrameworkServiceRequest::ClipboardWriteText {
+                purpose: ClipboardWritePurpose::Copy,
+                ..
+            }
+        )
+    });
+    let token = request.token();
+    assert!(matches!(
+        request.request(),
+        FrameworkServiceRequest::ClipboardWriteText {
+            text,
+            purpose: ClipboardWritePurpose::Copy
+        } if text.as_ref() == "ab"
+    ));
+    assert!(!format!("{:?}", request.request()).contains("ab"));
+    copy.complete_framework_service(&token, FrameworkServiceResponse::ClipboardWriteText(Ok(())))
+        .unwrap_or_else(|error| panic!("copy result queues: {error:?}"));
+    assert_eq!(copy.state().text, "ab");
+    copy.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(copy.state().text, "ab");
+    assert_eq!(copy.status(), RuntimeStatus::Running);
+
+    let mut failed_cut = mounted();
+    install_controlled_font(&mut failed_cut);
+    focus(&mut failed_cut);
+    publish_editor(&mut failed_cut);
+    select_all(&mut failed_cut);
+    let owner = failed_cut.index().nodes()[0].id().clone();
+    failed_cut
+        .submit_command(owner, SemanticCommand::Cut, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("cut default is admitted: {error:?}"));
+    failed_cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let token = pending_service(&failed_cut, |request| {
+        matches!(
+            request,
+            FrameworkServiceRequest::ClipboardWriteText {
+                purpose: ClipboardWritePurpose::Cut,
+                ..
+            }
+        )
+    })
+    .token();
+    failed_cut
+        .complete_framework_service(
+            &token,
+            FrameworkServiceResponse::ClipboardWriteText(Err(
+                FrameworkServiceFailure::PermissionDenied,
+            )),
+        )
+        .unwrap_or_else(|error| panic!("cut failure is a typed response: {error:?}"));
+    failed_cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(failed_cut.state().text, "ab");
+    assert!(failed_cut.state().observed_edits.is_empty());
+    assert!(failed_cut.trace().kinds().any(|kind| matches!(
+        kind,
+        TraceRecordKind::FrameworkServiceResponseOutcome {
+            service: TraceFrameworkServiceKind::ClipboardWriteText(ClipboardWritePurpose::Cut),
+            outcome: TraceFrameworkServiceOutcome::Failed(
+                FrameworkServiceFailure::PermissionDenied
+            ),
+        }
+    )));
+    let service_trace = failed_cut.trace().export_jsonl();
+    assert!(service_trace.contains("\"name\":\"framework_service_response_outcome\""));
+    assert!(service_trace.contains("\"failure\":\"permission_denied\""));
+
+    let mut cut = mounted();
+    install_controlled_font(&mut cut);
+    focus(&mut cut);
+    publish_editor(&mut cut);
+    select_all(&mut cut);
+    let owner = cut.index().nodes()[0].id().clone();
+    cut.submit_command(owner, SemanticCommand::Cut, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("cut default is admitted: {error:?}"));
+    cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let token = pending_service(&cut, |request| {
+        matches!(
+            request,
+            FrameworkServiceRequest::ClipboardWriteText {
+                purpose: ClipboardWritePurpose::Cut,
+                ..
+            }
+        )
+    })
+    .token();
+    cut.complete_framework_service(&token, FrameworkServiceResponse::ClipboardWriteText(Ok(())))
+        .unwrap_or_else(|error| panic!("cut success is queued before editing: {error:?}"));
+    assert_eq!(cut.state().text, "ab");
+    cut.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(cut.state().text, "");
+    assert_eq!(cut.state().observed_edits[0].kind, EditKind::Cut);
+
+    let mut paste = mounted();
+    install_controlled_font(&mut paste);
+    focus(&mut paste);
+    publish_editor(&mut paste);
+    let owner = paste.index().nodes()[0].id().clone();
+    paste
+        .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("paste default is admitted: {error:?}"));
+    paste.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let pending = pending_service(
+        &paste,
+        |request| matches!(request, FrameworkServiceRequest::ClipboardReadText { max_bytes } if *max_bytes > 0),
+    );
+    let token = pending.token();
+    paste
+        .complete_framework_service(
+            &token,
+            FrameworkServiceResponse::ClipboardReadText(Ok(ClipboardText::new(
+                "x",
+                ClipboardClassification::Public,
+            ))),
+        )
+        .unwrap_or_else(|error| {
+            panic!("paste data is queued, not inserted at callback time: {error:?}")
+        });
+    assert_eq!(paste.state().text, "ab");
+    paste.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(paste.state().text, "abx");
+    assert_eq!(paste.state().observed_edits[0].kind, EditKind::Paste);
+
+    let mut unavailable = mounted();
+    install_controlled_font(&mut unavailable);
+    focus(&mut unavailable);
+    publish_editor(&mut unavailable);
+    let owner = unavailable.index().nodes()[0].id().clone();
+    unavailable
+        .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("paste default is admitted: {error:?}"));
+    unavailable.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let token = pending_service(&unavailable, |request| {
+        matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
+    })
+    .token();
+    unavailable
+        .complete_framework_service(
+            &token,
+            FrameworkServiceResponse::ClipboardReadText(Err(FrameworkServiceFailure::Unavailable)),
+        )
+        .unwrap_or_else(|error| panic!("unavailable is not converted into empty text: {error:?}"));
+    unavailable.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(unavailable.state().text, "ab");
+    assert!(unavailable.state().observed_edits.is_empty());
+}
+
+#[test]
+fn clipboard_copy_is_suppressed_secret_and_unclassified_paste_is_rejected() {
+    let mut secret = AppRuntime::<App>::mount(Document {
+        sensitivity: TextSensitivity::Secret,
+        ..mounted().state().clone()
+    });
+    install_controlled_font(&mut secret);
+    focus(&mut secret);
+    publish_editor(&mut secret);
+    select_all(&mut secret);
+    let owner = secret.index().nodes()[0].id().clone();
+    secret
+        .submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("secret copy is routed for safe rejection: {error:?}"));
+    secret.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert!(!has_pending_clipboard_service(&secret));
+    assert_eq!(secret.state().text, "ab");
+
+    let mut runtime = mounted();
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    publish_editor(&mut runtime);
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("paste is routed: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let token = pending_service(&runtime, |request| {
+        matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
+    })
+    .token();
+    let response = FrameworkServiceResponse::ClipboardReadText(Ok(ClipboardText::new(
+        "z",
+        ClipboardClassification::Unclassified,
+    )));
+    runtime
+        .complete_framework_service(&token, response.clone())
+        .unwrap_or_else(|error| panic!("first result is admitted: {error:?}"));
+    assert!(
+        runtime
+            .complete_framework_service(&token, response)
+            .is_err()
+    );
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.state().text, "ab");
+    assert!(runtime.state().observed_edits.is_empty());
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn repeated_clipboard_writes_keep_their_fifo_service_effects() {
+    let mut runtime = mounted();
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    publish_editor(&mut runtime);
+    select_all(&mut runtime);
+    let owner = runtime.index().nodes()[0].id().clone();
+    for _ in 0..2 {
+        runtime
+            .submit_command(
+                owner.clone(),
+                SemanticCommand::Copy,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|error| panic!("copy default is admitted: {error:?}"));
+    }
+    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX));
+
+    let tokens = runtime
+        .pending_framework_services()
+        .into_iter()
+        .filter(|service| {
+            matches!(
+                service.request(),
+                FrameworkServiceRequest::ClipboardWriteText {
+                    purpose: ClipboardWritePurpose::Copy,
+                    ..
+                }
+            )
+        })
+        .map(|service| service.token())
+        .collect::<Vec<_>>();
+    assert_eq!(tokens.len(), 2);
+    for token in tokens {
+        runtime
+            .complete_framework_service(
+                &token,
+                FrameworkServiceResponse::ClipboardWriteText(Ok(())),
+            )
+            .unwrap_or_else(|error| panic!("both committed copies remain live: {error:?}"));
+    }
+    runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX));
+
+    assert_eq!(
+        runtime
+            .trace()
+            .kinds()
+            .filter(|kind| matches!(
+                kind,
+                TraceRecordKind::FrameworkServiceResponseOutcome {
+                    service: TraceFrameworkServiceKind::ClipboardWriteText(
+                        ClipboardWritePurpose::Copy
+                    ),
+                    outcome: TraceFrameworkServiceOutcome::Succeeded,
+                }
+            ))
+            .count(),
+        2
+    );
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn sensitive_clipboard_payload_can_only_enter_secret_document() {
+    let mut secret = AppRuntime::<App>::mount(Document {
+        sensitivity: TextSensitivity::Secret,
+        ..mounted().state().clone()
+    });
+    install_controlled_font(&mut secret);
+    focus(&mut secret);
+    publish_editor(&mut secret);
+    let owner = secret.index().nodes()[0].id().clone();
+    secret
+        .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("secret paste default is routed: {error:?}"));
+    secret.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let token = pending_service(&secret, |request| {
+        matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
+    })
+    .token();
+    secret
+        .complete_framework_service(
+            &token,
+            FrameworkServiceResponse::ClipboardReadText(Ok(ClipboardText::new(
+                "z",
+                ClipboardClassification::Sensitive,
+            ))),
+        )
+        .unwrap_or_else(|error| {
+            panic!("sensitive payload is admitted to secret document: {error:?}")
+        });
+    secret.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(secret.state().text, "abz");
+    assert_eq!(secret.state().observed_edits[0].kind, EditKind::Paste);
+}
+
+#[test]
+fn service_effect_staged_for_old_surface_is_not_exposed_after_publication_changes() {
+    let mut runtime = mounted();
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    publish_editor(&mut runtime);
+    select_all(&mut runtime);
+    complete_pending_state_services(&mut runtime);
+    let owner = runtime.index().nodes()[0].id().clone();
+    runtime
+        .submit_command(owner, SemanticCommand::Copy, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("copy command is admitted: {error:?}"));
+
+    let routed = runtime.pump(PumpBudget::new(1, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(routed.processed_envelopes(), 1);
+    assert!(routed.remaining_queued_envelopes() > 0);
+    assert!(!has_pending_clipboard_service(&runtime));
+
+    publish_editor(&mut runtime);
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert!(!has_pending_clipboard_service(&runtime));
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn clipboard_completion_is_revalidated_after_prior_queued_edits_and_cross_thread_delivery_is_once_only()
+ {
+    let mut stale = mounted();
+    install_controlled_font(&mut stale);
+    focus(&mut stale);
+    publish_editor(&mut stale);
+    let owner = stale.index().nodes()[0].id().clone();
+    stale
+        .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("paste default is admitted: {error:?}"));
+    stale.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let token = pending_service(&stale, |request| {
+        matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
+    })
+    .token();
+    stale
+        .submit_text(
+            CommittedTextEvent::new("y", None)
+                .unwrap_or_else(|_| unreachable!("fixture text is valid")),
+        )
+        .unwrap_or_else(|error| panic!("prior FIFO edit is accepted: {error:?}"));
+    stale
+        .complete_framework_service(
+            &token,
+            FrameworkServiceResponse::ClipboardReadText(Ok(ClipboardText::new(
+                "x",
+                ClipboardClassification::Public,
+            ))),
+        )
+        .unwrap_or_else(|error| {
+            panic!("clipboard completion queues behind the prior edit: {error:?}")
+        });
+    stale.pump(PumpBudget::new(24, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(stale.state().text, "aby");
+    assert_eq!(stale.state().observed_edits.len(), 1);
+    assert_eq!(stale.state().observed_edits[0].kind, EditKind::Insert);
+
+    let mut threaded = mounted();
+    install_controlled_font(&mut threaded);
+    focus(&mut threaded);
+    publish_editor(&mut threaded);
+    let owner = threaded.index().nodes()[0].id().clone();
+    threaded
+        .submit_command(owner, SemanticCommand::Paste, CommandOrigin::programmatic())
+        .unwrap_or_else(|error| panic!("paste default is admitted: {error:?}"));
+    threaded.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let token = pending_service(&threaded, |request| {
+        matches!(request, FrameworkServiceRequest::ClipboardReadText { .. })
+    })
+    .token();
+    let completion = threaded
+        .framework_service_response_completion(
+            &token,
+            FrameworkServiceResponse::ClipboardReadText(Ok(ClipboardText::new(
+                "q",
+                ClipboardClassification::Public,
+            ))),
+        )
+        .unwrap_or_else(|error| panic!("cross-thread response is bound to the request: {error:?}"));
+    std::thread::spawn(move || completion.submit())
+        .join()
+        .unwrap_or_else(|_| panic!("fake host thread completes without panicking"))
+        .unwrap_or_else(|error| panic!("completion ingress accepts one response: {error:?}"));
+    assert!(
+        threaded
+            .complete_framework_service(
+                &token,
+                FrameworkServiceResponse::ClipboardReadText(Err(
+                    FrameworkServiceFailure::Unavailable,
+                )),
+            )
+            .is_err()
+    );
+    threaded.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(threaded.state().text, "abq");
+    assert_eq!(threaded.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn committed_focus_derives_ime_candidate_geometry_and_text_cursor_services() {
+    let mut runtime = mounted();
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    let surface_context = publish_editor(&mut runtime);
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+
+    let owner = runtime.index().nodes()[0].id().clone();
+    let input_method = pending_service(&runtime, |request| {
+        matches!(
+            request,
+            FrameworkServiceRequest::InputMethod {
+                enabled: true,
+                candidate_area: Some(_),
+                ..
+            }
+        )
+    });
+    assert_eq!(input_method.binding().owner(), &owner);
+    assert!(input_method.binding().editing_session().is_some());
+    assert!(input_method.binding().document_snapshot().is_some());
+    assert!(input_method.binding().surface_context().is_some());
+
+    complete_pending_state_services(&mut runtime);
+    let pointer = PointerEvent::new(
+        PointerId::new(5).unwrap_or_else(|| unreachable!("fixture pointer is non-zero")),
+        PointerDeviceKind::Mouse,
+        PointerPhase::Move,
+        LogicalPoint::new(100.0, 20.0)
+            .unwrap_or_else(|_| unreachable!("fixture pointer position is finite")),
+        surface_context.clone(),
+    );
+    runtime
+        .submit_pointer(pointer)
+        .unwrap_or_else(|error| panic!("text cursor hit is routed: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let cursor = pending_service(&runtime, |request| {
+        matches!(request, FrameworkServiceRequest::Cursor { .. })
+    });
+    assert_eq!(cursor.binding().owner(), &owner);
+    assert_eq!(cursor.binding().surface_context(), Some(&surface_context));
+    assert!(matches!(
+        cursor.request(),
+        FrameworkServiceRequest::Cursor {
+            shape: runenui_core::CursorShape::Text,
+            visible: true
+        }
+    ));
+    complete_pending_state_services(&mut runtime);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
 
 #[test]
@@ -1316,6 +1863,7 @@ fn preedit_uses_the_retained_layout_without_committing_and_commit_inserts_once()
     let staged = runtime
         .publish_surface(&context)
         .unwrap_or_else(|error| panic!("preedit surface publishes: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
     assert_ne!(staged.paint_scene(), initial.paint_scene());
     assert_eq!(runtime.state().text, "ab");
     assert!(
@@ -1323,6 +1871,20 @@ fn preedit_uses_the_retained_layout_without_committing_and_commit_inserts_once()
             .editable()
             .is_none(),
         "transient preedit is withheld from durable semantic ranges"
+    );
+    let input_method = pending_service(&runtime, |request| {
+        matches!(
+            request,
+            FrameworkServiceRequest::InputMethod {
+                enabled: true,
+                candidate_area: Some(_),
+                composition: Some(_),
+            }
+        )
+    });
+    assert_eq!(
+        input_method.binding().composition(),
+        Some(start.generation())
     );
 
     runtime

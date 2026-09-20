@@ -5,7 +5,8 @@
 use core::future::Future;
 
 use crate::{
-    HostProtocol, IntoUpdateOutput, TimerEffect, WorkFamily, WorkKey,
+    FrameworkServiceRequest, HostProtocol, IntoUpdateOutput, TimerEffect, WorkFamily, WorkKey,
+    framework_service::FrameworkServiceBinding,
     work::{LocalTaskEffect, SendTaskEffect, SendTaskStartFailure},
 };
 
@@ -184,6 +185,7 @@ pub enum Effect<Action, Protocol: HostProtocol> {
     SendTask(SendTaskEffect<Action>),
     Timer(TimerEffect<Action>),
     HostRequest(HostRequestEffect<Action, Protocol>),
+    FrameworkService(FrameworkServiceEffect),
     Cancel { family: WorkFamily, key: WorkKey },
     Redraw,
 }
@@ -195,6 +197,7 @@ pub enum MountedEffect<Action> {
     LocalTask(LocalTaskEffect<Action>),
     SendTask(SendTaskEffect<Action>),
     Timer(TimerEffect<Action>),
+    FrameworkService(FrameworkServiceEffect),
     Cancel { family: WorkFamily, key: WorkKey },
 }
 
@@ -203,6 +206,23 @@ pub struct HostRequestEffect<Action, Protocol: HostProtocol> {
     pub key: Option<WorkKey>,
     pub command: Protocol::Command,
     pub map: Box<dyn FnOnce(Protocol::Response) -> Action>,
+}
+
+#[doc(hidden)]
+pub struct FrameworkServiceEffect {
+    pub request: FrameworkServiceRequest,
+    pub binding: FrameworkServiceBinding,
+}
+
+impl FrameworkServiceEffect {
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn __runtime_new(
+        request: FrameworkServiceRequest,
+        binding: FrameworkServiceBinding,
+    ) -> Self {
+        Self { request, binding }
+    }
 }
 
 #[doc(hidden)]

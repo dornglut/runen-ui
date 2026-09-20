@@ -1,10 +1,34 @@
 //! Host-neutral routed event and semantic-command protocol.
 
 use crate::{
-    CommittedTextEvent, CompositionEvent, FocusDirection, FocusEvent, KeyboardEvent,
-    LogicalScrollCommand, PointerBoundaryEvent, PointerCaptureEvent, PointerEvent,
-    SemanticActionTarget,
+    CommittedTextEvent, CompositionEvent, DragDropPayloadMetadata, DragDropPhase, FocusDirection,
+    FocusEvent, KeyboardEvent, LogicalScrollCommand, PointerBoundaryEvent, PointerCaptureEvent,
+    PointerEvent, SemanticActionTarget,
 };
+
+/// One host-neutral drag/drop offer routed to the exact physical hit target.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct DragDropEvent {
+    phase: DragDropPhase,
+    payload: DragDropPayloadMetadata,
+}
+
+impl DragDropEvent {
+    #[must_use]
+    pub const fn new(phase: DragDropPhase, payload: DragDropPayloadMetadata) -> Self {
+        Self { phase, payload }
+    }
+
+    #[must_use]
+    pub const fn phase(self) -> DragDropPhase {
+        self.phase
+    }
+
+    #[must_use]
+    pub const fn payload(self) -> DragDropPayloadMetadata {
+        self.payload
+    }
+}
 
 /// Phase of one mounted route invocation.
 #[non_exhaustive]
@@ -180,6 +204,7 @@ pub enum UiEvent {
     Keyboard(KeyboardEvent),
     CommittedText(CommittedTextEvent),
     Composition(CompositionEvent),
+    DragDrop(DragDropEvent),
 }
 
 impl UiEvent {
@@ -194,7 +219,8 @@ impl UiEvent {
             | Self::Focus(_)
             | Self::Keyboard(_)
             | Self::CommittedText(_)
-            | Self::Composition(_) => None,
+            | Self::Composition(_)
+            | Self::DragDrop(_) => None,
         }
     }
 
@@ -204,6 +230,23 @@ impl UiEvent {
         match self {
             Self::Pointer(event) => Some(event),
             Self::SemanticCommand(_)
+            | Self::PointerBoundary(_)
+            | Self::PointerCapture(_)
+            | Self::Focus(_)
+            | Self::Keyboard(_)
+            | Self::CommittedText(_)
+            | Self::Composition(_)
+            | Self::DragDrop(_) => None,
+        }
+    }
+
+    /// Borrows the neutral drag/drop offer when present.
+    #[must_use]
+    pub const fn as_drag_drop(&self) -> Option<&DragDropEvent> {
+        match self {
+            Self::DragDrop(event) => Some(event),
+            Self::SemanticCommand(_)
+            | Self::Pointer(_)
             | Self::PointerBoundary(_)
             | Self::PointerCapture(_)
             | Self::Focus(_)
@@ -224,7 +267,8 @@ impl UiEvent {
             | Self::Focus(_)
             | Self::Keyboard(_)
             | Self::CommittedText(_)
-            | Self::Composition(_) => None,
+            | Self::Composition(_)
+            | Self::DragDrop(_) => None,
         }
     }
 
@@ -239,7 +283,8 @@ impl UiEvent {
             | Self::Focus(_)
             | Self::Keyboard(_)
             | Self::CommittedText(_)
-            | Self::Composition(_) => None,
+            | Self::Composition(_)
+            | Self::DragDrop(_) => None,
         }
     }
 
@@ -254,7 +299,8 @@ impl UiEvent {
             | Self::PointerCapture(_)
             | Self::Keyboard(_)
             | Self::CommittedText(_)
-            | Self::Composition(_) => None,
+            | Self::Composition(_)
+            | Self::DragDrop(_) => None,
         }
     }
 

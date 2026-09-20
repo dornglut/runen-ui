@@ -10,6 +10,7 @@ use runenui_core::{__runtime::Effect, HostProtocol, WorkFamily as AuthoredWorkFa
 
 use crate::{MountedNodeId, RuntimeLimits, TraceSequence};
 
+pub(crate) mod framework_service;
 pub(crate) mod host_request;
 pub(crate) mod subscription;
 pub(crate) mod task;
@@ -28,6 +29,7 @@ pub(crate) enum WorkFamily {
     Timer,
     Subscription,
     HostRequest,
+    FrameworkService,
 }
 
 impl From<AuthoredWorkFamily> for WorkFamily {
@@ -37,6 +39,7 @@ impl From<AuthoredWorkFamily> for WorkFamily {
             AuthoredWorkFamily::SendTask => Self::SendTask,
             AuthoredWorkFamily::Timer => Self::Timer,
             AuthoredWorkFamily::HostRequest => Self::HostRequest,
+            AuthoredWorkFamily::FrameworkService => Self::FrameworkService,
             _ => unreachable!(),
         }
     }
@@ -96,6 +99,7 @@ pub(crate) struct WorkCancellationCounts {
     pub(crate) timers: usize,
     pub(crate) subscriptions: usize,
     pub(crate) host_requests: usize,
+    pub(crate) framework_services: usize,
 }
 
 impl WorkCancellationCounts {
@@ -105,6 +109,7 @@ impl WorkCancellationCounts {
             .saturating_add(self.timers)
             .saturating_add(self.subscriptions)
             .saturating_add(self.host_requests)
+            .saturating_add(self.framework_services)
     }
 }
 
@@ -162,6 +167,7 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
             WorkFamily::LocalTask,
             WorkFamily::SendTask,
             WorkFamily::Timer,
+            WorkFamily::FrameworkService,
         ] {
             if self
                 .live_family_count(family)
@@ -194,6 +200,7 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
             WorkFamily::Timer,
             WorkFamily::Subscription,
             WorkFamily::HostRequest,
+            WorkFamily::FrameworkService,
         ] {
             let retained = self
                 .records
@@ -490,6 +497,7 @@ impl<Action, Protocol: HostProtocol> WorkRegistry<Action, Protocol> {
             WorkFamily::Timer => self.limits.timers(),
             WorkFamily::Subscription => self.limits.subscriptions(),
             WorkFamily::HostRequest => self.limits.host_requests(),
+            WorkFamily::FrameworkService => self.limits.framework_services(),
         }
     }
 }
@@ -507,6 +515,7 @@ const fn increment_cancellation_count(counts: &mut WorkCancellationCounts, famil
         WorkFamily::Timer => counts.timers += 1,
         WorkFamily::Subscription => counts.subscriptions += 1,
         WorkFamily::HostRequest => counts.host_requests += 1,
+        WorkFamily::FrameworkService => counts.framework_services += 1,
     }
 }
 

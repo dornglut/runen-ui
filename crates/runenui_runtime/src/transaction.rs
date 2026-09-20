@@ -392,6 +392,7 @@ const fn effect_family<Action, Protocol: HostProtocol>(
         Effect::SendTask(_) => Some(WorkFamily::SendTask),
         Effect::Timer(_) => Some(WorkFamily::Timer),
         Effect::HostRequest(_) => Some(WorkFamily::HostRequest),
+        Effect::FrameworkService(_) => Some(WorkFamily::FrameworkService),
         Effect::Action(_) | Effect::Cancel { .. } | Effect::Redraw => None,
     }
 }
@@ -404,7 +405,10 @@ const fn effect_key<Action, Protocol: HostProtocol>(
         Effect::SendTask(task) => task.key.as_ref(),
         Effect::Timer(timer) => timer.__runtime_key(),
         Effect::HostRequest(request) => request.key.as_ref(),
-        Effect::Action(_) | Effect::Cancel { .. } | Effect::Redraw => None,
+        Effect::FrameworkService(_)
+        | Effect::Action(_)
+        | Effect::Cancel { .. }
+        | Effect::Redraw => None,
     }
 }
 

@@ -6,8 +6,8 @@ use core::{fmt, num::NonZeroU64};
 use std::collections::VecDeque;
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, CompositionEvent, KeyboardEvent, PointerEvent,
-    SemanticActionTarget, SemanticCommand, SurfaceInputContext,
+    CommandOrigin, CommittedTextEvent, CompositionEvent, FrameworkServiceResponse, KeyboardEvent,
+    PointerEvent, SemanticActionTarget, SemanticCommand, SurfaceInputContext,
 };
 
 use crate::trace::TraceReservation;
@@ -168,6 +168,7 @@ pub(crate) enum WorkEnvelope<Action> {
     Input(InputEnvelope),
     EffectStart(SequencedWork),
     WorkCancellation(CancellationEnvelope),
+    FrameworkServiceResponse(FrameworkServiceResponseEnvelope),
     TimerFiring(SequencedWork),
     MountedSubscriptionReconcile {
         sequence: WorkSequence,
@@ -186,6 +187,14 @@ pub(crate) struct CancellationEnvelope {
     pub(crate) sequence: WorkSequence,
     pub(crate) generation: WorkGeneration,
     pub(crate) identity: TraceWorkIdentity,
+    pub(crate) causal_parent: Option<TraceSequence>,
+}
+
+pub(crate) struct FrameworkServiceResponseEnvelope {
+    pub(crate) sequence: WorkSequence,
+    pub(crate) generation: WorkGeneration,
+    pub(crate) response: FrameworkServiceResponse,
+    pub(crate) trace_identity: TraceWorkIdentity,
     pub(crate) causal_parent: Option<TraceSequence>,
 }
 
@@ -406,6 +415,24 @@ impl<Action> WorkQueue<Action> {
             WorkEnvelope::TimerFiring(SequencedWork {
                 sequence,
                 generation,
+            })
+        })
+    }
+
+    pub(crate) fn push_framework_service_response(
+        &mut self,
+        generation: WorkGeneration,
+        response: FrameworkServiceResponse,
+        trace_identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Result<WorkSequence, QueueCommitError> {
+        self.push_control(|sequence| {
+            WorkEnvelope::FrameworkServiceResponse(FrameworkServiceResponseEnvelope {
+                sequence,
+                generation,
+                response,
+                trace_identity,
+                causal_parent,
             })
         })
     }

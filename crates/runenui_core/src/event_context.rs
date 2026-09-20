@@ -3,9 +3,9 @@
 use core::{fmt, future::Future};
 
 use crate::{
-    CommandOrigin, EventPhase, MonotonicInstant, MountedNodeId, PointerId, SemanticCommand,
-    SendTaskStartFailure, TimerEffect, WidgetInvalidation, WorkFamily, WorkKey, WorkSequence,
-    effects::MountedEffect, widget_context::WidgetWorkCollector,
+    CommandOrigin, DragDropEvent, DragDropPhase, EventPhase, MonotonicInstant, MountedNodeId,
+    PointerId, SemanticCommand, SendTaskStartFailure, TimerEffect, WidgetInvalidation, WorkFamily,
+    WorkKey, WorkSequence, effects::MountedEffect, widget_context::WidgetWorkCollector,
 };
 
 /// One action or delegated command in exact callback emission order.
@@ -47,6 +47,7 @@ pub struct EventContextOutput<Action> {
     pub pointer_capture: Vec<PointerCaptureRequest>,
     pub propagation_stopped: bool,
     pub default_prevented: bool,
+    pub accepted_drag_drop: bool,
     pub overflowed: bool,
     pub remaining_outputs: usize,
 }
@@ -64,6 +65,8 @@ pub struct EventContext<'a, Action> {
     origin: CommandOrigin,
     sequence: WorkSequence,
     instant: MonotonicInstant,
+    drag_drop: Option<DragDropEvent>,
+    accepted_drag_drop: bool,
     pointer_id: Option<PointerId>,
     physical_target: Option<&'a MountedNodeId>,
     physical_path: &'a [MountedNodeId],
@@ -90,6 +93,7 @@ impl<Action> fmt::Debug for EventContext<'_, Action> {
             .field("origin", &self.origin)
             .field("sequence", &self.sequence)
             .field("instant", &self.instant)
+            .field("drag_drop", &self.drag_drop)
             .field("pointer_id", &self.pointer_id)
             .field("physical_target", &self.physical_target)
             .field("physical_path", &self.physical_path)
@@ -134,6 +138,23 @@ impl<'a, Action> EventContext<'a, Action> {
     #[must_use]
     pub const fn instant(&self) -> MonotonicInstant {
         self.instant
+    }
+
+    /// Requests admission of the current hover/drop offer from its physical hit target.
+    /// This never exposes payload contents or native host handles.
+    pub fn accept_drag_drop(&mut self) {
+        let Some(event) = self.drag_drop else {
+            return;
+        };
+        if self.phase != EventPhase::Target
+            || self.accepted_drag_drop
+            || !matches!(event.phase(), DragDropPhase::Hover | DragDropPhase::Drop)
+        {
+            return;
+        }
+        if self.reserve_output() {
+            self.accepted_drag_drop = true;
+        }
     }
 
     /// Returns the current pointer-stream identity for pointer event families.
@@ -322,6 +343,7 @@ impl<'a, Action> EventContext<'a, Action> {
             self.origin,
             self.sequence,
             self.instant,
+            self.drag_drop,
             self.pointer_id,
             self.physical_target,
             self.physical_path,
@@ -342,6 +364,7 @@ impl<'a, Action> EventContext<'a, Action> {
         self.invalidation |= child.invalidation;
         self.subscription_invalidation |= child.subscription_invalidation;
         self.pointer_capture.append(&mut child.pointer_capture);
+        self.accepted_drag_drop |= child.accepted_drag_drop;
         self.default_prevented = child.default_prevented;
         self.propagation_stopped = child.propagation_stopped;
         self.overflowed |= child.overflowed;
@@ -376,6 +399,7 @@ impl<'a, Action> EventContext<'a, Action> {
         origin: CommandOrigin,
         sequence: WorkSequence,
         instant: MonotonicInstant,
+        drag_drop: Option<DragDropEvent>,
         default_cancelable: bool,
         default_prevented: bool,
         propagation_stopped: bool,
@@ -389,6 +413,7 @@ impl<'a, Action> EventContext<'a, Action> {
             origin,
             sequence,
             instant,
+            drag_drop,
             None,
             None,
             &[],
@@ -409,6 +434,7 @@ impl<'a, Action> EventContext<'a, Action> {
         origin: CommandOrigin,
         sequence: WorkSequence,
         instant: MonotonicInstant,
+        drag_drop: Option<DragDropEvent>,
         pointer_id: PointerId,
         physical_target: Option<&'a MountedNodeId>,
         physical_path: &'a [MountedNodeId],
@@ -425,6 +451,7 @@ impl<'a, Action> EventContext<'a, Action> {
             origin,
             sequence,
             instant,
+            drag_drop,
             Some(pointer_id),
             physical_target,
             physical_path,
@@ -444,6 +471,7 @@ impl<'a, Action> EventContext<'a, Action> {
         origin: CommandOrigin,
         sequence: WorkSequence,
         instant: MonotonicInstant,
+        drag_drop: Option<DragDropEvent>,
         pointer_id: Option<PointerId>,
         physical_target: Option<&'a MountedNodeId>,
         physical_path: &'a [MountedNodeId],
@@ -460,6 +488,8 @@ impl<'a, Action> EventContext<'a, Action> {
             origin,
             sequence,
             instant,
+            drag_drop,
+            accepted_drag_drop: false,
             pointer_id,
             physical_target,
             physical_path,
@@ -486,6 +516,7 @@ impl<'a, Action> EventContext<'a, Action> {
             pointer_capture: self.pointer_capture,
             propagation_stopped: self.propagation_stopped,
             default_prevented: self.default_prevented,
+            accepted_drag_drop: self.accepted_drag_drop,
             overflowed: self.overflowed,
             remaining_outputs: self.remaining_outputs,
         }
@@ -499,8 +530,9 @@ mod tests {
 
     use crate::{
         __runtime::{MountedEffect, PointerCaptureRequest, RoutedEventOutput, RuntimeNamespace},
-        CommandDerivation, CommandOrigin, EventPhase, EventSource, MonotonicInstant, PointerId,
-        SemanticCommand, WidgetInvalidation, WorkSequence,
+        CommandDerivation, CommandOrigin, DragDropEvent, DragDropPayloadKind,
+        DragDropPayloadMetadata, DragDropPhase, EventPhase, EventSource, MonotonicInstant,
+        PointerId, SemanticCommand, WidgetInvalidation, WorkSequence,
     };
 
     use super::EventContext;
@@ -525,6 +557,7 @@ mod tests {
             origin,
             sequence(7),
             MonotonicInstant::__runtime_from_nanos(11),
+            None,
             true,
             false,
             false,
@@ -591,6 +624,7 @@ mod tests {
             CommandOrigin::__runtime_pointer(),
             sequence(2),
             MonotonicInstant::ZERO,
+            None,
             pointer_id,
             Some(&target),
             &path,
@@ -620,6 +654,84 @@ mod tests {
     }
 
     #[test]
+    fn drag_drop_admission_requires_the_exact_target_and_never_accepts_cancellation() {
+        let namespace = RuntimeNamespace::__runtime_new();
+        let target = namespace.__runtime_mounted_id(1, 1);
+        let pointer_id = PointerId::new(7).unwrap_or_else(|| unreachable!("non-zero pointer"));
+        let payload = DragDropPayloadMetadata::new(
+            DragDropPayloadKind::Files,
+            core::num::NonZeroU32::MIN,
+            None,
+        );
+        let event = DragDropEvent::new(DragDropPhase::Drop, payload);
+
+        let mut bubbling = EventContext::<()>::new_pointer(
+            EventPhase::Bubble,
+            &target,
+            &target,
+            None,
+            CommandOrigin::__runtime_pointer(),
+            sequence(4),
+            MonotonicInstant::ZERO,
+            Some(event),
+            pointer_id,
+            Some(&target),
+            core::slice::from_ref(&target),
+            false,
+            false,
+            false,
+            1,
+        );
+        bubbling.accept_drag_drop();
+        assert!(!bubbling.into_output().accepted_drag_drop);
+
+        let cancel = DragDropEvent::new(DragDropPhase::Cancel, payload);
+        let mut target_cancel = EventContext::<()>::new_pointer(
+            EventPhase::Target,
+            &target,
+            &target,
+            None,
+            CommandOrigin::__runtime_pointer(),
+            sequence(5),
+            MonotonicInstant::ZERO,
+            Some(cancel),
+            pointer_id,
+            Some(&target),
+            core::slice::from_ref(&target),
+            false,
+            false,
+            false,
+            1,
+        );
+        target_cancel.accept_drag_drop();
+        assert!(!target_cancel.into_output().accepted_drag_drop);
+
+        let mut target_drop = EventContext::<()>::new_pointer(
+            EventPhase::Target,
+            &target,
+            &target,
+            None,
+            CommandOrigin::__runtime_pointer(),
+            sequence(6),
+            MonotonicInstant::ZERO,
+            Some(event),
+            pointer_id,
+            Some(&target),
+            core::slice::from_ref(&target),
+            false,
+            false,
+            false,
+            1,
+        );
+        target_drop.accept_drag_drop();
+        target_drop.accept_drag_drop();
+        let output = target_drop.into_output();
+        assert!(output.accepted_drag_drop);
+        assert!(!output.overflowed);
+        assert_eq!(output.remaining_outputs, 0);
+    }
+
+    #[test]
     fn mapped_pointer_context_preserves_every_capture_request() {
         let namespace = RuntimeNamespace::__runtime_new();
         let target = namespace.__runtime_mounted_id(1, 1);
@@ -633,6 +745,7 @@ mod tests {
             CommandOrigin::__runtime_pointer(),
             sequence(3),
             MonotonicInstant::ZERO,
+            None,
             pointer_id,
             Some(&target),
             core::slice::from_ref(&target),
@@ -674,6 +787,7 @@ mod tests {
             CommandOrigin::controller(),
             sequence(1),
             MonotonicInstant::ZERO,
+            None,
             true,
             false,
             false,
@@ -713,6 +827,7 @@ mod tests {
             CommandOrigin::programmatic(),
             sequence(1),
             MonotonicInstant::ZERO,
+            None,
             true,
             false,
             false,

@@ -1,7 +1,7 @@
 use runenui_core::{
-    CommandDerivation, CompositionCancelReason, EventPhase, EventSource, FocusBoundaryPolicy,
-    FocusDirection, FocusEventKind, FocusReason, InputModality, PointerBoundaryKind,
-    PointerCaptureKind, PointerDeviceKind, PointerPhase,
+    ClipboardWritePurpose, CommandDerivation, CompositionCancelReason, EventPhase, EventSource,
+    FocusBoundaryPolicy, FocusDirection, FocusEventKind, FocusReason, FrameworkServiceFailure,
+    InputModality, PointerBoundaryKind, PointerCaptureKind, PointerDeviceKind, PointerPhase,
 };
 
 use crate::{
@@ -362,6 +362,7 @@ pub(super) const fn routed_admission_rejection(
         TraceRoutedAdmissionRejection::LocalTasks => "local_tasks",
         TraceRoutedAdmissionRejection::SendTasks => "send_tasks",
         TraceRoutedAdmissionRejection::Timers => "timers",
+        TraceRoutedAdmissionRejection::FrameworkServices => "framework_services",
         TraceRoutedAdmissionRejection::WorkSequenceExhausted => "work_sequence_exhausted",
         TraceRoutedAdmissionRejection::WorkGenerationExhausted => "work_generation_exhausted",
         TraceRoutedAdmissionRejection::ReconciliationGenerationExhausted => {
@@ -406,6 +407,58 @@ pub(super) const fn work_family(value: TraceWorkFamily) -> &'static str {
         TraceWorkFamily::Timer => "timer",
         TraceWorkFamily::Subscription => "subscription",
         TraceWorkFamily::HostRequest => "host_request",
+        TraceWorkFamily::FrameworkService => "framework_service",
+    }
+}
+
+pub(super) const fn framework_service_kind(
+    value: crate::TraceFrameworkServiceKind,
+) -> &'static str {
+    match value {
+        crate::TraceFrameworkServiceKind::ClipboardReadText => "clipboard_read_text",
+        crate::TraceFrameworkServiceKind::ClipboardWriteText(_) => "clipboard_write_text",
+        crate::TraceFrameworkServiceKind::InputMethod => "input_method",
+        crate::TraceFrameworkServiceKind::Cursor => "cursor",
+        crate::TraceFrameworkServiceKind::DragDrop => "drag_drop",
+    }
+}
+
+pub(super) const fn drag_drop_phase(value: runenui_core::DragDropPhase) -> &'static str {
+    match value {
+        runenui_core::DragDropPhase::Hover => "hover",
+        runenui_core::DragDropPhase::Drop => "drop",
+        runenui_core::DragDropPhase::Cancel => "cancel",
+        _ => "unknown",
+    }
+}
+
+pub(super) const fn drag_drop_payload_kind(
+    value: runenui_core::DragDropPayloadKind,
+) -> &'static str {
+    match value {
+        runenui_core::DragDropPayloadKind::Files => "files",
+        runenui_core::DragDropPayloadKind::Text => "text",
+        runenui_core::DragDropPayloadKind::Opaque => "opaque",
+        _ => "unknown",
+    }
+}
+
+pub(super) const fn clipboard_write_purpose(value: ClipboardWritePurpose) -> &'static str {
+    match value {
+        ClipboardWritePurpose::Copy => "copy",
+        ClipboardWritePurpose::Cut => "cut",
+        _ => "unknown",
+    }
+}
+
+pub(super) const fn framework_service_failure(value: FrameworkServiceFailure) -> &'static str {
+    match value {
+        FrameworkServiceFailure::Unavailable => "unavailable",
+        FrameworkServiceFailure::PermissionDenied => "permission_denied",
+        FrameworkServiceFailure::UserActivationRequired => "user_activation_required",
+        FrameworkServiceFailure::Rejected => "rejected",
+        FrameworkServiceFailure::Failed => "failed",
+        _ => "unknown",
     }
 }
 
@@ -421,6 +474,10 @@ pub(super) const fn work_start_refusal(value: TraceWorkStartRefusal) -> &'static
         TraceWorkStartRefusal::SubscriptionRejected => "subscription_rejected",
         TraceWorkStartRefusal::TimerZeroInterval => "timer_zero_interval",
         TraceWorkStartRefusal::TimerDeadlineOverflow => "timer_deadline_overflow",
+        TraceWorkStartRefusal::FrameworkServiceBindingMismatch => {
+            "framework_service_binding_mismatch"
+        }
+        TraceWorkStartRefusal::FrameworkServiceBindingStale => "framework_service_binding_stale",
     }
 }
 
