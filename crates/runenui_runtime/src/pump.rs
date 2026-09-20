@@ -225,6 +225,11 @@ pub(crate) fn pump<App: UiApp>(
                 );
                 ProcessApplicationActionOutcome::Completed
             }
+            WorkEnvelope::FrameworkServiceResponse(envelope) => runtime
+                .process_framework_service_response(envelope)
+                .map_or(ProcessApplicationActionOutcome::Completed, |action| {
+                    process_application_action::<App>(runtime, action)
+                }),
             WorkEnvelope::TimerFiring(work) => {
                 runtime.process_timer_firing(work.sequence, work.generation);
                 ProcessApplicationActionOutcome::Completed

@@ -23,6 +23,7 @@ pub struct RuntimeLimits {
     timers: usize,
     subscriptions: usize,
     host_requests: usize,
+    framework_services: usize,
     completion_ingress: usize,
     subscription_diagnostics: usize,
 }
@@ -92,6 +93,12 @@ impl RuntimeLimits {
     }
 
     #[must_use]
+    pub const fn with_framework_services(mut self, limit: usize) -> Self {
+        self.framework_services = limit;
+        self
+    }
+
+    #[must_use]
     pub const fn with_completion_ingress(mut self, limit: usize) -> Self {
         self.completion_ingress = limit;
         self
@@ -155,6 +162,11 @@ impl RuntimeLimits {
     }
 
     #[must_use]
+    pub const fn framework_services(self) -> usize {
+        self.framework_services
+    }
+
+    #[must_use]
     pub const fn completion_ingress(self) -> usize {
         self.completion_ingress
     }
@@ -178,6 +190,7 @@ impl Default for RuntimeLimits {
             timers: DEFAULT_RUNTIME_LIMIT * 2,
             subscriptions: DEFAULT_RUNTIME_LIMIT * 2,
             host_requests: DEFAULT_RUNTIME_LIMIT * 2,
+            framework_services: DEFAULT_RUNTIME_LIMIT * 2,
             completion_ingress: DEFAULT_RUNTIME_LIMIT,
             subscription_diagnostics: DEFAULT_RUNTIME_LIMIT,
         }

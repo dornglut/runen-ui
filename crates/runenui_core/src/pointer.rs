@@ -7,7 +7,7 @@ use core::{
     num::NonZeroU64,
 };
 
-use crate::{MountedNodeId, SurfaceInputContext};
+use crate::{DragDropEvent, MountedNodeId, SurfaceInputContext};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct FiniteLogical(f32);
@@ -353,6 +353,7 @@ pub struct PointerEvent {
     changed_button: Option<PointerButton>,
     modifiers: KeyModifiers,
     surface_context: SurfaceInputContext,
+    drag_drop: Option<DragDropEvent>,
 }
 
 impl PointerEvent {
@@ -377,7 +378,15 @@ impl PointerEvent {
             changed_button: None,
             modifiers: KeyModifiers::NONE,
             surface_context,
+            drag_drop: None,
         }
+    }
+
+    /// Attaches neutral drag/drop metadata to this physical pointer observation.
+    #[must_use]
+    pub const fn with_drag_drop(mut self, event: DragDropEvent) -> Self {
+        self.drag_drop = Some(event);
+        self
     }
 
     #[must_use]
@@ -473,6 +482,12 @@ impl PointerEvent {
     #[must_use]
     pub const fn surface_context(&self) -> &SurfaceInputContext {
         &self.surface_context
+    }
+
+    /// Returns the host-neutral drag/drop offer associated with this pointer location.
+    #[must_use]
+    pub const fn drag_drop(&self) -> Option<DragDropEvent> {
+        self.drag_drop
     }
 }
 

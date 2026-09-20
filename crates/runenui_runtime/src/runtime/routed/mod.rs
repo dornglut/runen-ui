@@ -71,6 +71,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 | runenui_core::SemanticCommand::Undo
                 | runenui_core::SemanticCommand::Redo
                 | runenui_core::SemanticCommand::ReplaceSelection
+                | runenui_core::SemanticCommand::Copy
+                | runenui_core::SemanticCommand::Cut
+                | runenui_core::SemanticCommand::Paste
         ));
         let Some(mut transaction) = (if is_focus_command(command) {
             self.begin_focus_routed_transaction(facts)
@@ -251,6 +254,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             mounted_work: Vec::new(),
             subscription_dirty: Vec::new(),
             pointer_capture_requests: Vec::new(),
+            pointer_cursor_target: None,
+            pointer_surface_context: None,
+            drag_drop_offer: None,
+            drag_drop_acceptor: None,
             invalidation: WidgetInvalidation::NONE,
             focus_before,
             failure_current_target: None,

@@ -255,6 +255,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let publication = self
             .surface_publication
             .commit_publication(&mut self.tree, commit);
+        self.cancel_stale_framework_services();
         self.record_motion_trace_facts(motion_trace_facts, instant);
         let redraw = self.take_redraw_request_at(instant);
         let publication_reservation = mem::replace(
@@ -271,6 +272,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         );
         if admission.stationary_rehit {
             self.commit_stationary_pointer_rehit(&publication, instant, published);
+        }
+        self.synchronize_input_method_after_publication(published, instant);
+        if let RuntimeStatus::Terminal(reason) = self.status {
+            return Err(PublishSurfaceError::Terminal(reason));
         }
         if let Some(redraw) = redraw {
             self.acknowledge_redraw_at(&redraw, published, instant)

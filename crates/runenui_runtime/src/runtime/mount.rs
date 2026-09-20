@@ -136,6 +136,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             host_clock: None,
             host_namespace: Arc::new(()),
             host_requests: Vec::new(),
+            framework_service_namespace: Arc::new(()),
+            framework_services: Vec::new(),
+            framework_ime_may_be_enabled: false,
+            framework_service_satisfied: Vec::new(),
             surface_publication,
             surface_trace: SurfaceTraceState::new(
                 Some(1),
@@ -146,11 +150,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             #[cfg(test)]
             readiness_checkpoint_count: 0,
             #[cfg(feature = "internal-test-seams")]
-            routed_callback_bridge_failure_for_test: false,
-            #[cfg(feature = "internal-test-seams")]
-            routed_semantic_default_failure_for_test: false,
-            #[cfg(feature = "internal-test-seams")]
-            routed_commit_failure_for_test: false,
+            test_seams: super::model::RuntimeTestSeams::default(),
         };
         if !mount_failed {
             let contributions = runtime.tree.editable_contributions();

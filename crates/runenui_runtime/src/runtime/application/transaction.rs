@@ -1,4 +1,5 @@
-use runenui_core::MonotonicInstant;
+use crate::transaction::TransactionLedger;
+use runenui_core::{__runtime::Effect, MonotonicInstant};
 
 use super::{
     ApplicationTraceTransaction, ApplicationTransactionInput, CommitError, HashMap, HashSet,
@@ -39,6 +40,52 @@ impl PlannedWorkTrace {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    pub(in crate::runtime) fn commit_framework_service_effects(
+        &mut self,
+        effects: Vec<(
+            crate::MountedNodeId,
+            runenui_core::__runtime::FrameworkServiceEffect,
+        )>,
+        transaction_parent: Option<TraceSequence>,
+        instant: MonotonicInstant,
+    ) -> Result<(), CommitError> {
+        if effects.is_empty() {
+            return Ok(());
+        }
+        let mut mounted = Vec::with_capacity(effects.len());
+        for (owner, effect) in effects {
+            let ledger = TransactionLedger::from_outputs(
+                vec![Effect::FrameworkService(effect)],
+                self.limits.transaction_outputs(),
+            )
+            .map_err(|_| CommitError::Registry)?;
+            mounted.push(super::OwnedTransactionLedger {
+                owner: WorkOwner::Mounted(owner),
+                ledger,
+            });
+        }
+        let input = ApplicationTransactionInput {
+            lifecycle_invalidated: Vec::new(),
+            mounted_subscription_dirty: Vec::new(),
+            application: TransactionLedger::from_outputs(
+                Vec::new(),
+                self.limits.transaction_outputs(),
+            )
+            .map_err(|_| CommitError::Registry)?,
+            application_subscription_invalidated: Vec::new(),
+            application_subscription_starts: Vec::new(),
+            mounted,
+        };
+        self.plan_and_commit_application_transaction(
+            input,
+            &HashSet::new(),
+            0,
+            transaction_parent,
+            HashMap::new(),
+            ApplicationTraceTransaction::new(instant),
+        )
+    }
+
     pub(in crate::runtime::application) fn plan_and_commit_application_transaction(
         &mut self,
         input: ApplicationTransactionInput<Action, Protocol>,

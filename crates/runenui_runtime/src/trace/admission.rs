@@ -118,6 +118,10 @@ impl MandatoryTracePlan {
         Self::exact(4)
     }
 
+    pub(crate) const fn framework_service_completion() -> Self {
+        Self::exact(5)
+    }
+
     pub(crate) const fn callback_with_action() -> Self {
         Self::exact(3)
     }

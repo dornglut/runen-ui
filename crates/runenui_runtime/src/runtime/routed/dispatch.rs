@@ -129,7 +129,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let was_prevented = transaction.default_prevented;
         let subscription_credit = transaction.subscription_credit(current);
         #[cfg(feature = "internal-test-seams")]
-        if self.routed_callback_bridge_failure_for_test {
+        if self.test_seams.routed_callback_bridge_failure {
             return Err(TraceRoutedIntegrityFailure::CallbackBridgeFailure);
         }
         let invocation = match pointer {
@@ -179,6 +179,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction.remaining_outputs = invocation.output.remaining_outputs;
         transaction.propagation_stopped = invocation.output.propagation_stopped;
         transaction.default_prevented = invocation.output.default_prevented;
+        if invocation.output.accepted_drag_drop {
+            transaction.drag_drop_acceptor = Some(current.clone());
+        }
         if invocation.output.overflowed {
             return Err(TraceRoutedIntegrityFailure::OutputAllowanceExceeded);
         }

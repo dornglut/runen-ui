@@ -1,8 +1,8 @@
 use super::{
-    Effect, HostProtocol, LiveHostRequest, LocalTask, MandatoryTracePlan, Runtime,
-    RuntimeTerminalReason, SendSubscriptionSink, SendSubscriptionStartOutcome, SendTaskJob,
-    SendTaskMapper, SendTaskStartError, SendTaskStartFailure, SendTaskStartOutcome, Timer,
-    TimerStartError, TimerStartOutcome, TraceRecordKind, TraceSequence, TraceWorkIdentity,
+    Effect, HostProtocol, LiveFrameworkService, LiveHostRequest, LocalTask, MandatoryTracePlan,
+    Runtime, RuntimeTerminalReason, SendSubscriptionSink, SendSubscriptionStartOutcome,
+    SendTaskJob, SendTaskMapper, SendTaskStartError, SendTaskStartFailure, SendTaskStartOutcome,
+    Timer, TimerStartError, TimerStartOutcome, TraceRecordKind, TraceSequence, TraceWorkIdentity,
     TraceWorkStartRefusal, WorkFamily, WorkSequence,
 };
 
@@ -19,9 +19,13 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let Some(identity) = self.trace_work_identity(generation) else {
             return;
         };
-        if !self.trace.can_admit(MandatoryTracePlan::work_start(
-            family == WorkFamily::HostRequest,
-        )) {
+        if !self
+            .trace
+            .can_admit(MandatoryTracePlan::work_start(matches!(
+                family,
+                WorkFamily::HostRequest | WorkFamily::FrameworkService
+            )))
+        {
             self.enter_terminal(RuntimeTerminalReason::TraceSequenceExhausted, 0);
             return;
         }
@@ -262,6 +266,56 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 );
                 self.record_work_fact_from_envelope(
                     TraceRecordKind::HostRequestExposed,
+                    sequence,
+                    identity,
+                );
+            }
+            WorkFamily::FrameworkService => {
+                let Some(Effect::FrameworkService(request)) =
+                    self.work.take_pending_effect(generation)
+                else {
+                    self.enter_terminal(RuntimeTerminalReason::Poisoned, 0);
+                    return;
+                };
+                if !matches!(
+                    (identity.owner(), request.binding.owner()),
+                    (crate::TraceWorkOwner::Mounted(owner), binding_owner) if owner == binding_owner
+                ) {
+                    self.record_work_fact_from_envelope(
+                        TraceRecordKind::WorkStartRefused {
+                            outcome: crate::TraceWorkStartRefusal::FrameworkServiceBindingMismatch,
+                        },
+                        sequence,
+                        identity,
+                    );
+                    self.revoke_generation(generation);
+                    return;
+                }
+                if !self.framework_service_binding_is_current(&request.binding, &request.request) {
+                    self.record_work_fact_from_envelope(
+                        TraceRecordKind::WorkStartRefused {
+                            outcome: crate::TraceWorkStartRefusal::FrameworkServiceBindingStale,
+                        },
+                        sequence,
+                        identity,
+                    );
+                    self.revoke_generation(generation);
+                    return;
+                }
+                if self.work.mark_running(generation).is_none() {
+                    return;
+                }
+                self.framework_services
+                    .push(LiveFrameworkService::new(generation, request));
+                self.completion_ingress
+                    .register_framework_service_response(generation);
+                self.record_work_fact_from_envelope(
+                    TraceRecordKind::WorkStartAccepted,
+                    sequence,
+                    identity.clone(),
+                );
+                self.record_work_fact_from_envelope(
+                    TraceRecordKind::FrameworkServiceExposed,
                     sequence,
                     identity,
                 );

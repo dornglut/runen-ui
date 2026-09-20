@@ -38,6 +38,25 @@ pub(crate) struct EditingSemanticProjection {
     pub(crate) sensitivity: runenui_core::TextSensitivity,
 }
 
+pub(crate) struct EditingServiceContext {
+    pub(crate) session: EditingSessionGeneration,
+    pub(crate) snapshot: TextDocumentSnapshot,
+    pub(crate) selection: runenui_core::TextSelection,
+    pub(crate) selected_text: Arc<str>,
+    pub(crate) sensitivity: runenui_core::TextSensitivity,
+    pub(crate) read_only: bool,
+    pub(crate) disabled: bool,
+}
+
+pub(crate) struct EditingImeContext {
+    pub(crate) session: EditingSessionGeneration,
+    pub(crate) snapshot: TextDocumentSnapshot,
+    pub(crate) selection: runenui_core::TextSelection,
+    pub(crate) source: Arc<str>,
+    pub(crate) preedit: Option<Arc<TextPreeditProjection>>,
+    pub(crate) enabled: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum EditPrepareError {
     MissingOwner,
@@ -185,6 +204,80 @@ impl<Action> EditingRegistry<Action> {
         self.active
             .get(owner)
             .map(|session| session.contribution.sensitivity())
+    }
+
+    pub(crate) fn framework_service_context(
+        &self,
+        owner: &MountedNodeId,
+    ) -> Option<EditingServiceContext> {
+        let session = self.active.get(owner)?;
+        if session.invalid_suffix || !session.pending.is_empty() || session.preedit.is_some() {
+            return None;
+        }
+        let snapshot = session.contribution.snapshot();
+        let selection = session
+            .selection
+            .bind(snapshot, &session.projected_text)
+            .ok()?;
+        let start = selection
+            .anchor()
+            .byte_offset()
+            .min(selection.active().byte_offset());
+        let end = selection
+            .anchor()
+            .byte_offset()
+            .max(selection.active().byte_offset());
+        Some(EditingServiceContext {
+            session: session.generation.clone(),
+            snapshot,
+            selection,
+            selected_text: Arc::from(&session.projected_text[start..end]),
+            sensitivity: session.contribution.sensitivity(),
+            read_only: session.contribution.read_only(),
+            disabled: session.contribution.disabled(),
+        })
+    }
+
+    pub(crate) fn input_method_context(&self, owner: &MountedNodeId) -> Option<EditingImeContext> {
+        let session = self.active.get(owner)?;
+        if session.invalid_suffix || !session.pending.is_empty() {
+            return None;
+        }
+        let snapshot = session.contribution.snapshot();
+        let selection = session
+            .selection
+            .bind(snapshot, &session.projected_text)
+            .ok()?;
+        let source = Arc::clone(&session.projected_text);
+        let preedit = session.preedit.as_ref().map(Arc::clone);
+        if let Some(preedit) = preedit.as_ref()
+            && (preedit.snapshot() != snapshot || preedit.document_text() != source.as_ref())
+        {
+            return None;
+        }
+        Some(EditingImeContext {
+            session: session.generation.clone(),
+            snapshot,
+            selection,
+            source,
+            preedit,
+            enabled: !session.contribution.read_only() && !session.contribution.disabled(),
+        })
+    }
+
+    pub(crate) fn framework_service_binding_matches(
+        &self,
+        owner: &MountedNodeId,
+        generation: &EditingSessionGeneration,
+        snapshot: TextDocumentSnapshot,
+        selection: runenui_core::TextSelection,
+    ) -> bool {
+        self.framework_service_context(owner)
+            .is_some_and(|current| {
+                current.session == *generation
+                    && current.snapshot == snapshot
+                    && current.selection == selection
+            })
     }
 
     pub(crate) fn semantic_projections(&self) -> HashMap<MountedNodeId, EditingSemanticProjection> {
@@ -503,6 +596,51 @@ impl<Action> EditingRegistry<Action> {
                 base_snapshot: snapshot,
             },
         })
+    }
+
+    pub(crate) fn prepare_framework_service_edit(
+        &mut self,
+        namespace: &runenui_core::__runtime::RuntimeNamespace,
+        binding: &runenui_core::__runtime::FrameworkServiceBinding,
+        replacement_text: &str,
+        kind: runenui_core::EditKind,
+    ) -> Result<PreparedEdit<Action>, EditPrepareError> {
+        let owner = binding.owner();
+        let (Some(generation), Some(snapshot), Some(selection)) = (
+            binding.editing_session(),
+            binding.document_snapshot(),
+            binding.selection(),
+        ) else {
+            return Err(EditPrepareError::Unavailable);
+        };
+        if !self.framework_service_binding_matches(owner, generation, snapshot, selection) {
+            return Err(EditPrepareError::Unavailable);
+        }
+        let session = self
+            .active
+            .get(owner)
+            .ok_or(EditPrepareError::MissingOwner)?;
+        if session.contribution.read_only() || session.contribution.disabled() {
+            return Err(EditPrepareError::Unavailable);
+        }
+        if kind == runenui_core::EditKind::Cut && selection.is_collapsed() {
+            return Err(EditPrepareError::Unavailable);
+        }
+        self.prepare_replacement(
+            namespace,
+            owner,
+            selection
+                .anchor()
+                .byte_offset()
+                .min(selection.active().byte_offset()),
+            selection
+                .anchor()
+                .byte_offset()
+                .max(selection.active().byte_offset()),
+            replacement_text,
+            kind,
+            None,
+        )
     }
 
     fn prepare_control_intent(

@@ -10,7 +10,7 @@ use std::{
 
 use runenui_core::{
     __runtime::{SendFuture, SendOutput},
-    SendSubscriptionSinkError,
+    FrameworkServiceResponse, SendSubscriptionSinkError,
 };
 
 use crate::{TraceSequence, TraceWorkIdentity, wake::WakeHandle, work::WorkGeneration};
@@ -25,6 +25,7 @@ struct IngressState {
     closed: bool,
     waiting: VecDeque<CompletionPayload>,
     host_responses: HashMap<WorkGeneration, HostResponseState>,
+    framework_service_responses: HashMap<WorkGeneration, HostResponseState>,
     send_tasks: HashMap<WorkGeneration, ProducerState>,
     subscriptions: HashMap<WorkGeneration, ProducerState>,
 }
@@ -63,6 +64,7 @@ pub(crate) enum CompletionKind {
     SendTask,
     Subscription,
     HostResponse,
+    FrameworkServiceResponse,
 }
 
 impl CompletionIngress {
@@ -73,6 +75,7 @@ impl CompletionIngress {
                 closed: false,
                 waiting: VecDeque::new(),
                 host_responses: HashMap::new(),
+                framework_service_responses: HashMap::new(),
                 send_tasks: HashMap::new(),
                 subscriptions: HashMap::new(),
             })),
@@ -118,6 +121,7 @@ impl CompletionIngress {
         state.closed = true;
         state.waiting.clear();
         state.host_responses.clear();
+        state.framework_service_responses.clear();
         state.send_tasks.clear();
         state.subscriptions.clear();
     }
@@ -139,6 +143,44 @@ impl CompletionIngress {
     pub(crate) fn claim_direct_host_response(&self, generation: WorkGeneration) -> bool {
         let mut state = lock(&self.shared);
         let Some(response_state) = state.host_responses.get_mut(&generation) else {
+            return false;
+        };
+        if *response_state != HostResponseState::Open {
+            return false;
+        }
+        *response_state = HostResponseState::DirectClaimed;
+        drop(state);
+        true
+    }
+
+    pub(crate) fn register_framework_service_response(&self, generation: WorkGeneration) {
+        lock(&self.shared)
+            .framework_service_responses
+            .insert(generation, HostResponseState::Open);
+    }
+
+    pub(crate) fn framework_service_response_is_open(&self, generation: WorkGeneration) -> bool {
+        lock(&self.shared)
+            .framework_service_responses
+            .get(&generation)
+            == Some(&HostResponseState::Open)
+    }
+
+    pub(crate) fn release_framework_service_response(&self, generation: WorkGeneration) {
+        let mut state = lock(&self.shared);
+        state.framework_service_responses.remove(&generation);
+        state.waiting.retain(|payload| {
+            payload.kind != CompletionKind::FrameworkServiceResponse
+                || payload.generation != generation
+        });
+    }
+
+    pub(crate) fn claim_direct_framework_service_response(
+        &self,
+        generation: WorkGeneration,
+    ) -> bool {
+        let mut state = lock(&self.shared);
+        let Some(response_state) = state.framework_service_responses.get_mut(&generation) else {
             return false;
         };
         if *response_state != HostResponseState::Open {
@@ -182,6 +224,7 @@ impl CompletionIngress {
         state.send_tasks.remove(&generation);
         state.subscriptions.remove(&generation);
         let host_response = state.host_responses.remove(&generation);
+        state.framework_service_responses.remove(&generation);
         state
             .waiting
             .retain(|payload| payload.generation != generation);
@@ -261,6 +304,31 @@ impl CompletionSender {
         }
         state
             .host_responses
+            .insert(payload.generation, HostResponseState::DetachedQueued);
+        state.waiting.push_back(payload);
+        drop(state);
+        let _ = self.wake.request();
+        Ok(())
+    }
+
+    fn submit_framework_service_response(
+        &self,
+        payload: CompletionPayload,
+    ) -> Result<(), CompletionSubmissionError> {
+        let mut state = lock(&self.shared);
+        if state.closed {
+            return Err(CompletionSubmissionError::Closed(payload));
+        }
+        if state.framework_service_responses.get(&payload.generation)
+            != Some(&HostResponseState::Open)
+        {
+            return Err(CompletionSubmissionError::Stale(payload));
+        }
+        if state.waiting.len() >= state.capacity {
+            return Err(CompletionSubmissionError::Full(payload));
+        }
+        state
+            .framework_service_responses
             .insert(payload.generation, HostResponseState::DetachedQueued);
         state.waiting.push_back(payload);
         drop(state);
@@ -467,6 +535,74 @@ pub enum HostResponseCompletionError {
     Full(HostResponseCompletion),
     Closed(HostResponseCompletion),
     Stale(HostResponseCompletion),
+}
+
+/// Exact send-capable framework-service completion for one opaque request token.
+#[must_use]
+pub struct FrameworkServiceResponseCompletion {
+    payload: CompletionPayload,
+    sender: CompletionSender,
+}
+
+impl FrameworkServiceResponseCompletion {
+    pub(crate) fn new(
+        generation: WorkGeneration,
+        response: FrameworkServiceResponse,
+        sender: CompletionSender,
+        trace_identity: TraceWorkIdentity,
+        causal_parent: Option<TraceSequence>,
+    ) -> Self {
+        Self {
+            payload: CompletionPayload {
+                generation,
+                output: Box::new(response) as SendOutput,
+                kind: CompletionKind::FrameworkServiceResponse,
+                trace_identity,
+                causal_parent,
+            },
+            sender,
+        }
+    }
+
+    /// Submits without blocking and returns exact ownership when ingress refuses.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact completion on saturation, closure, or stale-generation
+    /// rejection so the caller can observe the typed failure.
+    pub fn submit(self) -> Result<(), FrameworkServiceResponseCompletionError> {
+        let Self { payload, sender } = self;
+        sender
+            .submit_framework_service_response(payload)
+            .map_err(|error| match error {
+                CompletionSubmissionError::Full(payload) => {
+                    FrameworkServiceResponseCompletionError::Full(Self { payload, sender })
+                }
+                CompletionSubmissionError::Closed(payload) => {
+                    FrameworkServiceResponseCompletionError::Closed(Self { payload, sender })
+                }
+                CompletionSubmissionError::Stale(payload) => {
+                    FrameworkServiceResponseCompletionError::Stale(Self { payload, sender })
+                }
+            })
+    }
+}
+
+/// Exact completion ownership returned when bounded ingress refuses a service response.
+pub enum FrameworkServiceResponseCompletionError {
+    Full(FrameworkServiceResponseCompletion),
+    Closed(FrameworkServiceResponseCompletion),
+    Stale(FrameworkServiceResponseCompletion),
+}
+
+impl fmt::Debug for FrameworkServiceResponseCompletionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Full(_) => "FrameworkServiceResponseCompletionError::Full(..)",
+            Self::Closed(_) => "FrameworkServiceResponseCompletionError::Closed(..)",
+            Self::Stale(_) => "FrameworkServiceResponseCompletionError::Stale(..)",
+        })
+    }
 }
 
 impl fmt::Debug for HostResponseCompletionError {

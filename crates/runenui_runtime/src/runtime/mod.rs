@@ -39,7 +39,8 @@ use crate::{
     TraceRecordKind, TraceSequence, TraceTarget, TraceTimerTerminalOutcome, TraceWorkIdentity,
     TraceWorkOwner, TraceWorkStartRefusal, UnacceptedCommand, WorkSequence,
     completion::{
-        CompletionIngress, CompletionKind, HostResponseCompletion, SendTaskJob, UnavailableExecutor,
+        CompletionIngress, CompletionKind, FrameworkServiceResponseCompletion,
+        HostResponseCompletion, SendTaskJob, UnavailableExecutor,
     },
     mounted::{MountedIdentityExhausted, MountedTree, TargetStatus},
     queue::{
@@ -55,6 +56,7 @@ use crate::{
     work::{
         RegistryInsertError, WorkCancellationCounts, WorkFamily, WorkOwner, WorkRegistry,
         WorkTraceIdentity,
+        framework_service::{FrameworkServiceRef, FrameworkServiceToken, LiveFrameworkService},
         host_request::{HostRequestRef, HostRequestToken, LiveHostRequest},
         subscription::{LiveSubscription, LiveSubscriptionSource, SubscriptionPoll},
         task::{LocalTask, TaskReady},
@@ -74,10 +76,11 @@ pub(in crate::runtime) use lifecycle::revoke_generation_authority;
 pub(crate) use model::CollectedRoutedOutput;
 pub(in crate::runtime) use model::{ActionCommitError, MutationPhase};
 pub use model::{
-    HostRequestCancelError, HostResponseError, PublishSurfaceError, ReconciliationDiagnostic,
-    ReconciliationGeneration, ReconciliationReport, RuntimeError, RuntimeStatus,
-    RuntimeTerminalReason, ShutdownReport, SubscriptionDiagnostic, SubscriptionOwnerKind,
-    SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
+    FrameworkServiceCancelError, FrameworkServiceResponseError, HostRequestCancelError,
+    HostResponseError, PublishSurfaceError, ReconciliationDiagnostic, ReconciliationGeneration,
+    ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
+    SubscriptionDiagnostic, SubscriptionOwnerKind, SurfacePublicationCounter, TimerFiringOutcome,
+    TimerStartOutcome,
 };
 use pointer::PointerRegistry;
 pub(crate) use routed::PointerDispatchFacts;
@@ -129,17 +132,20 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     host_clock: Option<Box<dyn MonotonicClock>>,
     host_namespace: Arc<()>,
     host_requests: Vec<LiveHostRequest<Action, Protocol>>,
+    framework_service_namespace: Arc<()>,
+    framework_services: Vec<LiveFrameworkService>,
+    framework_ime_may_be_enabled: bool,
+    framework_service_satisfied: Vec<(
+        runenui_core::FrameworkServiceRequest,
+        runenui_core::__runtime::FrameworkServiceBinding,
+    )>,
     surface_publication: SurfacePublicationState,
     surface_trace: SurfaceTraceState,
     wake: WakeState,
     #[cfg(test)]
     readiness_checkpoint_count: usize,
     #[cfg(feature = "internal-test-seams")]
-    routed_callback_bridge_failure_for_test: bool,
-    #[cfg(feature = "internal-test-seams")]
-    routed_semantic_default_failure_for_test: bool,
-    #[cfg(feature = "internal-test-seams")]
-    routed_commit_failure_for_test: bool,
+    test_seams: model::RuntimeTestSeams,
 }
 
 pub(crate) enum ProcessApplicationActionOutcome {

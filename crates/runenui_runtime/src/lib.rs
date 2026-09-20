@@ -225,6 +225,7 @@ pub use command::{
     CommandSubmission, SubmitCommandError, SubmitCommandErrorKind, UnacceptedCommand,
 };
 pub use completion::{
+    FrameworkServiceResponseCompletion, FrameworkServiceResponseCompletionError,
     HostResponseCompletion, HostResponseCompletionError, SendTaskCompletion,
     SendTaskCompletionError, SendTaskExecutor, SendTaskJob, SendTaskStartError,
     SendTaskStartOutcome,
@@ -267,10 +268,11 @@ pub use runenui_text::{
     TextConstraints, TextLayoutDecision, TextLayoutError,
 };
 pub use runtime::{
-    HostRequestCancelError, HostResponseError, PublishSurfaceError, ReconciliationDiagnostic,
-    ReconciliationGeneration, ReconciliationReport, RuntimeError, RuntimeStatus,
-    RuntimeTerminalReason, ShutdownReport, SubscriptionDiagnostic, SubscriptionOwnerKind,
-    SurfacePublicationCounter, TimerFiringOutcome, TimerStartOutcome,
+    FrameworkServiceCancelError, FrameworkServiceResponseError, HostRequestCancelError,
+    HostResponseError, PublishSurfaceError, ReconciliationDiagnostic, ReconciliationGeneration,
+    ReconciliationReport, RuntimeError, RuntimeStatus, RuntimeTerminalReason, ShutdownReport,
+    SubscriptionDiagnostic, SubscriptionOwnerKind, SurfacePublicationCounter, TimerFiringOutcome,
+    TimerStartOutcome,
 };
 pub use scene::{
     HitTestRegion, HitTestScene, PaintDamage, PaintPublication, PaintRevision, PaintScene,
@@ -300,22 +302,23 @@ pub use trace::{
     TraceAutomationRecordRole, TraceCompositionContext, TraceCompositionRange, TraceConfig,
     TraceContext, TraceDeliveryOutcome, TraceEditIdentity, TraceEditResolutionOutcome,
     TraceEventContext, TraceEventFamily, TraceFocusBoundaryOutcome, TraceFocusRecordRole,
-    TraceInputContext, TraceInputRecordRole, TraceJsonlLine, TraceModalityTransition,
-    TraceMotionCollision, TraceMotionEffectDecision, TraceMotionEffectiveDecision,
-    TraceMotionEffects, TraceMotionFact, TraceMotionGroupDecision, TraceMotionInterpolation,
-    TraceMotionLifecycle, TraceMotionPhase, TraceMotionPlanningRejection, TraceMotionPolicy,
-    TraceMotionPreferenceDecision, TraceMotionSource, TracePayloadCapture,
-    TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection, TracePointerCleanup,
-    TracePointerContext, TracePointerPath, TracePointerRecordRole, TracePointerRejection,
-    TracePublicationContext, TraceRecord, TraceRecordKind, TraceReplay, TraceReplayCompleteness,
-    TraceReplayError, TraceReplayKind, TraceReplayRecord, TraceReplaySequence,
-    TraceReplayWorkSequence, TraceRouteSnapshot, TraceRoutedAdmissionRejection,
-    TraceRoutedIntegrityFailure, TraceSemanticActionRejection, TraceSequence,
-    TraceSinkDeliveryOutcome, TraceSinkReceiveError, TraceSinkReceiver, TraceSpaceCleanupReason,
-    TraceSurfaceContext, TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind,
-    TraceTarget, TraceTargetRejection, TraceTargetTransition, TraceTextMetrics,
-    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
-    TraceWorkStartRefusal,
+    TraceFrameworkServiceKind, TraceFrameworkServiceOutcome, TraceInputContext,
+    TraceInputRecordRole, TraceJsonlLine, TraceModalityTransition, TraceMotionCollision,
+    TraceMotionEffectDecision, TraceMotionEffectiveDecision, TraceMotionEffects, TraceMotionFact,
+    TraceMotionGroupDecision, TraceMotionInterpolation, TraceMotionLifecycle, TraceMotionPhase,
+    TraceMotionPlanningRejection, TraceMotionPolicy, TraceMotionPreferenceDecision,
+    TraceMotionSource, TracePayloadCapture, TracePointerCaptureRequestKind,
+    TracePointerCaptureRequestRejection, TracePointerCleanup, TracePointerContext,
+    TracePointerPath, TracePointerRecordRole, TracePointerRejection, TracePublicationContext,
+    TraceRecord, TraceRecordKind, TraceReplay, TraceReplayCompleteness, TraceReplayError,
+    TraceReplayKind, TraceReplayRecord, TraceReplaySequence, TraceReplayWorkSequence,
+    TraceRouteSnapshot, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure,
+    TraceSemanticActionRejection, TraceSequence, TraceSinkDeliveryOutcome, TraceSinkReceiveError,
+    TraceSinkReceiver, TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind,
+    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
+    TraceTargetTransition, TraceTextMetrics, TraceTimerTerminalOutcome, TraceWorkFamily,
+    TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
+pub use work::framework_service::{FrameworkServiceRef, FrameworkServiceToken};
 pub use work::host_request::{HostRequestRef, HostRequestToken};

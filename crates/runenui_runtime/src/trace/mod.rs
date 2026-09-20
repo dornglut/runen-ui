@@ -31,13 +31,14 @@ pub use input_context::{
     TraceTextMetrics,
 };
 pub use model::{
-    TraceConfig, TraceEditResolutionOutcome, TraceFocusBoundaryOutcome, TracePayloadCapture,
-    TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection, TracePointerRejection,
-    TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure,
-    TraceSemanticActionRejection, TraceSequence, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason,
-    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget,
-    TraceTargetRejection, TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity,
-    TraceWorkOwner, TraceWorkStartRefusal,
+    TraceConfig, TraceEditResolutionOutcome, TraceFocusBoundaryOutcome, TraceFrameworkServiceKind,
+    TraceFrameworkServiceOutcome, TracePayloadCapture, TracePointerCaptureRequestKind,
+    TracePointerCaptureRequestRejection, TracePointerRejection, TraceRecord, TraceRecordKind,
+    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
+    TraceSequence, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
+    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
+    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
+    TraceWorkStartRefusal,
 };
 pub(crate) use motion::StagedMotionTraceFact;
 pub use motion::{

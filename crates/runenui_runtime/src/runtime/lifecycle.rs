@@ -3,10 +3,10 @@
 use runenui_core::CommandOrigin;
 
 use super::{
-    AutomationSubmissionPolicy, CompletionIngress, HostProtocol, LiveHostRequest, LiveSubscription,
-    LocalTask, Runtime, RuntimeStatus, RuntimeTerminalReason, SendTaskMapper, ShutdownReport,
-    Timer, TraceRecordKind, TraceSequence, WorkCancellationCounts, WorkOwner, WorkRegistry,
-    focus::InputLifetimeCleanupCause,
+    AutomationSubmissionPolicy, CompletionIngress, HostProtocol, LiveFrameworkService,
+    LiveHostRequest, LiveSubscription, LocalTask, Runtime, RuntimeStatus, RuntimeTerminalReason,
+    SendTaskMapper, ShutdownReport, Timer, TraceRecordKind, TraceSequence, WorkCancellationCounts,
+    WorkOwner, WorkRegistry, focus::InputLifetimeCleanupCause,
 };
 use crate::{TraceSpaceCleanupReason, trace::TraceRecordDraft};
 
@@ -123,6 +123,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.subscriptions.clear();
         self.send_task_mappers.clear();
         self.host_requests.clear();
+        self.framework_services.clear();
+        self.framework_ime_may_be_enabled = false;
+        self.framework_service_satisfied.clear();
         self.mounted_subscription_reconcile_pending.clear();
         self.initial_mounted_subscription_owners.clear();
         self.initial_mounted_outputs.clear();
@@ -228,6 +231,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             &mut self.send_task_mappers,
             &mut self.subscriptions,
             &mut self.host_requests,
+            &mut self.framework_services,
         );
     }
 }
@@ -248,6 +252,7 @@ pub(in crate::runtime) fn revoke_generation_authority<Action, Protocol: HostProt
     send_task_mappers: &mut Vec<SendTaskMapper<Action>>,
     subscriptions: &mut Vec<LiveSubscription<Action>>,
     host_requests: &mut Vec<LiveHostRequest<Action, Protocol>>,
+    framework_services: &mut Vec<LiveFrameworkService>,
 ) {
     let _ = work.invalidate(generation);
     let _ = completion_ingress.revoke_generation(generation);
@@ -256,4 +261,5 @@ pub(in crate::runtime) fn revoke_generation_authority<Action, Protocol: HostProt
     send_task_mappers.retain(|mapper| mapper.generation != generation);
     subscriptions.retain(|subscription| subscription.generation != generation);
     host_requests.retain(|request| request.generation != generation);
+    framework_services.retain(|request| request.generation != generation);
 }

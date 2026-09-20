@@ -1,8 +1,10 @@
 //! Readiness, work, timer, subscription, completion, and host-request scheduling.
 
 use super::{
-    Arc, CompletionKind, Effect, HashMap, HashSet, HostProtocol, HostRequestCancelError,
-    HostRequestRef, HostRequestToken, HostResponseCompletion, HostResponseError, LiveHostRequest,
+    Arc, CompletionKind, Effect, FrameworkServiceCancelError, FrameworkServiceRef,
+    FrameworkServiceResponseCompletion, FrameworkServiceResponseError, FrameworkServiceToken,
+    HashMap, HashSet, HostProtocol, HostRequestCancelError, HostRequestRef, HostRequestToken,
+    HostResponseCompletion, HostResponseError, LiveFrameworkService, LiveHostRequest,
     LiveSubscription, LiveSubscriptionSource, LocalTask, MandatoryTracePlan, MonotonicClock,
     MonotonicInstant, MountedNodeId, QueueCommitError, ReadinessCheckpointReport, Runtime,
     RuntimeStatus, RuntimeTerminalReason, SchedulerObservation, SendSubscriptionSink,
@@ -14,6 +16,7 @@ use super::{
     TraceWorkStartRefusal, WorkFamily, WorkOwner, WorkSequence, public_trace_work_identity,
 };
 
+mod framework_service;
 mod host;
 mod local;
 mod readiness;

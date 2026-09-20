@@ -28,11 +28,22 @@ impl RoutedTransactionAdmissionPlan {
         max_outputs: usize,
         mandatory_default_commands: usize,
     ) -> Result<Self, TraceRoutedAdmissionRejection> {
-        let total_output_envelopes = max_outputs
+        // IME and cursor state synchronization are ordinary runtime-owned
+        // framework-service outputs. Reserve both before callbacks mutate any
+        // routed state so their commit cannot overrun the existing FIFO plan.
+        let queued_output_envelopes = max_outputs
             .checked_add(mandatory_default_commands)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
-        let queue_slots = total_output_envelopes
+        let queue_slots = queued_output_envelopes
             .checked_mul(2)
+            .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
+        // IME and cursor services are registered as work, not placed in the
+        // FIFO. Reserve their work/trace capacity without reserving queue slots.
+        let mandatory_default_commands = mandatory_default_commands
+            .checked_add(2)
+            .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
+        let total_output_envelopes = max_outputs
+            .checked_add(mandatory_default_commands)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         let trace = MandatoryTracePlan::routed_event(admitted_invocations, total_output_envelopes)
             .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
@@ -64,9 +75,13 @@ impl RoutedTransactionAdmissionPlan {
                     TraceRoutedAdmissionRejection::WorkSequenceExhausted
                 }
             })?;
+        let possible_mounted_outputs = self
+            .max_outputs
+            .checked_add(self.mandatory_default_commands)
+            .ok_or(TraceRoutedAdmissionRejection::CheckedArithmeticOverflow)?;
         runtime
             .work
-            .preflight_mounted_callback(self.max_outputs)
+            .preflight_mounted_callback(possible_mounted_outputs)
             .map_err(|error| match error {
                 MountedCallbackPreflightError::FamilyFull(WorkFamily::LocalTask) => {
                     TraceRoutedAdmissionRejection::LocalTasks
@@ -76,6 +91,9 @@ impl RoutedTransactionAdmissionPlan {
                 }
                 MountedCallbackPreflightError::FamilyFull(WorkFamily::Timer) => {
                     TraceRoutedAdmissionRejection::Timers
+                }
+                MountedCallbackPreflightError::FamilyFull(WorkFamily::FrameworkService) => {
+                    TraceRoutedAdmissionRejection::FrameworkServices
                 }
                 MountedCallbackPreflightError::FamilyFull(
                     WorkFamily::Subscription | WorkFamily::HostRequest,

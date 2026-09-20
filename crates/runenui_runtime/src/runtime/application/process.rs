@@ -148,6 +148,7 @@ pub(crate) fn process_application_action<App: UiApp>(
             send_task_mappers,
             subscriptions,
             host_requests,
+            framework_services,
         ) = (
             &mut runtime.tree,
             &mut runtime.surface_publication,
@@ -158,6 +159,7 @@ pub(crate) fn process_application_action<App: UiApp>(
             &mut runtime.send_task_mappers,
             &mut runtime.subscriptions,
             &mut runtime.host_requests,
+            &mut runtime.framework_services,
         );
         tree.apply_reconciliation(reconciliation_plan, &mut |owner| {
             surface_publication.retire_motion_owner(owner);
@@ -176,6 +178,7 @@ pub(crate) fn process_application_action<App: UiApp>(
                     send_task_mappers,
                     subscriptions,
                     host_requests,
+                    framework_services,
                 );
             }
             lifecycle_invalidated.extend(generations);
@@ -222,6 +225,7 @@ pub(crate) fn process_application_action<App: UiApp>(
         let cancelled = runtime.enter_terminal(reason, 0);
         return ProcessApplicationActionOutcome::Terminal { reason, cancelled };
     }
+    runtime.cancel_stale_framework_services();
     if let Some(outcome) = edit_trace_outcome {
         runtime.trace.record_draft(
             trace_transaction
