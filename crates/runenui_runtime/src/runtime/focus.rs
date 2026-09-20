@@ -256,6 +256,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         ) else {
             return cause.causal_parent;
         };
+        self.editing.clear_preedit(&owner, composition.generation());
         self.composition = crate::input::CompositionState::None;
         self.trace.record_draft(
             TraceRecordDraft::input_fact(
@@ -316,6 +317,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             CompositionCancel::__runtime_new(composition.generation().clone(), reason),
         ));
         self.invoke_focus_callbacks(transaction, &event, route, None)?;
+        if self.editing.clear_preedit(owner, composition.generation()) {
+            self.tree.mark_runtime_text_projection_dirty();
+        }
         self.composition = crate::input::CompositionState::None;
         transaction.parent = self.trace.record_draft(
             TraceRecordDraft::input_fact(

@@ -32,7 +32,7 @@ impl UiApp for TimerApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             TimerAction::Tick => *state += 1,
         }
@@ -95,7 +95,7 @@ impl UiApp for LoopApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             LoopAction::Again => {
                 *state += 1;
@@ -156,7 +156,7 @@ impl UiApp for PendingApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             PendingAction::Completed => *state = true,
         }

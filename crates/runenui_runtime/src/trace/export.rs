@@ -200,6 +200,25 @@ fn encode_input_action_context(
         json::string(output, tokens::action_category(action.category()));
         output.push_str(",\"label\":");
         json::optional_string(output, action.label());
+        output.push_str(",\"edit\":");
+        if let Some(edit) = action.edit() {
+            output.push_str("{\"request\":");
+            let request = format!("e-{:016x}", edit.request());
+            json::string(output, &request);
+            output.push_str(",\"session\":");
+            let session = format!("es-{:016x}", edit.session());
+            json::string(output, &session);
+            output.push_str(",\"predecessor\":");
+            if let Some(predecessor) = edit.predecessor() {
+                let predecessor = format!("e-{predecessor:016x}");
+                json::string(output, &predecessor);
+            } else {
+                output.push_str("null");
+            }
+            output.push('}');
+        } else {
+            output.push_str("null");
+        }
         output.push('}');
     } else {
         output.push_str("null");

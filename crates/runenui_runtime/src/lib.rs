@@ -148,7 +148,7 @@
 //! # impl UiApp for App {
 //! #   type State = (); type Action = (); type HostProtocol = NoHostProtocol;
 //! #   fn root(_: &()) -> impl View<()> { text("x") }
-//! #   fn update(_: &mut (), _: ()) -> impl IntoEffects<(), NoHostProtocol> {}
+//! #   fn update(_: &mut (), _: ()) -> impl IntoUpdateOutput<(), NoHostProtocol> {}
 //! # }
 //! let mut runtime = AppRuntime::<App>::mount(());
 //! runtime.dispatch(());
@@ -164,7 +164,7 @@
 //! # impl UiApp for App {
 //! #   type State = (); type Action = (); type HostProtocol = NoHostProtocol;
 //! #   fn root(_: &()) -> impl View<()> { text("x") }
-//! #   fn update(_: &mut (), _: ()) -> impl IntoEffects<(), NoHostProtocol> {}
+//! #   fn update(_: &mut (), _: ()) -> impl IntoUpdateOutput<(), NoHostProtocol> {}
 //! # }
 //! fn direct_activate(runtime: &mut AppRuntime<App>) {
 //!     let _ = runtime.activate("counter.increment");
@@ -193,6 +193,7 @@ mod completion;
 mod config;
 mod constraints;
 mod debug;
+mod editing;
 mod focus;
 mod input;
 mod mounted;
@@ -297,12 +298,13 @@ pub use surface_publication::SurfacePublication;
 pub use trace::{
     Trace, TraceActionCategory, TraceActionIdentity, TraceAutomationContext,
     TraceAutomationRecordRole, TraceCompositionContext, TraceCompositionRange, TraceConfig,
-    TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
-    TraceFocusBoundaryOutcome, TraceFocusRecordRole, TraceInputContext, TraceInputRecordRole,
-    TraceJsonlLine, TraceModalityTransition, TraceMotionCollision, TraceMotionEffectDecision,
-    TraceMotionEffectiveDecision, TraceMotionEffects, TraceMotionFact, TraceMotionGroupDecision,
-    TraceMotionInterpolation, TraceMotionLifecycle, TraceMotionPhase, TraceMotionPlanningRejection,
-    TraceMotionPolicy, TraceMotionPreferenceDecision, TraceMotionSource, TracePayloadCapture,
+    TraceContext, TraceDeliveryOutcome, TraceEditIdentity, TraceEditResolutionOutcome,
+    TraceEventContext, TraceEventFamily, TraceFocusBoundaryOutcome, TraceFocusRecordRole,
+    TraceInputContext, TraceInputRecordRole, TraceJsonlLine, TraceModalityTransition,
+    TraceMotionCollision, TraceMotionEffectDecision, TraceMotionEffectiveDecision,
+    TraceMotionEffects, TraceMotionFact, TraceMotionGroupDecision, TraceMotionInterpolation,
+    TraceMotionLifecycle, TraceMotionPhase, TraceMotionPlanningRejection, TraceMotionPolicy,
+    TraceMotionPreferenceDecision, TraceMotionSource, TracePayloadCapture,
     TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection, TracePointerCleanup,
     TracePointerContext, TracePointerPath, TracePointerRecordRole, TracePointerRejection,
     TracePublicationContext, TraceRecord, TraceRecordKind, TraceReplay, TraceReplayCompleteness,

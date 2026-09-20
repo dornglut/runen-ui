@@ -39,7 +39,7 @@ impl UiApp for ApplicationTimeApp {
     fn update(
         state: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         *state += 1;
         Effects::local_task(async { None::<()> })
     }

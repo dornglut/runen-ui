@@ -2,8 +2,8 @@ use core::num::NonZeroUsize;
 use std::{cell::RefCell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, CommittedTextEvent, Element, ElementId, FocusReason, FocusScope, IntoEffects,
-    KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
+    CommandOrigin, CommittedTextEvent, Element, ElementId, FocusReason, FocusScope, KeyLocation,
+    KeyModifiers, KeyboardCompositionState, KeyboardEvent, KeyboardPhase, LogicalKey,
     NoHostProtocol, PhysicalKey, SemanticCommand, UiApp, View, column, container,
 };
 use runenui_external_widget_conformance::{
@@ -59,7 +59,7 @@ impl UiApp for FocusApp {
     fn update(
         _: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -182,7 +182,7 @@ impl UiApp for InputApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             InputAction::Input(action) => state.actions.push(action),
         }

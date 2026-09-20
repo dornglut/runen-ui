@@ -6,13 +6,13 @@ use std::rc::Rc;
 use crate::widget_erasure::{ElementParts, ErasedWidget, MountedWidget, WidgetAdapter};
 use crate::widget_mapping::MappedWidget;
 use crate::{
-    BrushValue, ColorValue, ElementId, ElementKey, EventContext, ExplicitTimeline, FocusScope,
-    Focusability, HitContribution, HitContributionContext, IdentifierError, IntoElementId,
-    IntoElementKey, LayoutStyle, LogicalLength, LogicalSize, MotionTarget, OpacityValue,
-    OutlineValue, PaintContribution, PaintContributionContext, RadiusValue, SemanticContribution,
-    SemanticContributionContext, ShadowValue, SpacingValue, StyleIntent, StyleRecipeId,
-    StyleVariantId, SubscriptionSet, TransitionSpec, TypographyValue, UiEvent,
-    WidgetActivationContext, WidgetEventOutput, WidgetInvalidation, WidgetMountContext,
+    BrushValue, ColorValue, EditableContribution, ElementId, ElementKey, EventContext,
+    ExplicitTimeline, FocusScope, Focusability, HitContribution, HitContributionContext,
+    IdentifierError, IntoElementId, IntoElementKey, LayoutStyle, LogicalLength, LogicalSize,
+    MotionTarget, OpacityValue, OutlineValue, PaintContribution, PaintContributionContext,
+    RadiusValue, SemanticContribution, SemanticContributionContext, ShadowValue, SpacingValue,
+    StyleIntent, StyleRecipeId, StyleVariantId, SubscriptionSet, TransitionSpec, TypographyValue,
+    UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetInvalidation, WidgetMountContext,
     WidgetUnmountContext, WidgetUpdateContext,
 };
 
@@ -407,6 +407,15 @@ pub trait Widget<Action>: fmt::Debug {
     /// Declares host text-input protocol capability; it does not imply editing.
     fn text_input(&self, _state: &Self::State) -> WidgetTextInput {
         WidgetTextInput::NONE
+    }
+
+    /// Contributes one application-owned editable document presentation.
+    ///
+    /// Runtime may retain only ephemeral owner-local interaction state. The
+    /// contribution remains the authoritative document snapshot and maps edit
+    /// proposals into ordinary application actions.
+    fn editable(&self, _state: &Self::State) -> Option<EditableContribution<Action>> {
+        None
     }
 
     /// Reports the action and persistent-state effects of one accepted activation.

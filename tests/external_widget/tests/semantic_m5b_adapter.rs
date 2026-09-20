@@ -1,11 +1,11 @@
 use std::{cell::Cell, rc::Rc};
 
 use runenui_core::{
-    CommandOrigin, Element, IntoEffects, LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol,
-    SemanticAction, SemanticBounds, SemanticCommand, SemanticContribution,
-    SemanticContributionContext, SemanticKey, SemanticNodeContribution, SemanticReference,
-    SemanticRelationship, SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText,
-    SemanticValue, StyleEnvironment, UiApp, View, Widget, WidgetActivation,
+    CommandOrigin, Element, LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol, SemanticAction,
+    SemanticBounds, SemanticCommand, SemanticContribution, SemanticContributionContext,
+    SemanticKey, SemanticNodeContribution, SemanticReference, SemanticRelationship,
+    SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
+    StyleEnvironment, UiApp, View, Widget, WidgetActivation,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, PumpBudget, SemanticNode, SemanticNodeId, SemanticPublication,
@@ -152,7 +152,7 @@ impl UiApp for AdapterApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         state.phase = action.0;
     }
 }

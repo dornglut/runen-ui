@@ -6,7 +6,7 @@ use std::{
 };
 
 use runenui_core::{
-    CommandDerivation, CommandOrigin, Element, EventContext, EventPhase, EventSource, IntoEffects,
+    CommandDerivation, CommandOrigin, Element, EventContext, EventPhase, EventSource,
     NoHostProtocol, SemanticAction, SemanticActionRequest, SemanticActionTarget, SemanticCommand,
     SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeContribution,
     SemanticRole, SemanticState, StyleEnvironment, UiApp, UiEvent, Widget, WidgetActivation,
@@ -311,7 +311,7 @@ impl UiApp for ProbeApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             ProbeAction::Activated => state.application_updates += 1,
             ProbeAction::Reconfigure(config) => state.config = config,

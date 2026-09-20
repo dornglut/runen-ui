@@ -8,6 +8,9 @@ use crate::semantic_compositor::{
 };
 use crate::trace::StagedMotionTraceFact;
 use crate::{MountedNodeId, SemanticDiagnostic};
+use runenui_core::TextDisplayPosition;
+use runenui_text::TextDisplaySelection;
+use std::{collections::HashMap, sync::Arc};
 
 use super::{
     SurfaceCache, SurfaceMotionActivity, SurfaceMotionStore, SurfacePhaseReport,
@@ -118,6 +121,7 @@ impl<'a> PlannedSurfacePublication<'a> {
     pub(crate) fn semantic_candidate(
         &self,
         focused_owner: Option<&MountedNodeId>,
+        editing: &HashMap<MountedNodeId, crate::editing::EditingSemanticProjection>,
     ) -> Result<Option<(SemanticCandidate, Vec<SemanticDiagnostic>)>, SurfacePlanningError> {
         let Some(finalized) = self.finalized_semantics.as_ref() else {
             return Ok(None);
@@ -146,6 +150,49 @@ impl<'a> PlannedSurfacePublication<'a> {
                 });
             }
             let presentation = self.cache.presentation.node(position);
+            let (editable_source, editable_selection, editable_caret_offsets) = semantic
+                .editable
+                .as_ref()
+                .zip(editing.get(&semantic.owner))
+                .and_then(|(authored, projected)| {
+                    if (
+                        authored.snapshot,
+                        authored.text.as_ref(),
+                        authored.sensitivity,
+                    ) != (
+                        projected.snapshot,
+                        projected.source.as_ref(),
+                        projected.sensitivity,
+                    ) {
+                        return None;
+                    }
+                    let map = self
+                        .cache
+                        .layout
+                        .text_layouts
+                        .get(position)?
+                        .caret_map_for_source(projected.snapshot, &projected.source)
+                        .ok()?;
+                    let selection = TextDisplaySelection::from_document(projected.selection);
+                    map.validate_position(selection.anchor()).ok()?;
+                    map.validate_position(selection.active()).ok()?;
+                    let mut offsets = Vec::new();
+                    for position in map.legal_positions() {
+                        if let TextDisplayPosition::Document(position) = position
+                            && offsets.last() != Some(&position.byte_offset())
+                        {
+                            offsets.push(position.byte_offset());
+                        }
+                    }
+                    Some((
+                        Arc::clone(&projected.source),
+                        projected.selection,
+                        Arc::<[usize]>::from(offsets),
+                    ))
+                })
+                .map_or((None, None, None), |(source, selection, offsets)| {
+                    (Some(source), Some(selection), Some(offsets))
+                });
             owners.push(SemanticOwnerFacts {
                 id: semantic.owner,
                 authored_id: topology.authored_id.clone(),
@@ -155,6 +202,9 @@ impl<'a> PlannedSurfacePublication<'a> {
                 bounds: presentation.owner_bounds(),
                 activation: semantic.activation,
                 focusability: semantic.focusability,
+                editable_source,
+                editable_selection,
+                editable_caret_offsets,
             });
             owner_transforms.push(presentation.owner_to_surface());
         }

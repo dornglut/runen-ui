@@ -2,7 +2,7 @@
 
 use core::num::NonZeroUsize;
 
-use runenui_core::{IntoEffects, NoHostProtocol, SemanticAction, SemanticRole, UiApp, View};
+use runenui_core::{NoHostProtocol, SemanticAction, SemanticRole, UiApp, View};
 use runenui_external_widget_conformance::{ChildAction, ParentAction, parent_view};
 use runenui_runtime::PumpBudget;
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -27,7 +27,7 @@ impl UiApp for MappedApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             ParentAction::Child(ChildAction::Pulse) => state.pulses += 1,
             ParentAction::Reset => state.resets += 1,

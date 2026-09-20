@@ -98,6 +98,10 @@ pub(crate) struct RoutedTransaction<Action> {
 }
 
 impl<Action> RoutedTransaction<Action> {
+    pub(crate) fn invalidate(&mut self, invalidation: WidgetInvalidation) {
+        self.invalidation |= invalidation;
+    }
+
     pub(crate) fn failure_facts(&self) -> RoutedFailureFacts {
         RoutedFailureFacts {
             sequence: self.sequence,

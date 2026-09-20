@@ -46,7 +46,7 @@ impl UiApp for SubscriptionApp {
     fn update(
         state: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         state.updates += 1;
     }
 
@@ -192,7 +192,7 @@ impl UiApp for SendSubscriptionApp {
     fn update(
         state: &mut Self::State,
         _: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         state.1 += 1;
     }
 
@@ -291,7 +291,7 @@ impl UiApp for HostApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             HostAction::Replace => request(2),
             HostAction::Value(value) => {

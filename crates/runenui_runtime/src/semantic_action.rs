@@ -31,15 +31,15 @@ pub enum SubmitSemanticActionErrorKind {
 #[must_use]
 pub struct SubmitSemanticActionError {
     kind: SubmitSemanticActionErrorKind,
-    request: SemanticActionRequest,
+    request: Box<SemanticActionRequest>,
 }
 
 impl SubmitSemanticActionError {
-    pub(crate) const fn new(
-        kind: SubmitSemanticActionErrorKind,
-        request: SemanticActionRequest,
-    ) -> Self {
-        Self { kind, request }
+    pub(crate) fn new(kind: SubmitSemanticActionErrorKind, request: SemanticActionRequest) -> Self {
+        Self {
+            kind,
+            request: Box::new(request),
+        }
     }
 
     /// Returns the rejection classification.
@@ -55,7 +55,7 @@ impl SubmitSemanticActionError {
 
     /// Recovers the exact semantic request that did not enter the canonical FIFO.
     pub fn into_request(self) -> SemanticActionRequest {
-        self.request
+        *self.request
     }
 }
 

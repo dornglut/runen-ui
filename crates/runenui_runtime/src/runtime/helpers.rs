@@ -80,6 +80,17 @@ pub(in crate::runtime) fn with_routed_parent<Action>(
             causal_parent,
             current_target,
         },
+        CollectedRoutedOutput::EditAction {
+            action,
+            origin,
+            current_target,
+            ..
+        } => CollectedRoutedOutput::EditAction {
+            action,
+            origin,
+            causal_parent,
+            current_target,
+        },
         CollectedRoutedOutput::Command {
             target,
             command,

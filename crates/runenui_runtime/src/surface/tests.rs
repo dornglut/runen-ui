@@ -413,7 +413,7 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
     let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
         .unwrap_or_else(|_| unreachable!("initial semantic layout plan is valid"));
     let (first, _) = planned
-        .semantic_candidate(None)
+        .semantic_candidate(None, &std::collections::HashMap::new())
         .unwrap_or_else(|_| unreachable!("initial semantic candidate is aligned"))
         .unwrap_or_else(|| unreachable!("initial structural plan includes semantics"));
     assert_eq!(semantic_callbacks.get(), 1);
@@ -438,7 +438,7 @@ fn layout_recomposes_semantic_bounds_without_semantic_callback_reentry() {
     let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, cache.as_ref())
         .unwrap_or_else(|_| unreachable!("layout semantic plan is valid"));
     let (second, _) = planned
-        .semantic_candidate(None)
+        .semantic_candidate(None, &std::collections::HashMap::new())
         .unwrap_or_else(|_| unreachable!("layout semantic candidate is aligned"))
         .unwrap_or_else(|| unreachable!("layout dirtiness recomposes semantics"));
     assert_eq!(semantic_callbacks.get(), 1);

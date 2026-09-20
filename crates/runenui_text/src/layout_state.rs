@@ -70,6 +70,27 @@ impl TextLayoutState {
         TextCaretMap::document(cached, snapshot)
     }
 
+    /// Derives a caret map only when the retained layout was built from the exact source text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TextCaretMapError::DisplayTextMismatch`] when the retained layout belongs to a
+    /// different source value, in addition to the ordinary caret-map failures.
+    pub fn caret_map_for_source(
+        &self,
+        snapshot: TextDocumentSnapshot,
+        source: &str,
+    ) -> Result<TextCaretMap, TextCaretMapError> {
+        let cached = self
+            .cached
+            .clone()
+            .ok_or(TextCaretMapError::MissingLayout)?;
+        if cached.request.text() != source {
+            return Err(TextCaretMapError::DisplayTextMismatch);
+        }
+        TextCaretMap::document(cached, snapshot)
+    }
+
     /// Derives an immutable transient-preedit caret map from the same retained layout.
     ///
     /// The retained request must contain the projection's exact `display_text`.

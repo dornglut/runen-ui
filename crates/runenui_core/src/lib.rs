@@ -224,6 +224,7 @@
 mod application;
 mod builtins;
 mod computed_style;
+mod editing;
 mod effects;
 mod element;
 mod event;
@@ -273,6 +274,12 @@ pub use application::{
 };
 pub use builtins::{Button, Container, Text, button, column, container, row, text};
 pub use computed_style::ComputedStyle;
+pub use editing::{
+    EditChangeMap, EditGroupHint, EditIntent, EditInverse, EditKind, EditRequestId, EditResolution,
+    EditResolutionOutcome, EditSelection, EditableContribution, EditableContributionError,
+    EditingSessionGeneration, EditingSessionPolicy, IntoUpdateOutput, TextSensitivity,
+    UpdateOutput,
+};
 pub use effects::{Effects, IntoEffects};
 pub use element::{
     AuthoringDiagnostic, ChildBearingWidget, Element, View, Views, Widget, WidgetActivation,
@@ -356,11 +363,11 @@ pub use scene_geometry::{
 };
 pub use semantic::{
     SemanticAction, SemanticBounds, SemanticContribution, SemanticContributionContext,
-    SemanticContributionError, SemanticContributionValidation, SemanticItem, SemanticKey,
-    SemanticNodeContribution, SemanticReference, SemanticRelationship, SemanticRelationshipKind,
-    SemanticRole, SemanticState, SemanticText, SemanticValue,
+    SemanticContributionError, SemanticContributionValidation, SemanticEditable, SemanticItem,
+    SemanticKey, SemanticNodeContribution, SemanticReference, SemanticRelationship,
+    SemanticRelationshipKind, SemanticRole, SemanticState, SemanticText, SemanticValue,
 };
-pub use semantic_action::{SemanticActionRequest, SemanticActionTarget};
+pub use semantic_action::{SemanticActionData, SemanticActionRequest, SemanticActionTarget};
 pub use style::{
     BrushToken, BrushValue, Color, ColorToken, ColorValue, EdgeInsets, OpacityToken, OutlineToken,
     PresentationToken, Radius, RadiusToken, RadiusValue, ShadowToken, SpacingToken, SpacingValue,

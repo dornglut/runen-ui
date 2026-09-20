@@ -1,8 +1,10 @@
 use runenui_core::__runtime::RuntimeNamespace;
 use runenui_core::{
-    Focusability, SemanticContribution, SemanticContributionContext, SemanticKey, SemanticNodeId,
-    WidgetActivation,
+    EditableContribution, Focusability, SemanticContribution, SemanticContributionContext,
+    SemanticItem, SemanticKey, SemanticNodeContribution, SemanticNodeId, SemanticRole,
+    TextDocumentSnapshot, TextSelection, TextSensitivity, WidgetActivation,
 };
+use std::sync::Arc;
 
 use crate::SemanticOwnerWithdrawalReason;
 
@@ -24,6 +26,7 @@ pub(crate) struct StagedSemanticOwnerCapabilities {
     semantic_cache: CachedSemanticContribution,
     activation_cache: CachedCapability<WidgetActivation>,
     focusability: Focusability,
+    editable: Option<EditableSemanticFacts>,
     mark_integrity_failed: bool,
 }
 
@@ -44,6 +47,7 @@ pub(crate) struct FinalizedSemanticOwnerFacts {
     pub(crate) bindings: Vec<(SemanticKey, SemanticNodeId)>,
     pub(crate) activation: WidgetActivation,
     pub(crate) focusability: Focusability,
+    pub(crate) editable: Option<EditableSemanticFacts>,
     pub(crate) withdrawal_reason: Option<SemanticOwnerWithdrawalReason>,
 }
 
@@ -58,6 +62,7 @@ struct FinalizedSemanticOwner {
     semantic_cache: CachedSemanticContribution,
     activation_cache: CachedCapability<WidgetActivation>,
     focusability: Focusability,
+    editable: Option<EditableSemanticFacts>,
     mark_integrity_failed: bool,
 }
 
@@ -72,6 +77,15 @@ struct StagedSemanticCapability {
     ordered_keys: Vec<SemanticKey>,
     cache: CachedSemanticContribution,
     integrity_failed: bool,
+    editable: Option<EditableSemanticFacts>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EditableSemanticFacts {
+    pub(crate) snapshot: TextDocumentSnapshot,
+    pub(crate) text: Arc<str>,
+    pub(crate) selection: TextSelection,
+    pub(crate) sensitivity: TextSensitivity,
 }
 
 impl FinalizedSemanticPublication<'_> {
@@ -88,6 +102,7 @@ impl FinalizedSemanticPublication<'_> {
                 .collect(),
             activation: owner.activation_cache.ready().unwrap_or_default(),
             focusability: owner.focusability,
+            editable: owner.editable.clone(),
             withdrawal_reason: semantic_withdrawal_reason(&owner.semantic_cache),
         })
     }
@@ -127,12 +142,14 @@ impl StagedSemanticCapability {
                 ordered_keys: Vec::new(),
                 cache: CachedSemanticContribution::Invalid(error),
                 integrity_failed: false,
+                editable: None,
             },
             |validation| Self {
                 ordered_keys: validation.ordered_keys().to_vec(),
                 cache: CachedSemanticContribution::Ready(contribution.clone()),
                 contribution,
                 integrity_failed: false,
+                editable: None,
             },
         )
     }
@@ -143,6 +160,7 @@ impl StagedSemanticCapability {
             ordered_keys: Vec::new(),
             cache,
             integrity_failed,
+            editable: None,
         }
     }
 }
@@ -200,6 +218,7 @@ impl<Action> MountedTree<Action> {
                 semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
                 activation_cache,
                 focusability: node.focusability,
+                editable: None,
                 mark_integrity_failed,
             };
         }
@@ -212,6 +231,7 @@ impl<Action> MountedTree<Action> {
             semantic_cache: semantic.cache,
             activation_cache,
             focusability: node.focusability,
+            editable: semantic.editable,
             mark_integrity_failed,
         }
     }
@@ -339,6 +359,7 @@ fn finalize_owner(
             semantic_cache: CachedSemanticContribution::IdentityExhausted,
             activation_cache: staged.activation_cache,
             focusability: staged.focusability,
+            editable: None,
             mark_integrity_failed: staged.mark_integrity_failed,
         };
     }
@@ -351,6 +372,7 @@ fn finalize_owner(
             semantic_cache: CachedSemanticContribution::IdentityExhausted,
             activation_cache: staged.activation_cache,
             focusability: staged.focusability,
+            editable: None,
             mark_integrity_failed: staged.mark_integrity_failed,
         },
         Some(ForcedWithdrawal::IndexIntegrityFailure) => FinalizedSemanticOwner {
@@ -360,6 +382,7 @@ fn finalize_owner(
             semantic_cache: CachedSemanticContribution::IndexIntegrityFailure,
             activation_cache: staged.activation_cache,
             focusability: staged.focusability,
+            editable: None,
             mark_integrity_failed: true,
         },
         None => FinalizedSemanticOwner {
@@ -369,6 +392,7 @@ fn finalize_owner(
             semantic_cache: staged.semantic_cache,
             activation_cache: staged.activation_cache,
             focusability: staged.focusability,
+            editable: staged.editable,
             mark_integrity_failed: staged.mark_integrity_failed,
         },
     }
@@ -388,13 +412,14 @@ fn integrity_withdrawal(
         semantic_cache: CachedSemanticContribution::StatePayloadMismatch,
         activation_cache,
         focusability,
+        editable: None,
         mark_integrity_failed: true,
     }
 }
 
 fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemanticCapability {
     let context = SemanticContributionContext::__runtime_new(node.children.len());
-    match &node.caches.semantics {
+    let staged = match &node.caches.semantics {
         CachedSemanticContribution::Ready(contribution) => {
             StagedSemanticCapability::ready(contribution.clone(), context)
         }
@@ -425,7 +450,85 @@ fn stage_semantic_capability<Action>(node: &MountedNode<Action>) -> StagedSemant
             CachedSemanticContribution::StatePayloadMismatch,
             true,
         ),
+    };
+    if staged.integrity_failed {
+        return staged;
     }
+    let Ok(editable) = node.widget.editable(&node.state) else {
+        return StagedSemanticCapability::withdrawn(
+            CachedSemanticContribution::StatePayloadMismatch,
+            true,
+        );
+    };
+    if editable_semantics_match(&staged.contribution, editable.as_ref()) {
+        StagedSemanticCapability {
+            editable: editable.map(|editable| EditableSemanticFacts {
+                snapshot: editable.snapshot(),
+                text: Arc::from(editable.text()),
+                selection: editable.initial_selection(),
+                sensitivity: editable.sensitivity(),
+            }),
+            ..staged
+        }
+    } else {
+        StagedSemanticCapability::withdrawn(CachedSemanticContribution::StatePayloadMismatch, true)
+    }
+}
+
+fn editable_semantics_match<Action>(
+    semantics: &SemanticContribution,
+    editable: Option<&EditableContribution<Action>>,
+) -> bool {
+    let primary = find_primary(semantics.roots());
+    match editable {
+        None => !contains_editable(semantics.roots()),
+        Some(authoritative) => {
+            let Some(primary) = primary else {
+                return false;
+            };
+            let Some(projected) = primary.editable() else {
+                return false;
+            };
+            primary.role() == SemanticRole::EditableText
+                && projected.snapshot() == authoritative.snapshot()
+                && projected.selection() == authoritative.initial_selection()
+                && projected.sensitivity() == authoritative.sensitivity()
+                && projected.read_only() == authoritative.read_only()
+                && primary.state().read_only() == authoritative.read_only()
+                && primary.state().disabled() == authoritative.disabled()
+                && match authoritative.sensitivity() {
+                    TextSensitivity::Public => projected.value() == Some(authoritative.text()),
+                    TextSensitivity::Secret => projected.value().is_none(),
+                    _ => false,
+                }
+                && !contains_editable(primary.children())
+                && !semantics.roots().iter().any(|item| {
+                    item.as_node().is_some_and(|node| {
+                        node.key() != &SemanticKey::PRIMARY && node_contains_editable(node)
+                    })
+                })
+        }
+    }
+}
+
+fn find_primary(items: &[SemanticItem]) -> Option<&SemanticNodeContribution> {
+    items.iter().find_map(|item| {
+        let node = item.as_node()?;
+        (node.key() == &SemanticKey::PRIMARY)
+            .then_some(node)
+            .or_else(|| find_primary(node.children()))
+    })
+}
+
+fn contains_editable(items: &[SemanticItem]) -> bool {
+    items
+        .iter()
+        .filter_map(SemanticItem::as_node)
+        .any(node_contains_editable)
+}
+
+fn node_contains_editable(node: &SemanticNodeContribution) -> bool {
+    node.editable().is_some() || contains_editable(node.children())
 }
 
 #[cfg(test)]

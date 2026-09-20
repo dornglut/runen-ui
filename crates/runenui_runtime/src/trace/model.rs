@@ -139,6 +139,14 @@ impl TraceTarget {
     }
 }
 
+/// Payload-free application outcome for one verified transactional edit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceEditResolutionOutcome {
+    Accepted,
+    Rejected,
+    Transformed,
+}
+
 /// Structured kind of one canonical trace record.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -294,6 +302,9 @@ pub enum TraceRecordKind {
     SemanticDefaultSuppressed {
         command: SemanticCommand,
     },
+    EditingDefaultUnavailable {
+        command: SemanticCommand,
+    },
     SemanticDefaultTargetInvalidated {
         command: SemanticCommand,
         outcome: TraceSemanticActionRejection,
@@ -310,6 +321,9 @@ pub enum TraceRecordKind {
     ActionSubmissionRejectedTerminal,
     ApplicationActionTransactionStarted,
     ApplicationStateUpdated,
+    EditResolutionVerified {
+        outcome: TraceEditResolutionOutcome,
+    },
     TreeReconciled,
     FocusRetained,
     FocusCommandEvaluated {

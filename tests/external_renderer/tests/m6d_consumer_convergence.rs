@@ -6,11 +6,11 @@ use reference_consumer::{
 };
 use runenui_core::{
     Brush, Color, ContributionClip, Element, HitContribution, HitContributionContext, HitRegion,
-    ImageDescriptor, ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor, IntoEffects,
-    LogicalLength, LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, MountedNodeId,
-    NoHostProtocol, PaintContribution, PaintContributionContext, PaintContributionItem,
-    PaintPrimitive, PointerPolicy, Radius, ResourceKind, ResourceRef, SceneLayer, SceneOpacity,
-    SceneShape, StrokeJoin, StrokeStyle, StyleEnvironment, UiApp, View, Widget, WidgetMeasure,
+    ImageDescriptor, ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor, LogicalLength,
+    LogicalPoint, LogicalRect, LogicalSize, LogicalTransform, MountedNodeId, NoHostProtocol,
+    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
+    PointerPolicy, Radius, ResourceKind, ResourceRef, SceneLayer, SceneOpacity, SceneShape,
+    StrokeJoin, StrokeStyle, StyleEnvironment, UiApp, View, Widget, WidgetMeasure,
 };
 use runenui_external_renderer_conformance::{
     ConsumerSnapshot, SceneConsumer, UpdateMode, sample_literal_paint,
@@ -123,7 +123,7 @@ impl UiApp for App {
     fn update(
         _: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

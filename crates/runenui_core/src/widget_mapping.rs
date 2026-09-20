@@ -4,7 +4,7 @@ use crate::element::{
 };
 use crate::widget_erasure::{ErasedWidget, WidgetBridgeError};
 use crate::{
-    EventContext, HitContribution, HitContributionContext, PaintContribution,
+    EditableContribution, EventContext, HitContribution, HitContributionContext, PaintContribution,
     PaintContributionContext, SemanticContribution, SemanticContributionContext, SubscriptionSet,
     UiEvent, WidgetActivationContext, WidgetEventOutput, WidgetMountContext, WidgetUnmountContext,
     WidgetUpdateContext,
@@ -134,6 +134,14 @@ where
     }
     fn text_input(&self, state: &dyn Any) -> Result<WidgetTextInput, WidgetBridgeError> {
         self.child.text_input(state)
+    }
+    fn editable(
+        &self,
+        state: &dyn Any,
+    ) -> Result<Option<EditableContribution<ParentAction>>, WidgetBridgeError> {
+        self.child
+            .editable(state)
+            .map(|editable| editable.map(|editable| editable.map_action(Rc::clone(&self.mapper))))
     }
     fn activate(
         &mut self,

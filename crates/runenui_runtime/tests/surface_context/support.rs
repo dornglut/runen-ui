@@ -1,6 +1,6 @@
 use runenui_core::{
-    CommandOrigin, Element, ElementId, IntoEffects, LayoutDimension, LayoutStyle, LogicalLength,
-    NoHostProtocol, SemanticCommand, StyleEnvironment, UiApp, View, button, row,
+    CommandOrigin, Element, ElementId, LayoutDimension, LayoutStyle, LogicalLength, NoHostProtocol,
+    SemanticCommand, StyleEnvironment, UiApp, View, button, row,
 };
 use runenui_runtime::{
     AppRuntime, CommandSubmission, LogicalPoint, LogicalSize, MountedNodeId, PumpBudget,
@@ -56,7 +56,7 @@ impl UiApp for SurfaceApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             SurfaceAction::ActivatePrimary => state.primary_activations += 1,
             SurfaceAction::ActivateSecondary => state.secondary_activations += 1,

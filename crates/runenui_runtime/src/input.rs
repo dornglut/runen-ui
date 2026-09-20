@@ -86,6 +86,9 @@ pub enum SubmitTextErrorKind {
     Terminal(RuntimeTerminalReason),
     NoFocusedTarget,
     FocusedTargetNotTextCapable,
+    EditingUnavailable,
+    EditingCapacity,
+    EditRequestExhausted,
     WorkSequenceExhausted,
     TraceSequenceExhausted,
 }
@@ -793,7 +796,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .next_sequence()
             .unwrap_or_else(|| unreachable!("composition sequence was preflighted"));
         let instant = self.now();
-        let payload_capture = self.trace.payload_capture();
+        let payload_capture =
+            if self.editing.sensitivity(&owner) == Some(runenui_core::TextSensitivity::Secret) {
+                crate::TracePayloadCapture::Redacted
+            } else {
+                self.trace.payload_capture()
+            };
         let (trace_kind, context) =
             Self::existing_composition_trace(&event, composition, payload_capture);
         let parent = self.trace.record_draft(
@@ -937,8 +945,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .map_err(|_| SubmitTextErrorKind::FocusedTargetNotTextCapable)?;
         capability
             .accepts_committed_text()
-            .then_some(target)
-            .ok_or(SubmitTextErrorKind::FocusedTargetNotTextCapable)
+            .then_some(())
+            .ok_or(SubmitTextErrorKind::FocusedTargetNotTextCapable)?;
+        if self.editing.has_owner(&target) {
+            let reserved = self.queue.pending_committed_text_for(&target);
+            self.editing
+                .can_prepare_after_reserved(&target, reserved)
+                .map_err(|error| match error {
+                    crate::editing::EditPrepareError::Unavailable => {
+                        SubmitTextErrorKind::EditingUnavailable
+                    }
+                    crate::editing::EditPrepareError::PendingCapacity => {
+                        SubmitTextErrorKind::EditingCapacity
+                    }
+                    crate::editing::EditPrepareError::RequestExhausted => {
+                        SubmitTextErrorKind::EditRequestExhausted
+                    }
+                    crate::editing::EditPrepareError::MissingOwner
+                    | crate::editing::EditPrepareError::InvalidCoordinates => {
+                        SubmitTextErrorKind::FocusedTargetNotTextCapable
+                    }
+                })?;
+        }
+        Ok(target)
     }
 
     fn commit_input(
@@ -954,7 +983,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err((SubmitKeyboardErrorKind::WorkSequenceExhausted, payload));
         };
         let instant = self.now();
-        let payload_capture = self.trace.payload_capture();
+        let payload_capture =
+            if self.editing.sensitivity(&target) == Some(runenui_core::TextSensitivity::Secret) {
+                crate::TracePayloadCapture::Redacted
+            } else {
+                self.trace.payload_capture()
+            };
         let (trace_kind, context) = match &payload {
             InputEnvelopePayload::Keyboard(event) => (
                 TraceRecordKind::KeyboardSubmissionAccepted,
@@ -989,6 +1023,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         Ok(committed)
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn process_input_envelope(&mut self, envelope: InputEnvelope) {
         let InputEnvelope {
             sequence,
@@ -1013,7 +1048,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             InputEnvelopePayload::Keyboard(event) => {
                 usize::from(Self::keyboard_default_command_is_possible(event))
             }
-            InputEnvelopePayload::CommittedText(_) | InputEnvelopePayload::Composition(_) => 0,
+            InputEnvelopePayload::CommittedText(_) => usize::from(self.editing.has_owner(&target)),
+            InputEnvelopePayload::Composition(_) => 0,
         };
         if let InputEnvelopePayload::Composition(event) = &payload
             && !self.composition_processing_matches(&target, event)
@@ -1178,6 +1214,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         transaction: &mut crate::runtime::RoutedTransaction<Action>,
         payload: &InputEnvelopePayload,
     ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
+        if matches!(
+            payload,
+            InputEnvelopePayload::Composition(
+                CompositionEvent::End(_) | CompositionEvent::Cancel(_)
+            )
+        ) && self
+            .editing
+            .clear_preedit(&transaction.target, payload_composition_generation(payload))
+        {
+            self.tree.mark_runtime_text_projection_dirty();
+        }
         if transaction.default_prevented {
             let kind = match payload {
                 InputEnvelopePayload::Keyboard(_) => TraceRecordKind::KeyboardDefaultPrevented,
@@ -1198,9 +1245,69 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             );
             return Ok(());
         }
-        if let InputEnvelopePayload::Keyboard(keyboard) = payload {
-            self.collect_keyboard_default(transaction, keyboard)?;
+        match payload {
+            InputEnvelopePayload::Keyboard(keyboard) => {
+                self.collect_keyboard_default(transaction, keyboard)?;
+            }
+            InputEnvelopePayload::CommittedText(committed) => {
+                self.collect_committed_text_default(transaction, committed)?;
+            }
+            InputEnvelopePayload::Composition(CompositionEvent::Update(update)) => {
+                if self.editing.has_owner(&transaction.target) {
+                    self.editing
+                        .stage_preedit(
+                            &transaction.target,
+                            update.generation().clone(),
+                            update.preedit(),
+                            update.range(),
+                        )
+                        .map_err(|_| crate::TraceRoutedIntegrityFailure::CommitInvariantFailure)?;
+                    self.tree.mark_runtime_text_projection_dirty();
+                    transaction.invalidate(
+                        runenui_core::WidgetInvalidation::LAYOUT
+                            | runenui_core::WidgetInvalidation::PAINT
+                            | runenui_core::WidgetInvalidation::SEMANTICS,
+                    );
+                }
+            }
+            InputEnvelopePayload::Composition(_) => {}
         }
+        Ok(())
+    }
+
+    fn collect_committed_text_default(
+        &mut self,
+        transaction: &mut crate::runtime::RoutedTransaction<Action>,
+        committed: &CommittedTextEvent,
+    ) -> Result<(), crate::TraceRoutedIntegrityFailure> {
+        let target = transaction.target.clone();
+        if !self.editing.has_owner(&target) {
+            return Ok(());
+        }
+        transaction.consume_mandatory_default_command()?;
+        let composition = self
+            .composition
+            .owner()
+            .filter(|owner| *owner == &target)
+            .and_then(|_| self.composition.generation().cloned());
+        let namespace = self.tree.runtime_namespace();
+        let prepared = self
+            .editing
+            .prepare_insert(&namespace, &target, committed.text(), composition)
+            .map_err(|_| crate::TraceRoutedIntegrityFailure::CommitInvariantFailure)?;
+        if let Some(generation) = self.composition.generation().cloned()
+            && self.editing.clear_preedit(&target, &generation)
+        {
+            self.tree.mark_runtime_text_projection_dirty();
+        }
+        transaction
+            .default_outputs
+            .push(crate::runtime::CollectedRoutedOutput::EditAction {
+                action: prepared.action,
+                origin: prepared.origin,
+                causal_parent: transaction.parent,
+                current_target: target,
+            });
         Ok(())
     }
 
@@ -1452,9 +1559,18 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         if event.phase() != KeyboardPhase::Down {
             return Ok(());
         }
+        let editable = self.editing.has_owner(&target);
         let command = match event.logical_key() {
             LogicalKey::Tab if event.modifiers().shift() => Some(SemanticCommand::FocusPrevious),
             LogicalKey::Tab => Some(SemanticCommand::FocusNext),
+            LogicalKey::ArrowLeft if editable && event.modifiers().shift() => {
+                Some(SemanticCommand::ExtendBackward)
+            }
+            LogicalKey::ArrowRight if editable && event.modifiers().shift() => {
+                Some(SemanticCommand::ExtendForward)
+            }
+            LogicalKey::ArrowLeft if editable => Some(SemanticCommand::MoveBackward),
+            LogicalKey::ArrowRight if editable => Some(SemanticCommand::MoveForward),
             LogicalKey::ArrowLeft => Some(SemanticCommand::FocusLeft),
             LogicalKey::ArrowRight => Some(SemanticCommand::FocusRight),
             LogicalKey::ArrowUp => Some(SemanticCommand::FocusUp),
@@ -1533,5 +1649,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 .tree
                 .activation_probe(target)
                 .is_ok_and(|activation| activation.enabled() && activation.is_actionable())
+    }
+}
+
+fn payload_composition_generation(payload: &InputEnvelopePayload) -> &CompositionGeneration {
+    match payload {
+        InputEnvelopePayload::Composition(event) => event.generation(),
+        InputEnvelopePayload::Keyboard(_) | InputEnvelopePayload::CommittedText(_) => {
+            unreachable!("caller proved composition payload")
+        }
     }
 }

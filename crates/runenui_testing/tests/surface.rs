@@ -1,6 +1,6 @@
 use runenui_core::{
-    ElementId, FontFamilyName, GenericFontFamily, IntoEffects, NoHostProtocol, UiApp, View,
-    children, column, text,
+    ElementId, FontFamilyName, GenericFontFamily, NoHostProtocol, UiApp, View, children, column,
+    text,
 };
 use runenui_runtime::LogicalSize;
 use runenui_testing::{
@@ -26,7 +26,7 @@ impl UiApp for SurfaceApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

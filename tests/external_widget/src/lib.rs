@@ -84,6 +84,38 @@
 //! use runenui_runtime::MountedNodeRef;
 //! let _ = MountedNodeRef::activate;
 //! ```
+//!
+//! Transactional edit identities and queue origins remain runtime-issued and private:
+//!
+//! ```compile_fail
+//! use runenui_core::EditRequestId;
+//! let _ = EditRequestId { request: 1 };
+//! ```
+//!
+//! ```compile_fail
+//! use runenui_runtime::ApplicationActionOrigin;
+//! let _ = ApplicationActionOrigin::Ordinary;
+//! ```
+//!
+//! Immediate edit resolutions cannot be smuggled through initial effects:
+//!
+//! ```compile_fail
+//! use runenui_core::{EditResolution, NoHostProtocol, UiApp, UpdateOutput};
+//! struct Invalid;
+//! impl UiApp for Invalid {
+//!     type State = ();
+//!     type Action = ();
+//!     type HostProtocol = NoHostProtocol;
+//!     fn root(_: &Self::State) -> impl runenui_core::View<Self::Action> {
+//!         runenui_core::Element::new(runenui_core::Container)
+//!     }
+//!     fn initial_effects(_: &Self::State) -> impl runenui_core::IntoEffects<Self::Action, Self::HostProtocol> {
+//!         fn resolution() -> EditResolution { todo!() }
+//!         UpdateOutput::edit(resolution())
+//!     }
+//!     fn update(_: &mut Self::State, _: Self::Action) {}
+//! }
+//! ```
 
 #![forbid(unsafe_code)]
 
@@ -96,9 +128,9 @@ use std::{
 use runenui_core::{
     Brush, ChildBearingWidget, Color, CompositionCancelReason, CompositionEvent, Container,
     EdgeInsets, Element, EventContext, EventPhase, FlexContainerStyle, FlexDirection,
-    FocusEventKind, FocusReason, HitContribution, HitContributionContext, IntoEffects,
-    ItemAlignment, KeyboardPhase, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength,
-    LogicalRect, LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
+    FocusEventKind, FocusReason, HitContribution, HitContributionContext, ItemAlignment,
+    KeyboardPhase, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength, LogicalRect,
+    LogicalSize, NoHostProtocol, PaintContribution, PaintContributionContext,
     PaintContributionItem, SceneShape, SemanticAction, SemanticContribution,
     SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState,
     StrokeStyle, SubscriptionSet, UiApp, UiEvent, View, Views, Widget, WidgetActivation,
@@ -963,7 +995,7 @@ impl UiApp for LayoutConformanceApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             LayoutAction::Activate => state.activations += 1,
         }
@@ -984,7 +1016,7 @@ impl UiApp for ConformanceApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             ParentAction::Child(ChildAction::Pulse) => *state += 1,
             ParentAction::Reset => *state = 0,

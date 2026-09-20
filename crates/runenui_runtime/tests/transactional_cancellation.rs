@@ -56,7 +56,7 @@ impl UiApp for App {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         match action {
             Action::CancelThenStart => Effects::cancel(WorkFamily::LocalTask, key()).then(
                 Effects::keyed_local_task(key(), PollProbe(Rc::clone(&state.first))),

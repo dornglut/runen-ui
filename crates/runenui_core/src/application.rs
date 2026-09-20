@@ -1,6 +1,6 @@
 //! Host-neutral application and host-request protocol.
 
-use crate::{IntoEffects, SubscriptionSet, View};
+use crate::{IntoEffects, IntoUpdateOutput, SubscriptionSet, View};
 
 /// The sole application contract consumed by the `RunenUI` runtime.
 pub trait UiApp {
@@ -17,7 +17,7 @@ pub trait UiApp {
     fn update(
         state: &mut Self::State,
         action: Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol>;
+    ) -> impl IntoUpdateOutput<Self::Action, Self::HostProtocol>;
 
     fn subscriptions(_state: &Self::State, _subscriptions: &mut SubscriptionSet<Self::Action>) {}
 

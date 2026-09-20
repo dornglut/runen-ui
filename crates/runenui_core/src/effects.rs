@@ -5,7 +5,7 @@
 use core::future::Future;
 
 use crate::{
-    HostProtocol, TimerEffect, WorkFamily, WorkKey,
+    HostProtocol, IntoUpdateOutput, TimerEffect, WorkFamily, WorkKey,
     work::{LocalTaskEffect, SendTaskEffect, SendTaskStartFailure},
 };
 
@@ -161,7 +161,7 @@ impl<Action, Protocol: HostProtocol> Default for Effects<Action, Protocol> {
 }
 
 /// Conversion into one ordered effect batch.
-pub trait IntoEffects<Action, Protocol: HostProtocol> {
+pub trait IntoEffects<Action, Protocol: HostProtocol>: IntoUpdateOutput<Action, Protocol> {
     fn into_effects(self) -> Effects<Action, Protocol>;
 }
 

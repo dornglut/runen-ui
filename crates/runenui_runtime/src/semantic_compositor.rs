@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{
     __runtime::transform_rect_aabb, ElementId, Focusability, LogicalRect, LogicalTransform,
-    MountedNodeId, SemanticAction, SemanticBounds, SemanticContribution, SemanticItem, SemanticKey,
-    SemanticNodeContribution, SemanticReference, SemanticRelationshipKind, SemanticRole,
-    SemanticText, SemanticValue, WidgetActivation,
+    MountedNodeId, SemanticAction, SemanticBounds, SemanticContribution, SemanticEditable,
+    SemanticItem, SemanticKey, SemanticNodeContribution, SemanticReference,
+    SemanticRelationshipKind, SemanticRole, SemanticText, SemanticValue, WidgetActivation,
 };
 
 use crate::SemanticNodeId;
@@ -19,6 +19,9 @@ pub struct SemanticOwnerFacts {
     pub bounds: LogicalRect,
     pub activation: WidgetActivation,
     pub focusability: Focusability,
+    pub editable_source: Option<Arc<str>>,
+    pub editable_selection: Option<runenui_core::TextSelection>,
+    pub editable_caret_offsets: Option<Arc<[usize]>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -38,10 +41,12 @@ pub struct SemanticCandidateNode {
     pub value: Option<SemanticValue>,
     pub disabled: bool,
     pub inert: bool,
+    pub read_only: bool,
     pub supported_actions: Vec<SemanticAction>,
     pub relationships: Vec<ResolvedSemanticRelationship>,
     pub bounds: LogicalRect,
     pub text: Option<SemanticText>,
+    pub editable: Option<SemanticEditable>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -257,6 +262,13 @@ impl<'a> SemanticCompositor<'a> {
                 .push(SemanticCompositionDiagnostic::UnrepresentableBounds { source: id });
             return Vec::new();
         };
+        let editable = authored.editable().cloned().and_then(|editable| {
+            let source = owner.editable_source.as_deref()?;
+            let selection = owner.editable_selection?;
+            let offsets = owner.editable_caret_offsets.clone()?;
+            editable.__runtime_with_projection(source, selection, offsets)
+        });
+        let authored_editable = authored.editable().is_some();
         let node = SemanticCandidateNode {
             id: id.clone(),
             parent: parent.cloned(),
@@ -264,13 +276,25 @@ impl<'a> SemanticCompositor<'a> {
             role: authored.role(),
             name: authored.name().map(str::to_owned),
             description: authored.description().map(str::to_owned),
-            value: authored.value().cloned(),
+            value: if authored_editable {
+                editable
+                    .as_ref()
+                    .and_then(SemanticEditable::value)
+                    .map(|value| SemanticValue::Text(value.to_owned()))
+            } else {
+                authored.value().cloned()
+            },
             disabled: authored.state().disabled() || !owner.activation.enabled(),
             inert: authored.state().inert(),
-            supported_actions: supported_actions(authored, owner),
+            read_only: authored.state().read_only()
+                || authored.editable().is_some_and(SemanticEditable::read_only),
+            supported_actions: supported_actions(authored, owner, editable.as_ref()),
             relationships: Vec::new(),
             bounds,
-            text: authored.text().cloned(),
+            text: (!authored_editable)
+                .then(|| authored.text().cloned())
+                .flatten(),
+            editable,
         };
         if self
             .visible_ids
@@ -410,7 +434,11 @@ fn contains_semantic_node(items: &[SemanticItem]) -> bool {
 fn supported_actions(
     authored: &SemanticNodeContribution,
     owner: &SemanticOwnerFacts,
+    published_editable: Option<&SemanticEditable>,
 ) -> Vec<SemanticAction> {
+    let editable = published_editable;
+    let read_only =
+        editable.is_some_and(SemanticEditable::read_only) || authored.state().read_only();
     authored
         .actions()
         .iter()
@@ -427,6 +455,18 @@ fn supported_actions(
                     }
             }
             SemanticAction::OpenMenu | SemanticAction::OpenContextMenu => true,
+            SemanticAction::MoveBackward
+            | SemanticAction::MoveForward
+            | SemanticAction::ExtendBackward
+            | SemanticAction::ExtendForward
+            | SemanticAction::SelectAll
+            | SemanticAction::SetSelection => editable.is_some(),
+            SemanticAction::DeleteBackward
+            | SemanticAction::DeleteForward
+            | SemanticAction::Undo
+            | SemanticAction::Redo
+            | SemanticAction::ReplaceSelection => editable.is_some() && !read_only,
+            // Clipboard commands remain unadvertised until M10D supplies service authority.
             _ => false,
         })
         .cloned()
@@ -525,6 +565,9 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: control,
@@ -539,6 +582,9 @@ mod tests {
                 bounds: rect(10.0, 20.0, 50.0, 40.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: leaf,
@@ -551,6 +597,9 @@ mod tests {
                 bounds: rect(12.0, 22.0, 10.0, 5.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
         ];
 
@@ -596,6 +645,9 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: child,
@@ -608,6 +660,9 @@ mod tests {
                 bounds: rect(1.0, 1.0, 5.0, 5.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
         ];
 
@@ -652,6 +707,9 @@ mod tests {
             bounds: rect(10.0, 20.0, 30.0, 40.0),
             activation: WidgetActivation::disabled(),
             focusability: Focusability::Focusable,
+            editable_source: None,
+            editable_selection: None,
+            editable_caret_offsets: None,
         }];
 
         let candidate = compose(&owners, Some(&owner), None);
@@ -689,6 +747,9 @@ mod tests {
             bounds: rect(4.0, 10.0, 8.0, 12.0),
             activation: WidgetActivation::NONE,
             focusability: Focusability::NotFocusable,
+            editable_source: None,
+            editable_selection: None,
+            editable_caret_offsets: None,
         }];
         let transform = LogicalTransform::try_new(0.0, 2.0, -1.0, 0.0, 10.0, 10.0)
             .unwrap_or_else(|_| unreachable!("test affine is finite"));
@@ -736,6 +797,9 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: source_owner.clone(),
@@ -749,6 +813,9 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::Focusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: target_owner,
@@ -761,6 +828,9 @@ mod tests {
                 bounds: rect(30.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::Focusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
         ];
 
@@ -817,6 +887,9 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: source_owner,
@@ -830,6 +903,9 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: target_owner,
@@ -843,6 +919,9 @@ mod tests {
                 bounds: rect(30.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
         ];
 
@@ -889,6 +968,9 @@ mod tests {
                 bounds: rect(0.0, 0.0, 100.0, 100.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: source_owner,
@@ -899,6 +981,9 @@ mod tests {
                 bounds: rect(0.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: first_target,
@@ -911,6 +996,9 @@ mod tests {
                 bounds: rect(30.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
             SemanticOwnerFacts {
                 id: second_target,
@@ -923,6 +1011,9 @@ mod tests {
                 bounds: rect(60.0, 0.0, 20.0, 20.0),
                 activation: WidgetActivation::NONE,
                 focusability: Focusability::NotFocusable,
+                editable_source: None,
+                editable_selection: None,
+                editable_caret_offsets: None,
             },
         ];
 

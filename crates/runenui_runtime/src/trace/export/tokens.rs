@@ -226,6 +226,7 @@ pub(super) const fn action_category(value: TraceActionCategory) -> &'static str 
         TraceActionCategory::DirectSubmission => "direct_submission",
         TraceActionCategory::RoutedCommand => "routed_command",
         TraceActionCategory::ApplicationEffect => "application_effect",
+        TraceActionCategory::TransactionalEdit => "transactional_edit",
     }
 }
 

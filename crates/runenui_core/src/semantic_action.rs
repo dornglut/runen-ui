@@ -1,6 +1,31 @@
 //! Surface-scoped semantic action request and runtime-issued target metadata.
 
-use crate::{SemanticAction, SemanticKey, SemanticNodeId, SurfaceId};
+use core::fmt;
+use std::sync::Arc;
+
+use crate::{SemanticAction, SemanticKey, SemanticNodeId, SurfaceId, TextSelection};
+
+/// Checked neutral payload for semantic editing actions.
+#[non_exhaustive]
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub enum SemanticActionData {
+    Selection(TextSelection),
+    ReplacementText(Arc<str>),
+}
+
+impl fmt::Debug for SemanticActionData {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Selection(selection) => {
+                formatter.debug_tuple("Selection").field(selection).finish()
+            }
+            Self::ReplacementText(text) => formatter
+                .debug_struct("ReplacementText")
+                .field("bytes", &text.len())
+                .finish(),
+        }
+    }
+}
 
 /// Exact public request to execute one semantic action against one current surface.
 ///
@@ -12,6 +37,7 @@ pub struct SemanticActionRequest {
     surface: SurfaceId,
     target: SemanticNodeId,
     action: SemanticAction,
+    data: Option<SemanticActionData>,
 }
 
 impl SemanticActionRequest {
@@ -21,6 +47,35 @@ impl SemanticActionRequest {
             surface,
             target,
             action,
+            data: None,
+        }
+    }
+
+    /// Creates one exact selection-setting request.
+    pub const fn set_selection(
+        surface: SurfaceId,
+        target: SemanticNodeId,
+        selection: TextSelection,
+    ) -> Self {
+        Self {
+            surface,
+            target,
+            action: SemanticAction::SetSelection,
+            data: Some(SemanticActionData::Selection(selection)),
+        }
+    }
+
+    /// Creates one replacement request without exposing payload text through debug output.
+    pub fn replace_selection(
+        surface: SurfaceId,
+        target: SemanticNodeId,
+        text: impl Into<Arc<str>>,
+    ) -> Self {
+        Self {
+            surface,
+            target,
+            action: SemanticAction::ReplaceSelection,
+            data: Some(SemanticActionData::ReplacementText(text.into())),
         }
     }
 
@@ -42,10 +97,22 @@ impl SemanticActionRequest {
         &self.action
     }
 
+    #[must_use]
+    pub const fn data(&self) -> Option<&SemanticActionData> {
+        self.data.as_ref()
+    }
+
     /// Recovers the exact owned request fields.
     #[must_use]
-    pub fn into_parts(self) -> (SurfaceId, SemanticNodeId, SemanticAction) {
-        (self.surface, self.target, self.action)
+    pub fn into_parts(
+        self,
+    ) -> (
+        SurfaceId,
+        SemanticNodeId,
+        SemanticAction,
+        Option<SemanticActionData>,
+    ) {
+        (self.surface, self.target, self.action, self.data)
     }
 }
 
@@ -61,6 +128,7 @@ pub struct SemanticActionTarget {
     target: SemanticNodeId,
     key: SemanticKey,
     action: SemanticAction,
+    data: Option<SemanticActionData>,
 }
 
 impl SemanticActionTarget {
@@ -72,12 +140,14 @@ impl SemanticActionTarget {
         target: SemanticNodeId,
         key: SemanticKey,
         action: SemanticAction,
+        data: Option<SemanticActionData>,
     ) -> Self {
         Self {
             surface,
             target,
             key,
             action,
+            data,
         }
     }
 
@@ -107,6 +177,11 @@ impl SemanticActionTarget {
     pub const fn action(&self) -> &SemanticAction {
         &self.action
     }
+
+    #[must_use]
+    pub const fn data(&self) -> Option<&SemanticActionData> {
+        self.data.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -134,6 +209,7 @@ mod tests {
             node.clone(),
             key.clone(),
             SemanticAction::Activate,
+            None,
         );
         assert_eq!(target.surface_id(), &surface);
         assert_eq!(target.target(), &node);

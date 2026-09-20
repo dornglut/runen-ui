@@ -1,5 +1,5 @@
 use runenui_core::{
-    Brush, Color, DropShadow, Element, IntoEffects, LogicalLength, LogicalRect, NoHostProtocol,
+    Brush, Color, DropShadow, Element, LogicalLength, LogicalRect, NoHostProtocol,
     PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive, SceneLayer,
     SceneOpacity, SceneShape, StyleEnvironment, UiApp, View, Widget, WidgetMeasure,
     WidgetMeasureInput, column,
@@ -78,7 +78,7 @@ impl UiApp for GroupedApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -103,7 +103,7 @@ impl UiApp for UngroupedApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -138,7 +138,7 @@ impl UiApp for SiblingGroupsApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
@@ -158,7 +158,7 @@ impl UiApp for EmptyGroupApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

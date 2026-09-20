@@ -15,7 +15,7 @@ mod replay;
 mod sink;
 mod store;
 
-pub use action_context::{TraceActionCategory, TraceActionIdentity};
+pub use action_context::{TraceActionCategory, TraceActionIdentity, TraceEditIdentity};
 pub(crate) use admission::{MandatoryTracePlan, TraceReservation};
 pub use automation_context::{TraceAutomationContext, TraceAutomationRecordRole};
 pub(crate) use construction::TraceRecordDraft;
@@ -31,13 +31,13 @@ pub use input_context::{
     TraceTextMetrics,
 };
 pub use model::{
-    TraceConfig, TraceFocusBoundaryOutcome, TracePayloadCapture, TracePointerCaptureRequestKind,
-    TracePointerCaptureRequestRejection, TracePointerRejection, TraceRecord, TraceRecordKind,
-    TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
-    TraceSequence, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
-    TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
-    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner,
-    TraceWorkStartRefusal,
+    TraceConfig, TraceEditResolutionOutcome, TraceFocusBoundaryOutcome, TracePayloadCapture,
+    TracePointerCaptureRequestKind, TracePointerCaptureRequestRejection, TracePointerRejection,
+    TraceRecord, TraceRecordKind, TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure,
+    TraceSemanticActionRejection, TraceSequence, TraceSinkDeliveryOutcome, TraceSpaceCleanupReason,
+    TraceSurfaceIngressKind, TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget,
+    TraceTargetRejection, TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkIdentity,
+    TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub(crate) use motion::StagedMotionTraceFact;
 pub use motion::{

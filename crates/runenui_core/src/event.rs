@@ -152,6 +152,20 @@ pub enum SemanticCommand {
     RequestFocus,
     RestoreFocus,
     LogicalFocusScroll(FocusDirection),
+    MoveBackward,
+    MoveForward,
+    ExtendBackward,
+    ExtendForward,
+    SelectAll,
+    DeleteBackward,
+    DeleteForward,
+    Undo,
+    Redo,
+    Copy,
+    Cut,
+    Paste,
+    SetSelection,
+    ReplaceSelection,
 }
 
 /// Immutable event delivered to one mounted widget callback.

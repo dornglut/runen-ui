@@ -1,6 +1,6 @@
 use runenui_core::{
-    Focusability, SemanticAction, SemanticActionRequest, SemanticActionTarget, SemanticCommand,
-    SemanticKey, SemanticNodeId, SurfaceId,
+    Focusability, SemanticAction, SemanticActionData, SemanticActionRequest, SemanticActionTarget,
+    SemanticCommand, SemanticKey, SemanticNodeId, SurfaceId, TextSensitivity,
 };
 
 use crate::{
@@ -21,6 +21,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             request.surface_id(),
             request.target(),
             request.action(),
+            request.data(),
             None,
         ) {
             Ok(authority) => authority,
@@ -29,9 +30,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let owner = authority.owner().clone();
         let key = authority.key().clone();
         let rejected_request = request.clone();
-        let (surface, target, action) = request.into_parts();
+        let (surface, target, action, data) = request.into_parts();
         let command = semantic_command(&action);
-        let semantic_target = SemanticActionTarget::__runtime_new(surface, target, key, action);
+        let semantic_target =
+            SemanticActionTarget::__runtime_new(surface, target, key, action, data);
         match self.submit_semantic_action_command(&owner, command, semantic_target) {
             Ok(submission) => Ok(submission),
             Err(kind) => {
@@ -53,6 +55,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             target.surface_id(),
             target.target(),
             target.action(),
+            target.data(),
             Some(target.semantic_key()),
         )
         .map(|authority| authority.owner().clone())
@@ -63,6 +66,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         surface: &SurfaceId,
         target: &SemanticNodeId,
         action: &SemanticAction,
+        data: Option<&SemanticActionData>,
         expected_key: Option<&SemanticKey>,
     ) -> Result<SemanticActionAuthority, SubmitSemanticActionErrorKind> {
         match self.status {
@@ -96,12 +100,64 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .snapshot()
             .node(target)
             .ok_or(SubmitSemanticActionErrorKind::TargetNotInSurface)?;
+        let data_matches = matches!(
+            (action, data),
+            (
+                SemanticAction::SetSelection,
+                Some(SemanticActionData::Selection(_))
+            ) | (
+                SemanticAction::ReplaceSelection,
+                Some(SemanticActionData::ReplacementText(_))
+            )
+        ) || (!matches!(
+            action,
+            SemanticAction::SetSelection | SemanticAction::ReplaceSelection
+        ) && data.is_none());
+        if !data_matches {
+            return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
+        }
         if !node.supported_actions().contains(action) {
             return Err(SubmitSemanticActionErrorKind::UnsupportedAction);
         }
         let state = node.state();
         if state.disabled() || state.inert() {
             return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+        }
+        if let Some(editable) = node.editable() {
+            if let Some(SemanticActionData::Selection(selection)) = data {
+                let offsets = editable
+                    .caret_offsets()
+                    .ok_or(SubmitSemanticActionErrorKind::UnavailableAction)?;
+                if selection.anchor().snapshot() != editable.snapshot()
+                    || selection.active().snapshot() != editable.snapshot()
+                    || offsets
+                        .binary_search(&selection.anchor().byte_offset())
+                        .is_err()
+                    || offsets
+                        .binary_search(&selection.active().byte_offset())
+                        .is_err()
+                {
+                    return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+                }
+            }
+            let modifying = matches!(
+                action,
+                SemanticAction::DeleteBackward
+                    | SemanticAction::DeleteForward
+                    | SemanticAction::Undo
+                    | SemanticAction::Redo
+                    | SemanticAction::Cut
+                    | SemanticAction::Paste
+                    | SemanticAction::ReplaceSelection
+            );
+            if modifying && (state.read_only() || editable.read_only()) {
+                return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+            }
+            if editable.sensitivity() == TextSensitivity::Secret
+                && matches!(action, SemanticAction::Copy | SemanticAction::Cut)
+            {
+                return Err(SubmitSemanticActionErrorKind::UnavailableAction);
+            }
         }
         if !semantic_action_is_ready(&authority, action) {
             return Err(SubmitSemanticActionErrorKind::UnavailableAction);
@@ -128,6 +184,20 @@ fn semantic_action_is_ready(authority: &SemanticActionAuthority, action: &Semant
                 }
         }
         SemanticAction::OpenMenu | SemanticAction::OpenContextMenu => true,
+        SemanticAction::MoveBackward
+        | SemanticAction::MoveForward
+        | SemanticAction::ExtendBackward
+        | SemanticAction::ExtendForward
+        | SemanticAction::SelectAll
+        | SemanticAction::DeleteBackward
+        | SemanticAction::DeleteForward
+        | SemanticAction::Undo
+        | SemanticAction::Redo
+        | SemanticAction::Copy
+        | SemanticAction::Cut
+        | SemanticAction::Paste
+        | SemanticAction::SetSelection
+        | SemanticAction::ReplaceSelection => authority.key() == &SemanticKey::PRIMARY,
         _ => false,
     }
 }
@@ -138,6 +208,20 @@ fn semantic_command(action: &SemanticAction) -> SemanticCommand {
         SemanticAction::RequestFocus => SemanticCommand::RequestFocus,
         SemanticAction::OpenMenu => SemanticCommand::OpenMenu,
         SemanticAction::OpenContextMenu => SemanticCommand::OpenContextMenu,
+        SemanticAction::MoveBackward => SemanticCommand::MoveBackward,
+        SemanticAction::MoveForward => SemanticCommand::MoveForward,
+        SemanticAction::ExtendBackward => SemanticCommand::ExtendBackward,
+        SemanticAction::ExtendForward => SemanticCommand::ExtendForward,
+        SemanticAction::SelectAll => SemanticCommand::SelectAll,
+        SemanticAction::DeleteBackward => SemanticCommand::DeleteBackward,
+        SemanticAction::DeleteForward => SemanticCommand::DeleteForward,
+        SemanticAction::Undo => SemanticCommand::Undo,
+        SemanticAction::Redo => SemanticCommand::Redo,
+        SemanticAction::Copy => SemanticCommand::Copy,
+        SemanticAction::Cut => SemanticCommand::Cut,
+        SemanticAction::Paste => SemanticCommand::Paste,
+        SemanticAction::SetSelection => SemanticCommand::SetSelection,
+        SemanticAction::ReplaceSelection => SemanticCommand::ReplaceSelection,
         _ => unreachable!("M5 semantic action vocabulary is closed by accepted authority"),
     }
 }

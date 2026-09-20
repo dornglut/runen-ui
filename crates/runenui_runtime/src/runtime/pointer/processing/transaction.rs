@@ -809,6 +809,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         for output in &mut transaction.default_outputs {
             match output {
                 CollectedRoutedOutput::Action { causal_parent, .. }
+                | CollectedRoutedOutput::EditAction { causal_parent, .. }
                 | CollectedRoutedOutput::Command { causal_parent, .. } => {
                     *causal_parent = transaction.parent;
                 }

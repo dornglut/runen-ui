@@ -1,9 +1,8 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::{
-    Element, IntoEffects, NoHostProtocol, SemanticAction, SemanticContribution,
-    SemanticContributionContext, SemanticNodeContribution, SemanticRole, SemanticState, UiApp,
-    View, Widget, WidgetActivation,
+    Element, NoHostProtocol, SemanticAction, SemanticContribution, SemanticContributionContext,
+    SemanticNodeContribution, SemanticRole, SemanticState, UiApp, View, Widget, WidgetActivation,
 };
 use runenui_runtime::PumpBudget;
 use runenui_testing::{SemanticQuery, SettleBudget, SettleOutcome, TestHarness};
@@ -68,7 +67,7 @@ impl UiApp for StateApp {
     fn update(
         _: &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 

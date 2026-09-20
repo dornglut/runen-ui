@@ -1,8 +1,14 @@
 use core::num::NonZeroUsize;
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 
-use runenui_core::{__runtime::RuntimeNamespace, MonotonicInstant, SurfaceId, SurfaceInputContext};
-use runenui_text::{TextLayoutError, TextSystem};
+use runenui_core::{
+    __runtime::RuntimeNamespace, MonotonicInstant, SurfaceId, SurfaceInputContext,
+    TextDocumentSnapshot,
+};
+use runenui_text::{TextCaretMap, TextCaretMapError, TextLayoutError, TextSystem};
 
 use crate::{
     LogicalPoint, LogicalRect, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
@@ -131,6 +137,8 @@ pub(in crate::runtime) struct RedrawRevisionAdmission {
 pub(in crate::runtime) struct SurfacePublicationCandidateInputs<'a> {
     interaction: &'a SurfaceInteractionProjection,
     focused_owner: Option<&'a MountedNodeId>,
+    editing: &'a HashMap<MountedNodeId, crate::editing::EditingSemanticProjection>,
+    preedits: &'a HashMap<MountedNodeId, Arc<runenui_text::TextPreeditProjection>>,
     admission: SurfacePublicationAdmission,
     instant: MonotonicInstant,
 }
@@ -139,12 +147,16 @@ impl<'a> SurfacePublicationCandidateInputs<'a> {
     pub(in crate::runtime) const fn new(
         interaction: &'a SurfaceInteractionProjection,
         focused_owner: Option<&'a MountedNodeId>,
+        editing: &'a HashMap<MountedNodeId, crate::editing::EditingSemanticProjection>,
+        preedits: &'a HashMap<MountedNodeId, Arc<runenui_text::TextPreeditProjection>>,
         admission: SurfacePublicationAdmission,
         instant: MonotonicInstant,
     ) -> Self {
         Self {
             interaction,
             focused_owner,
+            editing,
+            preedits,
             admission,
             instant,
         }
@@ -256,6 +268,18 @@ pub(crate) struct SurfacePublicationState {
 }
 
 impl SurfacePublicationState {
+    pub(in crate::runtime) fn text_caret_map(
+        &self,
+        owner: &MountedNodeId,
+        snapshot: TextDocumentSnapshot,
+        source: &str,
+    ) -> Result<TextCaretMap, TextCaretMapError> {
+        self.cache
+            .as_ref()
+            .ok_or(TextCaretMapError::MissingLayout)?
+            .text_caret_map(owner, snapshot, source)
+    }
+
     pub(crate) fn new(
         runtime_namespace: RuntimeNamespace,
         retained_snapshot_limit: NonZeroUsize,
@@ -307,6 +331,8 @@ impl SurfacePublicationState {
         let SurfacePublicationCandidateInputs {
             interaction,
             focused_owner,
+            editing,
+            preedits,
             admission,
             instant,
         } = candidate;
@@ -316,11 +342,12 @@ impl SurfacePublicationState {
             context,
             interaction,
             text_system,
+            preedits,
             self.cache.as_ref(),
             &self.motion_store,
             instant,
         )?;
-        let semantic_candidate = planned.semantic_candidate(focused_owner)?;
+        let semantic_candidate = planned.semantic_candidate(focused_owner, editing)?;
         let semantic_plan: SemanticPublicationPlan = self
             .semantic_publication
             .plan(&self.surface_id, semantic_candidate)

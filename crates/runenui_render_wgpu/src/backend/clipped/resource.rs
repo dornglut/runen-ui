@@ -1586,7 +1586,7 @@ fn encode_resource_shaped_run_item(
 mod tests {
     use runenui_core::{
         Element, ImageDescriptor, ImageIntrinsicSize, ImageMapping, ImagePaintDescriptor,
-        IntoEffects, LogicalLength, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
+        LogicalLength, LogicalRect, LogicalSize, NoHostProtocol, PaintContribution,
         PaintContributionContext, PaintContributionItem, PaintPrimitive, ResourceKind, ResourceRef,
         SceneOpacity, StyleEnvironment, UiApp, View, Widget, WidgetMeasure, WidgetMeasureInput,
     };
@@ -1641,7 +1641,7 @@ mod tests {
         fn update(
             (): &mut Self::State,
             (): Self::Action,
-        ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+        ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         }
     }
 

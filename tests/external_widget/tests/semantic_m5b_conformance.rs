@@ -1,7 +1,7 @@
 use runenui_core::{
-    Element, IntoEffects, NoHostProtocol, SemanticAction, SemanticContribution,
-    SemanticContributionContext, SemanticKey, SemanticNodeContribution, SemanticRole,
-    SemanticState, StyleEnvironment, UiApp, View, Widget, WidgetActivation, column,
+    Element, NoHostProtocol, SemanticAction, SemanticContribution, SemanticContributionContext,
+    SemanticKey, SemanticNodeContribution, SemanticRole, SemanticState, StyleEnvironment, UiApp,
+    View, Widget, WidgetActivation, column,
 };
 use runenui_runtime::{
     AppRuntime, LayoutConstraints, SemanticNode, SemanticSnapshot, SurfaceBuildContext,
@@ -98,7 +98,7 @@ impl UiApp for SupportApp {
     fn update(
         (): &mut Self::State,
         (): Self::Action,
-    ) -> impl IntoEffects<Self::Action, Self::HostProtocol> {
+    ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
     }
 }
 
