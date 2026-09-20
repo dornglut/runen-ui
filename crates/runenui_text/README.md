@@ -47,6 +47,6 @@ The accepted M8D closure proves that this is one correlated production path: ava
 
 `runenui_render_wgpu` consumes those exact already-shaped font/glyph bindings and owns only disposable per-glyph SDF/MSDF generation, quality classes, atlas pages, GPU textures, reconstruction, and cache lifetime. It does not shape, line-break, discover fonts, or alter logical identity. Supported outline glyphs have no hidden alpha-raster fallback; unsupported intrinsic COLR/SVG/bitmap breadth diagnoses explicitly.
 
-Transactional document editing, mounted editing sessions, semantic edit actions, clipboard/IME execution and other framework services remain later M10 slices; intrinsic color-glyph rendering remains separate future breadth rather than changing the accepted outline-text authority.
+Accepted M10C transactional editing consumes these immutable maps through public core contracts and runtime-owned sessions; `runenui_text` still owns no document, session, transaction, undo history, semantic action, or edit queue. Clipboard/native IME execution and other framework services remain later M10 slices; intrinsic color-glyph rendering remains separate future breadth rather than changing the accepted outline-text authority.
 
 See ADR 0009, ADR 0018, `docs/conformance/m8-conformance-matrix.md`, and `docs/conformance/m10-conformance-matrix.md` for the durable architecture and permanent proof obligations.

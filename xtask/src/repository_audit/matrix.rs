@@ -755,7 +755,8 @@ mod tests {
     }
 
     #[test]
-    fn m10_inventory_accepts_text_mapping_and_blocks_every_successor_slice() -> Result<(), String> {
+    fn m10_inventory_accepts_text_mapping_and_editing_and_blocks_later_slices() -> Result<(), String>
+    {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .ok_or_else(|| "xtask has no repository root".to_owned())?;
@@ -765,8 +766,18 @@ mod tests {
         let (rows, parse_schema_errors) = parse_rows(&contents, M10_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
         assert_eq!(rows.len(), 28);
-        let (text_mapping, successors): (Vec<_>, Vec<_>) =
-            rows.iter().partition(|row| row.cells[5] == "M10B");
+        let (accepted, successors): (Vec<_>, Vec<_>) = rows
+            .iter()
+            .partition(|row| matches!(row.cells[5].as_str(), "M10B" | "M10C"));
+        assert_eq!(accepted.len(), 13);
+        let text_mapping = accepted
+            .iter()
+            .filter(|row| row.cells[5] == "M10B")
+            .collect::<Vec<_>>();
+        let transactional_editing = accepted
+            .iter()
+            .filter(|row| row.cells[5] == "M10C")
+            .collect::<Vec<_>>();
         assert_eq!(text_mapping.len(), 4);
         assert!(
             text_mapping
@@ -774,8 +785,14 @@ mod tests {
                 .all(|row| row.cells[0].starts_with("M10TEXT-")
                     && row.cells[6] == "owner-accepted")
         );
-        assert_eq!(successors.len(), 24);
-        assert!(successors.iter().all(|row| row.cells[6] == "blocked"));
+        assert_eq!(transactional_editing.len(), 9);
+        assert!(transactional_editing.iter().all(|row| {
+            row.cells[0].starts_with("M10EDIT-") && row.cells[6] == "owner-accepted"
+        }));
+        assert_eq!(successors.len(), 15);
+        assert!(successors.iter().all(|row| {
+            matches!(row.cells[5].as_str(), "M10D" | "M10E" | "M10F") && row.cells[6] == "blocked"
+        }));
         assert!(rows.iter().all(|row| row.cells[7] == "Required"));
         assert_eq!(
             rows.iter()
