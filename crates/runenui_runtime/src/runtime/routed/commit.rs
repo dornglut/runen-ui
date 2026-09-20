@@ -103,9 +103,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         .map_err(|_| ())
     }
 
+    #[allow(clippy::too_many_lines)] // Stages all mutation before the single routed commit boundary.
     fn commit_routed_plan(
         &mut self,
-        transaction: RoutedTransaction<Action>,
+        mut transaction: RoutedTransaction<Action>,
         plan: PlannedApplicationTransaction<Action, Protocol>,
         pointer_style_changed: bool,
     ) -> Result<(), ()> {
@@ -146,6 +147,84 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.append_cancellation_envelopes(&invalidated, &cancellation_lineage);
         self.append_planned_outputs(mounted_outputs, transaction.parent, transaction.instant)
             .map_err(|_| ())?;
+        let mut pointer_selection_changed = false;
+        if let Some(selection) = transaction.pointer_selection_update.take() {
+            pointer_selection_changed = self
+                .editing
+                .set_selection(&selection.owner, selection.selection, &selection.caret_map)
+                .map_err(|_| ())?;
+            if pointer_selection_changed {
+                transaction.invalidation |= WidgetInvalidation::SEMANTICS;
+                self.tree.mark_runtime_semantic_product_dirty();
+            }
+        }
+        if let Some(transition) = transaction.pointer_selection_transition {
+            let pointer_id = transaction
+                .pointer_id
+                .unwrap_or_else(|| unreachable!("text-selection transitions are pointer-owned"));
+            let (kind, owner) = (
+                match transition {
+                    super::transaction::PointerSelectionTransition::Started => {
+                        TraceRecordKind::PointerTextSelectionStarted { pointer_id }
+                    }
+                    super::transaction::PointerSelectionTransition::Updated => {
+                        TraceRecordKind::PointerTextSelectionUpdated { pointer_id }
+                    }
+                    super::transaction::PointerSelectionTransition::Ended => {
+                        TraceRecordKind::PointerTextSelectionEnded { pointer_id }
+                    }
+                    super::transaction::PointerSelectionTransition::Cancelled => {
+                        TraceRecordKind::PointerTextSelectionCancelled { pointer_id }
+                    }
+                },
+                transaction.target.clone(),
+            );
+            transaction.parent = self.trace.record_event(
+                kind,
+                transaction.sequence,
+                transaction.parent,
+                Some(self.tree.trace_target(&owner)),
+                transaction.instant,
+                &transaction.target,
+                Some(&owner),
+                transaction.origin,
+            );
+        }
+        let mut scroll_changed = false;
+        for update in &transaction.scroll_updates {
+            scroll_changed |= self.tree.commit_scroll_offset(&update.owner, update.offset);
+        }
+        for consumption in &transaction.scroll_consumptions {
+            transaction.parent = self.trace.record_event(
+                TraceRecordKind::LogicalScrollOwnerApplied {
+                    evaluation_order: consumption.evaluation_order,
+                    offered: consumption.offered,
+                    consumed: consumption.consumed,
+                    remainder: consumption.remainder,
+                    offset: consumption.offset,
+                    maximum: consumption.maximum,
+                },
+                transaction.sequence,
+                transaction.parent,
+                Some(self.tree.trace_target(&consumption.owner)),
+                transaction.instant,
+                &transaction.target,
+                Some(&consumption.owner),
+                transaction.origin,
+            );
+        }
+        if let Some(remainder) = transaction.scroll_chain_remainder {
+            transaction.parent = self.trace.record_event(
+                TraceRecordKind::LogicalScrollChainCompleted { remainder },
+                transaction.sequence,
+                transaction.parent,
+                Some(transaction.target_trace.clone()),
+                transaction.instant,
+                &transaction.target,
+                Some(&transaction.target),
+                transaction.origin,
+            );
+        }
         let committed = self.trace.record_event(
             TraceRecordKind::RoutedEventCommitted,
             transaction.sequence,
@@ -160,7 +239,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         self.finish_routed_invalidation(
             transaction.invalidation,
             focus_changed,
-            pointer_style_changed,
+            pointer_style_changed || scroll_changed || pointer_selection_changed,
             committed,
             transaction.instant,
         );
@@ -171,7 +250,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         &mut self,
         invalidation: WidgetInvalidation,
         focus_changed: bool,
-        pointer_style_changed: bool,
+        pointer_presentation_changed: bool,
         causal_parent: Option<crate::TraceSequence>,
         instant: MonotonicInstant,
     ) {
@@ -182,7 +261,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             self.tree.mark_runtime_semantic_product_dirty();
         }
         if focus_changed
-            || pointer_style_changed
+            || pointer_presentation_changed
             || crate::mounted::publication_is_dirty(invalidation)
         {
             self.request_redraw(causal_parent, instant);

@@ -151,7 +151,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         ));
     }
 
-    const fn reject_logical_surface_command(
+    fn reject_logical_surface_command(
         kind: SubmitSurfaceCommandErrorKind,
         context: SurfaceInputContext,
         point: LogicalPoint,
@@ -169,7 +169,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         )
     }
 
-    const fn reject_resolved_surface_command(
+    fn reject_resolved_surface_command(
         kind: SubmitSurfaceCommandErrorKind,
         context: SurfaceInputContext,
         target: MountedNodeId,

@@ -15,12 +15,13 @@ use runenui_core::{
     FrameworkServiceRequest, FrameworkServiceResponse, FrameworkServiceResponseKind,
     HitContribution, HitContributionContext, KeyLocation, KeyModifiers, KeyboardCompositionState,
     KeyboardEvent, KeyboardPhase, LogicalKey, LogicalPoint, LogicalRect, NoHostProtocol,
-    PhysicalKey, PointerDeviceKind, PointerEvent, PointerId, PointerPhase, SemanticAction,
-    SemanticCommand, SemanticContribution, SemanticContributionContext, SemanticEditable,
-    SemanticNodeContribution, SemanticRole, SemanticState, StyleEnvironment, SurfaceInputContext,
-    TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot, TextPosition,
-    TextRange, TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, Widget,
-    WidgetActivation, WidgetEventOutput, WidgetMeasure, WidgetMeasureInput, WidgetTextInput,
+    PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
+    PointerPhase, SemanticAction, SemanticCommand, SemanticContribution,
+    SemanticContributionContext, SemanticEditable, SemanticNodeContribution, SemanticRole,
+    SemanticState, StyleEnvironment, SurfaceInputContext, TextAffinity, TextDocumentId,
+    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextRange, TextSelection,
+    TextSensitivity, UiApp, UiEvent, UpdateOutput, Widget, WidgetActivation, WidgetEventOutput,
+    WidgetMeasure, WidgetMeasureInput, WidgetTextInput,
 };
 use runenui_runtime::{
     AppRuntime, FontFamilyName, GenericFontFamily, LogicalSize, PumpBudget, RuntimeConfig,
@@ -1100,6 +1101,187 @@ fn committed_focus_derives_ime_candidate_geometry_and_text_cursor_services() {
         }
     ));
     complete_pending_state_services(&mut runtime);
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal() {
+    let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
+    let mut runtime = AppRuntime::<App>::mount_with_config(mounted().state().clone(), config);
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    let surface_context = publish_editor(&mut runtime);
+    let pointer_id =
+        PointerId::new(31).unwrap_or_else(|| unreachable!("fixture pointer is non-zero"));
+    let point = LogicalPoint::new(1.0, 18.0)
+        .unwrap_or_else(|_| unreachable!("pointer fixture position is finite"));
+    let pointer = PointerEvent::new(
+        pointer_id,
+        PointerDeviceKind::Mouse,
+        PointerPhase::Down,
+        point,
+        surface_context.clone(),
+    )
+    .with_buttons(PointerButtons::new([PointerButton::Primary]))
+    .with_changed_button(PointerButton::Primary);
+    runtime
+        .submit_pointer(pointer)
+        .unwrap_or_else(|error| panic!("displayed editable hit is submitted: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerTextSelectionStarted { pointer_id } if pointer_id.get() == 31
+    )));
+    assert!(
+        runtime
+            .trace()
+            .export_jsonl()
+            .contains("\"name\":\"pointer_text_selection_started\"")
+    );
+
+    let drag_point = LogicalPoint::new(24.0, 18.0)
+        .unwrap_or_else(|_| unreachable!("pointer drag position is finite"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Move,
+                drag_point,
+                surface_context,
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|error| panic!("displayed pointer drag is submitted: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerTextSelectionUpdated { pointer_id: id } if *id == pointer_id
+    )));
+    assert!(
+        runtime
+            .trace()
+            .export_jsonl()
+            .contains("\"name\":\"pointer_text_selection_updated\"")
+    );
+
+    let environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &environment,
+            LogicalSize::try_new(200.0, 40.0)
+                .unwrap_or_else(|_| unreachable!("test surface is finite")),
+        ))
+        .unwrap_or_else(|error| panic!("pointer selection republishes: {error:?}"));
+    let selection = publication
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .first()
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("editable semantic state remains published"))
+        .selection();
+    assert_eq!(selection.anchor().byte_offset(), 0);
+    assert_eq!(selection.active().byte_offset(), 2);
+    assert!(!selection.is_collapsed());
+
+    runtime
+        .submit_action(Action::RemoveEditor)
+        .unwrap_or_else(|_| unreachable!("owner removal is queued"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(
+        runtime
+            .trace()
+            .records()
+            .filter(|record| matches!(
+                record.kind(),
+                TraceRecordKind::PointerTextSelectionCancelled { pointer_id }
+                    if pointer_id.get() == 31
+            ))
+            .count(),
+        1
+    );
+    assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn touch_text_selection_wins_only_after_its_validated_threshold_and_uses_displayed_map() {
+    let config = RuntimeConfig::default().with_trace_config(TraceConfig::new(512));
+    let mut runtime = AppRuntime::<App>::mount_with_config(mounted().state().clone(), config);
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    let surface_context = publish_editor(&mut runtime);
+    let pointer_id =
+        PointerId::new(32).unwrap_or_else(|| unreachable!("fixture pointer is non-zero"));
+    let down_point = LogicalPoint::new(1.0, 18.0)
+        .unwrap_or_else(|_| unreachable!("touch fixture position is finite"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Touch,
+                PointerPhase::Down,
+                down_point,
+                surface_context.clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|error| panic!("touch selection down is admitted: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert!(!runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::TouchGestureWon {
+            pointer_id: id,
+            ..
+        } if *id == pointer_id
+    )));
+
+    let move_point = LogicalPoint::new(24.0, 18.0)
+        .unwrap_or_else(|_| unreachable!("touch fixture position is finite"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Touch,
+                PointerPhase::Move,
+                move_point,
+                surface_context,
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary])),
+        )
+        .unwrap_or_else(|error| panic!("touch selection threshold move is admitted: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::TouchGestureWon {
+            pointer_id: id,
+            gesture: runenui_runtime::TraceTouchGestureKind::TextSelection,
+        } if *id == pointer_id
+    )));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerTextSelectionStarted { pointer_id: id } if *id == pointer_id
+    )));
+    let environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &environment,
+            LogicalSize::try_new(200.0, 40.0)
+                .unwrap_or_else(|_| unreachable!("test surface is finite")),
+        ))
+        .unwrap_or_else(|error| panic!("touch selection republishes: {error:?}"));
+    let selection = publication
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .first()
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("editable semantic state remains published"))
+        .selection();
+    assert!(!selection.is_collapsed());
     assert_eq!(runtime.status(), RuntimeStatus::Running);
 }
 

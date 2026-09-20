@@ -1,13 +1,15 @@
 use runenui_core::{
-    __runtime::PointerCaptureRequest, CommandOrigin, HostProtocol, LogicalScrollCommand,
-    MonotonicInstant, PointerButton, PointerId, PointerPhase, SemanticCommand, UiEvent,
+    __runtime::PointerCaptureRequest, CommandOrigin, HostProtocol, LogicalDelta,
+    LogicalScrollCommand, MonotonicInstant, PointerButton, PointerDeviceKind, PointerId,
+    PointerPhase, SemanticCommand, TextDisplayPosition, TextSelection, UiEvent,
 };
 
+use super::super::{PointerTextSelectionGesture, TouchGestureState};
 use super::{
     PointerBoundaryNotification, PointerBoundaryPlan, PointerCaptureNotification,
     PointerCapturePlan, PointerCaptureTrace, PointerCommitPlan, PointerGeometry,
     PointerIntegrityCleanupPlan, PointerStreamState, PointerWork, PreparedPointer,
-    StreamCommitKind, pointer_default_is_cancelable,
+    StreamCommitKind, TouchGestureKind, TouchGestureWinner, pointer_default_is_cancelable,
 };
 use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceContext, TraceDeliveryOutcome, TraceEventContext,
@@ -30,6 +32,10 @@ struct PendingPointerCommit {
     geometry: PointerGeometry,
     routed_target: Option<MountedNodeId>,
     kind: StreamCommitKind,
+    selection_cancelled: bool,
+    selection_tracking: bool,
+    touch_cancelled: Option<TouchGestureKind>,
+    touch_proposal: Option<TouchGestureWinner>,
 }
 
 struct PendingUnroutedPointerCommit {
@@ -40,6 +46,8 @@ struct PendingUnroutedPointerCommit {
     kind: StreamCommitKind,
     geometry: PointerGeometry,
     previous_capture_owner: Option<MountedNodeId>,
+    selection_cancelled: bool,
+    touch_cancelled: Option<TouchGestureKind>,
 }
 
 struct PointerCaptureResolutionFacts<'a> {
@@ -61,6 +69,7 @@ struct RejectedPointerCaptureRequest {
 }
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    #[allow(clippy::too_many_lines)] // This is the pointer transaction's ordered commit pipeline.
     pub(super) fn dispatch_prepared_pointer(
         &mut self,
         prepared: PreparedPointer,
@@ -74,6 +83,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             boundary_plan,
             routed_target,
             parent,
+            selection_cancelled,
+            selection_tracking,
+            touch_cancelled,
+            touch_proposal,
         } = prepared;
         let kind = Self::stream_commit_kind(&work.event, is_new);
         let boundary_targets = boundary_plan.delivered_targets();
@@ -94,6 +107,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 kind,
                 geometry,
                 previous_capture_owner,
+                selection_cancelled,
+                touch_cancelled,
             });
         };
         let Some(pointer_commit_trace) =
@@ -106,7 +121,11 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             anchor,
             CommandOrigin::__runtime_pointer(),
             work.instant,
-            pointer_event_context(routed_target.is_some(), work.event.phase()),
+            pointer_event_context(
+                routed_target.is_some(),
+                work.event.phase(),
+                work.event.device_kind(),
+            ),
             parent,
             TraceReservation::continuation(),
         );
@@ -125,6 +144,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             .pointer_cursor_target
             .clone_from(&geometry.physical_target);
         transaction.pointer_surface_context = Some(work.event.surface_context().clone());
+        transaction.pointer_id = Some(work.event.pointer_id());
         transaction.drag_drop_offer = work.event.drag_drop();
         if let Err((failure, current)) =
             self.invoke_pointer_boundary_events(&mut transaction, &work, &geometry, &boundary_plan)
@@ -151,10 +171,15 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 geometry,
                 routed_target,
                 kind,
+                selection_cancelled,
+                selection_tracking,
+                touch_cancelled,
+                touch_proposal,
             },
         )
     }
 
+    #[allow(clippy::too_many_lines)] // Default ordering and integrity settlement must remain explicit.
     fn finish_pointer_transaction(
         &mut self,
         mut transaction: RoutedTransaction<Action>,
@@ -164,14 +189,26 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             && pending.work.event.changed_button() == Some(PointerButton::Primary))
         .then(|| PointerIntegrityCleanupPlan::from_primary_release(&pending.stream))
         .flatten();
-        self.apply_pointer_capture_requests(
+        let explicit_capture_request_applied = self.apply_pointer_capture_requests(
             &pending.work,
             &pending.geometry,
             &mut pending.stream,
             &mut transaction,
         );
+        if pending.selection_cancelled {
+            transaction.pointer_selection_transition =
+                Some(crate::runtime::routed::PointerSelectionTransition::Cancelled);
+        }
+        let text_focus = self.apply_pointer_text_selection_default(
+            &pending.work.event,
+            &pending.geometry,
+            &mut pending.stream,
+            &mut transaction,
+            pending.selection_tracking && !pending.selection_cancelled,
+            explicit_capture_request_applied,
+        );
         let default_outputs_before = transaction.default_outputs.len();
-        let focus = match self.apply_pointer_defaults(
+        let pointer_focus = match self.apply_pointer_defaults(
             &pending.work.event,
             &pending.geometry.physical_path,
             pending.geometry.physical_target.as_ref(),
@@ -186,6 +223,30 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 return self.pointer_runtime_outcome();
             }
         };
+        let touch_focus = match self.apply_touch_gesture_default(
+            &pending.work.event,
+            &pending.geometry,
+            &mut pending.stream,
+            &mut transaction,
+            pending.touch_proposal.as_ref(),
+            pending.touch_cancelled,
+        ) {
+            Ok(focus) => focus,
+            Err(failure) => {
+                let current = transaction.failure_current_target.clone();
+                self.poison_transaction(&transaction, failure, current.as_ref());
+                return self.pointer_runtime_outcome();
+            }
+        };
+        let focus = pointer_focus.or(touch_focus).or(text_focus);
+        if pending.kind == StreamCommitKind::Close
+            && pending.stream.text_selection().is_some()
+            && transaction.pointer_selection_transition.is_none()
+        {
+            pending.stream.set_text_selection(None);
+            transaction.pointer_selection_transition =
+                Some(crate::runtime::routed::PointerSelectionTransition::Cancelled);
+        }
         let default_applied = match pending.work.event.phase() {
             PointerPhase::Move | PointerPhase::Cancel => true,
             PointerPhase::Down => {
@@ -382,7 +443,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             geometry.physical_target.as_ref(),
             &geometry.physical_path,
             None,
-            pointer_default_is_cancelable(work.event.phase()),
+            pointer_default_is_cancelable(work.event.phase(), work.event.device_kind()),
         );
         self.invoke_routed_callbacks(transaction, &event, Some(dispatch))?;
         if let Some(drop_event) = work.event.drag_drop() {
@@ -428,6 +489,500 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
     }
 
+    fn apply_pointer_text_selection_default(
+        &mut self,
+        event: &runenui_core::PointerEvent,
+        geometry: &PointerGeometry,
+        stream: &mut PointerStreamState,
+        transaction: &mut RoutedTransaction<Action>,
+        tracking: bool,
+        explicit_capture_request_applied: bool,
+    ) -> Option<MountedNodeId> {
+        if !tracking {
+            return None;
+        }
+        let touch_selection_winner = event.device_kind() == PointerDeviceKind::Touch
+            && stream
+                .touch_gesture()
+                .and_then(TouchGestureState::winner)
+                .is_some_and(|winner| winner.kind() == TouchGestureKind::TextSelection);
+        if event.device_kind() == PointerDeviceKind::Touch && !touch_selection_winner {
+            return None;
+        }
+        match event.phase() {
+            PointerPhase::Down => self.start_pointer_text_selection(
+                event,
+                geometry,
+                stream,
+                transaction,
+                explicit_capture_request_applied,
+            ),
+            PointerPhase::Move | PointerPhase::Up => {
+                self.update_pointer_text_selection(event, stream, transaction)
+            }
+            PointerPhase::Cancel => {
+                if stream.text_selection().is_some() {
+                    cancel_pointer_selection(stream, transaction);
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn start_pointer_text_selection(
+        &mut self,
+        event: &runenui_core::PointerEvent,
+        geometry: &PointerGeometry,
+        stream: &mut PointerStreamState,
+        transaction: &mut RoutedTransaction<Action>,
+        explicit_capture_request_applied: bool,
+    ) -> Option<MountedNodeId> {
+        if event.device_kind() == PointerDeviceKind::Touch
+            || transaction.default_prevented
+            || event.changed_button() != Some(PointerButton::Primary)
+            || stream.text_selection().is_some()
+        {
+            return None;
+        }
+        let owner = geometry.physical_target.as_ref()?;
+        if stream
+            .capture_owner()
+            .is_some_and(|capture_owner| capture_owner != owner)
+            || (explicit_capture_request_applied && stream.capture_owner().is_none())
+            || !self.editing.has_owner(owner)
+            || self.tree.target_status(owner) != TargetStatus::Live
+        {
+            return None;
+        }
+        let (caret_map, TextDisplayPosition::Document(anchor)) = self
+            .surface_publication
+            .text_map_position_at(event.surface_context(), owner, event.position())?
+        else {
+            return None;
+        };
+        let selection = TextSelection::collapsed(anchor);
+        if self
+            .editing
+            .validate_selection(owner, selection, &caret_map)
+            .is_err()
+        {
+            return None;
+        }
+        if stream.capture_owner().is_none() {
+            stream.set_capture_owner(Some(owner.clone()));
+        }
+        stream.set_text_selection(Some(PointerTextSelectionGesture::new(
+            owner.clone(),
+            anchor,
+        )));
+        transaction.pointer_selection_update =
+            Some(crate::runtime::routed::PointerSelectionUpdate {
+                owner: owner.clone(),
+                selection,
+                caret_map,
+            });
+        transaction.pointer_selection_transition =
+            Some(crate::runtime::routed::PointerSelectionTransition::Started);
+        self.validate_focus(owner).then(|| owner.clone())
+    }
+
+    fn update_pointer_text_selection(
+        &self,
+        event: &runenui_core::PointerEvent,
+        stream: &mut PointerStreamState,
+        transaction: &mut RoutedTransaction<Action>,
+    ) -> Option<MountedNodeId> {
+        let gesture = stream.text_selection().cloned()?;
+        let ends_gesture = event.phase() == PointerPhase::Up
+            && event.changed_button() == Some(PointerButton::Primary);
+        let owns_selection = stream.capture_owner() == Some(gesture.owner())
+            || (event.device_kind() == PointerDeviceKind::Touch
+                && stream
+                    .touch_gesture()
+                    .and_then(TouchGestureState::winner)
+                    .is_some_and(|winner| winner.owner() == Some(gesture.owner())));
+        if !owns_selection
+            || self.tree.target_status(gesture.owner()) != TargetStatus::Live
+            || !self.editing.has_owner(gesture.owner())
+        {
+            cancel_pointer_selection(stream, transaction);
+            return None;
+        }
+        if !transaction.default_prevented
+            && let Some((caret_map, TextDisplayPosition::Document(active))) = self
+                .surface_publication
+                .text_map_position_at(event.surface_context(), gesture.owner(), event.position())
+        {
+            match TextSelection::new(gesture.anchor(), active) {
+                Ok(selection)
+                    if self
+                        .editing
+                        .validate_selection(gesture.owner(), selection, &caret_map)
+                        .is_ok() =>
+                {
+                    transaction.pointer_selection_update =
+                        Some(crate::runtime::routed::PointerSelectionUpdate {
+                            owner: gesture.owner().clone(),
+                            selection,
+                            caret_map,
+                        });
+                }
+                Ok(_) => {
+                    cancel_pointer_selection(stream, transaction);
+                    return None;
+                }
+                Err(_) => {}
+            }
+        }
+        if ends_gesture {
+            stream.set_text_selection(None);
+            transaction.pointer_selection_transition =
+                Some(crate::runtime::routed::PointerSelectionTransition::Ended);
+        } else if event.phase() == PointerPhase::Move
+            && transaction.pointer_selection_update.is_some()
+        {
+            transaction.pointer_selection_transition =
+                Some(crate::runtime::routed::PointerSelectionTransition::Updated);
+        }
+        None
+    }
+
+    #[allow(clippy::too_many_lines)] // Provisional, winning, and terminal touch phases form one state machine.
+    fn apply_touch_gesture_default(
+        &mut self,
+        event: &runenui_core::PointerEvent,
+        geometry: &PointerGeometry,
+        stream: &mut PointerStreamState,
+        transaction: &mut RoutedTransaction<Action>,
+        proposal: Option<&TouchGestureWinner>,
+        touch_cancelled: Option<TouchGestureKind>,
+    ) -> Result<Option<MountedNodeId>, TraceRoutedIntegrityFailure> {
+        if event.device_kind() != PointerDeviceKind::Touch {
+            return Ok(None);
+        }
+        if let Some(gesture) = touch_cancelled {
+            self.record_touch_gesture_fact(
+                transaction,
+                TraceRecordKind::TouchGestureCancelled {
+                    pointer_id: event.pointer_id(),
+                    gesture: gesture.trace_kind(),
+                },
+                None,
+            );
+        }
+        match event.phase() {
+            PointerPhase::Down => {
+                if event.changed_button() != Some(PointerButton::Primary) {
+                    return Ok(None);
+                }
+                let state = self.start_touch_gesture(event, geometry);
+                let thresholds = self.touch_gesture_thresholds;
+                self.record_touch_gesture_fact(
+                    transaction,
+                    TraceRecordKind::TouchGestureProvisional {
+                        pointer_id: event.pointer_id(),
+                        thresholds,
+                        scroll_candidates: state.scroll_candidates().len(),
+                        selection_candidate: state.selection_candidate().is_some(),
+                    },
+                    state.origin_target(),
+                );
+                stream.set_touch_gesture(Some(state));
+                if let Some(owner) = stream.capture_owner().cloned() {
+                    let winner = TouchGestureWinner::new(TouchGestureKind::Capture, Some(owner));
+                    self.resolve_touch_gesture_winner(event, stream, transaction, winner)?;
+                }
+                Ok(None)
+            }
+            PointerPhase::Move => {
+                let Some(state) = stream.touch_gesture().cloned() else {
+                    return Ok(None);
+                };
+                if state.cancelled() {
+                    return Ok(None);
+                }
+                let existing_winner = state.winner().cloned();
+                if existing_winner.is_none() {
+                    let capture_winner = stream.capture_owner().cloned().map(|owner| {
+                        TouchGestureWinner::new(TouchGestureKind::Capture, Some(owner))
+                    });
+                    let next = capture_winner.or_else(|| proposal.cloned());
+                    if let Some(winner) = next
+                        && (winner.kind() == TouchGestureKind::Capture
+                            || !transaction.default_prevented)
+                    {
+                        let focus =
+                            self.resolve_touch_gesture_winner(event, stream, transaction, winner)?;
+                        if let Some(gesture) = stream.touch_gesture.as_mut() {
+                            gesture.advance(event.position());
+                        }
+                        return Ok(focus);
+                    }
+                } else if !transaction.default_prevented
+                    && existing_winner
+                        .as_ref()
+                        .is_some_and(|winner| winner.kind() == TouchGestureKind::Scroll)
+                    && let Some(delta) = touch_delta(state.last_position(), event.position())
+                {
+                    self.apply_logical_scroll_default(
+                        transaction,
+                        negate_delta(delta),
+                        event.surface_context().hit_test_generation(),
+                        event.surface_context().coordinate_revision(),
+                    );
+                }
+                if let Some(gesture) = stream.touch_gesture.as_mut() {
+                    gesture.advance(event.position());
+                }
+                Ok(None)
+            }
+            PointerPhase::Up => {
+                let Some(state) = stream.touch_gesture() else {
+                    return Ok(None);
+                };
+                if !state.cancelled() {
+                    let winner = state.winner().cloned().unwrap_or_else(|| {
+                        TouchGestureWinner::new(
+                            TouchGestureKind::Tap,
+                            state.origin_target().cloned(),
+                        )
+                    });
+                    if state.winner().is_none() {
+                        self.record_touch_winner_and_losers(
+                            event.pointer_id(),
+                            transaction,
+                            state,
+                            &winner,
+                        );
+                    }
+                    self.record_touch_gesture_fact(
+                        transaction,
+                        TraceRecordKind::TouchGestureCompleted {
+                            pointer_id: event.pointer_id(),
+                            gesture: winner.kind().trace_kind(),
+                        },
+                        winner.owner(),
+                    );
+                }
+                Ok(None)
+            }
+            PointerPhase::Cancel => {
+                let Some(state) = stream.touch_gesture().cloned() else {
+                    return Ok(None);
+                };
+                if !state.cancelled() {
+                    if let Some(winner) = state.winner() {
+                        self.record_touch_gesture_fact(
+                            transaction,
+                            TraceRecordKind::TouchGestureCancelled {
+                                pointer_id: event.pointer_id(),
+                                gesture: winner.kind().trace_kind(),
+                            },
+                            winner.owner(),
+                        );
+                    } else {
+                        self.record_touch_gesture_fact(
+                            transaction,
+                            TraceRecordKind::TouchGestureCancelled {
+                                pointer_id: event.pointer_id(),
+                                gesture: TouchGestureKind::Tap.trace_kind(),
+                            },
+                            state.origin_target(),
+                        );
+                        if !state.scroll_candidates().is_empty() {
+                            self.record_touch_gesture_fact(
+                                transaction,
+                                TraceRecordKind::TouchGestureCancelled {
+                                    pointer_id: event.pointer_id(),
+                                    gesture: TouchGestureKind::Scroll.trace_kind(),
+                                },
+                                state.scroll_candidates().last(),
+                            );
+                        }
+                        if let Some(candidate) = state.selection_candidate() {
+                            self.record_touch_gesture_fact(
+                                transaction,
+                                TraceRecordKind::TouchGestureCancelled {
+                                    pointer_id: event.pointer_id(),
+                                    gesture: TouchGestureKind::TextSelection.trace_kind(),
+                                },
+                                Some(candidate.owner()),
+                            );
+                        }
+                    }
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn resolve_touch_gesture_winner(
+        &mut self,
+        event: &runenui_core::PointerEvent,
+        stream: &mut PointerStreamState,
+        transaction: &mut RoutedTransaction<Action>,
+        mut winner: TouchGestureWinner,
+    ) -> Result<Option<MountedNodeId>, TraceRoutedIntegrityFailure> {
+        let Some(mut state) = stream.touch_gesture().cloned() else {
+            return Ok(None);
+        };
+        if state.cancelled() || state.winner().is_some() {
+            return Ok(None);
+        }
+        if winner.kind() == TouchGestureKind::TextSelection {
+            let Some(candidate) = state.selection_candidate() else {
+                return Ok(None);
+            };
+            let Some((caret_map, TextDisplayPosition::Document(active))) = self
+                .surface_publication
+                .text_map_position_at(event.surface_context(), candidate.owner(), event.position())
+            else {
+                winner =
+                    TouchGestureWinner::new(TouchGestureKind::Move, state.origin_target().cloned());
+                state.set_winner(winner.clone());
+                stream.set_pressed_owner(None);
+                self.record_touch_winner_and_losers(
+                    event.pointer_id(),
+                    transaction,
+                    &state,
+                    &winner,
+                );
+                stream.set_touch_gesture(Some(state));
+                return Ok(None);
+            };
+            let selection = TextSelection::new(candidate.anchor(), active)
+                .map_err(|_| TraceRoutedIntegrityFailure::SemanticDefaultFailure)?;
+            if self
+                .editing
+                .validate_selection(candidate.owner(), selection, &caret_map)
+                .is_err()
+            {
+                winner =
+                    TouchGestureWinner::new(TouchGestureKind::Move, state.origin_target().cloned());
+                state.set_winner(winner.clone());
+                stream.set_pressed_owner(None);
+                self.record_touch_winner_and_losers(
+                    event.pointer_id(),
+                    transaction,
+                    &state,
+                    &winner,
+                );
+                stream.set_touch_gesture(Some(state));
+                return Ok(None);
+            }
+            let owner = candidate.owner().clone();
+            stream.set_text_selection(Some(PointerTextSelectionGesture::new(
+                owner.clone(),
+                candidate.anchor(),
+            )));
+            transaction.pointer_selection_update =
+                Some(crate::runtime::routed::PointerSelectionUpdate {
+                    owner,
+                    selection,
+                    caret_map,
+                });
+            transaction.pointer_selection_transition =
+                Some(crate::runtime::routed::PointerSelectionTransition::Started);
+        }
+        state.set_winner(winner.clone());
+        if winner.kind() != TouchGestureKind::Capture {
+            stream.set_pressed_owner(None);
+        }
+        self.record_touch_winner_and_losers(event.pointer_id(), transaction, &state, &winner);
+        let focus = if winner.kind() == TouchGestureKind::TextSelection {
+            winner
+                .owner()
+                .filter(|owner| self.validate_focus(owner))
+                .cloned()
+        } else {
+            None
+        };
+        if winner.kind() == TouchGestureKind::Scroll
+            && !transaction.default_prevented
+            && let Some(total) = touch_delta(state.start_position(), event.position())
+        {
+            self.apply_logical_scroll_default(
+                transaction,
+                negate_delta(total),
+                event.surface_context().hit_test_generation(),
+                event.surface_context().coordinate_revision(),
+            );
+        }
+        state.advance(event.position());
+        stream.set_touch_gesture(Some(state));
+        Ok(focus)
+    }
+
+    fn record_touch_winner_and_losers(
+        &mut self,
+        pointer_id: PointerId,
+        transaction: &mut RoutedTransaction<Action>,
+        state: &TouchGestureState,
+        winner: &TouchGestureWinner,
+    ) {
+        if winner.kind() != TouchGestureKind::Tap {
+            self.record_touch_gesture_fact(
+                transaction,
+                TraceRecordKind::TouchGestureCancelled {
+                    pointer_id,
+                    gesture: TouchGestureKind::Tap.trace_kind(),
+                },
+                state.origin_target(),
+            );
+        }
+        if winner.kind() != TouchGestureKind::Scroll && !state.scroll_candidates().is_empty() {
+            self.record_touch_gesture_fact(
+                transaction,
+                TraceRecordKind::TouchGestureCancelled {
+                    pointer_id,
+                    gesture: TouchGestureKind::Scroll.trace_kind(),
+                },
+                state.scroll_candidates().last(),
+            );
+        }
+        if winner.kind() != TouchGestureKind::TextSelection
+            && let Some(candidate) = state.selection_candidate()
+        {
+            self.record_touch_gesture_fact(
+                transaction,
+                TraceRecordKind::TouchGestureCancelled {
+                    pointer_id,
+                    gesture: TouchGestureKind::TextSelection.trace_kind(),
+                },
+                Some(candidate.owner()),
+            );
+        }
+        self.record_touch_gesture_fact(
+            transaction,
+            TraceRecordKind::TouchGestureWon {
+                pointer_id,
+                gesture: winner.kind().trace_kind(),
+            },
+            winner.owner(),
+        );
+    }
+
+    fn record_touch_gesture_fact(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        kind: TraceRecordKind,
+        owner: Option<&MountedNodeId>,
+    ) {
+        let target = owner.cloned().unwrap_or_else(|| transaction.target.clone());
+        transaction.parent = self.trace.record_event(
+            kind,
+            transaction.sequence,
+            transaction.parent,
+            Some(self.tree.trace_target(&target)),
+            transaction.instant,
+            &transaction.target,
+            Some(&target),
+            transaction.origin,
+        );
+    }
+
     fn apply_pointer_defaults(
         &mut self,
         event: &runenui_core::PointerEvent,
@@ -455,7 +1010,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     return Ok(None);
                 }
                 stream.set_pressed_owner(Some(target.clone()));
-                stream.set_capture_owner(Some(target.clone()));
+                if event.device_kind() != PointerDeviceKind::Touch {
+                    stream.set_capture_owner(Some(target.clone()));
+                }
                 Ok(self.validate_focus(target).then(|| target.clone()))
             }
             PointerPhase::Move => {
@@ -494,6 +1051,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                         SemanticCommand::LogicalScroll(LogicalScrollCommand::__runtime_new(
                             event.pointer_id(),
                             event.scroll_delta(),
+                            event.surface_context(),
                         )),
                     )?;
                 }
@@ -530,7 +1088,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         geometry: &PointerGeometry,
         stream: &mut PointerStreamState,
         transaction: &mut RoutedTransaction<Action>,
-    ) {
+    ) -> bool {
+        let mut explicit_request_applied = false;
         for request in core::mem::take(&mut transaction.pointer_capture_requests) {
             let previous_owner = stream.capture_owner().cloned();
             let (requested_pointer, target, request_kind, requested_owner) = match request {
@@ -557,11 +1116,21 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 Some(TracePointerCaptureRequestRejection::TargetNotInTransaction)
             } else if self.tree.target_status(&target) != TargetStatus::Live {
                 Some(TracePointerCaptureRequestRejection::TargetUnavailable)
+            } else if work.event.device_kind() == PointerDeviceKind::Touch
+                && stream.touch_gesture().is_some_and(|gesture| {
+                    gesture
+                        .winner()
+                        .is_some_and(|winner| winner.owner() != Some(&target))
+                })
+            {
+                Some(TracePointerCaptureRequestRejection::TouchGestureCommitted)
             } else if request_kind == TracePointerCaptureRequestKind::Capture {
                 stream.set_capture_owner(Some(target.clone()));
+                explicit_request_applied = true;
                 None
             } else if stream.capture_owner().is_some_and(|owner| owner == &target) {
                 stream.set_capture_owner(None);
+                explicit_request_applied = true;
                 None
             } else {
                 Some(TracePointerCaptureRequestRejection::ReleaseNotOwner)
@@ -582,6 +1151,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 );
             }
         }
+        explicit_request_applied
     }
 
     fn record_pointer_capture_request_rejection(
@@ -945,6 +1515,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         )
     }
 
+    #[allow(clippy::too_many_lines)] // Handles close-only stream commits without creating a routed transaction.
     fn commit_unrouted_pointer(
         &mut self,
         pending: PendingUnroutedPointerCommit,
@@ -957,6 +1528,8 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             kind,
             geometry,
             previous_capture_owner,
+            selection_cancelled,
+            touch_cancelled,
         } = pending;
         let Some(pointer_commit_trace) =
             self.plan_unrouted_pointer_commit_trace(boundary_plan.notifications.len())
@@ -1019,6 +1592,29 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             None,
             None,
         );
+        if selection_cancelled {
+            parent = self.trace.record(
+                TraceRecordKind::PointerTextSelectionCancelled { pointer_id },
+                Some(work.sequence),
+                parent,
+                None,
+                None,
+                None,
+            );
+        }
+        if let Some(gesture) = touch_cancelled {
+            parent = self.trace.record(
+                TraceRecordKind::TouchGestureCancelled {
+                    pointer_id,
+                    gesture: gesture.trace_kind(),
+                },
+                Some(work.sequence),
+                parent,
+                None,
+                None,
+                None,
+            );
+        }
         let resolution = PointerCaptureResolutionFacts {
             sequence: work.sequence,
             instant: work.instant,
@@ -1108,15 +1704,40 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     }
 }
 
-const fn pointer_event_context(has_routed_target: bool, phase: PointerPhase) -> TraceEventContext {
+fn pointer_event_context(
+    has_routed_target: bool,
+    phase: PointerPhase,
+    device_kind: PointerDeviceKind,
+) -> TraceEventContext {
     if has_routed_target {
         TraceEventContext::new(
             TraceEventFamily::Pointer,
-            pointer_default_is_cancelable(phase),
+            pointer_default_is_cancelable(phase, device_kind),
         )
     } else {
         TraceEventContext::new(TraceEventFamily::PointerBoundary, false)
     }
+}
+
+fn touch_delta(
+    from: runenui_core::LogicalPoint,
+    to: runenui_core::LogicalPoint,
+) -> Option<LogicalDelta> {
+    LogicalDelta::new(to.x() - from.x(), to.y() - from.y()).ok()
+}
+
+fn cancel_pointer_selection<Action>(
+    stream: &mut PointerStreamState,
+    transaction: &mut RoutedTransaction<Action>,
+) {
+    stream.set_text_selection(None);
+    transaction.pointer_selection_transition =
+        Some(crate::runtime::routed::PointerSelectionTransition::Cancelled);
+}
+
+fn negate_delta(delta: LogicalDelta) -> LogicalDelta {
+    LogicalDelta::new(-delta.x(), -delta.y())
+        .unwrap_or_else(|_| unreachable!("finite pointer deltas remain finite when negated"))
 }
 
 const fn map_commit_error(_: super::PointerCommitError) {}

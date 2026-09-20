@@ -1,7 +1,7 @@
 use runenui_core::{
     __runtime::{FrameworkServiceBinding, FrameworkServiceEffect, MountedEffect},
-    ClipboardWritePurpose, FrameworkServiceRequest, HostProtocol, SemanticActionData,
-    SemanticCommand, TextSensitivity,
+    ClipboardWritePurpose, FocusDirection, FrameworkServiceRequest, HostProtocol, LogicalDelta,
+    OverflowPolicy, SemanticActionData, SemanticCommand, TextSensitivity,
 };
 
 use super::{
@@ -13,6 +13,7 @@ use crate::{TraceRecordKind, TraceRoutedIntegrityFailure, TraceSemanticActionRej
 const MAX_CLIPBOARD_BYTES: usize = 1_048_576;
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
+    #[allow(clippy::too_many_lines)] // Keeps semantic default suppression, rejection, and dispatch ordered.
     pub(super) fn apply_semantic_default(
         &mut self,
         transaction: &mut RoutedTransaction<Action>,
@@ -63,16 +64,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             }
             return Ok(());
         }
-        transaction.parent = self.trace.record_event(
-            TraceRecordKind::SemanticDefaultApplied { command },
-            transaction.sequence,
-            transaction.parent,
-            Some(transaction.target_trace.clone()),
-            transaction.instant,
-            &transaction.target,
-            Some(&transaction.target),
-            transaction.origin,
-        );
+        if let SemanticCommand::LogicalScroll(scroll) = command {
+            self.record_semantic_default_applied(transaction, command);
+            self.apply_logical_scroll_default(
+                transaction,
+                scroll.delta(),
+                scroll.hit_test_generation(),
+                scroll.coordinate_revision(),
+            );
+            return Ok(());
+        }
+        if let SemanticCommand::LogicalFocusScroll(direction) = command {
+            self.record_semantic_default_applied(transaction, command);
+            self.apply_logical_focus_scroll_default(transaction, direction);
+            return Ok(());
+        }
+        if command == SemanticCommand::ScrollIntoView {
+            self.record_semantic_default_applied(transaction, command);
+            self.apply_scroll_into_view_default(transaction);
+            return Ok(());
+        }
+        self.record_semantic_default_applied(transaction, command);
         if super::is_editing_command(command) {
             return self.apply_editing_default(transaction, command);
         }
@@ -85,6 +97,278 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return Err(TraceRoutedIntegrityFailure::SemanticDefaultFailure);
         }
         self.invoke_activation_default(transaction)
+    }
+
+    fn record_semantic_default_applied(
+        &mut self,
+        transaction: &mut RoutedTransaction<Action>,
+        command: SemanticCommand,
+    ) {
+        transaction.parent = self.trace.record_event(
+            TraceRecordKind::SemanticDefaultApplied { command },
+            transaction.sequence,
+            transaction.parent,
+            Some(transaction.target_trace.clone()),
+            transaction.instant,
+            &transaction.target,
+            Some(&transaction.target),
+            transaction.origin,
+        );
+    }
+
+    pub(in crate::runtime) fn apply_logical_scroll_default(
+        &self,
+        transaction: &mut RoutedTransaction<Action>,
+        offered: LogicalDelta,
+        hit_test_generation: u64,
+        coordinate_revision: u64,
+    ) {
+        let mut remainder = offered;
+        let mut evaluation_order = 0;
+        for owner in transaction.route.iter().rev() {
+            let Some(metrics) = self.surface_publication.displayed_scroll_metrics(
+                hit_test_generation,
+                coordinate_revision,
+                owner,
+            ) else {
+                continue;
+            };
+            let Some(node) = self.tree.node(owner) else {
+                continue;
+            };
+            let horizontal = metrics.overflow.horizontal() == OverflowPolicy::Scroll;
+            let vertical = metrics.overflow.vertical() == OverflowPolicy::Scroll;
+            let maximum = (
+                if horizontal {
+                    (metrics.content.width() - metrics.viewport.width()).max(0.0)
+                } else {
+                    0.0
+                },
+                if vertical {
+                    (metrics.content.height() - metrics.viewport.height()).max(0.0)
+                } else {
+                    0.0
+                },
+            );
+            let before = node.interaction.scroll_offset;
+            let after = (
+                if horizontal {
+                    bounded_scroll_offset(before.0, remainder.x(), maximum.0)
+                } else {
+                    0.0
+                },
+                if vertical {
+                    bounded_scroll_offset(before.1, remainder.y(), maximum.1)
+                } else {
+                    0.0
+                },
+            );
+            let consumed = LogicalDelta::new(after.0 - before.0, after.1 - before.1)
+                .unwrap_or_else(|_| unreachable!("bounded scroll offsets remain finite"));
+            let next_remainder =
+                LogicalDelta::new(remainder.x() - consumed.x(), remainder.y() - consumed.y())
+                    .unwrap_or_else(|_| {
+                        unreachable!("clamped scroll consumption cannot exceed offered delta")
+                    });
+            if after != before {
+                transaction
+                    .scroll_updates
+                    .push(super::transaction::ScrollOffsetUpdate {
+                        owner: owner.clone(),
+                        offset: after,
+                    });
+            }
+            transaction
+                .scroll_consumptions
+                .push(super::transaction::ScrollOwnerConsumption {
+                    owner: owner.clone(),
+                    evaluation_order,
+                    offered: remainder,
+                    consumed,
+                    remainder: next_remainder,
+                    offset: LogicalDelta::new(after.0, after.1)
+                        .unwrap_or_else(|_| unreachable!("bounded scroll offsets remain finite")),
+                    maximum: LogicalDelta::new(maximum.0, maximum.1)
+                        .unwrap_or_else(|_| unreachable!("scroll ranges remain finite")),
+                });
+            remainder = next_remainder;
+            evaluation_order += 1;
+        }
+        transaction.scroll_chain_remainder = Some(remainder);
+    }
+
+    fn apply_logical_focus_scroll_default(
+        &self,
+        transaction: &mut RoutedTransaction<Action>,
+        direction: FocusDirection,
+    ) {
+        let mut remainder = LogicalDelta::ZERO;
+        for owner in transaction.route.iter().rev() {
+            let Some(metrics) = self.surface_publication.current_scroll_metrics(owner) else {
+                continue;
+            };
+            let Some(node) = self.tree.node(owner) else {
+                continue;
+            };
+            let (horizontal, sign) = match direction {
+                FocusDirection::Left => (true, -1.0),
+                FocusDirection::Right => (true, 1.0),
+                FocusDirection::Up => (false, -1.0),
+                FocusDirection::Down => (false, 1.0),
+                _ => continue,
+            };
+            let policy = if horizontal {
+                metrics.overflow.horizontal()
+            } else {
+                metrics.overflow.vertical()
+            };
+            if policy != OverflowPolicy::Scroll {
+                continue;
+            }
+            let (viewport, before, maximum) = if horizontal {
+                (
+                    metrics.viewport.width(),
+                    node.interaction.scroll_offset.0,
+                    (metrics.content.width() - metrics.viewport.width()).max(0.0),
+                )
+            } else {
+                (
+                    metrics.viewport.height(),
+                    node.interaction.scroll_offset.1,
+                    (metrics.content.height() - metrics.viewport.height()).max(0.0),
+                )
+            };
+            if maximum == 0.0 {
+                continue;
+            }
+            let offered_scalar = sign * viewport;
+            let after = bounded_scroll_offset(before, offered_scalar, maximum);
+            if after.to_bits() == before.to_bits() {
+                continue;
+            }
+            let (offset, offered) = if horizontal {
+                (
+                    (after, node.interaction.scroll_offset.1),
+                    LogicalDelta::new(offered_scalar, 0.0)
+                        .unwrap_or_else(|_| unreachable!("viewport scroll delta is finite")),
+                )
+            } else {
+                (
+                    (node.interaction.scroll_offset.0, after),
+                    LogicalDelta::new(0.0, offered_scalar)
+                        .unwrap_or_else(|_| unreachable!("viewport scroll delta is finite")),
+                )
+            };
+            transaction
+                .scroll_updates
+                .push(super::transaction::ScrollOffsetUpdate {
+                    owner: owner.clone(),
+                    offset,
+                });
+            let consumed = if horizontal {
+                LogicalDelta::new(after - before, 0.0)
+                    .unwrap_or_else(|_| unreachable!("clamped focus scroll remains finite"))
+            } else {
+                LogicalDelta::new(0.0, after - before)
+                    .unwrap_or_else(|_| unreachable!("clamped focus scroll remains finite"))
+            };
+            remainder = LogicalDelta::new(offered.x() - consumed.x(), offered.y() - consumed.y())
+                .unwrap_or_else(|_| unreachable!("clamped focus remainder remains finite"));
+            let offset = LogicalDelta::new(offset.0, offset.1)
+                .unwrap_or_else(|_| unreachable!("bounded scroll offset remains finite"));
+            let maximum = if horizontal {
+                LogicalDelta::new(maximum, 0.0)
+            } else {
+                LogicalDelta::new(0.0, maximum)
+            }
+            .unwrap_or_else(|_| unreachable!("bounded focus scroll range remains finite"));
+            transaction
+                .scroll_consumptions
+                .push(super::transaction::ScrollOwnerConsumption {
+                    owner: owner.clone(),
+                    evaluation_order: 0,
+                    offered,
+                    consumed,
+                    remainder,
+                    offset,
+                    maximum,
+                });
+            break;
+        }
+        transaction.scroll_chain_remainder = Some(remainder);
+    }
+
+    fn apply_scroll_into_view_default(&self, transaction: &mut RoutedTransaction<Action>) {
+        let target = &transaction.target;
+        for owner in transaction.route.iter().rev() {
+            let Some(metrics) = self.surface_publication.current_scroll_metrics(owner) else {
+                continue;
+            };
+            let Some((bounds, viewport)) = self
+                .surface_publication
+                .scroll_target_geometry(target, owner)
+            else {
+                continue;
+            };
+            let Some(node) = self.tree.node(owner) else {
+                continue;
+            };
+            let before = node.interaction.scroll_offset;
+            let maximum = (
+                (metrics.content.width() - metrics.viewport.width()).max(0.0),
+                (metrics.content.height() - metrics.viewport.height()).max(0.0),
+            );
+            let after = (
+                if metrics.overflow.horizontal() == OverflowPolicy::Scroll {
+                    reveal_axis(
+                        bounds.x(),
+                        bounds.max_x(),
+                        before.0,
+                        viewport.width(),
+                        maximum.0,
+                    )
+                } else {
+                    before.0
+                },
+                if metrics.overflow.vertical() == OverflowPolicy::Scroll {
+                    reveal_axis(
+                        bounds.y(),
+                        bounds.max_y(),
+                        before.1,
+                        viewport.height(),
+                        maximum.1,
+                    )
+                } else {
+                    before.1
+                },
+            );
+            if after == before {
+                continue;
+            }
+            let delta = LogicalDelta::new(after.0 - before.0, after.1 - before.1)
+                .unwrap_or_else(|_| unreachable!("bounded scroll-to-target delta is finite"));
+            transaction
+                .scroll_updates
+                .push(super::transaction::ScrollOffsetUpdate {
+                    owner: owner.clone(),
+                    offset: after,
+                });
+            transaction
+                .scroll_consumptions
+                .push(super::transaction::ScrollOwnerConsumption {
+                    owner: owner.clone(),
+                    evaluation_order: 0,
+                    offered: delta,
+                    consumed: delta,
+                    remainder: LogicalDelta::ZERO,
+                    offset: LogicalDelta::new(after.0, after.1)
+                        .unwrap_or_else(|_| unreachable!("bounded scroll offset is finite")),
+                    maximum: LogicalDelta::new(maximum.0, maximum.1)
+                        .unwrap_or_else(|_| unreachable!("bounded scroll maximum is finite")),
+                });
+            transaction.scroll_chain_remainder = Some(LogicalDelta::ZERO);
+            break;
+        }
     }
 
     fn request_clipboard_default(
@@ -364,6 +648,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         Ok(())
     }
+}
+
+fn bounded_scroll_offset(current: f32, delta: f32, maximum: f32) -> f32 {
+    (current + delta).clamp(0.0, maximum)
+}
+
+fn reveal_axis(
+    target_start: f32,
+    target_end: f32,
+    current: f32,
+    viewport: f32,
+    maximum: f32,
+) -> f32 {
+    let next = if target_start < current {
+        target_start
+    } else if target_end > current + viewport {
+        target_end - viewport
+    } else {
+        current
+    };
+    next.clamp(0.0, maximum)
 }
 
 const fn clipboard_write_payload_is_bounded(text: &str) -> bool {

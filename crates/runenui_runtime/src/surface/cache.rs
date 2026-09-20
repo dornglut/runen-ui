@@ -6,7 +6,7 @@ use runenui_text::{
     TextPreeditProjection,
 };
 
-use crate::scene::{HitTestSceneContent, PaintScene};
+use crate::scene::{HitTestSceneContent, PaintScene, SceneClip};
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
 
 use super::{
@@ -153,29 +153,43 @@ pub(super) struct CachedLayoutFacts {
 }
 
 /// One runtime-owned node presentation fact in mounted-preorder alignment.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct PresentationNodeFacts {
     owner_to_surface: LogicalTransform,
     owner_bounds: LogicalRect,
+    visible_bounds: LogicalRect,
+    inherited_clips: Arc<[SceneClip]>,
 }
 
 impl PresentationNodeFacts {
     #[must_use]
-    pub(super) const fn new(owner_to_surface: LogicalTransform, owner_bounds: LogicalRect) -> Self {
+    pub(super) const fn new(
+        owner_to_surface: LogicalTransform,
+        owner_bounds: LogicalRect,
+        visible_bounds: LogicalRect,
+        inherited_clips: Arc<[SceneClip]>,
+    ) -> Self {
         Self {
             owner_to_surface,
             owner_bounds,
+            visible_bounds,
+            inherited_clips,
         }
     }
 
     #[must_use]
-    pub(super) const fn owner_to_surface(self) -> LogicalTransform {
+    pub(super) const fn owner_to_surface(&self) -> LogicalTransform {
         self.owner_to_surface
     }
 
     #[must_use]
-    pub(super) const fn owner_bounds(self) -> LogicalRect {
-        self.owner_bounds
+    pub(super) const fn visible_bounds(&self) -> LogicalRect {
+        self.visible_bounds
+    }
+
+    #[must_use]
+    pub(super) fn inherited_clips(&self) -> &[SceneClip] {
+        &self.inherited_clips
     }
 }
 
@@ -187,9 +201,8 @@ pub(super) struct CachedPresentationFacts {
 
 impl CachedPresentationFacts {
     #[must_use]
-    pub(super) fn node(&self, position: usize) -> PresentationNodeFacts {
-        *self
-            .nodes
+    pub(super) fn node(&self, position: usize) -> &PresentationNodeFacts {
+        self.nodes
             .get(position)
             .unwrap_or_else(|| unreachable!("presentation facts remain topology-aligned"))
     }
@@ -209,6 +222,9 @@ pub(crate) struct SurfaceCache {
     // Last runtime-derived interaction projection consumed by the style phase.
     // This is cache compatibility only, never pointer/focus authority.
     pub(super) interaction: Arc<SurfaceInteractionProjection>,
+    // Mounted logical scroll offsets consumed by the correlated presentation,
+    // clip, physical-hit and semantic geometry products.
+    pub(super) scroll: Arc<super::SurfaceScrollProjection>,
     // Target style/provenance facts. Motion never rewrites these.
     pub(super) styles: Arc<CachedStyleFacts>,
     // Accepted effective style/layout values consumed by downstream phases.
@@ -236,6 +252,79 @@ pub(crate) struct SurfaceCache {
 }
 
 impl SurfaceCache {
+    pub(crate) fn scroll_target_geometry(
+        &self,
+        target: &MountedNodeId,
+        owner: &MountedNodeId,
+    ) -> Option<(LogicalRect, LogicalSize)> {
+        if target == owner {
+            return None;
+        }
+        let target_position = self
+            .topology
+            .nodes
+            .iter()
+            .position(|node| &node.id == target)?;
+        let owner_position = self
+            .topology
+            .nodes
+            .iter()
+            .position(|node| &node.id == owner)?;
+        let target_presentation = self.presentation.node(target_position);
+        let owner_presentation = self.presentation.node(owner_position);
+        let surface_to_owner = owner_presentation.owner_to_surface().inverse()?;
+        let target_layout_bounds = self.layout.bounds.get(target_position)?;
+        let target_local_bounds = LogicalRect::try_new(
+            0.0,
+            0.0,
+            target_layout_bounds.width(),
+            target_layout_bounds.height(),
+        )
+        .ok()?;
+        let target_to_owner = target_presentation
+            .owner_to_surface()
+            .then(surface_to_owner)
+            .ok()?;
+        let target_bounds =
+            runenui_core::__runtime::transform_rect_aabb(target_to_owner, target_local_bounds)?;
+        let offset = self.scroll.offset(owner);
+        let content_bounds = LogicalRect::try_new(
+            target_bounds.x() + offset.0,
+            target_bounds.y() + offset.1,
+            target_bounds.width(),
+            target_bounds.height(),
+        )
+        .ok()?;
+        Some((
+            content_bounds,
+            self.layout.bounds.get(owner_position)?.size(),
+        ))
+    }
+
+    pub(crate) fn current_scroll_metrics(
+        &self,
+        owner: &MountedNodeId,
+    ) -> Option<super::DisplayedScrollMetrics> {
+        let position = self
+            .topology
+            .nodes
+            .iter()
+            .position(|node| &node.id == owner)?;
+        let topology = self.topology.nodes.get(position)?;
+        if topology.overflow.horizontal() != runenui_core::OverflowPolicy::Scroll
+            && topology.overflow.vertical() != runenui_core::OverflowPolicy::Scroll
+        {
+            return None;
+        }
+        let viewport = self.layout.bounds.get(position)?.size();
+        let content = self.layout.report.node(owner)?.scrollable_extent();
+        Some(super::DisplayedScrollMetrics {
+            overflow: topology.overflow,
+            viewport,
+            content,
+        })
+    }
+
     pub(crate) fn text_caret_map(
         &self,
         owner: &MountedNodeId,
@@ -311,6 +400,7 @@ impl SurfaceCache {
             context_key: Arc::clone(&self.context_key),
             topology: Arc::clone(&self.topology),
             interaction: Arc::clone(&self.interaction),
+            scroll: Arc::clone(&self.scroll),
             styles: Arc::clone(&self.styles),
             effective: Arc::clone(&self.effective),
             layout: Arc::clone(&self.layout),
@@ -331,7 +421,7 @@ impl SurfaceCache {
             .nodes
             .iter()
             .zip(&self.presentation.nodes)
-            .map(|(node, presentation)| (node.id.clone(), presentation.owner_bounds()))
+            .map(|(node, presentation)| (node.id.clone(), presentation.visible_bounds()))
             .collect()
     }
 
@@ -348,9 +438,13 @@ impl SurfaceCache {
                 .iter()
                 .position(|node| &node.id == id)
                 .unwrap_or_else(|| unreachable!("test geometry names a published node"));
-            let current = presentation.nodes[position];
-            presentation.nodes[position] =
-                PresentationNodeFacts::new(current.owner_to_surface(), *bounds);
+            let current = presentation.nodes[position].clone();
+            presentation.nodes[position] = PresentationNodeFacts::new(
+                current.owner_to_surface(),
+                current.owner_bounds,
+                *bounds,
+                Arc::clone(&current.inherited_clips),
+            );
         }
     }
 

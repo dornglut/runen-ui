@@ -21,14 +21,17 @@ use std::sync::Arc;
 pub(crate) use cache::SurfaceCache;
 pub use cache::{SurfacePhase, SurfacePhaseReport};
 pub use context::{RasterScale, RasterScaleError, SurfaceBuildContext};
-pub(crate) use interaction::SurfaceInteractionProjection;
+pub(crate) use interaction::{SurfaceInteractionProjection, SurfaceScrollProjection};
 pub(crate) use motion::MotionPlanningFailure;
 #[cfg(test)]
 use planning::plan_mounted_surface_cached;
 #[cfg(test)]
 use planning::publish_mounted_surface_cached;
 pub(crate) use planning::{SurfacePlanningError, plan_mounted_surface_cached_with_text};
-pub(crate) use transaction::{PlannedSurfacePublication, SurfacePublicationCommit};
+pub(crate) use transaction::{
+    DisplayedScrollMetrics, DisplayedTextTarget, PlannedSurfacePublication,
+    SurfacePublicationCommit,
+};
 
 use runenui_core::{
     ComputedStyle, ElementId, LogicalRect, LogicalSize, ResourceRef, WidgetDiagnostic,

@@ -36,6 +36,7 @@ pub(super) fn append_resolved_explicit_groups(
     contribution: &PaintContribution,
     owner: usize,
     owner_to_surface: LogicalTransform,
+    inherited_clips: &[SceneClip],
     diagnostics: &mut Vec<WidgetDiagnostic>,
     resolved: &mut Vec<ResolvedExplicitGroup>,
 ) -> Vec<Option<ExplicitGroupId>> {
@@ -52,7 +53,8 @@ pub(super) fn append_resolved_explicit_groups(
         let clips = contribution
             .__runtime_group_clips(local_group)
             .unwrap_or_else(|| unreachable!("runtime iterates normalized group range"));
-        let mut scene_clips = Vec::with_capacity(clips.len());
+        let mut scene_clips = inherited_clips.to_vec();
+        scene_clips.reserve(clips.len());
         let mut finite = true;
         for (clip_order, clip) in clips.iter().enumerate() {
             let Ok(clip_to_surface) = clip.local_to_owner().then(owner_to_surface) else {

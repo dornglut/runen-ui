@@ -357,7 +357,7 @@ pub use pointer::{
     InputDeviceId, KeyModifiers, LogicalDelta, LogicalDeltaError, LogicalPoint, LogicalPointError,
     LogicalScrollCommand, PointerBoundaryEvent, PointerBoundaryKind, PointerButton, PointerButtons,
     PointerCaptureEvent, PointerCaptureKind, PointerDeviceKind, PointerEvent, PointerId,
-    PointerPhase,
+    PointerPhase, TouchGestureThresholdError, TouchGestureThresholds,
 };
 pub use resource::{ResourceKind, ResourceKindMismatch, ResourceRef};
 pub use runtime_protocol::{

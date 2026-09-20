@@ -125,15 +125,18 @@ pub enum SubmitSurfaceCommandErrorKind {
 #[must_use]
 pub struct SubmitSurfaceCommandError {
     kind: SubmitSurfaceCommandErrorKind,
-    unaccepted: UnacceptedSurfaceCommand,
+    unaccepted: Box<UnacceptedSurfaceCommand>,
 }
 
 impl SubmitSurfaceCommandError {
-    pub(crate) const fn new(
+    pub(crate) fn new(
         kind: SubmitSurfaceCommandErrorKind,
         unaccepted: UnacceptedSurfaceCommand,
     ) -> Self {
-        Self { kind, unaccepted }
+        Self {
+            kind,
+            unaccepted: Box::new(unaccepted),
+        }
     }
 
     /// Returns the rejection classification.
@@ -149,7 +152,7 @@ impl SubmitSurfaceCommandError {
 
     /// Recovers the exact unaccepted request.
     pub fn into_unaccepted(self) -> UnacceptedSurfaceCommand {
-        self.unaccepted
+        *self.unaccepted
     }
 }
 

@@ -15,8 +15,8 @@ use super::cache::{CachedLayoutFacts, context_key};
 use super::motion::{self, MotionPlanningFailure};
 use super::resolve::{
     EffectiveEffects, PresentationGeometryError, ResolvedSurfaceTree, collect_topology,
-    hit_contexts, paint_contexts, resolve_diagnostics, resolve_hit_test, resolve_paint,
-    resolve_presentation, resolve_styles,
+    hit_contexts, normalize_scroll_projection, paint_contexts, resolve_diagnostics,
+    resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::{PlannedSurfacePublication, StagedSurfaceMotion};
@@ -326,12 +326,14 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     motion_store: &SurfaceMotionStore,
     instant: MonotonicInstant,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
+    let scroll = tree.surface_scroll_projection();
     let pending = tree.pending_phases();
     if cache.is_none() || pending.contains(DirtyPhases::TREE) {
         return plan_structural_surface(
             tree,
             context,
             interaction,
+            &scroll,
             text_system,
             preedits,
             cache,
@@ -368,6 +370,8 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     completed.insert(DirtyPhases::MOTION);
     let (layout_dirty, presentation_dirty, paint_dirty) =
         dirty_after_motion(motion.effects, layout_dirty, paint_dirty);
+    let scroll_dirty = current.scroll.content_differs(&scroll);
+    let presentation_dirty = presentation_dirty || scroll_dirty;
 
     let (publication_phases, semantic_dirty) = complete_non_structural_publication_phases(
         pending,
@@ -397,8 +401,18 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
     }
+    current.scroll = Arc::new(normalize_scroll_projection(
+        &current.topology,
+        &current.layout,
+        &scroll,
+    )?);
     if presentation_dirty {
-        current.presentation = Arc::new(resolve_presentation(&current.layout, &current.effective)?);
+        current.presentation = Arc::new(resolve_presentation(
+            &current.topology,
+            &current.layout,
+            &current.effective,
+            &current.scroll,
+        )?);
     }
 
     let scene_diagnostics_changed = resolve_contribution_phases(
@@ -442,11 +456,12 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 fn plan_structural_surface<'tree, Action>(
     tree: &'tree mut crate::mounted::MountedTree<Action>,
     context: &SurfaceBuildContext<'_>,
     interaction: &SurfaceInteractionProjection,
+    scroll: &super::SurfaceScrollProjection,
     text_system: &mut TextSystem,
     preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
     previous_cache: Option<&SurfaceCache>,
@@ -500,7 +515,8 @@ fn plan_structural_surface<'tree, Action>(
         text_layouts,
     };
     report.record(SurfacePhase::Layout);
-    let presentation = resolve_presentation(&layout, &effective)?;
+    let scroll = normalize_scroll_projection(&topology, &layout, scroll)?;
+    let presentation = resolve_presentation(&topology, &layout, &effective, &scroll)?;
 
     let paint_contexts = paint_contexts(&layout, &effective);
     let hit_contexts = hit_contexts(&layout);
@@ -534,6 +550,7 @@ fn plan_structural_surface<'tree, Action>(
         context_key: Arc::new(context_key),
         topology: Arc::new(topology),
         interaction: Arc::new(interaction.clone()),
+        scroll: Arc::new(scroll),
         styles: Arc::new(styles),
         effective: Arc::new(effective),
         layout: Arc::new(layout),

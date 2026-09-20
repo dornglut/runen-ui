@@ -17,7 +17,10 @@ use crate::{
     trace::{MandatoryTracePlan, TraceRecordDraft},
 };
 pub(crate) use dispatch::PointerDispatchFacts;
-pub(crate) use transaction::{RoutedFailureLineage, RoutedIngressFacts, RoutedTransaction};
+pub(crate) use transaction::{
+    PointerSelectionTransition, PointerSelectionUpdate, RoutedFailureLineage, RoutedIngressFacts,
+    RoutedTransaction,
+};
 
 impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
     pub(crate) fn process_semantic_command(&mut self, envelope: SemanticCommandEnvelope) {
@@ -256,11 +259,17 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             pointer_capture_requests: Vec::new(),
             pointer_cursor_target: None,
             pointer_surface_context: None,
+            pointer_id: None,
             drag_drop_offer: None,
             drag_drop_acceptor: None,
             invalidation: WidgetInvalidation::NONE,
             focus_before,
             failure_current_target: None,
+            scroll_updates: Vec::new(),
+            scroll_consumptions: Vec::new(),
+            scroll_chain_remainder: None,
+            pointer_selection_update: None,
+            pointer_selection_transition: None,
             pending_modality: modality_for_source(facts.origin.source()),
         }
     }

@@ -6,6 +6,7 @@
 //! translate native facts into existing `RunenUI` contracts.
 
 pub mod accessibility;
+pub mod controller_input;
 pub mod device_identity;
 pub mod keyboard_input;
 pub mod mouse_input;

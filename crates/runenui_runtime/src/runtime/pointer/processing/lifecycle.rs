@@ -3,7 +3,7 @@ use runenui_core::{
     PointerCaptureKind, PointerDeviceKind, PointerId, SurfaceInputContext, UiEvent, WorkSequence,
 };
 
-use super::super::PointerRegistry;
+use super::super::{PointerRegistry, TouchGestureKind, TouchGestureState};
 use crate::{
     MountedNodeId, TraceContext, TraceDeliveryOutcome, TraceEventContext, TraceEventFamily,
     TracePointerCleanup, TracePointerContext, TracePointerPath, TraceRecordKind,
@@ -14,6 +14,7 @@ use crate::{
     trace::{TraceRecordDraft, TraceReservation},
 };
 
+#[allow(clippy::struct_excessive_bools)] // Cleanup dimensions are independent transactional facts.
 #[derive(Clone)]
 struct PointerCleanup {
     pointer_id: PointerId,
@@ -25,6 +26,8 @@ struct PointerCleanup {
     surface_context: Option<SurfaceInputContext>,
     pressed: bool,
     capture: bool,
+    selection: bool,
+    touch_gesture: Option<TouchGestureKind>,
     clear_physical_path: bool,
     capture_notification: Option<PointerCaptureNotification>,
 }
@@ -47,11 +50,11 @@ struct CaptureLossTraceFacts<'a> {
 
 impl PointerCleanup {
     const fn reconciliation_fact_count(&self) -> usize {
-        if self.capture { 2 } else { 1 }
+        1 + self.capture as usize + self.selection as usize + self.touch_gesture.is_some() as usize
     }
 
     const fn closure_fact_count(&self) -> usize {
-        if self.capture { 3 } else { 2 }
+        2 + self.capture as usize + self.selection as usize + self.touch_gesture.is_some() as usize
     }
 
     fn remaining_physical_path(&self) -> &[MountedNodeId] {
@@ -70,6 +73,8 @@ struct PointerReconciliationSnapshot {
     device_kind: PointerDeviceKind,
     pressed_owner: Option<MountedNodeId>,
     capture_owner: Option<MountedNodeId>,
+    selection_owner: Option<MountedNodeId>,
+    touch_gesture: Option<TouchGestureState>,
     physical_path: Vec<MountedNodeId>,
     surface_context: Option<SurfaceInputContext>,
 }
@@ -102,6 +107,10 @@ impl PointerRegistry {
                     device_kind: stream.device_kind(),
                     pressed_owner: stream.pressed_owner().cloned(),
                     capture_owner: stream.capture_owner().cloned(),
+                    selection_owner: stream
+                        .text_selection()
+                        .map(|selection| selection.owner().clone()),
+                    touch_gesture: stream.touch_gesture().cloned(),
                     physical_path: stream.physical_path().to_vec(),
                     surface_context: stream.surface_context().cloned(),
                 }
@@ -127,6 +136,15 @@ impl PointerRegistry {
                     surface_context: stream.surface_context().cloned(),
                     pressed: stream.pressed_owner().is_some(),
                     capture: stream.capture_owner().is_some(),
+                    selection: stream.text_selection().is_some(),
+                    touch_gesture: stream.touch_gesture().and_then(|gesture| {
+                        (!gesture.cancelled()).then(|| {
+                            gesture.winner().map_or(
+                                TouchGestureKind::Tap,
+                                super::super::TouchGestureWinner::kind,
+                            )
+                        })
+                    }),
                     clear_physical_path: !stream.physical_path().is_empty(),
                     capture_notification: None,
                 }
@@ -145,6 +163,14 @@ impl PointerRegistry {
             }
             if cleanup.capture {
                 stream.set_capture_owner(None);
+            }
+            if cleanup.selection {
+                stream.set_text_selection(None);
+            }
+            if cleanup.touch_gesture.is_some()
+                && let Some(gesture) = stream.touch_gesture.as_mut()
+            {
+                gesture.cancel();
             }
             if cleanup.clear_physical_path {
                 stream.physical_path.clear();
@@ -198,6 +224,31 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     parent = self.record_capture_loss_resolution(&facts, parent);
                 }
             }
+            if cleanup.selection {
+                parent = self.trace.record(
+                    TraceRecordKind::PointerTextSelectionCancelled {
+                        pointer_id: cleanup.pointer_id,
+                    },
+                    Some(sequence),
+                    parent,
+                    None,
+                    None,
+                    None,
+                );
+            }
+            if let Some(gesture) = cleanup.touch_gesture {
+                parent = self.trace.record(
+                    TraceRecordKind::TouchGestureCancelled {
+                        pointer_id: cleanup.pointer_id,
+                        gesture: gesture.trace_kind(),
+                    },
+                    Some(sequence),
+                    parent,
+                    None,
+                    None,
+                    None,
+                );
+            }
         }
         Ok(parent)
     }
@@ -226,6 +277,27 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     (Some(owner), _) => self.pointer_owner_is_ineligible(owner, unmounted),
                     (None, _) => false,
                 };
+                let selection = snapshot.selection_owner.as_ref().is_some_and(|owner| {
+                    let disabled = self
+                        .tree
+                        .activation_probe(owner)
+                        .map_or(true, |activation| !activation.enabled());
+                    unmounted.contains(owner)
+                        || self.tree.target_status(owner) != TargetStatus::Live
+                        || !self.editing.has_owner(owner)
+                        || disabled
+                        || (capture && snapshot.capture_owner.as_ref() == Some(owner))
+                });
+                let touch_gesture = snapshot
+                    .touch_gesture
+                    .as_ref()
+                    .filter(|gesture| self.touch_gesture_is_ineligible(gesture, unmounted))
+                    .map(|gesture| {
+                        gesture.winner().map_or(
+                            TouchGestureKind::Tap,
+                            super::super::TouchGestureWinner::kind,
+                        )
+                    });
                 let clear_physical_path = snapshot
                     .physical_path
                     .iter()
@@ -251,21 +323,54 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 } else {
                     None
                 };
-                (pressed || capture || clear_physical_path).then_some(PointerCleanup {
-                    pointer_id: snapshot.pointer_id,
-                    device_id: snapshot.device_id,
-                    device_kind: snapshot.device_kind,
-                    pressed_owner: snapshot.pressed_owner,
-                    capture_owner: snapshot.capture_owner,
-                    physical_path: snapshot.physical_path,
-                    surface_context: snapshot.surface_context,
-                    pressed,
-                    capture,
-                    clear_physical_path,
-                    capture_notification,
-                })
+                (pressed || capture || selection || touch_gesture.is_some() || clear_physical_path)
+                    .then_some(PointerCleanup {
+                        pointer_id: snapshot.pointer_id,
+                        device_id: snapshot.device_id,
+                        device_kind: snapshot.device_kind,
+                        pressed_owner: snapshot.pressed_owner,
+                        capture_owner: snapshot.capture_owner,
+                        physical_path: snapshot.physical_path,
+                        surface_context: snapshot.surface_context,
+                        pressed,
+                        capture,
+                        selection,
+                        touch_gesture,
+                        clear_physical_path,
+                        capture_notification,
+                    })
             })
             .collect()
+    }
+
+    fn touch_gesture_is_ineligible(
+        &self,
+        gesture: &TouchGestureState,
+        unmounted: &[MountedNodeId],
+    ) -> bool {
+        if gesture.cancelled() {
+            return false;
+        }
+        if unmounted
+            .iter()
+            .any(|target| gesture.references_target(target))
+        {
+            return true;
+        }
+        gesture
+            .origin_route()
+            .iter()
+            .chain(gesture.scroll_candidates())
+            .any(|owner| self.tree.target_status(owner) != TargetStatus::Live)
+            || gesture.selection_candidate().is_some_and(|candidate| {
+                self.tree.target_status(candidate.owner()) != TargetStatus::Live
+                    || !self.editing.has_owner(candidate.owner())
+            })
+            || gesture.winner().is_some_and(|winner| {
+                winner
+                    .owner()
+                    .is_some_and(|owner| self.tree.target_status(owner) != TargetStatus::Live)
+            })
     }
 
     fn pointer_owner_is_ineligible(
@@ -313,6 +418,31 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     instant,
                 };
                 parent = self.record_capture_loss_resolution(&facts, parent);
+            }
+            if cleanup.selection {
+                parent = self.trace.record(
+                    TraceRecordKind::PointerTextSelectionCancelled {
+                        pointer_id: cleanup.pointer_id,
+                    },
+                    None,
+                    parent,
+                    None,
+                    None,
+                    None,
+                );
+            }
+            if let Some(gesture) = cleanup.touch_gesture {
+                parent = self.trace.record(
+                    TraceRecordKind::TouchGestureCancelled {
+                        pointer_id: cleanup.pointer_id,
+                        gesture: gesture.trace_kind(),
+                    },
+                    None,
+                    parent,
+                    None,
+                    None,
+                    None,
+                );
             }
             parent = self.trace.record(
                 TraceRecordKind::PointerStreamClosed {

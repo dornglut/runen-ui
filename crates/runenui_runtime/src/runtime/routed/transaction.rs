@@ -1,12 +1,13 @@
 use runenui_core::{
     __runtime::{MountedEffect, PointerCaptureRequest},
-    CommandOrigin, DragDropEvent, InputModality, MonotonicInstant, SemanticActionTarget,
-    SurfaceInputContext, WidgetInvalidation, WorkSequence,
+    CommandOrigin, DragDropEvent, InputModality, LogicalDelta, MonotonicInstant, PointerId,
+    SemanticActionTarget, SurfaceInputContext, WidgetInvalidation, WorkSequence,
 };
 
 use super::super::CollectedRoutedOutput;
 use crate::trace::TraceReservation;
 use crate::{MountedNodeId, TraceEventContext, TraceSequence, TraceTarget};
+use runenui_text::TextCaretMap;
 
 #[derive(Clone, Copy)]
 pub(crate) struct RoutedFailureLineage {
@@ -70,6 +71,35 @@ pub(crate) struct RoutedFailureFacts {
     pub(in crate::runtime) causal_parent: Option<TraceSequence>,
 }
 
+pub(crate) struct ScrollOffsetUpdate {
+    pub(crate) owner: MountedNodeId,
+    pub(crate) offset: (f32, f32),
+}
+
+pub(crate) struct ScrollOwnerConsumption {
+    pub(crate) owner: MountedNodeId,
+    pub(crate) evaluation_order: usize,
+    pub(crate) offered: LogicalDelta,
+    pub(crate) consumed: LogicalDelta,
+    pub(crate) remainder: LogicalDelta,
+    pub(crate) offset: LogicalDelta,
+    pub(crate) maximum: LogicalDelta,
+}
+
+pub(crate) struct PointerSelectionUpdate {
+    pub(crate) owner: MountedNodeId,
+    pub(crate) selection: runenui_core::TextSelection,
+    pub(crate) caret_map: TextCaretMap,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PointerSelectionTransition {
+    Started,
+    Updated,
+    Ended,
+    Cancelled,
+}
+
 pub(crate) struct RoutedTransaction<Action> {
     pub(crate) sequence: WorkSequence,
     pub(crate) target: MountedNodeId,
@@ -93,11 +123,17 @@ pub(crate) struct RoutedTransaction<Action> {
     pub(in crate::runtime) pointer_capture_requests: Vec<PointerCaptureRequest>,
     pub(crate) pointer_cursor_target: Option<MountedNodeId>,
     pub(crate) pointer_surface_context: Option<SurfaceInputContext>,
+    pub(crate) pointer_id: Option<PointerId>,
     pub(crate) drag_drop_offer: Option<DragDropEvent>,
     pub(crate) drag_drop_acceptor: Option<MountedNodeId>,
     pub(in crate::runtime) invalidation: WidgetInvalidation,
     pub(in crate::runtime) focus_before: Option<MountedNodeId>,
     pub(crate) failure_current_target: Option<MountedNodeId>,
+    pub(crate) scroll_updates: Vec<ScrollOffsetUpdate>,
+    pub(crate) scroll_consumptions: Vec<ScrollOwnerConsumption>,
+    pub(crate) scroll_chain_remainder: Option<LogicalDelta>,
+    pub(crate) pointer_selection_update: Option<PointerSelectionUpdate>,
+    pub(crate) pointer_selection_transition: Option<PointerSelectionTransition>,
     pub(in crate::runtime) pending_modality: InputModality,
 }
 

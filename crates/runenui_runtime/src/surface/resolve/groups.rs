@@ -7,7 +7,9 @@ use crate::scene::{
     SceneClip,
 };
 
-use super::{CachedEffectiveFacts, EffectiveNodeFacts, SurfaceTopologySnapshot};
+use super::{
+    CachedEffectiveFacts, CachedPresentationFacts, EffectiveNodeFacts, SurfaceTopologySnapshot,
+};
 
 /// Runtime-private staging reference to one resolved explicit owner-local group.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -267,6 +269,7 @@ fn build_composition_entries(
 
 fn publish_groups(
     effective: &CachedEffectiveFacts,
+    presentation: &CachedPresentationFacts,
     explicit_groups: &[ResolvedExplicitGroup],
     sources: Vec<GroupSource>,
     parents: &[Option<usize>],
@@ -289,7 +292,7 @@ fn publish_groups(
                 PaintSceneGroup::new(
                     parent,
                     entries,
-                    Vec::new(),
+                    presentation.node(node).inherited_clips().to_vec(),
                     computed.opacity(),
                     computed.shadows().to_vec(),
                 )
@@ -319,6 +322,7 @@ fn publish_groups(
 pub(super) fn derive_composition_groups(
     topology: &SurfaceTopologySnapshot,
     effective: &CachedEffectiveFacts,
+    presentation: &CachedPresentationFacts,
     explicit_groups: &[ResolvedExplicitGroup],
     ordered: Vec<OrderedPaintItem>,
 ) -> (Vec<PaintSceneItem>, PaintSceneComposition) {
@@ -366,6 +370,7 @@ pub(super) fn derive_composition_groups(
         build_composition_entries(&item_groups, &parents, &anchors, &candidate_to_scene);
     let groups = publish_groups(
         effective,
+        presentation,
         explicit_groups,
         sources,
         &parents,

@@ -12,7 +12,7 @@ use crate::{
     TraceRoutedAdmissionRejection, TraceRoutedIntegrityFailure, TraceSemanticActionRejection,
     TraceSinkDeliveryOutcome, TraceSpaceCleanupReason, TraceSurfaceIngressKind,
     TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTargetRejection,
-    TraceTimerTerminalOutcome, TraceWorkFamily, TraceWorkStartRefusal,
+    TraceTimerTerminalOutcome, TraceTouchGestureKind, TraceWorkFamily, TraceWorkStartRefusal,
 };
 
 pub(super) const fn event_phase(value: EventPhase) -> &'static str {
@@ -321,6 +321,7 @@ pub(super) const fn pointer_rejection(value: TracePointerRejection) -> &'static 
         TracePointerRejection::DeviceMismatch => "device_mismatch",
         TracePointerRejection::DeviceKindMismatch => "device_kind_mismatch",
         TracePointerRejection::ForeignStreamSurface => "foreign_stream_surface",
+        TracePointerRejection::TouchProfileUnsupported => "touch_profile_unsupported",
     }
 }
 
@@ -339,6 +340,7 @@ pub(super) const fn capture_request_rejection(
         TracePointerCaptureRequestRejection::TargetNotInTransaction => "target_not_in_transaction",
         TracePointerCaptureRequestRejection::TargetUnavailable => "target_unavailable",
         TracePointerCaptureRequestRejection::ReleaseNotOwner => "release_not_owner",
+        TracePointerCaptureRequestRejection::TouchGestureCommitted => "touch_gesture_committed",
     }
 }
 
@@ -382,6 +384,16 @@ pub(super) const fn focus_boundary_outcome(value: TraceFocusBoundaryOutcome) -> 
         TraceFocusBoundaryOutcome::Wrapped => "wrapped",
         TraceFocusBoundaryOutcome::LogicalScroll => "logical_scroll",
         TraceFocusBoundaryOutcome::Empty => "empty",
+    }
+}
+
+pub(super) const fn touch_gesture(value: TraceTouchGestureKind) -> &'static str {
+    match value {
+        TraceTouchGestureKind::Capture => "capture",
+        TraceTouchGestureKind::Move => "move",
+        TraceTouchGestureKind::Scroll => "scroll",
+        TraceTouchGestureKind::TextSelection => "text_selection",
+        TraceTouchGestureKind::Tap => "tap",
     }
 }
 

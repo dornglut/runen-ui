@@ -88,7 +88,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             work.event.buttons().clone(),
         );
         stream.set_surface_context(work.event.surface_context().clone());
-        self.clear_non_live_pointer_owners(&mut stream);
+        let owner_cleanup = self.clear_non_live_pointer_owners(&mut stream);
         let parent = match self.record_pointer_prelude(&work, false, &geometry, &boundary_plan) {
             Ok(parent) => parent,
             Err(outcome) => return outcome,
@@ -102,6 +102,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             boundary_plan,
             routed_target: None,
             parent,
+            selection_cancelled: owner_cleanup.selection_cancelled,
+            selection_tracking: false,
+            touch_cancelled: owner_cleanup.touch_cancelled,
+            touch_proposal: None,
         })
     }
 }

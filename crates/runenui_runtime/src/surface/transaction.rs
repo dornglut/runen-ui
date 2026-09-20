@@ -8,14 +8,61 @@ use crate::semantic_compositor::{
 };
 use crate::trace::StagedMotionTraceFact;
 use crate::{MountedNodeId, SemanticDiagnostic};
-use runenui_core::TextDisplayPosition;
-use runenui_text::TextDisplaySelection;
+use runenui_core::{
+    LogicalSize, LogicalTransform, OverflowPolicy, OverflowStyle, TextDisplayPosition,
+};
+use runenui_text::{TextCaretMap, TextDisplaySelection};
 use std::{collections::HashMap, sync::Arc};
 
 use super::{
     SurfaceCache, SurfaceMotionActivity, SurfaceMotionStore, SurfacePhaseReport,
     SurfacePlanningError, SurfacePublication,
 };
+use crate::scene::SceneClip;
+
+#[derive(Clone)]
+pub(crate) struct DisplayedTextTarget {
+    map: TextCaretMap,
+    eligible_bounds: crate::LogicalRect,
+    layout_to_surface: LogicalTransform,
+    clips: Arc<[SceneClip]>,
+}
+
+impl DisplayedTextTarget {
+    pub(crate) fn map_and_hit_test(
+        &self,
+        point: crate::LogicalPoint,
+    ) -> Option<(TextCaretMap, TextDisplayPosition)> {
+        let position = self.hit_test(point)?;
+        Some((self.map.clone(), position))
+    }
+
+    pub(crate) fn hit_test(&self, point: crate::LogicalPoint) -> Option<TextDisplayPosition> {
+        if self
+            .clips
+            .iter()
+            .any(|clip| !clip.contains_surface_point(point))
+        {
+            return None;
+        }
+        self.map
+            .hit_test(
+                self.map.snapshot(),
+                point,
+                self.eligible_bounds,
+                self.layout_to_surface,
+            )
+            .ok()
+            .flatten()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct DisplayedScrollMetrics {
+    pub(crate) overflow: OverflowStyle,
+    pub(crate) viewport: LogicalSize,
+    pub(crate) content: LogicalSize,
+}
 
 /// Staged motion products that move through the surface-publication transaction as one unit.
 ///
@@ -114,6 +161,86 @@ impl<'a> PlannedSurfacePublication<'a> {
         self.motion.trace_facts.clone()
     }
 
+    pub(crate) fn displayed_text_targets(
+        &self,
+        editing: &HashMap<MountedNodeId, crate::editing::EditingSemanticProjection>,
+    ) -> HashMap<MountedNodeId, DisplayedTextTarget> {
+        let Some(finalized) = self.finalized_semantics.as_ref() else {
+            return HashMap::new();
+        };
+        let finalized = finalized.owner_facts().collect::<Vec<_>>();
+        let mut targets = HashMap::new();
+        for (position, (topology, semantic)) in
+            self.cache.topology.nodes.iter().zip(finalized).enumerate()
+        {
+            if topology.id != semantic.owner {
+                continue;
+            }
+            let Some(authored) = semantic.editable.as_ref() else {
+                continue;
+            };
+            let Some(projected) = editing.get(&semantic.owner) else {
+                continue;
+            };
+            if (
+                authored.snapshot,
+                authored.text.as_ref(),
+                authored.sensitivity,
+            ) != (
+                projected.snapshot,
+                projected.source.as_ref(),
+                projected.sensitivity,
+            ) {
+                continue;
+            }
+            let Some(layout) = self.cache.layout.text_layouts.get(position) else {
+                continue;
+            };
+            let Ok(map) = layout.caret_map_for_source(projected.snapshot, &projected.source) else {
+                continue;
+            };
+            let presentation = self.cache.presentation.node(position);
+            targets.insert(
+                semantic.owner,
+                DisplayedTextTarget {
+                    map,
+                    eligible_bounds: presentation.visible_bounds(),
+                    layout_to_surface: presentation.owner_to_surface(),
+                    clips: Arc::from(presentation.inherited_clips().to_vec()),
+                },
+            );
+        }
+        targets
+    }
+
+    pub(crate) fn displayed_scroll_metrics(
+        &self,
+    ) -> HashMap<MountedNodeId, DisplayedScrollMetrics> {
+        let mut metrics = HashMap::new();
+        for (position, topology) in self.cache.topology.nodes.iter().enumerate() {
+            if topology.overflow.horizontal() != OverflowPolicy::Scroll
+                && topology.overflow.vertical() != OverflowPolicy::Scroll
+            {
+                continue;
+            }
+            let Some(layout) = self.cache.layout.bounds.get(position) else {
+                continue;
+            };
+            let Some(layout_node) = self.cache.layout.report.node(&topology.id) else {
+                continue;
+            };
+            metrics.insert(
+                topology.id.clone(),
+                DisplayedScrollMetrics {
+                    overflow: topology.overflow,
+                    viewport: layout.size(),
+                    content: layout_node.scrollable_extent(),
+                },
+            );
+        }
+        metrics
+    }
+
     /// Composes the renderer-independent semantic candidate and semantic-owner
     /// withdrawal diagnostics from staged publication facts while the semantic-
     /// store plan still protects exact owner/key identity. No live mounted
@@ -199,7 +326,7 @@ impl<'a> PlannedSurfacePublication<'a> {
                 mounted_children: topology.children.clone(),
                 contribution: semantic.contribution,
                 bindings: semantic.bindings,
-                bounds: presentation.owner_bounds(),
+                bounds: presentation.visible_bounds(),
                 activation: semantic.activation,
                 focusability: semantic.focusability,
                 editable_source,
@@ -270,6 +397,9 @@ impl SurfacePublicationCommit {
             capability_plan,
             semantic_commit,
         } = self;
+        for (owner, offset) in cache.scroll.offsets() {
+            let _ = tree.commit_scroll_offset(owner, *offset);
+        }
         if let Some(semantic_commit) = semantic_commit {
             tree.commit_semantic_publication(semantic_commit);
         }

@@ -1,7 +1,12 @@
-use runenui_core::{HostProtocol, PointerButton, PointerButtons, PointerEvent, PointerPhase};
+use super::super::{TouchGestureState, TouchTextSelectionCandidate};
+use runenui_core::{
+    HostProtocol, OverflowPolicy, PointerButton, PointerButtons, PointerEvent, PointerPhase,
+    TextDisplayPosition, TextSelection,
+};
 
 use super::{
-    PointerBoundaryPlan, PointerGeometry, PointerStreamState, PointerWork, StreamPreparation,
+    PointerBoundaryPlan, PointerGeometry, PointerOwnerCleanup, PointerStreamState, PointerWork,
+    StreamPreparation, TouchGestureKind, TouchGestureWinner,
 };
 use crate::{
     MountedNodeId, RuntimeTerminalReason, TraceContext, TraceEventContext, TraceEventFamily,
@@ -38,6 +43,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                     .reject_pointer_preparation(work, super::rejection::map_stream_error(error)));
             }
         };
+        if work.event.device_kind() == runenui_core::PointerDeviceKind::Touch
+            && !touch_transition_is_supported(&work.event, existing.as_ref())
+        {
+            return Err(self.reject_pointer_preparation(
+                work,
+                crate::trace::TracePointerRejection::TouchProfileUnsupported,
+            ));
+        }
         if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) && existing.is_none() {
             return Err(self.reject_pointer_preparation(
                 work,
@@ -181,7 +194,10 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         })
     }
 
-    pub(super) fn clear_non_live_pointer_owners(&self, stream: &mut super::PointerStreamState) {
+    pub(super) fn clear_non_live_pointer_owners(
+        &self,
+        stream: &mut super::PointerStreamState,
+    ) -> PointerOwnerCleanup {
         if stream
             .capture_owner()
             .is_some_and(|owner| self.tree.target_status(owner) != TargetStatus::Live)
@@ -194,6 +210,239 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             stream.set_pressed_owner(None);
         }
+        let selection_cancelled = stream.text_selection().is_some_and(|selection| {
+            self.tree.target_status(selection.owner()) != TargetStatus::Live
+                || !self.editing.has_owner(selection.owner())
+        });
+        if selection_cancelled {
+            stream.set_text_selection(None);
+        }
+        let touch_owner_lost = stream.touch_gesture().is_some_and(|gesture| {
+            !gesture.cancelled()
+                && (gesture
+                    .origin_route()
+                    .iter()
+                    .any(|owner| self.tree.target_status(owner) != TargetStatus::Live)
+                    || gesture
+                        .scroll_candidates()
+                        .iter()
+                        .any(|owner| self.tree.target_status(owner) != TargetStatus::Live)
+                    || gesture.selection_candidate().is_some_and(|candidate| {
+                        self.tree.target_status(candidate.owner()) != TargetStatus::Live
+                            || !self.editing.has_owner(candidate.owner())
+                    })
+                    || gesture.winner().is_some_and(|winner| {
+                        winner.owner().is_some_and(|owner| {
+                            self.tree.target_status(owner) != TargetStatus::Live
+                        })
+                    }))
+        });
+        let touch_cancelled = touch_owner_lost
+            .then(|| stream.touch_gesture.as_mut().map(TouchGestureState::cancel))
+            .flatten();
+        PointerOwnerCleanup {
+            selection_cancelled,
+            touch_cancelled,
+        }
+    }
+
+    #[allow(clippy::too_many_lines)] // One ordered arbitration compares all provisional competitors.
+    pub(super) fn touch_gesture_proposal(
+        &self,
+        event: &PointerEvent,
+        stream: &PointerStreamState,
+    ) -> Option<TouchGestureWinner> {
+        let gesture = stream.touch_gesture()?;
+        if gesture.cancelled() || gesture.winner().is_some() {
+            return None;
+        }
+        let thresholds = self.touch_gesture_thresholds;
+        let dx = f64::from(event.position().x()) - f64::from(gesture.start_position().x());
+        let dy = f64::from(event.position().y()) - f64::from(gesture.start_position().y());
+        let abs_x = dx.abs();
+        let abs_y = dy.abs();
+        let distance = abs_x.hypot(abs_y);
+        let scroll_threshold = f64::from(thresholds.scroll_movement());
+        let selection_threshold = f64::from(thresholds.selection_movement());
+
+        let scroll_owner = gesture.scroll_candidates().iter().rev().find(|owner| {
+            let Some(metrics) = self.surface_publication.displayed_scroll_metrics(
+                event.surface_context().hit_test_generation(),
+                event.surface_context().coordinate_revision(),
+                owner,
+            ) else {
+                return false;
+            };
+            let Some(node) = self.tree.node(owner) else {
+                return false;
+            };
+            let offset = node.interaction.scroll_offset;
+            let max_x = (metrics.content.width() - metrics.viewport.width()).max(0.0);
+            let max_y = (metrics.content.height() - metrics.viewport.height()).max(0.0);
+            let can_scroll_x = metrics.overflow.horizontal() == OverflowPolicy::Scroll
+                && max_x > 0.0
+                && if dx < 0.0 {
+                    offset.0 < max_x
+                } else {
+                    offset.0 > 0.0
+                };
+            let can_scroll_y = metrics.overflow.vertical() == OverflowPolicy::Scroll
+                && max_y > 0.0
+                && if dy < 0.0 {
+                    offset.1 < max_y
+                } else {
+                    offset.1 > 0.0
+                };
+            (abs_x > 0.0 && can_scroll_x) || (abs_y > 0.0 && can_scroll_y)
+        });
+        let scroll_candidate = (distance >= scroll_threshold)
+            .then(|| scroll_owner.cloned())
+            .flatten();
+        let selection_candidate = gesture.selection_candidate().and_then(|candidate| {
+            if distance < selection_threshold
+                || self.tree.target_status(candidate.owner()) != TargetStatus::Live
+                || !self.editing.has_owner(candidate.owner())
+            {
+                return None;
+            }
+            let (map, TextDisplayPosition::Document(active)) =
+                self.surface_publication.text_map_position_at(
+                    event.surface_context(),
+                    candidate.owner(),
+                    event.position(),
+                )?
+            else {
+                return None;
+            };
+            let selection = TextSelection::new(candidate.anchor(), active).ok()?;
+            self.editing
+                .validate_selection(candidate.owner(), selection, &map)
+                .ok()?;
+            Some(candidate.owner().clone())
+        });
+
+        match (scroll_candidate, selection_candidate) {
+            (Some(scroll), Some(selection)) => {
+                let scroll_rank = gesture
+                    .origin_route()
+                    .iter()
+                    .position(|owner| owner == &scroll)
+                    .unwrap_or(0);
+                let selection_rank = gesture
+                    .origin_route()
+                    .iter()
+                    .position(|owner| owner == &selection)
+                    .unwrap_or(0);
+                if selection_rank >= scroll_rank {
+                    Some(TouchGestureWinner::new(
+                        TouchGestureKind::TextSelection,
+                        Some(selection),
+                    ))
+                } else {
+                    Some(TouchGestureWinner::new(
+                        TouchGestureKind::Scroll,
+                        Some(scroll),
+                    ))
+                }
+            }
+            (Some(scroll), None) => Some(TouchGestureWinner::new(
+                TouchGestureKind::Scroll,
+                Some(scroll),
+            )),
+            (None, Some(selection)) => Some(TouchGestureWinner::new(
+                TouchGestureKind::TextSelection,
+                Some(selection),
+            )),
+            (None, None)
+                if (scroll_owner.is_some() && distance < scroll_threshold)
+                    || (gesture.selection_candidate().is_some()
+                        && distance < selection_threshold) =>
+            {
+                None
+            }
+            (None, None) if distance >= scroll_threshold.min(selection_threshold) => Some(
+                TouchGestureWinner::new(TouchGestureKind::Move, gesture.origin_target().cloned()),
+            ),
+            (None, None) => None,
+        }
+    }
+
+    pub(super) fn touch_routed_target(
+        event: &PointerEvent,
+        stream: &PointerStreamState,
+        physical_target: Option<&MountedNodeId>,
+    ) -> Option<MountedNodeId> {
+        let Some(gesture) = stream.touch_gesture() else {
+            return if event.phase() == PointerPhase::Cancel {
+                stream
+                    .capture_owner()
+                    .or_else(|| stream.pressed_owner())
+                    .cloned()
+            } else {
+                physical_target.cloned()
+            };
+        };
+        if gesture.cancelled() {
+            return None;
+        }
+        if let Some(winner) = gesture.winner() {
+            return winner.owner().or_else(|| stream.capture_owner()).cloned();
+        }
+        stream
+            .capture_owner()
+            .or_else(|| gesture.origin_target())
+            .cloned()
+    }
+
+    pub(super) fn start_touch_gesture(
+        &self,
+        event: &PointerEvent,
+        geometry: &PointerGeometry,
+    ) -> TouchGestureState {
+        let selection_candidate = geometry.physical_target.as_ref().and_then(|owner| {
+            if !self.editing.has_owner(owner)
+                || self.tree.target_status(owner) != TargetStatus::Live
+            {
+                return None;
+            }
+            let (map, display_position) = self.surface_publication.text_map_position_at(
+                event.surface_context(),
+                owner,
+                event.position(),
+            )?;
+            let TextDisplayPosition::Document(anchor) = display_position else {
+                return None;
+            };
+            self.editing
+                .validate_selection(owner, TextSelection::collapsed(anchor), &map)
+                .ok()?;
+            Some(TouchTextSelectionCandidate::new(owner.clone(), anchor))
+        });
+        let scroll_candidates = geometry
+            .physical_path
+            .iter()
+            .filter(|owner| {
+                self.surface_publication
+                    .displayed_scroll_metrics(
+                        event.surface_context().hit_test_generation(),
+                        event.surface_context().coordinate_revision(),
+                        owner,
+                    )
+                    .is_some_and(|metrics| {
+                        metrics.content.width() > metrics.viewport.width()
+                            || metrics.content.height() > metrics.viewport.height()
+                    })
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        TouchGestureState::new(
+            event.position(),
+            geometry.physical_target.clone(),
+            geometry.physical_path.clone(),
+            scroll_candidates,
+            selection_candidate,
+            None,
+        )
     }
 
     pub(super) fn pointer_routed_target(
@@ -245,7 +494,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         let context = TraceContext::pointer_observation(
             TraceEventContext::new(
                 TraceEventFamily::Pointer,
-                super::pointer_default_is_cancelable(work.event.phase()),
+                super::pointer_default_is_cancelable(work.event.phase(), work.event.device_kind()),
             ),
             TraceSurfaceContext::accepted(work.event.surface_context(), snapshot),
             Self::pointer_trace_context(work),
@@ -397,6 +646,32 @@ fn pointer_button_transition_is_valid(
         event.buttons(),
         existing.map(PointerStreamState::buttons),
     )
+}
+
+fn touch_transition_is_supported(
+    event: &PointerEvent,
+    existing: Option<&PointerStreamState>,
+) -> bool {
+    let primary = runenui_core::PointerButton::Primary;
+    match event.phase() {
+        PointerPhase::Down => {
+            existing.is_none()
+                && event.changed_button() == Some(primary)
+                && event.buttons().iter().eq([primary])
+        }
+        PointerPhase::Move => {
+            existing.is_some()
+                && event.changed_button().is_none()
+                && event.buttons().iter().eq([primary])
+        }
+        PointerPhase::Up => {
+            existing.is_some()
+                && event.changed_button() == Some(primary)
+                && event.buttons().is_empty()
+        }
+        PointerPhase::Cancel => existing.is_some(),
+        _ => false,
+    }
 }
 
 fn button_transition_is_valid(

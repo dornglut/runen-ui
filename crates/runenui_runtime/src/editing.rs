@@ -388,10 +388,28 @@ impl<Action> EditingRegistry<Action> {
         owner: &MountedNodeId,
         selection: runenui_core::TextSelection,
         caret_map: &TextCaretMap,
-    ) -> Result<(), EditPrepareError> {
+    ) -> Result<bool, EditPrepareError> {
+        self.validate_selection(owner, selection, caret_map)?;
         let session = self
             .active
             .get_mut(owner)
+            .ok_or(EditPrepareError::MissingOwner)?;
+        let next = runenui_core::EditSelection::from_selection(selection);
+        let changed = session.selection != next;
+        session.selection = next;
+        session.preferred_inline = None;
+        Ok(changed)
+    }
+
+    pub(crate) fn validate_selection(
+        &self,
+        owner: &MountedNodeId,
+        selection: runenui_core::TextSelection,
+        caret_map: &TextCaretMap,
+    ) -> Result<(), EditPrepareError> {
+        let session = self
+            .active
+            .get(owner)
             .ok_or(EditPrepareError::MissingOwner)?;
         if session.invalid_suffix
             || session.contribution.disabled()
@@ -408,10 +426,7 @@ impl<Action> EditingRegistry<Action> {
             .map_err(|_| EditPrepareError::InvalidCoordinates)?;
         caret_map
             .validate_position(display.active())
-            .map_err(|_| EditPrepareError::InvalidCoordinates)?;
-        session.selection = EditSelection::from_selection(selection);
-        session.preferred_inline = None;
-        Ok(())
+            .map_err(|_| EditPrepareError::InvalidCoordinates)
     }
 
     pub(crate) fn prepare_command(

@@ -13,7 +13,10 @@ use runenui_core::{
     PointerPhase, SurfaceInputContext, WorkSequence,
 };
 
-use super::{PointerCommitError, PointerRegistrationError, PointerStreamError, PointerStreamState};
+use super::{
+    PointerCommitError, PointerRegistrationError, PointerStreamError, PointerStreamState,
+    TouchGestureKind, TouchGestureWinner,
+};
 use crate::{
     MountedNodeId, TraceSequence, TraceSurfaceSnapshotKind,
     queue::{PointerEnvelope, PointerEnvelopePayload},
@@ -54,6 +57,12 @@ pub(super) struct PointerGeometry {
     pub(super) diagnosis: Option<crate::TracePointerRejection>,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct PointerOwnerCleanup {
+    pub(super) selection_cancelled: bool,
+    pub(super) touch_cancelled: Option<TouchGestureKind>,
+}
+
 struct PreparedPointer {
     work: PointerWork,
     is_new: bool,
@@ -63,6 +72,10 @@ struct PreparedPointer {
     boundary_plan: PointerBoundaryPlan,
     routed_target: Option<MountedNodeId>,
     parent: Option<TraceSequence>,
+    selection_cancelled: bool,
+    selection_tracking: bool,
+    touch_cancelled: Option<TouchGestureKind>,
+    touch_proposal: Option<TouchGestureWinner>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -172,8 +185,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             work.event.buttons().clone(),
         );
         stream.set_surface_context(work.event.surface_context().clone());
-        self.clear_non_live_pointer_owners(&mut stream);
-        let routed_target = if work.event.drag_drop().is_some() {
+        let owner_cleanup = self.clear_non_live_pointer_owners(&mut stream);
+        let touch_proposal = (work.event.device_kind() == PointerDeviceKind::Touch
+            && work.event.phase() == PointerPhase::Move)
+            .then(|| self.touch_gesture_proposal(&work.event, &stream))
+            .flatten();
+        let routed_target = if work.event.device_kind() == PointerDeviceKind::Touch {
+            Self::touch_routed_target(&work.event, &stream, geometry.physical_target.as_ref())
+        } else if work.event.drag_drop().is_some() {
             geometry.physical_target.clone()
         } else {
             Self::pointer_routed_target(
@@ -200,13 +219,20 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             boundary_plan,
             routed_target,
             parent,
+            selection_cancelled: owner_cleanup.selection_cancelled,
+            selection_tracking: true,
+            touch_cancelled: owner_cleanup.touch_cancelled,
+            touch_proposal,
         })
     }
 }
 
-pub(super) const fn pointer_default_is_cancelable(phase: PointerPhase) -> bool {
+pub(super) fn pointer_default_is_cancelable(
+    phase: PointerPhase,
+    device_kind: PointerDeviceKind,
+) -> bool {
     matches!(
         phase,
         PointerPhase::Down | PointerPhase::Up | PointerPhase::Wheel
-    )
+    ) || (phase == PointerPhase::Move && matches!(device_kind, PointerDeviceKind::Touch))
 }

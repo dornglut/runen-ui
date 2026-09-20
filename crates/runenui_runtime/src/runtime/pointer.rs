@@ -5,10 +5,197 @@ mod processing;
 use core::num::NonZeroU64;
 use std::collections::BTreeMap;
 
+use crate::TraceTouchGestureKind;
 use runenui_core::{
     InputDeviceId, LogicalPoint, MountedNodeId, PointerButtons, PointerDeviceKind, PointerId,
-    SurfaceId, SurfaceInputContext,
+    SurfaceId, SurfaceInputContext, TextPosition,
 };
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::runtime) struct PointerTextSelectionGesture {
+    owner: MountedNodeId,
+    anchor: TextPosition,
+}
+
+impl PointerTextSelectionGesture {
+    pub(in crate::runtime) const fn new(owner: MountedNodeId, anchor: TextPosition) -> Self {
+        Self { owner, anchor }
+    }
+
+    pub(in crate::runtime) const fn owner(&self) -> &MountedNodeId {
+        &self.owner
+    }
+
+    pub(in crate::runtime) const fn anchor(&self) -> TextPosition {
+        self.anchor
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::runtime) enum TouchGestureKind {
+    Capture,
+    Move,
+    Scroll,
+    TextSelection,
+    Tap,
+}
+
+impl TouchGestureKind {
+    pub(in crate::runtime) const fn trace_kind(self) -> TraceTouchGestureKind {
+        match self {
+            Self::Capture => TraceTouchGestureKind::Capture,
+            Self::Move => TraceTouchGestureKind::Move,
+            Self::Scroll => TraceTouchGestureKind::Scroll,
+            Self::TextSelection => TraceTouchGestureKind::TextSelection,
+            Self::Tap => TraceTouchGestureKind::Tap,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::runtime) struct TouchTextSelectionCandidate {
+    owner: MountedNodeId,
+    anchor: TextPosition,
+}
+
+impl TouchTextSelectionCandidate {
+    pub(in crate::runtime) const fn new(owner: MountedNodeId, anchor: TextPosition) -> Self {
+        Self { owner, anchor }
+    }
+
+    pub(in crate::runtime) const fn owner(&self) -> &MountedNodeId {
+        &self.owner
+    }
+
+    pub(in crate::runtime) const fn anchor(&self) -> TextPosition {
+        self.anchor
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::runtime) struct TouchGestureWinner {
+    kind: TouchGestureKind,
+    owner: Option<MountedNodeId>,
+}
+
+impl TouchGestureWinner {
+    pub(in crate::runtime) const fn new(
+        kind: TouchGestureKind,
+        owner: Option<MountedNodeId>,
+    ) -> Self {
+        Self { kind, owner }
+    }
+
+    pub(in crate::runtime) const fn kind(&self) -> TouchGestureKind {
+        self.kind
+    }
+
+    pub(in crate::runtime) const fn owner(&self) -> Option<&MountedNodeId> {
+        self.owner.as_ref()
+    }
+}
+
+/// Runtime-owned provisional touch decision and its one committed stream winner.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::runtime) struct TouchGestureState {
+    start_position: LogicalPoint,
+    last_position: LogicalPoint,
+    origin_target: Option<MountedNodeId>,
+    origin_route: Vec<MountedNodeId>,
+    scroll_candidates: Vec<MountedNodeId>,
+    selection_candidate: Option<TouchTextSelectionCandidate>,
+    winner: Option<TouchGestureWinner>,
+    cancelled: bool,
+}
+
+impl TouchGestureState {
+    pub(in crate::runtime) const fn new(
+        position: LogicalPoint,
+        origin_target: Option<MountedNodeId>,
+        origin_route: Vec<MountedNodeId>,
+        scroll_candidates: Vec<MountedNodeId>,
+        selection_candidate: Option<TouchTextSelectionCandidate>,
+        winner: Option<TouchGestureWinner>,
+    ) -> Self {
+        Self {
+            start_position: position,
+            last_position: position,
+            origin_target,
+            origin_route,
+            scroll_candidates,
+            selection_candidate,
+            winner,
+            cancelled: false,
+        }
+    }
+
+    pub(in crate::runtime) const fn start_position(&self) -> LogicalPoint {
+        self.start_position
+    }
+
+    pub(in crate::runtime) const fn last_position(&self) -> LogicalPoint {
+        self.last_position
+    }
+
+    pub(in crate::runtime) const fn origin_target(&self) -> Option<&MountedNodeId> {
+        self.origin_target.as_ref()
+    }
+
+    pub(in crate::runtime) fn origin_route(&self) -> &[MountedNodeId] {
+        &self.origin_route
+    }
+
+    pub(in crate::runtime) fn scroll_candidates(&self) -> &[MountedNodeId] {
+        &self.scroll_candidates
+    }
+
+    pub(in crate::runtime) const fn selection_candidate(
+        &self,
+    ) -> Option<&TouchTextSelectionCandidate> {
+        self.selection_candidate.as_ref()
+    }
+
+    pub(in crate::runtime) const fn winner(&self) -> Option<&TouchGestureWinner> {
+        self.winner.as_ref()
+    }
+
+    pub(in crate::runtime) fn set_winner(&mut self, winner: TouchGestureWinner) {
+        self.winner = Some(winner);
+        self.cancelled = false;
+    }
+
+    pub(in crate::runtime) const fn cancelled(&self) -> bool {
+        self.cancelled
+    }
+
+    pub(in crate::runtime) fn cancel(&mut self) -> TouchGestureKind {
+        let kind = self
+            .winner
+            .as_ref()
+            .map_or(TouchGestureKind::Tap, TouchGestureWinner::kind);
+        self.winner = None;
+        self.cancelled = true;
+        kind
+    }
+
+    pub(in crate::runtime) fn references_target(&self, target: &MountedNodeId) -> bool {
+        self.origin_target.as_ref() == Some(target)
+            || self.origin_route.iter().any(|owner| owner == target)
+            || self.scroll_candidates.iter().any(|owner| owner == target)
+            || self
+                .selection_candidate
+                .as_ref()
+                .is_some_and(|candidate| candidate.owner() == target)
+            || self
+                .winner
+                .as_ref()
+                .is_some_and(|winner| winner.owner() == Some(target))
+    }
+
+    pub(in crate::runtime) const fn advance(&mut self, position: LogicalPoint) {
+        self.last_position = position;
+    }
+}
 
 /// Exact state retained for one active pointer stream.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,6 +210,8 @@ pub(in crate::runtime) struct PointerStreamState {
     pressed_owner: Option<MountedNodeId>,
     pressed_inside: bool,
     capture_owner: Option<MountedNodeId>,
+    text_selection: Option<PointerTextSelectionGesture>,
+    touch_gesture: Option<TouchGestureState>,
     surface_context: Option<SurfaceInputContext>,
 }
 
@@ -69,6 +258,14 @@ impl PointerStreamState {
         self.capture_owner.as_ref()
     }
 
+    pub(in crate::runtime) const fn text_selection(&self) -> Option<&PointerTextSelectionGesture> {
+        self.text_selection.as_ref()
+    }
+
+    pub(in crate::runtime) const fn touch_gesture(&self) -> Option<&TouchGestureState> {
+        self.touch_gesture.as_ref()
+    }
+
     pub(in crate::runtime) const fn surface_context(&self) -> Option<&SurfaceInputContext> {
         self.surface_context.as_ref()
     }
@@ -101,6 +298,17 @@ impl PointerStreamState {
         self.capture_owner = owner;
     }
 
+    pub(in crate::runtime) fn set_text_selection(
+        &mut self,
+        selection: Option<PointerTextSelectionGesture>,
+    ) {
+        self.text_selection = selection;
+    }
+
+    pub(in crate::runtime) fn set_touch_gesture(&mut self, gesture: Option<TouchGestureState>) {
+        self.touch_gesture = gesture;
+    }
+
     pub(in crate::runtime) fn set_surface_context(&mut self, context: SurfaceInputContext) {
         self.surface_context = Some(context);
     }
@@ -117,6 +325,16 @@ impl PointerStreamState {
             self.capture_owner = None;
             cleanup.capture = true;
         }
+        if self
+            .touch_gesture
+            .as_ref()
+            .is_some_and(|gesture| gesture.references_target(target))
+        {
+            if let Some(gesture) = &mut self.touch_gesture {
+                gesture.cancel();
+            }
+            cleanup.touch_gesture = true;
+        }
         if self.physical_path.iter().any(|node| node == target) {
             self.physical_path.clear();
             cleanup.physical_path = true;
@@ -128,16 +346,18 @@ impl PointerStreamState {
 /// One exact lifecycle cleanup outcome for a mounted target.
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[allow(clippy::struct_excessive_bools)] // Independent cleanup dimensions are preflighted together.
 pub(in crate::runtime) struct PointerTargetCleanup {
     pub(in crate::runtime) pressed: bool,
     pub(in crate::runtime) capture: bool,
     pub(in crate::runtime) physical_path: bool,
+    pub(in crate::runtime) touch_gesture: bool,
 }
 
 #[cfg(test)]
 impl PointerTargetCleanup {
     pub(in crate::runtime) const fn any(self) -> bool {
-        self.pressed || self.capture || self.physical_path
+        self.pressed || self.capture || self.physical_path || self.touch_gesture
     }
 
     fn merge(&mut self, other: Self) {
@@ -217,6 +437,8 @@ impl PointerRegistry {
             pressed_owner: None,
             pressed_inside: false,
             capture_owner: None,
+            text_selection: None,
+            touch_gesture: None,
             surface_context: None,
         })
     }
