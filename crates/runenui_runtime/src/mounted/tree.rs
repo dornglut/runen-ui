@@ -253,6 +253,33 @@ impl<Action> MountedTree<Action> {
         let (slot, generation) = self.runtime.__runtime_mounted_parts(id)?;
         self.arena.get_mut(slot as usize, generation)
     }
+
+    pub(crate) fn surface_scroll_projection(&self) -> crate::surface::SurfaceScrollProjection {
+        crate::surface::SurfaceScrollProjection::new(
+            self.preorder_ids()
+                .into_iter()
+                .filter_map(|id| {
+                    self.node(&id)
+                        .map(|node| (id, node.interaction.scroll_offset))
+                })
+                .collect(),
+        )
+    }
+
+    pub(crate) fn commit_scroll_offset(&mut self, id: &MountedNodeId, offset: (f32, f32)) -> bool {
+        let Some(node) = self.node_mut(id) else {
+            return false;
+        };
+        let offset = (
+            if offset.0 == 0.0 { 0.0 } else { offset.0 },
+            if offset.1 == 0.0 { 0.0 } else { offset.1 },
+        );
+        if node.interaction.scroll_offset == offset {
+            return false;
+        }
+        node.interaction.scroll_offset = offset;
+        true
+    }
     pub(crate) const fn live_count(&self) -> usize {
         self.arena.live_count()
     }

@@ -178,12 +178,13 @@ pub(super) fn semantic_command(output: &mut String, command: SemanticCommand) {
             json::name(output, "direction");
             json::string(output, tokens::focus_direction(direction));
         }
+        SemanticCommand::ScrollIntoView => json::string(output, "scroll_into_view"),
         _ => json::string(output, "unknown"),
     }
     output.push('}');
 }
 
-fn logical_delta(output: &mut String, delta: LogicalDelta) {
+pub(super) fn logical_delta(output: &mut String, delta: LogicalDelta) {
     output.push('{');
     json::name(output, "x");
     json::f32_value(output, delta.x());

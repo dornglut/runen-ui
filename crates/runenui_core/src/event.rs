@@ -176,6 +176,8 @@ pub enum SemanticCommand {
     RequestFocus,
     RestoreFocus,
     LogicalFocusScroll(FocusDirection),
+    /// Scrolls the exact routed target into view using runtime-owned scroll state.
+    ScrollIntoView,
     MoveBackward,
     MoveForward,
     ExtendBackward,

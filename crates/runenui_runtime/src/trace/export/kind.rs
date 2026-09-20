@@ -85,6 +85,18 @@ macro_rules! trace_kind_name {
             TraceRecordKind::PointerLogicalScrollCollected { .. } => {
                 "pointer_logical_scroll_collected"
             }
+            TraceRecordKind::PointerTextSelectionStarted { .. } => "pointer_text_selection_started",
+            TraceRecordKind::PointerTextSelectionUpdated { .. } => "pointer_text_selection_updated",
+            TraceRecordKind::PointerTextSelectionEnded { .. } => "pointer_text_selection_ended",
+            TraceRecordKind::PointerTextSelectionCancelled { .. } => {
+                "pointer_text_selection_cancelled"
+            }
+            TraceRecordKind::TouchGestureProvisional { .. } => "touch_gesture_provisional",
+            TraceRecordKind::TouchGestureWon { .. } => "touch_gesture_won",
+            TraceRecordKind::TouchGestureCancelled { .. } => "touch_gesture_cancelled",
+            TraceRecordKind::TouchGestureCompleted { .. } => "touch_gesture_completed",
+            TraceRecordKind::LogicalScrollOwnerApplied { .. } => "logical_scroll_owner_applied",
+            TraceRecordKind::LogicalScrollChainCompleted { .. } => "logical_scroll_chain_completed",
             TraceRecordKind::PointerStationaryRehitQueued { .. } => {
                 "pointer_stationary_rehit_queued"
             }
@@ -483,6 +495,7 @@ fn encode_input_data(output: &mut String, kind: &TraceRecordKind) -> bool {
     true
 }
 
+#[allow(clippy::too_many_lines)] // One match is the exhaustive stable pointer-record encoding table.
 fn encode_pointer_data(output: &mut String, kind: &TraceRecordKind) -> bool {
     match kind {
         TraceRecordKind::PointerSubmissionAccepted { pointer_id, phase }
@@ -528,8 +541,46 @@ fn encode_pointer_data(output: &mut String, kind: &TraceRecordKind) -> bool {
         | TraceRecordKind::PointerStreamClosed { pointer_id }
         | TraceRecordKind::PointerActivateCollected { pointer_id }
         | TraceRecordKind::PointerLogicalScrollCollected { pointer_id }
+        | TraceRecordKind::PointerTextSelectionStarted { pointer_id }
+        | TraceRecordKind::PointerTextSelectionUpdated { pointer_id }
+        | TraceRecordKind::PointerTextSelectionEnded { pointer_id }
+        | TraceRecordKind::PointerTextSelectionCancelled { pointer_id }
         | TraceRecordKind::PointerInteractionCommitted { pointer_id } => {
             field_u64(output, "pointer_id", pointer_id.get());
+        }
+        TraceRecordKind::TouchGestureWon {
+            pointer_id,
+            gesture,
+        }
+        | TraceRecordKind::TouchGestureCancelled {
+            pointer_id,
+            gesture,
+        }
+        | TraceRecordKind::TouchGestureCompleted {
+            pointer_id,
+            gesture,
+        } => {
+            field_u64(output, "pointer_id", pointer_id.get());
+            output.push(',');
+            field_str(output, "gesture", tokens::touch_gesture(*gesture));
+        }
+        TraceRecordKind::TouchGestureProvisional {
+            pointer_id,
+            thresholds,
+            scroll_candidates,
+            selection_candidate,
+        } => {
+            field_u64(output, "pointer_id", pointer_id.get());
+            output.push(',');
+            json::name(output, "scroll_threshold");
+            json::f32_value(output, thresholds.scroll_movement());
+            output.push(',');
+            json::name(output, "selection_threshold");
+            json::f32_value(output, thresholds.selection_movement());
+            output.push(',');
+            field_usize(output, "scroll_candidates", *scroll_candidates);
+            output.push(',');
+            field_bool(output, "selection_candidate", *selection_candidate);
         }
         TraceRecordKind::PointerBoundaryBundlePlanned { notifications } => {
             field_usize(output, "notifications", *notifications);
@@ -562,8 +613,38 @@ fn encode_pointer_data(output: &mut String, kind: &TraceRecordKind) -> bool {
     true
 }
 
+#[allow(clippy::too_many_lines)] // One match is the exhaustive stable routed-record encoding table.
 fn encode_routed_focus_data(output: &mut String, kind: &TraceRecordKind) -> bool {
     match kind {
+        TraceRecordKind::LogicalScrollOwnerApplied {
+            evaluation_order,
+            offered,
+            consumed,
+            remainder,
+            offset,
+            maximum,
+        } => {
+            field_usize(output, "evaluation_order", *evaluation_order);
+            output.push(',');
+            json::name(output, "offered");
+            value::logical_delta(output, *offered);
+            output.push(',');
+            json::name(output, "consumed");
+            value::logical_delta(output, *consumed);
+            output.push(',');
+            json::name(output, "remainder");
+            value::logical_delta(output, *remainder);
+            output.push(',');
+            json::name(output, "offset");
+            value::logical_delta(output, *offset);
+            output.push(',');
+            json::name(output, "maximum");
+            value::logical_delta(output, *maximum);
+        }
+        TraceRecordKind::LogicalScrollChainCompleted { remainder } => {
+            json::name(output, "remainder");
+            value::logical_delta(output, *remainder);
+        }
         TraceRecordKind::SurfaceContextAccepted { ingress } => {
             field_str(output, "ingress", tokens::surface_ingress(*ingress));
         }

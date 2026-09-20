@@ -11,7 +11,7 @@ use runenui_core::{
 use runenui_text::{TextCaretMap, TextCaretMapError, TextLayoutError, TextSystem};
 
 use crate::{
-    LogicalPoint, LogicalRect, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
+    LogicalPoint, LogicalRect, LogicalSize, MountedNodeId, RedrawAcknowledgeError, RedrawRequest,
     SemanticDiagnosticReport, SemanticPublication, SurfaceBuildContext, SurfacePhase,
     SurfacePhaseReport, SurfacePublication, SurfacePublicationCounter, TraceSurfaceContext,
     TraceSurfaceSnapshotKind,
@@ -21,9 +21,10 @@ use crate::{
         SemanticPublicationPlan, SemanticPublicationPlanError, SemanticPublicationState,
     },
     surface::{
-        MotionPlanningFailure, PlannedSurfacePublication, SurfaceCache,
-        SurfaceInteractionProjection, SurfaceMotionActivity, SurfaceMotionStore,
-        SurfacePlanningError, SurfacePublicationCommit, plan_mounted_surface_cached_with_text,
+        DisplayedScrollMetrics, DisplayedTextTarget, MotionPlanningFailure,
+        PlannedSurfacePublication, SurfaceCache, SurfaceInteractionProjection,
+        SurfaceMotionActivity, SurfaceMotionStore, SurfacePlanningError, SurfacePublicationCommit,
+        plan_mounted_surface_cached_with_text,
     },
     trace::StagedMotionTraceFact,
 };
@@ -190,6 +191,8 @@ pub(in crate::runtime) struct StagedSurfacePublication<'a> {
     semantic_publication: SemanticPublication,
     semantic_diagnostics: SemanticDiagnosticReport,
     hit_test_scene: HitTestScene,
+    displayed_text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
+    displayed_scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
     paint_publication: PaintPublication,
     allocated_paint_revision: Option<u64>,
     hit_test_generation: u64,
@@ -213,6 +216,8 @@ impl StagedSurfacePublication<'_> {
             semantic_publication,
             semantic_diagnostics,
             hit_test_scene,
+            displayed_text_targets,
+            displayed_scroll_metrics,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -224,6 +229,8 @@ impl StagedSurfacePublication<'_> {
             semantic_publication,
             semantic_diagnostics,
             hit_test_scene,
+            displayed_text_targets,
+            displayed_scroll_metrics,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -239,6 +246,8 @@ pub(in crate::runtime) struct AdmittedSurfacePublicationCommit {
     semantic_publication: SemanticPublication,
     semantic_diagnostics: SemanticDiagnosticReport,
     hit_test_scene: HitTestScene,
+    displayed_text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
+    displayed_scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
     paint_publication: PaintPublication,
     allocated_paint_revision: Option<u64>,
     hit_test_generation: u64,
@@ -260,11 +269,23 @@ pub(crate) struct SurfacePublicationState {
     runtime_namespace: RuntimeNamespace,
     surface_id: SurfaceId,
     retained_snapshot_limit: NonZeroUsize,
-    snapshots: VecDeque<HitTestScene>,
+    snapshots: VecDeque<RetainedSurfaceSnapshot>,
     retired_through_generation: Option<u64>,
     next_paint_revision: Option<u64>,
     next_hit_test_generation: Option<u64>,
     next_coordinate_revision: Option<u64>,
+}
+
+struct RetainedSurfaceSnapshot {
+    scene: HitTestScene,
+    text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
+    scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
+}
+
+impl RetainedSurfaceSnapshot {
+    const fn input_context(&self) -> &SurfaceInputContext {
+        self.scene.input_context()
+    }
 }
 
 impl SurfacePublicationState {
@@ -371,6 +392,8 @@ impl SurfacePublicationState {
             &self.motion_store,
             instant,
         )?;
+        let displayed_text_targets = planned.displayed_text_targets(editing);
+        let displayed_scroll_metrics = planned.displayed_scroll_metrics();
         let semantic_candidate = planned.semantic_candidate(focused_owner, editing)?;
         let semantic_plan: SemanticPublicationPlan = self
             .semantic_publication
@@ -444,6 +467,8 @@ impl SurfacePublicationState {
             semantic_publication,
             semantic_diagnostics,
             hit_test_scene,
+            displayed_text_targets,
+            displayed_scroll_metrics,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -462,6 +487,8 @@ impl SurfacePublicationState {
             semantic_publication,
             semantic_diagnostics,
             hit_test_scene,
+            displayed_text_targets,
+            displayed_scroll_metrics,
             paint_publication,
             allocated_paint_revision,
             hit_test_generation,
@@ -478,6 +505,8 @@ impl SurfacePublicationState {
         self.motion_deadline = motion_activity.next_deadline();
         self.retain_new_snapshot(
             hit_test_scene.clone(),
+            displayed_text_targets,
+            displayed_scroll_metrics,
             hit_test_generation,
             coordinate_revision,
         );
@@ -493,6 +522,8 @@ impl SurfacePublicationState {
     fn retain_new_snapshot(
         &mut self,
         scene: HitTestScene,
+        text_targets: HashMap<MountedNodeId, DisplayedTextTarget>,
+        scroll_metrics: HashMap<MountedNodeId, DisplayedScrollMetrics>,
         hit_test_generation: u64,
         coordinate_revision: u64,
     ) {
@@ -523,7 +554,11 @@ impl SurfacePublicationState {
         {
             self.retired_through_generation = Some(retired.input_context().hit_test_generation());
         }
-        self.snapshots.push_back(scene);
+        self.snapshots.push_back(RetainedSurfaceSnapshot {
+            scene,
+            text_targets,
+            scroll_metrics,
+        });
     }
 
     pub(in crate::runtime) fn current_trace_surface_context(&self) -> Option<TraceSurfaceContext> {
@@ -596,7 +631,7 @@ impl SurfacePublicationState {
     ) -> Result<SurfacePointResolution, SurfaceSnapshotError> {
         let (snapshot, snapshot_kind) = self.validate_context(context)?;
         Ok(SurfacePointResolution {
-            target: snapshot.target_at(point).cloned(),
+            target: snapshot.scene.target_at(point).cloned(),
             selection: Self::selection(snapshot, snapshot_kind),
         })
     }
@@ -608,26 +643,27 @@ impl SurfacePublicationState {
     ) -> Result<SurfaceSnapshotSelection, SurfaceSnapshotError> {
         let (snapshot, snapshot_kind) = self.validate_context(context)?;
         snapshot
+            .scene
             .contains_mounted_target(target)
             .then(|| Self::selection(snapshot, snapshot_kind))
             .ok_or(SurfaceSnapshotError::TargetNotInSnapshot)
     }
 
     const fn selection(
-        snapshot: &HitTestScene,
+        snapshot: &RetainedSurfaceSnapshot,
         snapshot_kind: SurfaceSnapshotKind,
     ) -> SurfaceSnapshotSelection {
         SurfaceSnapshotSelection {
             snapshot_kind,
-            hit_test_generation: snapshot.input_context().hit_test_generation(),
-            coordinate_revision: snapshot.input_context().coordinate_revision(),
+            hit_test_generation: snapshot.scene.input_context().hit_test_generation(),
+            coordinate_revision: snapshot.scene.input_context().coordinate_revision(),
         }
     }
 
     fn validate_context(
         &self,
         context: &SurfaceInputContext,
-    ) -> Result<(&HitTestScene, SurfaceSnapshotKind), SurfaceSnapshotError> {
+    ) -> Result<(&RetainedSurfaceSnapshot, SurfaceSnapshotKind), SurfaceSnapshotError> {
         let Some((surface_id, coordinate_revision, hit_test_generation)) = self
             .runtime_namespace
             .__runtime_surface_context_parts(context)
@@ -637,11 +673,9 @@ impl SurfacePublicationState {
         if surface_id != self.surface_id {
             return Err(SurfaceSnapshotError::ForeignSurface);
         }
-        let Some(snapshot) = self
-            .snapshots
-            .iter()
-            .find(|snapshot| snapshot.input_context().hit_test_generation() == hit_test_generation)
-        else {
+        let Some(snapshot) = self.snapshots.iter().find(|snapshot| {
+            snapshot.scene.input_context().hit_test_generation() == hit_test_generation
+        }) else {
             return Err(
                 if self
                     .retired_through_generation
@@ -664,6 +698,32 @@ impl SurfacePublicationState {
             SurfaceSnapshotKind::Retained
         };
         Ok((snapshot, snapshot_kind))
+    }
+
+    pub(in crate::runtime) fn text_map_position_at(
+        &self,
+        context: &SurfaceInputContext,
+        owner: &MountedNodeId,
+        point: LogicalPoint,
+    ) -> Option<(
+        runenui_text::TextCaretMap,
+        runenui_core::TextDisplayPosition,
+    )> {
+        let (snapshot, _) = self.validate_context(context).ok()?;
+        snapshot.text_targets.get(owner)?.map_and_hit_test(point)
+    }
+
+    pub(crate) fn displayed_scroll_metrics(
+        &self,
+        hit_test_generation: u64,
+        coordinate_revision: u64,
+        owner: &MountedNodeId,
+    ) -> Option<DisplayedScrollMetrics> {
+        let snapshot = self.snapshots.iter().find(|snapshot| {
+            snapshot.scene.input_context().hit_test_generation() == hit_test_generation
+                && snapshot.scene.input_context().coordinate_revision() == coordinate_revision
+        })?;
+        snapshot.scroll_metrics.get(owner).copied()
     }
 
     #[cfg(feature = "internal-test-seams")]
@@ -693,9 +753,11 @@ impl SurfacePublicationState {
         let snapshot = self
             .snapshots
             .iter_mut()
-            .find(|snapshot| snapshot.input_context().hit_test_generation() == generation)
+            .find(|snapshot| snapshot.scene.input_context().hit_test_generation() == generation)
             .unwrap_or_else(|| unreachable!("test context names one retained snapshot"));
-        snapshot.replace_target_for_test(original, replacement);
+        snapshot
+            .scene
+            .replace_target_for_test(original, replacement);
     }
 
     #[cfg(feature = "internal-test-seams")]
@@ -759,6 +821,21 @@ impl SurfacePublicationState {
             .as_ref()
             .map(SurfaceCache::current_focus_geometry)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn current_scroll_metrics(
+        &self,
+        owner: &MountedNodeId,
+    ) -> Option<DisplayedScrollMetrics> {
+        self.cache.as_ref()?.current_scroll_metrics(owner)
+    }
+
+    pub(crate) fn scroll_target_geometry(
+        &self,
+        target: &MountedNodeId,
+        owner: &MountedNodeId,
+    ) -> Option<(LogicalRect, LogicalSize)> {
+        self.cache.as_ref()?.scroll_target_geometry(target, owner)
     }
 
     pub(crate) fn retire_motion_owner(&mut self, owner: &MountedNodeId) {

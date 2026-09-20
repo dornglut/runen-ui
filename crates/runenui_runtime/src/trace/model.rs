@@ -4,7 +4,7 @@ use runenui_core::{
     ClipboardClassification, ClipboardWritePurpose, CommandOrigin, ElementId, EventPhase,
     FocusBoundaryPolicy, FocusEventKind, FocusReason, MonotonicInstant, MotionTarget,
     PointerBoundaryKind, PointerCaptureKind, PointerId, PointerPhase, SemanticActionTarget,
-    SemanticCommand, WidgetInvalidation, WorkKey,
+    SemanticCommand, TouchGestureThresholds, WidgetInvalidation, WorkKey,
 };
 
 use crate::{MountedNodeId, ReconciliationGeneration, RuntimeTerminalReason, WorkSequence};
@@ -254,6 +254,47 @@ pub enum TraceRecordKind {
     PointerLogicalScrollCollected {
         pointer_id: PointerId,
     },
+    PointerTextSelectionStarted {
+        pointer_id: PointerId,
+    },
+    PointerTextSelectionUpdated {
+        pointer_id: PointerId,
+    },
+    PointerTextSelectionEnded {
+        pointer_id: PointerId,
+    },
+    PointerTextSelectionCancelled {
+        pointer_id: PointerId,
+    },
+    TouchGestureProvisional {
+        pointer_id: PointerId,
+        thresholds: TouchGestureThresholds,
+        scroll_candidates: usize,
+        selection_candidate: bool,
+    },
+    TouchGestureWon {
+        pointer_id: PointerId,
+        gesture: TraceTouchGestureKind,
+    },
+    TouchGestureCancelled {
+        pointer_id: PointerId,
+        gesture: TraceTouchGestureKind,
+    },
+    TouchGestureCompleted {
+        pointer_id: PointerId,
+        gesture: TraceTouchGestureKind,
+    },
+    LogicalScrollOwnerApplied {
+        evaluation_order: usize,
+        offered: runenui_core::LogicalDelta,
+        consumed: runenui_core::LogicalDelta,
+        remainder: runenui_core::LogicalDelta,
+        offset: runenui_core::LogicalDelta,
+        maximum: runenui_core::LogicalDelta,
+    },
+    LogicalScrollChainCompleted {
+        remainder: runenui_core::LogicalDelta,
+    },
     PointerStationaryRehitQueued {
         hit_test_generation: u64,
         coordinate_revision: u64,
@@ -436,6 +477,17 @@ pub enum TraceFocusBoundaryOutcome {
     Empty,
 }
 
+/// Observable winner or provisional competitor in the supported touch profile.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TraceTouchGestureKind {
+    Capture,
+    Move,
+    Scroll,
+    TextSelection,
+    Tap,
+}
+
 /// Exact routed integrity boundary that failed after command acceptance.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -510,6 +562,7 @@ pub enum TracePointerRejection {
     DeviceMismatch,
     DeviceKindMismatch,
     ForeignStreamSurface,
+    TouchProfileUnsupported,
 }
 
 /// Requested pointer-capture mutation retained by a rejected request fact.
@@ -528,6 +581,7 @@ pub enum TracePointerCaptureRequestRejection {
     TargetNotInTransaction,
     TargetUnavailable,
     ReleaseNotOwner,
+    TouchGestureCommitted,
 }
 
 /// Checked displayed-surface ingress path.

@@ -14,6 +14,37 @@ pub(crate) struct SurfaceInteractionProjection {
     focused: Option<MountedNodeId>,
 }
 
+/// Runtime-owned mounted scroll offsets projected into one surface plan.
+///
+/// This is a cache-compatibility snapshot only. The mounted interaction slot is
+/// the sole live authority; retaining this projection lets surface planning
+/// detect offset changes without dirtying layout or recomputing text shaping.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct SurfaceScrollProjection {
+    offsets: Vec<(MountedNodeId, (f32, f32))>,
+}
+
+impl SurfaceScrollProjection {
+    pub(crate) const fn new(offsets: Vec<(MountedNodeId, (f32, f32))>) -> Self {
+        Self { offsets }
+    }
+
+    pub(crate) fn offset(&self, id: &MountedNodeId) -> (f32, f32) {
+        self.offsets
+            .iter()
+            .find_map(|(owner, offset)| (owner == id).then_some(*offset))
+            .unwrap_or((0.0, 0.0))
+    }
+
+    pub(crate) fn offsets(&self) -> &[(MountedNodeId, (f32, f32))] {
+        &self.offsets
+    }
+
+    pub(crate) fn content_differs(&self, other: &Self) -> bool {
+        self.offsets != other.offsets
+    }
+}
+
 impl SurfaceInteractionProjection {
     pub(crate) const fn new(
         hovered: Vec<MountedNodeId>,

@@ -316,8 +316,8 @@ pub use trace::{
     TraceSemanticActionRejection, TraceSequence, TraceSinkDeliveryOutcome, TraceSinkReceiveError,
     TraceSinkReceiver, TraceSpaceCleanupReason, TraceSurfaceContext, TraceSurfaceIngressKind,
     TraceSurfaceRejection, TraceSurfaceSnapshotKind, TraceTarget, TraceTargetRejection,
-    TraceTargetTransition, TraceTextMetrics, TraceTimerTerminalOutcome, TraceWorkFamily,
-    TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
+    TraceTargetTransition, TraceTextMetrics, TraceTimerTerminalOutcome, TraceTouchGestureKind,
+    TraceWorkFamily, TraceWorkIdentity, TraceWorkOwner, TraceWorkStartRefusal,
 };
 pub use wake::{WakeRequestOutcome, WakeTransport};
 pub use work::framework_service::{FrameworkServiceRef, FrameworkServiceToken};

@@ -896,11 +896,17 @@ pub enum LayoutPosition {
 }
 
 /// Logical overflow behavior independent of platform scrolling mechanics.
+///
+/// [`Self::Scroll`] uses a runtime-owned logical offset clamped to the content
+/// extent and clips descendants to the viewport. It has no visual overscroll;
+/// host-only visual effects never contribute to logical hit, focus, or scroll
+/// consumption.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum OverflowPolicy {
     #[default]
     Visible,
     Clip,
+    /// Runtime-owned clamped logical scrolling, with no visual overscroll.
     Scroll,
 }
 

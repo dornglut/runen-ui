@@ -117,6 +117,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             status: RuntimeStatus::Running,
             automation_submission_policy: AutomationSubmissionPolicy::Ordinary,
             limits,
+            touch_gesture_thresholds: config.touch_gesture_thresholds(),
             mounted_public_slot_limit,
             work,
             mounted_subscription_reconcile_pending: Vec::new(),

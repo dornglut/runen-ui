@@ -27,7 +27,7 @@ use runenui_core::{
     __runtime::{Effect, MountedEffect, SendOutput, Subscription},
     CommandOrigin, Element, ElementKey, HostProtocol, IntoEffects, NoHostProtocol, SemanticCommand,
     SendSubscriptionSink, SendSubscriptionStartOutcome, SendTaskStartFailure, SubscriptionSet,
-    UiApp, View,
+    TouchGestureThresholds, UiApp, View,
 };
 use runenui_text::TextSystem;
 
@@ -113,6 +113,7 @@ pub(crate) struct Runtime<State, Action, Protocol: HostProtocol = NoHostProtocol
     /// observe this scope because automation submission is non-reentrant.
     automation_submission_policy: AutomationSubmissionPolicy,
     limits: crate::RuntimeLimits,
+    touch_gesture_thresholds: TouchGestureThresholds,
     mounted_public_slot_limit: u64,
     work: WorkRegistry<Action, Protocol>,
     mounted_subscription_reconcile_pending: Vec<MountedNodeId>,

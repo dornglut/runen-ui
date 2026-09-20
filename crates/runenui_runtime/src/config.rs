@@ -5,6 +5,7 @@ use core::num::NonZeroUsize;
 use runenui_text::FontSourcePolicy;
 
 use crate::TraceConfig;
+use runenui_core::TouchGestureThresholds;
 
 pub const DEFAULT_RUNTIME_LIMIT: usize = 1024;
 const DEFAULT_WAITING_ENVELOPE_LIMIT: usize = DEFAULT_RUNTIME_LIMIT * 4;
@@ -204,6 +205,7 @@ pub struct RuntimeConfig {
     trace_config: TraceConfig,
     surface_snapshot_retention: usize,
     text_font_source_policy: FontSourcePolicy,
+    touch_gesture_thresholds: TouchGestureThresholds,
     #[cfg(feature = "internal-test-seams")]
     initial_next_work_sequence: u64,
     #[cfg(feature = "internal-test-seams")]
@@ -250,6 +252,16 @@ impl RuntimeConfig {
         self
     }
 
+    /// Returns this configuration with explicit neutral touch arbitration thresholds.
+    #[must_use]
+    pub const fn with_touch_gesture_thresholds(
+        mut self,
+        thresholds: TouchGestureThresholds,
+    ) -> Self {
+        self.touch_gesture_thresholds = thresholds;
+        self
+    }
+
     /// Returns the maximum number of waiting envelopes.
     #[must_use]
     pub const fn queue_capacity(self) -> usize {
@@ -277,6 +289,12 @@ impl RuntimeConfig {
     #[must_use]
     pub const fn text_font_source_policy(self) -> FontSourcePolicy {
         self.text_font_source_policy
+    }
+
+    /// Returns the validated logical movement thresholds used by touch arbitration.
+    #[must_use]
+    pub const fn touch_gesture_thresholds(self) -> TouchGestureThresholds {
+        self.touch_gesture_thresholds
     }
 
     #[cfg(feature = "internal-test-seams")]
@@ -335,6 +353,7 @@ impl Default for RuntimeConfig {
             trace_config: TraceConfig::new(DEFAULT_RUNTIME_LIMIT),
             surface_snapshot_retention: DEFAULT_SURFACE_SNAPSHOT_RETENTION,
             text_font_source_policy: FontSourcePolicy::BundledOnly,
+            touch_gesture_thresholds: TouchGestureThresholds::default(),
             #[cfg(feature = "internal-test-seams")]
             initial_next_work_sequence: 1,
             #[cfg(feature = "internal-test-seams")]

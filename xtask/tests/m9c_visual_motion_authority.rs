@@ -174,11 +174,15 @@ fn presentation_composition_keeps_one_core_resolver_and_one_runtime_application_
         }
     }
     for required in [
+        "let parent_position = topology_node",
+        "parent_position.map_or((0.0, 0.0), |parent| child_offsets[parent])",
         ".presentation()",
         "presentation.resolve_in_box(bounds.size())",
-        "let placement = LogicalTransform::translation(bounds.x(), bounds.y())",
+        "LogicalTransform::translation(bounds.x() - ancestor_x, bounds.y() - ancestor_y)",
         "let owner_to_surface = node_presentation",
         ".then(placement)",
+        "let child_x = ancestor_x + scroll_x;",
+        "let child_y = ancestor_y + scroll_y;",
     ] {
         if !resolve.contains(required) {
             return Err(format!(

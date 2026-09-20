@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 mod explicit_groups;
 mod groups;
@@ -11,14 +11,15 @@ use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
     __runtime::transform_rect_aabb, Color, ComputedStyle, ContributionClip, ElementId,
     HitContributionContext, LayoutStyle, LogicalPoint, LogicalRect, LogicalTransform,
-    PaintContribution, PaintContributionContext, PaintContributionItem, Radius, SceneShape,
-    StyleEnvironment, StyleInteractionState, StyleResolution, WidgetDiagnostic, WidgetTypeId,
-    resolve_style_in_environment, style_effects_between,
+    OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
+    PaintContributionItem, Radius, SceneShape, StyleEnvironment, StyleInteractionState,
+    StyleResolution, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
+    style_effects_between,
 };
 use runenui_text::TextSystem;
 
 use super::{
-    SurfaceInteractionProjection,
+    SurfaceInteractionProjection, SurfaceScrollProjection,
     cache::{CachedLayoutFacts, CachedPresentationFacts, PresentationNodeFacts},
 };
 
@@ -37,6 +38,7 @@ pub(super) struct SurfaceTopologyNode {
     pub(super) authored_id: Option<ElementId>,
     pub(super) widget_type_id: WidgetTypeId,
     pub(super) children: Vec<MountedNodeId>,
+    pub(super) overflow: OverflowStyle,
 }
 
 pub(super) fn collect_topology<Action>(
@@ -57,6 +59,7 @@ pub(super) fn collect_topology<Action>(
                 authored_id: node.authored_id.clone(),
                 widget_type_id: node.widget.widget_type_id(),
                 children: node.children.clone(),
+                overflow: node.layout.overflow(),
             }
         })
         .collect();
@@ -328,14 +331,42 @@ pub(super) fn hit_contexts(layout: &CachedLayoutFacts) -> Vec<HitContributionCon
 pub(crate) struct PresentationGeometryError;
 
 pub(super) fn resolve_presentation(
+    topology: &SurfaceTopologySnapshot,
     layout: &CachedLayoutFacts,
     effective: &CachedEffectiveFacts,
+    scroll: &SurfaceScrollProjection,
 ) -> Result<CachedPresentationFacts, PresentationGeometryError> {
-    if layout.bounds.len() != effective.nodes.len() {
+    if layout.bounds.len() != effective.nodes.len() || layout.bounds.len() != topology.nodes.len() {
         return Err(PresentationGeometryError);
     }
+    let positions = topology
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(position, node)| (node.id.clone(), position))
+        .collect::<HashMap<_, _>>();
     let mut nodes = Vec::with_capacity(layout.bounds.len());
-    for (bounds, effective) in layout.bounds.iter().zip(&effective.nodes) {
+    let mut child_offsets = Vec::with_capacity(layout.bounds.len());
+    let mut child_clips = Vec::<Vec<SceneClip>>::with_capacity(layout.bounds.len());
+    let mut child_clip_bounds = Vec::<Vec<LogicalRect>>::with_capacity(layout.bounds.len());
+    for ((bounds, effective), topology_node) in layout
+        .bounds
+        .iter()
+        .zip(&effective.nodes)
+        .zip(&topology.nodes)
+    {
+        let parent_position = topology_node
+            .parent
+            .as_ref()
+            .and_then(|parent| positions.get(parent).copied());
+        let (ancestor_x, ancestor_y) =
+            parent_position.map_or((0.0, 0.0), |parent| child_offsets[parent]);
+        let mut inherited_clips = parent_position
+            .map(|parent| child_clips[parent].clone())
+            .unwrap_or_default();
+        let mut inherited_clip_bounds = parent_position
+            .map(|parent| child_clip_bounds[parent].clone())
+            .unwrap_or_default();
         let node_presentation = effective
             .computed_style()
             .presentation()
@@ -343,8 +374,9 @@ pub(super) fn resolve_presentation(
                 presentation.resolve_in_box(bounds.size())
             })
             .map_err(|_| PresentationGeometryError)?;
-        let placement = LogicalTransform::translation(bounds.x(), bounds.y())
-            .map_err(|_| PresentationGeometryError)?;
+        let placement =
+            LogicalTransform::translation(bounds.x() - ancestor_x, bounds.y() - ancestor_y)
+                .map_err(|_| PresentationGeometryError)?;
         let owner_to_surface = node_presentation
             .then(placement)
             .map_err(|_| PresentationGeometryError)?;
@@ -352,9 +384,105 @@ pub(super) fn resolve_presentation(
             .unwrap_or_else(|_| unreachable!("published layout size is valid"));
         let owner_bounds =
             transform_rect_aabb(owner_to_surface, local_bounds).ok_or(PresentationGeometryError)?;
-        nodes.push(PresentationNodeFacts::new(owner_to_surface, owner_bounds));
+        let visible_bounds = inherited_clip_bounds
+            .iter()
+            .fold(owner_bounds, |visible, clip| {
+                intersect_rects(visible, *clip)
+            });
+        nodes.push(PresentationNodeFacts::new(
+            owner_to_surface,
+            owner_bounds,
+            visible_bounds,
+            Arc::from(inherited_clips.clone()),
+        ));
+
+        let local_scroll = scroll.offset(&topology_node.id);
+        let scroll_x = if topology_node.overflow.horizontal() == OverflowPolicy::Scroll {
+            local_scroll.0
+        } else {
+            0.0
+        };
+        let scroll_y = if topology_node.overflow.vertical() == OverflowPolicy::Scroll {
+            local_scroll.1
+        } else {
+            0.0
+        };
+        let child_x = ancestor_x + scroll_x;
+        let child_y = ancestor_y + scroll_y;
+        if !child_x.is_finite() || !child_y.is_finite() {
+            return Err(PresentationGeometryError);
+        }
+        child_offsets.push((child_x, child_y));
+
+        if scroll_x != 0.0
+            || scroll_y != 0.0
+            || topology_node.overflow.horizontal() == OverflowPolicy::Scroll
+            || topology_node.overflow.vertical() == OverflowPolicy::Scroll
+        {
+            let clip_rect = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
+                .unwrap_or_else(|_| unreachable!("published viewport extent is valid"));
+            let clip_bounds = transform_rect_aabb(owner_to_surface, clip_rect)
+                .ok_or(PresentationGeometryError)?;
+            inherited_clips.push(SceneClip::new(
+                SceneShape::rect(clip_rect),
+                owner_to_surface,
+            ));
+            inherited_clip_bounds.push(clip_bounds);
+        }
+        child_clips.push(inherited_clips);
+        child_clip_bounds.push(inherited_clip_bounds);
     }
     Ok(CachedPresentationFacts { nodes })
+}
+
+pub(super) fn normalize_scroll_projection(
+    topology: &SurfaceTopologySnapshot,
+    layout: &CachedLayoutFacts,
+    scroll: &SurfaceScrollProjection,
+) -> Result<SurfaceScrollProjection, PresentationGeometryError> {
+    if topology.nodes.len() != layout.bounds.len() {
+        return Err(PresentationGeometryError);
+    }
+    let mut offsets = Vec::with_capacity(topology.nodes.len());
+    for (position, node) in topology.nodes.iter().enumerate() {
+        let (requested_x, requested_y) = scroll.offset(&node.id);
+        if !requested_x.is_finite() || !requested_y.is_finite() {
+            return Err(PresentationGeometryError);
+        }
+        let layout_node = layout
+            .report
+            .node(&node.id)
+            .ok_or(PresentationGeometryError)?;
+        let viewport = layout.bounds[position].size();
+        let extent = layout_node.scrollable_extent();
+        let max_x = (extent.width() - viewport.width()).max(0.0);
+        let max_y = (extent.height() - viewport.height()).max(0.0);
+        let x = if node.overflow.horizontal() == OverflowPolicy::Scroll {
+            requested_x.clamp(0.0, max_x)
+        } else {
+            0.0
+        };
+        let y = if node.overflow.vertical() == OverflowPolicy::Scroll {
+            requested_y.clamp(0.0, max_y)
+        } else {
+            0.0
+        };
+        offsets.push((node.id.clone(), (canonical_zero(x), canonical_zero(y))));
+    }
+    Ok(SurfaceScrollProjection::new(offsets))
+}
+
+fn intersect_rects(left: LogicalRect, right: LogicalRect) -> LogicalRect {
+    let x = left.x().max(right.x());
+    let y = left.y().max(right.y());
+    let max_x = left.max_x().min(right.max_x());
+    let max_y = left.max_y().min(right.max_y());
+    LogicalRect::try_new(x, y, (max_x - x).max(0.0), (max_y - y).max(0.0))
+        .unwrap_or_else(|_| unreachable!("intersecting finite published bounds remains finite"))
+}
+
+const fn canonical_zero(value: f32) -> f32 {
+    if value == 0.0 { 0.0 } else { value }
 }
 
 #[derive(Clone, Copy)]
@@ -480,6 +608,7 @@ fn append_runtime_paint_item(
     mounted_preorder: usize,
     contribution_local_order: usize,
     owner_to_surface: LogicalTransform,
+    inherited_clips: &[SceneClip],
     ordered: &mut Vec<groups::OrderedPaintItem>,
 ) {
     ordered.push(groups::OrderedPaintItem::new(
@@ -490,18 +619,20 @@ fn append_runtime_paint_item(
         PaintSceneItem::new(
             item.primitive().clone(),
             owner_to_surface,
-            Vec::new(),
+            inherited_clips.to_vec(),
             item.opacity(),
             item.layer(),
         ),
     ));
 }
 
+#[allow(clippy::too_many_arguments)] // Parallel paint outputs share one topology-aligned contribution pass.
 fn append_paint_contribution(
     contribution: &PaintContribution,
     mounted_preorder: usize,
     local_order_base: usize,
     owner_to_surface: LogicalTransform,
+    inherited_clips: &[SceneClip],
     diagnostics: &mut Vec<WidgetDiagnostic>,
     explicit_groups: &mut Vec<groups::ResolvedExplicitGroup>,
     ordered: &mut Vec<groups::OrderedPaintItem>,
@@ -510,6 +641,7 @@ fn append_paint_contribution(
         contribution,
         mounted_preorder,
         owner_to_surface,
+        inherited_clips,
         diagnostics,
         explicit_groups,
     );
@@ -540,7 +672,7 @@ fn append_paint_contribution(
                 false,
             ));
         }
-        let Some(clips) = compose_scene_clips(
+        let Some(authored_clips) = compose_scene_clips(
             item.clips(),
             owner_to_surface,
             SceneContributionFamily::Paint,
@@ -549,6 +681,8 @@ fn append_paint_contribution(
         ) else {
             continue;
         };
+        let mut clips = inherited_clips.to_vec();
+        clips.extend(authored_clips);
         ordered.push(groups::OrderedPaintItem::new(
             item.layer(),
             mounted_preorder,
@@ -581,7 +715,9 @@ pub(super) fn resolve_paint(
     let mut explicit_groups = Vec::new();
     let mut shaped_text_leases = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
-        let owner_to_surface = presentation.node(mounted_preorder).owner_to_surface();
+        let presentation_node = presentation.node(mounted_preorder);
+        let owner_to_surface = presentation_node.owner_to_surface();
+        let inherited_clips = presentation_node.inherited_clips();
         let computed = effective.node(mounted_preorder).computed_style();
         let decoration_shape = (computed.background().is_some() || computed.outline().is_some())
             .then(|| node_decoration_shape(layout.bounds[mounted_preorder], computed));
@@ -594,6 +730,7 @@ pub(super) fn resolve_paint(
                 mounted_preorder,
                 next_local_order,
                 owner_to_surface,
+                inherited_clips,
                 &mut ordered,
             );
             next_local_order += 1;
@@ -605,6 +742,7 @@ pub(super) fn resolve_paint(
                 mounted_preorder,
                 next_local_order,
                 owner_to_surface,
+                inherited_clips,
                 &mut diagnostics[mounted_preorder],
                 &mut explicit_groups,
                 &mut ordered,
@@ -628,6 +766,7 @@ pub(super) fn resolve_paint(
                         mounted_preorder,
                         next_local_order,
                         owner_to_surface,
+                        inherited_clips,
                         &mut ordered,
                     );
                     next_local_order += 1;
@@ -645,13 +784,19 @@ pub(super) fn resolve_paint(
                 mounted_preorder,
                 next_local_order,
                 owner_to_surface,
+                inherited_clips,
                 &mut ordered,
             );
         }
     }
     ordered.sort_by_key(groups::OrderedPaintItem::ordering_key);
-    let (items, composition) =
-        groups::derive_composition_groups(topology, effective, &explicit_groups, ordered);
+    let (items, composition) = groups::derive_composition_groups(
+        topology,
+        effective,
+        presentation,
+        &explicit_groups,
+        ordered,
+    );
     ResolvedPaint {
         scene: PaintScene::with_composition(items, shaped_text_leases, composition),
         diagnostics,
@@ -677,7 +822,8 @@ pub(super) fn resolve_hit_test(
         let Some(contribution) = capabilities.hit_test_at(mounted_preorder, &node.id) else {
             continue;
         };
-        let owner_to_surface = presentation.node(mounted_preorder).owner_to_surface();
+        let presentation_node = presentation.node(mounted_preorder);
+        let owner_to_surface = presentation_node.owner_to_surface();
         for (contribution_local_order, region) in contribution.regions().iter().enumerate() {
             let Ok(local_to_surface) = region.local_transform().then(owner_to_surface) else {
                 diagnostics[mounted_preorder].push(scene_transform_diagnostic(
@@ -696,7 +842,7 @@ pub(super) fn resolve_hit_test(
                     false,
                 ));
             }
-            let Some(clips) = compose_scene_clips(
+            let Some(authored_clips) = compose_scene_clips(
                 region.clips(),
                 owner_to_surface,
                 SceneContributionFamily::Hit,
@@ -705,6 +851,8 @@ pub(super) fn resolve_hit_test(
             ) else {
                 continue;
             };
+            let mut clips = presentation_node.inherited_clips().to_vec();
+            clips.extend(authored_clips);
             ordered.push((
                 region.layer(),
                 mounted_preorder,

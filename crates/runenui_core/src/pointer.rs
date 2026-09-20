@@ -60,6 +60,18 @@ impl fmt::Display for LogicalDeltaError {
 
 impl Error for LogicalDeltaError {}
 
+/// Invalid touch arbitration movement threshold.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TouchGestureThresholdError;
+
+impl fmt::Display for TouchGestureThresholdError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("touch gesture thresholds must be finite and greater than zero")
+    }
+}
+
+impl Error for TouchGestureThresholdError {}
+
 /// Finite position in `RunenUI` logical coordinate space.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct LogicalPoint {
@@ -141,6 +153,61 @@ impl LogicalDelta {
 impl Default for FiniteLogical {
     fn default() -> Self {
         Self(0.0)
+    }
+}
+
+/// Validated logical movement distances used by the initial touch gesture profile.
+///
+/// These are runtime-neutral logical distances, never values imported implicitly
+/// from a platform's ambient gesture configuration.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct TouchGestureThresholds {
+    scroll_movement: FiniteLogical,
+    selection_movement: FiniteLogical,
+}
+
+impl TouchGestureThresholds {
+    /// Creates positive finite thresholds for touch scrolling and text selection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TouchGestureThresholdError`] for a non-finite or non-positive value.
+    pub const fn new(
+        scroll_movement: f32,
+        selection_movement: f32,
+    ) -> Result<Self, TouchGestureThresholdError> {
+        if !scroll_movement.is_finite()
+            || !selection_movement.is_finite()
+            || scroll_movement <= 0.0
+            || selection_movement <= 0.0
+        {
+            return Err(TouchGestureThresholdError);
+        }
+        Ok(Self {
+            scroll_movement: FiniteLogical(scroll_movement),
+            selection_movement: FiniteLogical(selection_movement),
+        })
+    }
+
+    /// Returns the scroll-winner movement threshold in logical units.
+    #[must_use]
+    pub const fn scroll_movement(self) -> f32 {
+        self.scroll_movement.get()
+    }
+
+    /// Returns the text-selection movement threshold in logical units.
+    #[must_use]
+    pub const fn selection_movement(self) -> f32 {
+        self.selection_movement.get()
+    }
+}
+
+impl Default for TouchGestureThresholds {
+    fn default() -> Self {
+        Self {
+            scroll_movement: FiniteLogical(8.0),
+            selection_movement: FiniteLogical(8.0),
+        }
     }
 }
 
@@ -622,13 +689,24 @@ impl PointerCaptureEvent {
 pub struct LogicalScrollCommand {
     pointer_id: PointerId,
     delta: LogicalDelta,
+    hit_test_generation: u64,
+    coordinate_revision: u64,
 }
 
 impl LogicalScrollCommand {
     #[doc(hidden)]
     #[must_use]
-    pub const fn __runtime_new(pointer_id: PointerId, delta: LogicalDelta) -> Self {
-        Self { pointer_id, delta }
+    pub const fn __runtime_new(
+        pointer_id: PointerId,
+        delta: LogicalDelta,
+        surface_context: &SurfaceInputContext,
+    ) -> Self {
+        Self {
+            pointer_id,
+            delta,
+            hit_test_generation: surface_context.hit_test_generation(),
+            coordinate_revision: surface_context.coordinate_revision(),
+        }
     }
 
     #[must_use]
@@ -640,13 +718,25 @@ impl LogicalScrollCommand {
     pub const fn delta(self) -> LogicalDelta {
         self.delta
     }
+
+    /// Returns the exact displayed generation that supplied this scroll input.
+    #[must_use]
+    pub const fn hit_test_generation(self) -> u64 {
+        self.hit_test_generation
+    }
+
+    /// Returns the coordinate revision paired with the displayed generation.
+    #[must_use]
+    pub const fn coordinate_revision(self) -> u64 {
+        self.coordinate_revision
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         InputDeviceId, KeyModifiers, LogicalDelta, LogicalPoint, PointerButton, PointerButtons,
-        PointerId,
+        PointerId, TouchGestureThresholds,
     };
 
     #[test]
@@ -676,5 +766,16 @@ mod tests {
         assert!(modifiers.shift());
         assert!(modifiers.control());
         assert!(!modifiers.alt());
+    }
+
+    #[test]
+    fn touch_thresholds_are_finite_positive_logical_distances() {
+        assert!(TouchGestureThresholds::new(0.0, 8.0).is_err());
+        assert!(TouchGestureThresholds::new(8.0, f32::INFINITY).is_err());
+        assert!(TouchGestureThresholds::new(f32::NAN, 8.0).is_err());
+        let thresholds = TouchGestureThresholds::new(6.0, 10.0)
+            .unwrap_or_else(|_| unreachable!("positive finite thresholds are accepted"));
+        assert!((thresholds.scroll_movement() - 6.0).abs() < f32::EPSILON);
+        assert!((thresholds.selection_movement() - 10.0).abs() < f32::EPSILON);
     }
 }

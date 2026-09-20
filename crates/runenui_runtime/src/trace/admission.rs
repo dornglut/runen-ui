@@ -86,10 +86,10 @@ impl MandatoryTracePlan {
         Self::exact(10)
     }
 
-    /// Maximum default/interaction/cleanup/notification/output/close facts
-    /// committed after pointer callbacks.
+    /// Maximum default/interaction/cleanup/notification/output/close and
+    /// optional text-selection transition facts committed after callbacks.
     pub(crate) fn pointer_commit(boundary_notifications: usize) -> Option<Self> {
-        Self::exact(10).checked_add(Self::exact(boundary_notifications))
+        Self::exact(11).checked_add(Self::exact(boundary_notifications))
     }
 
     /// Unrouted pointer commits can additionally request one style redraw after
