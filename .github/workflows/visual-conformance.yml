@@ -80,6 +80,7 @@ jobs:
         env:
           RUST_BACKTRACE: '1'
           RUNENUI_M8D_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance
+          RUNENUI_M10F_EVIDENCE_DIR: ${{ runner.temp }}/runenui-visual-conformance
         run: |
           set -euo pipefail
           cargo +stable test --locked -p runenui_render_wgpu --test solid_render -- --nocapture
@@ -89,6 +90,9 @@ jobs:
             -- --nocapture
           test -s "${RUNENUI_M8D_EVIDENCE_DIR}/m8d-production-text-contact-sheet.png"
           test -s "${RUNENUI_M8D_EVIDENCE_DIR}/m8d-production-text-evidence.txt"
+          cargo +stable test --locked -p runenui_render_wgpu --test m10f_editable correlated_editable_publication_renders_selection_preedit_scroll_and_retries_exactly -- --nocapture
+          test -s "${RUNENUI_M10F_EVIDENCE_DIR}/m10f-editable-contact-sheet.png"
+          test -s "${RUNENUI_M10F_EVIDENCE_DIR}/m10f-editable-evidence.txt"
 
       - name: Check repository hygiene
         run: |

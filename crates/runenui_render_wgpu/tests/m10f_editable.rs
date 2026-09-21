@@ -2,7 +2,7 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::too_many_lines)]
 
 use core::{future::Future, pin::pin, task::Poll};
-use std::{cell::Cell, task::Context};
+use std::{cell::Cell, fmt::Write as _, fs, path::PathBuf, task::Context};
 
 use runenui_core::{
     Brush, Color, CommandOrigin, CompositionRange, EdgeInsets, EditIntent, EditResolution,
@@ -29,6 +29,7 @@ use runenui_runtime::{
 };
 
 const FONT_BYTES: &[u8] = include_bytes!("fixtures/Cantarell-Regular.ttf");
+const EVIDENCE_GAP: u32 = 8;
 const TEXT: &str = "M10 editable renderer\nselection pixels\npreedit pixels\nscrolled line four\nscrolled line five\ncandidate geometry";
 
 struct EditorState {
@@ -268,6 +269,100 @@ fn pixel_hash(bytes: &[u8]) -> u64 {
     })
 }
 
+fn evidence_dir() -> Option<PathBuf> {
+    std::env::var_os("RUNENUI_M10F_EVIDENCE_DIR").map(PathBuf::from)
+}
+
+fn write_evidence(
+    renderer: &Renderer,
+    extent: (u32, u32),
+    panels: [(&str, &[u8]); 4],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(directory) = evidence_dir() else {
+        return Ok(());
+    };
+    fs::create_dir_all(&directory)?;
+
+    let (panel_width, panel_height) = extent;
+    let width = panel_width
+        .checked_mul(2)
+        .and_then(|width| width.checked_add(EVIDENCE_GAP))
+        .ok_or("M10F evidence width overflow")?;
+    let height = panel_height
+        .checked_mul(2)
+        .and_then(|height| height.checked_add(EVIDENCE_GAP))
+        .ok_or("M10F evidence height overflow")?;
+    let byte_count = usize::try_from(width)?
+        .checked_mul(usize::try_from(height)?)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or("M10F evidence buffer size overflow")?;
+    let mut sheet = vec![0_u8; byte_count];
+    for pixel in sheet.as_chunks_mut::<4>().0 {
+        pixel.copy_from_slice(&[0x16, 0x20, 0x30, 0xFF]);
+    }
+
+    let row_bytes = usize::try_from(panel_width)? * 4;
+    let panel_bytes = row_bytes * usize::try_from(panel_height)?;
+    for (index, (name, source)) in panels.iter().enumerate() {
+        if source.len() != panel_bytes {
+            return Err(format!(
+                "M10F panel {} has {} bytes, expected {panel_bytes}",
+                name,
+                source.len()
+            )
+            .into());
+        }
+        let x = if index % 2 == 0 {
+            0
+        } else {
+            panel_width + EVIDENCE_GAP
+        };
+        let y = if index < 2 {
+            0
+        } else {
+            panel_height + EVIDENCE_GAP
+        };
+        for row in 0..usize::try_from(panel_height)? {
+            let source_start = row * row_bytes;
+            let target_start =
+                (usize::try_from(y)? + row) * usize::try_from(width)? * 4 + usize::try_from(x)? * 4;
+            sheet[target_start..target_start + row_bytes]
+                .copy_from_slice(&source[source_start..source_start + row_bytes]);
+        }
+    }
+
+    image::save_buffer(
+        directory.join("m10f-editable-contact-sheet.png"),
+        &sheet,
+        width,
+        height,
+        image::ColorType::Rgba8,
+    )?;
+
+    let mut manifest = String::from("M10F real-wgpu editable rendering evidence\n\n");
+    writeln!(
+        manifest,
+        "adapter={:?}",
+        renderer.diagnostics().adapter_info()
+    )?;
+    writeln!(
+        manifest,
+        "publication readback extent={panel_width}x{panel_height}"
+    )?;
+    manifest.push_str("panel order: initial selection | focused caret; preedit | scrolled text\n");
+    manifest.push_str(
+        "Each panel is the real renderer readback of a correlated runtime publication; the viewport retains its clip and presentation transform.\n",
+    );
+    manifest.push_str(
+        "Proof also checks candidate geometry against the painted caret, retry after resource failure, and renderer re-realization of the exact publication.\n",
+    );
+    for (name, _) in panels {
+        writeln!(manifest, "panel={name}")?;
+    }
+    fs::write(directory.join("m10f-editable-evidence.txt"), manifest)?;
+    Ok(())
+}
+
 #[test]
 fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_exactly()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -294,6 +389,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
     );
     let initial_readback =
         renderer.render_offscreen_publication(initial.paint_publication(), &provider)?;
+    let evidence_extent = initial_readback.readback().extent();
     let initial_pixels = initial_readback.readback().rgba8_srgb().to_vec();
     assert!(initial_pixels.iter().any(|channel| *channel != 0));
     let initial_rect_fill_count = initial
@@ -500,6 +596,16 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
         0,
         "renderer work cannot mutate app state"
     );
+    write_evidence(
+        &renderer,
+        (evidence_extent.width(), evidence_extent.height()),
+        [
+            ("initial selection", &initial_pixels),
+            ("focused caret", &focused_pixels),
+            ("preedit", &preedit_pixels),
+            ("scrolled text", &scrolled_pixels),
+        ],
+    )?;
     Ok(())
 }
 
