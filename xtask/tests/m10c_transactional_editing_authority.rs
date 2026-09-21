@@ -88,7 +88,7 @@ fn downstream_proof_uses_only_public_contracts_and_no_friend_seam() -> Result<()
         "EditableContribution::new(",
         "UpdateOutput::edit(",
         "submit_text(",
-        "runtime.state().text",
+        "harness.state().text",
     ] {
         require(&source, required, EXTERNAL_PROOF)?;
     }

@@ -10,6 +10,7 @@ use winit::{
 };
 
 const FIRST_POINTER_ID: u64 = 1;
+const POINTER_ID_STRIDE: u64 = 2;
 const BACK_BUTTON_ID: u16 = 4;
 const FORWARD_BUTTON_ID: u16 = 5;
 
@@ -332,7 +333,9 @@ impl MouseInputState {
             .ok_or(MouseIngressDiagnostic::PointerIdentityExhausted)?;
         let pointer_id =
             PointerId::new(value).ok_or(MouseIngressDiagnostic::PointerIdentityExhausted)?;
-        self.next_pointer_id = value.checked_add(1);
+        // Mouse uses the odd identity sequence; native touch contacts use the
+        // disjoint even sequence, so simultaneous modalities cannot collide.
+        self.next_pointer_id = value.checked_add(POINTER_ID_STRIDE);
         self.active_stream = Some(MousePointerStream {
             pointer_id,
             device_id,

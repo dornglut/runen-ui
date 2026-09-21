@@ -30,7 +30,7 @@ pub(crate) struct PreparedEdit<Action> {
     pub(crate) origin: EditActionOrigin,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct EditingSemanticProjection {
     pub(crate) snapshot: TextDocumentSnapshot,
     pub(crate) source: Arc<str>,

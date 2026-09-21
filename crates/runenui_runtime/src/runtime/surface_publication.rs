@@ -382,12 +382,14 @@ impl SurfacePublicationState {
             instant,
         } = candidate;
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
+        let text_editing =
+            crate::surface::TextEditingPaintInputs::new(focused_owner, editing, preedits);
         let planned = plan_mounted_surface_cached_with_text(
             tree,
             context,
             interaction,
             text_system,
-            preedits,
+            text_editing,
             self.cache.as_ref(),
             &self.motion_store,
             instant,

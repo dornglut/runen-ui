@@ -19,6 +19,7 @@ mod transaction;
 use std::sync::Arc;
 
 pub(crate) use cache::SurfaceCache;
+pub(crate) use cache::TextEditingPaintInputs;
 pub use cache::{SurfacePhase, SurfacePhaseReport};
 pub use context::{RasterScale, RasterScaleError, SurfaceBuildContext};
 pub(crate) use interaction::{SurfaceInteractionProjection, SurfaceScrollProjection};

@@ -237,6 +237,28 @@ impl<App: UiApp> TestHarness<App> {
         self.runtime.pending_host_requests()
     }
 
+    /// Returns framework-service requests whose committed start envelopes ran.
+    ///
+    /// This is a read-only view of the ordinary runtime service authority. The
+    /// harness does not execute services or retain a parallel request queue.
+    #[must_use]
+    pub fn pending_framework_services(&self) -> Vec<runenui_runtime::FrameworkServiceRef<'_>> {
+        self.runtime.pending_framework_services()
+    }
+
+    /// Queues one typed framework-service response through ordinary runtime ingress.
+    ///
+    /// # Errors
+    ///
+    /// Returns the ordinary runtime's exact rejection and response ownership.
+    pub fn complete_framework_service(
+        &mut self,
+        token: &runenui_runtime::FrameworkServiceToken,
+        response: runenui_core::FrameworkServiceResponse,
+    ) -> Result<runenui_runtime::WorkSequence, runenui_runtime::FrameworkServiceResponseError> {
+        self.runtime.complete_framework_service(token, response)
+    }
+
     /// Publishes the configured fixed surface through the runtime-owned logical text authority.
     ///
     /// Deterministic bundled-only runtimes require callers to register controlled font bytes

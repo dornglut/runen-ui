@@ -200,12 +200,27 @@ impl<'a> PlannedSurfacePublication<'a> {
                 continue;
             };
             let presentation = self.cache.presentation.node(position);
+            let padding = self
+                .cache
+                .effective
+                .node(position)
+                .computed_style()
+                .padding()
+                .unwrap_or_default();
+            let Ok(text_origin) =
+                LogicalTransform::translation(padding.left().get(), padding.top().get())
+            else {
+                continue;
+            };
+            let Ok(layout_to_surface) = text_origin.then(presentation.owner_to_surface()) else {
+                continue;
+            };
             targets.insert(
                 semantic.owner,
                 DisplayedTextTarget {
                     map,
                     eligible_bounds: presentation.visible_bounds(),
-                    layout_to_surface: presentation.owner_to_surface(),
+                    layout_to_surface,
                     clips: Arc::from(presentation.inherited_clips().to_vec()),
                 },
             );

@@ -122,7 +122,7 @@ pub fn translate_preedit_range(
 #[cfg(test)]
 mod tests {
     use super::{TextInputState, keyboard_committed_text_candidate, translate_preedit_range};
-    use crate::DemoApp;
+    use crate::{DemoApp, DemoState};
     use runenui_core::{
         CommandOrigin, CompositionGeneration, KeyboardCompositionState, SemanticCommand,
         WidgetTextInput,
@@ -135,7 +135,7 @@ mod tests {
     }
 
     fn focused_composition() -> (MountedNodeId, CompositionGeneration) {
-        let mut runtime = AppRuntime::<DemoApp>::mount(());
+        let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
         runtime.pump(full_pump());
         let owner = runtime.index().nodes()[0].id().clone();
         runtime
@@ -155,7 +155,7 @@ mod tests {
     }
 
     fn distinct_owner() -> MountedNodeId {
-        let mut runtime = AppRuntime::<DemoApp>::mount(());
+        let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
         runtime.pump(full_pump());
         runtime.index().nodes()[0].id().clone()
     }

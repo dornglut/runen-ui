@@ -11,12 +11,12 @@ use runenui_text::{TextLayoutError, TextSystem};
 use crate::mounted::{DirtyPhases, SemanticReconcileError, SurfaceCapabilityPlan};
 use crate::style_debug::SurfaceStyleReport;
 
-use super::cache::{CachedLayoutFacts, context_key};
+use super::cache::{CachedLayoutFacts, TextEditingPaintInputs, context_key};
 use super::motion::{self, MotionPlanningFailure};
 use super::resolve::{
-    EffectiveEffects, PresentationGeometryError, ResolvedSurfaceTree, collect_topology,
-    hit_contexts, normalize_scroll_projection, paint_contexts, resolve_diagnostics,
-    resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
+    EffectiveEffects, PaintResolutionInput, PresentationGeometryError, ResolvedSurfaceTree,
+    collect_topology, hit_contexts, normalize_scroll_projection, paint_contexts,
+    resolve_diagnostics, resolve_hit_test, resolve_paint, resolve_presentation, resolve_styles,
 };
 use super::taffy_layout::layout_resolved_surface;
 use super::transaction::{PlannedSurfacePublication, StagedSurfaceMotion};
@@ -135,15 +135,28 @@ fn replace_scene_diagnostics_if_changed(
     }
 }
 
+struct ContributionPhasePlan<'a> {
+    capability_plan: &'a mut SurfaceCapabilityPlan,
+    text_system: &'a mut TextSystem,
+    text_editing: TextEditingPaintInputs<'a>,
+    publication_phases: DirtyPhases,
+    report: &'a mut SurfacePhaseReport,
+    completed: &'a mut DirtyPhases,
+}
+
 fn resolve_contribution_phases<Action>(
     tree: &crate::mounted::MountedTree<Action>,
     current: &mut SurfaceCache,
-    capability_plan: &mut SurfaceCapabilityPlan,
-    text_system: &mut TextSystem,
-    publication_phases: DirtyPhases,
-    report: &mut SurfacePhaseReport,
-    completed: &mut DirtyPhases,
+    plan: ContributionPhasePlan<'_>,
 ) -> bool {
+    let ContributionPhasePlan {
+        capability_plan,
+        text_system,
+        text_editing,
+        publication_phases,
+        report,
+        completed,
+    } = plan;
     let paint_contexts = paint_contexts(&current.layout, &current.effective);
     let hit_contexts = hit_contexts(&current.layout);
     tree.plan_surface_publication_contributions(capability_plan, &paint_contexts, &hit_contexts);
@@ -160,14 +173,15 @@ fn resolve_contribution_phases<Action>(
         completed.insert(DirtyPhases::HIT_TEST);
     }
     if publication_phases.contains(DirtyPhases::PAINT) {
-        let resolved = resolve_paint(
-            &current.topology,
-            &current.layout,
-            &current.presentation,
-            &current.effective,
-            capability_plan,
+        let resolved = resolve_paint(PaintResolutionInput {
+            topology: &current.topology,
+            layout: &current.layout,
+            presentation: &current.presentation,
+            effective: &current.effective,
+            capabilities: capability_plan,
             text_system,
-        );
+            text_editing,
+        });
         current.paint = resolved.scene;
         scene_diagnostics_changed |= replace_scene_diagnostics_if_changed(
             &mut current.paint_diagnostics,
@@ -321,13 +335,14 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     context: &SurfaceBuildContext<'_>,
     interaction: &SurfaceInteractionProjection,
     text_system: &mut TextSystem,
-    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    text_editing: TextEditingPaintInputs<'_>,
     cache: Option<&SurfaceCache>,
     motion_store: &SurfaceMotionStore,
     instant: MonotonicInstant,
 ) -> Result<PlannedSurfacePublication<'tree>, SurfacePlanningError> {
     let scroll = tree.surface_scroll_projection();
     let pending = tree.pending_phases();
+    let text_editing_key = super::cache::TextEditingPaintKey::new(text_editing);
     if cache.is_none() || pending.contains(DirtyPhases::TREE) {
         return plan_structural_surface(
             tree,
@@ -335,7 +350,8 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
             interaction,
             &scroll,
             text_system,
-            preedits,
+            text_editing,
+            text_editing_key,
             cache,
             motion_store,
             instant,
@@ -344,11 +360,13 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
 
     let next_context = context_key(context, text_system.source_snapshot());
     let mut current = stage_non_structural_cache(cache);
+    let text_editing_dirty = current.text_editing.as_ref() != &text_editing_key;
+    current.text_editing = Arc::new(text_editing_key);
     let style_dirty = style_product_is_dirty(pending, &current, &next_context, interaction);
     let layout_dirty =
         pending.contains(DirtyPhases::LAYOUT) || layout_context_changed(&current, &next_context);
     let hit_dirty = pending.contains(DirtyPhases::HIT_TEST);
-    let paint_dirty = pending.contains(DirtyPhases::PAINT);
+    let paint_dirty = pending.contains(DirtyPhases::PAINT) || text_editing_dirty;
     let mut report = SurfacePhaseReport::default();
     let mut completed = DirtyPhases::default();
     let mut capability_plan = initial_surface_capability_plan(tree, style_dirty);
@@ -396,7 +414,7 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
             &current,
             context,
             text_system,
-            preedits,
+            text_editing.preedits,
         )?);
         report.record(SurfacePhase::Layout);
         completed.insert(DirtyPhases::LAYOUT);
@@ -418,11 +436,14 @@ pub(crate) fn plan_mounted_surface_cached_with_text<'tree, Action>(
     let scene_diagnostics_changed = resolve_contribution_phases(
         tree,
         &mut current,
-        &mut capability_plan,
-        text_system,
-        publication_phases,
-        &mut report,
-        &mut completed,
+        ContributionPhasePlan {
+            capability_plan: &mut capability_plan,
+            text_system,
+            text_editing,
+            publication_phases,
+            report: &mut report,
+            completed: &mut completed,
+        },
     );
 
     let finalized_semantics = semantic_capability_plan
@@ -463,7 +484,8 @@ fn plan_structural_surface<'tree, Action>(
     interaction: &SurfaceInteractionProjection,
     scroll: &super::SurfaceScrollProjection,
     text_system: &mut TextSystem,
-    preedits: &HashMap<crate::MountedNodeId, Arc<TextPreeditProjection>>,
+    text_editing: TextEditingPaintInputs<'_>,
+    text_editing_key: super::cache::TextEditingPaintKey,
     previous_cache: Option<&SurfaceCache>,
     motion_store: &SurfaceMotionStore,
     instant: MonotonicInstant,
@@ -505,7 +527,7 @@ fn plan_structural_surface<'tree, Action>(
         tree,
         context.root_constraints(),
         text_system,
-        preedits,
+        text_editing.preedits,
         None,
     )?;
     let layout = CachedLayoutFacts {
@@ -529,14 +551,15 @@ fn plan_structural_surface<'tree, Action>(
     let hit_test = resolved_hit_test.scene;
     let hit_diagnostics = Arc::new(resolved_hit_test.diagnostics);
     report.record(SurfacePhase::HitTesting);
-    let resolved_paint = resolve_paint(
-        &topology,
-        &layout,
-        &presentation,
-        &effective,
-        &capability_plan,
+    let resolved_paint = resolve_paint(PaintResolutionInput {
+        topology: &topology,
+        layout: &layout,
+        presentation: &presentation,
+        effective: &effective,
+        capabilities: &capability_plan,
         text_system,
-    );
+        text_editing,
+    });
     let paint = resolved_paint.scene;
     let paint_diagnostics = Arc::new(resolved_paint.diagnostics);
     report.record(SurfacePhase::Paint);
@@ -550,6 +573,7 @@ fn plan_structural_surface<'tree, Action>(
         context_key: Arc::new(context_key),
         topology: Arc::new(topology),
         interaction: Arc::new(interaction.clone()),
+        text_editing: Arc::new(text_editing_key),
         scroll: Arc::new(scroll),
         styles: Arc::new(styles),
         effective: Arc::new(effective),
@@ -612,7 +636,7 @@ pub(super) fn plan_mounted_surface_cached_with_test_text<'tree, Action>(
             context,
             interaction,
             &mut text_system.borrow_mut(),
-            &HashMap::new(),
+            TextEditingPaintInputs::new(None, &HashMap::new(), &HashMap::new()),
             cache,
             &motion_store,
             MonotonicInstant::ZERO,

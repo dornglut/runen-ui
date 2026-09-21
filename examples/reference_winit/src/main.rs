@@ -28,13 +28,16 @@ use mouse_input::{
 };
 use runenui_core::{
     Brush, Color, CommandOrigin, CommittedTextEvent, DragDropEvent, DragDropPayloadKind,
-    DragDropPayloadMetadata, DragDropPhase, Element, EventContext, HitContribution,
-    HitContributionContext, InputDeviceId, KeyModifiers, KeyboardEvent, LogicalLength,
-    LogicalPoint, LogicalRect, NoHostProtocol, PaintContribution, PaintContributionContext,
-    PaintContributionItem, PointerEvent, SceneShape, SemanticAction, SemanticCommand,
-    SemanticContribution, SemanticKey, SemanticNodeContribution, SemanticRole, SemanticText,
-    StyleEnvironment, SurfaceInputContext, UiApp, UiEvent, View, Widget, WidgetActivation,
-    WidgetMeasure, WidgetTextInput,
+    DragDropPayloadMetadata, DragDropPhase, EdgeInsets, EditIntent, EditResolution,
+    EditableContribution, EditingSessionPolicy, Element, EventContext, HitContribution,
+    HitContributionContext, InputDeviceId, KeyModifiers, KeyboardEvent, LayoutDimension,
+    LayoutStyle, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy,
+    OverflowStyle, PaintContribution, PaintContributionContext, PaintContributionItem,
+    PointerEvent, SceneShape, SemanticAction, SemanticCommand, SemanticContribution,
+    SemanticEditable, SemanticNodeContribution, SemanticRole, SemanticState, StyleEnvironment,
+    SurfaceInputContext, TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
+    TextPosition, TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, View, Widget,
+    WidgetActivation, WidgetMeasure, WidgetTextInput,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -44,11 +47,12 @@ use runenui_runtime::{
     AppRuntime, LogicalSize, PumpBudget, RasterScale, RedrawRequest, SubmitCompositionErrorKind,
     SubmitKeyboardErrorKind, SubmitTextErrorKind, SurfaceBuildContext, SurfacePublication,
 };
+use runenui_winit::touch_input::{TouchIngressDiagnostic, TouchInputState};
 use text_input::{TextInputState, keyboard_committed_text_candidate, translate_preedit_range};
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{DeviceId, ElementState, Ime, MouseButton, WindowEvent},
+    event::{DeviceId, ElementState, Ime, MouseButton, Touch, TouchPhase, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     keyboard::ModifiersState,
     window::{Window, WindowId},
@@ -113,10 +117,33 @@ impl From<accesskit_winit::Event> for HostEvent {
     }
 }
 
-#[derive(Debug)]
-struct DemoSurface;
+const INITIAL_EDITOR_TEXT: &str = "RunenUI M10 Reference Host\n\nThis is an application-owned editable document. Click anywhere and type; try mouse selection, clipboard shortcuts, IME composition, and scrolling.";
 
-impl Widget<()> for DemoSurface {
+struct DemoState {
+    text: String,
+    revision: u64,
+}
+
+impl Default for DemoState {
+    fn default() -> Self {
+        Self {
+            text: INITIAL_EDITOR_TEXT.to_owned(),
+            revision: 0,
+        }
+    }
+}
+
+enum DemoAction {
+    Edit(EditIntent),
+}
+
+#[derive(Debug)]
+struct DemoSurface {
+    snapshot: TextDocumentSnapshot,
+    text: String,
+}
+
+impl Widget<DemoAction> for DemoSurface {
     type State = ();
 
     fn create_state(&self) -> Self::State {}
@@ -129,18 +156,60 @@ impl Widget<()> for DemoSurface {
         WidgetTextInput::new(true, true)
     }
 
+    fn editable(&self, _state: &Self::State) -> Option<EditableContribution<DemoAction>> {
+        let selection = self.selection()?;
+        EditableContribution::new(
+            self.snapshot,
+            self.text.clone(),
+            selection,
+            TextSensitivity::Public,
+            false,
+            false,
+            EditingSessionPolicy::PreserveExact,
+            DemoAction::Edit,
+        )
+        .ok()
+    }
+
+    fn semantics(
+        &self,
+        _state: &Self::State,
+        _context: runenui_core::SemanticContributionContext,
+    ) -> SemanticContribution {
+        let Some(selection) = self.selection() else {
+            return SemanticContribution::empty();
+        };
+        let Some(editable) = SemanticEditable::new(
+            self.snapshot,
+            &self.text,
+            selection,
+            TextSensitivity::Public,
+            false,
+        ) else {
+            return SemanticContribution::empty();
+        };
+        SemanticContribution::single(
+            SemanticNodeContribution::primary(SemanticRole::EditableText)
+                .with_name("RunenUI reference editor")
+                .with_state(SemanticState::ENABLED)
+                .with_editable(editable)
+                .with_action(SemanticAction::SetSelection)
+                .with_action(SemanticAction::ReplaceSelection),
+        )
+    }
+
     fn event(
         &mut self,
         _state: &mut Self::State,
         event: &UiEvent,
-        context: &mut EventContext<'_, ()>,
+        context: &mut EventContext<'_, DemoAction>,
     ) -> runenui_core::WidgetEventOutput {
         if event
             .as_drag_drop()
             .is_some_and(|drop| drop.phase() == DragDropPhase::Drop)
         {
-            // This reference application deliberately admits dropped files only
-            // at the exact physical target and never opens or reads them.
+            // Dropped file names remain host-owned; the reference editor only
+            // exercises exact-target admission and never opens or reads them.
             context.accept_drag_drop();
         }
         runenui_core::WidgetEventOutput::none()
@@ -151,7 +220,9 @@ impl Widget<()> for DemoSurface {
         _state: &Self::State,
         _input: runenui_core::WidgetMeasureInput,
     ) -> WidgetMeasure {
-        WidgetMeasure::measured(LogicalLength::from(400_u16), LogicalLength::from(240_u16))
+        WidgetMeasure::Text {
+            content: self.text.clone(),
+        }
     }
 
     fn hit_test(&self, _state: &Self::State, context: HitContributionContext) -> HitContribution {
@@ -169,46 +240,82 @@ impl Widget<()> for DemoSurface {
             Brush::solid(Color::rgb(28, 32, 40)),
         ))
     }
+}
 
-    fn semantics(
-        &self,
-        _state: &Self::State,
-        _context: runenui_core::SemanticContributionContext,
-    ) -> SemanticContribution {
-        let status_key = SemanticKey::from_static("status")
-            .unwrap_or_else(|_| unreachable!("the static semantic key is valid"));
-        SemanticContribution::single(
-            SemanticNodeContribution::primary(SemanticRole::Button)
-                .with_name("RunenUI accessibility action")
-                .with_description("Activate this control through the native accessibility tree")
-                .with_action(SemanticAction::Activate)
-                .with_action(SemanticAction::RequestFocus)
-                .with_action(SemanticAction::OpenMenu)
-                .with_action(SemanticAction::OpenContextMenu)
-                .with_child(
-                    SemanticNodeContribution::new(status_key, SemanticRole::Text)
-                        .with_name("Native AccessKit path ready")
-                        .with_text(SemanticText::plain("Native AccessKit path ready")),
-                ),
+impl DemoSurface {
+    fn selection(&self) -> Option<TextSelection> {
+        let position = TextPosition::new(
+            self.snapshot,
+            &self.text,
+            self.text.len(),
+            TextAffinity::Upstream,
         )
+        .ok()?;
+        Some(TextSelection::collapsed(position))
     }
 }
 
 struct DemoApp;
 
 impl UiApp for DemoApp {
-    type State = ();
-    type Action = ();
+    type State = DemoState;
+    type Action = DemoAction;
     type HostProtocol = NoHostProtocol;
 
-    fn root(_state: &Self::State) -> impl View<Self::Action> {
-        Element::new(DemoSurface).focusable(true)
+    fn root(state: &Self::State) -> impl View<Self::Action> {
+        Element::new(DemoSurface {
+            snapshot: TextDocumentSnapshot::new(
+                TextDocumentId::new(1),
+                TextDocumentRevision::new(state.revision),
+            ),
+            text: state.text.clone(),
+        })
+        .id("reference.editor")
+        .key("reference.editor")
+        .with_layout(
+            LayoutStyle::default()
+                .with_width(LayoutDimension::Fill)
+                .with_height(LayoutDimension::Fill)
+                .with_overflow(OverflowStyle::new(
+                    OverflowPolicy::Visible,
+                    OverflowPolicy::Scroll,
+                )),
+        )
+        .foreground(Color::WHITE)
+        .padding(EdgeInsets::all(LogicalLength::from(24_u16)))
+        .focusable(true)
     }
 
     fn update(
-        _state: &mut Self::State,
-        _action: Self::Action,
+        state: &mut Self::State,
+        DemoAction::Edit(intent): Self::Action,
     ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
+        let request = intent.request().clone();
+        let Some(next_revision) = state.revision.checked_add(1) else {
+            return UpdateOutput::edit(EditResolution::rejected(
+                request,
+                TextDocumentSnapshot::new(
+                    TextDocumentId::new(1),
+                    TextDocumentRevision::new(state.revision),
+                ),
+            ));
+        };
+        state.text.replace_range(
+            intent.replacement().start()..intent.replacement().end(),
+            intent.replacement_text(),
+        );
+        state.revision = next_revision;
+        UpdateOutput::edit(EditResolution::accepted(
+            request,
+            TextDocumentSnapshot::new(
+                TextDocumentId::new(1),
+                TextDocumentRevision::new(state.revision),
+            ),
+        ))
+    }
+
+    fn trace_action_label(_action: &Self::Action) -> Option<&'static str> {
+        Some("edit")
     }
 }
 
@@ -222,7 +329,7 @@ impl ResourceProvider for NoResources {
     ) -> Result<ResourcePayload, ResourceProviderError> {
         Err(ResourceProviderError::new(
             ResourceProviderErrorKind::Missing,
-            "the reference host demo publishes only literal paint",
+            "the reference host has no external resource payloads",
         ))
     }
 }
@@ -415,6 +522,7 @@ struct ReferenceHost {
     displayed_frame: Option<DisplayedFrame>,
     device_identities: DeviceIdentityMap,
     mouse: MouseInputState,
+    touch: TouchInputState,
     keyboard: KeyboardInputState,
     text_input: TextInputState,
     framework_services: NativeFrameworkServices,
@@ -437,7 +545,8 @@ struct ReferenceHost {
 impl ReferenceHost {
     #[must_use]
     fn new(proxy: EventLoopProxy<HostEvent>) -> Self {
-        let (runtime, trace_sink) = proof_trace::mount::<DemoApp>((), proof_enabled());
+        let (runtime, trace_sink) =
+            proof_trace::mount::<DemoApp>(DemoState::default(), proof_enabled());
         let wake_proxy = proxy.clone();
         runtime.set_wake_transport(move || {
             let _ = wake_proxy.send_event(HostEvent::Wake);
@@ -457,6 +566,7 @@ impl ReferenceHost {
             displayed_frame: None,
             device_identities: DeviceIdentityMap::default(),
             mouse: MouseInputState::default(),
+            touch: TouchInputState::default(),
             keyboard: KeyboardInputState::default(),
             text_input: TextInputState::default(),
             framework_services: NativeFrameworkServices::new(),
@@ -536,7 +646,7 @@ impl ReferenceHost {
             return Ok(());
         }
         let attributes = Window::default_attributes()
-            .with_title("RunenUI M7 reference host")
+            .with_title("RunenUI M10 reference editor")
             .with_inner_size(INITIAL_PHYSICAL_SIZE)
             .with_visible(false);
         let window = event_loop
@@ -1040,6 +1150,9 @@ impl ReferenceHost {
             return;
         }
 
+        if !self.cancel_native_touch_contacts(event_loop, "native window lost focus") {
+            return;
+        }
         if !self.cancel_focus_sensitive_input(event_loop, "native window lost focus") {
             return;
         }
@@ -1489,6 +1602,75 @@ impl ReferenceHost {
         self.request_pending_redraw();
     }
 
+    fn handle_native_touch(&mut self, event_loop: &ActiveEventLoop, touch: Touch) {
+        let Some(device_id) = self.resolve_native_device_id(event_loop, touch.device_id) else {
+            return;
+        };
+        let translated = self
+            .displayed_frame
+            .as_ref()
+            .map_or(Err(PointIngressDiagnostic::NoDisplayedFrame), |displayed| {
+                displayed.translate_cursor(self.mapping, touch.location)
+            });
+        let translated = match translated {
+            Ok(point) => point,
+            Err(diagnostic) => {
+                self.note_point_ingress_diagnostic(diagnostic);
+                proof!(
+                    "stage=native_touch_withheld phase={:?} reason={diagnostic:?}",
+                    touch.phase
+                );
+                if touch.phase != TouchPhase::Started {
+                    let _ = self.cancel_native_touch_contacts(
+                        event_loop,
+                        "touch coordinate mapping became unavailable",
+                    );
+                }
+                return;
+            }
+        };
+        let event = match self.touch.transition(
+            device_id,
+            touch.id,
+            touch.phase,
+            translated.position,
+            translated.input_context,
+        ) {
+            Ok(event) => event,
+            Err(diagnostic) => {
+                proof!("stage=native_touch_suppressed diagnostic={diagnostic:?}");
+                if matches!(diagnostic, TouchIngressDiagnostic::MovementDeltaOutOfRange) {
+                    let _ = self.cancel_native_touch_contacts(
+                        event_loop,
+                        "touch movement exceeded neutral geometry",
+                    );
+                }
+                return;
+            }
+        };
+        self.last_point_ingress_diagnostic = None;
+        proof!("stage=native_touch_translated event={event:?}");
+        if !self.submit_pointer_event(event_loop, event, "native touch translation") {
+            return;
+        }
+        self.drive_runtime(event_loop);
+        self.request_pending_redraw();
+    }
+
+    fn cancel_native_touch_contacts(&mut self, event_loop: &ActiveEventLoop, reason: &str) -> bool {
+        let events = self.touch.cancel_all();
+        proof!(
+            "stage=native_touch_cancelled reason={reason:?} count={}",
+            events.len()
+        );
+        for event in events {
+            if !self.submit_pointer_event(event_loop, event, "native touch cancellation") {
+                return false;
+            }
+        }
+        true
+    }
+
     fn handle_keyboard_input(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -1563,6 +1745,9 @@ impl ReferenceHost {
 
     fn handle_mapping_change(&mut self, event_loop: &ActiveEventLoop) {
         let changed = self.refresh_mapping();
+        if changed && !self.cancel_native_touch_contacts(event_loop, "native mapping changed") {
+            return;
+        }
         if changed && !self.invalidate_mouse_point_authority(event_loop, "native mapping changed") {
             return;
         }
@@ -1767,6 +1952,9 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
 
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
         proof!("stage=host_suspended");
+        if !self.cancel_native_touch_contacts(event_loop, "native host suspended") {
+            return;
+        }
         if !self.cancel_focus_sensitive_input(event_loop, "native host suspended") {
             return;
         }
@@ -1820,6 +2008,9 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                 proof!("stage=window_exit");
+                if !self.cancel_native_touch_contacts(event_loop, "native window destroyed") {
+                    return;
+                }
                 let _ = self.runtime.shutdown();
                 self.framework_services
                     .reset_native_window_ime(self.window.as_deref());
@@ -1860,6 +2051,7 @@ impl ApplicationHandler<HostEvent> for ReferenceHost {
             } => {
                 wheel_input::handle_mouse_wheel(self, event_loop, device_id, delta);
             }
+            WindowEvent::Touch(touch) => self.handle_native_touch(event_loop, touch),
             WindowEvent::KeyboardInput {
                 device_id,
                 event,
@@ -1915,8 +2107,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppRuntime, DemoApp, DisplayedFrame, HOST_PUMP_BUDGET, NativeMapping,
-        PointIngressDiagnostic, StyleEnvironment, SurfaceBuildContext,
+        AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoState, DisplayedFrame,
+        HOST_PUMP_BUDGET, NativeMapping, PointIngressDiagnostic, SemanticAdapter, SemanticCommand,
+        StyleEnvironment, SurfaceBuildContext,
         mouse_input::{
             MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
             translate_mouse_button,
@@ -1924,6 +2117,7 @@ mod tests {
         translate_modifiers,
     };
     use runenui_core::{InputDeviceId, KeyModifiers, PointerButton, PointerPhase};
+    use runenui_runtime::{FontSourcePolicy, RuntimeConfig};
     use winit::{
         dpi::{PhysicalPosition, PhysicalSize},
         event::{ElementState, MouseButton},
@@ -1936,7 +2130,7 @@ mod tests {
     }
 
     fn displayed_frame(mapping: NativeMapping) -> DisplayedFrame {
-        let mut runtime = AppRuntime::<DemoApp>::mount(());
+        let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
         let _ = runtime.pump(HOST_PUMP_BUDGET);
         let style_environment = StyleEnvironment::default();
         let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size)
@@ -1948,6 +2142,70 @@ mod tests {
             input_context: publication.input_context().clone(),
             mapping,
         }
+    }
+
+    #[test]
+    fn reference_editor_publishes_visible_editable_text_and_accepts_commits() {
+        let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+            DemoState::default(),
+            RuntimeConfig::default()
+                .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+        );
+        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
+            .unwrap_or_else(|| unreachable!("the fixture mapping is valid"));
+        let style_environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size)
+            .with_raster_scale(mapping.raster_scale);
+        let publication = runtime.publish_surface(&context).unwrap_or_else(|error| {
+            unreachable!("reference editor publication is valid: {error:?}")
+        });
+
+        assert!(
+            publication
+                .paint_scene()
+                .items()
+                .iter()
+                .any(|item| item.primitive().as_shaped_text_run().is_some())
+        );
+        assert!(
+            publication
+                .semantic_publication()
+                .snapshot()
+                .nodes()
+                .iter()
+                .any(|node| {
+                    node.role() == runenui_core::SemanticRole::EditableText
+                        && node.editable().is_some()
+                })
+        );
+        let accessibility_update =
+            SemanticAdapter::new().update(publication.semantic_publication());
+        assert!(
+            accessibility_update.diagnostics.is_empty(),
+            "reference editor semantic actions are translated without diagnostics: {:?}",
+            accessibility_update.diagnostics
+        );
+
+        let owner = runtime.index().nodes()[0].id().clone();
+        runtime
+            .submit_command(
+                owner,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("reference editor accepts focus"));
+        let _ = runtime.pump(HOST_PUMP_BUDGET);
+        runtime
+            .submit_text(
+                CommittedTextEvent::new("!", None)
+                    .unwrap_or_else(|_| unreachable!("the fixture commit is valid")),
+            )
+            .unwrap_or_else(|_| unreachable!("reference editor accepts committed text"));
+        let _ = runtime.pump(HOST_PUMP_BUDGET);
+
+        assert!(runtime.state().text.ends_with('!'));
+        assert_eq!(runtime.state().revision, 1);
     }
 
     fn translated_point(
@@ -2117,7 +2375,7 @@ mod tests {
         let moved_again = mouse
             .cursor_moved(device_id, point)
             .unwrap_or_else(|_| unreachable!("post-release hover allocates a fresh stream"));
-        assert_eq!(moved_again.pointer_id().get(), 2);
+        assert_eq!(moved_again.pointer_id().get(), 3);
         assert_eq!(moved_again.device_id(), Some(device_id));
         assert_eq!(moved_again.modifiers(), modifiers);
     }
@@ -2167,7 +2425,7 @@ mod tests {
         let moved_after_loss = mouse
             .cursor_moved(device_id, point.clone())
             .unwrap_or_else(|_| unreachable!("fresh native point allocates a new stream"));
-        assert_eq!(moved_after_loss.pointer_id().get(), 2);
+        assert_eq!(moved_after_loss.pointer_id().get(), 3);
         assert!(moved_after_loss.buttons().is_empty());
 
         let release = mouse
@@ -2195,7 +2453,7 @@ mod tests {
                 )
                 .unwrap_or_else(|_| unreachable!("a later real press is admitted")),
         );
-        assert_eq!(down_after_release.pointer_id().get(), 2);
+        assert_eq!(down_after_release.pointer_id().get(), 3);
         assert_eq!(down_after_release.phase(), PointerPhase::Down);
     }
 
@@ -2254,7 +2512,7 @@ mod tests {
                 )
                 .unwrap_or_else(|_| unreachable!("second device can use retained point authority")),
         );
-        assert_eq!(second_down.pointer_id().get(), 2);
+        assert_eq!(second_down.pointer_id().get(), 3);
         assert_eq!(second_down.device_id(), Some(second_device));
         assert!(second_down.buttons().contains(PointerButton::Secondary));
         assert!(!second_down.buttons().contains(PointerButton::Primary));
