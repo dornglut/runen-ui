@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use runenui_core::{LogicalTransform, StyleEnvironment, TextDocumentSnapshot, WidgetDiagnostic};
 use runenui_text::{
@@ -6,8 +6,73 @@ use runenui_text::{
     TextPreeditProjection,
 };
 
-use crate::scene::{HitTestSceneContent, PaintScene, SceneClip};
 use crate::{AxisConstraints, AxisLimit, LogicalRect, LogicalSize, MountedNodeId};
+use crate::{
+    editing::EditingSemanticProjection,
+    scene::{HitTestSceneContent, PaintScene, SceneClip},
+};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct EditingPaintIdentity {
+    snapshot: TextDocumentSnapshot,
+    selection: runenui_core::TextSelection,
+    sensitivity: runenui_core::TextSensitivity,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct TextEditingPaintInputs<'a> {
+    pub(super) focused_owner: Option<&'a MountedNodeId>,
+    pub(super) editing: &'a HashMap<MountedNodeId, EditingSemanticProjection>,
+    pub(super) preedits: &'a HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
+}
+
+impl<'a> TextEditingPaintInputs<'a> {
+    pub(crate) const fn new(
+        focused_owner: Option<&'a MountedNodeId>,
+        editing: &'a HashMap<MountedNodeId, EditingSemanticProjection>,
+        preedits: &'a HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
+    ) -> Self {
+        Self {
+            focused_owner,
+            editing,
+            preedits,
+        }
+    }
+}
+
+/// Cache-compatibility view of runtime-owned editing paint inputs.
+///
+/// It retains no document source bytes; source identity is revision-scoped, and
+/// preedit projections are shared immutable runtime values rather than copies.
+#[derive(Clone, Default, PartialEq)]
+pub(super) struct TextEditingPaintKey {
+    focused_owner: Option<MountedNodeId>,
+    editing: HashMap<MountedNodeId, EditingPaintIdentity>,
+    preedits: HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
+}
+
+impl TextEditingPaintKey {
+    pub(super) fn new(inputs: TextEditingPaintInputs<'_>) -> Self {
+        Self {
+            focused_owner: inputs.focused_owner.cloned(),
+            editing: inputs
+                .editing
+                .iter()
+                .map(|(owner, projection)| {
+                    (
+                        owner.clone(),
+                        EditingPaintIdentity {
+                            snapshot: projection.snapshot,
+                            selection: projection.selection,
+                            sensitivity: projection.sensitivity,
+                        },
+                    )
+                })
+                .collect(),
+            preedits: inputs.preedits.clone(),
+        }
+    }
+}
 
 use super::{
     SurfaceBuildContext, SurfaceInteractionProjection, SurfaceLayoutReport, SurfacePublication,
@@ -222,6 +287,9 @@ pub(crate) struct SurfaceCache {
     // Last runtime-derived interaction projection consumed by the style phase.
     // This is cache compatibility only, never pointer/focus authority.
     pub(super) interaction: Arc<SurfaceInteractionProjection>,
+    // Exact derived editing inputs used to decide whether transient caret,
+    // selection, or preedit paint must be recomputed.
+    pub(super) text_editing: Arc<TextEditingPaintKey>,
     // Mounted logical scroll offsets consumed by the correlated presentation,
     // clip, physical-hit and semantic geometry products.
     pub(super) scroll: Arc<super::SurfaceScrollProjection>,
@@ -388,7 +456,18 @@ impl SurfaceCache {
         };
         let local = map.candidate_rect(&active)?;
         let presentation = self.presentation.node(position);
-        runenui_core::__runtime::transform_rect_aabb(presentation.owner_to_surface(), local)
+        let padding = self
+            .effective
+            .node(position)
+            .computed_style()
+            .padding()
+            .unwrap_or_default();
+        let text_origin = LogicalTransform::translation(padding.left().get(), padding.top().get())
+            .map_err(|_| TextCaretMapError::InvalidGeometry)?;
+        let text_to_surface = text_origin
+            .then(presentation.owner_to_surface())
+            .map_err(|_| TextCaretMapError::InvalidGeometry)?;
+        runenui_core::__runtime::transform_rect_aabb(text_to_surface, local)
             .ok_or(TextCaretMapError::InvalidGeometry)
     }
 
@@ -400,6 +479,7 @@ impl SurfaceCache {
             context_key: Arc::clone(&self.context_key),
             topology: Arc::clone(&self.topology),
             interaction: Arc::clone(&self.interaction),
+            text_editing: Arc::clone(&self.text_editing),
             scroll: Arc::clone(&self.scroll),
             styles: Arc::clone(&self.styles),
             effective: Arc::clone(&self.effective),

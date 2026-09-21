@@ -10,17 +10,19 @@ use crate::scene::{HitTestRegion, HitTestSceneContent, PaintScene, PaintSceneIte
 use crate::style_debug::{SurfaceStyleNode, SurfaceStyleReport};
 use runenui_core::{
     __runtime::transform_rect_aabb, Color, ComputedStyle, ContributionClip, ElementId,
-    HitContributionContext, LayoutStyle, LogicalPoint, LogicalRect, LogicalTransform,
-    OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
+    HitContributionContext, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
+    LogicalTransform, OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
     PaintContributionItem, Radius, SceneShape, StyleEnvironment, StyleInteractionState,
-    StyleResolution, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
+    StyleResolution, TextAffinity, WidgetDiagnostic, WidgetTypeId, resolve_style_in_environment,
     style_effects_between,
 };
-use runenui_text::TextSystem;
+use runenui_text::{ShapedTextLease, TextDisplaySelection, TextPreeditProjection, TextSystem};
 
 use super::{
     SurfaceInteractionProjection, SurfaceScrollProjection,
-    cache::{CachedLayoutFacts, CachedPresentationFacts, PresentationNodeFacts},
+    cache::{
+        CachedLayoutFacts, CachedPresentationFacts, PresentationNodeFacts, TextEditingPaintInputs,
+    },
 };
 
 /// Topology and publication-alignment facts for one mounted preorder.
@@ -579,6 +581,218 @@ pub(super) struct ResolvedPaint {
     pub(super) diagnostics: Vec<Vec<WidgetDiagnostic>>,
 }
 
+struct TextEditingPaintGeometry {
+    selection: Vec<LogicalRect>,
+    preedit_underline: Vec<LogicalRect>,
+    caret: LogicalRect,
+}
+
+fn text_editing_paint_geometry(
+    layout: &CachedLayoutFacts,
+    position: usize,
+    editing: Option<&crate::editing::EditingSemanticProjection>,
+    preedit: Option<&Arc<TextPreeditProjection>>,
+) -> Option<TextEditingPaintGeometry> {
+    let text_layout = layout.text_layouts.get(position)?;
+    if let Some(preedit) = preedit {
+        if editing.is_some_and(|editing| {
+            preedit.snapshot() != editing.snapshot
+                || preedit.document_text() != editing.source.as_ref()
+        }) {
+            return None;
+        }
+        let map = text_layout.preedit_caret_map(Arc::clone(preedit)).ok()?;
+        let start = preedit
+            .position_from_display_offset(preedit.display_preedit_start(), TextAffinity::Downstream)
+            .ok()?;
+        let end = preedit
+            .position_from_display_offset(preedit.display_preedit_end(), TextAffinity::Upstream)
+            .ok()?;
+        let preedit_underline = map
+            .selection_rects(&TextDisplaySelection::new(start, end.clone()))
+            .ok()?
+            .into_iter()
+            .map(runenui_text::TextSelectionRect::rect)
+            .collect();
+        let selection = map.preedit_selection().ok()?;
+        let caret_position = selection
+            .as_ref()
+            .map_or(&end, |selection| selection.active());
+        let caret = map
+            .caret_rect(caret_position, LogicalLength::from(1_u8))
+            .ok()?;
+        let selection = selection
+            .map(|selection| map.selection_rects(&selection))
+            .transpose()
+            .ok()?
+            .unwrap_or_default()
+            .into_iter()
+            .map(runenui_text::TextSelectionRect::rect)
+            .collect();
+        return Some(TextEditingPaintGeometry {
+            selection,
+            preedit_underline,
+            caret,
+        });
+    }
+
+    let editing = editing?;
+    let map = text_layout
+        .caret_map_for_source(editing.snapshot, &editing.source)
+        .ok()?;
+    let selection = TextDisplaySelection::from_document(editing.selection);
+    let caret = map
+        .caret_rect(selection.active(), LogicalLength::from(1_u8))
+        .ok()?;
+    let selection = map
+        .selection_rects(&selection)
+        .ok()?
+        .into_iter()
+        .map(runenui_text::TextSelectionRect::rect)
+        .collect();
+    Some(TextEditingPaintGeometry {
+        selection,
+        preedit_underline: Vec::new(),
+        caret,
+    })
+}
+
+fn text_editing_paint_geometry_for_owner(
+    layout: &CachedLayoutFacts,
+    position: usize,
+    owner: &MountedNodeId,
+    editing: &HashMap<MountedNodeId, crate::editing::EditingSemanticProjection>,
+    preedits: &HashMap<MountedNodeId, Arc<TextPreeditProjection>>,
+) -> Option<TextEditingPaintGeometry> {
+    let editing = editing.get(owner);
+    let preedit = preedits.get(owner);
+    (editing.is_some() || preedit.is_some())
+        .then(|| text_editing_paint_geometry(layout, position, editing, preedit))
+        .flatten()
+}
+
+fn text_rect_with_padding(rect: LogicalRect, computed: &ComputedStyle) -> Option<LogicalRect> {
+    let padding = computed.padding().unwrap_or_default();
+    LogicalRect::try_new(
+        rect.x() + padding.left().get(),
+        rect.y() + padding.top().get(),
+        rect.width(),
+        rect.height(),
+    )
+    .ok()
+}
+
+#[derive(Clone, Copy)]
+struct OwnerPaintContext<'a> {
+    mounted_preorder: usize,
+    owner_to_surface: LogicalTransform,
+    inherited_clips: &'a [SceneClip],
+}
+
+fn owner_paint_context(
+    presentation: &CachedPresentationFacts,
+    mounted_preorder: usize,
+) -> OwnerPaintContext<'_> {
+    let presentation_node = presentation.node(mounted_preorder);
+    OwnerPaintContext {
+        mounted_preorder,
+        owner_to_surface: presentation_node.owner_to_surface(),
+        inherited_clips: presentation_node.inherited_clips(),
+    }
+}
+
+fn append_text_overlay_rect(
+    rect: LogicalRect,
+    color: Color,
+    owner: OwnerPaintContext<'_>,
+    next_local_order: &mut usize,
+    ordered: &mut Vec<groups::OrderedPaintItem>,
+) {
+    let item = PaintContributionItem::fill(SceneShape::rect(rect), color.into());
+    append_runtime_paint_item(
+        &item,
+        owner.mounted_preorder,
+        *next_local_order,
+        owner.owner_to_surface,
+        owner.inherited_clips,
+        ordered,
+    );
+    *next_local_order += 1;
+}
+
+fn append_text_selection_overlay(
+    geometry: &TextEditingPaintGeometry,
+    computed: &ComputedStyle,
+    owner: OwnerPaintContext<'_>,
+    next_local_order: &mut usize,
+    ordered: &mut Vec<groups::OrderedPaintItem>,
+) {
+    let foreground = computed.foreground().unwrap_or(Color::BLACK);
+    let selection_color = Color::rgba(foreground.red(), foreground.green(), foreground.blue(), 96);
+    for rect in &geometry.selection {
+        if let Some(rect) = text_rect_with_padding(*rect, computed) {
+            append_text_overlay_rect(rect, selection_color, owner, next_local_order, ordered);
+        }
+    }
+}
+
+fn append_text_preedit_and_caret(
+    geometry: &TextEditingPaintGeometry,
+    computed: &ComputedStyle,
+    focused: bool,
+    owner: OwnerPaintContext<'_>,
+    next_local_order: &mut usize,
+    ordered: &mut Vec<groups::OrderedPaintItem>,
+) {
+    let foreground = computed.foreground().unwrap_or(Color::BLACK);
+    for rect in &geometry.preedit_underline {
+        let Some(rect) = text_rect_with_padding(*rect, computed).and_then(|rect| {
+            LogicalRect::try_new(rect.x(), rect.y() + rect.height() - 1.0, rect.width(), 1.0).ok()
+        }) else {
+            continue;
+        };
+        append_text_overlay_rect(rect, foreground, owner, next_local_order, ordered);
+    }
+
+    if focused && let Some(rect) = text_rect_with_padding(geometry.caret, computed) {
+        append_text_overlay_rect(rect, foreground, owner, next_local_order, ordered);
+    }
+}
+
+fn append_shaped_text(
+    layout: &CachedLayoutFacts,
+    computed: &ComputedStyle,
+    owner: OwnerPaintContext<'_>,
+    next_local_order: &mut usize,
+    text_system: &mut TextSystem,
+    shaped_text_leases: &mut Vec<ShapedTextLease>,
+    ordered: &mut Vec<groups::OrderedPaintItem>,
+) {
+    let mounted_preorder = owner.mounted_preorder;
+    if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact() {
+        for line in artifact.lines() {
+            for run in line.runs() {
+                let lease = text_system
+                    .lease_shaped_run(run.resource_ref())
+                    .unwrap_or_else(|| {
+                        unreachable!("published text artifact retains its exact shaped resource")
+                    });
+                shaped_text_leases.push(lease);
+                let item = text_run_item(run, computed);
+                append_runtime_paint_item(
+                    &item,
+                    owner.mounted_preorder,
+                    *next_local_order,
+                    owner.owner_to_surface,
+                    owner.inherited_clips,
+                    ordered,
+                );
+                *next_local_order += 1;
+            }
+        }
+    }
+}
+
 fn text_run_item(run: &runenui_text::TextRun, computed: &ComputedStyle) -> PaintContributionItem {
     let padding = computed.padding().unwrap_or_default();
     let origin = LogicalPoint::new(
@@ -624,6 +838,46 @@ fn append_runtime_paint_item(
             item.layer(),
         ),
     ));
+}
+
+fn append_node_background(
+    shape: Option<&SceneShape>,
+    computed: &ComputedStyle,
+    owner: OwnerPaintContext<'_>,
+    next_local_order: &mut usize,
+    ordered: &mut Vec<groups::OrderedPaintItem>,
+) {
+    if let (Some(shape), Some(background)) = (shape, computed.background()) {
+        append_runtime_paint_item(
+            &PaintContributionItem::fill(shape.clone(), background.clone()),
+            owner.mounted_preorder,
+            *next_local_order,
+            owner.owner_to_surface,
+            owner.inherited_clips,
+            ordered,
+        );
+        *next_local_order += 1;
+    }
+}
+
+fn append_node_outline(
+    shape: Option<&SceneShape>,
+    computed: &ComputedStyle,
+    owner: OwnerPaintContext<'_>,
+    next_local_order: &mut usize,
+    ordered: &mut Vec<groups::OrderedPaintItem>,
+) {
+    if let (Some(shape), Some(outline)) = (shape, computed.outline()) {
+        append_runtime_paint_item(
+            &PaintContributionItem::stroke(shape.clone(), outline.brush().clone(), outline.style()),
+            owner.mounted_preorder,
+            *next_local_order,
+            owner.owner_to_surface,
+            owner.inherited_clips,
+            ordered,
+        );
+        *next_local_order += 1;
+    }
 }
 
 #[allow(clippy::too_many_arguments)] // Parallel paint outputs share one topology-aligned contribution pass.
@@ -700,14 +954,29 @@ fn append_paint_contribution(
     contribution.items().len()
 }
 
-pub(super) fn resolve_paint(
-    topology: &SurfaceTopologySnapshot,
-    layout: &CachedLayoutFacts,
-    presentation: &CachedPresentationFacts,
-    effective: &CachedEffectiveFacts,
-    capabilities: &SurfaceCapabilityPlan,
-    text_system: &mut TextSystem,
-) -> ResolvedPaint {
+pub(super) struct PaintResolutionInput<'a> {
+    pub(super) topology: &'a SurfaceTopologySnapshot,
+    pub(super) layout: &'a CachedLayoutFacts,
+    pub(super) presentation: &'a CachedPresentationFacts,
+    pub(super) effective: &'a CachedEffectiveFacts,
+    pub(super) capabilities: &'a SurfaceCapabilityPlan,
+    pub(super) text_system: &'a mut TextSystem,
+    pub(super) text_editing: TextEditingPaintInputs<'a>,
+}
+
+pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
+    let PaintResolutionInput {
+        topology,
+        layout,
+        presentation,
+        effective,
+        capabilities,
+        text_system,
+        text_editing,
+    } = input;
+    let focused_owner = text_editing.focused_owner;
+    let editing = text_editing.editing;
+    let preedits = text_editing.preedits;
     #[cfg(test)]
     super::cache::note_paint_phase_execution();
     let mut diagnostics = empty_scene_diagnostics(topology);
@@ -715,79 +984,77 @@ pub(super) fn resolve_paint(
     let mut explicit_groups = Vec::new();
     let mut shaped_text_leases = Vec::new();
     for (mounted_preorder, node) in topology.nodes.iter().enumerate() {
-        let presentation_node = presentation.node(mounted_preorder);
-        let owner_to_surface = presentation_node.owner_to_surface();
-        let inherited_clips = presentation_node.inherited_clips();
+        let owner = owner_paint_context(presentation, mounted_preorder);
         let computed = effective.node(mounted_preorder).computed_style();
         let decoration_shape = (computed.background().is_some() || computed.outline().is_some())
             .then(|| node_decoration_shape(layout.bounds[mounted_preorder], computed));
         let mut next_local_order = 0;
-
-        if let (Some(shape), Some(background)) = (decoration_shape.as_ref(), computed.background())
-        {
-            append_runtime_paint_item(
-                &PaintContributionItem::fill(shape.clone(), background.clone()),
-                mounted_preorder,
-                next_local_order,
-                owner_to_surface,
-                inherited_clips,
-                &mut ordered,
-            );
-            next_local_order += 1;
-        }
+        append_node_background(
+            decoration_shape.as_ref(),
+            computed,
+            owner,
+            &mut next_local_order,
+            &mut ordered,
+        );
 
         if let Some(contribution) = capabilities.paint_at(mounted_preorder, &node.id) {
             next_local_order += append_paint_contribution(
                 &contribution,
                 mounted_preorder,
                 next_local_order,
-                owner_to_surface,
-                inherited_clips,
+                owner.owner_to_surface,
+                owner.inherited_clips,
                 &mut diagnostics[mounted_preorder],
                 &mut explicit_groups,
                 &mut ordered,
             );
         }
 
-        if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact() {
-            for line in artifact.lines() {
-                for run in line.runs() {
-                    let lease = text_system
-                        .lease_shaped_run(run.resource_ref())
-                        .unwrap_or_else(|| {
-                            unreachable!(
-                                "published text artifact retains its exact shaped resource"
-                            )
-                        });
-                    shaped_text_leases.push(lease);
-                    let item = text_run_item(run, computed);
-                    append_runtime_paint_item(
-                        &item,
-                        mounted_preorder,
-                        next_local_order,
-                        owner_to_surface,
-                        inherited_clips,
-                        &mut ordered,
-                    );
-                    next_local_order += 1;
-                }
-            }
-        }
-
-        if let (Some(shape), Some(outline)) = (decoration_shape.as_ref(), computed.outline()) {
-            append_runtime_paint_item(
-                &PaintContributionItem::stroke(
-                    shape.clone(),
-                    outline.brush().clone(),
-                    outline.style(),
-                ),
-                mounted_preorder,
-                next_local_order,
-                owner_to_surface,
-                inherited_clips,
+        let text_overlay = text_editing_paint_geometry_for_owner(
+            layout,
+            mounted_preorder,
+            &node.id,
+            editing,
+            preedits,
+        );
+        if let Some(geometry) = text_overlay.as_ref() {
+            append_text_selection_overlay(
+                geometry,
+                computed,
+                owner,
+                &mut next_local_order,
                 &mut ordered,
             );
         }
+
+        append_shaped_text(
+            layout,
+            computed,
+            owner,
+            &mut next_local_order,
+            text_system,
+            &mut shaped_text_leases,
+            &mut ordered,
+        );
+
+        if let Some(geometry) = text_overlay.as_ref() {
+            append_text_preedit_and_caret(
+                geometry,
+                computed,
+                focused_owner == Some(&node.id),
+                owner,
+                &mut next_local_order,
+                &mut ordered,
+            );
+        }
+
+        append_node_outline(
+            decoration_shape.as_ref(),
+            computed,
+            owner,
+            &mut next_local_order,
+            &mut ordered,
+        );
     }
     ordered.sort_by_key(groups::OrderedPaintItem::ordering_key);
     let (items, composition) = groups::derive_composition_groups(

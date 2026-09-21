@@ -1,6 +1,14 @@
 # Standalone winit reference host
 
-This package is the M7 reference application for native window/event-loop/input integration. It is intentionally an application boundary, not a reusable platform crate. `runenui_render_wgpu` remains winit-free and owns GPU/surface rendering state; `runenui_runtime` remains the sole UI/runtime authority.
+This package is the native reference application for the RunenUI production spine. It is an application boundary, not a reusable platform crate. `runenui_render_wgpu` remains winit-free and owns GPU/surface rendering state; `runenui_runtime` remains the sole UI/runtime authority.
+
+The window opens on a visible, application-owned editable document rather than an empty service probe. Its text, revision, and accepted edit resolutions belong to this example app; the widget contributes public editable and semantic facts, while input, selection, clipboard/IME services, and publication remain on the ordinary RunenUI runtime path. The reference text is intentionally simple: this is integration evidence, not a production editor or a claim of broad platform/hardware coverage.
+
+Because the example is a native desktop host, it explicitly permits system-font discovery; deterministic consumers should instead register controlled font bytes under the default bundled-only policy.
+
+Run the host with `cargo run -p reference_winit`. Click or drag in the text, type committed text, use native IME composition where supported, and try copy/cut/paste with a selected range. Native winit touch contacts are normalized through the public `runenui_winit` adapter using the exact displayed-frame mapping; mapping, focus, and suspension loss cancel live contacts. Pointer identity uses disjoint mouse/touch namespaces. File drops are admitted only at the exact widget target; the example does not open or read dropped files.
+
+The selected native profile is this winit 0.30.13 desktop reference host, exercised on macOS/Metal in the local proof run. That verifies the host mechanisms and event translations, not attached-device touch, all IME implementations, or other platform backends; broader native hardware/platform coverage remains M13.
 
 ## Native wheel normalization
 

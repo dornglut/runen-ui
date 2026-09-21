@@ -1,7 +1,9 @@
 use core::num::NonZeroUsize;
 
 use runenui_core::UiApp;
-use runenui_runtime::{AppRuntime, RuntimeConfig, TraceSinkReceiveError, TraceSinkReceiver};
+use runenui_runtime::{
+    AppRuntime, FontSourcePolicy, RuntimeConfig, TraceSinkReceiveError, TraceSinkReceiver,
+};
 
 const PROOF_TRACE_SINK_CAPACITY: usize = 4096;
 
@@ -14,11 +16,12 @@ pub fn mount<App: UiApp>(
     state: App::State,
     enabled: bool,
 ) -> (AppRuntime<App>, Option<TraceSinkReceiver>) {
+    let config =
+        RuntimeConfig::default().with_text_font_source_policy(FontSourcePolicy::SystemAndBundled);
     if !enabled {
-        return (AppRuntime::<App>::mount(state), None);
+        return (AppRuntime::<App>::mount_with_config(state, config), None);
     }
 
-    let config = RuntimeConfig::default();
     let sink_capacity = NonZeroUsize::new(PROOF_TRACE_SINK_CAPACITY)
         .unwrap_or_else(|| unreachable!("proof trace sink capacity is non-zero"));
     let trace_config = config.trace_config().with_sink_capacity(sink_capacity);
@@ -48,14 +51,14 @@ pub fn drain(receiver: Option<&TraceSinkReceiver>) {
 #[cfg(test)]
 mod tests {
     use super::mount;
-    use crate::DemoApp;
+    use crate::{DemoApp, DemoState};
 
     #[test]
     fn proof_mode_is_the_only_path_that_exposes_a_trace_sink() {
-        let (_runtime, ordinary_receiver) = mount::<DemoApp>((), false);
+        let (_runtime, ordinary_receiver) = mount::<DemoApp>(DemoState::default(), false);
         assert!(ordinary_receiver.is_none());
 
-        let (_runtime, proof_receiver) = mount::<DemoApp>((), true);
+        let (_runtime, proof_receiver) = mount::<DemoApp>(DemoState::default(), true);
         assert!(proof_receiver.is_some());
     }
 }
