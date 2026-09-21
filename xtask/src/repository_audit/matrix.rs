@@ -755,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn m10_inventory_accepts_m10e_and_blocks_m10f() -> Result<(), String> {
+    fn m10_inventory_accepts_integrated_m10f_closure() -> Result<(), String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .ok_or_else(|| "xtask has no repository root".to_owned())?;
@@ -765,7 +765,7 @@ mod tests {
         let (rows, parse_schema_errors) = parse_rows(&contents, M10_SPEC.path, &mut findings);
         assert_eq!(parse_schema_errors, 0);
         assert_eq!(rows.len(), 28);
-        let (accepted, successors): (Vec<_>, Vec<_>) = rows
+        let (accepted, integrated): (Vec<_>, Vec<_>) = rows
             .iter()
             .partition(|row| matches!(row.cells[5].as_str(), "M10B" | "M10C" | "M10D" | "M10E"));
         assert_eq!(accepted.len(), 23);
@@ -807,11 +807,11 @@ mod tests {
                 "M10SCROLL-01" | "M10SCROLL-02" | "M10POINT-01" | "M10TOUCH-01" | "M10CTRL-01"
             ) && row.cells[6] == "owner-accepted"
         }));
-        assert_eq!(successors.len(), 5);
+        assert_eq!(integrated.len(), 5);
         assert!(
-            successors
+            integrated
                 .iter()
-                .all(|row| { row.cells[5] == "M10F" && row.cells[6] == "blocked" })
+                .all(|row| { row.cells[5] == "M10F" && row.cells[6] == "owner-accepted" })
         );
         assert!(rows.iter().all(|row| row.cells[7] == "Required"));
         assert_eq!(
