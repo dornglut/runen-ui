@@ -1465,6 +1465,70 @@ fn native_backspace_and_normalized_select_all_use_the_keyboard_default_route() {
         1
     );
     assert!(!selection.is_collapsed());
+
+    let initial_text = runtime.state().text.clone();
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("Escape")),
+            LogicalKey::Escape,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|error| panic!("Escape reaches the editor default route: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let collapsed = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|error| panic!("collapsed selection republishes: {error:?}"))
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .first()
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("editable semantics remain published"))
+        .selection();
+    assert!(
+        collapsed.is_collapsed(),
+        "Escape collapses the text selection"
+    );
+    assert_eq!(collapsed.active().byte_offset(), 0);
+    assert_eq!(
+        runtime.state().text,
+        initial_text,
+        "Escape never inserts text"
+    );
+
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("Escape")),
+            LogicalKey::Escape,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|error| panic!("collapsed Escape remains routable: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let still_collapsed = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|error| panic!("unchanged selection republishes: {error:?}"))
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .first()
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("editable semantics remain published"))
+        .selection();
+    assert!(
+        still_collapsed.is_collapsed(),
+        "Escape on a caret does not move or mutate text"
+    );
+    assert_eq!(runtime.state().text, initial_text);
 }
 
 #[test]

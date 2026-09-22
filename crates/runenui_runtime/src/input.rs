@@ -1595,6 +1595,9 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             LogicalKey::ArrowRight => Some(SemanticCommand::FocusRight),
             LogicalKey::ArrowUp => Some(SemanticCommand::FocusUp),
             LogicalKey::ArrowDown => Some(SemanticCommand::FocusDown),
+            LogicalKey::Escape if self.editing.has_stable_range_selection(&target) => {
+                Some(SemanticCommand::MoveBackward)
+            }
             LogicalKey::Escape => Some(SemanticCommand::CancelOrBack),
             LogicalKey::Enter if !event.is_repeat() => Some(SemanticCommand::Activate),
             _ => None,

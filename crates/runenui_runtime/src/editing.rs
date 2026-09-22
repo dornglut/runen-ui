@@ -192,6 +192,15 @@ impl<Action> EditingRegistry<Action> {
         self.active.contains_key(owner)
     }
 
+    pub(crate) fn has_stable_range_selection(&self, owner: &MountedNodeId) -> bool {
+        self.active.get(owner).is_some_and(|session| {
+            !session.invalid_suffix
+                && session.pending.is_empty()
+                && session.preedit.is_none()
+                && session.selection.anchor() != session.selection.active()
+        })
+    }
+
     pub(crate) fn shutdown(&mut self) {
         self.active.clear();
         self.draining.clear();

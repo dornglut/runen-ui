@@ -2270,7 +2270,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::too_many_lines)] // Exercises the full native mouse ingress through publication.
-    fn native_mouse_drag_selection_reaches_the_published_editable_range() {
+    fn native_mouse_drag_selects_preloaded_text_before_keyboard_input() {
         fn expect_ok<T, E: std::fmt::Debug>(result: Result<T, E>, message: &str) -> T {
             assert!(result.is_ok(), "{message}: {:?}", result.as_ref().err());
             result.unwrap_or_else(|_| {
@@ -2286,12 +2286,34 @@ mod tests {
                 .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
         );
         runtime.pump(HOST_PUMP_BUDGET);
+        let owner = runtime.index().nodes()[0].id().clone();
+        runtime
+            .submit_command(
+                owner,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("the reference host focuses the editor at startup"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
         let style_environment = StyleEnvironment::default();
         let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size)
             .with_raster_scale(mapping.raster_scale);
         let initial = runtime
             .publish_surface(&context)
             .unwrap_or_else(|error| unreachable!("reference editor surface is valid: {error:?}"));
+        let initial_selection = initial
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .first()
+            .and_then(|node| node.editable())
+            .unwrap_or_else(|| unreachable!("the initial publication includes the editable text"))
+            .selection();
+        assert!(
+            initial_selection.is_collapsed(),
+            "startup text begins with an ordinary collapsed caret"
+        );
         let surface = initial.input_context().clone();
         let device_id = input_device(41);
         let translated = |position: LogicalPoint| TranslatedPointerPoint {
