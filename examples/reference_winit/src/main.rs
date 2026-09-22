@@ -31,13 +31,13 @@ use runenui_core::{
     DragDropPayloadMetadata, DragDropPhase, EdgeInsets, EditIntent, EditResolution,
     EditableContribution, EditingSessionPolicy, Element, EventContext, HitContribution,
     HitContributionContext, InputDeviceId, KeyModifiers, KeyboardEvent, LayoutDimension,
-    LayoutStyle, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy,
-    OverflowStyle, PaintContribution, PaintContributionContext, PaintContributionItem,
-    PointerEvent, SceneShape, SemanticAction, SemanticCommand, SemanticContribution,
-    SemanticEditable, SemanticNodeContribution, SemanticRole, SemanticState, StyleEnvironment,
-    SurfaceInputContext, TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
-    TextPosition, TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, View, Widget,
-    WidgetActivation, WidgetMeasure, WidgetTextInput,
+    LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
+    OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
+    PaintContributionItem, PointerEvent, SceneShape, SemanticAction, SemanticCommand,
+    SemanticContribution, SemanticEditable, SemanticNodeContribution, SemanticRole, SemanticState,
+    StyleEnvironment, SurfaceInputContext, TextAffinity, TextDocumentId, TextDocumentRevision,
+    TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity, UiApp, UiEvent,
+    UpdateOutput, View, Widget, WidgetActivation, WidgetMeasure, WidgetTextInput,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -1010,7 +1010,8 @@ impl ReferenceHost {
         event: PointerEvent,
         stage: &str,
     ) -> bool {
-        self.pump_runtime_once();
+        // Native window events are serialized on this event loop. Submit first,
+        // then pump once; callers must not pump the same pointer event again.
         proof!("stage=pointer_translated source={stage:?} event={event:?}");
         if let Err(error) = self.runtime.submit_pointer(event) {
             self.fail(
@@ -1020,6 +1021,7 @@ impl ReferenceHost {
             return false;
         }
         self.pump_runtime_once();
+        self.collect_redraw_request();
         true
     }
 
@@ -1189,7 +1191,6 @@ impl ReferenceHost {
         match self.runtime.submit_text(event) {
             Ok(_) => {
                 self.last_text_ingress_diagnostic = None;
-                eprintln!("reference_winit committed text accepted");
                 true
             }
             Err(error) if error.kind() == SubmitTextErrorKind::NoFocusedTarget => {
@@ -1332,7 +1333,6 @@ impl ReferenceHost {
         {
             Ok(_) => {
                 self.last_text_ingress_diagnostic = None;
-                eprintln!("reference_winit composition preedit accepted");
             }
             Err(error)
                 if matches!(
@@ -1466,7 +1466,6 @@ impl ReferenceHost {
         if !self.invalidate_mouse_point_authority(event_loop, reason) {
             return;
         }
-        self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
 
@@ -1532,7 +1531,6 @@ impl ReferenceHost {
         if !self.submit_pointer_event(event_loop, event, "native cursor translation") {
             return;
         }
-        self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
 
@@ -1598,7 +1596,6 @@ impl ReferenceHost {
                 self.note_mouse_ingress_diagnostic(diagnostic);
             }
         }
-        self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
 
@@ -1653,7 +1650,6 @@ impl ReferenceHost {
         if !self.submit_pointer_event(event_loop, event, "native touch translation") {
             return;
         }
-        self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
 
@@ -1678,7 +1674,6 @@ impl ReferenceHost {
         event: &winit::event::KeyEvent,
         is_synthetic: bool,
     ) {
-        self.pump_runtime_once();
         let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
             return;
         };
@@ -1693,24 +1688,31 @@ impl ReferenceHost {
         }
 
         let composition = self.text_input.keyboard_composition_state();
-        let committed_text = keyboard_committed_text_candidate(
-            event.state,
-            is_synthetic,
-            self.text_input.accepts_committed_text(),
-            composition,
-            event.text.as_deref(),
-        )
-        .map(str::to_owned);
         let transition = NativeKeyTransition::from_event(event, is_synthetic);
         let outcome = self
             .keyboard
             .key_input(device_id, &transition, self.modifiers, composition);
         match outcome {
-            KeyboardInputOutcome::Submit(event) => {
+            KeyboardInputOutcome::Submit(keyboard_event) => {
+                let is_editing_shortcut =
+                    matches!(keyboard_event.logical_key(), LogicalKey::Command(_));
                 self.last_keyboard_ingress_diagnostic = None;
-                if !self.submit_keyboard_event(event_loop, event, "native keyboard translation") {
+                if !self.submit_keyboard_event(
+                    event_loop,
+                    keyboard_event,
+                    "native keyboard translation",
+                ) {
                     return;
                 }
+                let committed_text = keyboard_committed_text_candidate(
+                    event.state,
+                    is_synthetic,
+                    self.text_input.accepts_committed_text(),
+                    composition,
+                    event.text.as_deref(),
+                )
+                .filter(|_| !is_editing_shortcut)
+                .map(str::to_owned);
                 if let Some(text) = committed_text
                     && !self.submit_committed_text(
                         event_loop,
@@ -2116,7 +2118,7 @@ mod tests {
         },
         translate_modifiers,
     };
-    use runenui_core::{InputDeviceId, KeyModifiers, PointerButton, PointerPhase};
+    use runenui_core::{InputDeviceId, KeyModifiers, LogicalPoint, PointerButton, PointerPhase};
     use runenui_runtime::{FontSourcePolicy, RuntimeConfig};
     use winit::{
         dpi::{PhysicalPosition, PhysicalSize},
@@ -2206,6 +2208,96 @@ mod tests {
 
         assert!(runtime.state().text.ends_with('!'));
         assert_eq!(runtime.state().revision, 1);
+    }
+
+    #[test]
+    fn native_mouse_drag_selection_reaches_the_published_editable_range() {
+        let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
+            .unwrap_or_else(|| unreachable!("fixture native mapping is valid"));
+        let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+            DemoState::default(),
+            RuntimeConfig::default()
+                .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let style_environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size)
+            .with_raster_scale(mapping.raster_scale);
+        let initial = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| unreachable!("reference editor surface is valid: {error:?}"));
+        let surface = initial.input_context().clone();
+        let device_id = input_device(41);
+        let translated = |position: LogicalPoint| TranslatedPointerPoint {
+            position,
+            input_context: surface.clone(),
+            modifiers: KeyModifiers::NONE,
+        };
+        let start = LogicalPoint::new(30.0, 30.0)
+            .unwrap_or_else(|_| unreachable!("selection anchor is finite"));
+        let end = LogicalPoint::new(160.0, 30.0)
+            .unwrap_or_else(|_| unreachable!("selection focus is finite"));
+        let mut mouse = MouseInputState::default();
+        let hover = mouse
+            .cursor_moved(device_id, translated(start))
+            .unwrap_or_else(|error| panic!("native cursor move is translated: {error:?}"));
+        runtime
+            .submit_pointer(hover)
+            .unwrap_or_else(|error| panic!("native hover is routed: {error:?}"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        let down = mouse
+            .button_input(
+                device_id,
+                ElementState::Pressed,
+                MouseButton::Left,
+                Some(translated(start)),
+            )
+            .unwrap_or_else(|error| panic!("native primary press is translated: {error:?}"));
+        let MouseButtonOutcome::Submit(down) = down else {
+            unreachable!("first native primary press is admitted")
+        };
+        runtime
+            .submit_pointer(down)
+            .unwrap_or_else(|error| panic!("native primary press is routed: {error:?}"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        let movement = mouse
+            .cursor_moved(device_id, translated(end))
+            .unwrap_or_else(|error| panic!("native drag movement is translated: {error:?}"));
+        runtime
+            .submit_pointer(movement)
+            .unwrap_or_else(|error| panic!("native drag movement is routed: {error:?}"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        let release = mouse
+            .button_input(
+                device_id,
+                ElementState::Released,
+                MouseButton::Left,
+                Some(translated(end)),
+            )
+            .unwrap_or_else(|error| panic!("native primary release is translated: {error:?}"));
+        let MouseButtonOutcome::Submit(release) = release else {
+            unreachable!("matching native primary release is admitted")
+        };
+        runtime
+            .submit_pointer(release)
+            .unwrap_or_else(|error| panic!("native primary release is routed: {error:?}"));
+        runtime.pump(HOST_PUMP_BUDGET);
+
+        let selection = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| panic!("dragged selection republishes: {error:?}"))
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .first()
+            .and_then(|node| node.editable())
+            .unwrap_or_else(|| unreachable!("editable selection remains published"))
+            .selection();
+        assert!(
+            !selection.is_collapsed(),
+            "native drag should publish a non-collapsed editable range"
+        );
+        assert!(selection.active().byte_offset() > selection.anchor().byte_offset());
     }
 
     fn translated_point(

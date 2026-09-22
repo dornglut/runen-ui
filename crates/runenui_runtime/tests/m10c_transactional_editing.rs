@@ -1394,6 +1394,80 @@ fn backward_and_forward_deletion_use_the_same_transactional_route() {
 }
 
 #[test]
+fn native_backspace_and_normalized_select_all_use_the_keyboard_default_route() {
+    let environment = StyleEnvironment::default();
+    let context = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::try_new(200.0, 40.0)
+            .unwrap_or_else(|_| unreachable!("test surface is finite")),
+    );
+    let mut runtime = mounted();
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|error| panic!("keyboard editing surface publishes: {error:?}"));
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("Backspace")),
+            LogicalKey::Backspace,
+            KeyModifiers::NONE,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|error| panic!("native Backspace is routed: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert_eq!(runtime.state().text, "a");
+    assert_eq!(runtime.state().history, ["ab"]);
+    runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|error| panic!("post-delete selection map publishes: {error:?}"));
+
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(String::from("KeyA")),
+            LogicalKey::Command(SemanticCommand::SelectAll),
+            KeyModifiers::META,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|error| panic!("normalized Select All shortcut is routed: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let publication = runtime
+        .publish_surface(&context)
+        .unwrap_or_else(|error| panic!("selected text republishes: {error:?}"));
+    let selection = publication
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .first()
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("editable semantic selection is published"))
+        .selection();
+    assert_eq!(
+        selection
+            .anchor()
+            .byte_offset()
+            .min(selection.active().byte_offset()),
+        0
+    );
+    assert_eq!(
+        selection
+            .anchor()
+            .byte_offset()
+            .max(selection.active().byte_offset()),
+        1
+    );
+    assert!(!selection.is_collapsed());
+}
+
+#[test]
 fn owner_removal_retires_live_authority_drains_queued_rejection_and_keeps_app_history() {
     let mut runtime = mounted();
     focus(&mut runtime);
