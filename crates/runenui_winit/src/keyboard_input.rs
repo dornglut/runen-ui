@@ -207,7 +207,7 @@ fn translate_physical_key(key: WinitPhysicalKey) -> PhysicalKey {
 
 fn translate_logical_key(
     key: &WinitKey,
-    physical_key: WinitPhysicalKey,
+    _physical_key: WinitPhysicalKey,
     modifiers: KeyModifiers,
     composition: KeyboardCompositionState,
 ) -> LogicalKey {
@@ -222,7 +222,7 @@ fn translate_logical_key(
         WinitKey::Named(NamedKey::ArrowRight) => LogicalKey::ArrowRight,
         WinitKey::Named(NamedKey::ArrowUp) => LogicalKey::ArrowUp,
         WinitKey::Named(NamedKey::ArrowDown) => LogicalKey::ArrowDown,
-        WinitKey::Character(text) => native_shortcut_command(physical_key, modifiers, composition)
+        WinitKey::Character(text) => native_shortcut_command(text, modifiers, composition)
             .map_or_else(
                 || LogicalKey::Character(text.to_string()),
                 LogicalKey::Command,
@@ -235,7 +235,7 @@ fn translate_logical_key(
 }
 
 fn native_shortcut_command(
-    physical_key: WinitPhysicalKey,
+    logical_text: &str,
     modifiers: KeyModifiers,
     composition: KeyboardCompositionState,
 ) -> Option<SemanticCommand> {
@@ -251,17 +251,20 @@ fn native_shortcut_command(
         return None;
     }
 
-    let WinitPhysicalKey::Code(key) = physical_key else {
+    let mut characters = logical_text.chars();
+    let key = characters.next()?;
+    if characters.next().is_some() || !key.is_ascii() {
         return None;
-    };
+    }
+    let key = key.to_ascii_lowercase();
     match (key, modifiers.shift()) {
-        (KeyCode::KeyA, false) => Some(SemanticCommand::SelectAll),
-        (KeyCode::KeyC, false) => Some(SemanticCommand::Copy),
-        (KeyCode::KeyX, false) => Some(SemanticCommand::Cut),
-        (KeyCode::KeyV, false) => Some(SemanticCommand::Paste),
-        (KeyCode::KeyZ, false) => Some(SemanticCommand::Undo),
-        (KeyCode::KeyZ, true) => Some(SemanticCommand::Redo),
-        (KeyCode::KeyY, false) if !cfg!(target_os = "macos") => Some(SemanticCommand::Redo),
+        ('a', false) => Some(SemanticCommand::SelectAll),
+        ('c', false) => Some(SemanticCommand::Copy),
+        ('x', false) => Some(SemanticCommand::Cut),
+        ('v', false) => Some(SemanticCommand::Paste),
+        ('z', false) => Some(SemanticCommand::Undo),
+        ('z', true) => Some(SemanticCommand::Redo),
+        ('y', false) if !cfg!(target_os = "macos") => Some(SemanticCommand::Redo),
         _ => None,
     }
 }
@@ -388,7 +391,15 @@ mod tests {
         ] {
             assert_eq!(
                 native_shortcut_command(
-                    WinitPhysicalKey::Code(key),
+                    match key {
+                        KeyCode::KeyA => "a",
+                        KeyCode::KeyC => "c",
+                        KeyCode::KeyX => "x",
+                        KeyCode::KeyV => "v",
+                        KeyCode::KeyZ => "z",
+                        KeyCode::KeyY => "y",
+                        _ => unreachable!("shortcut fixture key has a logical character"),
+                    },
                     primary,
                     KeyboardCompositionState::Inactive,
                 ),
@@ -397,27 +408,19 @@ mod tests {
         }
         assert_eq!(
             native_shortcut_command(
-                WinitPhysicalKey::Code(KeyCode::KeyZ),
+                "Z",
                 primary.with_shift(),
                 KeyboardCompositionState::Inactive,
             ),
             Some(SemanticCommand::Redo)
         );
         assert_eq!(
-            native_shortcut_command(
-                WinitPhysicalKey::Code(KeyCode::KeyC),
-                primary.with_alt(),
-                KeyboardCompositionState::Inactive,
-            ),
+            native_shortcut_command("c", primary.with_alt(), KeyboardCompositionState::Inactive,),
             None,
             "AltGr/Option combinations must remain text input"
         );
         assert_eq!(
-            native_shortcut_command(
-                WinitPhysicalKey::Code(KeyCode::KeyC),
-                primary,
-                KeyboardCompositionState::Active,
-            ),
+            native_shortcut_command("c", primary, KeyboardCompositionState::Active,),
             None,
             "composition-owned keys must not become editing shortcuts"
         );
@@ -440,6 +443,34 @@ mod tests {
             event.logical_key(),
             &NeutralLogicalKey::Command(SemanticCommand::Copy),
             "the adapter emits normalized commands in the normal keyboard event"
+        );
+    }
+
+    #[test]
+    fn native_shortcuts_follow_logical_characters_on_qwertz_layouts() {
+        let primary = if cfg!(target_os = "macos") {
+            KeyModifiers::META
+        } else {
+            KeyModifiers::CONTROL
+        };
+        let mut keyboard = KeyboardInputState::default();
+        let german_undo = WinitKey::Character("z".into());
+        let event = submitted(keyboard.key_input(
+            device(7),
+            &transition(
+                ElementState::Pressed,
+                WinitPhysicalKey::Code(KeyCode::KeyY),
+                &german_undo,
+                false,
+                false,
+            ),
+            primary,
+            KeyboardCompositionState::Inactive,
+        ));
+        assert_eq!(
+            event.logical_key(),
+            &NeutralLogicalKey::Command(SemanticCommand::Undo),
+            "Cmd/Ctrl+Z uses the logical Z even though its physical key code is KeyY"
         );
     }
 

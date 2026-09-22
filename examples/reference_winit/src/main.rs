@@ -2363,8 +2363,9 @@ mod tests {
             "native drag should publish a non-collapsed editable range"
         );
         assert!(selection.active().byte_offset() > selection.anchor().byte_offset());
+        let selected_paint_item_count = selection_publication.paint_scene().items().len();
 
-        let click_point = LogicalPoint::new(400.0, 400.0)
+        let click_point = LogicalPoint::new(790.0, 470.0)
             .unwrap_or_else(|_| unreachable!("selection-collapse click is finite"));
         let translated_click = TranslatedPointerPoint {
             position: click_point,
@@ -2411,6 +2412,11 @@ mod tests {
         let collapsed_publication = runtime
             .publish_surface(&context)
             .unwrap_or_else(|error| unreachable!("collapsed selection republishes: {error:?}"));
+        assert!(
+            collapsed_publication.paint_scene().items().len() < selected_paint_item_count,
+            "blank-area click should remove the painted selection overlay: selected={selected_paint_item_count}, collapsed={}",
+            collapsed_publication.paint_scene().items().len()
+        );
         let collapsed_selection = collapsed_publication
             .semantic_publication()
             .snapshot()
