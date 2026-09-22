@@ -2364,13 +2364,20 @@ mod tests {
         );
         assert!(selection.active().byte_offset() > selection.anchor().byte_offset());
 
-        let click_point = LogicalPoint::new(30.0, 68.0)
+        let click_point = LogicalPoint::new(400.0, 400.0)
             .unwrap_or_else(|_| unreachable!("selection-collapse click is finite"));
         let translated_click = TranslatedPointerPoint {
             position: click_point,
             input_context: click_context,
             modifiers: KeyModifiers::NONE,
         };
+        let hover = mouse.cursor_moved(device_id, translated_click.clone());
+        let hover = expect_ok(hover, "selection-collapse cursor move is translated");
+        expect_ok(
+            runtime.submit_pointer(hover),
+            "selection-collapse hover is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
         let down = mouse.button_input(
             device_id,
             ElementState::Pressed,
