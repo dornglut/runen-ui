@@ -12,6 +12,7 @@ use winit::{
 /// Host-private native service executor. Clipboard ownership never crosses into core/runtime.
 pub struct NativeFrameworkServices {
     clipboard: Option<Clipboard>,
+    last_public_clipboard_text: Option<String>,
     pending_drop_paths: HashMap<WorkSequence, Vec<PathBuf>>,
     admitted_drop_paths: HashMap<WorkSequence, Vec<PathBuf>>,
     native_window_focused: bool,
@@ -22,6 +23,7 @@ impl NativeFrameworkServices {
     pub fn new() -> Self {
         Self {
             clipboard: None,
+            last_public_clipboard_text: None,
             pending_drop_paths: HashMap::new(),
             admitted_drop_paths: HashMap::new(),
             native_window_focused: false,
@@ -32,6 +34,7 @@ impl NativeFrameworkServices {
     pub fn shutdown(&mut self) {
         // Some native clipboard backends serve their data from this process until it exits.
         self.clipboard = None;
+        self.last_public_clipboard_text = None;
         self.pending_drop_paths.clear();
         self.admitted_drop_paths.clear();
         self.native_window_focused = false;
@@ -125,17 +128,23 @@ impl NativeFrameworkServices {
                 self.read_clipboard_text(*max_bytes)
             }
             FrameworkServiceRequest::ClipboardWriteText { text, .. } => {
+                // Runtime only issues copy/cut writes for public editable text. Remember
+                // the exact successful payload so a later read can distinguish our own
+                // public copy from unknown native clipboard contents.
+                self.last_public_clipboard_text = None;
                 let clipboard = match self.clipboard() {
                     Ok(clipboard) => clipboard,
                     Err(failure) => {
                         return FrameworkServiceResponse::ClipboardWriteText(Err(failure));
                     }
                 };
-                FrameworkServiceResponse::ClipboardWriteText(
-                    clipboard
-                        .set_text(text.as_ref())
-                        .map_err(|error| map_clipboard_error(&error)),
-                )
+                let result = clipboard
+                    .set_text(text.as_ref())
+                    .map_err(|error| map_clipboard_error(&error));
+                if result.is_ok() {
+                    self.last_public_clipboard_text = Some(text.to_string());
+                }
+                FrameworkServiceResponse::ClipboardWriteText(result)
             }
             FrameworkServiceRequest::InputMethod {
                 enabled,
@@ -224,7 +233,11 @@ impl NativeFrameworkServices {
         };
         match clipboard.get_text() {
             Ok(text) if text.len() <= max_bytes => {
-                FrameworkServiceResponse::ClipboardReadText(Ok(native_clipboard_text(text)))
+                let classification = self.classify_native_clipboard_text(&text);
+                FrameworkServiceResponse::ClipboardReadText(Ok(native_clipboard_text(
+                    text,
+                    classification,
+                )))
             }
             Ok(_) => {
                 FrameworkServiceResponse::ClipboardReadText(Err(FrameworkServiceFailure::Rejected))
@@ -232,6 +245,17 @@ impl NativeFrameworkServices {
             Err(error) => {
                 FrameworkServiceResponse::ClipboardReadText(Err(map_clipboard_error(&error)))
             }
+        }
+    }
+
+    fn classify_native_clipboard_text(&mut self, text: &str) -> ClipboardClassification {
+        if self.last_public_clipboard_text.as_deref() == Some(text) {
+            ClipboardClassification::Public
+        } else {
+            // A mismatch means another native source replaced the clipboard. Drop
+            // the remembered text so stale app provenance cannot be reused later.
+            self.last_public_clipboard_text = None;
+            ClipboardClassification::Sensitive
         }
     }
 
@@ -245,11 +269,11 @@ impl NativeFrameworkServices {
     }
 }
 
-fn native_clipboard_text(text: String) -> ClipboardText {
+fn native_clipboard_text(text: String, classification: ClipboardClassification) -> ClipboardText {
     // Native clipboard formats do not carry RunenUI confidentiality labels. Treat
     // unknown provenance as sensitive: secret destinations may accept it, while
     // public destinations remain fail-closed.
-    ClipboardText::new(text, ClipboardClassification::Sensitive)
+    ClipboardText::new(text, classification)
 }
 
 const fn map_clipboard_error(error: &arboard::Error) -> FrameworkServiceFailure {
@@ -320,11 +344,30 @@ mod tests {
 
     #[test]
     fn native_clipboard_text_uses_the_conservative_sensitive_classification() {
-        let text = native_clipboard_text("clipboard contents".to_owned());
+        let text = native_clipboard_text(
+            "clipboard contents".to_owned(),
+            ClipboardClassification::Sensitive,
+        );
 
         assert_eq!(text.text(), "clipboard contents");
         assert_eq!(text.classification(), ClipboardClassification::Sensitive);
         assert!(!format!("{text:?}").contains("clipboard contents"));
+    }
+
+    #[test]
+    fn only_exact_app_written_public_clipboard_text_is_public_on_read() {
+        let mut services = NativeFrameworkServices::new();
+        services.last_public_clipboard_text = Some("copied public text".to_owned());
+
+        assert_eq!(
+            services.classify_native_clipboard_text("copied public text"),
+            ClipboardClassification::Public
+        );
+        assert_eq!(
+            services.classify_native_clipboard_text("external clipboard text"),
+            ClipboardClassification::Sensitive
+        );
+        assert_eq!(services.last_public_clipboard_text, None);
     }
 
     #[test]

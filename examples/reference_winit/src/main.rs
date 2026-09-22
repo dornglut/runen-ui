@@ -28,10 +28,10 @@ use mouse_input::{
 };
 use runenui_core::{
     Brush, Color, CommandOrigin, CommittedTextEvent, DragDropEvent, DragDropPayloadKind,
-    DragDropPayloadMetadata, DragDropPhase, EdgeInsets, EditIntent, EditResolution,
-    EditableContribution, EditingSessionPolicy, Element, EventContext, HitContribution,
-    HitContributionContext, InputDeviceId, KeyModifiers, KeyboardEvent, LayoutDimension,
-    LayoutStyle, LogicalKey, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
+    DragDropPayloadMetadata, DragDropPhase, EdgeInsets, EditChangeMap, EditIntent, EditKind,
+    EditResolution, EditableContribution, EditingSessionPolicy, Element, EventContext,
+    HitContribution, HitContributionContext, InputDeviceId, KeyModifiers, KeyboardEvent,
+    LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
     OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
     PaintContributionItem, PointerEvent, SceneShape, SemanticAction, SemanticCommand,
     SemanticContribution, SemanticEditable, SemanticNodeContribution, SemanticRole, SemanticState,
@@ -118,10 +118,13 @@ impl From<accesskit_winit::Event> for HostEvent {
 }
 
 const INITIAL_EDITOR_TEXT: &str = "RunenUI M10 Reference Host\n\nThis is an application-owned editable document. Click anywhere and type; try mouse selection, clipboard shortcuts, IME composition, and scrolling.";
+const MAX_EDITOR_HISTORY_ENTRIES: usize = 100;
 
 struct DemoState {
     text: String,
     revision: u64,
+    undo: Vec<String>,
+    redo: Vec<String>,
 }
 
 impl Default for DemoState {
@@ -129,6 +132,8 @@ impl Default for DemoState {
         Self {
             text: INITIAL_EDITOR_TEXT.to_owned(),
             revision: 0,
+            undo: Vec::new(),
+            redo: Vec::new(),
         }
     }
 }
@@ -291,6 +296,25 @@ impl UiApp for DemoApp {
         DemoAction::Edit(intent): Self::Action,
     ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         let request = intent.request().clone();
+        let kind = intent.kind();
+        let replacement = intent.replacement();
+        let replacement_text = intent.replacement_text();
+        let next_text = match kind {
+            EditKind::Undo => state.undo.last().cloned(),
+            EditKind::Redo => state.redo.last().cloned(),
+            _ => {
+                let mut next_text = state.text.clone();
+                next_text.replace_range(replacement.start()..replacement.end(), replacement_text);
+                Some(next_text)
+            }
+        };
+        let Some(next_text) = next_text else {
+            let snapshot = TextDocumentSnapshot::new(
+                TextDocumentId::new(1),
+                TextDocumentRevision::new(state.revision),
+            );
+            return UpdateOutput::edit(EditResolution::accepted(request, snapshot));
+        };
         let Some(next_revision) = state.revision.checked_add(1) else {
             return UpdateOutput::edit(EditResolution::rejected(
                 request,
@@ -300,22 +324,58 @@ impl UiApp for DemoApp {
                 ),
             ));
         };
-        state.text.replace_range(
-            intent.replacement().start()..intent.replacement().end(),
-            intent.replacement_text(),
+
+        match kind {
+            EditKind::Undo => {
+                let _ = state.undo.pop();
+                push_editor_history(&mut state.redo, state.text.clone());
+            }
+            EditKind::Redo => {
+                let _ = state.redo.pop();
+                push_editor_history(&mut state.undo, state.text.clone());
+            }
+            _ => {
+                push_editor_history(&mut state.undo, state.text.clone());
+                state.redo.clear();
+            }
+        }
+        let resulting_snapshot = TextDocumentSnapshot::new(
+            TextDocumentId::new(1),
+            TextDocumentRevision::new(next_revision),
         );
+        let resolution = if matches!(kind, EditKind::Undo | EditKind::Redo) {
+            let replaced = runenui_core::TextRange::new(
+                TextDocumentSnapshot::new(
+                    TextDocumentId::new(1),
+                    TextDocumentRevision::new(state.revision),
+                ),
+                &state.text,
+                0,
+                state.text.len(),
+            )
+            .unwrap_or_else(|_| unreachable!("the application-owned history range is valid"));
+            EditResolution::transformed(
+                request,
+                resulting_snapshot,
+                EditChangeMap::new(replaced, next_text.len()),
+            )
+        } else {
+            EditResolution::accepted(request, resulting_snapshot)
+        };
+        state.text = next_text;
         state.revision = next_revision;
-        UpdateOutput::edit(EditResolution::accepted(
-            request,
-            TextDocumentSnapshot::new(
-                TextDocumentId::new(1),
-                TextDocumentRevision::new(state.revision),
-            ),
-        ))
+        UpdateOutput::edit(resolution)
     }
 
     fn trace_action_label(_action: &Self::Action) -> Option<&'static str> {
         Some("edit")
+    }
+}
+
+fn push_editor_history(history: &mut Vec<String>, text: String) {
+    history.push(text);
+    if history.len() > MAX_EDITOR_HISTORY_ENTRIES {
+        let _ = history.remove(0);
     }
 }
 
@@ -1694,8 +1754,15 @@ impl ReferenceHost {
             .key_input(device_id, &transition, self.modifiers, composition);
         match outcome {
             KeyboardInputOutcome::Submit(keyboard_event) => {
-                let is_editing_shortcut =
-                    matches!(keyboard_event.logical_key(), LogicalKey::Command(_));
+                let committed_text = keyboard_committed_text_candidate(
+                    event.state,
+                    is_synthetic,
+                    self.text_input.accepts_committed_text(),
+                    composition,
+                    keyboard_event.logical_key(),
+                    event.text.as_deref(),
+                )
+                .map(str::to_owned);
                 self.last_keyboard_ingress_diagnostic = None;
                 if !self.submit_keyboard_event(
                     event_loop,
@@ -1704,15 +1771,6 @@ impl ReferenceHost {
                 ) {
                     return;
                 }
-                let committed_text = keyboard_committed_text_candidate(
-                    event.state,
-                    is_synthetic,
-                    self.text_input.accepts_committed_text(),
-                    composition,
-                    event.text.as_deref(),
-                )
-                .filter(|_| !is_editing_shortcut)
-                .map(str::to_owned);
                 if let Some(text) = committed_text
                     && !self.submit_committed_text(
                         event_loop,
@@ -2110,8 +2168,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::{
         AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoState, DisplayedFrame,
-        HOST_PUMP_BUDGET, NativeMapping, PointIngressDiagnostic, SemanticAdapter, SemanticCommand,
-        StyleEnvironment, SurfaceBuildContext,
+        HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, NativeMapping, PointIngressDiagnostic,
+        SemanticAdapter, SemanticCommand, StyleEnvironment, SurfaceBuildContext,
         mouse_input::{
             MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
             translate_mouse_button,
@@ -2211,7 +2269,15 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)] // Exercises the full native mouse ingress through publication.
     fn native_mouse_drag_selection_reaches_the_published_editable_range() {
+        fn expect_ok<T, E: std::fmt::Debug>(result: Result<T, E>, message: &str) -> T {
+            assert!(result.is_ok(), "{message}: {:?}", result.as_ref().err());
+            result.unwrap_or_else(|_| {
+                unreachable!("the assertion above reports the unexpected error")
+            })
+        }
+
         let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
             .unwrap_or_else(|| unreachable!("fixture native mapping is valid"));
         let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
@@ -2238,54 +2304,53 @@ mod tests {
         let end = LogicalPoint::new(160.0, 30.0)
             .unwrap_or_else(|_| unreachable!("selection focus is finite"));
         let mut mouse = MouseInputState::default();
-        let hover = mouse
-            .cursor_moved(device_id, translated(start))
-            .unwrap_or_else(|error| panic!("native cursor move is translated: {error:?}"));
-        runtime
-            .submit_pointer(hover)
-            .unwrap_or_else(|error| panic!("native hover is routed: {error:?}"));
+        let hover = mouse.cursor_moved(device_id, translated(start));
+        let hover = expect_ok(hover, "native cursor move is translated");
+        expect_ok(runtime.submit_pointer(hover), "native hover is routed");
         runtime.pump(HOST_PUMP_BUDGET);
-        let down = mouse
-            .button_input(
-                device_id,
-                ElementState::Pressed,
-                MouseButton::Left,
-                Some(translated(start)),
-            )
-            .unwrap_or_else(|error| panic!("native primary press is translated: {error:?}"));
+        let down = mouse.button_input(
+            device_id,
+            ElementState::Pressed,
+            MouseButton::Left,
+            Some(translated(start)),
+        );
+        let down = expect_ok(down, "native primary press is translated");
         let MouseButtonOutcome::Submit(down) = down else {
             unreachable!("first native primary press is admitted")
         };
-        runtime
-            .submit_pointer(down)
-            .unwrap_or_else(|error| panic!("native primary press is routed: {error:?}"));
+        expect_ok(
+            runtime.submit_pointer(down),
+            "native primary press is routed",
+        );
         runtime.pump(HOST_PUMP_BUDGET);
-        let movement = mouse
-            .cursor_moved(device_id, translated(end))
-            .unwrap_or_else(|error| panic!("native drag movement is translated: {error:?}"));
-        runtime
-            .submit_pointer(movement)
-            .unwrap_or_else(|error| panic!("native drag movement is routed: {error:?}"));
+        let movement = mouse.cursor_moved(device_id, translated(end));
+        let movement = expect_ok(movement, "native drag movement is translated");
+        expect_ok(
+            runtime.submit_pointer(movement),
+            "native drag movement is routed",
+        );
         runtime.pump(HOST_PUMP_BUDGET);
-        let release = mouse
-            .button_input(
-                device_id,
-                ElementState::Released,
-                MouseButton::Left,
-                Some(translated(end)),
-            )
-            .unwrap_or_else(|error| panic!("native primary release is translated: {error:?}"));
+        let release = mouse.button_input(
+            device_id,
+            ElementState::Released,
+            MouseButton::Left,
+            Some(translated(end)),
+        );
+        let release = expect_ok(release, "native primary release is translated");
         let MouseButtonOutcome::Submit(release) = release else {
             unreachable!("matching native primary release is admitted")
         };
-        runtime
-            .submit_pointer(release)
-            .unwrap_or_else(|error| panic!("native primary release is routed: {error:?}"));
+        expect_ok(
+            runtime.submit_pointer(release),
+            "native primary release is routed",
+        );
         runtime.pump(HOST_PUMP_BUDGET);
 
-        let selection = runtime
-            .publish_surface(&context)
-            .unwrap_or_else(|error| panic!("dragged selection republishes: {error:?}"))
+        let selection_publication = runtime.publish_surface(&context);
+        let selection_publication =
+            expect_ok(selection_publication, "dragged selection republishes");
+        let click_context = selection_publication.input_context().clone();
+        let selection = selection_publication
             .semantic_publication()
             .snapshot()
             .nodes()
@@ -2298,6 +2363,100 @@ mod tests {
             "native drag should publish a non-collapsed editable range"
         );
         assert!(selection.active().byte_offset() > selection.anchor().byte_offset());
+
+        let click_point = LogicalPoint::new(30.0, 68.0)
+            .unwrap_or_else(|_| unreachable!("selection-collapse click is finite"));
+        let translated_click = TranslatedPointerPoint {
+            position: click_point,
+            input_context: click_context,
+            modifiers: KeyModifiers::NONE,
+        };
+        let down = mouse.button_input(
+            device_id,
+            ElementState::Pressed,
+            MouseButton::Left,
+            Some(translated_click.clone()),
+        );
+        let down = expect_ok(down, "selection-collapse press is translated");
+        let MouseButtonOutcome::Submit(down) = down else {
+            unreachable!("selection-collapse press is admitted")
+        };
+        expect_ok(
+            runtime.submit_pointer(down),
+            "selection-collapse press is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let up = mouse.button_input(
+            device_id,
+            ElementState::Released,
+            MouseButton::Left,
+            Some(translated_click),
+        );
+        let up = expect_ok(up, "selection-collapse release is translated");
+        let MouseButtonOutcome::Submit(up) = up else {
+            unreachable!("matching selection-collapse release is admitted")
+        };
+        expect_ok(
+            runtime.submit_pointer(up),
+            "selection-collapse release is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let collapsed_publication = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| unreachable!("collapsed selection republishes: {error:?}"));
+        let collapsed_selection = collapsed_publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .first()
+            .and_then(|node| node.editable())
+            .unwrap_or_else(|| unreachable!("collapsed editable selection remains published"))
+            .selection();
+        assert!(
+            collapsed_selection.is_collapsed(),
+            "a native click should collapse the previously dragged editable selection: {collapsed_selection:?}"
+        );
+    }
+
+    #[test]
+    fn reference_editor_undo_and_redo_restore_application_owned_text_history() {
+        let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
+        runtime.pump(HOST_PUMP_BUDGET);
+        let owner = runtime.index().nodes()[0].id().clone();
+        runtime
+            .submit_command(
+                owner.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("reference editor accepts focus"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        runtime
+            .submit_text(
+                CommittedTextEvent::new("Q", None)
+                    .unwrap_or_else(|_| unreachable!("fixture text is valid")),
+            )
+            .unwrap_or_else(|_| unreachable!("reference editor accepts committed text"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert!(runtime.state().text.ends_with('Q'));
+
+        runtime
+            .submit_command(
+                owner.clone(),
+                SemanticCommand::Undo,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("reference editor accepts undo"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
+
+        let redo =
+            runtime.submit_command(owner, SemanticCommand::Redo, CommandOrigin::programmatic());
+        assert!(redo.is_ok(), "reference editor accepts redo: {redo:?}");
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, format!("{INITIAL_EDITOR_TEXT}Q"));
+        assert_eq!(runtime.state().revision, 3);
+        assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
     }
 
     fn translated_point(

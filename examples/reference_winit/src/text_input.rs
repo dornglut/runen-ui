@@ -1,6 +1,6 @@
 use runenui_core::{
     CompositionGeneration, CompositionRange, CompositionRangeError, KeyboardCompositionState,
-    WidgetTextInput,
+    LogicalKey, WidgetTextInput,
 };
 use runenui_runtime::MountedNodeId;
 use winit::event::ElementState;
@@ -93,17 +93,22 @@ impl TextInputState {
 }
 
 #[must_use]
-pub fn keyboard_committed_text_candidate(
+pub fn keyboard_committed_text_candidate<'a>(
     state: ElementState,
     synthetic: bool,
     accepts_committed_text: bool,
     composition: KeyboardCompositionState,
-    text: Option<&str>,
-) -> Option<&str> {
+    logical_key: &LogicalKey,
+    text: Option<&'a str>,
+) -> Option<&'a str> {
     if state != ElementState::Pressed
         || synthetic
         || !accepts_committed_text
         || composition == KeyboardCompositionState::Active
+        || matches!(
+            logical_key,
+            LogicalKey::Backspace | LogicalKey::Delete | LogicalKey::Command(_)
+        )
     {
         return None;
     }
@@ -124,8 +129,8 @@ mod tests {
     use super::{TextInputState, keyboard_committed_text_candidate, translate_preedit_range};
     use crate::{DemoApp, DemoState};
     use runenui_core::{
-        CommandOrigin, CompositionGeneration, KeyboardCompositionState, SemanticCommand,
-        WidgetTextInput,
+        CommandOrigin, CompositionGeneration, KeyboardCompositionState, LogicalKey,
+        SemanticCommand, WidgetTextInput,
     };
     use runenui_runtime::{AppRuntime, MountedNodeId, PumpBudget};
     use winit::event::ElementState;
@@ -223,6 +228,7 @@ mod tests {
                 false,
                 true,
                 KeyboardCompositionState::Inactive,
+                &LogicalKey::Character(String::from("s")),
                 Some("ß"),
             ),
             Some("ß")
@@ -233,6 +239,7 @@ mod tests {
                 false,
                 true,
                 KeyboardCompositionState::Inactive,
+                &LogicalKey::Character(String::from("s")),
                 Some("ß"),
             ),
             None
@@ -243,6 +250,7 @@ mod tests {
                 true,
                 true,
                 KeyboardCompositionState::Inactive,
+                &LogicalKey::Character(String::from("s")),
                 Some("ß"),
             ),
             None
@@ -253,6 +261,7 @@ mod tests {
                 false,
                 true,
                 KeyboardCompositionState::Active,
+                &LogicalKey::Character(String::from("s")),
                 Some("ß"),
             ),
             None
@@ -263,6 +272,7 @@ mod tests {
                 false,
                 false,
                 KeyboardCompositionState::Inactive,
+                &LogicalKey::Character(String::from("s")),
                 Some("ß"),
             ),
             None
@@ -273,7 +283,32 @@ mod tests {
                 false,
                 true,
                 KeyboardCompositionState::Inactive,
+                &LogicalKey::Character(String::from("s")),
                 Some(""),
+            ),
+            None
+        );
+        for logical_key in [LogicalKey::Backspace, LogicalKey::Delete] {
+            assert_eq!(
+                keyboard_committed_text_candidate(
+                    ElementState::Pressed,
+                    false,
+                    true,
+                    KeyboardCompositionState::Inactive,
+                    &logical_key,
+                    Some("\u{8}"),
+                ),
+                None
+            );
+        }
+        assert_eq!(
+            keyboard_committed_text_candidate(
+                ElementState::Pressed,
+                false,
+                true,
+                KeyboardCompositionState::Inactive,
+                &LogicalKey::Command(SemanticCommand::SelectAll),
+                Some("a"),
             ),
             None
         );
