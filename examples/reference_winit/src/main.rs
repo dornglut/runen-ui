@@ -2349,7 +2349,6 @@ mod tests {
         let selection_publication = runtime.publish_surface(&context);
         let selection_publication =
             expect_ok(selection_publication, "dragged selection republishes");
-        let click_context = selection_publication.input_context().clone();
         let selection = selection_publication
             .semantic_publication()
             .snapshot()
@@ -2365,11 +2364,85 @@ mod tests {
         assert!(selection.active().byte_offset() > selection.anchor().byte_offset());
         let selected_paint_item_count = selection_publication.paint_scene().items().len();
 
+        // A completed drag must release the runtime's selection gesture and native capture so
+        // another drag can immediately establish a fresh anchor without a click or keypress.
+        let next_surface = selection_publication.input_context().clone();
+        let next_point = |position: LogicalPoint| TranslatedPointerPoint {
+            position,
+            input_context: next_surface.clone(),
+            modifiers: KeyModifiers::NONE,
+        };
+        let second_start = LogicalPoint::new(30.0, 80.0)
+            .unwrap_or_else(|_| unreachable!("second drag anchor is finite"));
+        let second_end = LogicalPoint::new(160.0, 80.0)
+            .unwrap_or_else(|_| unreachable!("second drag focus is finite"));
+        let hover = expect_ok(
+            mouse.cursor_moved(device_id, next_point(second_start)),
+            "second drag hover is translated",
+        );
+        expect_ok(runtime.submit_pointer(hover), "second drag hover is routed");
+        runtime.pump(HOST_PUMP_BUDGET);
+        let down = expect_ok(
+            mouse.button_input(
+                device_id,
+                ElementState::Pressed,
+                MouseButton::Left,
+                Some(next_point(second_start)),
+            ),
+            "second drag press is translated",
+        );
+        let MouseButtonOutcome::Submit(down) = down else {
+            unreachable!("second primary press is admitted")
+        };
+        expect_ok(runtime.submit_pointer(down), "second drag press is routed");
+        runtime.pump(HOST_PUMP_BUDGET);
+        let movement = expect_ok(
+            mouse.cursor_moved(device_id, next_point(second_end)),
+            "second drag movement is translated",
+        );
+        expect_ok(
+            runtime.submit_pointer(movement),
+            "second drag movement is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let release = expect_ok(
+            mouse.button_input(
+                device_id,
+                ElementState::Released,
+                MouseButton::Left,
+                Some(next_point(second_end)),
+            ),
+            "second drag release is translated",
+        );
+        let MouseButtonOutcome::Submit(release) = release else {
+            unreachable!("second matching release is admitted")
+        };
+        expect_ok(
+            runtime.submit_pointer(release),
+            "second drag release is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let second_selection_publication = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| unreachable!("second selection republishes: {error:?}"));
+        let second_selection = second_selection_publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .first()
+            .and_then(|node| node.editable())
+            .unwrap_or_else(|| unreachable!("editable selection remains published"))
+            .selection();
+        assert!(
+            !second_selection.is_collapsed(),
+            "a second native drag must start a fresh text-selection gesture: {second_selection:?}"
+        );
+
         let click_point = LogicalPoint::new(790.0, 470.0)
             .unwrap_or_else(|_| unreachable!("selection-collapse click is finite"));
         let translated_click = TranslatedPointerPoint {
             position: click_point,
-            input_context: click_context,
+            input_context: second_selection_publication.input_context().clone(),
             modifiers: KeyModifiers::NONE,
         };
         let hover = mouse.cursor_moved(device_id, translated_click.clone());

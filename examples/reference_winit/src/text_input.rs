@@ -105,9 +105,9 @@ pub fn keyboard_committed_text_candidate<'a>(
         || synthetic
         || !accepts_committed_text
         || composition == KeyboardCompositionState::Active
-        || matches!(
+        || !matches!(
             logical_key,
-            LogicalKey::Backspace | LogicalKey::Delete | LogicalKey::Command(_)
+            LogicalKey::Character(_) | LogicalKey::Enter | LogicalKey::Space
         )
     {
         return None;
@@ -312,6 +312,39 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn only_text_keys_can_become_committed_native_text() {
+        for (logical_key, native_text) in [
+            (LogicalKey::Escape, "\u{1b}"),
+            (LogicalKey::ArrowLeft, "Left"),
+        ] {
+            assert_eq!(
+                keyboard_committed_text_candidate(
+                    ElementState::Pressed,
+                    false,
+                    true,
+                    KeyboardCompositionState::Inactive,
+                    &logical_key,
+                    Some(native_text),
+                ),
+                None
+            );
+        }
+        for (logical_key, native_text) in [(LogicalKey::Space, " "), (LogicalKey::Enter, "\r")] {
+            assert_eq!(
+                keyboard_committed_text_candidate(
+                    ElementState::Pressed,
+                    false,
+                    true,
+                    KeyboardCompositionState::Inactive,
+                    &logical_key,
+                    Some(native_text),
+                ),
+                Some(native_text)
+            );
+        }
     }
 
     #[test]
