@@ -3082,7 +3082,7 @@ mod tests {
                 "issue263_profile label={label}.remaining_runtime n={} median_ns={remaining_median} p95_ns={remaining_p95}",
                 profiles.len()
             );
-            let counts: [CountField; 15] = [
+            let counts: [CountField; 16] = [
                 ("measure_calls", |p| p.measure_calls),
                 ("reshaped", |p| p.reshaped),
                 ("relinebroken", |p| p.relinebroken),
@@ -3098,6 +3098,7 @@ mod tests {
                 ("text_artifact_glyphs", |p| p.text.artifact_glyphs),
                 ("text_artifact_clusters", |p| p.text.artifact_clusters),
                 ("text_grapheme_boundaries", |p| p.text.grapheme_boundaries),
+                ("text_legal_offsets", |p| p.text.legal_offsets),
             ];
             for (suffix, field) in counts {
                 report_count(&format!("{label}.{suffix}"), profiles, field);
