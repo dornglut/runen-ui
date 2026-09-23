@@ -14,7 +14,8 @@ use runenui_core::{
     EditResolution, EditableContribution, Effects, Element, EventContext, FrameworkServiceFailure,
     FrameworkServiceRequest, FrameworkServiceResponse, FrameworkServiceResponseKind,
     HitContribution, HitContributionContext, KeyLocation, KeyModifiers, KeyboardCompositionState,
-    KeyboardEvent, KeyboardPhase, LogicalKey, LogicalPoint, LogicalRect, NoHostProtocol,
+    KeyboardEvent, KeyboardPhase, LayoutDimension, LayoutStyle, LogicalDelta, LogicalKey,
+    LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy, OverflowStyle,
     PhysicalKey, PointerButton, PointerButtons, PointerDeviceKind, PointerEvent, PointerId,
     PointerPhase, SemanticAction, SemanticCommand, SemanticContribution,
     SemanticContributionContext, SemanticEditable, SemanticNodeContribution, SemanticRole,
@@ -212,6 +213,36 @@ impl Widget<Action> for BoundEditor {
 }
 
 struct App;
+
+struct SameNodeScrollApp;
+
+impl UiApp for SameNodeScrollApp {
+    type State = Document;
+    type Action = Action;
+    type HostProtocol = NoHostProtocol;
+
+    fn root(state: &Self::State) -> Element<Self::Action> {
+        editor_root(state).with_layout(
+            LayoutStyle::default()
+                .with_width(LayoutDimension::length(
+                    LogicalLength::new(200.0)
+                        .unwrap_or_else(|_| unreachable!("scroll width is finite")),
+                ))
+                .with_height(LayoutDimension::length(
+                    LogicalLength::new(40.0)
+                        .unwrap_or_else(|_| unreachable!("scroll height is finite")),
+                ))
+                .with_overflow(OverflowStyle::all(OverflowPolicy::Scroll)),
+        )
+    }
+
+    fn update(
+        state: &mut Self::State,
+        action: Self::Action,
+    ) -> UpdateOutput<Self::Action, Self::HostProtocol> {
+        <App as UiApp>::update(state, action)
+    }
+}
 
 fn editor_root(state: &Document) -> Element<Action> {
     if !state.editor_visible {
@@ -509,10 +540,13 @@ fn select_all(runtime: &mut AppRuntime<App>) {
     runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
 }
 
-fn pending_service(
-    runtime: &AppRuntime<App>,
+fn pending_service<TestApp>(
+    runtime: &AppRuntime<TestApp>,
     predicate: impl Fn(&FrameworkServiceRequest) -> bool,
-) -> runenui_runtime::FrameworkServiceRef<'_> {
+) -> runenui_runtime::FrameworkServiceRef<'_>
+where
+    TestApp: UiApp<State = Document, Action = Action, HostProtocol = NoHostProtocol>,
+{
     runtime
         .pending_framework_services()
         .into_iter()
@@ -530,7 +564,10 @@ fn has_pending_clipboard_service(runtime: &AppRuntime<App>) -> bool {
     })
 }
 
-fn complete_pending_state_services(runtime: &mut AppRuntime<App>) {
+fn complete_pending_state_services<TestApp>(runtime: &mut AppRuntime<TestApp>)
+where
+    TestApp: UiApp<State = Document, Action = Action, HostProtocol = NoHostProtocol>,
+{
     let pending = runtime.pending_framework_services();
     let tokens = pending
         .iter()
@@ -557,7 +594,10 @@ fn complete_pending_state_services(runtime: &mut AppRuntime<App>) {
     runtime.pump(PumpBudget::new(32, usize::MAX, usize::MAX, usize::MAX));
 }
 
-fn install_controlled_font(runtime: &mut AppRuntime<App>) {
+fn install_controlled_font<TestApp>(runtime: &mut AppRuntime<TestApp>)
+where
+    TestApp: UiApp<State = Document, Action = Action, HostProtocol = NoHostProtocol>,
+{
     assert!(
         runtime
             .register_text_font_bytes(CANTARELL.to_vec())
@@ -1125,6 +1165,132 @@ fn committed_focus_derives_ime_candidate_geometry_and_text_cursor_services() {
     ));
     complete_pending_state_services(&mut runtime);
     assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn same_node_scroll_moves_committed_ime_candidate_area_with_content_not_viewport() {
+    let mut text = String::new();
+    for line in 0..24 {
+        use std::fmt::Write as _;
+        writeln!(text, "candidate line {line:02}")
+            .unwrap_or_else(|_| unreachable!("writing into a string cannot fail"));
+    }
+    let mut runtime = AppRuntime::<SameNodeScrollApp>::mount_with_config(
+        Document {
+            selection: text.len(),
+            text,
+            revision: 0,
+            reject_next: false,
+            rejected_chain: false,
+            transform_next: false,
+            ordinary_count: 0,
+            sensitivity: TextSensitivity::Public,
+            history: Vec::new(),
+            redo: Vec::new(),
+            editor_visible: true,
+            prevent_default: false,
+            prevent_pointer_down: false,
+            saved_request: None,
+            read_only: false,
+            disabled: false,
+            observed_edits: Vec::new(),
+            emit_equal_ordinary_after_edit: false,
+            equal_action_value_observed: false,
+        },
+        RuntimeConfig::default().with_trace_config(TraceConfig::new(256)),
+    );
+    install_controlled_font(&mut runtime);
+    focus_generic(&mut runtime);
+
+    let environment = StyleEnvironment::default();
+    let build = SurfaceBuildContext::tight(
+        &environment,
+        LogicalSize::try_new(200.0, 40.0)
+            .unwrap_or_else(|_| unreachable!("scroll fixture surface is finite")),
+    );
+    let initial = runtime
+        .publish_surface(&build)
+        .unwrap_or_else(|error| panic!("initial editable scroll surface publishes: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let before = match pending_service(&runtime, |request| {
+        matches!(
+            request,
+            FrameworkServiceRequest::InputMethod {
+                enabled: true,
+                candidate_area: Some(_),
+                ..
+            }
+        )
+    })
+    .request()
+    {
+        FrameworkServiceRequest::InputMethod {
+            candidate_area: Some(area),
+            ..
+        } => *area,
+        _ => unreachable!("enabled IME request contains its committed candidate area"),
+    };
+    complete_pending_state_services(&mut runtime);
+
+    let scroll = 12.0;
+    let wheel = PointerEvent::new(
+        PointerId::new(71).unwrap_or_else(|| unreachable!("fixture pointer is non-zero")),
+        PointerDeviceKind::Mouse,
+        PointerPhase::Wheel,
+        LogicalPoint::new(10.0, 10.0).unwrap_or_else(|_| unreachable!("wheel position is finite")),
+        initial.input_context().clone(),
+    )
+    .with_scroll_delta(
+        LogicalDelta::new(0.0, scroll)
+            .unwrap_or_else(|_| unreachable!("scroll displacement is finite")),
+    );
+    runtime
+        .submit_pointer(wheel)
+        .unwrap_or_else(|error| panic!("same-node wheel input is admitted: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::LogicalScrollOwnerApplied { consumed, .. }
+            if consumed.y().to_bits() == scroll.to_bits()
+    )));
+
+    let scrolled = runtime
+        .publish_surface(&build)
+        .unwrap_or_else(|error| panic!("scrolled editable surface republishes: {error:?}"));
+    let owner_bounds = |surface: &runenui_runtime::SurfacePublication| {
+        surface
+            .frame()
+            .nodes()
+            .iter()
+            .find(|node| node.authored_id().is_some_and(|id| id.as_str() == "editor"))
+            .unwrap_or_else(|| unreachable!("editable scroll owner remains published"))
+            .bounds()
+    };
+    assert_eq!(owner_bounds(&scrolled), owner_bounds(&initial));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    let after = match pending_service(&runtime, |request| {
+        matches!(
+            request,
+            FrameworkServiceRequest::InputMethod {
+                enabled: true,
+                candidate_area: Some(_),
+                ..
+            }
+        )
+    })
+    .request()
+    {
+        FrameworkServiceRequest::InputMethod {
+            candidate_area: Some(area),
+            ..
+        } => *area,
+        _ => unreachable!("updated IME request contains its committed candidate area"),
+    };
+    assert_eq!(before.origin().x().to_bits(), after.origin().x().to_bits());
+    assert_eq!(
+        (before.origin().y() - after.origin().y()).to_bits(),
+        scroll.to_bits()
+    );
 }
 
 #[test]

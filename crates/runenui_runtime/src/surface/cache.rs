@@ -481,7 +481,7 @@ impl SurfaceCache {
         let text_origin = LogicalTransform::translation(padding.left().get(), padding.top().get())
             .map_err(|_| TextCaretMapError::InvalidGeometry)?;
         let text_to_surface = text_origin
-            .then(presentation.owner_to_surface())
+            .then(presentation.content_to_surface())
             .map_err(|_| TextCaretMapError::InvalidGeometry)?;
         runenui_core::__runtime::transform_rect_aabb(text_to_surface, local)
             .ok_or(TextCaretMapError::InvalidGeometry)
