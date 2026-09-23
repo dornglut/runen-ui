@@ -985,6 +985,10 @@ pub(super) struct PaintResolutionInput<'a> {
     pub(super) text_editing: TextEditingPaintInputs<'a>,
 }
 
+#[allow(
+    clippy::let_and_return,
+    reason = "private profiling observes the resolved paint product before returning it"
+)]
 pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
     #[cfg(feature = "internal-test-seams")]
     let profile_started = std::time::Instant::now();

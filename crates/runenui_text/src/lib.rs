@@ -12,10 +12,10 @@ mod layout_extract;
 mod layout_state;
 mod parley_bridge;
 mod preedit;
-mod request;
-mod source_identity;
 #[cfg(test)]
 mod profile_tests;
+mod request;
+mod source_identity;
 #[cfg(test)]
 mod test_profile;
 

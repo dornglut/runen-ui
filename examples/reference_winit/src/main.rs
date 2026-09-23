@@ -2983,7 +2983,6 @@ mod tests {
         }
     }
 
-
     #[test]
     #[ignore = "opt-in issue 263 phase-separated large-document profile; run release with --ignored --nocapture"]
     #[allow(
@@ -3069,7 +3068,10 @@ mod tests {
                 .publish_surface(context)
                 .unwrap_or_else(|error| unreachable!("profile publication succeeds: {error:?}"));
             let total_ns = started.elapsed().as_nanos();
-            (total_ns, runtime.__take_surface_publication_profile_for_test())
+            (
+                total_ns,
+                runtime.__take_surface_publication_profile_for_test(),
+            )
         }
 
         let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
@@ -3078,8 +3080,7 @@ mod tests {
         let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
             .with_raster_scale(mapping.raster_scale);
         let fixture = "multiline responsiveness fixture — retained text layout\n";
-        let replacement_fixture =
-            "replacement publication fixture — retained text layout state\n";
+        let replacement_fixture = "replacement publication fixture — retained text layout state\n";
 
         for (name, lines) in [
             ("40_lines", 40),

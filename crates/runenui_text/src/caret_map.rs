@@ -404,6 +404,10 @@ impl TextCaretMap {
     /// [`Self::legal_positions`], it does not allocate a public position for each affinity or
     /// retain duplicate offsets when both affinities are legal at one boundary.
     #[must_use]
+    #[allow(
+        clippy::let_and_return,
+        reason = "test-only profiling observes collected offsets before returning them"
+    )]
     pub fn legal_byte_offsets(&self) -> Vec<usize> {
         #[cfg(test)]
         let profile_started = std::time::Instant::now();

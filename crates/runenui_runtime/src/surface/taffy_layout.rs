@@ -38,6 +38,10 @@ use super::resolve::{ResolvedSurfaceNode, ResolvedSurfaceTree};
 use super::{LayoutOverflow, SurfaceLayoutNode, SurfaceLayoutReport, SurfaceTextMeasurementRecord};
 use crate::{AxisLimit, LayoutConstraints};
 
+#[allow(
+    clippy::let_and_return,
+    reason = "private profiling observes the completed layout result before returning it"
+)]
 pub(super) fn layout_resolved_surface<Action>(
     resolved_tree: &ResolvedSurfaceTree,
     mounted_tree: &crate::mounted::MountedTree<Action>,

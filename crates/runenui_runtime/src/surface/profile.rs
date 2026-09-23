@@ -85,7 +85,10 @@ pub(crate) fn record_paint(duration: Duration) {
 
 pub(crate) fn record_displayed_text_targets(duration: Duration) {
     PROFILE.with(|profile| {
-        add_duration(&mut profile.borrow_mut().displayed_text_targets_ns, duration);
+        add_duration(
+            &mut profile.borrow_mut().displayed_text_targets_ns,
+            duration,
+        );
     });
 }
 
@@ -108,7 +111,8 @@ pub(crate) fn record_measure_callback(duration: Duration) {
 }
 
 pub(crate) fn record_request_prepare(duration: Duration) {
-    PROFILE.with(|profile| add_duration(&mut profile.borrow_mut().text_request_prepare_ns, duration));
+    PROFILE
+        .with(|profile| add_duration(&mut profile.borrow_mut().text_request_prepare_ns, duration));
 }
 
 pub(crate) fn record_text_layout(duration: Duration) {

@@ -110,8 +110,7 @@ pub fn relayout_text(
         for line in artifact.lines() {
             for run in line.runs() {
                 run_count = run_count.saturating_add(1);
-                glyph_count =
-                    glyph_count.saturating_add(run.shaped_resource().glyphs().len());
+                glyph_count = glyph_count.saturating_add(run.shaped_resource().glyphs().len());
                 cluster_count = cluster_count.saturating_add(run.clusters().len());
             }
         }

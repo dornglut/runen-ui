@@ -6,7 +6,8 @@ use runenui_core::{
 };
 
 use crate::{
-    FontSourcePolicy, TextConstraints, TextLayoutDecision, TextLayoutState, TextRequest, TextSystem,
+    FontSourcePolicy, TextConstraints, TextLayoutDecision, TextLayoutState, TextRequest,
+    TextSystem,
     test_profile::{self, TextPhaseProfile},
 };
 
@@ -110,7 +111,9 @@ fn report(label: &str, totals: &mut [u128], profiles: &[TextPhaseProfile]) {
     for (suffix, field) in count_fields {
         report_count(&format!("{label}.{suffix}"), profiles, field);
     }
-    report_count(&format!("{label}.legal_offsets"), profiles, |p| p.legal_offsets);
+    report_count(&format!("{label}.legal_offsets"), profiles, |p| {
+        p.legal_offsets
+    });
 }
 
 fn capture(
@@ -137,6 +140,10 @@ fn capture(
 
 #[test]
 #[ignore = "opt-in issue 263 release profile; run with --ignored --nocapture"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one opt-in harness compares text phases across four document scales and edit states"
+)]
 fn issue_263_text_phase_profile() {
     let fixture = "multiline responsiveness fixture — retained text layout\n";
     let replacement_fixture = "replacement publication fixture — retained text layout state\n";
