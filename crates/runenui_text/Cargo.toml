@@ -16,5 +16,8 @@ fontique = { version = "0.11.1", default-features = false, features = ["system",
 skrifa = { version = "=0.44.0", default-features = false, features = ["std"] }
 unicode-segmentation = "1.13.3"
 
+[features]
+internal-test-seams = []
+
 [lints]
 workspace = true
