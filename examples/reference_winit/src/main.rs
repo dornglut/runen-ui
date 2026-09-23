@@ -2940,8 +2940,11 @@ mod tests {
                 let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
                     DemoState::default(),
                     RuntimeConfig::default()
-                        .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+                        .with_text_font_source_policy(FontSourcePolicy::BundledOnly),
                 );
+                runtime
+                    .register_text_font_bytes(CANTARELL.to_vec())
+                    .unwrap_or_else(|_| unreachable!("controlled profile font registers"));
                 runtime.pump(HOST_PUMP_BUDGET);
                 let owner = runtime.index().nodes()[0].id().clone();
                 runtime
@@ -2993,6 +2996,8 @@ mod tests {
         use std::time::Instant;
 
         const SAMPLE_COUNT: usize = 20;
+        const CANTARELL: &[u8] =
+            include_bytes!("../../../crates/runenui_text/tests/fixtures/Cantarell-Regular.ttf");
         type Profile = runenui_runtime::SurfacePublicationTestProfile;
         type TimingField = (&'static str, fn(&Profile) -> u128);
         type CountField = (&'static str, fn(&Profile) -> usize);
