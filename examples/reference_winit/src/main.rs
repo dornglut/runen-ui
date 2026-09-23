@@ -3090,7 +3090,9 @@ mod tests {
                 ("paint_text_run_items", |p| p.paint_text_run_items),
                 ("text_shape_calls", |p| p.text.shape_calls),
                 ("text_line_break_calls", |p| p.text.line_break_calls),
-                ("text_artifact_extract_calls", |p| p.text.artifact_extract_calls),
+                ("text_artifact_extract_calls", |p| {
+                    p.text.artifact_extract_calls
+                }),
                 ("text_caret_map_calls", |p| p.text.caret_map_calls),
                 ("text_legal_offsets_calls", |p| p.text.legal_offsets_calls),
                 ("text_artifact_lines", |p| p.text.artifact_lines),
