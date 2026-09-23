@@ -1,6 +1,6 @@
 use std::{cell::RefCell, mem, time::Duration};
 
-use runenui_text::TextLayoutDecision;
+use runenui_text::{TextLayoutDecision, TextPhaseTestProfile};
 
 #[derive(Clone, Copy, Debug, Default)]
 struct RuntimePublicationProfile {
@@ -36,6 +36,7 @@ pub struct SurfacePublicationTestProfile {
     pub relinebroken: usize,
     pub reused: usize,
     pub paint_text_run_items: usize,
+    pub text: TextPhaseTestProfile,
 }
 
 thread_local! {
@@ -49,6 +50,7 @@ const fn add_duration(target: &mut u128, duration: Duration) {
 
 pub(crate) fn reset() {
     PROFILE.with(|profile| *profile.borrow_mut() = RuntimePublicationProfile::default());
+    runenui_text::__reset_phase_profile_for_test();
 }
 
 pub(crate) fn take() -> SurfacePublicationTestProfile {
@@ -68,6 +70,7 @@ pub(crate) fn take() -> SurfacePublicationTestProfile {
         relinebroken: profile.relinebroken,
         reused: profile.reused,
         paint_text_run_items: profile.paint_text_run_items,
+        text: runenui_text::__take_phase_profile_for_test(),
     }
 }
 
