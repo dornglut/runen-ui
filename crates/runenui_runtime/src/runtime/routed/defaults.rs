@@ -519,8 +519,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             command,
             SemanticCommand::MoveBackward
                 | SemanticCommand::MoveForward
+                | SemanticCommand::MoveUp
+                | SemanticCommand::MoveDown
                 | SemanticCommand::ExtendBackward
                 | SemanticCommand::ExtendForward
+                | SemanticCommand::ExtendUp
+                | SemanticCommand::ExtendDown
                 | SemanticCommand::SelectAll
                 | SemanticCommand::DeleteBackward
                 | SemanticCommand::DeleteForward

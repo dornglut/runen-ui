@@ -1,6 +1,6 @@
 use runenui_core::{
     InputDeviceId, KeyLocation, KeyModifiers, KeyboardCompositionState, KeyboardEvent,
-    KeyboardPhase, LogicalKey, PhysicalKey,
+    KeyboardPhase, LogicalKey, PhysicalKey, SemanticCommand,
 };
 use winit::{
     event::{ElementState, KeyEvent},
@@ -69,7 +69,12 @@ impl KeyboardInputState {
         composition: KeyboardCompositionState,
     ) -> KeyboardInputOutcome {
         let physical_key = translate_physical_key(transition.physical_key);
-        let logical_key = translate_logical_key(transition.logical_key);
+        let logical_key = translate_logical_key(
+            transition.logical_key,
+            transition.physical_key,
+            modifiers,
+            composition,
+        );
         let location = translate_key_location(transition.location);
         let existing = self.pressed.iter().position(|pressed| {
             pressed.device_id == device_id && pressed.physical_key == physical_key
@@ -200,21 +205,67 @@ fn translate_physical_key(key: WinitPhysicalKey) -> PhysicalKey {
     }
 }
 
-fn translate_logical_key(key: &WinitKey) -> LogicalKey {
+fn translate_logical_key(
+    key: &WinitKey,
+    _physical_key: WinitPhysicalKey,
+    modifiers: KeyModifiers,
+    composition: KeyboardCompositionState,
+) -> LogicalKey {
     match key {
         WinitKey::Named(NamedKey::Enter) => LogicalKey::Enter,
         WinitKey::Named(NamedKey::Space) => LogicalKey::Space,
         WinitKey::Named(NamedKey::Tab) => LogicalKey::Tab,
         WinitKey::Named(NamedKey::Escape) => LogicalKey::Escape,
+        WinitKey::Named(NamedKey::Backspace) => LogicalKey::Backspace,
+        WinitKey::Named(NamedKey::Delete) => LogicalKey::Delete,
         WinitKey::Named(NamedKey::ArrowLeft) => LogicalKey::ArrowLeft,
         WinitKey::Named(NamedKey::ArrowRight) => LogicalKey::ArrowRight,
         WinitKey::Named(NamedKey::ArrowUp) => LogicalKey::ArrowUp,
         WinitKey::Named(NamedKey::ArrowDown) => LogicalKey::ArrowDown,
-        WinitKey::Character(text) => LogicalKey::Character(text.to_string()),
+        WinitKey::Character(text) => native_shortcut_command(text, modifiers, composition)
+            .map_or_else(
+                || LogicalKey::Character(text.to_string()),
+                LogicalKey::Command,
+            ),
         WinitKey::Named(named) => LogicalKey::Named(format!("{named:?}")),
         WinitKey::Unidentified(native) => LogicalKey::Named(format!("Unidentified:{native:?}")),
         WinitKey::Dead(Some(character)) => LogicalKey::Named(format!("Dead({character:?})")),
         WinitKey::Dead(None) => LogicalKey::Named(String::from("Dead")),
+    }
+}
+
+fn native_shortcut_command(
+    logical_text: &str,
+    modifiers: KeyModifiers,
+    composition: KeyboardCompositionState,
+) -> Option<SemanticCommand> {
+    if composition != KeyboardCompositionState::Inactive || modifiers.alt() {
+        return None;
+    }
+    let primary = if cfg!(target_os = "macos") {
+        modifiers.meta() && !modifiers.control()
+    } else {
+        modifiers.control() && !modifiers.meta()
+    };
+    if !primary {
+        return None;
+    }
+
+    let mut characters = logical_text.chars();
+    let key = characters.next()?;
+    if characters.next().is_some() || !key.is_ascii() {
+        return None;
+    }
+    let key = key.to_ascii_lowercase();
+    match (key, modifiers.shift()) {
+        ('a', false) => Some(SemanticCommand::SelectAll),
+        ('c', false) => Some(SemanticCommand::Copy),
+        ('x', false) => Some(SemanticCommand::Cut),
+        ('v', false) => Some(SemanticCommand::Paste),
+        ('z', false) => Some(SemanticCommand::Undo),
+        ('z', true) => Some(SemanticCommand::Redo),
+        ('y', false) if !cfg!(target_os = "macos") => Some(SemanticCommand::Redo),
+        _ => None,
     }
 }
 
@@ -231,11 +282,12 @@ const fn translate_key_location(location: WinitKeyLocation) -> KeyLocation {
 mod tests {
     use super::{
         KeyboardIngressDiagnostic, KeyboardInputOutcome, KeyboardInputState, NativeKeyTransition,
-        translate_key_location, translate_logical_key, translate_physical_key,
+        native_shortcut_command, translate_key_location, translate_logical_key,
+        translate_physical_key,
     };
     use runenui_core::{
         InputDeviceId, KeyModifiers, KeyboardCompositionState, KeyboardPhase,
-        LogicalKey as NeutralLogicalKey, PhysicalKey as NeutralPhysicalKey,
+        LogicalKey as NeutralLogicalKey, PhysicalKey as NeutralPhysicalKey, SemanticCommand,
     };
     use winit::{
         event::ElementState,
@@ -286,12 +338,139 @@ mod tests {
             NeutralPhysicalKey::Code(String::from("KeyQ"))
         );
         assert_eq!(
-            translate_logical_key(&WinitKey::Character("ß".into())),
+            translate_logical_key(
+                &WinitKey::Character("ß".into()),
+                WinitPhysicalKey::Code(KeyCode::KeyQ),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ),
             NeutralLogicalKey::Character(String::from("ß"))
         );
         assert_eq!(
-            translate_logical_key(&WinitKey::Named(NamedKey::F5)),
+            translate_logical_key(
+                &WinitKey::Named(NamedKey::F5),
+                WinitPhysicalKey::Code(KeyCode::F5),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ),
             NeutralLogicalKey::Named(String::from("F5"))
+        );
+    }
+
+    #[test]
+    fn native_editing_keys_and_platform_shortcuts_normalize_without_text_commits() {
+        assert_eq!(
+            translate_logical_key(
+                &WinitKey::Named(NamedKey::Backspace),
+                WinitPhysicalKey::Code(KeyCode::Backspace),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ),
+            NeutralLogicalKey::Backspace
+        );
+        assert_eq!(
+            translate_logical_key(
+                &WinitKey::Named(NamedKey::Delete),
+                WinitPhysicalKey::Code(KeyCode::Delete),
+                KeyModifiers::NONE,
+                KeyboardCompositionState::Inactive,
+            ),
+            NeutralLogicalKey::Delete
+        );
+        let primary = if cfg!(target_os = "macos") {
+            KeyModifiers::META
+        } else {
+            KeyModifiers::CONTROL
+        };
+        for (key, expected) in [
+            (KeyCode::KeyA, SemanticCommand::SelectAll),
+            (KeyCode::KeyC, SemanticCommand::Copy),
+            (KeyCode::KeyX, SemanticCommand::Cut),
+            (KeyCode::KeyV, SemanticCommand::Paste),
+            (KeyCode::KeyZ, SemanticCommand::Undo),
+        ] {
+            assert_eq!(
+                native_shortcut_command(
+                    match key {
+                        KeyCode::KeyA => "a",
+                        KeyCode::KeyC => "c",
+                        KeyCode::KeyX => "x",
+                        KeyCode::KeyV => "v",
+                        KeyCode::KeyZ => "z",
+                        KeyCode::KeyY => "y",
+                        _ => unreachable!("shortcut fixture key has a logical character"),
+                    },
+                    primary,
+                    KeyboardCompositionState::Inactive,
+                ),
+                Some(expected)
+            );
+        }
+        assert_eq!(
+            native_shortcut_command(
+                "Z",
+                primary.with_shift(),
+                KeyboardCompositionState::Inactive,
+            ),
+            Some(SemanticCommand::Redo)
+        );
+        assert_eq!(
+            native_shortcut_command("c", primary.with_alt(), KeyboardCompositionState::Inactive,),
+            None,
+            "AltGr/Option combinations must remain text input"
+        );
+        assert_eq!(
+            native_shortcut_command("c", primary, KeyboardCompositionState::Active,),
+            None,
+            "composition-owned keys must not become editing shortcuts"
+        );
+
+        let mut keyboard = KeyboardInputState::default();
+        let native_copy = WinitKey::Character("C".into());
+        let event = submitted(keyboard.key_input(
+            device(7),
+            &transition(
+                ElementState::Pressed,
+                WinitPhysicalKey::Code(KeyCode::KeyC),
+                &native_copy,
+                false,
+                false,
+            ),
+            primary,
+            KeyboardCompositionState::Inactive,
+        ));
+        assert_eq!(
+            event.logical_key(),
+            &NeutralLogicalKey::Command(SemanticCommand::Copy),
+            "the adapter emits normalized commands in the normal keyboard event"
+        );
+    }
+
+    #[test]
+    fn native_shortcuts_follow_logical_characters_on_qwertz_layouts() {
+        let primary = if cfg!(target_os = "macos") {
+            KeyModifiers::META
+        } else {
+            KeyModifiers::CONTROL
+        };
+        let mut keyboard = KeyboardInputState::default();
+        let german_undo = WinitKey::Character("z".into());
+        let event = submitted(keyboard.key_input(
+            device(7),
+            &transition(
+                ElementState::Pressed,
+                WinitPhysicalKey::Code(KeyCode::KeyY),
+                &german_undo,
+                false,
+                false,
+            ),
+            primary,
+            KeyboardCompositionState::Inactive,
+        ));
+        assert_eq!(
+            event.logical_key(),
+            &NeutralLogicalKey::Command(SemanticCommand::Undo),
+            "Cmd/Ctrl+Z uses the logical Z even though its physical key code is KeyY"
         );
     }
 

@@ -2,22 +2,21 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::too_many_lines)]
 
 use core::{future::Future, pin::pin, task::Poll};
-use std::{cell::Cell, fmt::Write as _, fs, path::PathBuf, task::Context};
+use std::{cell::Cell, fmt::Write as _, fs, path::PathBuf, task::Context, time::Instant};
 
 use runenui_core::{
     Brush, Color, CommandOrigin, CompositionRange, EdgeInsets, EditIntent, EditResolution,
     EditableContribution, EditingSessionPolicy, Element, FontFamilyName, GenericFontFamily,
     HitContribution, HitContributionContext, ImageDescriptor, ImageIntrinsicSize, ImageMapping,
-    ImagePaintDescriptor, LayoutContainer, LayoutDimension, LayoutStyle, LogicalLength,
-    LogicalPoint, LogicalRect, LogicalSize, NoHostProtocol, OverflowPolicy, OverflowStyle,
-    PaintContribution, PaintContributionContext, PaintContributionItem, PaintPrimitive,
-    PointerDeviceKind, PointerEvent, PointerId, PointerPhase, PresentationOrigin,
-    PresentationRotation, PresentationScale, PresentationTransform, PresentationTranslation,
-    ResourceKind, ResourceRef, SceneShape, SemanticAction, SemanticContribution,
-    SemanticContributionContext, SemanticEditable, SemanticNodeContribution, SemanticRole,
-    SemanticState, StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision,
-    TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity, UiApp, UpdateOutput, View,
-    Widget, WidgetActivation, WidgetMeasure, WidgetMeasureInput, WidgetTextInput, children, row,
+    ImagePaintDescriptor, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
+    LogicalSize, NoHostProtocol, OverflowPolicy, OverflowStyle, PaintContribution,
+    PaintContributionContext, PaintContributionItem, PaintPrimitive, PointerDeviceKind,
+    PointerEvent, PointerId, PointerPhase, ResourceKind, ResourceRef, SceneShape, SemanticAction,
+    SemanticContribution, SemanticContributionContext, SemanticEditable, SemanticNodeContribution,
+    SemanticRole, SemanticState, StyleEnvironment, TextAffinity, TextDocumentId,
+    TextDocumentRevision, TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity,
+    UiApp, UpdateOutput, View, Widget, WidgetActivation, WidgetMeasure, WidgetMeasureInput,
+    WidgetTextInput,
 };
 use runenui_render_wgpu::{
     BackendSelection, ImagePayload, PublicationRenderError, Renderer, RendererInitError,
@@ -111,15 +110,7 @@ impl Widget<EditorAction> for EditorWidget {
         )
     }
 
-    fn paint(&self, (): &Self::State, context: PaintContributionContext) -> PaintContribution {
-        let size = context.local_size();
-        let background = PaintContributionItem::fill(
-            SceneShape::rect(
-                LogicalRect::try_new(0.0, 0.0, size.width(), size.height())
-                    .unwrap_or_else(|_| unreachable!("fixture bounds are finite")),
-            ),
-            Brush::solid(Color::rgb(0x16, 0x20, 0x30)),
-        );
+    fn paint(&self, (): &Self::State, _context: PaintContributionContext) -> PaintContribution {
         let descriptor = ImageDescriptor::new(
             self.image.clone(),
             ImageIntrinsicSize::new(1, 1)
@@ -135,7 +126,7 @@ impl Widget<EditorAction> for EditorWidget {
             )
             .unwrap_or_else(|_| unreachable!("fixture image mapping is valid")),
         );
-        PaintContribution::new(vec![background, image])
+        PaintContribution::single(image)
     }
 }
 
@@ -173,12 +164,11 @@ impl UiApp for EditableApp {
                 .with_width(LayoutDimension::length(length(152.0)))
                 .with_height(LayoutDimension::length(length(168.0))),
         );
-        row(children![editor])
-            .id("m10.viewport")
-            .presentation(presentation())
+        editor
+            .id("m10.editor")
+            .background(Color::rgb(0x16, 0x20, 0x30))
             .with_layout(
                 LayoutStyle::default()
-                    .with_container(LayoutContainer::Block)
                     .with_width(LayoutDimension::length(length(168.0)))
                     .with_height(LayoutDimension::length(length(72.0)))
                     .with_overflow(OverflowStyle::all(OverflowPolicy::Scroll)),
@@ -212,19 +202,6 @@ impl UiApp for EditableApp {
 
 fn length(value: f32) -> LogicalLength {
     LogicalLength::new(value).unwrap_or_else(|_| unreachable!("fixture length is finite"))
-}
-
-fn presentation() -> PresentationTransform {
-    PresentationTransform::new(
-        PresentationTranslation::new(3.0, 2.0)
-            .unwrap_or_else(|_| unreachable!("fixture translation is finite")),
-        PresentationScale::IDENTITY,
-        PresentationRotation::ZERO,
-        PresentationOrigin::new(
-            runenui_core::UnitInterval::ZERO,
-            runenui_core::UnitInterval::ZERO,
-        ),
-    )
 }
 
 const fn full_pump() -> PumpBudget {
@@ -364,6 +341,11 @@ fn write_evidence(
 }
 
 #[test]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "sample points are clipped to the finite RGBA readback extent before pixel indexing"
+)]
 fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_exactly()
 -> Result<(), Box<dyn std::error::Error>> {
     let Some(mut renderer) = renderer_or_skip()? else {
@@ -387,6 +369,18 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
             .iter()
             .any(|item| item.primitive().as_shaped_text_run().is_some())
     );
+    let initial_text_item = initial
+        .paint_scene()
+        .items()
+        .iter()
+        .find(|item| item.primitive().as_shaped_text_run().is_some())
+        .unwrap_or_else(|| unreachable!("editable text has one retained shaped run"));
+    let initial_text_transform = initial_text_item.local_to_surface();
+    let initial_clip_transforms = initial_text_item
+        .clips()
+        .iter()
+        .map(runenui_runtime::SceneClip::clip_to_surface)
+        .collect::<Vec<_>>();
     let initial_readback =
         renderer.render_offscreen_publication(initial.paint_publication(), &provider)?;
     let evidence_extent = initial_readback.readback().extent();
@@ -498,10 +492,43 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
     let focused_pixels = focused_readback.readback().rgba8_srgb().to_vec();
     assert_ne!(pixel_hash(&initial_pixels), pixel_hash(&focused_pixels));
 
+    let selection_anchor_offset = TEXT.find("scrolled line five").map_or_else(
+        || unreachable!("fixture contains the fifth line"),
+        |offset| offset + "scrolled line five".len(),
+    );
+    let selection_active_offset = TEXT
+        .find("scrolled line four")
+        .unwrap_or_else(|| unreachable!("fixture contains the fourth line"));
+    let selection_snapshot =
+        TextDocumentSnapshot::new(TextDocumentId::new(10), TextDocumentRevision::new(0));
+    let selection_anchor = TextPosition::new(
+        selection_snapshot,
+        TEXT,
+        selection_anchor_offset,
+        TextAffinity::Downstream,
+    )?;
+    let selection_active = TextPosition::new(
+        selection_snapshot,
+        TEXT,
+        selection_active_offset,
+        TextAffinity::Upstream,
+    )?;
+    runtime.submit_semantic_action(runenui_core::SemanticActionRequest::set_selection(
+        focused
+            .semantic_publication()
+            .snapshot()
+            .surface_id()
+            .clone(),
+        editable_node.id().clone(),
+        TextSelection::new(selection_anchor, selection_active)?,
+    ))?;
+    runtime.pump(full_pump());
+
     let composition = runtime
         .start_composition(None)
         .unwrap_or_else(|error| panic!("focused editor accepts composition: {error:?}"));
     let generation = composition.generation().clone();
+    let cancel_generation = generation.clone();
     let preedit = "compose";
     runtime
         .submit_composition_update(
@@ -541,7 +568,7 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
                 preedit_surface.input_context().clone(),
             )
             .with_scroll_delta(
-                LogicalDelta::new(0.0, 48.0)
+                LogicalDelta::new(0.0, 96.0)
                     .unwrap_or_else(|_| unreachable!("fixture wheel delta is finite")),
             ),
         )
@@ -549,6 +576,39 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
     runtime.pump(full_pump());
     let scrolled = publish(&mut runtime);
     assert_eq!(scrolled.hit_test_scene().target_at(point), Some(&owner));
+    let scrolled_text_item = scrolled
+        .paint_scene()
+        .items()
+        .iter()
+        .find(|item| item.primitive().as_shaped_text_run().is_some())
+        .unwrap_or_else(|| unreachable!("scrolled editable text keeps its retained run"));
+    assert_ne!(
+        scrolled_text_item.local_to_surface(),
+        initial_text_transform,
+        "same-owner scrolling moves text through the viewport"
+    );
+    let origin =
+        LogicalPoint::new(0.0, 0.0).unwrap_or_else(|_| unreachable!("local origin is finite"));
+    let initial_text_origin = initial_text_transform
+        .transform_point(origin)
+        .unwrap_or_else(|| unreachable!("initial text origin is representable"));
+    let scrolled_text_origin = scrolled_text_item
+        .local_to_surface()
+        .transform_point(origin)
+        .unwrap_or_else(|| unreachable!("scrolled text origin is representable"));
+    assert!(
+        scrolled_text_origin.y() < initial_text_origin.y() - 20.0,
+        "positive scroll moves same-owner content upward by a visible amount: initial={initial_text_origin:?}, scrolled={scrolled_text_origin:?}"
+    );
+    assert_eq!(
+        scrolled_text_item
+            .clips()
+            .iter()
+            .map(runenui_runtime::SceneClip::clip_to_surface)
+            .collect::<Vec<_>>(),
+        initial_clip_transforms,
+        "same-owner scrolling keeps the viewport clip stationary"
+    );
     let scrolled_node = scrolled
         .semantic_publication()
         .snapshot()
@@ -560,12 +620,186 @@ fn correlated_editable_publication_renders_selection_preedit_scroll_and_retries_
     let scrolled_readback =
         renderer.render_offscreen_publication(scrolled.paint_publication(), &provider)?;
     let scrolled_pixels = scrolled_readback.readback().rgba8_srgb().to_vec();
+    let selection_color = Brush::solid(Color::rgba(255, 255, 255, 96));
+    let selection_fill = |publication: &runenui_runtime::SurfacePublication| {
+        publication.paint_scene().items().iter().find_map(|item| {
+            let matching_brush = item.primitive().brush() == Some(&selection_color);
+            let rect = match item.primitive() {
+                PaintPrimitive::Fill {
+                    shape: SceneShape::Rect(rect),
+                    ..
+                } if matching_brush => *rect,
+                _ => return None,
+            };
+            let local_center = LogicalPoint::new(
+                rect.x() + rect.width() / 2.0,
+                rect.y() + rect.height() / 2.0,
+            )
+            .ok()?;
+            let surface_center = item.local_to_surface().transform_point(local_center)?;
+            let visible = item
+                .clips()
+                .iter()
+                .all(|clip| clip.contains_surface_point(surface_center));
+            Some((surface_center, visible))
+        })
+    };
+    let (_unscrolled_selection_center, unscrolled_selection_visible) =
+        selection_fill(&preedit_surface)
+            .unwrap_or_else(|| unreachable!("pre-scroll text selection is painted"));
+    assert!(
+        !unscrolled_selection_visible,
+        "the off-viewport selection rectangle is clipped before scrolling"
+    );
+    let (scrolled_selection_center, scrolled_selection_visible) = selection_fill(&scrolled)
+        .unwrap_or_else(|| unreachable!("same-node scroll retains selection paint"));
+    assert!(
+        scrolled_selection_visible,
+        "the scrolled selection rectangle is admitted by the stationary viewport clip"
+    );
+    let sample_pixel = |pixels: &[u8], point: LogicalPoint| -> [u8; 4] {
+        let x = point.x().floor() as usize;
+        let y = point.y().floor() as usize;
+        let offset = (y * evidence_extent.width() as usize + x) * 4;
+        pixels[offset..offset + 4]
+            .try_into()
+            .unwrap_or_else(|_| unreachable!("pixel contains four RGBA channels"))
+    };
+    assert_ne!(
+        sample_pixel(&scrolled_pixels, scrolled_selection_center),
+        [0x16_u8, 0x20, 0x30, 0xFF],
+        "the real-wgpu readback contains the visible scrolled selection"
+    );
+    let caret_color = Brush::solid(Color::WHITE);
+    let caret_fill = |publication: &runenui_runtime::SurfacePublication| {
+        publication.paint_scene().items().iter().find_map(|item| {
+            if item.primitive().brush() != Some(&caret_color) {
+                return None;
+            }
+            let rect = match item.primitive() {
+                PaintPrimitive::Fill {
+                    shape: SceneShape::Rect(rect),
+                    ..
+                } if rect.width().to_bits() == 1.0_f32.to_bits() => *rect,
+                _ => return None,
+            };
+            let local_center = LogicalPoint::new(
+                rect.x() + rect.width() / 2.0,
+                rect.y() + rect.height() / 2.0,
+            )
+            .ok()?;
+            let surface_center = item.local_to_surface().transform_point(local_center)?;
+            let visible = item
+                .clips()
+                .iter()
+                .all(|clip| clip.contains_surface_point(surface_center));
+            Some((surface_center, visible))
+        })
+    };
+    let (_unscrolled_caret_center, unscrolled_caret_visible) =
+        caret_fill(&preedit_surface).unwrap_or_else(|| unreachable!("pre-scroll caret is painted"));
+    assert!(
+        !unscrolled_caret_visible,
+        "the off-viewport caret is clipped"
+    );
+    let (scrolled_caret_center, scrolled_caret_visible) = caret_fill(&scrolled)
+        .unwrap_or_else(|| unreachable!("same-node scroll retains caret paint"));
+    assert!(
+        scrolled_caret_visible,
+        "the scrolled caret is inside the viewport clip"
+    );
+    assert_ne!(
+        sample_pixel(&scrolled_pixels, scrolled_caret_center),
+        [0x16_u8, 0x20, 0x30, 0xFF],
+        "the real-wgpu readback contains the correlated scrolled caret"
+    );
+    let fixed_corner = |pixels: &[u8]| -> [u8; 4] {
+        let offset = ((4_usize * evidence_extent.width() as usize) + 4) * 4;
+        pixels[offset..offset + 4]
+            .try_into()
+            .unwrap_or_else(|_| unreachable!("pixel contains four RGBA channels"))
+    };
+    assert_eq!(
+        fixed_corner(&scrolled_pixels),
+        fixed_corner(&preedit_pixels),
+        "the style background at the stationary viewport corner is unchanged by scrolling"
+    );
     assert_ne!(pixel_hash(&preedit_pixels), pixel_hash(&scrolled_pixels));
+
+    runtime
+        .cancel_composition(cancel_generation)
+        .unwrap_or_else(|error| {
+            panic!("the visual composition fixture cancels cleanly: {error:?}")
+        });
+    runtime.pump(full_pump());
+
+    let pointer_id = PointerId::new(24).unwrap_or_else(|| unreachable!("pointer ID is nonzero"));
+    let click_context = scrolled.input_context().clone();
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                point,
+                click_context.clone(),
+            )
+            .with_buttons(runenui_core::PointerButtons::new([
+                runenui_core::PointerButton::Primary,
+            ]))
+            .with_changed_button(runenui_core::PointerButton::Primary),
+        )
+        .unwrap_or_else(|error| panic!("scrolled text click is admitted: {error:?}"));
+    runtime.pump(full_pump());
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                point,
+                click_context,
+            )
+            .with_changed_button(runenui_core::PointerButton::Primary),
+        )
+        .unwrap_or_else(|error| panic!("scrolled text release is admitted: {error:?}"));
+    runtime.pump(full_pump());
+    let clicked = publish(&mut runtime);
+    let clicked_selection = clicked
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .iter()
+        .find(|node| node.role() == SemanticRole::EditableText)
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("same-node scrolled text remains editable"))
+        .selection();
+    assert!(
+        clicked_selection.active().byte_offset()
+            >= TEXT
+                .find("scrolled line four")
+                .unwrap_or_else(|| unreachable!("fixture contains a scrolled line")),
+        "pointer-to-text mapping shares the scrolled content transform: {clicked_selection:?}"
+    );
 
     let exact_publication = scrolled.paint_publication().clone();
     let expected_revision = exact_publication.revision();
     let expected_text = runtime.state().text.clone();
     let expected_hash = pixel_hash(&scrolled_pixels);
+    let mut render_readback_times = Vec::with_capacity(40);
+    for _ in 0..40 {
+        let started = Instant::now();
+        let _ = renderer.render_offscreen_publication(&exact_publication, &provider)?;
+        render_readback_times.push(started.elapsed());
+    }
+    render_readback_times.sort_unstable();
+    let render_median_ns = render_readback_times[render_readback_times.len() / 2].as_nanos();
+    let render_p95_index = (render_readback_times.len() * 95).div_ceil(100) - 1;
+    let render_p95_ns = render_readback_times[render_p95_index].as_nanos();
+    eprintln!(
+        "issue261_measurement label=renderer_offscreen_submit_readback n={} median_ns={render_median_ns} p95_ns={render_p95_ns}",
+        render_readback_times.len()
+    );
     assert!(renderer.discard_resource_cache());
     provider.set_fail_next(true);
     assert!(matches!(

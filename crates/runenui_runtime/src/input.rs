@@ -1452,11 +1452,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         matches!(
             event.logical_key(),
             LogicalKey::Tab
+                | LogicalKey::Backspace
+                | LogicalKey::Delete
                 | LogicalKey::ArrowLeft
                 | LogicalKey::ArrowRight
                 | LogicalKey::ArrowUp
                 | LogicalKey::ArrowDown
                 | LogicalKey::Escape
+                | LogicalKey::Command(_)
         ) || (matches!(event.logical_key(), LogicalKey::Enter) && !event.is_repeat())
     }
 
@@ -1561,8 +1564,25 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         }
         let editable = self.editing.has_owner(&target);
         let command = match event.logical_key() {
+            LogicalKey::Command(_) if event.is_repeat() => None,
             LogicalKey::Tab if event.modifiers().shift() => Some(SemanticCommand::FocusPrevious),
             LogicalKey::Tab => Some(SemanticCommand::FocusNext),
+            LogicalKey::Backspace if editable => Some(SemanticCommand::DeleteBackward),
+            LogicalKey::Delete if editable => Some(SemanticCommand::DeleteForward),
+            LogicalKey::Command(command)
+                if editable
+                    && matches!(
+                        command,
+                        SemanticCommand::SelectAll
+                            | SemanticCommand::Copy
+                            | SemanticCommand::Cut
+                            | SemanticCommand::Paste
+                            | SemanticCommand::Undo
+                            | SemanticCommand::Redo
+                    ) =>
+            {
+                Some(*command)
+            }
             LogicalKey::ArrowLeft if editable && event.modifiers().shift() => {
                 Some(SemanticCommand::ExtendBackward)
             }
@@ -1573,8 +1593,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             LogicalKey::ArrowRight if editable => Some(SemanticCommand::MoveForward),
             LogicalKey::ArrowLeft => Some(SemanticCommand::FocusLeft),
             LogicalKey::ArrowRight => Some(SemanticCommand::FocusRight),
+            LogicalKey::ArrowUp if editable && event.modifiers().shift() => {
+                Some(SemanticCommand::ExtendUp)
+            }
+            LogicalKey::ArrowDown if editable && event.modifiers().shift() => {
+                Some(SemanticCommand::ExtendDown)
+            }
+            LogicalKey::ArrowUp if editable => Some(SemanticCommand::MoveUp),
+            LogicalKey::ArrowDown if editable => Some(SemanticCommand::MoveDown),
             LogicalKey::ArrowUp => Some(SemanticCommand::FocusUp),
             LogicalKey::ArrowDown => Some(SemanticCommand::FocusDown),
+            LogicalKey::Escape if self.editing.has_stable_range_selection(&target) => {
+                Some(SemanticCommand::MoveBackward)
+            }
             LogicalKey::Escape => Some(SemanticCommand::CancelOrBack),
             LogicalKey::Enter if !event.is_repeat() => Some(SemanticCommand::Activate),
             _ => None,

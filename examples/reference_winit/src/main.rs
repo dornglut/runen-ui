@@ -27,17 +27,16 @@ use mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
 };
 use runenui_core::{
-    Brush, Color, CommandOrigin, CommittedTextEvent, DragDropEvent, DragDropPayloadKind,
-    DragDropPayloadMetadata, DragDropPhase, EdgeInsets, EditIntent, EditResolution,
-    EditableContribution, EditingSessionPolicy, Element, EventContext, HitContribution,
-    HitContributionContext, InputDeviceId, KeyModifiers, KeyboardEvent, LayoutDimension,
-    LayoutStyle, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol, OverflowPolicy,
-    OverflowStyle, PaintContribution, PaintContributionContext, PaintContributionItem,
-    PointerEvent, SceneShape, SemanticAction, SemanticCommand, SemanticContribution,
-    SemanticEditable, SemanticNodeContribution, SemanticRole, SemanticState, StyleEnvironment,
-    SurfaceInputContext, TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
-    TextPosition, TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, View, Widget,
-    WidgetActivation, WidgetMeasure, WidgetTextInput,
+    Color, CommandOrigin, CommittedTextEvent, DragDropEvent, DragDropPayloadKind,
+    DragDropPayloadMetadata, DragDropPhase, EdgeInsets, EditChangeMap, EditIntent, EditKind,
+    EditResolution, EditSelection, EditableContribution, EditingSessionPolicy, Element,
+    EventContext, HitContribution, HitContributionContext, InputDeviceId, KeyModifiers,
+    KeyboardEvent, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
+    NoHostProtocol, OverflowPolicy, OverflowStyle, PointerEvent, SemanticAction, SemanticCommand,
+    SemanticContribution, SemanticEditable, SemanticNodeContribution, SemanticRole, SemanticState,
+    StyleEnvironment, SurfaceInputContext, TextAffinity, TextDocumentId, TextDocumentRevision,
+    TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, View,
+    Widget, WidgetActivation, WidgetMeasure, WidgetTextInput,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -118,17 +117,33 @@ impl From<accesskit_winit::Event> for HostEvent {
 }
 
 const INITIAL_EDITOR_TEXT: &str = "RunenUI M10 Reference Host\n\nThis is an application-owned editable document. Click anywhere and type; try mouse selection, clipboard shortcuts, IME composition, and scrolling.";
+const MAX_EDITOR_HISTORY_ENTRIES: usize = 100;
 
 struct DemoState {
     text: String,
     revision: u64,
+    selection_seed: EditSelection,
+    undo: Vec<DemoHistoryEntry>,
+    redo: Vec<DemoHistoryEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DemoHistoryEntry {
+    text: String,
+    selection: EditSelection,
 }
 
 impl Default for DemoState {
     fn default() -> Self {
+        let text = INITIAL_EDITOR_TEXT.to_owned();
+        let selection_seed = EditSelection::collapsed(&text, text.len(), TextAffinity::Upstream)
+            .unwrap_or_else(|_| unreachable!("initial reference selection is checked"));
         Self {
-            text: INITIAL_EDITOR_TEXT.to_owned(),
+            text,
             revision: 0,
+            selection_seed,
+            undo: Vec::new(),
+            redo: Vec::new(),
         }
     }
 }
@@ -141,6 +156,7 @@ enum DemoAction {
 struct DemoSurface {
     snapshot: TextDocumentSnapshot,
     text: String,
+    selection_seed: EditSelection,
 }
 
 impl Widget<DemoAction> for DemoSurface {
@@ -230,28 +246,11 @@ impl Widget<DemoAction> for DemoSurface {
             .unwrap_or_else(|_| unreachable!("the literal demo hit origin is finite"));
         HitContribution::single_rect(LogicalRect::new(origin, context.local_size()))
     }
-
-    fn paint(&self, _state: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        let origin = LogicalPoint::new(0.0, 0.0)
-            .unwrap_or_else(|_| unreachable!("the literal demo origin is finite"));
-        let rect = LogicalRect::new(origin, context.local_size());
-        PaintContribution::single(PaintContributionItem::fill(
-            SceneShape::rect(rect),
-            Brush::solid(Color::rgb(28, 32, 40)),
-        ))
-    }
 }
 
 impl DemoSurface {
     fn selection(&self) -> Option<TextSelection> {
-        let position = TextPosition::new(
-            self.snapshot,
-            &self.text,
-            self.text.len(),
-            TextAffinity::Upstream,
-        )
-        .ok()?;
-        Some(TextSelection::collapsed(position))
+        self.selection_seed.bind(self.snapshot, &self.text).ok()
     }
 }
 
@@ -269,6 +268,7 @@ impl UiApp for DemoApp {
                 TextDocumentRevision::new(state.revision),
             ),
             text: state.text.clone(),
+            selection_seed: state.selection_seed,
         })
         .id("reference.editor")
         .key("reference.editor")
@@ -282,6 +282,7 @@ impl UiApp for DemoApp {
                 )),
         )
         .foreground(Color::WHITE)
+        .background(Color::rgb(28, 32, 40))
         .padding(EdgeInsets::all(LogicalLength::from(24_u16)))
         .focusable(true)
     }
@@ -291,31 +292,114 @@ impl UiApp for DemoApp {
         DemoAction::Edit(intent): Self::Action,
     ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         let request = intent.request().clone();
+        let kind = intent.kind();
+        let current_snapshot = TextDocumentSnapshot::new(
+            TextDocumentId::new(1),
+            TextDocumentRevision::new(state.revision),
+        );
+        if matches!(kind, EditKind::Undo) && state.undo.is_empty()
+            || matches!(kind, EditKind::Redo) && state.redo.is_empty()
+        {
+            // An empty application-owned history operation is accepted without
+            // mutating text, revision, selection, or either history stack.
+            return UpdateOutput::edit(EditResolution::accepted(request, current_snapshot));
+        }
         let Some(next_revision) = state.revision.checked_add(1) else {
-            return UpdateOutput::edit(EditResolution::rejected(
-                request,
+            let snapshot = TextDocumentSnapshot::new(
+                TextDocumentId::new(1),
+                TextDocumentRevision::new(state.revision),
+            );
+            return UpdateOutput::edit(EditResolution::rejected(request, snapshot));
+        };
+
+        let (next_text, next_selection) = match kind {
+            EditKind::Undo => {
+                push_editor_history(
+                    &mut state.redo,
+                    DemoHistoryEntry {
+                        text: state.text.clone(),
+                        selection: intent.proposed_selection(),
+                    },
+                );
+                let target = state
+                    .undo
+                    .pop()
+                    .unwrap_or_else(|| unreachable!("non-empty undo history was preflighted"));
+                (target.text, target.selection)
+            }
+            EditKind::Redo => {
+                push_editor_history(
+                    &mut state.undo,
+                    DemoHistoryEntry {
+                        text: state.text.clone(),
+                        selection: intent.proposed_selection(),
+                    },
+                );
+                let target = state
+                    .redo
+                    .pop()
+                    .unwrap_or_else(|| unreachable!("non-empty redo history was preflighted"));
+                (target.text, target.selection)
+            }
+            _ => {
+                let Some(inverse) = intent.inverse() else {
+                    return UpdateOutput::edit(EditResolution::rejected(request, current_snapshot));
+                };
+                push_editor_history(
+                    &mut state.undo,
+                    DemoHistoryEntry {
+                        text: state.text.clone(),
+                        selection: inverse.selection(),
+                    },
+                );
+                state.redo.clear();
+                let replacement = intent.replacement();
+                let mut next_text = state.text.clone();
+                next_text.replace_range(
+                    replacement.start()..replacement.end(),
+                    intent.replacement_text(),
+                );
+                (next_text, intent.proposed_selection())
+            }
+        };
+        let resulting_snapshot = TextDocumentSnapshot::new(
+            TextDocumentId::new(1),
+            TextDocumentRevision::new(next_revision),
+        );
+        let resolution = if matches!(kind, EditKind::Undo | EditKind::Redo) {
+            let replaced = runenui_core::TextRange::new(
                 TextDocumentSnapshot::new(
                     TextDocumentId::new(1),
                     TextDocumentRevision::new(state.revision),
                 ),
-            ));
+                &state.text,
+                0,
+                state.text.len(),
+            )
+            .unwrap_or_else(|_| unreachable!("the application-owned history range is valid"));
+            EditResolution::transformed(
+                request,
+                resulting_snapshot,
+                EditChangeMap::new(replaced, next_text.len()),
+            )
+        } else {
+            EditResolution::accepted(request, resulting_snapshot)
         };
-        state.text.replace_range(
-            intent.replacement().start()..intent.replacement().end(),
-            intent.replacement_text(),
-        );
+        state.text = next_text;
         state.revision = next_revision;
-        UpdateOutput::edit(EditResolution::accepted(
-            request,
-            TextDocumentSnapshot::new(
-                TextDocumentId::new(1),
-                TextDocumentRevision::new(state.revision),
-            ),
-        ))
+        state.selection_seed = next_selection;
+        UpdateOutput::edit(resolution)
     }
 
     fn trace_action_label(_action: &Self::Action) -> Option<&'static str> {
         Some("edit")
+    }
+}
+
+fn push_editor_history(history: &mut Vec<DemoHistoryEntry>, entry: DemoHistoryEntry) {
+    history.push(entry);
+    if history.len() > MAX_EDITOR_HISTORY_ENTRIES {
+        let _ = history.remove(0);
     }
 }
 
@@ -1010,7 +1094,8 @@ impl ReferenceHost {
         event: PointerEvent,
         stage: &str,
     ) -> bool {
-        self.pump_runtime_once();
+        // Native window events are serialized on this event loop. Submit first,
+        // then pump once; callers must not pump the same pointer event again.
         proof!("stage=pointer_translated source={stage:?} event={event:?}");
         if let Err(error) = self.runtime.submit_pointer(event) {
             self.fail(
@@ -1020,6 +1105,7 @@ impl ReferenceHost {
             return false;
         }
         self.pump_runtime_once();
+        self.collect_redraw_request();
         true
     }
 
@@ -1189,7 +1275,6 @@ impl ReferenceHost {
         match self.runtime.submit_text(event) {
             Ok(_) => {
                 self.last_text_ingress_diagnostic = None;
-                eprintln!("reference_winit committed text accepted");
                 true
             }
             Err(error) if error.kind() == SubmitTextErrorKind::NoFocusedTarget => {
@@ -1332,7 +1417,6 @@ impl ReferenceHost {
         {
             Ok(_) => {
                 self.last_text_ingress_diagnostic = None;
-                eprintln!("reference_winit composition preedit accepted");
             }
             Err(error)
                 if matches!(
@@ -1466,7 +1550,6 @@ impl ReferenceHost {
         if !self.invalidate_mouse_point_authority(event_loop, reason) {
             return;
         }
-        self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
 
@@ -1532,7 +1615,6 @@ impl ReferenceHost {
         if !self.submit_pointer_event(event_loop, event, "native cursor translation") {
             return;
         }
-        self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
 
@@ -1598,7 +1680,6 @@ impl ReferenceHost {
                 self.note_mouse_ingress_diagnostic(diagnostic);
             }
         }
-        self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
 
@@ -1653,7 +1734,6 @@ impl ReferenceHost {
         if !self.submit_pointer_event(event_loop, event, "native touch translation") {
             return;
         }
-        self.drive_runtime(event_loop);
         self.request_pending_redraw();
     }
 
@@ -1678,7 +1758,6 @@ impl ReferenceHost {
         event: &winit::event::KeyEvent,
         is_synthetic: bool,
     ) {
-        self.pump_runtime_once();
         let Some(device_id) = self.resolve_native_device_id(event_loop, native_device_id) else {
             return;
         };
@@ -1693,22 +1772,27 @@ impl ReferenceHost {
         }
 
         let composition = self.text_input.keyboard_composition_state();
-        let committed_text = keyboard_committed_text_candidate(
-            event.state,
-            is_synthetic,
-            self.text_input.accepts_committed_text(),
-            composition,
-            event.text.as_deref(),
-        )
-        .map(str::to_owned);
         let transition = NativeKeyTransition::from_event(event, is_synthetic);
         let outcome = self
             .keyboard
             .key_input(device_id, &transition, self.modifiers, composition);
         match outcome {
-            KeyboardInputOutcome::Submit(event) => {
+            KeyboardInputOutcome::Submit(keyboard_event) => {
+                let committed_text = keyboard_committed_text_candidate(
+                    event.state,
+                    is_synthetic,
+                    self.text_input.accepts_committed_text(),
+                    composition,
+                    keyboard_event.logical_key(),
+                    event.text.as_deref(),
+                )
+                .map(str::to_owned);
                 self.last_keyboard_ingress_diagnostic = None;
-                if !self.submit_keyboard_event(event_loop, event, "native keyboard translation") {
+                if !self.submit_keyboard_event(
+                    event_loop,
+                    keyboard_event,
+                    "native keyboard translation",
+                ) {
                     return;
                 }
                 if let Some(text) = committed_text
@@ -2107,16 +2191,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoState, DisplayedFrame,
-        HOST_PUMP_BUDGET, NativeMapping, PointIngressDiagnostic, SemanticAdapter, SemanticCommand,
-        StyleEnvironment, SurfaceBuildContext,
+        AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoHistoryEntry, DemoState,
+        DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LogicalSize,
+        MAX_EDITOR_HISTORY_ENTRIES, NativeMapping, PendingFrame, PointIngressDiagnostic,
+        SemanticAdapter, SemanticCommand, StyleEnvironment, SurfaceBuildContext,
         mouse_input::{
             MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
             translate_mouse_button,
         },
-        translate_modifiers,
+        push_editor_history, translate_modifiers,
     };
-    use runenui_core::{InputDeviceId, KeyModifiers, PointerButton, PointerPhase};
+    use runenui_core::{
+        InputDeviceId, KeyModifiers, KeyboardPhase, LogicalPoint, PointerButton, PointerPhase,
+    };
     use runenui_runtime::{FontSourcePolicy, RuntimeConfig};
     use winit::{
         dpi::{PhysicalPosition, PhysicalSize},
@@ -2206,6 +2293,694 @@ mod tests {
 
         assert!(runtime.state().text.ends_with('!'));
         assert_eq!(runtime.state().revision, 1);
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)] // Exercises the full native mouse ingress through publication.
+    fn native_mouse_drag_selects_preloaded_text_before_keyboard_input() {
+        fn expect_ok<T, E: std::fmt::Debug>(result: Result<T, E>, message: &str) -> T {
+            assert!(result.is_ok(), "{message}: {:?}", result.as_ref().err());
+            result.unwrap_or_else(|_| {
+                unreachable!("the assertion above reports the unexpected error")
+            })
+        }
+
+        let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
+            .unwrap_or_else(|| unreachable!("fixture native mapping is valid"));
+        let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+            DemoState::default(),
+            RuntimeConfig::default()
+                .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let owner = runtime.index().nodes()[0].id().clone();
+        runtime
+            .submit_command(
+                owner,
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("the reference host focuses the editor at startup"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
+        let style_environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&style_environment, mapping.logical_size)
+            .with_raster_scale(mapping.raster_scale);
+        let initial = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| unreachable!("reference editor surface is valid: {error:?}"));
+        let initial_selection = initial
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .first()
+            .and_then(|node| node.editable())
+            .unwrap_or_else(|| unreachable!("the initial publication includes the editable text"))
+            .selection();
+        assert!(
+            initial_selection.is_collapsed(),
+            "startup text begins with an ordinary collapsed caret"
+        );
+        let surface = initial.input_context().clone();
+        let device_id = input_device(41);
+        let translated = |position: LogicalPoint| TranslatedPointerPoint {
+            position,
+            input_context: surface.clone(),
+            modifiers: KeyModifiers::NONE,
+        };
+        let start = LogicalPoint::new(259.230_47, 61.878_906)
+            .unwrap_or_else(|_| unreachable!("selection anchor is finite"));
+        let end = LogicalPoint::new(377.496_1, 79.593_75)
+            .unwrap_or_else(|_| unreachable!("selection focus is finite"));
+        let mut mouse = MouseInputState::default();
+        let hover = mouse.cursor_moved(device_id, translated(start));
+        let hover = expect_ok(hover, "native cursor move is translated");
+        expect_ok(runtime.submit_pointer(hover), "native hover is routed");
+        runtime.pump(HOST_PUMP_BUDGET);
+        let down_surface = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| {
+                unreachable!("the host republishes after hover before pointer-down: {error:?}")
+            })
+            .input_context()
+            .clone();
+        let down_point = |position| TranslatedPointerPoint {
+            position,
+            input_context: down_surface.clone(),
+            modifiers: KeyModifiers::NONE,
+        };
+        let down = mouse.button_input(
+            device_id,
+            ElementState::Pressed,
+            MouseButton::Left,
+            Some(down_point(start)),
+        );
+        let down = expect_ok(down, "native primary press is translated");
+        let MouseButtonOutcome::Submit(down) = down else {
+            unreachable!("first native primary press is admitted")
+        };
+        expect_ok(
+            runtime.submit_pointer(down),
+            "native primary press is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let drag_surface = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| {
+                unreachable!("the captured drag uses the post-press surface: {error:?}")
+            })
+            .input_context()
+            .clone();
+        let drag_point = |position| TranslatedPointerPoint {
+            position,
+            input_context: drag_surface.clone(),
+            modifiers: KeyModifiers::NONE,
+        };
+        let movement = mouse.cursor_moved(device_id, drag_point(end));
+        let movement = expect_ok(movement, "native drag movement is translated");
+        expect_ok(
+            runtime.submit_pointer(movement),
+            "native drag movement is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let release = mouse.button_input(
+            device_id,
+            ElementState::Released,
+            MouseButton::Left,
+            Some(drag_point(end)),
+        );
+        let release = expect_ok(release, "native primary release is translated");
+        let MouseButtonOutcome::Submit(release) = release else {
+            unreachable!("matching native primary release is admitted")
+        };
+        expect_ok(
+            runtime.submit_pointer(release),
+            "native primary release is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+
+        let selection_publication = runtime.publish_surface(&context);
+        let selection_publication =
+            expect_ok(selection_publication, "dragged selection republishes");
+        let selection = selection_publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .first()
+            .and_then(|node| node.editable())
+            .unwrap_or_else(|| unreachable!("editable selection remains published"))
+            .selection();
+        assert!(
+            !selection.is_collapsed(),
+            "native drag should publish a non-collapsed editable range"
+        );
+        assert!(selection.active().byte_offset() > selection.anchor().byte_offset());
+        let selected_paint_item_count = selection_publication.paint_scene().items().len();
+
+        // A completed drag must release the runtime's selection gesture and native capture so
+        // another drag can immediately establish a fresh anchor without a click or keypress.
+        let next_surface = selection_publication.input_context().clone();
+        let next_point = |position: LogicalPoint| TranslatedPointerPoint {
+            position,
+            input_context: next_surface.clone(),
+            modifiers: KeyModifiers::NONE,
+        };
+        let second_start = LogicalPoint::new(30.0, 80.0)
+            .unwrap_or_else(|_| unreachable!("second drag anchor is finite"));
+        let second_end = LogicalPoint::new(160.0, 80.0)
+            .unwrap_or_else(|_| unreachable!("second drag focus is finite"));
+        let hover = expect_ok(
+            mouse.cursor_moved(device_id, next_point(second_start)),
+            "second drag hover is translated",
+        );
+        expect_ok(runtime.submit_pointer(hover), "second drag hover is routed");
+        runtime.pump(HOST_PUMP_BUDGET);
+        let down = expect_ok(
+            mouse.button_input(
+                device_id,
+                ElementState::Pressed,
+                MouseButton::Left,
+                Some(next_point(second_start)),
+            ),
+            "second drag press is translated",
+        );
+        let MouseButtonOutcome::Submit(down) = down else {
+            unreachable!("second primary press is admitted")
+        };
+        expect_ok(runtime.submit_pointer(down), "second drag press is routed");
+        runtime.pump(HOST_PUMP_BUDGET);
+        let movement = expect_ok(
+            mouse.cursor_moved(device_id, next_point(second_end)),
+            "second drag movement is translated",
+        );
+        expect_ok(
+            runtime.submit_pointer(movement),
+            "second drag movement is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let release = expect_ok(
+            mouse.button_input(
+                device_id,
+                ElementState::Released,
+                MouseButton::Left,
+                Some(next_point(second_end)),
+            ),
+            "second drag release is translated",
+        );
+        let MouseButtonOutcome::Submit(release) = release else {
+            unreachable!("second matching release is admitted")
+        };
+        expect_ok(
+            runtime.submit_pointer(release),
+            "second drag release is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let second_selection_publication = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| unreachable!("second selection republishes: {error:?}"));
+        let second_selection = second_selection_publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .first()
+            .and_then(|node| node.editable())
+            .unwrap_or_else(|| unreachable!("editable selection remains published"))
+            .selection();
+        assert!(
+            !second_selection.is_collapsed(),
+            "a second native drag must start a fresh text-selection gesture: {second_selection:?}"
+        );
+
+        let click_point = LogicalPoint::new(790.0, 470.0)
+            .unwrap_or_else(|_| unreachable!("selection-collapse click is finite"));
+        let translated_click = TranslatedPointerPoint {
+            position: click_point,
+            input_context: second_selection_publication.input_context().clone(),
+            modifiers: KeyModifiers::NONE,
+        };
+        let hover = mouse.cursor_moved(device_id, translated_click.clone());
+        let hover = expect_ok(hover, "selection-collapse cursor move is translated");
+        expect_ok(
+            runtime.submit_pointer(hover),
+            "selection-collapse hover is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let down = mouse.button_input(
+            device_id,
+            ElementState::Pressed,
+            MouseButton::Left,
+            Some(translated_click.clone()),
+        );
+        let down = expect_ok(down, "selection-collapse press is translated");
+        let MouseButtonOutcome::Submit(down) = down else {
+            unreachable!("selection-collapse press is admitted")
+        };
+        expect_ok(
+            runtime.submit_pointer(down),
+            "selection-collapse press is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let up = mouse.button_input(
+            device_id,
+            ElementState::Released,
+            MouseButton::Left,
+            Some(translated_click),
+        );
+        let up = expect_ok(up, "selection-collapse release is translated");
+        let MouseButtonOutcome::Submit(up) = up else {
+            unreachable!("matching selection-collapse release is admitted")
+        };
+        expect_ok(
+            runtime.submit_pointer(up),
+            "selection-collapse release is routed",
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let collapsed_publication = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| unreachable!("collapsed selection republishes: {error:?}"));
+        assert!(
+            collapsed_publication.paint_scene().items().len() < selected_paint_item_count,
+            "blank-area click should remove the painted selection overlay: selected={selected_paint_item_count}, collapsed={}",
+            collapsed_publication.paint_scene().items().len()
+        );
+        let collapsed_selection = collapsed_publication
+            .semantic_publication()
+            .snapshot()
+            .nodes()
+            .first()
+            .and_then(|node| node.editable())
+            .unwrap_or_else(|| unreachable!("collapsed editable selection remains published"))
+            .selection();
+        assert!(
+            collapsed_selection.is_collapsed(),
+            "a native click should collapse the previously dragged editable selection: {collapsed_selection:?}"
+        );
+    }
+
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one end-to-end history test verifies empty, edit, selection, undo, and redo behavior"
+    )]
+    #[allow(
+        clippy::panic,
+        reason = "panic reports the exact rejected keyboard submission in this test"
+    )]
+    fn reference_editor_undo_and_redo_restore_application_owned_text_history() {
+        let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+            DemoState::default(),
+            RuntimeConfig::default()
+                .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+        );
+        runtime.pump(HOST_PUMP_BUDGET);
+        let owner = runtime.index().nodes()[0].id().clone();
+        let initial_selection = runtime.state().selection_seed;
+        runtime
+            .submit_command(
+                owner.clone(),
+                SemanticCommand::Undo,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("empty reference undo is accepted"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
+        assert_eq!(runtime.state().revision, 0);
+        assert_eq!(runtime.state().selection_seed, initial_selection);
+        assert!(runtime.state().undo.is_empty());
+        assert!(runtime.state().redo.is_empty());
+        runtime
+            .submit_command(
+                owner.clone(),
+                SemanticCommand::Redo,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("empty reference redo is accepted"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
+        assert_eq!(runtime.state().revision, 0);
+        assert_eq!(runtime.state().selection_seed, initial_selection);
+        assert!(runtime.state().undo.is_empty());
+        assert!(runtime.state().redo.is_empty());
+        runtime
+            .submit_command(
+                owner.clone(),
+                SemanticCommand::RequestFocus,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("reference editor accepts focus"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        runtime
+            .submit_text(
+                CommittedTextEvent::new("Q", None)
+                    .unwrap_or_else(|_| unreachable!("fixture text is valid")),
+            )
+            .unwrap_or_else(|_| unreachable!("reference editor accepts committed text"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert!(runtime.state().text.ends_with('Q'));
+        runtime
+            .publish_surface(&SurfaceBuildContext::tight(
+                &StyleEnvironment::default(),
+                LogicalSize::try_new(800.0, 480.0)
+                    .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
+            ))
+            .unwrap_or_else(|error| unreachable!("committed document republishes: {error:?}"));
+        runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                runenui_core::PhysicalKey::ArrowLeft,
+                runenui_core::LogicalKey::ArrowLeft,
+                KeyModifiers::NONE.with_shift(),
+                false,
+                runenui_core::KeyLocation::Standard,
+                runenui_core::KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|error| panic!("reference editor accepts Shift+Left: {error:?}"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        runtime
+            .submit_command(
+                owner.clone(),
+                SemanticCommand::Undo,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("reference editor accepts undo"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
+        assert_eq!(runtime.state().selection_seed, initial_selection);
+
+        let redo =
+            runtime.submit_command(owner, SemanticCommand::Redo, CommandOrigin::programmatic());
+        assert!(redo.is_ok(), "reference editor accepts redo: {redo:?}");
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, format!("{INITIAL_EDITOR_TEXT}Q"));
+        assert_eq!(
+            runtime.state().selection_seed.anchor(),
+            INITIAL_EDITOR_TEXT.len() + 1
+        );
+        assert_eq!(
+            runtime.state().selection_seed.active(),
+            INITIAL_EDITOR_TEXT.len()
+        );
+        assert_eq!(
+            runtime.state().selection_seed.anchor_affinity(),
+            runenui_core::TextAffinity::Upstream
+        );
+        assert_eq!(
+            runtime.state().selection_seed.active_affinity(),
+            runenui_core::TextAffinity::Downstream
+        );
+        assert_eq!(runtime.state().revision, 3);
+        assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+    }
+
+    #[test]
+    fn reference_editor_history_is_bounded_to_the_most_recent_hundred_states() {
+        let mut history = Vec::new();
+        for index in 0..MAX_EDITOR_HISTORY_ENTRIES + 2 {
+            let text = format!("entry-{index}");
+            let selection = runenui_core::EditSelection::collapsed(
+                &text,
+                text.len(),
+                runenui_core::TextAffinity::Upstream,
+            )
+            .unwrap_or_else(|_| unreachable!("history selection is a valid byte boundary"));
+            push_editor_history(&mut history, DemoHistoryEntry { text, selection });
+        }
+        assert_eq!(history.len(), MAX_EDITOR_HISTORY_ENTRIES);
+        assert_eq!(history[0].text, "entry-2");
+        assert_eq!(history[MAX_EDITOR_HISTORY_ENTRIES - 1].text, "entry-101");
+    }
+
+    #[test]
+    #[ignore = "opt-in issue 261 latency sampling; run with --ignored --nocapture"]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one opt-in harness measures the four required input and publication stages"
+    )]
+    fn issue_261_responsiveness_measurements() {
+        use std::time::{Duration, Instant};
+
+        fn summarize(samples: &mut [Duration]) -> (u128, u128) {
+            samples.sort_unstable();
+            let median = samples[samples.len() / 2].as_nanos();
+            let p95_index = (samples.len() * 95).div_ceil(100).saturating_sub(1);
+            (median, samples[p95_index].as_nanos())
+        }
+
+        fn report(label: &str, samples: &mut [Duration]) {
+            let (median, p95) = summarize(samples);
+            eprintln!(
+                "issue261_measurement label={label} n={} median_ns={median} p95_ns={p95}",
+                samples.len()
+            );
+        }
+
+        let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
+            .unwrap_or_else(|| unreachable!("measurement mapping is valid"));
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
+            .with_raster_scale(mapping.raster_scale);
+        for (name, extra_lines) in [
+            ("short", 0),
+            ("medium", 20),
+            ("fixture_40_lines", 40),
+            ("long", 80),
+        ] {
+            let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+                DemoState::default(),
+                RuntimeConfig::default()
+                    .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+            );
+            runtime.pump(HOST_PUMP_BUDGET);
+            let owner = runtime.index().nodes()[0].id().clone();
+            runtime
+                .submit_command(
+                    owner.clone(),
+                    SemanticCommand::RequestFocus,
+                    CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|_| unreachable!("measurement editor accepts focus"));
+            runtime.pump(HOST_PUMP_BUDGET);
+            if extra_lines > 0 {
+                let text =
+                    "multiline responsiveness fixture — retained text layout\n".repeat(extra_lines);
+                runtime
+                    .submit_text(
+                        CommittedTextEvent::new(text, None)
+                            .unwrap_or_else(|_| unreachable!("measurement text is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("measurement editor accepts long text"));
+                runtime.pump(HOST_PUMP_BUDGET);
+            }
+            let displayed_publication = runtime
+                .publish_surface(&context)
+                .unwrap_or_else(|error| unreachable!("measurement surface is valid: {error:?}"));
+            let displayed = DisplayedFrame::from_pending(&PendingFrame {
+                publication: displayed_publication.clone(),
+                mapping,
+            });
+            let point = PhysicalPosition::new(32.0, 32.0);
+            let mut translation = Vec::with_capacity(40);
+            for _ in 0..40 {
+                let started = Instant::now();
+                let _ = displayed.translate_cursor(Some(mapping), point);
+                translation.push(started.elapsed());
+            }
+            report(&format!("{name}.native_translation"), &mut translation);
+
+            let mut typing = Vec::with_capacity(40);
+            let mut publication = Vec::with_capacity(40);
+            let (mut reshaped, mut relinebroken, mut reused) = (0, 0, 0);
+            for _ in 0..40 {
+                let started = Instant::now();
+                runtime
+                    .submit_text(
+                        CommittedTextEvent::new("x", None)
+                            .unwrap_or_else(|_| unreachable!("measurement commit is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("measurement text is admitted"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                typing.push(started.elapsed());
+                let started = Instant::now();
+                let published = runtime.publish_surface(&context).unwrap_or_else(|error| {
+                    unreachable!("measurement publication is valid: {error:?}")
+                });
+                publication.push(started.elapsed());
+                for measurement in published
+                    .layout_report()
+                    .nodes()
+                    .iter()
+                    .flat_map(runenui_runtime::SurfaceLayoutNode::text_measurements)
+                {
+                    match measurement.decision() {
+                        runenui_runtime::TextLayoutDecision::Reshaped => reshaped += 1,
+                        runenui_runtime::TextLayoutDecision::Relinebroken => relinebroken += 1,
+                        runenui_runtime::TextLayoutDecision::Reused => reused += 1,
+                    }
+                }
+            }
+            report(&format!("{name}.typing_submit_pump"), &mut typing);
+            report(&format!("{name}.text_publication"), &mut publication);
+            eprintln!(
+                "issue261_measurement label={name}.text_layout_decisions reshaped={reshaped} relinebroken={relinebroken} reused={reused}"
+            );
+
+            let mut drag_runtime = AppRuntime::<DemoApp>::mount_with_config(
+                DemoState::default(),
+                RuntimeConfig::default()
+                    .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+            );
+            drag_runtime.pump(HOST_PUMP_BUDGET);
+            let drag_owner = drag_runtime.index().nodes()[0].id().clone();
+            drag_runtime
+                .submit_command(
+                    drag_owner,
+                    SemanticCommand::RequestFocus,
+                    CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|_| unreachable!("drag measurement editor accepts focus"));
+            drag_runtime.pump(HOST_PUMP_BUDGET);
+            if extra_lines > 0 {
+                let text =
+                    "multiline responsiveness fixture — retained text layout\n".repeat(extra_lines);
+                drag_runtime
+                    .submit_text(
+                        CommittedTextEvent::new(text, None)
+                            .unwrap_or_else(|_| unreachable!("measurement text is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("drag measurement text is accepted"));
+                drag_runtime.pump(HOST_PUMP_BUDGET);
+            }
+            let drag_surface = drag_runtime
+                .publish_surface(&context)
+                .unwrap_or_else(|error| unreachable!("drag surface is valid: {error:?}"));
+            let drag_context = drag_surface.input_context().clone();
+            let pointer_id = runenui_core::PointerId::new(71)
+                .unwrap_or_else(|| unreachable!("measurement pointer id is nonzero"));
+            let start = LogicalPoint::new(32.0, 32.0)
+                .unwrap_or_else(|_| unreachable!("measurement drag starts at finite point"));
+            drag_runtime
+                .submit_pointer(
+                    runenui_core::PointerEvent::new(
+                        pointer_id,
+                        runenui_core::PointerDeviceKind::Mouse,
+                        PointerPhase::Down,
+                        start,
+                        drag_context.clone(),
+                    )
+                    .with_buttons(runenui_core::PointerButtons::new([PointerButton::Primary]))
+                    .with_changed_button(PointerButton::Primary),
+                )
+                .unwrap_or_else(|_| unreachable!("measurement drag starts"));
+            drag_runtime.pump(HOST_PUMP_BUDGET);
+            let mut drag = Vec::with_capacity(40);
+            for index in 0..40 {
+                let x = if index % 2 == 0 { 160.0 } else { 12.0 };
+                let position = LogicalPoint::new(x, 32.0)
+                    .unwrap_or_else(|_| unreachable!("measurement drag point is finite"));
+                let started = Instant::now();
+                drag_runtime
+                    .submit_pointer(
+                        runenui_core::PointerEvent::new(
+                            pointer_id,
+                            runenui_core::PointerDeviceKind::Mouse,
+                            PointerPhase::Move,
+                            position,
+                            drag_context.clone(),
+                        )
+                        .with_buttons(runenui_core::PointerButtons::new([PointerButton::Primary])),
+                    )
+                    .unwrap_or_else(|_| unreachable!("captured measurement drag is admitted"));
+                drag_runtime.pump(HOST_PUMP_BUDGET);
+                drag.push(started.elapsed());
+            }
+            report(&format!("{name}.drag_submit_pump"), &mut drag);
+        }
+    }
+
+    #[test]
+    #[ignore = "opt-in issue 261 bulk-paste latency sampling; run with --ignored --nocapture"]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one opt-in harness measures a bulk text commit and its synchronous publication"
+    )]
+    fn issue_261_bulk_paste_measurements() {
+        use std::time::{Duration, Instant};
+
+        fn report(label: &str, samples: &mut [Duration]) {
+            samples.sort_unstable();
+            let median = samples[samples.len() / 2].as_nanos();
+            let p95_index = (samples.len() * 95).div_ceil(100).saturating_sub(1);
+            eprintln!(
+                "issue261_measurement label={label} n={} median_ns={median} p95_ns={}",
+                samples.len(),
+                samples[p95_index].as_nanos()
+            );
+        }
+
+        let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
+            .unwrap_or_else(|| unreachable!("measurement mapping is valid"));
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
+            .with_raster_scale(mapping.raster_scale);
+        let fixture = "multiline responsiveness fixture — retained text layout\n";
+
+        for (name, lines) in [
+            ("40_lines", 40),
+            ("400_lines", 400),
+            ("4000_lines", 4000),
+            ("16000_lines", 16000),
+        ] {
+            let mut commit_pump = Vec::with_capacity(3);
+            let mut publication = Vec::with_capacity(3);
+            let mut complete = Vec::with_capacity(3);
+            let text = fixture.repeat(lines);
+            let bytes = text.len();
+            for _ in 0..3 {
+                let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+                    DemoState::default(),
+                    RuntimeConfig::default()
+                        .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+                );
+                runtime.pump(HOST_PUMP_BUDGET);
+                let owner = runtime.index().nodes()[0].id().clone();
+                runtime
+                    .submit_command(
+                        owner,
+                        SemanticCommand::RequestFocus,
+                        CommandOrigin::programmatic(),
+                    )
+                    .unwrap_or_else(|_| unreachable!("paste fixture accepts focus"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                runtime
+                    .publish_surface(&context)
+                    .unwrap_or_else(|error| unreachable!("warm surface is valid: {error:?}"));
+
+                let started = Instant::now();
+                runtime
+                    .submit_text(
+                        CommittedTextEvent::new(text.clone(), None)
+                            .unwrap_or_else(|_| unreachable!("paste fixture text is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("paste fixture is admitted"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                let commit_elapsed = started.elapsed();
+                commit_pump.push(commit_elapsed);
+
+                let started = Instant::now();
+                runtime
+                    .publish_surface(&context)
+                    .unwrap_or_else(|error| unreachable!("paste publication is valid: {error:?}"));
+                let publication_elapsed = started.elapsed();
+                publication.push(publication_elapsed);
+                complete.push(commit_elapsed + publication_elapsed);
+            }
+
+            eprintln!("issue261_measurement label={name}.paste_bytes value={bytes}");
+            report(&format!("{name}.paste_submit_pump"), &mut commit_pump);
+            report(&format!("{name}.paste_publication"), &mut publication);
+            report(&format!("{name}.paste_complete"), &mut complete);
+        }
     }
 
     fn translated_point(

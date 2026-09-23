@@ -29,15 +29,15 @@ pub(crate) struct DisplayedTextTarget {
 }
 
 impl DisplayedTextTarget {
-    pub(crate) fn map_and_hit_test(
+    pub(crate) fn hit_position(
         &self,
         point: crate::LogicalPoint,
     ) -> Option<(TextCaretMap, TextDisplayPosition)> {
-        let position = self.hit_test(point)?;
+        let position = self.hit_position_in_bounds(point)?;
         Some((self.map.clone(), position))
     }
 
-    pub(crate) fn hit_test(&self, point: crate::LogicalPoint) -> Option<TextDisplayPosition> {
+    fn hit_position_in_bounds(&self, point: crate::LogicalPoint) -> Option<TextDisplayPosition> {
         if self
             .clips
             .iter()
@@ -54,6 +54,17 @@ impl DisplayedTextTarget {
             )
             .ok()
             .flatten()
+    }
+
+    pub(crate) fn captured_drag_position(
+        &self,
+        point: crate::LogicalPoint,
+    ) -> Option<(TextCaretMap, TextDisplayPosition)> {
+        let position = self
+            .map
+            .nearest_position(self.map.snapshot(), point, self.layout_to_surface)
+            .ok()?;
+        Some((self.map.clone(), position))
     }
 }
 
@@ -165,32 +176,41 @@ impl<'a> PlannedSurfacePublication<'a> {
         &self,
         editing: &HashMap<MountedNodeId, crate::editing::EditingSemanticProjection>,
     ) -> HashMap<MountedNodeId, DisplayedTextTarget> {
-        let Some(finalized) = self.finalized_semantics.as_ref() else {
-            return HashMap::new();
-        };
-        let finalized = finalized.owner_facts().collect::<Vec<_>>();
+        // A surface can be republished for hover, scrolling, or coordinate changes
+        // without staging semantic reconciliation. In that case the active editing
+        // projection remains the committed runtime authority for its owner; requiring
+        // `finalized_semantics` here would silently drop all text hit targets from the
+        // newly retained surface snapshot.
+        let finalized_editables = self.finalized_semantics.as_ref().map(|finalized| {
+            finalized
+                .owner_facts()
+                .filter_map(|owner| {
+                    owner.editable.map(|editable| {
+                        (
+                            owner.owner,
+                            (editable.snapshot, editable.text, editable.sensitivity),
+                        )
+                    })
+                })
+                .collect::<HashMap<_, _>>()
+        });
         let mut targets = HashMap::new();
-        for (position, (topology, semantic)) in
-            self.cache.topology.nodes.iter().zip(finalized).enumerate()
-        {
-            if topology.id != semantic.owner {
-                continue;
-            }
-            let Some(authored) = semantic.editable.as_ref() else {
+        for (position, topology) in self.cache.topology.nodes.iter().enumerate() {
+            let Some(projected) = editing.get(&topology.id) else {
                 continue;
             };
-            let Some(projected) = editing.get(&semantic.owner) else {
-                continue;
-            };
-            if (
-                authored.snapshot,
-                authored.text.as_ref(),
-                authored.sensitivity,
-            ) != (
-                projected.snapshot,
-                projected.source.as_ref(),
-                projected.sensitivity,
-            ) {
+            if finalized_editables.as_ref().is_some_and(|owners| {
+                owners
+                    .get(&topology.id)
+                    .is_none_or(|(snapshot, text, sensitivity)| {
+                        (*snapshot, text.as_ref(), *sensitivity)
+                            != (
+                                projected.snapshot,
+                                projected.source.as_ref(),
+                                projected.sensitivity,
+                            )
+                    })
+            }) {
                 continue;
             }
             let Some(layout) = self.cache.layout.text_layouts.get(position) else {
@@ -212,16 +232,16 @@ impl<'a> PlannedSurfacePublication<'a> {
             else {
                 continue;
             };
-            let Ok(layout_to_surface) = text_origin.then(presentation.owner_to_surface()) else {
+            let Ok(layout_to_surface) = text_origin.then(presentation.content_to_surface()) else {
                 continue;
             };
             targets.insert(
-                semantic.owner,
+                topology.id.clone(),
                 DisplayedTextTarget {
                     map,
                     eligible_bounds: presentation.visible_bounds(),
                     layout_to_surface,
-                    clips: Arc::from(presentation.inherited_clips().to_vec()),
+                    clips: Arc::from(presentation.content_clips().to_vec()),
                 },
             );
         }
@@ -318,14 +338,7 @@ impl<'a> PlannedSurfacePublication<'a> {
                     let selection = TextDisplaySelection::from_document(projected.selection);
                     map.validate_position(selection.anchor()).ok()?;
                     map.validate_position(selection.active()).ok()?;
-                    let mut offsets = Vec::new();
-                    for position in map.legal_positions() {
-                        if let TextDisplayPosition::Document(position) = position
-                            && offsets.last() != Some(&position.byte_offset())
-                        {
-                            offsets.push(position.byte_offset());
-                        }
-                    }
+                    let offsets = map.legal_byte_offsets();
                     Some((
                         Arc::clone(&projected.source),
                         projected.selection,

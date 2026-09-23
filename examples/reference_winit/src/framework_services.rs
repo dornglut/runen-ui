@@ -131,11 +131,10 @@ impl NativeFrameworkServices {
                         return FrameworkServiceResponse::ClipboardWriteText(Err(failure));
                     }
                 };
-                FrameworkServiceResponse::ClipboardWriteText(
-                    clipboard
-                        .set_text(text.as_ref())
-                        .map_err(|error| map_clipboard_error(&error)),
-                )
+                let result = clipboard
+                    .set_text(text.as_ref())
+                    .map_err(|error| map_clipboard_error(&error));
+                FrameworkServiceResponse::ClipboardWriteText(result)
             }
             FrameworkServiceRequest::InputMethod {
                 enabled,
@@ -246,10 +245,10 @@ impl NativeFrameworkServices {
 }
 
 fn native_clipboard_text(text: String) -> ClipboardText {
-    // Native clipboard formats do not carry RunenUI confidentiality labels. Treat
-    // unknown provenance as sensitive: secret destinations may accept it, while
-    // public destinations remain fail-closed.
-    ClipboardText::new(text, ClipboardClassification::Sensitive)
+    // The reference native-host profile treats ordinary OS plaintext as a user-
+    // mediated import source for the public editor. Runtime sensitivity admission
+    // remains authoritative for the destination document.
+    ClipboardText::new(text, ClipboardClassification::Public)
 }
 
 const fn map_clipboard_error(error: &arboard::Error) -> FrameworkServiceFailure {
@@ -319,12 +318,19 @@ mod tests {
     }
 
     #[test]
-    fn native_clipboard_text_uses_the_conservative_sensitive_classification() {
+    fn reference_host_native_plaintext_uses_its_public_import_policy() {
         let text = native_clipboard_text("clipboard contents".to_owned());
 
         assert_eq!(text.text(), "clipboard contents");
-        assert_eq!(text.classification(), ClipboardClassification::Sensitive);
+        assert_eq!(text.classification(), ClipboardClassification::Public);
         assert!(!format!("{text:?}").contains("clipboard contents"));
+    }
+
+    #[test]
+    fn external_native_plaintext_is_a_user_mediated_public_import() {
+        let text = native_clipboard_text("copied in another application".to_owned());
+        assert_eq!(text.classification(), ClipboardClassification::Public);
+        assert!(!format!("{text:?}").contains("copied in another application"));
     }
 
     #[test]

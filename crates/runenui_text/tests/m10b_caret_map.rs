@@ -100,6 +100,19 @@ fn scalar_coordinates_are_narrowed_to_grapheme_and_shaping_stops() -> Result<(),
             .iter()
             .all(|position| map.validate_position(position).is_ok())
     );
+    let expected_offsets = legal
+        .iter()
+        .filter_map(|position| match position {
+            TextDisplayPosition::Document(position) => Some(position.byte_offset()),
+            TextDisplayPosition::Preedit(_) => None,
+        })
+        .fold(Vec::new(), |mut offsets, offset| {
+            if offsets.last() != Some(&offset) {
+                offsets.push(offset);
+            }
+            offsets
+        });
+    assert_eq!(map.legal_byte_offsets(), expected_offsets);
     assert!(!legal.contains(&inside_combining));
     assert!(!legal.contains(&inside_emoji));
 
@@ -260,6 +273,51 @@ fn map_correlates_hit_caret_selection_and_candidate_geometry() -> Result<(), Box
             snapshot(1),
             LogicalPoint::new(0.0, 0.0)?,
             LogicalRect::try_new(-1.0, -1.0, 2.0, 2.0)?,
+            LogicalTransform::try_new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)?,
+        ),
+        Err(TextCaretMapError::NonInvertibleTransform)
+    );
+    Ok(())
+}
+
+#[test]
+fn captured_nearest_position_uses_retained_layout_outside_hit_bounds() -> Result<(), Box<dyn Error>>
+{
+    let source = "alpha beta gamma delta epsilon אבג office";
+    let map = map_for(source, Some(90.0))?;
+    assert!(map.artifact().lines().len() > 1);
+    let transform = LogicalTransform::translation(20.0, 30.0)?;
+    let points = [
+        LogicalPoint::new(-10_000.0, 20.0)?,
+        LogicalPoint::new(10_000.0, 20.0)?,
+        LogicalPoint::new(40.0, -10_000.0)?,
+        LogicalPoint::new(40.0, 10_000.0)?,
+        LogicalPoint::new(40.0, 50.0)?,
+    ];
+    for point in points {
+        let position = map.nearest_position(snapshot(1), point, transform)?;
+        map.validate_position(&position)?;
+        assert!(map.legal_positions().contains(&position));
+    }
+
+    // Initial admission remains clipped even though captured mapping is not.
+    assert_eq!(
+        map.hit_test(
+            snapshot(1),
+            LogicalPoint::new(-10_000.0, 20.0)?,
+            LogicalRect::try_new(0.0, 0.0, 100.0, 100.0)?,
+            transform,
+        )?,
+        None
+    );
+    assert_eq!(
+        map.nearest_position(snapshot(2), LogicalPoint::new(40.0, 50.0)?, transform,),
+        Err(TextCaretMapError::SnapshotMismatch)
+    );
+    assert_eq!(
+        map.nearest_position(
+            snapshot(1),
+            LogicalPoint::new(40.0, 50.0)?,
             LogicalTransform::try_new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)?,
         ),
         Err(TextCaretMapError::NonInvertibleTransform)

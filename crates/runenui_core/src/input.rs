@@ -32,11 +32,15 @@ pub enum LogicalKey {
     Space,
     Tab,
     Escape,
+    Backspace,
+    Delete,
     ArrowLeft,
     ArrowRight,
     ArrowUp,
     ArrowDown,
     Character(String),
+    /// A platform shortcut normalized by the host while preserving keyboard routing.
+    Command(crate::SemanticCommand),
     Named(String),
 }
 

@@ -221,30 +221,41 @@ pub(super) struct CachedLayoutFacts {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct PresentationNodeFacts {
     owner_to_surface: LogicalTransform,
+    content_to_surface: LogicalTransform,
     owner_bounds: LogicalRect,
     visible_bounds: LogicalRect,
     inherited_clips: Arc<[SceneClip]>,
+    content_clips: Arc<[SceneClip]>,
 }
 
 impl PresentationNodeFacts {
     #[must_use]
     pub(super) const fn new(
         owner_to_surface: LogicalTransform,
+        content_to_surface: LogicalTransform,
         owner_bounds: LogicalRect,
         visible_bounds: LogicalRect,
         inherited_clips: Arc<[SceneClip]>,
+        content_clips: Arc<[SceneClip]>,
     ) -> Self {
         Self {
             owner_to_surface,
+            content_to_surface,
             owner_bounds,
             visible_bounds,
             inherited_clips,
+            content_clips,
         }
     }
 
     #[must_use]
     pub(super) const fn owner_to_surface(&self) -> LogicalTransform {
         self.owner_to_surface
+    }
+
+    #[must_use]
+    pub(super) const fn content_to_surface(&self) -> LogicalTransform {
+        self.content_to_surface
     }
 
     #[must_use]
@@ -255,6 +266,11 @@ impl PresentationNodeFacts {
     #[must_use]
     pub(super) fn inherited_clips(&self) -> &[SceneClip] {
         &self.inherited_clips
+    }
+
+    #[must_use]
+    pub(super) fn content_clips(&self) -> &[SceneClip] {
+        &self.content_clips
     }
 }
 
@@ -465,7 +481,7 @@ impl SurfaceCache {
         let text_origin = LogicalTransform::translation(padding.left().get(), padding.top().get())
             .map_err(|_| TextCaretMapError::InvalidGeometry)?;
         let text_to_surface = text_origin
-            .then(presentation.owner_to_surface())
+            .then(presentation.content_to_surface())
             .map_err(|_| TextCaretMapError::InvalidGeometry)?;
         runenui_core::__runtime::transform_rect_aabb(text_to_surface, local)
             .ok_or(TextCaretMapError::InvalidGeometry)
@@ -521,9 +537,11 @@ impl SurfaceCache {
             let current = presentation.nodes[position].clone();
             presentation.nodes[position] = PresentationNodeFacts::new(
                 current.owner_to_surface(),
+                current.content_to_surface(),
                 current.owner_bounds,
                 *bounds,
                 Arc::clone(&current.inherited_clips),
+                Arc::clone(&current.content_clips),
             );
         }
     }
