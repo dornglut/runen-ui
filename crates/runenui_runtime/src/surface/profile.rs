@@ -43,7 +43,7 @@ thread_local! {
         RefCell::new(RuntimePublicationProfile::default());
 }
 
-fn add_duration(target: &mut u128, duration: Duration) {
+const fn add_duration(target: &mut u128, duration: Duration) {
     *target = target.saturating_add(duration.as_nanos());
 }
 

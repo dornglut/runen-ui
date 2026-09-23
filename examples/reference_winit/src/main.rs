@@ -2994,6 +2994,8 @@ mod tests {
 
         const SAMPLE_COUNT: usize = 20;
         type Profile = runenui_runtime::SurfacePublicationTestProfile;
+        type TimingField = (&'static str, fn(&Profile) -> u128);
+        type CountField = (&'static str, fn(&Profile) -> usize);
 
         fn summarize(values: &mut [u128]) -> (u128, u128) {
             values.sort_unstable();
@@ -3033,7 +3035,7 @@ mod tests {
                 "issue263_profile label={label}.total_publication n={} median_ns={median} p95_ns={p95}",
                 profiles.len()
             );
-            let timings: [(&str, fn(&Profile) -> u128); 9] = [
+            let timings: [TimingField; 9] = [
                 ("surface_plan", |p| p.surface_plan_ns),
                 ("layout", |p| p.layout_ns),
                 ("widget_measure_callback", |p| p.widget_measure_callback_ns),
@@ -3047,7 +3049,7 @@ mod tests {
             for (suffix, field) in timings {
                 report_ns(&format!("{label}.{suffix}"), profiles, field);
             }
-            let counts: [(&str, fn(&Profile) -> usize); 5] = [
+            let counts: [CountField; 5] = [
                 ("measure_calls", |p| p.measure_calls),
                 ("reshaped", |p| p.reshaped),
                 ("relinebroken", |p| p.relinebroken),

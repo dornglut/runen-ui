@@ -366,6 +366,10 @@ impl SurfacePublicationState {
         })
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "private phase profiling intentionally brackets the existing publication transaction"
+    )]
     pub(crate) fn plan_publication<'tree, Action>(
         &self,
         tree: &'tree mut MountedTree<Action>,

@@ -13,6 +13,8 @@ use crate::{
 
 const CANTARELL: &[u8] = include_bytes!("../tests/fixtures/Cantarell-Regular.ttf");
 const SAMPLE_COUNT: usize = 20;
+type TimingField = (&'static str, fn(&TextPhaseProfile) -> u128);
+type CountField = (&'static str, fn(&TextPhaseProfile) -> usize);
 
 fn typography() -> Typography {
     Typography::new(
@@ -86,7 +88,7 @@ fn report(label: &str, totals: &mut [u128], profiles: &[TextPhaseProfile]) {
         "issue263_text_profile label={label}.layout_and_caret_total n={} median_ns={median} p95_ns={p95}",
         profiles.len()
     );
-    let timing_fields: [(&str, fn(&TextPhaseProfile) -> u128); 5] = [
+    let timing_fields: [TimingField; 5] = [
         ("shape", |p| p.shape_ns),
         ("line_break_align", |p| p.line_break_align_ns),
         ("artifact_extract", |p| p.artifact_extract_ns),
@@ -96,7 +98,7 @@ fn report(label: &str, totals: &mut [u128], profiles: &[TextPhaseProfile]) {
     for (suffix, field) in timing_fields {
         report_ns(&format!("{label}.{suffix}"), profiles, field);
     }
-    let count_fields: [(&str, fn(&TextPhaseProfile) -> usize); 10] = [
+    let count_fields: [CountField; 10] = [
         ("shape_calls", |p| p.shape_calls),
         ("line_break_calls", |p| p.line_break_calls),
         ("artifact_extract_calls", |p| p.artifact_extract_calls),

@@ -987,7 +987,8 @@ pub(super) struct PaintResolutionInput<'a> {
 
 #[allow(
     clippy::let_and_return,
-    reason = "private profiling observes the resolved paint product before returning it"
+    clippy::too_many_lines,
+    reason = "private profiling observes the existing paint transaction without changing its production decomposition"
 )]
 pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
     #[cfg(feature = "internal-test-seams")]

@@ -186,6 +186,10 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         style
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "private profiling brackets the existing text-measure path without changing layout decomposition"
+    )]
     fn measure_leaf(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutOutput {
         let index = node_index(node);
         let resolved = &self.resolved.nodes()[index];
