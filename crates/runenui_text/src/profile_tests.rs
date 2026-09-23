@@ -83,6 +83,20 @@ fn report_count(label: &str, profiles: &[TextPhaseProfile], field: fn(&TextPhase
 }
 
 fn report(label: &str, totals: &mut [u128], profiles: &[TextPhaseProfile]) {
+    let mut remaining = totals
+        .iter()
+        .zip(profiles)
+        .map(|(total, profile)| {
+            total.saturating_sub(
+                profile
+                    .shape_ns
+                    .saturating_add(profile.line_break_align_ns)
+                    .saturating_add(profile.artifact_extract_ns)
+                    .saturating_add(profile.grapheme_ns)
+                    .saturating_add(profile.legal_offsets_ns),
+            )
+        })
+        .collect::<Vec<_>>();
     let (median, p95) = summarize(totals);
     eprintln!(
         "issue263_text_profile label={label}.layout_and_caret_total n={} median_ns={median} p95_ns={p95}",
@@ -98,6 +112,11 @@ fn report(label: &str, totals: &mut [u128], profiles: &[TextPhaseProfile]) {
     for (suffix, field) in timing_fields {
         report_ns(&format!("{label}.{suffix}"), profiles, field);
     }
+    let (remaining_median, remaining_p95) = summarize(&mut remaining);
+    eprintln!(
+        "issue263_text_profile label={label}.remaining_text_work n={} median_ns={remaining_median} p95_ns={remaining_p95}",
+        profiles.len()
+    );
     let count_fields: [CountField; 10] = [
         ("shape_calls", |p| p.shape_calls),
         ("line_break_calls", |p| p.line_break_calls),

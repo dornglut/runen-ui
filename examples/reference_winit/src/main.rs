@@ -3030,6 +3030,19 @@ mod tests {
         }
 
         fn report_profile(label: &str, total_ns: &mut [u128], profiles: &[Profile]) {
+            let mut remaining_runtime = total_ns
+                .iter()
+                .zip(profiles)
+                .map(|(total, profile)| {
+                    total.saturating_sub(
+                        profile
+                            .surface_plan_ns
+                            .saturating_add(profile.displayed_text_targets_ns)
+                            .saturating_add(profile.semantic_candidate_ns)
+                            .saturating_add(profile.semantic_plan_ns),
+                    )
+                })
+                .collect::<Vec<_>>();
             let (median, p95) = summarize(total_ns);
             eprintln!(
                 "issue263_profile label={label}.total_publication n={} median_ns={median} p95_ns={p95}",
@@ -3049,6 +3062,10 @@ mod tests {
             for (suffix, field) in timings {
                 report_ns(&format!("{label}.{suffix}"), profiles, field);
             }
+            let (remaining_median, remaining_p95) = summarize(&mut remaining_runtime);
+            eprintln!(
+                "issue263_profile label={label}.remaining_runtime n={} median_ns={remaining_median} p95_ns={remaining_p95}"
+            );
             let counts: [CountField; 5] = [
                 ("measure_calls", |p| p.measure_calls),
                 ("reshaped", |p| p.reshaped),
