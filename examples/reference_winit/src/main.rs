@@ -2940,11 +2940,8 @@ mod tests {
                 let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
                     DemoState::default(),
                     RuntimeConfig::default()
-                        .with_text_font_source_policy(FontSourcePolicy::BundledOnly),
+                        .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
                 );
-                runtime
-                    .register_text_font_bytes(CANTARELL.to_vec())
-                    .unwrap_or_else(|_| unreachable!("controlled profile font registers"));
                 runtime.pump(HOST_PUMP_BUDGET);
                 let owner = runtime.index().nodes()[0].id().clone();
                 runtime
@@ -3069,7 +3066,8 @@ mod tests {
             }
             let (remaining_median, remaining_p95) = summarize(&mut remaining_runtime);
             eprintln!(
-                "issue263_profile label={label}.remaining_runtime n={} median_ns={remaining_median} p95_ns={remaining_p95}"
+                "issue263_profile label={label}.remaining_runtime n={} median_ns={remaining_median} p95_ns={remaining_p95}",
+                profiles.len()
             );
             let counts: [CountField; 5] = [
                 ("measure_calls", |p| p.measure_calls),
@@ -3127,8 +3125,11 @@ mod tests {
                 let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
                     DemoState::default(),
                     RuntimeConfig::default()
-                        .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+                        .with_text_font_source_policy(FontSourcePolicy::BundledOnly),
                 );
+                runtime
+                    .register_text_font_bytes(CANTARELL.to_vec())
+                    .unwrap_or_else(|_| unreachable!("controlled profile font registers"));
                 runtime.pump(HOST_PUMP_BUDGET);
                 let owner = runtime.index().nodes()[0].id().clone();
                 runtime
