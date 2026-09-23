@@ -229,11 +229,10 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 let mut state = self.text_layouts[index].clone();
                 #[cfg(feature = "internal-test-seams")]
                 let text_layout_started = std::time::Instant::now();
-                let text_layout = self.text_system.layout_text(&mut state, &request);
-                #[cfg(feature = "internal-test-seams")]
-                super::profile::record_text_layout(text_layout_started.elapsed());
-                match text_layout {
+                match self.text_system.layout_text(&mut state, &request) {
                     Ok(outcome) => {
+                        #[cfg(feature = "internal-test-seams")]
+                        super::profile::record_text_layout(text_layout_started.elapsed());
                         let decision = outcome.decision();
                         #[cfg(feature = "internal-test-seams")]
                         super::profile::record_text_layout_decision(decision);
@@ -265,6 +264,8 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                         text_size
                     }
                     Err(error) => {
+                        #[cfg(feature = "internal-test-seams")]
+                        super::profile::record_text_layout(text_layout_started.elapsed());
                         self.text_error = Some(error);
                         LogicalSize::ZERO
                     }
