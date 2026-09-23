@@ -16,8 +16,8 @@ mod preedit;
 mod profile_tests;
 mod request;
 mod source_identity;
-#[cfg(test)]
-pub mod test_profile;
+#[cfg(any(test, feature = "internal-test-seams"))]
+mod test_profile;
 
 use core::{error::Error, fmt};
 use std::{
@@ -49,6 +49,23 @@ pub use request::{
     TextParagraphStyle, TextRequest, TextRequestError, TextWordBreak, TextWrapMode,
 };
 pub use source_identity::{FontSourceIdentity, FontSourceSnapshot};
+
+#[cfg(feature = "internal-test-seams")]
+#[doc(hidden)]
+pub use test_profile::TextPhaseProfile as TextPhaseTestProfile;
+
+#[cfg(feature = "internal-test-seams")]
+#[doc(hidden)]
+pub fn __reset_phase_profile_for_test() {
+    test_profile::reset();
+}
+
+#[cfg(feature = "internal-test-seams")]
+#[doc(hidden)]
+#[must_use]
+pub fn __take_phase_profile_for_test() -> TextPhaseTestProfile {
+    test_profile::take()
+}
 
 /// Explicit font-source policy for one text system.
 ///
