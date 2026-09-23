@@ -3137,7 +3137,9 @@ mod tests {
                         runenui_core::GenericFontFamily::SansSerif,
                         &[profile_family],
                     )
-                    .unwrap_or_else(|_| unreachable!("controlled profile generic mapping is valid"));
+                    .unwrap_or_else(|_| {
+                        unreachable!("controlled profile generic mapping is valid")
+                    });
                 runtime.pump(HOST_PUMP_BUDGET);
                 let owner = runtime.index().nodes()[0].id().clone();
                 runtime
