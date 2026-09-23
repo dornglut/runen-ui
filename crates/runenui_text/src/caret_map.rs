@@ -227,8 +227,13 @@ impl TextCaretMap {
         snapshot: TextDocumentSnapshot,
     ) -> Result<Self, TextCaretMapError> {
         Self::validate_layout(&cached)?;
+        #[cfg(test)]
+        let profile_started = std::time::Instant::now();
+        let grapheme_boundaries = grapheme_boundaries(cached.request.text());
+        #[cfg(test)]
+        crate::test_profile::record_graphemes(profile_started.elapsed(), grapheme_boundaries.len());
         Ok(Self {
-            grapheme_boundaries: grapheme_boundaries(cached.request.text()),
+            grapheme_boundaries,
             cached,
             coordinates: CoordinateSpace::Document(snapshot),
         })
@@ -242,8 +247,13 @@ impl TextCaretMap {
         if cached.request.text() != projection.display_text() {
             return Err(TextCaretMapError::DisplayTextMismatch);
         }
+        #[cfg(test)]
+        let profile_started = std::time::Instant::now();
+        let grapheme_boundaries = grapheme_boundaries(cached.request.text());
+        #[cfg(test)]
+        crate::test_profile::record_graphemes(profile_started.elapsed(), grapheme_boundaries.len());
         Ok(Self {
-            grapheme_boundaries: grapheme_boundaries(cached.request.text()),
+            grapheme_boundaries,
             cached,
             coordinates: CoordinateSpace::Preedit(projection),
         })
@@ -395,7 +405,10 @@ impl TextCaretMap {
     /// retain duplicate offsets when both affinities are legal at one boundary.
     #[must_use]
     pub fn legal_byte_offsets(&self) -> Vec<usize> {
-        self.grapheme_boundaries
+        #[cfg(test)]
+        let profile_started = std::time::Instant::now();
+        let offsets = self
+            .grapheme_boundaries
             .iter()
             .copied()
             .filter(|&byte_offset| {
@@ -403,7 +416,10 @@ impl TextCaretMap {
                     .into_iter()
                     .any(|affinity| self.cursor_at(byte_offset, affinity).is_ok())
             })
-            .collect()
+            .collect::<Vec<_>>();
+        #[cfg(test)]
+        crate::test_profile::record_legal_offsets(profile_started.elapsed(), offsets.len());
+        offsets
     }
 
     /// Converts a displayed surface point into a shaping-valid position.

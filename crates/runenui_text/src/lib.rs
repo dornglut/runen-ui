@@ -14,6 +14,10 @@ mod parley_bridge;
 mod preedit;
 mod request;
 mod source_identity;
+#[cfg(test)]
+mod profile_tests;
+#[cfg(test)]
+mod test_profile;
 
 use core::{error::Error, fmt};
 use std::{
