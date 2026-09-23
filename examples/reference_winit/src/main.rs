@@ -3058,12 +3058,17 @@ mod tests {
                 "issue263_profile label={label}.total_publication n={} median_ns={median} p95_ns={p95}",
                 profiles.len()
             );
-            let timings: [TimingField; 9] = [
+            let timings: [TimingField; 14] = [
                 ("surface_plan", |p| p.surface_plan_ns),
                 ("layout", |p| p.layout_ns),
                 ("widget_measure_callback", |p| p.widget_measure_callback_ns),
                 ("text_request_prepare", |p| p.text_request_prepare_ns),
                 ("text_layout", |p| p.text_layout_ns),
+                ("text_shape", |p| p.text.shape_ns),
+                ("text_line_break_align", |p| p.text.line_break_align_ns),
+                ("text_artifact_extract", |p| p.text.artifact_extract_ns),
+                ("text_graphemes", |p| p.text.grapheme_ns),
+                ("text_legal_offsets", |p| p.text.legal_offsets_ns),
                 ("paint", |p| p.paint_ns),
                 ("displayed_text_targets", |p| p.displayed_text_targets_ns),
                 ("semantic_candidate", |p| p.semantic_candidate_ns),
@@ -3077,12 +3082,22 @@ mod tests {
                 "issue263_profile label={label}.remaining_runtime n={} median_ns={remaining_median} p95_ns={remaining_p95}",
                 profiles.len()
             );
-            let counts: [CountField; 5] = [
+            let counts: [CountField; 15] = [
                 ("measure_calls", |p| p.measure_calls),
                 ("reshaped", |p| p.reshaped),
                 ("relinebroken", |p| p.relinebroken),
                 ("reused", |p| p.reused),
                 ("paint_text_run_items", |p| p.paint_text_run_items),
+                ("text_shape_calls", |p| p.text.shape_calls),
+                ("text_line_break_calls", |p| p.text.line_break_calls),
+                ("text_artifact_extract_calls", |p| p.text.artifact_extract_calls),
+                ("text_caret_map_calls", |p| p.text.caret_map_calls),
+                ("text_legal_offsets_calls", |p| p.text.legal_offsets_calls),
+                ("text_artifact_lines", |p| p.text.artifact_lines),
+                ("text_artifact_runs", |p| p.text.artifact_runs),
+                ("text_artifact_glyphs", |p| p.text.artifact_glyphs),
+                ("text_artifact_clusters", |p| p.text.artifact_clusters),
+                ("text_grapheme_boundaries", |p| p.text.grapheme_boundaries),
             ];
             for (suffix, field) in counts {
                 report_count(&format!("{label}.{suffix}"), profiles, field);
