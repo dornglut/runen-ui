@@ -17,7 +17,7 @@ mod profile_tests;
 mod request;
 mod source_identity;
 #[cfg(test)]
-pub(crate) mod test_profile;
+pub mod test_profile;
 
 use core::{error::Error, fmt};
 use std::{
