@@ -3130,6 +3130,14 @@ mod tests {
                 runtime
                     .register_text_font_bytes(CANTARELL.to_vec())
                     .unwrap_or_else(|_| unreachable!("controlled profile font registers"));
+                let profile_family = runenui_core::FontFamilyName::new("Cantarell")
+                    .unwrap_or_else(|_| unreachable!("controlled profile family is valid"));
+                runtime
+                    .set_text_generic_family_mapping(
+                        runenui_core::GenericFontFamily::SansSerif,
+                        &[profile_family],
+                    )
+                    .unwrap_or_else(|_| unreachable!("controlled profile generic mapping is valid"));
                 runtime.pump(HOST_PUMP_BUDGET);
                 let owner = runtime.index().nodes()[0].id().clone();
                 runtime
