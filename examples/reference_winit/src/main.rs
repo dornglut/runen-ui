@@ -3006,6 +3006,14 @@ mod tests {
             (median, values[p95_index])
         }
 
+        fn report_samples(label: &str, samples: &mut [u128]) {
+            let (median, p95) = summarize(samples);
+            eprintln!(
+                "issue263_profile label={label} n={} median_ns={median} p95_ns={p95}",
+                samples.len()
+            );
+        }
+
         fn report_ns(label: &str, profiles: &[Profile], field: fn(&Profile) -> u128) {
             let mut values = profiles.iter().map(field).collect::<Vec<_>>();
             let (median, p95) = summarize(&mut values);
@@ -3112,12 +3120,15 @@ mod tests {
         ] {
             let text = fixture.repeat(lines);
             let replacement = replacement_fixture.repeat(lines);
+            let mut first_mutation = Vec::with_capacity(SAMPLE_COUNT);
             let mut first_total = Vec::with_capacity(SAMPLE_COUNT);
             let mut first_profiles = Vec::with_capacity(SAMPLE_COUNT);
             let mut unchanged_total = Vec::with_capacity(SAMPLE_COUNT);
             let mut unchanged_profiles = Vec::with_capacity(SAMPLE_COUNT);
+            let mut localized_mutation = Vec::with_capacity(SAMPLE_COUNT);
             let mut localized_total = Vec::with_capacity(SAMPLE_COUNT);
             let mut localized_profiles = Vec::with_capacity(SAMPLE_COUNT);
+            let mut replacement_mutation = Vec::with_capacity(SAMPLE_COUNT);
             let mut replacement_total = Vec::with_capacity(SAMPLE_COUNT);
             let mut replacement_profiles = Vec::with_capacity(SAMPLE_COUNT);
 
@@ -3160,6 +3171,7 @@ mod tests {
                     )
                     .unwrap_or_else(|_| unreachable!("profile editor accepts select-all"));
                 runtime.pump(HOST_PUMP_BUDGET);
+                let mutation_started = Instant::now();
                 runtime
                     .submit_text(
                         CommittedTextEvent::new(text.clone(), None)
@@ -3167,6 +3179,7 @@ mod tests {
                     )
                     .unwrap_or_else(|_| unreachable!("profile replacement is admitted"));
                 runtime.pump(HOST_PUMP_BUDGET);
+                first_mutation.push(mutation_started.elapsed().as_nanos());
                 let (total, profile) = publish_profile(&mut runtime, &context);
                 first_total.push(total);
                 first_profiles.push(profile);
@@ -3175,6 +3188,7 @@ mod tests {
                 unchanged_total.push(total);
                 unchanged_profiles.push(profile);
 
+                let mutation_started = Instant::now();
                 runtime
                     .submit_text(
                         CommittedTextEvent::new("x", None)
@@ -3182,6 +3196,7 @@ mod tests {
                     )
                     .unwrap_or_else(|_| unreachable!("localized profile edit is admitted"));
                 runtime.pump(HOST_PUMP_BUDGET);
+                localized_mutation.push(mutation_started.elapsed().as_nanos());
                 let (total, profile) = publish_profile(&mut runtime, &context);
                 localized_total.push(total);
                 localized_profiles.push(profile);
@@ -3194,6 +3209,7 @@ mod tests {
                     )
                     .unwrap_or_else(|_| unreachable!("replacement profile accepts select-all"));
                 runtime.pump(HOST_PUMP_BUDGET);
+                let mutation_started = Instant::now();
                 runtime
                     .submit_text(
                         CommittedTextEvent::new(replacement.clone(), None)
@@ -3201,6 +3217,7 @@ mod tests {
                     )
                     .unwrap_or_else(|_| unreachable!("second replacement is admitted"));
                 runtime.pump(HOST_PUMP_BUDGET);
+                replacement_mutation.push(mutation_started.elapsed().as_nanos());
                 let (total, profile) = publish_profile(&mut runtime, &context);
                 replacement_total.push(total);
                 replacement_profiles.push(profile);
@@ -3210,6 +3227,10 @@ mod tests {
                 "issue263_profile_fixture label={name} lines={lines} first_bytes={} replacement_bytes={} samples={SAMPLE_COUNT}",
                 text.len(),
                 replacement.len()
+            );
+            report_samples(
+                &format!("{name}.first_replacement.submit_pump"),
+                &mut first_mutation,
             );
             report_profile(
                 &format!("{name}.first_replacement"),
@@ -3221,10 +3242,18 @@ mod tests {
                 &mut unchanged_total,
                 &unchanged_profiles,
             );
+            report_samples(
+                &format!("{name}.localized_edit.submit_pump"),
+                &mut localized_mutation,
+            );
             report_profile(
                 &format!("{name}.localized_edit"),
                 &mut localized_total,
                 &localized_profiles,
+            );
+            report_samples(
+                &format!("{name}.full_replacement.submit_pump"),
+                &mut replacement_mutation,
             );
             report_profile(
                 &format!("{name}.full_replacement"),
