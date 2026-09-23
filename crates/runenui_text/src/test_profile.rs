@@ -1,23 +1,23 @@
 use std::{cell::RefCell, mem, time::Duration};
 
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct TextPhaseProfile {
-    pub(crate) shape_ns: u128,
-    pub(crate) line_break_align_ns: u128,
-    pub(crate) artifact_extract_ns: u128,
-    pub(crate) grapheme_ns: u128,
-    pub(crate) legal_offsets_ns: u128,
-    pub(crate) shape_calls: usize,
-    pub(crate) line_break_calls: usize,
-    pub(crate) artifact_extract_calls: usize,
-    pub(crate) caret_map_calls: usize,
-    pub(crate) legal_offsets_calls: usize,
-    pub(crate) artifact_lines: usize,
-    pub(crate) artifact_runs: usize,
-    pub(crate) artifact_glyphs: usize,
-    pub(crate) artifact_clusters: usize,
-    pub(crate) grapheme_boundaries: usize,
-    pub(crate) legal_offsets: usize,
+pub struct TextPhaseProfile {
+    pub shape_ns: u128,
+    pub line_break_align_ns: u128,
+    pub artifact_extract_ns: u128,
+    pub grapheme_ns: u128,
+    pub legal_offsets_ns: u128,
+    pub shape_calls: usize,
+    pub line_break_calls: usize,
+    pub artifact_extract_calls: usize,
+    pub caret_map_calls: usize,
+    pub legal_offsets_calls: usize,
+    pub artifact_lines: usize,
+    pub artifact_runs: usize,
+    pub artifact_glyphs: usize,
+    pub artifact_clusters: usize,
+    pub grapheme_boundaries: usize,
+    pub legal_offsets: usize,
 }
 
 thread_local! {
