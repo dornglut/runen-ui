@@ -227,10 +227,10 @@ impl TextCaretMap {
         snapshot: TextDocumentSnapshot,
     ) -> Result<Self, TextCaretMapError> {
         Self::validate_layout(&cached)?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "internal-test-seams"))
         let profile_started = std::time::Instant::now();
         let grapheme_boundaries = grapheme_boundaries(cached.request.text());
-        #[cfg(test)]
+        #[cfg(any(test, feature = "internal-test-seams"))
         crate::test_profile::record_graphemes(profile_started.elapsed(), grapheme_boundaries.len());
         Ok(Self {
             grapheme_boundaries,
@@ -247,10 +247,10 @@ impl TextCaretMap {
         if cached.request.text() != projection.display_text() {
             return Err(TextCaretMapError::DisplayTextMismatch);
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "internal-test-seams"))
         let profile_started = std::time::Instant::now();
         let grapheme_boundaries = grapheme_boundaries(cached.request.text());
-        #[cfg(test)]
+        #[cfg(any(test, feature = "internal-test-seams"))
         crate::test_profile::record_graphemes(profile_started.elapsed(), grapheme_boundaries.len());
         Ok(Self {
             grapheme_boundaries,
@@ -409,7 +409,7 @@ impl TextCaretMap {
         reason = "test-only profiling observes collected offsets before returning them"
     )]
     pub fn legal_byte_offsets(&self) -> Vec<usize> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "internal-test-seams"))
         let profile_started = std::time::Instant::now();
         let offsets = self
             .grapheme_boundaries
@@ -421,7 +421,7 @@ impl TextCaretMap {
                     .any(|affinity| self.cursor_at(byte_offset, affinity).is_ok())
             })
             .collect::<Vec<_>>();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "internal-test-seams"))
         crate::test_profile::record_legal_offsets(profile_started.elapsed(), offsets.len());
         offsets
     }
