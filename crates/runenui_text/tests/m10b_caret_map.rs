@@ -100,6 +100,19 @@ fn scalar_coordinates_are_narrowed_to_grapheme_and_shaping_stops() -> Result<(),
             .iter()
             .all(|position| map.validate_position(position).is_ok())
     );
+    let expected_offsets = legal
+        .iter()
+        .filter_map(|position| match position {
+            TextDisplayPosition::Document(position) => Some(position.byte_offset()),
+            TextDisplayPosition::Preedit(_) => None,
+        })
+        .fold(Vec::new(), |mut offsets, offset| {
+            if offsets.last() != Some(&offset) {
+                offsets.push(offset);
+            }
+            offsets
+        });
+    assert_eq!(map.legal_byte_offsets(), expected_offsets);
     assert!(!legal.contains(&inside_combining));
     assert!(!legal.contains(&inside_emoji));
 

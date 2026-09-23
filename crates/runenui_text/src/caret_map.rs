@@ -1,7 +1,7 @@
 //! Immutable caret, selection, and navigation mapping over one retained layout.
 
 use core::{error::Error, fmt};
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use parley::{
     editing::{Cursor, Selection},
@@ -374,17 +374,36 @@ impl TextCaretMap {
     #[must_use]
     pub fn legal_positions(&self) -> Vec<TextDisplayPosition> {
         let mut positions = Vec::new();
+        let mut seen = HashSet::new();
         for &byte_offset in self.grapheme_boundaries.iter() {
             for affinity in [TextAffinity::Upstream, TextAffinity::Downstream] {
                 if let Ok(cursor) = self.cursor_at(byte_offset, affinity)
                     && let Ok(position) = self.position_for_cursor(cursor)
-                    && !positions.contains(&position)
+                    && seen.insert(position.clone())
                 {
                     positions.push(position);
                 }
             }
         }
         positions
+    }
+
+    /// Returns the ordered UTF-8 offsets that have at least one shaping-valid caret affinity.
+    ///
+    /// This is the compact projection needed by semantic text ranges. Unlike
+    /// [`Self::legal_positions`], it does not allocate a public position for each affinity or
+    /// retain duplicate offsets when both affinities are legal at one boundary.
+    #[must_use]
+    pub fn legal_byte_offsets(&self) -> Vec<usize> {
+        self.grapheme_boundaries
+            .iter()
+            .copied()
+            .filter(|&byte_offset| {
+                [TextAffinity::Upstream, TextAffinity::Downstream]
+                    .into_iter()
+                    .any(|affinity| self.cursor_at(byte_offset, affinity).is_ok())
+            })
+            .collect()
     }
 
     /// Converts a displayed surface point into a shaping-valid position.

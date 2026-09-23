@@ -2348,20 +2348,32 @@ mod tests {
             input_context: surface.clone(),
             modifiers: KeyModifiers::NONE,
         };
-        let start = LogicalPoint::new(30.0, 30.0)
+        let start = LogicalPoint::new(259.230_47, 61.878_906)
             .unwrap_or_else(|_| unreachable!("selection anchor is finite"));
-        let end = LogicalPoint::new(160.0, 30.0)
+        let end = LogicalPoint::new(377.496_1, 79.593_75)
             .unwrap_or_else(|_| unreachable!("selection focus is finite"));
         let mut mouse = MouseInputState::default();
         let hover = mouse.cursor_moved(device_id, translated(start));
         let hover = expect_ok(hover, "native cursor move is translated");
         expect_ok(runtime.submit_pointer(hover), "native hover is routed");
         runtime.pump(HOST_PUMP_BUDGET);
+        let down_surface = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| {
+                unreachable!("the host republishes after hover before pointer-down: {error:?}")
+            })
+            .input_context()
+            .clone();
+        let down_point = |position| TranslatedPointerPoint {
+            position,
+            input_context: down_surface.clone(),
+            modifiers: KeyModifiers::NONE,
+        };
         let down = mouse.button_input(
             device_id,
             ElementState::Pressed,
             MouseButton::Left,
-            Some(translated(start)),
+            Some(down_point(start)),
         );
         let down = expect_ok(down, "native primary press is translated");
         let MouseButtonOutcome::Submit(down) = down else {
@@ -2372,7 +2384,19 @@ mod tests {
             "native primary press is routed",
         );
         runtime.pump(HOST_PUMP_BUDGET);
-        let movement = mouse.cursor_moved(device_id, translated(end));
+        let drag_surface = runtime
+            .publish_surface(&context)
+            .unwrap_or_else(|error| {
+                unreachable!("the captured drag uses the post-press surface: {error:?}")
+            })
+            .input_context()
+            .clone();
+        let drag_point = |position| TranslatedPointerPoint {
+            position,
+            input_context: drag_surface.clone(),
+            modifiers: KeyModifiers::NONE,
+        };
+        let movement = mouse.cursor_moved(device_id, drag_point(end));
         let movement = expect_ok(movement, "native drag movement is translated");
         expect_ok(
             runtime.submit_pointer(movement),
@@ -2383,7 +2407,7 @@ mod tests {
             device_id,
             ElementState::Released,
             MouseButton::Left,
-            Some(translated(end)),
+            Some(drag_point(end)),
         );
         let release = expect_ok(release, "native primary release is translated");
         let MouseButtonOutcome::Submit(release) = release else {
@@ -2716,7 +2740,12 @@ mod tests {
         let environment = StyleEnvironment::default();
         let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
             .with_raster_scale(mapping.raster_scale);
-        for (name, long_document) in [("short", false), ("long", true)] {
+        for (name, extra_lines) in [
+            ("short", 0),
+            ("medium", 20),
+            ("fixture_40_lines", 40),
+            ("long", 80),
+        ] {
             let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
                 DemoState::default(),
                 RuntimeConfig::default()
@@ -2732,8 +2761,9 @@ mod tests {
                 )
                 .unwrap_or_else(|_| unreachable!("measurement editor accepts focus"));
             runtime.pump(HOST_PUMP_BUDGET);
-            if long_document {
-                let text = "multiline responsiveness fixture — retained text layout\n".repeat(40);
+            if extra_lines > 0 {
+                let text =
+                    "multiline responsiveness fixture — retained text layout\n".repeat(extra_lines);
                 runtime
                     .submit_text(
                         CommittedTextEvent::new(text, None)
@@ -2760,6 +2790,7 @@ mod tests {
 
             let mut typing = Vec::with_capacity(40);
             let mut publication = Vec::with_capacity(40);
+            let (mut reshaped, mut relinebroken, mut reused) = (0, 0, 0);
             for _ in 0..40 {
                 let started = Instant::now();
                 runtime
@@ -2771,13 +2802,28 @@ mod tests {
                 runtime.pump(HOST_PUMP_BUDGET);
                 typing.push(started.elapsed());
                 let started = Instant::now();
-                let _ = runtime.publish_surface(&context).unwrap_or_else(|error| {
+                let published = runtime.publish_surface(&context).unwrap_or_else(|error| {
                     unreachable!("measurement publication is valid: {error:?}")
                 });
                 publication.push(started.elapsed());
+                for measurement in published
+                    .layout_report()
+                    .nodes()
+                    .iter()
+                    .flat_map(runenui_runtime::SurfaceLayoutNode::text_measurements)
+                {
+                    match measurement.decision() {
+                        runenui_runtime::TextLayoutDecision::Reshaped => reshaped += 1,
+                        runenui_runtime::TextLayoutDecision::Relinebroken => relinebroken += 1,
+                        runenui_runtime::TextLayoutDecision::Reused => reused += 1,
+                    }
+                }
             }
             report(&format!("{name}.typing_submit_pump"), &mut typing);
             report(&format!("{name}.text_publication"), &mut publication);
+            eprintln!(
+                "issue261_measurement label={name}.text_layout_decisions reshaped={reshaped} relinebroken={relinebroken} reused={reused}"
+            );
 
             let mut drag_runtime = AppRuntime::<DemoApp>::mount_with_config(
                 DemoState::default(),
@@ -2794,8 +2840,9 @@ mod tests {
                 )
                 .unwrap_or_else(|_| unreachable!("drag measurement editor accepts focus"));
             drag_runtime.pump(HOST_PUMP_BUDGET);
-            if long_document {
-                let text = "multiline responsiveness fixture — retained text layout\n".repeat(40);
+            if extra_lines > 0 {
+                let text =
+                    "multiline responsiveness fixture — retained text layout\n".repeat(extra_lines);
                 drag_runtime
                     .submit_text(
                         CommittedTextEvent::new(text, None)
@@ -2848,6 +2895,91 @@ mod tests {
                 drag.push(started.elapsed());
             }
             report(&format!("{name}.drag_submit_pump"), &mut drag);
+        }
+    }
+
+    #[test]
+    #[ignore = "opt-in issue 261 bulk-paste latency sampling; run with --ignored --nocapture"]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one opt-in harness measures a bulk text commit and its synchronous publication"
+    )]
+    fn issue_261_bulk_paste_measurements() {
+        use std::time::{Duration, Instant};
+
+        fn report(label: &str, samples: &mut [Duration]) {
+            samples.sort_unstable();
+            let median = samples[samples.len() / 2].as_nanos();
+            let p95_index = (samples.len() * 95).div_ceil(100).saturating_sub(1);
+            eprintln!(
+                "issue261_measurement label={label} n={} median_ns={median} p95_ns={}",
+                samples.len(),
+                samples[p95_index].as_nanos()
+            );
+        }
+
+        let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
+            .unwrap_or_else(|| unreachable!("measurement mapping is valid"));
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
+            .with_raster_scale(mapping.raster_scale);
+        let fixture = "multiline responsiveness fixture — retained text layout\n";
+
+        for (name, lines) in [
+            ("40_lines", 40),
+            ("400_lines", 400),
+            ("4000_lines", 4000),
+            ("16000_lines", 16000),
+        ] {
+            let mut commit_pump = Vec::with_capacity(3);
+            let mut publication = Vec::with_capacity(3);
+            let mut complete = Vec::with_capacity(3);
+            let text = fixture.repeat(lines);
+            let bytes = text.len();
+            for _ in 0..3 {
+                let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+                    DemoState::default(),
+                    RuntimeConfig::default()
+                        .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+                );
+                runtime.pump(HOST_PUMP_BUDGET);
+                let owner = runtime.index().nodes()[0].id().clone();
+                runtime
+                    .submit_command(
+                        owner,
+                        SemanticCommand::RequestFocus,
+                        CommandOrigin::programmatic(),
+                    )
+                    .unwrap_or_else(|_| unreachable!("paste fixture accepts focus"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                runtime
+                    .publish_surface(&context)
+                    .unwrap_or_else(|error| unreachable!("warm surface is valid: {error:?}"));
+
+                let started = Instant::now();
+                runtime
+                    .submit_text(
+                        CommittedTextEvent::new(text.clone(), None)
+                            .unwrap_or_else(|_| unreachable!("paste fixture text is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("paste fixture is admitted"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                let commit_elapsed = started.elapsed();
+                commit_pump.push(commit_elapsed);
+
+                let started = Instant::now();
+                runtime
+                    .publish_surface(&context)
+                    .unwrap_or_else(|error| unreachable!("paste publication is valid: {error:?}"));
+                let publication_elapsed = started.elapsed();
+                publication.push(publication_elapsed);
+                complete.push(commit_elapsed + publication_elapsed);
+            }
+
+            eprintln!("issue261_measurement label={name}.paste_bytes value={bytes}");
+            report(&format!("{name}.paste_submit_pump"), &mut commit_pump);
+            report(&format!("{name}.paste_publication"), &mut publication);
+            report(&format!("{name}.paste_complete"), &mut complete);
         }
     }
 
