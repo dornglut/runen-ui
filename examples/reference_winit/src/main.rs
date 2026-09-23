@@ -2983,6 +2983,221 @@ mod tests {
         }
     }
 
+
+    #[test]
+    #[ignore = "opt-in issue 263 phase-separated large-document profile; run release with --ignored --nocapture"]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one opt-in harness compares four publication states across the accepted large-document sizes"
+    )]
+    fn issue_263_large_document_publication_profile() {
+        use std::time::Instant;
+
+        const SAMPLE_COUNT: usize = 20;
+        type Profile = runenui_runtime::SurfacePublicationTestProfile;
+
+        fn summarize(values: &mut [u128]) -> (u128, u128) {
+            values.sort_unstable();
+            let median = values[values.len() / 2];
+            let p95_index = (values.len() * 95).div_ceil(100).saturating_sub(1);
+            (median, values[p95_index])
+        }
+
+        fn report_ns(label: &str, profiles: &[Profile], field: fn(&Profile) -> u128) {
+            let mut values = profiles.iter().map(field).collect::<Vec<_>>();
+            let (median, p95) = summarize(&mut values);
+            eprintln!(
+                "issue263_profile label={label} n={} median_ns={median} p95_ns={p95}",
+                profiles.len()
+            );
+        }
+
+        fn report_count(label: &str, profiles: &[Profile], field: fn(&Profile) -> usize) {
+            let mut values = profiles.iter().map(field);
+            let first = values
+                .next()
+                .unwrap_or_else(|| unreachable!("profile sample set is non-empty"));
+            let (mut minimum, mut maximum) = (first, first);
+            for value in values {
+                minimum = minimum.min(value);
+                maximum = maximum.max(value);
+            }
+            eprintln!(
+                "issue263_profile_count label={label} n={} min={minimum} max={maximum}",
+                profiles.len()
+            );
+        }
+
+        fn report_profile(label: &str, total_ns: &mut [u128], profiles: &[Profile]) {
+            let (median, p95) = summarize(total_ns);
+            eprintln!(
+                "issue263_profile label={label}.total_publication n={} median_ns={median} p95_ns={p95}",
+                profiles.len()
+            );
+            let timings: [(&str, fn(&Profile) -> u128); 9] = [
+                ("surface_plan", |p| p.surface_plan_ns),
+                ("layout", |p| p.layout_ns),
+                ("widget_measure_callback", |p| p.widget_measure_callback_ns),
+                ("text_request_prepare", |p| p.text_request_prepare_ns),
+                ("text_layout", |p| p.text_layout_ns),
+                ("paint", |p| p.paint_ns),
+                ("displayed_text_targets", |p| p.displayed_text_targets_ns),
+                ("semantic_candidate", |p| p.semantic_candidate_ns),
+                ("semantic_plan", |p| p.semantic_plan_ns),
+            ];
+            for (suffix, field) in timings {
+                report_ns(&format!("{label}.{suffix}"), profiles, field);
+            }
+            let counts: [(&str, fn(&Profile) -> usize); 5] = [
+                ("measure_calls", |p| p.measure_calls),
+                ("reshaped", |p| p.reshaped),
+                ("relinebroken", |p| p.relinebroken),
+                ("reused", |p| p.reused),
+                ("paint_text_run_items", |p| p.paint_text_run_items),
+            ];
+            for (suffix, field) in counts {
+                report_count(&format!("{label}.{suffix}"), profiles, field);
+            }
+        }
+
+        fn publish_profile(
+            runtime: &mut AppRuntime<DemoApp>,
+            context: &SurfaceBuildContext<'_>,
+        ) -> (u128, Profile) {
+            let started = Instant::now();
+            runtime
+                .publish_surface(context)
+                .unwrap_or_else(|error| unreachable!("profile publication succeeds: {error:?}"));
+            let total_ns = started.elapsed().as_nanos();
+            (total_ns, runtime.__take_surface_publication_profile_for_test())
+        }
+
+        let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
+            .unwrap_or_else(|| unreachable!("profile mapping is valid"));
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
+            .with_raster_scale(mapping.raster_scale);
+        let fixture = "multiline responsiveness fixture — retained text layout\n";
+        let replacement_fixture =
+            "replacement publication fixture — retained text layout state\n";
+
+        for (name, lines) in [
+            ("40_lines", 40),
+            ("400_lines", 400),
+            ("4000_lines", 4000),
+            ("16000_lines", 16000),
+        ] {
+            let text = fixture.repeat(lines);
+            let replacement = replacement_fixture.repeat(lines);
+            let mut first_total = Vec::with_capacity(SAMPLE_COUNT);
+            let mut first_profiles = Vec::with_capacity(SAMPLE_COUNT);
+            let mut unchanged_total = Vec::with_capacity(SAMPLE_COUNT);
+            let mut unchanged_profiles = Vec::with_capacity(SAMPLE_COUNT);
+            let mut localized_total = Vec::with_capacity(SAMPLE_COUNT);
+            let mut localized_profiles = Vec::with_capacity(SAMPLE_COUNT);
+            let mut replacement_total = Vec::with_capacity(SAMPLE_COUNT);
+            let mut replacement_profiles = Vec::with_capacity(SAMPLE_COUNT);
+
+            for _ in 0..SAMPLE_COUNT {
+                let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+                    DemoState::default(),
+                    RuntimeConfig::default()
+                        .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+                );
+                runtime.pump(HOST_PUMP_BUDGET);
+                let owner = runtime.index().nodes()[0].id().clone();
+                runtime
+                    .submit_command(
+                        owner.clone(),
+                        SemanticCommand::RequestFocus,
+                        CommandOrigin::programmatic(),
+                    )
+                    .unwrap_or_else(|_| unreachable!("profile editor accepts focus"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                let _ = publish_profile(&mut runtime, &context);
+
+                runtime
+                    .submit_command(
+                        owner.clone(),
+                        SemanticCommand::SelectAll,
+                        CommandOrigin::programmatic(),
+                    )
+                    .unwrap_or_else(|_| unreachable!("profile editor accepts select-all"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                runtime
+                    .submit_text(
+                        CommittedTextEvent::new(text.clone(), None)
+                            .unwrap_or_else(|_| unreachable!("profile replacement is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("profile replacement is admitted"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                let (total, profile) = publish_profile(&mut runtime, &context);
+                first_total.push(total);
+                first_profiles.push(profile);
+
+                let (total, profile) = publish_profile(&mut runtime, &context);
+                unchanged_total.push(total);
+                unchanged_profiles.push(profile);
+
+                runtime
+                    .submit_text(
+                        CommittedTextEvent::new("x", None)
+                            .unwrap_or_else(|_| unreachable!("localized profile edit is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("localized profile edit is admitted"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                let (total, profile) = publish_profile(&mut runtime, &context);
+                localized_total.push(total);
+                localized_profiles.push(profile);
+
+                runtime
+                    .submit_command(
+                        owner.clone(),
+                        SemanticCommand::SelectAll,
+                        CommandOrigin::programmatic(),
+                    )
+                    .unwrap_or_else(|_| unreachable!("replacement profile accepts select-all"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                runtime
+                    .submit_text(
+                        CommittedTextEvent::new(replacement.clone(), None)
+                            .unwrap_or_else(|_| unreachable!("second replacement is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("second replacement is admitted"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                let (total, profile) = publish_profile(&mut runtime, &context);
+                replacement_total.push(total);
+                replacement_profiles.push(profile);
+            }
+
+            eprintln!(
+                "issue263_profile_fixture label={name} lines={lines} first_bytes={} replacement_bytes={} samples={SAMPLE_COUNT}",
+                text.len(),
+                replacement.len()
+            );
+            report_profile(
+                &format!("{name}.first_replacement"),
+                &mut first_total,
+                &first_profiles,
+            );
+            report_profile(
+                &format!("{name}.unchanged_republish"),
+                &mut unchanged_total,
+                &unchanged_profiles,
+            );
+            report_profile(
+                &format!("{name}.localized_edit"),
+                &mut localized_total,
+                &localized_profiles,
+            );
+            report_profile(
+                &format!("{name}.full_replacement"),
+                &mut replacement_total,
+                &replacement_profiles,
+            );
+        }
+    }
+
     fn translated_point(
         displayed: &DisplayedFrame,
         mapping: NativeMapping,

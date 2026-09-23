@@ -293,6 +293,9 @@ pub use surface::{
     SurfaceLayoutNode, SurfaceLayoutReport, SurfaceNode, SurfacePhase, SurfacePhaseReport,
     SurfaceTextMeasurementRecord,
 };
+#[cfg(feature = "internal-test-seams")]
+#[doc(hidden)]
+pub use surface::SurfacePublicationTestProfile;
 pub use surface_command::{
     SubmitSurfaceCommandError, SubmitSurfaceCommandErrorKind, UnacceptedSurfaceCommand,
 };

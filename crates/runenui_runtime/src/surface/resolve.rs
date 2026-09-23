@@ -781,10 +781,16 @@ fn append_shaped_text(
     shaped_text_leases: &mut Vec<ShapedTextLease>,
     ordered: &mut Vec<groups::OrderedPaintItem>,
 ) {
+    #[cfg(feature = "internal-test-seams")]
+    let mut profiled_run_count = 0usize;
     let mounted_preorder = owner.mounted_preorder;
     if let Some(artifact) = layout.text_layouts[mounted_preorder].artifact() {
         for line in artifact.lines() {
             for run in line.runs() {
+                #[cfg(feature = "internal-test-seams")]
+                {
+                    profiled_run_count = profiled_run_count.saturating_add(1);
+                }
                 let lease = text_system
                     .lease_shaped_run(run.resource_ref())
                     .unwrap_or_else(|| {
@@ -804,6 +810,8 @@ fn append_shaped_text(
             }
         }
     }
+    #[cfg(feature = "internal-test-seams")]
+    super::profile::record_paint_text_run_items(profiled_run_count);
 }
 
 fn text_run_item(run: &runenui_text::TextRun, computed: &ComputedStyle) -> PaintContributionItem {
@@ -978,6 +986,8 @@ pub(super) struct PaintResolutionInput<'a> {
 }
 
 pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
+    #[cfg(feature = "internal-test-seams")]
+    let profile_started = std::time::Instant::now();
     let PaintResolutionInput {
         topology,
         layout,
@@ -1077,10 +1087,13 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
         &explicit_groups,
         ordered,
     );
-    ResolvedPaint {
+    let resolved = ResolvedPaint {
         scene: PaintScene::with_composition(items, shaped_text_leases, composition),
         diagnostics,
-    }
+    };
+    #[cfg(feature = "internal-test-seams")]
+    super::profile::record_paint(profile_started.elapsed());
+    resolved
 }
 
 pub(super) struct ResolvedHitTest {

@@ -373,6 +373,8 @@ impl SurfacePublicationState {
         context: &SurfaceBuildContext<'_>,
         candidate: SurfacePublicationCandidateInputs<'_>,
     ) -> Result<StagedSurfacePublication<'tree>, SurfacePublicationPlanError> {
+        #[cfg(feature = "internal-test-seams")]
+        crate::surface::profile::reset();
         let SurfacePublicationCandidateInputs {
             interaction,
             focused_owner,
@@ -384,6 +386,8 @@ impl SurfacePublicationState {
         let (hit_test_generation, coordinate_revision) = admission.into_parts();
         let text_editing =
             crate::surface::TextEditingPaintInputs::new(focused_owner, editing, preedits);
+        #[cfg(feature = "internal-test-seams")]
+        let surface_plan_started = std::time::Instant::now();
         let planned = plan_mounted_surface_cached_with_text(
             tree,
             context,
@@ -394,9 +398,21 @@ impl SurfacePublicationState {
             &self.motion_store,
             instant,
         )?;
+        #[cfg(feature = "internal-test-seams")]
+        crate::surface::profile::record_surface_plan(surface_plan_started.elapsed());
+        #[cfg(feature = "internal-test-seams")]
+        let displayed_text_started = std::time::Instant::now();
         let displayed_text_targets = planned.displayed_text_targets(editing);
+        #[cfg(feature = "internal-test-seams")]
+        crate::surface::profile::record_displayed_text_targets(displayed_text_started.elapsed());
         let displayed_scroll_metrics = planned.displayed_scroll_metrics();
+        #[cfg(feature = "internal-test-seams")]
+        let semantic_candidate_started = std::time::Instant::now();
         let semantic_candidate = planned.semantic_candidate(focused_owner, editing)?;
+        #[cfg(feature = "internal-test-seams")]
+        crate::surface::profile::record_semantic_candidate(semantic_candidate_started.elapsed());
+        #[cfg(feature = "internal-test-seams")]
+        let semantic_plan_started = std::time::Instant::now();
         let semantic_plan: SemanticPublicationPlan = self
             .semantic_publication
             .plan(&self.surface_id, semantic_candidate)
@@ -407,6 +423,8 @@ impl SurfacePublicationState {
                     )
                 }
             })?;
+        #[cfg(feature = "internal-test-seams")]
+        crate::surface::profile::record_semantic_plan(semantic_plan_started.elapsed());
         let semantic_publication = semantic_plan
             .publication()
             .cloned()

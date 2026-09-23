@@ -10,6 +10,8 @@ mod context;
 mod interaction;
 mod motion;
 mod planning;
+#[cfg(feature = "internal-test-seams")]
+pub(crate) mod profile;
 mod resolve;
 mod taffy_layout;
 #[cfg(test)]
@@ -24,6 +26,9 @@ pub use cache::{SurfacePhase, SurfacePhaseReport};
 pub use context::{RasterScale, RasterScaleError, SurfaceBuildContext};
 pub(crate) use interaction::{SurfaceInteractionProjection, SurfaceScrollProjection};
 pub(crate) use motion::MotionPlanningFailure;
+#[cfg(feature = "internal-test-seams")]
+#[doc(hidden)]
+pub use profile::SurfacePublicationTestProfile;
 #[cfg(test)]
 use planning::plan_mounted_surface_cached;
 #[cfg(test)]

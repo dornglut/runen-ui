@@ -54,6 +54,8 @@ pub(super) fn layout_resolved_surface<Action>(
     ),
     TextLayoutError,
 > {
+    #[cfg(feature = "internal-test-seams")]
+    let profile_started = std::time::Instant::now();
     #[cfg(test)]
     super::cache::note_layout_phase_execution();
     let mut kernel = LayoutKernel::new(
@@ -66,7 +68,10 @@ pub(super) fn layout_resolved_surface<Action>(
     );
     let root = NodeId::from(0usize);
     compute_root_layout(&mut kernel, root, available_space(root_constraints));
-    kernel.finish(root_constraints)
+    let result = kernel.finish(root_constraints);
+    #[cfg(feature = "internal-test-seams")]
+    super::profile::record_layout(profile_started.elapsed());
+    result
 }
 
 struct LayoutKernel<'a, Action> {
@@ -187,7 +192,11 @@ impl<'a, Action> LayoutKernel<'a, Action> {
         let style = self.style_for(node);
         let padding = resolved_padding(resolved);
         let widget_input = widget_measure_input(inputs, padding);
+        #[cfg(feature = "internal-test-seams")]
+        let measure_started = std::time::Instant::now();
         let measurement = mounted.widget.measure(&mounted.state, widget_input);
+        #[cfg(feature = "internal-test-seams")]
+        super::profile::record_measure_callback(measure_started.elapsed());
         let mut baselines = Baselines::NONE;
         let size = match measurement {
             Ok(WidgetMeasure::Measured(measured)) => {
@@ -196,6 +205,8 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 measured.size()
             }
             Ok(WidgetMeasure::Text { content }) => {
+                #[cfg(feature = "internal-test-seams")]
+                let request_started = std::time::Instant::now();
                 let content = self
                     .preedits
                     .get(&mounted.id)
@@ -209,10 +220,19 @@ impl<'a, Action> LayoutKernel<'a, Action> {
                 let constraints =
                     text_constraints(inputs.available_space.width, widget_input.known_width());
                 let request = TextRequest::new(content, typography, constraints);
+                #[cfg(feature = "internal-test-seams")]
+                super::profile::record_request_prepare(request_started.elapsed());
                 let mut state = self.text_layouts[index].clone();
-                match self.text_system.layout_text(&mut state, &request) {
+                #[cfg(feature = "internal-test-seams")]
+                let text_layout_started = std::time::Instant::now();
+                let text_layout = self.text_system.layout_text(&mut state, &request);
+                #[cfg(feature = "internal-test-seams")]
+                super::profile::record_text_layout(text_layout_started.elapsed());
+                match text_layout {
                     Ok(outcome) => {
                         let decision = outcome.decision();
+                        #[cfg(feature = "internal-test-seams")]
+                        super::profile::record_text_layout_decision(decision);
                         let artifact = outcome.artifact();
                         let text_size = artifact.size();
                         baselines = text_baselines(artifact, padding);
