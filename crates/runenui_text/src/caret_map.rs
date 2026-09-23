@@ -423,6 +423,38 @@ impl TextCaretMap {
         self.position_for_cursor(canonical).map(Some)
     }
 
+    /// Maps a point through the exact displayed transform to the nearest legal
+    /// caret in this retained layout, without applying initial-hit eligibility.
+    ///
+    /// This is intended for an already admitted and captured text-selection
+    /// gesture. Initial pointer admission must continue to use [`Self::hit_test`]
+    /// so viewport bounds and publication clipping remain authoritative.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a stale snapshot, a non-invertible or overflowing
+    /// transform, or an invalid retained-layout result.
+    pub fn nearest_position(
+        &self,
+        displayed_snapshot: TextDocumentSnapshot,
+        surface_point: LogicalPoint,
+        layout_to_surface: LogicalTransform,
+    ) -> Result<TextDisplayPosition, TextCaretMapError> {
+        if displayed_snapshot != self.snapshot() {
+            return Err(TextCaretMapError::SnapshotMismatch);
+        }
+        let surface_to_layout = layout_to_surface
+            .inverse()
+            .ok_or(TextCaretMapError::NonInvertibleTransform)?;
+        let local_point = surface_to_layout
+            .transform_point(surface_point)
+            .ok_or(TextCaretMapError::TransformOverflow)?;
+        let cursor = Cursor::from_point(&self.cached.layout, local_point.x(), local_point.y());
+        let canonical =
+            Cursor::from_byte_index(&self.cached.layout, cursor.index(), cursor.affinity());
+        self.position_for_cursor(canonical)
+    }
+
     /// Returns logical caret geometry for one legal display position.
     ///
     /// # Errors

@@ -201,6 +201,37 @@ impl<Action> EditingRegistry<Action> {
         })
     }
 
+    pub(crate) fn stable_selection_for_map(
+        &self,
+        owner: &MountedNodeId,
+        caret_map: &TextCaretMap,
+    ) -> Option<runenui_core::TextSelection> {
+        let session = self.active.get(owner)?;
+        if session.invalid_suffix
+            || !session.pending.is_empty()
+            || session.preedit.is_some()
+            || session.contribution.disabled()
+            || caret_map.snapshot() != session.contribution.snapshot()
+        {
+            return None;
+        }
+        let selection = session
+            .selection
+            .bind(session.contribution.snapshot(), &session.projected_text)
+            .ok()?;
+        caret_map
+            .validate_position(&runenui_core::TextDisplayPosition::Document(
+                selection.anchor(),
+            ))
+            .ok()?;
+        caret_map
+            .validate_position(&runenui_core::TextDisplayPosition::Document(
+                selection.active(),
+            ))
+            .ok()?;
+        Some(selection)
+    }
+
     pub(crate) fn shutdown(&mut self) {
         self.active.clear();
         self.draining.clear();
@@ -448,8 +479,12 @@ impl<Action> EditingRegistry<Action> {
         match command {
             SemanticCommand::MoveBackward
             | SemanticCommand::MoveForward
+            | SemanticCommand::MoveUp
+            | SemanticCommand::MoveDown
             | SemanticCommand::ExtendBackward
             | SemanticCommand::ExtendForward
+            | SemanticCommand::ExtendUp
+            | SemanticCommand::ExtendDown
             | SemanticCommand::SelectAll => {
                 self.move_selection(
                     owner,
@@ -760,31 +795,52 @@ impl<Action> EditingRegistry<Action> {
             .selection
             .bind(session.contribution.snapshot(), &session.projected_text)
             .map_err(|_| EditPrepareError::InvalidCoordinates)?;
+        let vertical = matches!(
+            command,
+            SemanticCommand::MoveUp
+                | SemanticCommand::MoveDown
+                | SemanticCommand::ExtendUp
+                | SemanticCommand::ExtendDown
+        );
         let result = caret_map
             .navigate(
                 &TextDisplaySelection::from_document(bound),
-                if matches!(
-                    command,
-                    SemanticCommand::MoveBackward | SemanticCommand::ExtendBackward
-                ) {
-                    TextNavigation::PreviousLogical
-                } else {
-                    TextNavigation::NextLogical
+                match command {
+                    SemanticCommand::MoveBackward | SemanticCommand::ExtendBackward => {
+                        TextNavigation::PreviousLogical
+                    }
+                    SemanticCommand::MoveForward | SemanticCommand::ExtendForward => {
+                        TextNavigation::NextLogical
+                    }
+                    SemanticCommand::MoveUp | SemanticCommand::ExtendUp => {
+                        TextNavigation::PreviousLine
+                    }
+                    SemanticCommand::MoveDown | SemanticCommand::ExtendDown => {
+                        TextNavigation::NextLine
+                    }
+                    _ => return Err(EditPrepareError::Unavailable),
                 },
                 if matches!(
                     command,
-                    SemanticCommand::ExtendBackward | SemanticCommand::ExtendForward
+                    SemanticCommand::ExtendBackward
+                        | SemanticCommand::ExtendForward
+                        | SemanticCommand::ExtendUp
+                        | SemanticCommand::ExtendDown
                 ) {
                     TextNavigationMode::Extend
                 } else {
                     TextNavigationMode::Move
                 },
-                session.preferred_inline,
+                vertical.then_some(session.preferred_inline).flatten(),
             )
             .map_err(|_| EditPrepareError::InvalidCoordinates)?;
         session.selection =
             edit_selection_from_display(result.selection(), &session.projected_text)?;
-        session.preferred_inline = result.preferred_inline();
+        session.preferred_inline = if vertical {
+            result.preferred_inline()
+        } else {
+            None
+        };
         Ok(())
     }
 

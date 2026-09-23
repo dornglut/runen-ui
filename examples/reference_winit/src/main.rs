@@ -27,17 +27,16 @@ use mouse_input::{
     MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
 };
 use runenui_core::{
-    Brush, Color, CommandOrigin, CommittedTextEvent, DragDropEvent, DragDropPayloadKind,
+    Color, CommandOrigin, CommittedTextEvent, DragDropEvent, DragDropPayloadKind,
     DragDropPayloadMetadata, DragDropPhase, EdgeInsets, EditChangeMap, EditIntent, EditKind,
-    EditResolution, EditableContribution, EditingSessionPolicy, Element, EventContext,
-    HitContribution, HitContributionContext, InputDeviceId, KeyModifiers, KeyboardEvent,
-    LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect, NoHostProtocol,
-    OverflowPolicy, OverflowStyle, PaintContribution, PaintContributionContext,
-    PaintContributionItem, PointerEvent, SceneShape, SemanticAction, SemanticCommand,
+    EditResolution, EditSelection, EditableContribution, EditingSessionPolicy, Element,
+    EventContext, HitContribution, HitContributionContext, InputDeviceId, KeyModifiers,
+    KeyboardEvent, LayoutDimension, LayoutStyle, LogicalLength, LogicalPoint, LogicalRect,
+    NoHostProtocol, OverflowPolicy, OverflowStyle, PointerEvent, SemanticAction, SemanticCommand,
     SemanticContribution, SemanticEditable, SemanticNodeContribution, SemanticRole, SemanticState,
     StyleEnvironment, SurfaceInputContext, TextAffinity, TextDocumentId, TextDocumentRevision,
-    TextDocumentSnapshot, TextPosition, TextSelection, TextSensitivity, UiApp, UiEvent,
-    UpdateOutput, View, Widget, WidgetActivation, WidgetMeasure, WidgetTextInput,
+    TextDocumentSnapshot, TextSelection, TextSensitivity, UiApp, UiEvent, UpdateOutput, View,
+    Widget, WidgetActivation, WidgetMeasure, WidgetTextInput,
 };
 use runenui_render_wgpu::{
     PublicationRenderError, Renderer, RendererOptions, ResourcePayload, ResourceProvider,
@@ -123,15 +122,26 @@ const MAX_EDITOR_HISTORY_ENTRIES: usize = 100;
 struct DemoState {
     text: String,
     revision: u64,
-    undo: Vec<String>,
-    redo: Vec<String>,
+    selection_seed: EditSelection,
+    undo: Vec<DemoHistoryEntry>,
+    redo: Vec<DemoHistoryEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DemoHistoryEntry {
+    text: String,
+    selection: EditSelection,
 }
 
 impl Default for DemoState {
     fn default() -> Self {
+        let text = INITIAL_EDITOR_TEXT.to_owned();
+        let selection_seed = EditSelection::collapsed(&text, text.len(), TextAffinity::Upstream)
+            .unwrap_or_else(|_| unreachable!("initial reference selection is checked"));
         Self {
-            text: INITIAL_EDITOR_TEXT.to_owned(),
+            text,
             revision: 0,
+            selection_seed,
             undo: Vec::new(),
             redo: Vec::new(),
         }
@@ -146,6 +156,7 @@ enum DemoAction {
 struct DemoSurface {
     snapshot: TextDocumentSnapshot,
     text: String,
+    selection_seed: EditSelection,
 }
 
 impl Widget<DemoAction> for DemoSurface {
@@ -235,28 +246,11 @@ impl Widget<DemoAction> for DemoSurface {
             .unwrap_or_else(|_| unreachable!("the literal demo hit origin is finite"));
         HitContribution::single_rect(LogicalRect::new(origin, context.local_size()))
     }
-
-    fn paint(&self, _state: &Self::State, context: PaintContributionContext) -> PaintContribution {
-        let origin = LogicalPoint::new(0.0, 0.0)
-            .unwrap_or_else(|_| unreachable!("the literal demo origin is finite"));
-        let rect = LogicalRect::new(origin, context.local_size());
-        PaintContribution::single(PaintContributionItem::fill(
-            SceneShape::rect(rect),
-            Brush::solid(Color::rgb(28, 32, 40)),
-        ))
-    }
 }
 
 impl DemoSurface {
     fn selection(&self) -> Option<TextSelection> {
-        let position = TextPosition::new(
-            self.snapshot,
-            &self.text,
-            self.text.len(),
-            TextAffinity::Upstream,
-        )
-        .ok()?;
-        Some(TextSelection::collapsed(position))
+        self.selection_seed.bind(self.snapshot, &self.text).ok()
     }
 }
 
@@ -274,6 +268,7 @@ impl UiApp for DemoApp {
                 TextDocumentRevision::new(state.revision),
             ),
             text: state.text.clone(),
+            selection_seed: state.selection_seed,
         })
         .id("reference.editor")
         .key("reference.editor")
@@ -287,6 +282,7 @@ impl UiApp for DemoApp {
                 )),
         )
         .foreground(Color::WHITE)
+        .background(Color::rgb(28, 32, 40))
         .padding(EdgeInsets::all(LogicalLength::from(24_u16)))
         .focusable(true)
     }
@@ -297,48 +293,75 @@ impl UiApp for DemoApp {
     ) -> impl runenui_core::IntoUpdateOutput<Self::Action, Self::HostProtocol> {
         let request = intent.request().clone();
         let kind = intent.kind();
-        let replacement = intent.replacement();
-        let replacement_text = intent.replacement_text();
-        let next_text = match kind {
-            EditKind::Undo => state.undo.last().cloned(),
-            EditKind::Redo => state.redo.last().cloned(),
-            _ => {
-                let mut next_text = state.text.clone();
-                next_text.replace_range(replacement.start()..replacement.end(), replacement_text);
-                Some(next_text)
-            }
-        };
-        let Some(next_text) = next_text else {
+        let current_snapshot = TextDocumentSnapshot::new(
+            TextDocumentId::new(1),
+            TextDocumentRevision::new(state.revision),
+        );
+        if matches!(kind, EditKind::Undo) && state.undo.is_empty()
+            || matches!(kind, EditKind::Redo) && state.redo.is_empty()
+        {
+            // An empty application-owned history operation is accepted without
+            // mutating text, revision, selection, or either history stack.
+            return UpdateOutput::edit(EditResolution::accepted(request, current_snapshot));
+        }
+        let Some(next_revision) = state.revision.checked_add(1) else {
             let snapshot = TextDocumentSnapshot::new(
                 TextDocumentId::new(1),
                 TextDocumentRevision::new(state.revision),
             );
-            return UpdateOutput::edit(EditResolution::accepted(request, snapshot));
-        };
-        let Some(next_revision) = state.revision.checked_add(1) else {
-            return UpdateOutput::edit(EditResolution::rejected(
-                request,
-                TextDocumentSnapshot::new(
-                    TextDocumentId::new(1),
-                    TextDocumentRevision::new(state.revision),
-                ),
-            ));
+            return UpdateOutput::edit(EditResolution::rejected(request, snapshot));
         };
 
-        match kind {
+        let (next_text, next_selection) = match kind {
             EditKind::Undo => {
-                let _ = state.undo.pop();
-                push_editor_history(&mut state.redo, state.text.clone());
+                push_editor_history(
+                    &mut state.redo,
+                    DemoHistoryEntry {
+                        text: state.text.clone(),
+                        selection: intent.proposed_selection(),
+                    },
+                );
+                let target = state
+                    .undo
+                    .pop()
+                    .unwrap_or_else(|| unreachable!("non-empty undo history was preflighted"));
+                (target.text, target.selection)
             }
             EditKind::Redo => {
-                let _ = state.redo.pop();
-                push_editor_history(&mut state.undo, state.text.clone());
+                push_editor_history(
+                    &mut state.undo,
+                    DemoHistoryEntry {
+                        text: state.text.clone(),
+                        selection: intent.proposed_selection(),
+                    },
+                );
+                let target = state
+                    .redo
+                    .pop()
+                    .unwrap_or_else(|| unreachable!("non-empty redo history was preflighted"));
+                (target.text, target.selection)
             }
             _ => {
-                push_editor_history(&mut state.undo, state.text.clone());
+                let Some(inverse) = intent.inverse() else {
+                    return UpdateOutput::edit(EditResolution::rejected(request, current_snapshot));
+                };
+                push_editor_history(
+                    &mut state.undo,
+                    DemoHistoryEntry {
+                        text: state.text.clone(),
+                        selection: inverse.selection(),
+                    },
+                );
                 state.redo.clear();
+                let replacement = intent.replacement();
+                let mut next_text = state.text.clone();
+                next_text.replace_range(
+                    replacement.start()..replacement.end(),
+                    intent.replacement_text(),
+                );
+                (next_text, intent.proposed_selection())
             }
-        }
+        };
         let resulting_snapshot = TextDocumentSnapshot::new(
             TextDocumentId::new(1),
             TextDocumentRevision::new(next_revision),
@@ -364,6 +387,7 @@ impl UiApp for DemoApp {
         };
         state.text = next_text;
         state.revision = next_revision;
+        state.selection_seed = next_selection;
         UpdateOutput::edit(resolution)
     }
 
@@ -372,8 +396,8 @@ impl UiApp for DemoApp {
     }
 }
 
-fn push_editor_history(history: &mut Vec<String>, text: String) {
-    history.push(text);
+fn push_editor_history(history: &mut Vec<DemoHistoryEntry>, entry: DemoHistoryEntry) {
+    history.push(entry);
     if history.len() > MAX_EDITOR_HISTORY_ENTRIES {
         let _ = history.remove(0);
     }
@@ -2167,16 +2191,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoState, DisplayedFrame,
-        HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, NativeMapping, PointIngressDiagnostic,
+        AppRuntime, CommandOrigin, CommittedTextEvent, DemoApp, DemoHistoryEntry, DemoState,
+        DisplayedFrame, HOST_PUMP_BUDGET, INITIAL_EDITOR_TEXT, KeyboardEvent, LogicalSize,
+        MAX_EDITOR_HISTORY_ENTRIES, NativeMapping, PendingFrame, PointIngressDiagnostic,
         SemanticAdapter, SemanticCommand, StyleEnvironment, SurfaceBuildContext,
         mouse_input::{
             MouseButtonOutcome, MouseIngressDiagnostic, MouseInputState, TranslatedPointerPoint,
             translate_mouse_button,
         },
-        translate_modifiers,
+        push_editor_history, translate_modifiers,
     };
-    use runenui_core::{InputDeviceId, KeyModifiers, LogicalPoint, PointerButton, PointerPhase};
+    use runenui_core::{
+        InputDeviceId, KeyModifiers, KeyboardPhase, LogicalPoint, PointerButton, PointerPhase,
+    };
     use runenui_runtime::{FontSourcePolicy, RuntimeConfig};
     use winit::{
         dpi::{PhysicalPosition, PhysicalSize},
@@ -2527,10 +2554,49 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one end-to-end history test verifies empty, edit, selection, undo, and redo behavior"
+    )]
+    #[allow(
+        clippy::panic,
+        reason = "panic reports the exact rejected keyboard submission in this test"
+    )]
     fn reference_editor_undo_and_redo_restore_application_owned_text_history() {
-        let mut runtime = AppRuntime::<DemoApp>::mount(DemoState::default());
+        let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+            DemoState::default(),
+            RuntimeConfig::default()
+                .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+        );
         runtime.pump(HOST_PUMP_BUDGET);
         let owner = runtime.index().nodes()[0].id().clone();
+        let initial_selection = runtime.state().selection_seed;
+        runtime
+            .submit_command(
+                owner.clone(),
+                SemanticCommand::Undo,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("empty reference undo is accepted"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
+        assert_eq!(runtime.state().revision, 0);
+        assert_eq!(runtime.state().selection_seed, initial_selection);
+        assert!(runtime.state().undo.is_empty());
+        assert!(runtime.state().redo.is_empty());
+        runtime
+            .submit_command(
+                owner.clone(),
+                SemanticCommand::Redo,
+                CommandOrigin::programmatic(),
+            )
+            .unwrap_or_else(|_| unreachable!("empty reference redo is accepted"));
+        runtime.pump(HOST_PUMP_BUDGET);
+        assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
+        assert_eq!(runtime.state().revision, 0);
+        assert_eq!(runtime.state().selection_seed, initial_selection);
+        assert!(runtime.state().undo.is_empty());
+        assert!(runtime.state().redo.is_empty());
         runtime
             .submit_command(
                 owner.clone(),
@@ -2547,7 +2613,26 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("reference editor accepts committed text"));
         runtime.pump(HOST_PUMP_BUDGET);
         assert!(runtime.state().text.ends_with('Q'));
-
+        runtime
+            .publish_surface(&SurfaceBuildContext::tight(
+                &StyleEnvironment::default(),
+                LogicalSize::try_new(800.0, 480.0)
+                    .unwrap_or_else(|_| unreachable!("fixture surface is finite")),
+            ))
+            .unwrap_or_else(|error| unreachable!("committed document republishes: {error:?}"));
+        runtime
+            .submit_keyboard(KeyboardEvent::new(
+                KeyboardPhase::Down,
+                runenui_core::PhysicalKey::ArrowLeft,
+                runenui_core::LogicalKey::ArrowLeft,
+                KeyModifiers::NONE.with_shift(),
+                false,
+                runenui_core::KeyLocation::Standard,
+                runenui_core::KeyboardCompositionState::Inactive,
+                None,
+            ))
+            .unwrap_or_else(|error| panic!("reference editor accepts Shift+Left: {error:?}"));
+        runtime.pump(HOST_PUMP_BUDGET);
         runtime
             .submit_command(
                 owner.clone(),
@@ -2557,14 +2642,213 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("reference editor accepts undo"));
         runtime.pump(HOST_PUMP_BUDGET);
         assert_eq!(runtime.state().text, INITIAL_EDITOR_TEXT);
+        assert_eq!(runtime.state().selection_seed, initial_selection);
 
         let redo =
             runtime.submit_command(owner, SemanticCommand::Redo, CommandOrigin::programmatic());
         assert!(redo.is_ok(), "reference editor accepts redo: {redo:?}");
         runtime.pump(HOST_PUMP_BUDGET);
         assert_eq!(runtime.state().text, format!("{INITIAL_EDITOR_TEXT}Q"));
+        assert_eq!(
+            runtime.state().selection_seed.anchor(),
+            INITIAL_EDITOR_TEXT.len() + 1
+        );
+        assert_eq!(
+            runtime.state().selection_seed.active(),
+            INITIAL_EDITOR_TEXT.len()
+        );
+        assert_eq!(
+            runtime.state().selection_seed.anchor_affinity(),
+            runenui_core::TextAffinity::Upstream
+        );
+        assert_eq!(
+            runtime.state().selection_seed.active_affinity(),
+            runenui_core::TextAffinity::Downstream
+        );
         assert_eq!(runtime.state().revision, 3);
         assert_eq!(runtime.status(), runenui_runtime::RuntimeStatus::Running);
+    }
+
+    #[test]
+    fn reference_editor_history_is_bounded_to_the_most_recent_hundred_states() {
+        let mut history = Vec::new();
+        for index in 0..MAX_EDITOR_HISTORY_ENTRIES + 2 {
+            let text = format!("entry-{index}");
+            let selection = runenui_core::EditSelection::collapsed(
+                &text,
+                text.len(),
+                runenui_core::TextAffinity::Upstream,
+            )
+            .unwrap_or_else(|_| unreachable!("history selection is a valid byte boundary"));
+            push_editor_history(&mut history, DemoHistoryEntry { text, selection });
+        }
+        assert_eq!(history.len(), MAX_EDITOR_HISTORY_ENTRIES);
+        assert_eq!(history[0].text, "entry-2");
+        assert_eq!(history[MAX_EDITOR_HISTORY_ENTRIES - 1].text, "entry-101");
+    }
+
+    #[test]
+    #[ignore = "opt-in issue 261 latency sampling; run with --ignored --nocapture"]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one opt-in harness measures the four required input and publication stages"
+    )]
+    fn issue_261_responsiveness_measurements() {
+        use std::time::{Duration, Instant};
+
+        fn summarize(samples: &mut [Duration]) -> (u128, u128) {
+            samples.sort_unstable();
+            let median = samples[samples.len() / 2].as_nanos();
+            let p95_index = (samples.len() * 95).div_ceil(100).saturating_sub(1);
+            (median, samples[p95_index].as_nanos())
+        }
+
+        fn report(label: &str, samples: &mut [Duration]) {
+            let (median, p95) = summarize(samples);
+            eprintln!(
+                "issue261_measurement label={label} n={} median_ns={median} p95_ns={p95}",
+                samples.len()
+            );
+        }
+
+        let mapping = NativeMapping::from_parts(PhysicalSize::new(800, 480), 1.0)
+            .unwrap_or_else(|| unreachable!("measurement mapping is valid"));
+        let environment = StyleEnvironment::default();
+        let context = SurfaceBuildContext::tight(&environment, mapping.logical_size)
+            .with_raster_scale(mapping.raster_scale);
+        for (name, long_document) in [("short", false), ("long", true)] {
+            let mut runtime = AppRuntime::<DemoApp>::mount_with_config(
+                DemoState::default(),
+                RuntimeConfig::default()
+                    .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+            );
+            runtime.pump(HOST_PUMP_BUDGET);
+            let owner = runtime.index().nodes()[0].id().clone();
+            runtime
+                .submit_command(
+                    owner.clone(),
+                    SemanticCommand::RequestFocus,
+                    CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|_| unreachable!("measurement editor accepts focus"));
+            runtime.pump(HOST_PUMP_BUDGET);
+            if long_document {
+                let text = "multiline responsiveness fixture — retained text layout\n".repeat(40);
+                runtime
+                    .submit_text(
+                        CommittedTextEvent::new(text, None)
+                            .unwrap_or_else(|_| unreachable!("measurement text is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("measurement editor accepts long text"));
+                runtime.pump(HOST_PUMP_BUDGET);
+            }
+            let displayed_publication = runtime
+                .publish_surface(&context)
+                .unwrap_or_else(|error| unreachable!("measurement surface is valid: {error:?}"));
+            let displayed = DisplayedFrame::from_pending(&PendingFrame {
+                publication: displayed_publication.clone(),
+                mapping,
+            });
+            let point = PhysicalPosition::new(32.0, 32.0);
+            let mut translation = Vec::with_capacity(40);
+            for _ in 0..40 {
+                let started = Instant::now();
+                let _ = displayed.translate_cursor(Some(mapping), point);
+                translation.push(started.elapsed());
+            }
+            report(&format!("{name}.native_translation"), &mut translation);
+
+            let mut typing = Vec::with_capacity(40);
+            let mut publication = Vec::with_capacity(40);
+            for _ in 0..40 {
+                let started = Instant::now();
+                runtime
+                    .submit_text(
+                        CommittedTextEvent::new("x", None)
+                            .unwrap_or_else(|_| unreachable!("measurement commit is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("measurement text is admitted"));
+                runtime.pump(HOST_PUMP_BUDGET);
+                typing.push(started.elapsed());
+                let started = Instant::now();
+                let _ = runtime.publish_surface(&context).unwrap_or_else(|error| {
+                    unreachable!("measurement publication is valid: {error:?}")
+                });
+                publication.push(started.elapsed());
+            }
+            report(&format!("{name}.typing_submit_pump"), &mut typing);
+            report(&format!("{name}.text_publication"), &mut publication);
+
+            let mut drag_runtime = AppRuntime::<DemoApp>::mount_with_config(
+                DemoState::default(),
+                RuntimeConfig::default()
+                    .with_text_font_source_policy(FontSourcePolicy::SystemAndBundled),
+            );
+            drag_runtime.pump(HOST_PUMP_BUDGET);
+            let drag_owner = drag_runtime.index().nodes()[0].id().clone();
+            drag_runtime
+                .submit_command(
+                    drag_owner,
+                    SemanticCommand::RequestFocus,
+                    CommandOrigin::programmatic(),
+                )
+                .unwrap_or_else(|_| unreachable!("drag measurement editor accepts focus"));
+            drag_runtime.pump(HOST_PUMP_BUDGET);
+            if long_document {
+                let text = "multiline responsiveness fixture — retained text layout\n".repeat(40);
+                drag_runtime
+                    .submit_text(
+                        CommittedTextEvent::new(text, None)
+                            .unwrap_or_else(|_| unreachable!("measurement text is valid")),
+                    )
+                    .unwrap_or_else(|_| unreachable!("drag measurement text is accepted"));
+                drag_runtime.pump(HOST_PUMP_BUDGET);
+            }
+            let drag_surface = drag_runtime
+                .publish_surface(&context)
+                .unwrap_or_else(|error| unreachable!("drag surface is valid: {error:?}"));
+            let drag_context = drag_surface.input_context().clone();
+            let pointer_id = runenui_core::PointerId::new(71)
+                .unwrap_or_else(|| unreachable!("measurement pointer id is nonzero"));
+            let start = LogicalPoint::new(32.0, 32.0)
+                .unwrap_or_else(|_| unreachable!("measurement drag starts at finite point"));
+            drag_runtime
+                .submit_pointer(
+                    runenui_core::PointerEvent::new(
+                        pointer_id,
+                        runenui_core::PointerDeviceKind::Mouse,
+                        PointerPhase::Down,
+                        start,
+                        drag_context.clone(),
+                    )
+                    .with_buttons(runenui_core::PointerButtons::new([PointerButton::Primary]))
+                    .with_changed_button(PointerButton::Primary),
+                )
+                .unwrap_or_else(|_| unreachable!("measurement drag starts"));
+            drag_runtime.pump(HOST_PUMP_BUDGET);
+            let mut drag = Vec::with_capacity(40);
+            for index in 0..40 {
+                let x = if index % 2 == 0 { 160.0 } else { 12.0 };
+                let position = LogicalPoint::new(x, 32.0)
+                    .unwrap_or_else(|_| unreachable!("measurement drag point is finite"));
+                let started = Instant::now();
+                drag_runtime
+                    .submit_pointer(
+                        runenui_core::PointerEvent::new(
+                            pointer_id,
+                            runenui_core::PointerDeviceKind::Mouse,
+                            PointerPhase::Move,
+                            position,
+                            drag_context.clone(),
+                        )
+                        .with_buttons(runenui_core::PointerButtons::new([PointerButton::Primary])),
+                    )
+                    .unwrap_or_else(|_| unreachable!("captured measurement drag is admitted"));
+                drag_runtime.pump(HOST_PUMP_BUDGET);
+                drag.push(started.elapsed());
+            }
+            report(&format!("{name}.drag_submit_pump"), &mut drag);
+        }
     }
 
     fn translated_point(

@@ -49,6 +49,7 @@ struct Document {
     redo: Vec<String>,
     editor_visible: bool,
     prevent_default: bool,
+    prevent_pointer_down: bool,
     saved_request: Option<EditRequestId>,
     read_only: bool,
     disabled: bool,
@@ -105,6 +106,7 @@ struct BoundEditor {
     selection: TextSelection,
     sensitivity: TextSensitivity,
     prevent_default: bool,
+    prevent_pointer_down: bool,
     read_only: bool,
     disabled: bool,
 }
@@ -137,6 +139,9 @@ impl Widget<Action> for BoundEditor {
                 || event
                     .as_semantic_command()
                     .is_some_and(|event| event.command() != SemanticCommand::RequestFocus))
+            || event.as_pointer().is_some_and(|pointer| {
+                self.prevent_pointer_down && pointer.phase() == PointerPhase::Down
+            })
         {
             context.prevent_default();
         }
@@ -233,6 +238,7 @@ fn editor_root(state: &Document) -> Element<Action> {
         selection: TextSelection::collapsed(position),
         sensitivity: state.sensitivity,
         prevent_default: state.prevent_default,
+        prevent_pointer_down: state.prevent_pointer_down,
         read_only: state.read_only,
         disabled: state.disabled,
     })
@@ -432,6 +438,7 @@ fn mounted() -> AppRuntime<App> {
         redo: Vec::new(),
         editor_visible: true,
         prevent_default: false,
+        prevent_pointer_down: false,
         saved_request: None,
         read_only: false,
         disabled: false,
@@ -458,6 +465,22 @@ where
 
 fn focus(runtime: &mut AppRuntime<App>) {
     focus_generic(runtime);
+}
+
+fn keyboard_down(runtime: &mut AppRuntime<App>, logical: LogicalKey, modifiers: KeyModifiers) {
+    runtime
+        .submit_keyboard(KeyboardEvent::new(
+            KeyboardPhase::Down,
+            PhysicalKey::Code(format!("{logical:?}")),
+            logical,
+            modifiers,
+            false,
+            KeyLocation::Standard,
+            KeyboardCompositionState::Inactive,
+            None,
+        ))
+        .unwrap_or_else(|error| panic!("keyboard command is submitted: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
 }
 
 fn publish_editor(runtime: &mut AppRuntime<App>) -> SurfaceInputContext {
@@ -1140,7 +1163,7 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
             .contains("\"name\":\"pointer_text_selection_started\"")
     );
 
-    let drag_point = LogicalPoint::new(24.0, 18.0)
+    let drag_point = LogicalPoint::new(400.0, 18.0)
         .unwrap_or_else(|_| unreachable!("pointer drag position is finite"));
     runtime
         .submit_pointer(
@@ -1149,7 +1172,7 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
                 PointerDeviceKind::Mouse,
                 PointerPhase::Move,
                 drag_point,
-                surface_context,
+                surface_context.clone(),
             )
             .with_buttons(PointerButtons::new([PointerButton::Primary])),
         )
@@ -1165,6 +1188,27 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
             .export_jsonl()
             .contains("\"name\":\"pointer_text_selection_updated\"")
     );
+
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                LogicalPoint::new(500.0, 18.0)
+                    .unwrap_or_else(|_| unreachable!("outside release position is finite")),
+                surface_context,
+            )
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|error| {
+            panic!("captured release outside the viewport is submitted: {error:?}")
+        });
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert!(runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerTextSelectionEnded { pointer_id: id } if *id == pointer_id
+    )));
 
     let environment = StyleEnvironment::default();
     let publication = runtime
@@ -1186,6 +1230,23 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
     assert_eq!(selection.active().byte_offset(), 2);
     assert!(!selection.is_collapsed());
 
+    let cancellation_pointer =
+        PointerId::new(33).unwrap_or_else(|| unreachable!("fixture pointer is non-zero"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                cancellation_pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                point,
+                publication.input_context().clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|error| panic!("a fresh captured selection starts: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+
     runtime
         .submit_action(Action::RemoveEditor)
         .unwrap_or_else(|_| unreachable!("owner removal is queued"));
@@ -1197,12 +1258,106 @@ fn pointer_text_selection_uses_displayed_map_and_cancels_once_on_owner_removal()
             .filter(|record| matches!(
                 record.kind(),
                 TraceRecordKind::PointerTextSelectionCancelled { pointer_id }
-                    if pointer_id.get() == 31
+                    if pointer_id == &cancellation_pointer
             ))
             .count(),
         1
     );
     assert_eq!(runtime.status(), RuntimeStatus::Running);
+}
+
+#[test]
+fn default_prevented_pointer_down_suppresses_selection_start() {
+    let mut down_state = mounted().state().clone();
+    down_state.prevent_pointer_down = true;
+    let mut down_runtime = AppRuntime::<App>::mount(down_state);
+    install_controlled_font(&mut down_runtime);
+    focus(&mut down_runtime);
+    let down_context = publish_editor(&mut down_runtime);
+    let down_pointer = PointerId::new(35).unwrap_or_else(|| unreachable!("pointer ID is nonzero"));
+    let origin =
+        LogicalPoint::new(1.0, 18.0).unwrap_or_else(|_| unreachable!("pointer origin is finite"));
+    down_runtime
+        .submit_pointer(
+            PointerEvent::new(
+                down_pointer,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                origin,
+                down_context,
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary),
+        )
+        .unwrap_or_else(|error| panic!("default-prevented primary Down is routed: {error:?}"));
+    down_runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    assert!(!down_runtime.trace().records().any(|record| matches!(
+        record.kind(),
+        TraceRecordKind::PointerTextSelectionStarted { pointer_id } if pointer_id.get() == 35
+    )));
+}
+
+#[test]
+fn shift_primary_click_preserves_selection_anchor_across_the_active_endpoint() {
+    let mut state = mounted().state().clone();
+    state.selection = 2;
+    let mut runtime = AppRuntime::<App>::mount(state);
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    let surface_context = publish_editor(&mut runtime);
+    let pointer_id =
+        PointerId::new(32).unwrap_or_else(|| unreachable!("fixture pointer is non-zero"));
+    let point = LogicalPoint::new(1.0, 18.0)
+        .unwrap_or_else(|_| unreachable!("shift-click point is finite"));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Down,
+                point,
+                surface_context.clone(),
+            )
+            .with_buttons(PointerButtons::new([PointerButton::Primary]))
+            .with_changed_button(PointerButton::Primary)
+            .with_modifiers(KeyModifiers::SHIFT),
+        )
+        .unwrap_or_else(|error| panic!("shift-click is admitted: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+    runtime
+        .submit_pointer(
+            PointerEvent::new(
+                pointer_id,
+                PointerDeviceKind::Mouse,
+                PointerPhase::Up,
+                point,
+                surface_context,
+            )
+            .with_changed_button(PointerButton::Primary)
+            .with_modifiers(KeyModifiers::SHIFT),
+        )
+        .unwrap_or_else(|error| panic!("shift-click release is admitted: {error:?}"));
+    runtime.pump(PumpBudget::new(16, usize::MAX, usize::MAX, usize::MAX));
+
+    let environment = StyleEnvironment::default();
+    let publication = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &environment,
+            LogicalSize::try_new(200.0, 40.0)
+                .unwrap_or_else(|_| unreachable!("test surface is finite")),
+        ))
+        .unwrap_or_else(|error| panic!("shift-click selection republishes: {error:?}"));
+    let selection = publication
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .first()
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("editable semantic state remains published"))
+        .selection();
+    assert_eq!(selection.anchor().byte_offset(), 2);
+    assert_eq!(selection.active().byte_offset(), 0);
+    assert!(!selection.is_collapsed());
 }
 
 #[test]
@@ -1529,6 +1684,78 @@ fn native_backspace_and_normalized_select_all_use_the_keyboard_default_route() {
         "Escape on a caret does not move or mutate text"
     );
     assert_eq!(runtime.state().text, initial_text);
+}
+
+#[test]
+fn editable_vertical_keys_move_and_extend_without_retargeting_focus_navigation() {
+    let mut state = mounted().state().clone();
+    state.text = "one two\nthree four\nfive six".to_owned();
+    state.selection = 2;
+    let mut runtime = AppRuntime::<App>::mount(state);
+    install_controlled_font(&mut runtime);
+    focus(&mut runtime);
+    publish_editor(&mut runtime);
+
+    keyboard_down(&mut runtime, LogicalKey::ArrowDown, KeyModifiers::NONE);
+    let first_down = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &StyleEnvironment::default(),
+            LogicalSize::try_new(200.0, 40.0)
+                .unwrap_or_else(|_| unreachable!("test surface is finite")),
+        ))
+        .unwrap_or_else(|error| panic!("first vertical move publishes: {error:?}"));
+    let selection = first_down
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .first()
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("editable state remains published"))
+        .selection();
+    assert!(selection.is_collapsed());
+    assert!((8..19).contains(&selection.active().byte_offset()));
+
+    keyboard_down(&mut runtime, LogicalKey::ArrowDown, KeyModifiers::NONE);
+    let second_down = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &StyleEnvironment::default(),
+            LogicalSize::try_new(200.0, 40.0)
+                .unwrap_or_else(|_| unreachable!("test surface is finite")),
+        ))
+        .unwrap_or_else(|error| panic!("repeated vertical move publishes: {error:?}"));
+    let third_line_caret = second_down
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .first()
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("editable state remains published"))
+        .selection()
+        .active();
+    assert!(third_line_caret.byte_offset() >= 19);
+
+    keyboard_down(&mut runtime, LogicalKey::ArrowUp, KeyModifiers::SHIFT);
+    let extended = runtime
+        .publish_surface(&SurfaceBuildContext::tight(
+            &StyleEnvironment::default(),
+            LogicalSize::try_new(200.0, 40.0)
+                .unwrap_or_else(|_| unreachable!("test surface is finite")),
+        ))
+        .unwrap_or_else(|error| panic!("vertical extension publishes: {error:?}"));
+    let extended_selection = extended
+        .semantic_publication()
+        .snapshot()
+        .nodes()
+        .first()
+        .and_then(|node| node.editable())
+        .unwrap_or_else(|| unreachable!("editable state remains published"))
+        .selection();
+    assert_eq!(
+        extended_selection.anchor().byte_offset(),
+        third_line_caret.byte_offset()
+    );
+    assert!((8..19).contains(&extended_selection.active().byte_offset()));
+    assert!(!extended_selection.is_collapsed());
 }
 
 #[test]

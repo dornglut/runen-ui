@@ -1593,6 +1593,14 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             LogicalKey::ArrowRight if editable => Some(SemanticCommand::MoveForward),
             LogicalKey::ArrowLeft => Some(SemanticCommand::FocusLeft),
             LogicalKey::ArrowRight => Some(SemanticCommand::FocusRight),
+            LogicalKey::ArrowUp if editable && event.modifiers().shift() => {
+                Some(SemanticCommand::ExtendUp)
+            }
+            LogicalKey::ArrowDown if editable && event.modifiers().shift() => {
+                Some(SemanticCommand::ExtendDown)
+            }
+            LogicalKey::ArrowUp if editable => Some(SemanticCommand::MoveUp),
+            LogicalKey::ArrowDown if editable => Some(SemanticCommand::MoveDown),
             LogicalKey::ArrowUp => Some(SemanticCommand::FocusUp),
             LogicalKey::ArrowDown => Some(SemanticCommand::FocusDown),
             LogicalKey::Escape if self.editing.has_stable_range_selection(&target) => {

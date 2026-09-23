@@ -702,7 +702,7 @@ impl SurfacePublicationState {
         Ok((snapshot, snapshot_kind))
     }
 
-    pub(in crate::runtime) fn text_map_position_at(
+    pub(in crate::runtime) fn text_hit_position_at(
         &self,
         context: &SurfaceInputContext,
         owner: &MountedNodeId,
@@ -712,7 +712,23 @@ impl SurfacePublicationState {
         runenui_core::TextDisplayPosition,
     )> {
         let (snapshot, _) = self.validate_context(context).ok()?;
-        snapshot.text_targets.get(owner)?.map_and_hit_test(point)
+        snapshot.text_targets.get(owner)?.hit_position(point)
+    }
+
+    pub(in crate::runtime) fn captured_text_position_at(
+        &self,
+        context: &SurfaceInputContext,
+        owner: &MountedNodeId,
+        point: LogicalPoint,
+    ) -> Option<(
+        runenui_text::TextCaretMap,
+        runenui_core::TextDisplayPosition,
+    )> {
+        let (snapshot, _) = self.validate_context(context).ok()?;
+        snapshot
+            .text_targets
+            .get(owner)?
+            .captured_drag_position(point)
     }
 
     pub(crate) fn displayed_scroll_metrics(

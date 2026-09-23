@@ -29,15 +29,15 @@ pub(crate) struct DisplayedTextTarget {
 }
 
 impl DisplayedTextTarget {
-    pub(crate) fn map_and_hit_test(
+    pub(crate) fn hit_position(
         &self,
         point: crate::LogicalPoint,
     ) -> Option<(TextCaretMap, TextDisplayPosition)> {
-        let position = self.hit_test(point)?;
+        let position = self.hit_position_in_bounds(point)?;
         Some((self.map.clone(), position))
     }
 
-    pub(crate) fn hit_test(&self, point: crate::LogicalPoint) -> Option<TextDisplayPosition> {
+    fn hit_position_in_bounds(&self, point: crate::LogicalPoint) -> Option<TextDisplayPosition> {
         if self
             .clips
             .iter()
@@ -54,6 +54,17 @@ impl DisplayedTextTarget {
             )
             .ok()
             .flatten()
+    }
+
+    pub(crate) fn captured_drag_position(
+        &self,
+        point: crate::LogicalPoint,
+    ) -> Option<(TextCaretMap, TextDisplayPosition)> {
+        let position = self
+            .map
+            .nearest_position(self.map.snapshot(), point, self.layout_to_surface)
+            .ok()?;
+        Some((self.map.clone(), position))
     }
 }
 
@@ -212,7 +223,7 @@ impl<'a> PlannedSurfacePublication<'a> {
             else {
                 continue;
             };
-            let Ok(layout_to_surface) = text_origin.then(presentation.owner_to_surface()) else {
+            let Ok(layout_to_surface) = text_origin.then(presentation.content_to_surface()) else {
                 continue;
             };
             targets.insert(
@@ -221,7 +232,7 @@ impl<'a> PlannedSurfacePublication<'a> {
                     map,
                     eligible_bounds: presentation.visible_bounds(),
                     layout_to_surface,
-                    clips: Arc::from(presentation.inherited_clips().to_vec()),
+                    clips: Arc::from(presentation.content_clips().to_vec()),
                 },
             );
         }

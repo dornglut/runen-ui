@@ -555,13 +555,19 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
         {
             return None;
         }
-        let (caret_map, TextDisplayPosition::Document(anchor)) = self
+        let (caret_map, TextDisplayPosition::Document(hit)) = self
             .surface_publication
-            .text_map_position_at(event.surface_context(), owner, event.position())?
+            .text_hit_position_at(event.surface_context(), owner, event.position())?
         else {
             return None;
         };
-        let selection = TextSelection::collapsed(anchor);
+        let selection = if event.modifiers().shift() {
+            let current = self.editing.stable_selection_for_map(owner, &caret_map)?;
+            TextSelection::new(current.anchor(), hit).ok()?
+        } else {
+            TextSelection::collapsed(hit)
+        };
+        let anchor = selection.anchor();
         if self
             .editing
             .validate_selection(owner, selection, &caret_map)
@@ -610,9 +616,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             return None;
         }
         if !transaction.default_prevented
-            && let Some((caret_map, TextDisplayPosition::Document(active))) = self
-                .surface_publication
-                .text_map_position_at(event.surface_context(), gesture.owner(), event.position())
+            && let Some((caret_map, TextDisplayPosition::Document(active))) =
+                self.surface_publication.captured_text_position_at(
+                    event.surface_context(),
+                    gesture.owner(),
+                    event.position(),
+                )
         {
             match TextSelection::new(gesture.anchor(), active) {
                 Ok(selection)
@@ -835,9 +844,12 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             let Some(candidate) = state.selection_candidate() else {
                 return Ok(None);
             };
-            let Some((caret_map, TextDisplayPosition::Document(active))) = self
-                .surface_publication
-                .text_map_position_at(event.surface_context(), candidate.owner(), event.position())
+            let Some((caret_map, TextDisplayPosition::Document(active))) =
+                self.surface_publication.captured_text_position_at(
+                    event.surface_context(),
+                    candidate.owner(),
+                    event.position(),
+                )
             else {
                 winner =
                     TouchGestureWinner::new(TouchGestureKind::Move, state.origin_target().cloned());

@@ -289,8 +289,12 @@ pub(super) const fn is_editing_command(command: runenui_core::SemanticCommand) -
         command,
         runenui_core::SemanticCommand::MoveBackward
             | runenui_core::SemanticCommand::MoveForward
+            | runenui_core::SemanticCommand::MoveUp
+            | runenui_core::SemanticCommand::MoveDown
             | runenui_core::SemanticCommand::ExtendBackward
             | runenui_core::SemanticCommand::ExtendForward
+            | runenui_core::SemanticCommand::ExtendUp
+            | runenui_core::SemanticCommand::ExtendDown
             | runenui_core::SemanticCommand::SelectAll
             | runenui_core::SemanticCommand::DeleteBackward
             | runenui_core::SemanticCommand::DeleteForward

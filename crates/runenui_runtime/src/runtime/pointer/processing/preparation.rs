@@ -306,7 +306,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
                 return None;
             }
             let (map, TextDisplayPosition::Document(active)) =
-                self.surface_publication.text_map_position_at(
+                self.surface_publication.captured_text_position_at(
                     event.surface_context(),
                     candidate.owner(),
                     event.position(),
@@ -405,7 +405,7 @@ impl<State, Action, Protocol: HostProtocol> Runtime<State, Action, Protocol> {
             {
                 return None;
             }
-            let (map, display_position) = self.surface_publication.text_map_position_at(
+            let (map, display_position) = self.surface_publication.text_hit_position_at(
                 event.surface_context(),
                 owner,
                 event.position(),

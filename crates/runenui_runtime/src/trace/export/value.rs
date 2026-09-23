@@ -179,6 +179,10 @@ pub(super) fn semantic_command(output: &mut String, command: SemanticCommand) {
             json::string(output, tokens::focus_direction(direction));
         }
         SemanticCommand::ScrollIntoView => json::string(output, "scroll_into_view"),
+        SemanticCommand::MoveUp => json::string(output, "move_up"),
+        SemanticCommand::MoveDown => json::string(output, "move_down"),
+        SemanticCommand::ExtendUp => json::string(output, "extend_up"),
+        SemanticCommand::ExtendDown => json::string(output, "extend_down"),
         _ => json::string(output, "unknown"),
     }
     output.push('}');

@@ -332,6 +332,10 @@ pub(super) fn hit_contexts(layout: &CachedLayoutFacts) -> Vec<HitContributionCon
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PresentationGeometryError;
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "the single preorder pass keeps owner and scrolling content geometry aligned"
+)]
 pub(super) fn resolve_presentation(
     topology: &SurfaceTopologySnapshot,
     layout: &CachedLayoutFacts,
@@ -363,7 +367,7 @@ pub(super) fn resolve_presentation(
             .and_then(|parent| positions.get(parent).copied());
         let (ancestor_x, ancestor_y) =
             parent_position.map_or((0.0, 0.0), |parent| child_offsets[parent]);
-        let mut inherited_clips = parent_position
+        let inherited_clips = parent_position
             .map(|parent| child_clips[parent].clone())
             .unwrap_or_default();
         let mut inherited_clip_bounds = parent_position
@@ -391,13 +395,6 @@ pub(super) fn resolve_presentation(
             .fold(owner_bounds, |visible, clip| {
                 intersect_rects(visible, *clip)
             });
-        nodes.push(PresentationNodeFacts::new(
-            owner_to_surface,
-            owner_bounds,
-            visible_bounds,
-            Arc::from(inherited_clips.clone()),
-        ));
-
         let local_scroll = scroll.offset(&topology_node.id);
         let scroll_x = if topology_node.overflow.horizontal() == OverflowPolicy::Scroll {
             local_scroll.0
@@ -409,6 +406,11 @@ pub(super) fn resolve_presentation(
         } else {
             0.0
         };
+        let content_translation = LogicalTransform::translation(-scroll_x, -scroll_y)
+            .map_err(|_| PresentationGeometryError)?;
+        let content_to_surface = content_translation
+            .then(owner_to_surface)
+            .map_err(|_| PresentationGeometryError)?;
         let child_x = ancestor_x + scroll_x;
         let child_y = ancestor_y + scroll_y;
         if !child_x.is_finite() || !child_y.is_finite() {
@@ -416,22 +418,29 @@ pub(super) fn resolve_presentation(
         }
         child_offsets.push((child_x, child_y));
 
-        if scroll_x != 0.0
-            || scroll_y != 0.0
-            || topology_node.overflow.horizontal() == OverflowPolicy::Scroll
+        let mut content_clips = inherited_clips.clone();
+        if topology_node.overflow.horizontal() == OverflowPolicy::Scroll
             || topology_node.overflow.vertical() == OverflowPolicy::Scroll
         {
             let clip_rect = LogicalRect::try_new(0.0, 0.0, bounds.width(), bounds.height())
                 .unwrap_or_else(|_| unreachable!("published viewport extent is valid"));
             let clip_bounds = transform_rect_aabb(owner_to_surface, clip_rect)
                 .ok_or(PresentationGeometryError)?;
-            inherited_clips.push(SceneClip::new(
+            content_clips.push(SceneClip::new(
                 SceneShape::rect(clip_rect),
                 owner_to_surface,
             ));
             inherited_clip_bounds.push(clip_bounds);
         }
-        child_clips.push(inherited_clips);
+        nodes.push(PresentationNodeFacts::new(
+            owner_to_surface,
+            content_to_surface,
+            owner_bounds,
+            visible_bounds,
+            Arc::from(inherited_clips),
+            Arc::from(content_clips.clone()),
+        ));
+        child_clips.push(content_clips);
         child_clip_bounds.push(inherited_clip_bounds);
     }
     Ok(CachedPresentationFacts { nodes })
@@ -686,7 +695,9 @@ fn text_rect_with_padding(rect: LogicalRect, computed: &ComputedStyle) -> Option
 struct OwnerPaintContext<'a> {
     mounted_preorder: usize,
     owner_to_surface: LogicalTransform,
+    content_to_surface: LogicalTransform,
     inherited_clips: &'a [SceneClip],
+    content_clips: &'a [SceneClip],
 }
 
 fn owner_paint_context(
@@ -697,7 +708,9 @@ fn owner_paint_context(
     OwnerPaintContext {
         mounted_preorder,
         owner_to_surface: presentation_node.owner_to_surface(),
+        content_to_surface: presentation_node.content_to_surface(),
         inherited_clips: presentation_node.inherited_clips(),
+        content_clips: presentation_node.content_clips(),
     }
 }
 
@@ -713,8 +726,8 @@ fn append_text_overlay_rect(
         &item,
         owner.mounted_preorder,
         *next_local_order,
-        owner.owner_to_surface,
-        owner.inherited_clips,
+        owner.content_to_surface,
+        owner.content_clips,
         ordered,
     );
     *next_local_order += 1;
@@ -783,8 +796,8 @@ fn append_shaped_text(
                     &item,
                     owner.mounted_preorder,
                     *next_local_order,
-                    owner.owner_to_surface,
-                    owner.inherited_clips,
+                    owner.content_to_surface,
+                    owner.content_clips,
                     ordered,
                 );
                 *next_local_order += 1;
@@ -1002,8 +1015,8 @@ pub(super) fn resolve_paint(input: PaintResolutionInput<'_>) -> ResolvedPaint {
                 &contribution,
                 mounted_preorder,
                 next_local_order,
-                owner.owner_to_surface,
-                owner.inherited_clips,
+                owner.content_to_surface,
+                owner.content_clips,
                 &mut diagnostics[mounted_preorder],
                 &mut explicit_groups,
                 &mut ordered,
