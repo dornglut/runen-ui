@@ -11,6 +11,7 @@ pub struct TextPhaseProfile {
     pub line_break_calls: usize,
     pub artifact_extract_calls: usize,
     pub caret_map_calls: usize,
+    pub grapheme_compute_calls: usize,
     pub legal_offsets_calls: usize,
     pub artifact_lines: usize,
     pub artifact_runs: usize,
@@ -70,11 +71,18 @@ pub fn record_artifact_counts(lines: usize, runs: usize, glyphs: usize, clusters
     });
 }
 
-pub fn record_graphemes(duration: Duration, boundaries: usize) {
+pub fn record_caret_map() {
+    PROFILE.with(|profile| {
+        let mut profile = profile.borrow_mut();
+        profile.caret_map_calls = profile.caret_map_calls.saturating_add(1);
+    });
+}
+
+pub fn record_grapheme_compute(duration: Duration, boundaries: usize) {
     PROFILE.with(|profile| {
         let mut profile = profile.borrow_mut();
         add_duration(&mut profile.grapheme_ns, duration);
-        profile.caret_map_calls = profile.caret_map_calls.saturating_add(1);
+        profile.grapheme_compute_calls = profile.grapheme_compute_calls.saturating_add(1);
         profile.grapheme_boundaries = profile.grapheme_boundaries.saturating_add(boundaries);
     });
 }
