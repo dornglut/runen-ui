@@ -35,7 +35,6 @@ fn request(text: String) -> TextRequest {
 }
 
 #[test]
-#[ignore = "opt-in issue 269 dependency proof; pinned Parley 0.11.1 is expected to fail above its large-run source-offset limit"]
 fn issue_269_large_run_cluster_coverage() -> Result<(), Box<dyn Error>> {
     let mut failures = Vec::new();
 
@@ -68,19 +67,25 @@ fn issue_269_large_run_cluster_coverage() -> Result<(), Box<dyn Error>> {
             coverage.logical_stop_cluster_range,
         );
 
-        if coverage.max_end != text.len() || coverage.first_non_monotonic.is_some() {
+        if coverage.max_end != text.len()
+            || coverage.first_non_monotonic.is_some()
+            || coverage.logical_walk_max_end != text.len()
+            || coverage.logical_walk_stop_byte.is_some()
+        {
             failures.push((
                 label,
                 text.len(),
                 coverage.max_end,
                 coverage.first_non_monotonic,
+                coverage.logical_walk_max_end,
+                coverage.logical_walk_stop_byte,
             ));
         }
     }
 
     assert!(
         failures.is_empty(),
-        "retained Parley cluster ranges must cover the full source monotonically; failures={failures:?}"
+        "retained Parley cluster ranges and logical traversal must cover the full source monotonically; failures={failures:?}"
     );
     Ok(())
 }
