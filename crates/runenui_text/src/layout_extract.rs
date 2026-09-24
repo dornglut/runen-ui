@@ -54,6 +54,9 @@ pub fn extract_layout<B: Brush>(
         let mut runs = Vec::new();
 
         for item in line.items() {
+            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                return None;
+            };
             // Parley shapes a synthetic space for an empty source to obtain caret metrics.
             // Parley 0.11.1 hid that synthetic cluster before exposing line items; current
             // upstream does not. Preserve the RunenUI source-artifact boundary: metrics remain
@@ -62,9 +65,6 @@ pub fn extract_layout<B: Brush>(
             if empty_source {
                 continue;
             }
-            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
-                return None;
-            };
             let run = glyph_run.run();
             let synthesis = run.synthesis();
             let font_instance = run.font();
