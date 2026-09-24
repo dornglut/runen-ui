@@ -174,8 +174,8 @@ fn grapheme_candidate_matches_exhaustive_oracle_for_preedit_projection()
 }
 
 #[test]
-fn grapheme_candidate_matches_exhaustive_oracle_for_large_documents()
--> Result<(), Box<dyn Error>> {
+fn grapheme_candidate_matches_exhaustive_oracle_for_large_documents() -> Result<(), Box<dyn Error>>
+{
     let fixture = "multiline responsiveness fixture — retained text layout\n";
     let mut system = corpus_system()?;
 
@@ -241,8 +241,7 @@ fn issue_266_legal_offset_candidate_profile() -> Result<(), Box<dyn Error>> {
             )?;
 
             let started = Instant::now();
-            let (oracle, current_oracle_validations) =
-                map.legal_byte_offsets_exhaustive_for_test();
+            let (oracle, current_oracle_validations) = map.legal_byte_offsets_exhaustive_for_test();
             oracle_times.push(started.elapsed().as_nanos());
 
             let started = Instant::now();
