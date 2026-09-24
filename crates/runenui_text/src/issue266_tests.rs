@@ -66,9 +66,9 @@ fn map_for(
 
 fn assert_candidate_matches_oracle(label: &str, map: &TextCaretMap) {
     let (oracle, exhaustive_validations) = map.legal_byte_offsets_exhaustive_for_test();
-    let candidate = map.legal_byte_offsets_grapheme_candidate_for_test();
-    let shared_candidate = map.legal_byte_offsets_shared_candidate_for_test();
-    let shared_candidate_again = map.legal_byte_offsets_shared_candidate_for_test();
+    let candidate = map.legal_byte_offsets();
+    let shared_candidate = map.__runtime_legal_byte_offsets();
+    let shared_candidate_again = map.__runtime_legal_byte_offsets();
 
     assert_eq!(candidate, oracle, "candidate mismatch for {label}");
     assert_eq!(
@@ -226,7 +226,7 @@ fn grapheme_candidate_matches_exhaustive_oracle_for_large_documents() -> Result<
         )?;
         assert_candidate_matches_oracle(label, &map);
         assert_eq!(
-            map.legal_byte_offsets_grapheme_candidate_for_test()
+            map.legal_byte_offsets()
                 .last()
                 .copied(),
             Some(text.len()),
@@ -277,11 +277,11 @@ fn issue_266_legal_offset_candidate_profile() -> Result<(), Box<dyn Error>> {
             oracle_times.push(started.elapsed().as_nanos());
 
             let started = Instant::now();
-            let candidate = map.legal_byte_offsets_grapheme_candidate_for_test();
+            let candidate = map.legal_byte_offsets_vec_unprofiled_for_test();
             candidate_vec_times.push(started.elapsed().as_nanos());
 
             let started = Instant::now();
-            let shared_candidate = map.legal_byte_offsets_shared_candidate_for_test();
+            let shared_candidate = map.legal_byte_offsets_shared_unprofiled_for_test();
             candidate_shared_times.push(started.elapsed().as_nanos());
 
             assert_eq!(candidate, oracle);
