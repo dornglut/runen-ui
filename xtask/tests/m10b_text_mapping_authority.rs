@@ -7,6 +7,7 @@ const TEXT_LIB: &str = "crates/runenui_text/src/lib.rs";
 const TEXT_LAYOUT_STATE: &str = "crates/runenui_text/src/layout_state.rs";
 const TEXT_CARET_MAP: &str = "crates/runenui_text/src/caret_map.rs";
 const TEXT_PREEDIT: &str = "crates/runenui_text/src/preedit.rs";
+const RUNTIME_TRANSACTION: &str = "crates/runenui_runtime/src/surface/transaction.rs";
 const TEXT_MANIFEST: &str = "crates/runenui_text/Cargo.toml";
 const NON_TEXT_PRODUCTION_ROOTS: [&str; 4] = [
     "crates/runenui_core/src",
@@ -102,6 +103,55 @@ fn caret_geometry_reuses_the_single_retained_layout_and_artifact() -> Result<(),
             ));
         }
     }
+    Ok(())
+}
+
+#[test]
+fn compact_caret_offset_publication_reuses_text_owned_storage() -> Result<(), String> {
+    let root = workspace_root()?;
+    let caret_map = read(&root.join(TEXT_CARET_MAP))?;
+    let transaction = read(&root.join(RUNTIME_TRANSACTION))?;
+
+    for required in [
+        "pub fn legal_byte_offsets(&self) -> Vec<usize>",
+        "self.grapheme_boundaries.to_vec()",
+        "pub fn __runtime_legal_byte_offsets(&self) -> Arc<[usize]>",
+        "Arc::clone(&self.grapheme_boundaries)",
+    ] {
+        if !caret_map.contains(required) {
+            return Err(format!(
+                "M10B legal-offset projection lost required seam `{required}` in {TEXT_CARET_MAP}"
+            ));
+        }
+    }
+    if caret_map.contains(".any(|affinity| self.cursor_at(byte_offset, affinity).is_ok())") {
+        return Err(
+            "M10B compact legal-offset publication regressed to per-boundary Parley cursor probing"
+                .to_owned(),
+        );
+    }
+
+    for required in [
+        "map.__runtime_legal_byte_offsets()",
+        "Arc::ptr_eq(&retained, &published)",
+    ] {
+        if !transaction.contains(required) {
+            return Err(format!(
+                "M10B runtime semantic publication lost retained-offset sharing seam `{required}` in {RUNTIME_TRANSACTION}"
+            ));
+        }
+    }
+    for forbidden in [
+        "let offsets = map.legal_byte_offsets();",
+        "Arc::<[usize]>::from(offsets)",
+    ] {
+        if transaction.contains(forbidden) {
+            return Err(format!(
+                "M10B runtime semantic publication reintroduced copied legal offsets via `{forbidden}`"
+            ));
+        }
+    }
+
     Ok(())
 }
 
