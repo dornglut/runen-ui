@@ -35,7 +35,6 @@ fn request(text: String) -> TextRequest {
 }
 
 #[test]
-#[ignore = "opt-in issue 269 dependency proof; pinned Parley 0.11.1 is expected to fail above its large-run source-offset limit"]
 fn issue_269_large_run_cluster_coverage() -> Result<(), Box<dyn Error>> {
     let mut failures = Vec::new();
 
