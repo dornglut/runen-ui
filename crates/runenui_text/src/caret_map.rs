@@ -421,6 +421,25 @@ impl TextCaretMap {
     }
 
     #[cfg(test)]
+    pub(crate) fn legal_byte_offsets_exhaustive_for_test(&self) -> (Vec<usize>, usize) {
+        let mut cursor_validations = 0usize;
+        let offsets = self
+            .grapheme_boundaries
+            .iter()
+            .copied()
+            .filter(|&byte_offset| {
+                [TextAffinity::Upstream, TextAffinity::Downstream]
+                    .into_iter()
+                    .any(|affinity| {
+                        cursor_validations = cursor_validations.saturating_add(1);
+                        self.cursor_at(byte_offset, affinity).is_ok()
+                    })
+            })
+            .collect::<Vec<_>>();
+        (offsets, cursor_validations)
+    }
+
+    #[cfg(test)]
     pub(crate) fn legal_byte_offsets_layout_candidate_for_test(
         &self,
     ) -> (Vec<usize>, usize, usize) {
