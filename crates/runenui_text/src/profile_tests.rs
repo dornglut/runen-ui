@@ -264,7 +264,6 @@ fn issue_263_text_phase_profile() {
     }
 }
 
-
 #[test]
 fn retained_layout_reuses_grapheme_boundaries_across_maps_and_relinebreak()
 -> Result<(), Box<dyn std::error::Error>> {
