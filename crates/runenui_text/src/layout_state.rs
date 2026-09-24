@@ -151,7 +151,7 @@ impl CachedTextLayout {
             .get_or_init(|| {
                 #[cfg(any(test, feature = "internal-test-seams"))]
                 let profile_started = std::time::Instant::now();
-                let boundaries = self
+                let boundaries: Arc<[usize]> = self
                     .request
                     .text()
                     .grapheme_indices(true)
