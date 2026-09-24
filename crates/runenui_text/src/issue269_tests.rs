@@ -40,8 +40,8 @@ fn issue_269_large_run_cluster_coverage() -> Result<(), Box<dyn Error>> {
     let mut failures = Vec::new();
 
     for (label, lines) in [
-        ("below_u16", 1000usize),
-        ("above_u16", 1200usize),
+        ("below_u16", 1129usize),
+        ("above_u16", 1130usize),
         ("4000_lines", 4000usize),
         ("16000_lines", 16000usize),
     ] {
