@@ -24,7 +24,7 @@ pub fn extract_layout<B: Brush>(
     let mut lines = Vec::with_capacity(layout.lines().count());
 
     for line in layout.lines() {
-        let trailing_whitespace = legacy_trailing_whitespace_advance(&line, source)?;
+        let trailing_whitespace = trailing_whitespace_advance(&line, source)?;
         let metrics = line.metrics();
         let metrics = TextLineMetrics::from_finite([
             metrics.line_height,
@@ -120,7 +120,11 @@ pub fn extract_layout<B: Brush>(
     Some(TextArtifact::new(size, source_snapshot, lines))
 }
 
-fn legacy_trailing_whitespace_advance<B: Brush>(
+// RunenUI exposes trailing-whitespace advance as a renderer-neutral line metric. Parley's
+// unreleased layout model exposes CSS hanging advance instead, which is a different concept.
+// Derive the RunenUI metric from exact source ranges and retained cluster advances so dependency
+// policy does not redefine the public artifact contract.
+fn trailing_whitespace_advance<B: Brush>(
     line: &parley::layout::Line<'_, B>,
     source: &str,
 ) -> Option<f32> {
@@ -128,7 +132,7 @@ fn legacy_trailing_whitespace_advance<B: Brush>(
     let line_source = source.get(line_range.clone())?;
     let mut suffix_start = line_range.end;
     for (relative, character) in line_source.char_indices().rev() {
-        if !is_legacy_trailing_whitespace(character) {
+        if !is_trailing_whitespace(character) {
             break;
         }
         suffix_start = line_range.start + relative;
@@ -150,7 +154,7 @@ fn legacy_trailing_whitespace_advance<B: Brush>(
     Some(advance)
 }
 
-const fn is_legacy_trailing_whitespace(character: char) -> bool {
+const fn is_trailing_whitespace(character: char) -> bool {
     matches!(
         character,
         ' ' | '\u{00A0}' | '\t' | '\r' | '\n' | '\u{2028}' | '\u{2029}'
@@ -159,18 +163,18 @@ const fn is_legacy_trailing_whitespace(character: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_legacy_trailing_whitespace;
+    use super::is_trailing_whitespace;
 
     #[test]
-    fn legacy_trailing_whitespace_matches_the_parley_0_11_1_metric_domain() {
+    fn trailing_whitespace_metric_domain_is_explicit() {
         for character in [' ', '\u{00A0}', '\t', '\r', '\n', '\u{2028}', '\u{2029}'] {
-            assert!(is_legacy_trailing_whitespace(character));
+            assert!(is_trailing_whitespace(character));
         }
 
         for character in [
             'a', '\u{3000}', '\u{2003}', '\u{0085}', '\u{000B}', '\u{000C}',
         ] {
-            assert!(!is_legacy_trailing_whitespace(character));
+            assert!(!is_trailing_whitespace(character));
         }
     }
 }
