@@ -67,8 +67,19 @@ fn map_for(
 fn assert_candidate_matches_oracle(label: &str, map: &TextCaretMap) {
     let (oracle, exhaustive_validations) = map.legal_byte_offsets_exhaustive_for_test();
     let candidate = map.legal_byte_offsets_grapheme_candidate_for_test();
+    let shared_candidate = map.legal_byte_offsets_shared_candidate_for_test();
+    let shared_candidate_again = map.legal_byte_offsets_shared_candidate_for_test();
 
     assert_eq!(candidate, oracle, "candidate mismatch for {label}");
+    assert_eq!(
+        shared_candidate.as_ref(),
+        oracle.as_slice(),
+        "shared candidate mismatch for {label}"
+    );
+    assert!(
+        Arc::ptr_eq(&shared_candidate, &shared_candidate_again),
+        "shared candidate must reuse the retained boundary allocation for {label}"
+    );
     assert_eq!(
         candidate.len(),
         map.grapheme_boundary_count_for_test(),
@@ -245,7 +256,8 @@ fn issue_266_legal_offset_candidate_profile() -> Result<(), Box<dyn Error>> {
     ] {
         let text = fixture.repeat(lines);
         let mut oracle_times = Vec::with_capacity(SAMPLE_COUNT);
-        let mut candidate_times = Vec::with_capacity(SAMPLE_COUNT);
+        let mut candidate_vec_times = Vec::with_capacity(SAMPLE_COUNT);
+        let mut candidate_shared_times = Vec::with_capacity(SAMPLE_COUNT);
         let mut oracle_validations = None;
         let mut grapheme_boundaries = None;
         let mut legal_offsets = None;
@@ -266,18 +278,25 @@ fn issue_266_legal_offset_candidate_profile() -> Result<(), Box<dyn Error>> {
 
             let started = Instant::now();
             let candidate = map.legal_byte_offsets_grapheme_candidate_for_test();
-            candidate_times.push(started.elapsed().as_nanos());
+            candidate_vec_times.push(started.elapsed().as_nanos());
+
+            let started = Instant::now();
+            let shared_candidate = map.legal_byte_offsets_shared_candidate_for_test();
+            candidate_shared_times.push(started.elapsed().as_nanos());
 
             assert_eq!(candidate, oracle);
+            assert_eq!(shared_candidate.as_ref(), oracle.as_slice());
             oracle_validations = Some(current_oracle_validations);
             grapheme_boundaries = Some(map.grapheme_boundary_count_for_test());
             legal_offsets = Some(candidate.len());
         }
 
         let (oracle_median, oracle_p95) = summarize(&mut oracle_times);
-        let (candidate_median, candidate_p95) = summarize(&mut candidate_times);
+        let (candidate_vec_median, candidate_vec_p95) = summarize(&mut candidate_vec_times);
+        let (candidate_shared_median, candidate_shared_p95) =
+            summarize(&mut candidate_shared_times);
         eprintln!(
-            "issue266_legal_offset_profile label={label} lines={lines} bytes={} samples={SAMPLE_COUNT} oracle_median_ns={oracle_median} oracle_p95_ns={oracle_p95} candidate_median_ns={candidate_median} candidate_p95_ns={candidate_p95} oracle_validations={} grapheme_boundaries={} candidate_cursor_validations=0 legal_offsets={}",
+            "issue266_legal_offset_profile label={label} lines={lines} bytes={} samples={SAMPLE_COUNT} oracle_median_ns={oracle_median} oracle_p95_ns={oracle_p95} candidate_vec_median_ns={candidate_vec_median} candidate_vec_p95_ns={candidate_vec_p95} candidate_shared_median_ns={candidate_shared_median} candidate_shared_p95_ns={candidate_shared_p95} oracle_validations={} grapheme_boundaries={} candidate_cursor_validations=0 legal_offsets={}",
             text.len(),
             oracle_validations.unwrap_or_default(),
             grapheme_boundaries.unwrap_or_default(),
