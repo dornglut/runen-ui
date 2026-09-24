@@ -420,6 +420,42 @@ impl TextCaretMap {
         offsets
     }
 
+    #[cfg(test)]
+    pub(crate) fn legal_byte_offsets_layout_candidate_for_test(
+        &self,
+    ) -> (Vec<usize>, usize, usize) {
+        let mut candidates = Vec::new();
+        candidates.push(0);
+        candidates.push(self.display_text().len());
+        for line in self.cached.artifact.lines() {
+            for run in line.runs() {
+                for cluster in run.clusters() {
+                    let range = cluster.text_range();
+                    candidates.push(range.start);
+                    candidates.push(range.end);
+                }
+            }
+        }
+        candidates.sort_unstable();
+        candidates.dedup();
+        candidates.retain(|offset| self.grapheme_boundaries.binary_search(offset).is_ok());
+
+        let candidate_count = candidates.len();
+        let mut cursor_validations = 0usize;
+        let offsets = candidates
+            .into_iter()
+            .filter(|&byte_offset| {
+                [TextAffinity::Upstream, TextAffinity::Downstream]
+                    .into_iter()
+                    .any(|affinity| {
+                        cursor_validations = cursor_validations.saturating_add(1);
+                        self.cursor_at(byte_offset, affinity).is_ok()
+                    })
+            })
+            .collect::<Vec<_>>();
+        (offsets, candidate_count, cursor_validations)
+    }
+
     /// Converts a displayed surface point into a shaping-valid position.
     ///
     /// `displayed_snapshot` must identify the exact published document revision.
