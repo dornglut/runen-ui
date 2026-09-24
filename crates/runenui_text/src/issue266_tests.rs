@@ -82,7 +82,11 @@ fn layout_candidate_matches_exhaustive_oracle_across_controlled_corpus()
         ("", "Cantarell", None),
         ("plain ascii text", "Cantarell", None),
         ("line one\nline two\nline three", "Cantarell", None),
-        ("wrapped words wrapped words wrapped words", "Cantarell", Some(90.0)),
+        (
+            "wrapped words wrapped words wrapped words",
+            "Cantarell",
+            Some(90.0),
+        ),
         ("e\u{301} office 👩\u{200d}💻", "Cantarell", None),
         ("क्षि", "RunenUI Fixture Devanagari", None),
         ("कक्षा क्षि", "RunenUI Fixture Devanagari", Some(80.0)),
@@ -105,8 +109,8 @@ fn layout_candidate_matches_exhaustive_oracle_across_controlled_corpus()
 }
 
 #[test]
-fn layout_candidate_matches_exhaustive_oracle_for_preedit_projection()
--> Result<(), Box<dyn Error>> {
+fn layout_candidate_matches_exhaustive_oracle_for_preedit_projection() -> Result<(), Box<dyn Error>>
+{
     let document = "abXYZcd";
     let replacement = TextRange::new(snapshot(1), document, 2, 5)?;
     let namespace = RuntimeNamespace::__runtime_new();
@@ -172,8 +176,7 @@ fn issue_266_legal_offset_candidate_profile() -> Result<(), Box<dyn Error>> {
             )?;
 
             let started = Instant::now();
-            let (oracle, current_oracle_validations) =
-                map.legal_byte_offsets_exhaustive_for_test();
+            let (oracle, current_oracle_validations) = map.legal_byte_offsets_exhaustive_for_test();
             oracle_times.push(started.elapsed().as_nanos());
 
             let started = Instant::now();
