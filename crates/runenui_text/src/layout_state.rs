@@ -112,7 +112,7 @@ impl TextLayoutState {
     }
 
     #[cfg(test)]
-    pub(crate) fn retained_cluster_coverage_for_test(
+    pub(super) fn retained_cluster_coverage_for_test(
         &self,
     ) -> Option<RetainedClusterCoverageForTest> {
         let cached = self.cached.as_deref()?;
@@ -125,10 +125,11 @@ impl TextLayoutState {
             for run in line.runs() {
                 for cluster in run.clusters() {
                     let range = cluster.text_range();
-                    if let Some(previous) = previous_start {
-                        if range.start < previous && first_non_monotonic.is_none() {
-                            first_non_monotonic = Some((previous, range.start));
-                        }
+                    if let Some(previous) = previous_start
+                        && range.start < previous
+                        && first_non_monotonic.is_none()
+                    {
+                        first_non_monotonic = Some((previous, range.start));
                     }
                     previous_start = Some(range.start);
                     max_end = max_end.max(range.end);
@@ -149,12 +150,12 @@ impl TextLayoutState {
 
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct RetainedClusterCoverageForTest {
-    pub(crate) source_len: usize,
-    pub(crate) line_count: usize,
-    pub(crate) cluster_count: usize,
-    pub(crate) max_end: usize,
-    pub(crate) first_non_monotonic: Option<(usize, usize)>,
+pub(super) struct RetainedClusterCoverageForTest {
+    pub(super) source_len: usize,
+    pub(super) line_count: usize,
+    pub(super) cluster_count: usize,
+    pub(super) max_end: usize,
+    pub(super) first_non_monotonic: Option<(usize, usize)>,
 }
 
 impl fmt::Debug for TextLayoutState {
