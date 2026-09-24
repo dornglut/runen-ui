@@ -99,8 +99,9 @@ pub fn relayout_text(
 
     #[cfg(any(test, feature = "internal-test-seams"))]
     let extract_started = std::time::Instant::now();
-    let artifact = layout_extract::extract_layout(layout, source_snapshot, resources)
-        .ok_or(TextLayoutError::InvalidArtifact)?;
+    let artifact =
+        layout_extract::extract_layout(layout, request.text(), source_snapshot, resources)
+            .ok_or(TextLayoutError::InvalidArtifact)?;
     #[cfg(any(test, feature = "internal-test-seams"))]
     {
         crate::test_profile::record_artifact_extract(extract_started.elapsed());
