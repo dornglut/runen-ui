@@ -7,8 +7,8 @@ use runenui_core::{
 };
 
 use crate::{
-    FontSourcePolicy, TextCaretMap, TextConstraints, TextLayoutState, TextParagraphStyle,
-    TextPreeditProjection, TextRequest, TextSystem,
+    FontSourcePolicy, TextCaretMap, TextConstraints, TextLayoutState, TextMetricSpan,
+    TextParagraphStyle, TextPreeditProjection, TextRequest, TextSystem,
 };
 
 const CANTARELL: &[u8] = include_bytes!("../tests/fixtures/Cantarell-Regular.ttf");
@@ -94,6 +94,8 @@ fn grapheme_candidate_matches_exhaustive_oracle_across_controlled_corpus()
             "Cantarell",
             None,
         ),
+        ("terminal_newline", "a\n", "Cantarell", None),
+        ("crlf", "a\r\nb", "Cantarell", None),
         (
             "wrapped_ascii",
             "wrapped words wrapped words wrapped words",
@@ -138,6 +140,26 @@ fn grapheme_candidate_matches_exhaustive_oracle_across_controlled_corpus()
         2,
     )?;
     assert_candidate_matches_oracle("mixed_bidi", &mixed);
+    Ok(())
+}
+
+#[test]
+fn grapheme_candidate_matches_exhaustive_oracle_across_metric_run_split()
+-> Result<(), Box<dyn Error>> {
+    let source = "ae\u{301}b";
+    let mut system = corpus_system()?;
+    let mut state = TextLayoutState::new();
+    let base = typography("Cantarell")?;
+    let accent_typography = Typography::new(
+        FontFamily::named("Cantarell")?,
+        LogicalLength::new(28.0)?,
+    );
+    let request = TextRequest::new(source, base, TextConstraints::unbounded())
+        .try_with_metric_spans(vec![TextMetricSpan::new(2..4, accent_typography)])?;
+    system.layout_text(&mut state, &request)?;
+    let map = state.caret_map(snapshot(3))?;
+
+    assert_candidate_matches_oracle("metric_run_split_inside_grapheme", &map);
     Ok(())
 }
 
