@@ -288,10 +288,14 @@ fn retained_layout_reuses_grapheme_boundaries_across_maps_and_relinebreak()
         ),
     );
 
+    test_profile::reset();
     assert_eq!(
         text_system.layout_text(&mut state, &wide)?.decision(),
         TextLayoutDecision::Reshaped
     );
+    let layout_only_profile = test_profile::take();
+    assert_eq!(layout_only_profile.caret_map_calls, 0);
+    assert_eq!(layout_only_profile.grapheme_compute_calls, 0);
 
     test_profile::reset();
     let first_map = state.caret_map(snapshot(1))?;
@@ -299,6 +303,16 @@ fn retained_layout_reuses_grapheme_boundaries_across_maps_and_relinebreak()
     let first_profile = test_profile::take();
     assert_eq!(first_profile.caret_map_calls, 2);
     assert_eq!(first_profile.grapheme_compute_calls, 1);
+
+    test_profile::reset();
+    assert_eq!(
+        text_system.layout_text(&mut state, &wide)?.decision(),
+        TextLayoutDecision::Reused
+    );
+    let _reused_map = state.caret_map(snapshot(1))?;
+    let exact_reuse_profile = test_profile::take();
+    assert_eq!(exact_reuse_profile.caret_map_calls, 1);
+    assert_eq!(exact_reuse_profile.grapheme_compute_calls, 0);
 
     test_profile::reset();
     assert_eq!(
