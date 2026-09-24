@@ -120,7 +120,6 @@ pub fn extract_layout<B: Brush>(
     Some(TextArtifact::new(size, source_snapshot, lines))
 }
 
-
 fn legacy_trailing_whitespace_advance<B: Brush>(
     line: parley::layout::Line<'_, B>,
     source: &str,
@@ -168,7 +167,9 @@ mod tests {
             assert!(is_legacy_trailing_whitespace(character));
         }
 
-        for character in ['a', '\u{3000}', '\u{2003}', '\u{0085}', '\u{000B}', '\u{000C}'] {
+        for character in [
+            'a', '\u{3000}', '\u{2003}', '\u{0085}', '\u{000B}', '\u{000C}',
+        ] {
             assert!(!is_legacy_trailing_whitespace(character));
         }
     }
