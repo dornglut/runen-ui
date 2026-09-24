@@ -43,11 +43,14 @@ pub fn extract_layout<B: Brush>(
             };
             let run = glyph_run.run();
             let synthesis = run.synthesis();
-            let font = run.font();
+            let font_instance = run.font();
             let font = TextFontBinding::new(
-                font.data.clone(),
-                font.index,
-                run.normalized_coords().to_vec(),
+                font_instance.font.data.clone(),
+                font_instance.font.index,
+                run.normalized_coords()
+                    .iter()
+                    .map(|coord| coord.to_bits())
+                    .collect(),
                 synthesis.embolden(),
                 synthesis.skew(),
             )?;
