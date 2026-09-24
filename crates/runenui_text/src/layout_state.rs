@@ -1,9 +1,10 @@
 //! Caller-owned reusable state for one logical text-layout stream.
 
 use core::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use parley::Layout;
+use unicode_segmentation::UnicodeSegmentation;
 
 use runenui_core::TextDocumentSnapshot;
 
@@ -126,6 +127,7 @@ pub struct CachedTextLayout {
     pub(super) request: TextRequest,
     pub(super) source_snapshot: FontSourceSnapshot,
     pub(super) artifact: TextArtifact,
+    grapheme_boundaries: OnceLock<Arc<[usize]>>,
 }
 
 impl CachedTextLayout {
@@ -140,7 +142,31 @@ impl CachedTextLayout {
             request,
             source_snapshot,
             artifact,
+            grapheme_boundaries: OnceLock::new(),
         }
+    }
+
+    pub(super) fn grapheme_boundaries(&self) -> Arc<[usize]> {
+        self.grapheme_boundaries
+            .get_or_init(|| {
+                #[cfg(any(test, feature = "internal-test-seams"))]
+                let profile_started = std::time::Instant::now();
+                let boundaries = self
+                    .request
+                    .text()
+                    .grapheme_indices(true)
+                    .map(|(offset, _)| offset)
+                    .chain(core::iter::once(self.request.text().len()))
+                    .collect::<Vec<_>>()
+                    .into();
+                #[cfg(any(test, feature = "internal-test-seams"))]
+                crate::test_profile::record_grapheme_compute(
+                    profile_started.elapsed(),
+                    boundaries.len(),
+                );
+                boundaries
+            })
+            .clone()
     }
 }
 
