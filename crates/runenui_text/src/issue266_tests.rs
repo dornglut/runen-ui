@@ -66,13 +66,8 @@ fn map_for(
 
 fn assert_candidate_matches_oracle(label: &str, map: &TextCaretMap) {
     let (oracle, exhaustive_validations) = map.legal_byte_offsets_exhaustive_for_test();
-    let (
-        candidate,
-        candidate_offsets,
-        candidate_validations,
-        _raw_cluster_count,
-        artifact_max_end,
-    ) = map.legal_byte_offsets_layout_candidate_for_test();
+    let (candidate, candidate_offsets, candidate_validations, _raw_cluster_count, artifact_max_end) =
+        map.legal_byte_offsets_layout_candidate_for_test();
     assert_eq!(candidate, oracle, "candidate mismatch for {label}");
     assert!(candidate_offsets <= map.grapheme_boundary_count_for_test());
     assert!(candidate_validations <= exhaustive_validations);
