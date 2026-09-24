@@ -10,6 +10,8 @@ mod context;
 mod interaction;
 mod motion;
 mod planning;
+#[cfg(feature = "internal-test-seams")]
+pub(crate) mod profile;
 mod resolve;
 mod taffy_layout;
 #[cfg(test)]
@@ -29,6 +31,9 @@ use planning::plan_mounted_surface_cached;
 #[cfg(test)]
 use planning::publish_mounted_surface_cached;
 pub(crate) use planning::{SurfacePlanningError, plan_mounted_surface_cached_with_text};
+#[cfg(feature = "internal-test-seams")]
+#[doc(hidden)]
+pub use profile::SurfacePublicationTestProfile;
 pub(crate) use transaction::{
     DisplayedScrollMetrics, DisplayedTextTarget, PlannedSurfacePublication,
     SurfacePublicationCommit,

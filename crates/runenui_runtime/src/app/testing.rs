@@ -246,4 +246,13 @@ impl<App: UiApp> AppRuntime<App> {
     pub const fn __send_task_mapper_count_for_test(&self) -> usize {
         self.runtime.send_task_mapper_count_for_test()
     }
+
+    #[cfg(feature = "internal-test-seams")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __take_surface_publication_profile_for_test(
+        &self,
+    ) -> crate::SurfacePublicationTestProfile {
+        crate::surface::profile::take()
+    }
 }

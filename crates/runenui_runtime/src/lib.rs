@@ -288,6 +288,9 @@ pub use semantic_publication::{
     SemanticRelationship, SemanticRevision, SemanticSnapshot, SemanticUpdate, SemanticUpdateResult,
 };
 pub use style_debug::{SurfaceStyleNode, SurfaceStyleReport, render_debug_surface_style_report};
+#[cfg(feature = "internal-test-seams")]
+#[doc(hidden)]
+pub use surface::SurfacePublicationTestProfile;
 pub use surface::{
     LayoutOverflow, RasterScale, RasterScaleError, SurfaceBuildContext, SurfaceFrame,
     SurfaceLayoutNode, SurfaceLayoutReport, SurfaceNode, SurfacePhase, SurfacePhaseReport,

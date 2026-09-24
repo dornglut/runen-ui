@@ -23,6 +23,8 @@ pub fn shape_text(
     layout_context: &mut LayoutContext,
     request: &TextRequest,
 ) -> Result<Layout<[u8; 4]>, TextLayoutError> {
+    #[cfg(any(test, feature = "internal-test-seams"))]
+    let profile_started = std::time::Instant::now();
     let mut builder = layout_context.ranged_builder(font_context, request.text(), 1.0, false);
 
     for property in typography_properties(request.typography())? {
@@ -62,7 +64,10 @@ pub fn shape_text(
         }
     }
 
-    Ok(builder.build(request.text()))
+    let layout = builder.build(request.text());
+    #[cfg(any(test, feature = "internal-test-seams"))]
+    crate::test_profile::record_shape(profile_started.elapsed());
+    Ok(layout)
 }
 
 pub fn relayout_text(
@@ -71,6 +76,8 @@ pub fn relayout_text(
     source_snapshot: FontSourceSnapshot,
     request: &TextRequest,
 ) -> Result<TextArtifact, TextLayoutError> {
+    #[cfg(any(test, feature = "internal-test-seams"))]
+    let line_break_started = std::time::Instant::now();
     let paragraph = request.paragraph_style();
     let max_inline = if request.constraints().is_min_content() {
         Some(layout.calculate_content_widths().min)
@@ -87,9 +94,34 @@ pub fn relayout_text(
         },
         AlignmentOptions::default(),
     );
+    #[cfg(any(test, feature = "internal-test-seams"))]
+    crate::test_profile::record_line_break_align(line_break_started.elapsed());
 
-    layout_extract::extract_layout(layout, source_snapshot, resources)
-        .ok_or(TextLayoutError::InvalidArtifact)
+    #[cfg(any(test, feature = "internal-test-seams"))]
+    let extract_started = std::time::Instant::now();
+    let artifact = layout_extract::extract_layout(layout, source_snapshot, resources)
+        .ok_or(TextLayoutError::InvalidArtifact)?;
+    #[cfg(any(test, feature = "internal-test-seams"))]
+    {
+        crate::test_profile::record_artifact_extract(extract_started.elapsed());
+        let mut run_count = 0usize;
+        let mut glyph_count = 0usize;
+        let mut cluster_count = 0usize;
+        for line in artifact.lines() {
+            for run in line.runs() {
+                run_count = run_count.saturating_add(1);
+                glyph_count = glyph_count.saturating_add(run.shaped_resource().glyphs().len());
+                cluster_count = cluster_count.saturating_add(run.clusters().len());
+            }
+        }
+        crate::test_profile::record_artifact_counts(
+            artifact.lines().len(),
+            run_count,
+            glyph_count,
+            cluster_count,
+        );
+    }
+    Ok(artifact)
 }
 
 fn typography_properties(

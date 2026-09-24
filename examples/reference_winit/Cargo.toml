@@ -18,5 +18,8 @@ runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0" }
 runenui_winit = { path = "../../crates/runenui_winit", version = "0.1.0" }
 winit = { version = "=0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "x11"] }
 
+[dev-dependencies]
+runenui_runtime = { path = "../../crates/runenui_runtime", version = "0.1.0", features = ["internal-test-seams"] }
+
 [lints]
 workspace = true
