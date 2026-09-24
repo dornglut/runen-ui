@@ -179,8 +179,7 @@ impl TextLayoutState {
                         .find(|cluster| cluster.text_range().contains(&stop_byte))
                     {
                         let cluster_range = cluster.text_range();
-                        logical_stop_cluster_range =
-                            Some((cluster_range.start, cluster_range.end));
+                        logical_stop_cluster_range = Some((cluster_range.start, cluster_range.end));
                     }
                     break;
                 }
