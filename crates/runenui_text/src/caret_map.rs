@@ -419,6 +419,10 @@ impl TextCaretMap {
     /// allocation is the same immutable boundary allocation retained by this caret map.
     #[doc(hidden)]
     #[must_use]
+    #[allow(
+        clippy::let_and_return,
+        reason = "test-only profiling observes shared offsets before returning them"
+    )]
     pub fn __runtime_legal_byte_offsets(&self) -> Arc<[usize]> {
         #[cfg(any(test, feature = "internal-test-seams"))]
         let profile_started = std::time::Instant::now();
