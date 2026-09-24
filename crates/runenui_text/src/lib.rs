@@ -8,6 +8,8 @@ mod artifact;
 mod caret_map;
 mod font_source_config;
 mod ink_bounds;
+#[cfg(test)]
+mod issue269_tests;
 mod layout_extract;
 mod layout_state;
 mod parley_bridge;
