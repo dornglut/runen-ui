@@ -8,7 +8,7 @@ use parley::{
     FontVariation as ParleyFontVariation, FontVariations as ParleyFontVariations,
     FontWeight as ParleyFontWeight, FontWidth as ParleyFontWidth, Language, Layout, LayoutContext,
     OverflowWrap as ParleyOverflowWrap, StyleProperty, TextWrapMode as ParleyTextWrapMode,
-    WordBreak as ParleyWordBreak,
+    WhiteSpaceCollapse as ParleyWhiteSpaceCollapse, WordBreak as ParleyWordBreak,
 };
 use runenui_core::{FontFamily, FontStyle, LogicalLength, ResourceRef, Typography};
 
@@ -38,6 +38,9 @@ pub fn shape_text(
         TextWrapMode::Wrap => ParleyTextWrapMode::Wrap,
         TextWrapMode::NoWrap => ParleyTextWrapMode::NoWrap,
     }));
+    builder.push_default(StyleProperty::WhiteSpaceCollapse(
+        ParleyWhiteSpaceCollapse::Preserve,
+    ));
     builder.push_default(StyleProperty::WordBreak(match paragraph.word_break() {
         TextWordBreak::Normal => ParleyWordBreak::Normal,
         TextWordBreak::BreakAll => ParleyWordBreak::BreakAll,
