@@ -9,6 +9,8 @@ mod caret_map;
 mod font_source_config;
 mod ink_bounds;
 #[cfg(test)]
+mod issue266_tests;
+#[cfg(test)]
 mod issue269_tests;
 mod layout_extract;
 mod layout_state;
