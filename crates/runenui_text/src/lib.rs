@@ -13,6 +13,8 @@ mod layout_state;
 mod parley_bridge;
 mod preedit;
 #[cfg(test)]
+mod issue269_tests;
+#[cfg(test)]
 mod profile_tests;
 mod request;
 mod source_identity;
