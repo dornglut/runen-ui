@@ -455,11 +455,11 @@ mod tests {
         TextPosition, TextSelection, TextSensitivity, View, text,
     };
 
-    use super::project_editable_semantics;
     use super::super::{
         SurfaceBuildContext, SurfaceInteractionProjection, SurfaceMotionStore,
         plan_mounted_surface_cached,
     };
+    use super::project_editable_semantics;
     use crate::{
         LayoutConstraints,
         editing::EditingSemanticProjection,
@@ -475,10 +475,8 @@ mod tests {
         let planned = plan_mounted_surface_cached(&mut tree, &context, &interaction, None)
             .unwrap_or_else(|_| unreachable!("controlled text surface plan"));
 
-        let snapshot = TextDocumentSnapshot::new(
-            TextDocumentId::new(266),
-            TextDocumentRevision::new(1),
-        );
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(266), TextDocumentRevision::new(1));
         let source = Arc::<str>::from("abc");
         let position = TextPosition::new(snapshot, &source, 1, TextAffinity::Downstream)
             .unwrap_or_else(|_| unreachable!("ASCII fixture position is valid"));
