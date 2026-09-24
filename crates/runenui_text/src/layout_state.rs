@@ -138,12 +138,68 @@ impl TextLayoutState {
             }
         }
 
+        let source_len = cached.request.text().len();
+        let mut logical_walk_count = 0usize;
+        let mut logical_walk_max_end = 0usize;
+        let mut logical_walk_stop_byte = None;
+        let mut logical_cluster = parley::layout::Cluster::from_byte_index(&cached.layout, 0);
+        while let Some(current) = logical_cluster {
+            let range = current.text_range();
+            logical_walk_count = logical_walk_count.saturating_add(1);
+            logical_walk_max_end = logical_walk_max_end.max(range.end);
+            let next = current.next_logical();
+            if next.is_none() && range.end < source_len {
+                logical_walk_stop_byte = Some(range.end);
+            }
+            logical_cluster = next;
+
+            if logical_walk_count > cluster_count {
+                break;
+            }
+        }
+
+        let mut logical_stop_line_range = None;
+        let mut logical_stop_run_range = None;
+        let mut logical_stop_cluster_range = None;
+        if let Some(stop_byte) = logical_walk_stop_byte {
+            for line in cached.layout.lines() {
+                let line_range = line.text_range();
+                if !line_range.contains(&stop_byte) {
+                    continue;
+                }
+                logical_stop_line_range = Some((line_range.start, line_range.end));
+                for run in line.runs() {
+                    let run_range = run.text_range();
+                    if !run_range.contains(&stop_byte) {
+                        continue;
+                    }
+                    logical_stop_run_range = Some((run_range.start, run_range.end));
+                    if let Some(cluster) = run
+                        .clusters()
+                        .find(|cluster| cluster.text_range().contains(&stop_byte))
+                    {
+                        let cluster_range = cluster.text_range();
+                        logical_stop_cluster_range =
+                            Some((cluster_range.start, cluster_range.end));
+                    }
+                    break;
+                }
+                break;
+            }
+        }
+
         Some(RetainedClusterCoverageForTest {
-            source_len: cached.request.text().len(),
+            source_len,
             line_count: cached.layout.lines().len(),
             cluster_count,
             max_end,
             first_non_monotonic,
+            logical_walk_count,
+            logical_walk_max_end,
+            logical_walk_stop_byte,
+            logical_stop_line_range,
+            logical_stop_run_range,
+            logical_stop_cluster_range,
         })
     }
 }
@@ -156,6 +212,12 @@ pub struct RetainedClusterCoverageForTest {
     pub cluster_count: usize,
     pub max_end: usize,
     pub first_non_monotonic: Option<(usize, usize)>,
+    pub logical_walk_count: usize,
+    pub logical_walk_max_end: usize,
+    pub logical_walk_stop_byte: Option<usize>,
+    pub logical_stop_line_range: Option<(usize, usize)>,
+    pub logical_stop_run_range: Option<(usize, usize)>,
+    pub logical_stop_cluster_range: Option<(usize, usize)>,
 }
 
 impl fmt::Debug for TextLayoutState {
