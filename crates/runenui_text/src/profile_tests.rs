@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Instant};
 
 use runenui_core::{
-    CompositionRange, FontFamily, LogicalLength, TextDocumentId, TextDocumentRevision,
-    TextDocumentSnapshot, TextRange, Typography, __runtime::RuntimeNamespace,
+    __runtime::RuntimeNamespace, CompositionRange, FontFamily, LogicalLength, TextDocumentId,
+    TextDocumentRevision, TextDocumentSnapshot, TextRange, Typography,
 };
 
 use crate::{
@@ -282,8 +282,7 @@ fn retained_layout_reuses_grapheme_boundaries_across_maps_and_relinebreak()
         text,
         typography(),
         TextConstraints::limited(
-            LogicalLength::new(72.0)
-                .unwrap_or_else(|_| unreachable!("controlled width is finite")),
+            LogicalLength::new(72.0).unwrap_or_else(|_| unreachable!("controlled width is finite")),
         ),
     );
 
@@ -328,8 +327,7 @@ fn retained_layout_reuses_grapheme_boundaries_across_maps_and_relinebreak()
         format!("{text} changed"),
         typography(),
         TextConstraints::limited(
-            LogicalLength::new(72.0)
-                .unwrap_or_else(|_| unreachable!("controlled width is finite")),
+            LogicalLength::new(72.0).unwrap_or_else(|_| unreachable!("controlled width is finite")),
         ),
     );
     assert_eq!(
