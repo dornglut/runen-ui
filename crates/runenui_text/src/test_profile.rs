@@ -28,15 +28,15 @@ const fn add_duration(target: &mut u128, duration: Duration) {
     *target = target.saturating_add(duration.as_nanos());
 }
 
-pub(crate) fn reset() {
+pub fn reset() {
     PROFILE.with(|profile| *profile.borrow_mut() = TextPhaseProfile::default());
 }
 
-pub(crate) fn take() -> TextPhaseProfile {
+pub fn take() -> TextPhaseProfile {
     PROFILE.with(|profile| mem::take(&mut *profile.borrow_mut()))
 }
 
-pub(crate) fn record_shape(duration: Duration) {
+pub fn record_shape(duration: Duration) {
     PROFILE.with(|profile| {
         let mut profile = profile.borrow_mut();
         add_duration(&mut profile.shape_ns, duration);
@@ -44,7 +44,7 @@ pub(crate) fn record_shape(duration: Duration) {
     });
 }
 
-pub(crate) fn record_line_break_align(duration: Duration) {
+pub fn record_line_break_align(duration: Duration) {
     PROFILE.with(|profile| {
         let mut profile = profile.borrow_mut();
         add_duration(&mut profile.line_break_align_ns, duration);
@@ -52,7 +52,7 @@ pub(crate) fn record_line_break_align(duration: Duration) {
     });
 }
 
-pub(crate) fn record_artifact_extract(duration: Duration) {
+pub fn record_artifact_extract(duration: Duration) {
     PROFILE.with(|profile| {
         let mut profile = profile.borrow_mut();
         add_duration(&mut profile.artifact_extract_ns, duration);
@@ -60,7 +60,7 @@ pub(crate) fn record_artifact_extract(duration: Duration) {
     });
 }
 
-pub(crate) fn record_artifact_counts(lines: usize, runs: usize, glyphs: usize, clusters: usize) {
+pub fn record_artifact_counts(lines: usize, runs: usize, glyphs: usize, clusters: usize) {
     PROFILE.with(|profile| {
         let mut profile = profile.borrow_mut();
         profile.artifact_lines = profile.artifact_lines.saturating_add(lines);
@@ -70,7 +70,7 @@ pub(crate) fn record_artifact_counts(lines: usize, runs: usize, glyphs: usize, c
     });
 }
 
-pub(crate) fn record_graphemes(duration: Duration, boundaries: usize) {
+pub fn record_graphemes(duration: Duration, boundaries: usize) {
     PROFILE.with(|profile| {
         let mut profile = profile.borrow_mut();
         add_duration(&mut profile.grapheme_ns, duration);
@@ -79,7 +79,7 @@ pub(crate) fn record_graphemes(duration: Duration, boundaries: usize) {
     });
 }
 
-pub(crate) fn record_legal_offsets(duration: Duration, offsets: usize) {
+pub fn record_legal_offsets(duration: Duration, offsets: usize) {
     PROFILE.with(|profile| {
         let mut profile = profile.borrow_mut();
         add_duration(&mut profile.legal_offsets_ns, duration);
