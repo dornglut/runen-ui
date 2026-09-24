@@ -66,15 +66,20 @@ fn map_for(
 
 fn assert_candidate_matches_oracle(label: &str, map: &TextCaretMap) {
     let (oracle, exhaustive_validations) = map.legal_byte_offsets_exhaustive_for_test();
-    let (candidate, candidate_offsets, candidate_validations, candidate_max_offset) =
-        map.legal_byte_offsets_layout_candidate_for_test();
+    let (
+        candidate,
+        candidate_offsets,
+        candidate_validations,
+        _raw_cluster_count,
+        artifact_max_end,
+    ) = map.legal_byte_offsets_layout_candidate_for_test();
     assert_eq!(candidate, oracle, "candidate mismatch for {label}");
     assert!(candidate_offsets <= map.grapheme_boundary_count_for_test());
     assert!(candidate_validations <= exhaustive_validations);
     assert_eq!(
-        candidate_max_offset,
+        artifact_max_end,
         map.display_text().len(),
-        "candidate coverage must reach document end for {label}"
+        "retained artifact must cover the full displayed source for {label}"
     );
 }
 
@@ -194,7 +199,8 @@ fn issue_266_legal_offset_candidate_profile() -> Result<(), Box<dyn Error>> {
         let mut oracle_validations = None;
         let mut candidate_offsets = None;
         let mut candidate_validations = None;
-        let mut candidate_max_offset = None;
+        let mut raw_cluster_count = None;
+        let mut artifact_max_end = None;
         let mut legal_offsets = None;
 
         for sample in 0..SAMPLE_COUNT {
@@ -216,7 +222,8 @@ fn issue_266_legal_offset_candidate_profile() -> Result<(), Box<dyn Error>> {
                 candidate,
                 current_candidate_offsets,
                 current_candidate_validations,
-                current_candidate_max_offset,
+                current_raw_cluster_count,
+                current_artifact_max_end,
             ) = map.legal_byte_offsets_layout_candidate_for_test();
             candidate_times.push(started.elapsed().as_nanos());
 
@@ -224,19 +231,21 @@ fn issue_266_legal_offset_candidate_profile() -> Result<(), Box<dyn Error>> {
             oracle_validations = Some(current_oracle_validations);
             candidate_offsets = Some(current_candidate_offsets);
             candidate_validations = Some(current_candidate_validations);
-            candidate_max_offset = Some(current_candidate_max_offset);
+            raw_cluster_count = Some(current_raw_cluster_count);
+            artifact_max_end = Some(current_artifact_max_end);
             legal_offsets = Some(candidate.len());
         }
 
         let (oracle_median, oracle_p95) = summarize(&mut oracle_times);
         let (candidate_median, candidate_p95) = summarize(&mut candidate_times);
         eprintln!(
-            "issue266_legal_offset_profile label={label} lines={lines} bytes={} samples={SAMPLE_COUNT} oracle_median_ns={oracle_median} oracle_p95_ns={oracle_p95} candidate_median_ns={candidate_median} candidate_p95_ns={candidate_p95} oracle_validations={} candidate_offsets={} candidate_validations={} candidate_max_offset={} legal_offsets={}",
+            "issue266_legal_offset_profile label={label} lines={lines} bytes={} samples={SAMPLE_COUNT} oracle_median_ns={oracle_median} oracle_p95_ns={oracle_p95} candidate_median_ns={candidate_median} candidate_p95_ns={candidate_p95} oracle_validations={} candidate_offsets={} candidate_validations={} raw_cluster_count={} artifact_max_end={} legal_offsets={}",
             text.len(),
             oracle_validations.unwrap_or_default(),
             candidate_offsets.unwrap_or_default(),
             candidate_validations.unwrap_or_default(),
-            candidate_max_offset.unwrap_or_default(),
+            raw_cluster_count.unwrap_or_default(),
+            artifact_max_end.unwrap_or_default(),
             legal_offsets.unwrap_or_default(),
         );
     }
