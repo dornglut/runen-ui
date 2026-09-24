@@ -53,12 +53,18 @@ fn issue_269_large_run_cluster_coverage() -> Result<(), Box<dyn Error>> {
             .unwrap_or_else(|| unreachable!("layout was retained"));
 
         eprintln!(
-            "issue269_parley_large_run label={label} lines={lines} source_len={} layout_lines={} cluster_count={} max_end={} first_non_monotonic={:?}",
+            "issue269_parley_large_run label={label} lines={lines} source_len={} layout_lines={} cluster_count={} max_end={} first_non_monotonic={:?} logical_walk_count={} logical_walk_max_end={} logical_walk_stop_byte={:?} logical_stop_line_range={:?} logical_stop_run_range={:?} logical_stop_cluster_range={:?}",
             coverage.source_len,
             coverage.line_count,
             coverage.cluster_count,
             coverage.max_end,
             coverage.first_non_monotonic,
+            coverage.logical_walk_count,
+            coverage.logical_walk_max_end,
+            coverage.logical_walk_stop_byte,
+            coverage.logical_stop_line_range,
+            coverage.logical_stop_run_range,
+            coverage.logical_stop_cluster_range,
         );
 
         if coverage.max_end != text.len() || coverage.first_non_monotonic.is_some() {
