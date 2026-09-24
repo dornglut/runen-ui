@@ -226,9 +226,7 @@ fn grapheme_candidate_matches_exhaustive_oracle_for_large_documents() -> Result<
         )?;
         assert_candidate_matches_oracle(label, &map);
         assert_eq!(
-            map.legal_byte_offsets()
-                .last()
-                .copied(),
+            map.legal_byte_offsets().last().copied(),
             Some(text.len()),
             "candidate must include the exact document end for {label}"
         );
