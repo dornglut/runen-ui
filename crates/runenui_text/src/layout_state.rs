@@ -150,12 +150,12 @@ impl TextLayoutState {
 
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct RetainedClusterCoverageForTest {
-    pub(super) source_len: usize,
-    pub(super) line_count: usize,
-    pub(super) cluster_count: usize,
-    pub(super) max_end: usize,
-    pub(super) first_non_monotonic: Option<(usize, usize)>,
+pub struct RetainedClusterCoverageForTest {
+    pub source_len: usize,
+    pub line_count: usize,
+    pub cluster_count: usize,
+    pub max_end: usize,
+    pub first_non_monotonic: Option<(usize, usize)>,
 }
 
 impl fmt::Debug for TextLayoutState {
