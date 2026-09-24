@@ -448,15 +448,18 @@ impl SurfacePublicationCommit {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use runenui_core::{
         StyleEnvironment, TextAffinity, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
         TextPosition, TextSelection, TextSensitivity, View, text,
     };
 
-    use super::{project_editable_semantics, super::{
+    use super::project_editable_semantics;
+    use super::super::{
         SurfaceBuildContext, SurfaceInteractionProjection, SurfaceMotionStore,
         plan_mounted_surface_cached,
-    }};
+    };
     use crate::{
         LayoutConstraints,
         editing::EditingSemanticProjection,
