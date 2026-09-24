@@ -144,8 +144,8 @@ fn grapheme_candidate_matches_exhaustive_oracle_across_controlled_corpus()
 }
 
 #[test]
-fn grapheme_candidate_matches_exhaustive_oracle_across_metric_run_split()
--> Result<(), Box<dyn Error>> {
+fn grapheme_candidate_matches_exhaustive_oracle_across_metric_run_split() -> Result<(), Box<dyn Error>>
+{
     let source = "ae\u{301}b";
     let mut system = corpus_system()?;
     let mut state = TextLayoutState::new();
