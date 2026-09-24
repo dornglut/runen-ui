@@ -421,6 +421,11 @@ impl TextCaretMap {
     }
 
     #[cfg(test)]
+    pub(crate) fn grapheme_boundary_count_for_test(&self) -> usize {
+        self.grapheme_boundaries.len()
+    }
+
+    #[cfg(test)]
     pub(crate) fn legal_byte_offsets_exhaustive_for_test(&self) -> (Vec<usize>, usize) {
         let mut cursor_validations = 0usize;
         let offsets = self
