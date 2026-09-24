@@ -20,11 +20,25 @@ pub fn extract_layout<B: Brush>(
 ) -> Option<TextArtifact> {
     resources.retain(|_, resource| resource.strong_count() > 0);
 
+    if layout.text_len() != source.len() {
+        return None;
+    }
+    let empty_source = source.is_empty();
+
     let size = LogicalSize::try_new(layout.width(), layout.height()).ok()?;
     let mut lines = Vec::with_capacity(layout.lines().count());
 
     for line in layout.lines() {
-        let trailing_whitespace = trailing_whitespace_advance(&line, source)?;
+        let line_text_range = if empty_source {
+            0..0
+        } else {
+            line.text_range()
+        };
+        let trailing_whitespace = if empty_source {
+            0.0
+        } else {
+            trailing_whitespace_advance(&line, source)?
+        };
         let metrics = line.metrics();
         let metrics = TextLineMetrics::from_finite([
             metrics.line_height,
@@ -40,6 +54,14 @@ pub fn extract_layout<B: Brush>(
         let mut runs = Vec::new();
 
         for item in line.items() {
+            // Parley shapes a synthetic space for an empty source to obtain caret metrics.
+            // Parley 0.11.1 hid that synthetic cluster before exposing line items; current
+            // upstream does not. Preserve the RunenUI source-artifact boundary: metrics remain
+            // usable for the empty caret, but synthetic text must never become paint/resource
+            // or source-range authority.
+            if empty_source {
+                continue;
+            }
             let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                 return None;
             };
@@ -114,7 +136,7 @@ pub fn extract_layout<B: Brush>(
             )?);
         }
 
-        lines.push(TextLine::new(line.text_range(), metrics, runs));
+        lines.push(TextLine::new(line_text_range, metrics, runs));
     }
 
     Some(TextArtifact::new(size, source_snapshot, lines))
