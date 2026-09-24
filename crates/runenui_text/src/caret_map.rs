@@ -11,8 +11,6 @@ use runenui_core::{
     LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, TextAffinity, TextDisplayPosition,
     TextDocumentSnapshot, TextPosition, TextPositionError, TextSelection,
 };
-use unicode_segmentation::UnicodeSegmentation;
-
 use crate::{
     TextArtifact, TextPreeditProjection, TextPreeditProjectionError, layout_state::CachedTextLayout,
 };
@@ -228,10 +226,8 @@ impl TextCaretMap {
     ) -> Result<Self, TextCaretMapError> {
         Self::validate_layout(&cached)?;
         #[cfg(any(test, feature = "internal-test-seams"))]
-        let profile_started = std::time::Instant::now();
-        let grapheme_boundaries = grapheme_boundaries(cached.request.text());
-        #[cfg(any(test, feature = "internal-test-seams"))]
-        crate::test_profile::record_graphemes(profile_started.elapsed(), grapheme_boundaries.len());
+        crate::test_profile::record_caret_map();
+        let grapheme_boundaries = cached.grapheme_boundaries();
         Ok(Self {
             grapheme_boundaries,
             cached,
@@ -248,10 +244,8 @@ impl TextCaretMap {
             return Err(TextCaretMapError::DisplayTextMismatch);
         }
         #[cfg(any(test, feature = "internal-test-seams"))]
-        let profile_started = std::time::Instant::now();
-        let grapheme_boundaries = grapheme_boundaries(cached.request.text());
-        #[cfg(any(test, feature = "internal-test-seams"))]
-        crate::test_profile::record_graphemes(profile_started.elapsed(), grapheme_boundaries.len());
+        crate::test_profile::record_caret_map();
+        let grapheme_boundaries = cached.grapheme_boundaries();
         Ok(Self {
             grapheme_boundaries,
             cached,
@@ -932,15 +926,6 @@ const fn affinity_from_parley(affinity: Affinity) -> TextAffinity {
         Affinity::Upstream => TextAffinity::Upstream,
         Affinity::Downstream => TextAffinity::Downstream,
     }
-}
-
-fn grapheme_boundaries(source: &str) -> Arc<[usize]> {
-    source
-        .grapheme_indices(true)
-        .map(|(offset, _)| offset)
-        .chain(core::iter::once(source.len()))
-        .collect::<Vec<_>>()
-        .into()
 }
 
 #[allow(clippy::cast_possible_truncation)]
