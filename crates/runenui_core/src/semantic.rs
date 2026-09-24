@@ -803,25 +803,18 @@ mod tests {
     #[test]
     fn runtime_editable_projection_preserves_caret_offset_allocation_identity() {
         let source = "abc";
-        let snapshot = TextDocumentSnapshot::new(
-            TextDocumentId::new(266),
-            TextDocumentRevision::new(1),
-        );
+        let snapshot =
+            TextDocumentSnapshot::new(TextDocumentId::new(266), TextDocumentRevision::new(1));
         let position = TextPosition::new(snapshot, source, 1, TextAffinity::Downstream)
             .unwrap_or_else(|_| unreachable!("ASCII fixture position is valid"));
         let selection = TextSelection::collapsed(position);
         let offsets: Arc<[usize]> = vec![0, 1, 2, 3].into();
         let retained = Arc::clone(&offsets);
 
-        let editable = SemanticEditable::new(
-            snapshot,
-            source,
-            selection,
-            TextSensitivity::Public,
-            false,
-        )
-        .and_then(|editable| editable.__runtime_with_projection(source, selection, offsets))
-        .unwrap_or_else(|| unreachable!("controlled semantic projection is valid"));
+        let editable =
+            SemanticEditable::new(snapshot, source, selection, TextSensitivity::Public, false)
+                .and_then(|editable| editable.__runtime_with_projection(source, selection, offsets))
+                .unwrap_or_else(|| unreachable!("controlled semantic projection is valid"));
         let published = editable
             .caret_offsets
             .as_ref()
