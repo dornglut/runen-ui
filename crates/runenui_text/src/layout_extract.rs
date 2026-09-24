@@ -29,16 +29,8 @@ pub fn extract_layout<B: Brush>(
     let mut lines = Vec::with_capacity(layout.lines().count());
 
     for line in layout.lines() {
-        let line_text_range = if empty_source {
-            0..0
-        } else {
-            line.text_range()
-        };
-        let trailing_whitespace = if empty_source {
-            0.0
-        } else {
-            trailing_whitespace_advance(&line, source)?
-        };
+        let (line_text_range, trailing_whitespace) =
+            source_line_metrics(&line, source, empty_source)?;
         let metrics = line.metrics();
         let metrics = TextLineMetrics::from_finite([
             metrics.line_height,
@@ -140,6 +132,21 @@ pub fn extract_layout<B: Brush>(
     }
 
     Some(TextArtifact::new(size, source_snapshot, lines))
+}
+
+fn source_line_metrics<B: Brush>(
+    line: &parley::layout::Line<'_, B>,
+    source: &str,
+    empty_source: bool,
+) -> Option<(core::ops::Range<usize>, f32)> {
+    if empty_source {
+        Some((0..0, 0.0))
+    } else {
+        Some((
+            line.text_range(),
+            trailing_whitespace_advance(line, source)?,
+        ))
+    }
 }
 
 // RunenUI exposes trailing-whitespace advance as a renderer-neutral line metric. Parley's
