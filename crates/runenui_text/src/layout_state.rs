@@ -110,6 +110,41 @@ impl TextLayoutState {
             .ok_or(TextCaretMapError::MissingLayout)?;
         TextCaretMap::preedit(cached, projection)
     }
+
+    #[cfg(test)]
+    pub(crate) fn retained_cluster_coverage_for_test(
+        &self,
+    ) -> Option<RetainedClusterCoverageForTest> {
+        let cached = self.cached.as_deref()?;
+        let mut cluster_count = 0usize;
+        let mut max_end = 0usize;
+        let mut previous_start = None;
+        let mut first_non_monotonic = None;
+
+        for line in cached.layout.lines() {
+            for run in line.runs() {
+                for cluster in run.clusters() {
+                    let range = cluster.text_range();
+                    if let Some(previous) = previous_start {
+                        if range.start < previous && first_non_monotonic.is_none() {
+                            first_non_monotonic = Some((previous, range.start));
+                        }
+                    }
+                    previous_start = Some(range.start);
+                    max_end = max_end.max(range.end);
+                    cluster_count = cluster_count.saturating_add(1);
+                }
+            }
+        }
+
+        Some(RetainedClusterCoverageForTest {
+            source_len: cached.request.text().len(),
+            line_count: cached.layout.lines().len(),
+            cluster_count,
+            max_end,
+            first_non_monotonic,
+        })
+    }
 }
 
 impl fmt::Debug for TextLayoutState {
