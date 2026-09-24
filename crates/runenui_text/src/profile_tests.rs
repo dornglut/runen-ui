@@ -1,13 +1,13 @@
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use runenui_core::{
-    FontFamily, LogicalLength, TextDocumentId, TextDocumentRevision, TextDocumentSnapshot,
-    Typography,
+    CompositionRange, FontFamily, LogicalLength, TextDocumentId, TextDocumentRevision,
+    TextDocumentSnapshot, TextRange, Typography, __runtime::RuntimeNamespace,
 };
 
 use crate::{
-    FontSourcePolicy, TextConstraints, TextLayoutDecision, TextLayoutState, TextRequest,
-    TextSystem,
+    FontSourcePolicy, TextConstraints, TextLayoutDecision, TextLayoutState, TextPreeditProjection,
+    TextRequest, TextSystem,
     test_profile::{self, TextPhaseProfile},
 };
 
@@ -117,11 +117,12 @@ fn report(label: &str, totals: &mut [u128], profiles: &[TextPhaseProfile]) {
         "issue263_text_profile label={label}.remaining_text_work n={} median_ns={remaining_median} p95_ns={remaining_p95}",
         profiles.len()
     );
-    let count_fields: [CountField; 10] = [
+    let count_fields: [CountField; 11] = [
         ("shape_calls", |p| p.shape_calls),
         ("line_break_calls", |p| p.line_break_calls),
         ("artifact_extract_calls", |p| p.artifact_extract_calls),
         ("caret_map_calls", |p| p.caret_map_calls),
+        ("grapheme_compute_calls", |p| p.grapheme_compute_calls),
         ("legal_offsets_calls", |p| p.legal_offsets_calls),
         ("artifact_lines", |p| p.artifact_lines),
         ("artifact_runs", |p| p.artifact_runs),
@@ -261,4 +262,107 @@ fn issue_263_text_phase_profile() {
             &replacement_profiles,
         );
     }
+}
+
+
+#[test]
+fn retained_layout_reuses_grapheme_boundaries_across_maps_and_relinebreak()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut text_system = system();
+    let mut state = TextLayoutState::new();
+    let text = "one two three four five six seven eight";
+    let wide = TextRequest::new(
+        text,
+        typography(),
+        TextConstraints::limited(
+            LogicalLength::new(400.0)
+                .unwrap_or_else(|_| unreachable!("controlled width is finite")),
+        ),
+    );
+    let narrow = TextRequest::new(
+        text,
+        typography(),
+        TextConstraints::limited(
+            LogicalLength::new(72.0)
+                .unwrap_or_else(|_| unreachable!("controlled width is finite")),
+        ),
+    );
+
+    assert_eq!(
+        text_system.layout_text(&mut state, &wide)?.decision(),
+        TextLayoutDecision::Reshaped
+    );
+
+    test_profile::reset();
+    let first_map = state.caret_map(snapshot(1))?;
+    let _second_map = state.caret_map(snapshot(1))?;
+    let first_profile = test_profile::take();
+    assert_eq!(first_profile.caret_map_calls, 2);
+    assert_eq!(first_profile.grapheme_compute_calls, 1);
+
+    test_profile::reset();
+    assert_eq!(
+        text_system.layout_text(&mut state, &narrow)?.decision(),
+        TextLayoutDecision::Relinebroken
+    );
+    let relinebroken_map = state.caret_map(snapshot(1))?;
+    let relinebroken_profile = test_profile::take();
+    assert_eq!(relinebroken_profile.caret_map_calls, 1);
+    assert_eq!(relinebroken_profile.grapheme_compute_calls, 0);
+    assert!(!first_map.shares_layout_with(&relinebroken_map));
+
+    let changed = TextRequest::new(
+        format!("{text} changed"),
+        typography(),
+        TextConstraints::limited(
+            LogicalLength::new(72.0)
+                .unwrap_or_else(|_| unreachable!("controlled width is finite")),
+        ),
+    );
+    assert_eq!(
+        text_system.layout_text(&mut state, &changed)?.decision(),
+        TextLayoutDecision::Reshaped
+    );
+    test_profile::reset();
+    let _changed_map = state.caret_map(snapshot(2))?;
+    let changed_profile = test_profile::take();
+    assert_eq!(changed_profile.caret_map_calls, 1);
+    assert_eq!(changed_profile.grapheme_compute_calls, 1);
+    Ok(())
+}
+
+#[test]
+fn document_and_preedit_maps_share_one_retained_grapheme_cache()
+-> Result<(), Box<dyn std::error::Error>> {
+    let document = "abXYZcd";
+    let replacement = TextRange::new(snapshot(1), document, 2, 5)?;
+    let namespace = RuntimeNamespace::__runtime_new();
+    let generation = namespace.__runtime_composition_generation(9);
+    let selected = CompositionRange::new("かな", 0, "か".len())?;
+    let projection = Arc::new(TextPreeditProjection::new(
+        snapshot(1),
+        document,
+        replacement,
+        generation,
+        "かな",
+        Some(selected),
+    )?);
+
+    let mut text_system = system();
+    let mut state = TextLayoutState::new();
+    let display_request = request(projection.display_text().to_owned());
+    assert_eq!(
+        text_system
+            .layout_text(&mut state, &display_request)?
+            .decision(),
+        TextLayoutDecision::Reshaped
+    );
+
+    test_profile::reset();
+    let _document_map = state.caret_map(snapshot(1))?;
+    let _preedit_map = state.preedit_caret_map(projection)?;
+    let profile = test_profile::take();
+    assert_eq!(profile.caret_map_calls, 2);
+    assert_eq!(profile.grapheme_compute_calls, 1);
+    Ok(())
 }
