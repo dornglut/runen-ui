@@ -147,6 +147,16 @@ impl TextLayoutState {
     }
 }
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct RetainedClusterCoverageForTest {
+    pub(crate) source_len: usize,
+    pub(crate) line_count: usize,
+    pub(crate) cluster_count: usize,
+    pub(crate) max_end: usize,
+    pub(crate) first_non_monotonic: Option<(usize, usize)>,
+}
+
 impl fmt::Debug for TextLayoutState {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
