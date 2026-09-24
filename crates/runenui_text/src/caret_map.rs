@@ -447,7 +447,7 @@ impl TextCaretMap {
     #[cfg(test)]
     pub(crate) fn legal_byte_offsets_layout_candidate_for_test(
         &self,
-    ) -> (Vec<usize>, usize, usize) {
+    ) -> (Vec<usize>, usize, usize, usize) {
         let mut candidates = Vec::new();
         candidates.push(0);
         candidates.push(self.display_text().len());
@@ -475,7 +475,13 @@ impl TextCaretMap {
                     })
             })
             .collect::<Vec<_>>();
-        (offsets, candidate_count, cursor_validations)
+        let candidate_max_offset = offsets.last().copied().unwrap_or_default();
+        (
+            offsets,
+            candidate_count,
+            cursor_validations,
+            candidate_max_offset,
+        )
     }
 
     /// Converts a displayed surface point into a shaping-valid position.
