@@ -2,9 +2,7 @@ use std::error::Error;
 
 use runenui_core::{FontFamily, LogicalLength, Typography};
 
-use crate::{
-    FontSourcePolicy, TextConstraints, TextLayoutState, TextRequest, TextSystem,
-};
+use crate::{FontSourcePolicy, TextConstraints, TextLayoutState, TextRequest, TextSystem};
 
 const CANTARELL: &[u8] = include_bytes!("../tests/fixtures/Cantarell-Regular.ttf");
 const FIXTURE_LINE: &str = "multiline responsiveness fixture — retained text layout\n";
