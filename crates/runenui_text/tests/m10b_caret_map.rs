@@ -457,6 +457,20 @@ fn terminal_newline_and_empty_selection_use_no_guessed_rectangle() -> Result<(),
             },
         );
         map.validate_position(&start)?;
+        if source.is_empty() {
+            let artifact = map.artifact();
+            assert!(
+                artifact
+                    .lines()
+                    .iter()
+                    .all(|line| line.text_range() == (0..0)),
+                "empty source must expose only real 0..0 source ranges"
+            );
+            assert!(
+                artifact.lines().iter().all(|line| line.runs().is_empty()),
+                "Parley's synthetic empty-source shaping input must not become a RunenUI paint resource"
+            );
+        }
         assert!(
             map.selection_rects(&TextDisplaySelection::new(start.clone(), start))?
                 .is_empty()
