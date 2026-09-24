@@ -145,21 +145,14 @@ fn ligature_components_do_not_override_grapheme_boundaries() -> Result<(), Box<d
         ),
     )?;
     let map = state.caret_map(snapshot(1))?;
-    let continuation = map
-        .artifact()
-        .lines()
-        .iter()
-        .flat_map(runenui_text::TextLine::runs)
-        .flat_map(runenui_text::TextRun::clusters)
-        .find(|cluster| cluster.is_ligature_continuation())
-        .ok_or("controlled font must expose a Devanagari ligature continuation")?;
-    let offset = continuation.text_range().start;
-    let position = document_position(source, offset, TextAffinity::Downstream);
-    assert!(source.is_char_boundary(offset));
-    assert_eq!(
-        map.validate_position(&position),
-        Err(TextCaretMapError::NotCaretStop)
-    );
+    for (offset, _) in source.char_indices().skip(1) {
+        let position = document_position(source, offset, TextAffinity::Downstream);
+        assert_eq!(
+            map.validate_position(&position),
+            Err(TextCaretMapError::NotCaretStop),
+            "scalar boundary {offset} inside the controlled Devanagari grapheme must not become a caret stop"
+        );
+    }
 
     let start = document_position(source, 0, TextAffinity::Downstream);
     let moved = map.navigate(
@@ -451,7 +444,9 @@ fn word_and_hard_line_navigation_return_valid_positions() -> Result<(), Box<dyn 
 #[test]
 fn terminal_newline_and_empty_selection_use_no_guessed_rectangle() -> Result<(), Box<dyn Error>> {
     for source in ["", "a\n"] {
-        let map = map_for(source, None)?;
+        let map = map_for(source, None).map_err(|error| {
+            format!("controlled source {source:?} failed to build caret map: {error}")
+        })?;
         let start = document_position(
             source,
             0,
@@ -462,6 +457,20 @@ fn terminal_newline_and_empty_selection_use_no_guessed_rectangle() -> Result<(),
             },
         );
         map.validate_position(&start)?;
+        if source.is_empty() {
+            let artifact = map.artifact();
+            assert!(
+                artifact
+                    .lines()
+                    .iter()
+                    .all(|line| line.text_range() == (0..0)),
+                "empty source must expose only real 0..0 source ranges"
+            );
+            assert!(
+                artifact.lines().iter().all(|line| line.runs().is_empty()),
+                "Parley's synthetic empty-source shaping input must not become a RunenUI paint resource"
+            );
+        }
         assert!(
             map.selection_rects(&TextDisplaySelection::new(start.clone(), start))?
                 .is_empty()

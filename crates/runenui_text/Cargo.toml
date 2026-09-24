@@ -11,8 +11,8 @@ rust-version.workspace = true
 
 [dependencies]
 runenui_core = { path = "../runenui_core", version = "0.1.0" }
-parley = { version = "0.11.1", default-features = false, features = ["std", "complex-scripts"] }
-fontique = { version = "0.11.1", default-features = false, features = ["system", "fontconfig-dlopen"] }
+parley = { git = "https://github.com/linebender/parley", rev = "fbfdf958e9cb82e84f60e008ad512bb89b5950cd", default-features = false, features = ["std", "complex-scripts"] }
+fontique = { git = "https://github.com/linebender/parley", rev = "fbfdf958e9cb82e84f60e008ad512bb89b5950cd", default-features = false, features = ["system", "fontconfig-dlopen"] }
 skrifa = { version = "=0.44.0", default-features = false, features = ["std"] }
 unicode-segmentation = "1.13.3"
 

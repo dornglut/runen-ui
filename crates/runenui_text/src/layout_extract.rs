@@ -14,22 +14,30 @@ use crate::{
 
 pub fn extract_layout<B: Brush>(
     layout: &Layout<B>,
+    source: &str,
     source_snapshot: FontSourceSnapshot,
     resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
 ) -> Option<TextArtifact> {
     resources.retain(|_, resource| resource.strong_count() > 0);
 
+    if layout.text_len() != source.len() {
+        return None;
+    }
+    let empty_source = source.is_empty();
+
     let size = LogicalSize::try_new(layout.width(), layout.height()).ok()?;
     let mut lines = Vec::with_capacity(layout.lines().count());
 
     for line in layout.lines() {
+        let (line_text_range, trailing_whitespace) =
+            source_line_metrics(&line, source, empty_source)?;
         let metrics = line.metrics();
         let metrics = TextLineMetrics::from_finite([
             metrics.line_height,
             metrics.baseline,
             metrics.offset,
             metrics.advance,
-            metrics.trailing_whitespace,
+            trailing_whitespace,
             metrics.inline_min_coord,
             metrics.inline_max_coord,
             metrics.block_min_coord,
@@ -41,13 +49,24 @@ pub fn extract_layout<B: Brush>(
             let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                 return None;
             };
+            // Parley shapes a synthetic space for an empty source to obtain caret metrics.
+            // Parley 0.11.1 hid that synthetic cluster before exposing line items; current
+            // upstream does not. Preserve the RunenUI source-artifact boundary: metrics remain
+            // usable for the empty caret, but synthetic text must never become paint/resource
+            // or source-range authority.
+            if empty_source {
+                continue;
+            }
             let run = glyph_run.run();
             let synthesis = run.synthesis();
-            let font = run.font();
+            let font_instance = run.font();
             let font = TextFontBinding::new(
-                font.data.clone(),
-                font.index,
-                run.normalized_coords().to_vec(),
+                font_instance.font.data.clone(),
+                font_instance.font.index,
+                run.normalized_coords()
+                    .iter()
+                    .map(|coord| coord.to_bits())
+                    .collect(),
                 synthesis.embolden(),
                 synthesis.skew(),
             )?;
@@ -109,8 +128,82 @@ pub fn extract_layout<B: Brush>(
             )?);
         }
 
-        lines.push(TextLine::new(line.text_range(), metrics, runs));
+        lines.push(TextLine::new(line_text_range, metrics, runs));
     }
 
     Some(TextArtifact::new(size, source_snapshot, lines))
+}
+
+fn source_line_metrics<B: Brush>(
+    line: &parley::layout::Line<'_, B>,
+    source: &str,
+    empty_source: bool,
+) -> Option<(core::ops::Range<usize>, f32)> {
+    if empty_source {
+        Some((0..0, 0.0))
+    } else {
+        Some((
+            line.text_range(),
+            trailing_whitespace_advance(line, source)?,
+        ))
+    }
+}
+
+// RunenUI exposes trailing-whitespace advance as a renderer-neutral line metric. Parley's
+// unreleased layout model exposes CSS hanging advance instead, which is a different concept.
+// Derive the RunenUI metric from exact source ranges and retained cluster advances so dependency
+// policy does not redefine the public artifact contract.
+fn trailing_whitespace_advance<B: Brush>(
+    line: &parley::layout::Line<'_, B>,
+    source: &str,
+) -> Option<f32> {
+    let line_range = line.text_range();
+    let line_source = source.get(line_range.clone())?;
+    let mut suffix_start = line_range.end;
+    for (relative, character) in line_source.char_indices().rev() {
+        if !is_trailing_whitespace(character) {
+            break;
+        }
+        suffix_start = line_range.start + relative;
+    }
+
+    if suffix_start == line_range.end {
+        return Some(0.0);
+    }
+
+    let advance = line
+        .runs()
+        .flat_map(|run| run.clusters())
+        .filter(|cluster| {
+            let range = cluster.text_range();
+            range.start >= suffix_start && range.end <= line_range.end
+        })
+        .map(|cluster| cluster.advance())
+        .sum();
+    Some(advance)
+}
+
+const fn is_trailing_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        ' ' | '\u{00A0}' | '\t' | '\r' | '\n' | '\u{2028}' | '\u{2029}'
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_trailing_whitespace;
+
+    #[test]
+    fn trailing_whitespace_metric_domain_is_explicit() {
+        for character in [' ', '\u{00A0}', '\t', '\r', '\n', '\u{2028}', '\u{2029}'] {
+            assert!(is_trailing_whitespace(character));
+        }
+
+        for character in [
+            'a', '\u{3000}', '\u{2003}', '\u{0085}', '\u{000B}', '\u{000C}',
+        ] {
+            assert!(!is_trailing_whitespace(character));
+        }
+    }
 }
