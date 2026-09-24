@@ -420,6 +420,40 @@ impl TextCaretMap {
         offsets
     }
 
+    #[cfg(test)]
+    pub(crate) fn grapheme_boundary_count_for_test(&self) -> usize {
+        self.grapheme_boundaries.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn legal_byte_offsets_exhaustive_for_test(&self) -> (Vec<usize>, usize) {
+        let mut cursor_validations = 0usize;
+        let offsets = self
+            .grapheme_boundaries
+            .iter()
+            .copied()
+            .filter(|&byte_offset| {
+                [TextAffinity::Upstream, TextAffinity::Downstream]
+                    .into_iter()
+                    .any(|affinity| {
+                        cursor_validations = cursor_validations.saturating_add(1);
+                        self.cursor_at(byte_offset, affinity).is_ok()
+                    })
+            })
+            .collect::<Vec<_>>();
+        (offsets, cursor_validations)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn legal_byte_offsets_grapheme_candidate_for_test(&self) -> Vec<usize> {
+        self.grapheme_boundaries.to_vec()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn legal_byte_offsets_shared_candidate_for_test(&self) -> Arc<[usize]> {
+        Arc::clone(&self.grapheme_boundaries)
+    }
+
     /// Converts a displayed surface point into a shaping-valid position.
     ///
     /// `displayed_snapshot` must identify the exact published document revision.
