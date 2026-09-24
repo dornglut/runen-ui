@@ -14,6 +14,7 @@ use crate::{
 
 pub fn extract_layout<B: Brush>(
     layout: &Layout<B>,
+    source: &str,
     source_snapshot: FontSourceSnapshot,
     resources: &mut HashMap<ResourceRef, Weak<ShapedTextResource>>,
 ) -> Option<TextArtifact> {
@@ -23,13 +24,14 @@ pub fn extract_layout<B: Brush>(
     let mut lines = Vec::with_capacity(layout.lines().count());
 
     for line in layout.lines() {
+        let trailing_whitespace = legacy_trailing_whitespace_advance(line, source)?;
         let metrics = line.metrics();
         let metrics = TextLineMetrics::from_finite([
             metrics.line_height,
             metrics.baseline,
             metrics.offset,
             metrics.advance,
-            metrics.trailing_whitespace,
+            trailing_whitespace,
             metrics.inline_min_coord,
             metrics.inline_max_coord,
             metrics.block_min_coord,
@@ -116,4 +118,58 @@ pub fn extract_layout<B: Brush>(
     }
 
     Some(TextArtifact::new(size, source_snapshot, lines))
+}
+
+
+fn legacy_trailing_whitespace_advance<B: Brush>(
+    line: parley::layout::Line<'_, B>,
+    source: &str,
+) -> Option<f32> {
+    let line_range = line.text_range();
+    let line_source = source.get(line_range.clone())?;
+    let mut suffix_start = line_range.end;
+    for (relative, character) in line_source.char_indices().rev() {
+        if !is_legacy_trailing_whitespace(character) {
+            break;
+        }
+        suffix_start = line_range.start + relative;
+    }
+
+    if suffix_start == line_range.end {
+        return Some(0.0);
+    }
+
+    let advance = line
+        .runs()
+        .flat_map(|run| run.clusters())
+        .filter(|cluster| {
+            let range = cluster.text_range();
+            range.start >= suffix_start && range.end <= line_range.end
+        })
+        .map(|cluster| cluster.advance())
+        .sum();
+    Some(advance)
+}
+
+const fn is_legacy_trailing_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        ' ' | '\u{00A0}' | '\t' | '\r' | '\n' | '\u{2028}' | '\u{2029}'
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_legacy_trailing_whitespace;
+
+    #[test]
+    fn legacy_trailing_whitespace_matches_the_parley_0_11_1_metric_domain() {
+        for character in [' ', '\u{00A0}', '\t', '\r', '\n', '\u{2028}', '\u{2029}'] {
+            assert!(is_legacy_trailing_whitespace(character));
+        }
+
+        for character in ['a', '\u{3000}', '\u{2003}', '\u{0085}', '\u{000B}', '\u{000C}'] {
+            assert!(!is_legacy_trailing_whitespace(character));
+        }
+    }
 }
