@@ -64,11 +64,11 @@ fn map_for(
     Ok(state.caret_map(snapshot(revision))?)
 }
 
-fn assert_candidate_matches_oracle(map: &TextCaretMap) {
+fn assert_candidate_matches_oracle(label: &str, map: &TextCaretMap) {
     let (oracle, exhaustive_validations) = map.legal_byte_offsets_exhaustive_for_test();
     let (candidate, candidate_offsets, candidate_validations) =
         map.legal_byte_offsets_layout_candidate_for_test();
-    assert_eq!(candidate, oracle);
+    assert_eq!(candidate, oracle, "candidate mismatch for {label}");
     assert!(candidate_offsets <= map.grapheme_boundary_count_for_test());
     assert!(candidate_validations <= exhaustive_validations);
 }
@@ -78,23 +78,34 @@ fn layout_candidate_matches_exhaustive_oracle_across_controlled_corpus()
 -> Result<(), Box<dyn Error>> {
     let mut system = corpus_system()?;
 
-    for (text, family, width) in [
-        ("", "Cantarell", None),
-        ("plain ascii text", "Cantarell", None),
-        ("line one\nline two\nline three", "Cantarell", None),
+    for (label, text, family, width) in [
+        ("empty", "", "Cantarell", None),
+        ("ascii", "plain ascii text", "Cantarell", None),
+        ("multiline", "line one\nline two\nline three", "Cantarell", None),
         (
+            "wrapped_ascii",
             "wrapped words wrapped words wrapped words",
             "Cantarell",
             Some(90.0),
         ),
-        ("e\u{301} office 👩\u{200d}💻", "Cantarell", None),
-        ("क्षि", "RunenUI Fixture Devanagari", None),
-        ("कक्षा क्षि", "RunenUI Fixture Devanagari", Some(80.0)),
-        ("سلام", "RunenUI Fixture Arabic", None),
-        ("سلام عالم", "RunenUI Fixture Arabic", Some(80.0)),
+        ("combining_emoji", "e\u{301} office 👩\u{200d}💻", "Cantarell", None),
+        ("devanagari_ligature", "क्षि", "RunenUI Fixture Devanagari", None),
+        (
+            "devanagari_wrapped",
+            "कक्षा क्षि",
+            "RunenUI Fixture Devanagari",
+            Some(80.0),
+        ),
+        ("arabic", "سلام", "RunenUI Fixture Arabic", None),
+        (
+            "arabic_wrapped",
+            "سلام عالم",
+            "RunenUI Fixture Arabic",
+            Some(80.0),
+        ),
     ] {
         let map = map_for(&mut system, text, typography(family)?, width, 1)?;
-        assert_candidate_matches_oracle(&map);
+        assert_candidate_matches_oracle(label, &map);
     }
 
     let mixed = map_for(
@@ -104,7 +115,7 @@ fn layout_candidate_matches_exhaustive_oracle_across_controlled_corpus()
         Some(120.0),
         2,
     )?;
-    assert_candidate_matches_oracle(&mixed);
+    assert_candidate_matches_oracle("mixed_bidi", &mixed);
     Ok(())
 }
 
@@ -136,7 +147,7 @@ fn layout_candidate_matches_exhaustive_oracle_for_preedit_projection() -> Result
         ),
     )?;
     let map = state.preedit_caret_map(projection)?;
-    assert_candidate_matches_oracle(&map);
+    assert_candidate_matches_oracle("preedit", &map);
     Ok(())
 }
 
