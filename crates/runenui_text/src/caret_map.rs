@@ -9,7 +9,7 @@ use crate::{
 
 use parley::{
     editing::{Cursor, Selection},
-    layout::{Affinity, Cluster},
+    layout::Affinity,
 };
 use runenui_core::{
     LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, TextAffinity, TextDisplayPosition,
@@ -452,7 +452,7 @@ impl TextCaretMap {
         candidates.push(0);
         let mut raw_cluster_count = 0usize;
         let mut layout_max_end = 0usize;
-        let mut cluster = Cluster::from_byte_index(&self.cached.layout, 0);
+        let mut cluster = parley::layout::Cluster::from_byte_index(&self.cached.layout, 0);
         while let Some(current) = cluster {
             let range = current.text_range();
             raw_cluster_count = raw_cluster_count.saturating_add(1);
