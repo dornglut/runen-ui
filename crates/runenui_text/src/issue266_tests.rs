@@ -144,16 +144,14 @@ fn grapheme_candidate_matches_exhaustive_oracle_across_controlled_corpus()
 }
 
 #[test]
-fn grapheme_candidate_matches_exhaustive_oracle_across_metric_run_split() -> Result<(), Box<dyn Error>>
-{
+fn grapheme_candidate_matches_exhaustive_oracle_across_metric_run_split()
+-> Result<(), Box<dyn Error>> {
     let source = "ae\u{301}b";
     let mut system = corpus_system()?;
     let mut state = TextLayoutState::new();
     let base = typography("Cantarell")?;
-    let accent_typography = Typography::new(
-        FontFamily::named("Cantarell")?,
-        LogicalLength::new(28.0)?,
-    );
+    let accent_typography =
+        Typography::new(FontFamily::named("Cantarell")?, LogicalLength::new(28.0)?);
     let request = TextRequest::new(source, base, TextConstraints::unbounded())
         .try_with_metric_spans(vec![TextMetricSpan::new(2..4, accent_typography)])?;
     system.layout_text(&mut state, &request)?;
