@@ -454,9 +454,7 @@ impl TextCaretMap {
         for line in self.cached.artifact.lines() {
             for run in line.runs() {
                 for cluster in run.clusters() {
-                    if !cluster.is_ligature_continuation() {
-                        candidates.push(cluster.text_range().start);
-                    }
+                    candidates.push(cluster.text_range().start);
                 }
             }
         }
