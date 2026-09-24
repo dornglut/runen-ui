@@ -444,7 +444,8 @@ fn word_and_hard_line_navigation_return_valid_positions() -> Result<(), Box<dyn 
 #[test]
 fn terminal_newline_and_empty_selection_use_no_guessed_rectangle() -> Result<(), Box<dyn Error>> {
     for source in ["", "a\n"] {
-        let map = map_for(source, None)?;
+        let map = map_for(source, None)
+            .map_err(|error| format!("controlled source {source:?} failed to build caret map: {error}"))?;
         let start = document_position(
             source,
             0,
