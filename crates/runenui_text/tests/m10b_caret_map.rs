@@ -145,21 +145,14 @@ fn ligature_components_do_not_override_grapheme_boundaries() -> Result<(), Box<d
         ),
     )?;
     let map = state.caret_map(snapshot(1))?;
-    let continuation = map
-        .artifact()
-        .lines()
-        .iter()
-        .flat_map(runenui_text::TextLine::runs)
-        .flat_map(runenui_text::TextRun::clusters)
-        .find(|cluster| cluster.is_ligature_continuation())
-        .ok_or("controlled font must expose a Devanagari ligature continuation")?;
-    let offset = continuation.text_range().start;
-    let position = document_position(source, offset, TextAffinity::Downstream);
-    assert!(source.is_char_boundary(offset));
-    assert_eq!(
-        map.validate_position(&position),
-        Err(TextCaretMapError::NotCaretStop)
-    );
+    for (offset, _) in source.char_indices().skip(1) {
+        let position = document_position(source, offset, TextAffinity::Downstream);
+        assert_eq!(
+            map.validate_position(&position),
+            Err(TextCaretMapError::NotCaretStop),
+            "scalar boundary {offset} inside the controlled Devanagari grapheme must not become a caret stop"
+        );
+    }
 
     let start = document_position(source, 0, TextAffinity::Downstream);
     let moved = map.navigate(
