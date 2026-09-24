@@ -9,7 +9,7 @@ use crate::{
 
 use parley::{
     editing::{Cursor, Selection},
-    layout::Affinity,
+    layout::{Affinity, Cluster},
 };
 use runenui_core::{
     LogicalLength, LogicalPoint, LogicalRect, LogicalTransform, TextAffinity, TextDisplayPosition,
@@ -450,21 +450,22 @@ impl TextCaretMap {
     ) -> (Vec<usize>, usize, usize, usize, usize) {
         let mut candidates = Vec::new();
         candidates.push(0);
-        candidates.push(self.display_text().len());
         let mut raw_cluster_count = 0usize;
-        let mut artifact_max_end = 0usize;
-        for line in self.cached.artifact.lines() {
-            for run in line.runs() {
-                for cluster in run.clusters() {
-                    let range = cluster.text_range();
-                    raw_cluster_count = raw_cluster_count.saturating_add(1);
-                    artifact_max_end = artifact_max_end.max(range.end);
-                    candidates.push(range.start);
-                }
+        let mut layout_max_end = 0usize;
+        let mut cluster = Cluster::from_byte_index(&self.cached.layout, 0);
+        while let Some(current) = cluster {
+            let range = current.text_range();
+            raw_cluster_count = raw_cluster_count.saturating_add(1);
+            layout_max_end = layout_max_end.max(range.end);
+            if candidates.last().copied() != Some(range.start) {
+                candidates.push(range.start);
             }
+            cluster = current.next_logical();
         }
-        candidates.sort_unstable();
-        candidates.dedup();
+        let display_end = self.display_text().len();
+        if candidates.last().copied() != Some(display_end) {
+            candidates.push(display_end);
+        }
         candidates.retain(|offset| self.grapheme_boundaries.binary_search(offset).is_ok());
 
         let candidate_count = candidates.len();
@@ -485,7 +486,7 @@ impl TextCaretMap {
             candidate_count,
             cursor_validations,
             raw_cluster_count,
-            artifact_max_end,
+            layout_max_end,
         )
     }
 
